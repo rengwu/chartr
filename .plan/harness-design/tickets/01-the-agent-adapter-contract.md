@@ -1,6 +1,8 @@
 ---
 type: research
 blocked_by: []
+claimed_by: claude-opus-4-8/wayfinder-session
+claimed_at: 2026-07-17T01:36:36Z
 ---
 
 # The agent adapter contract
