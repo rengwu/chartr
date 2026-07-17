@@ -27,9 +27,10 @@ The map is done when every decision the spec needs is settled — nothing left t
 
 <!-- one line per resolved ticket: enough to judge relevance, then zoom the link for the detail -->
 
+- [The agent adapter contract](./tickets/01-the-agent-adapter-contract.md) — claude/codex/opencode/pi all drive headless; the contract is `spawn(cwd, model, promptText)` + `observe → {alive, exited, tokens}` + `stop`, with the role wired in the prompt body (no universal system-prompt flag) and *finished* derived from the ticket, not the agent (ADR 0004). Dollar cost, budget caps, and system-prompt flags are optional-with-degradation; resume is excluded by design (ADR 0005).
+
 ## Not yet specified
 
-- **Cost and token visibility.** Long-running sessions across several spaces burn real money, and runaway cost is a named risk of automating this at all. Whether the cockpit surfaces spend — per session, per space, per map — and whether it can cap or refuse, depends on what the agent CLIs actually report about themselves. <clears-with: 01>
 - **A durable audit trail.** Whether the harness needs history beyond git and `.plan/`: who ran what, when, on which model, and how it ended. iudex event-sourced this. It may be that a linear git history plus the map already tells the whole story, in which case there is nothing to build. <clears-with: 06>
 - **tmux (or zellij) as a session substrate.** Deferred rather than dismissed (ADR 0006). It would buy crash survival and the ability to attach to a stuck agent from your own terminal, outside the cockpit. Revisit if a persistent Go daemon's durability proves too thin in practice. <clears-with: 02>
 - **`to-tickets` from inside the cockpit.** Whether graduating a finished planning map into an implementation map is an action the harness offers, or something you do yourself and the harness merely notices afterwards. <clears-with: 03>
