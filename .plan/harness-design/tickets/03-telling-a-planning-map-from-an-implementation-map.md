@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: []
+claimed_by: claude-fable-5
+claimed_at: 2026-07-17T12:08:50Z
 ---
 
 # Telling a planning map from an implementation map
