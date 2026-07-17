@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01]
+claimed_by: claude-fable-5
+claimed_at: 2026-07-17T10:34:26Z
 ---
 
 # Knowing a session finished, hung, or died
