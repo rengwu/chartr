@@ -1,6 +1,7 @@
 ---
 type: research
 blocked_by: []
+undermined_by: [02]
 assets: [.plan/harness-design/assets/01-agent-adapter-contract-research.md]
 ---
 
@@ -22,6 +23,8 @@ Record per agent, because later tickets need it: how a **model is selected** (ti
 Produce a cited comparison as a linked asset — one section per agent — ending with the finding that matters most: **the narrowest contract every supported agent can satisfy.** That intersection is the adapter interface. Anything outside it is a per-adapter capability the harness must treat as optional, and the spec has to say what degrades when it is missing.
 
 ## Answer
+
+**Undermined by [Knowing a session finished, hung, or died](./02-knowing-a-session-finished-hung-or-died.md):** this contract was researched headless; ticket 02 chose interactive-only spawn — `observe` degrades to `{alive, dead}` from the PTY, tokens and exit-code semantics demote from the floor to optional out-of-band capabilities, and the resume exclusion narrows to *across tickets only* (same-ticket crash recovery is permitted). The survey below still stands; the floor moved.
 
 All four agents — **claude, codex, opencode, pi** — can be driven headless, and the intersection of
 what they share is a clean adapter interface. Full cited survey:
