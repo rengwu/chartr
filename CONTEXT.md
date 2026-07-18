@@ -75,6 +75,10 @@ _Avoid_: gate, approval, sign-off
 A ticket whose `## Answer` is written. On disk, resolved always means blessed.
 _Avoid_: done, complete, merged, closed
 
+**Abandon**:
+The human-review outcome that rejects a proposed ticket: the harness demotes its `## Proposed Answer` to `### Rejected` prose (keeping the record for the next attempt) and the ticket returns to the frontier. Undoing the rejected commits is the human's act, with revert offered as a lever.
+_Avoid_: discard, reject, rollback
+
 **Autopilot**:
 The opt-in, non-default configuration in which both reviews are disabled and a ticket resolves with no human in the loop.
 _Avoid_: auto, unattended, headless, YOLO
