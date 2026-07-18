@@ -23,4 +23,4 @@ Make something cheap and concrete to react to, and settle:
 
 The prototype is the deliverable — link it as an asset. Do not build the real frontend.
 
-Prototype: [08-cockpit-layout.html](../assets/08-cockpit-layout.html) — open in a browser; three variants (A Orbit — map as home, B Cockpit — persistent split, C Tower — terminal-first), cycled with ←/→ or `?variant=`; `?` explains how each variant answers the ticket.
+Prototype: [08-cockpit-layout.html](../assets/08-cockpit-layout.html) — open in a browser; four variants (A Orbit — map as home, B Cockpit — persistent split, C Tower — terminal-first, D Bridge — the hybrid of B+C shaped by review), cycled with ←/→ or `?variant=`; `?` explains how each variant answers the ticket. D is the leading candidate: space→map selector sidebar, space-scoped terminal tabs, badge-toggled action station, expanding reading drawer.

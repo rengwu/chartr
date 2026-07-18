@@ -14,6 +14,10 @@
     A  Orbit   — the star-map is the home screen; sessions are fullscreen dives.
     B  Cockpit — persistent split: map left, terminal stack right.
     C  Tower   — terminal-first multiplexer (herdr-style); map is an overlay.
+    D  Bridge  — the hybrid picked after review: B's split + C's nesting concept
+                 repurposed as a space → map selector; toggleable action station
+                 with a numbered badge; ticket pane expands to a full reading
+                 drawer; map title opens map.md in the same drawer.
 
   Fixture: this repo's own harness-design map (real topology, fake terminals).
   All three variants share one reading of the nesting tension: ADR 0003 stands —
@@ -179,6 +183,63 @@
   .C-overlay .hint { position:absolute; top:12px; left:50%; transform:translateX(-50%);
                      font-size:11px; color:var(--dim); }
   .C-overlay .panel { position:absolute; top:56px; right:16px; width:360px; max-height:70vh; overflow-y:auto; }
+
+  /* ---------- variant D : Bridge ---------- */
+  .D-grid { position:fixed; inset:0; display:grid; grid-template-columns:230px 1fr 44%; }
+  .D-side { background:var(--bg2); border-right:1px solid var(--line); overflow-y:auto;
+            padding:10px 0; display:flex; flex-direction:column; }
+  .D-sp { display:flex; align-items:center; gap:8px; padding:8px 12px; font:600 12px var(--sans);
+          color:var(--txt); cursor:pointer; }
+  .D-sp .chev { color:var(--dim); font-size:9px; width:10px; }
+  .D-sp .n { flex:1; }
+  .D-sp .note { font-weight:400; font-size:10px; color:var(--dim); }
+  .D-map { display:flex; align-items:center; gap:7px; padding:5px 12px 5px 30px; font-size:12px;
+           color:var(--dim); cursor:pointer; border-left:2px solid transparent; }
+  .D-map:hover { color:var(--txt); }
+  .D-map.selected { color:var(--txt); background:#101728; border-left-color:var(--accent); }
+  .D-map .kind { margin-left:auto; font-size:9px; text-transform:uppercase; letter-spacing:.06em;
+                 color:var(--dim); border:1px solid var(--line); border-radius:8px; padding:1px 5px; }
+  .D-map.selected .kind { color:#8fa8d8; }
+  .D-nomap { padding:5px 12px 5px 30px; font-size:11px; color:var(--dim); font-style:italic; }
+  .D-mapcol { position:relative; border-right:1px solid var(--line); overflow:hidden; }
+  .D-hud { position:absolute; top:10px; left:14px; z-index:5; font-size:11px; color:var(--dim); line-height:1.7; }
+  .D-hud .title { color:var(--txt); font-weight:600; cursor:pointer; text-decoration:underline dotted #3a4a6e; }
+  .D-hud .title:hover { color:#dce7ff; }
+  .D-actbtn { position:absolute; top:10px; right:12px; z-index:7; display:flex; align-items:center; gap:7px;
+              font:600 12px var(--sans); color:var(--txt); background:var(--panel);
+              border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer; }
+  .D-actbtn:hover { background:#141b2e; }
+  .D-actbtn .badge { background:var(--amber); color:#20160a; font:700 10px var(--sans);
+                     border-radius:9px; min-width:17px; height:17px; display:flex;
+                     align-items:center; justify-content:center; padding:0 4px; }
+  .D-actions { position:absolute; top:46px; right:12px; z-index:7; width:310px; max-height:65%;
+               overflow-y:auto; background:rgba(10,14,24,.95); border:1px solid var(--line);
+               border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
+  .D-actions h5 { font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+                  padding:5px 8px 6px; }
+  .D-act { display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px;
+           font-size:12px; cursor:pointer; }
+  .D-act:hover { background:#141b2e; }
+  .D-act .what { flex:1; }
+  .D-act .sub { display:block; font-size:10px; color:var(--dim); }
+  .D-act .go { color:var(--accent); font-size:11px; font-weight:600; }
+  .D-act.review .go { color:var(--amber); }
+  .D-panel { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; max-height:46%; overflow-y:auto; }
+  .D-drawer { position:absolute; top:10px; left:10px; bottom:10px; width:min(600px,72%); z-index:8;
+              overflow-y:auto; background:rgba(9,13,22,.97); border:1px solid var(--line);
+              border-radius:10px; backdrop-filter:blur(10px); padding:20px 24px; }
+  .D-drawer h2 { font-size:17px; margin:8px 0 4px; }
+  .D-drawer h4 { font-size:12px; color:#8fa8d8; margin:16px 0 6px; text-transform:uppercase; letter-spacing:.07em; }
+  .D-drawer p, .D-drawer li { font-size:12.5px; color:#9aa7c2; line-height:1.65; }
+  .D-drawer ul { padding-left:18px; }
+  .D-drawer .close { position:absolute; top:12px; right:14px; }
+  .D-drawer .acts { display:flex; gap:8px; align-items:center; margin-top:10px; }
+  .D-blocker { border:1px solid var(--line); border-radius:8px; padding:8px 11px; margin-bottom:7px; }
+  .D-blocker .q { font-size:12px; color:var(--txt); }
+  .D-blocker .a { font-size:11.5px; color:var(--dim); margin-top:3px; }
+  .D-termcol { display:flex; flex-direction:column; background:#04060b; }
+  .D-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--dim);
+             font-size:12px; font-style:italic; }
 </style>
 </head>
 <body>
@@ -242,7 +303,44 @@ const TERM_LINES = [
   ["dm","  tokens: 61.9k in / 18.3k out"],
 ];
 
-const STATUS_COLOR = { resolved:"#9db4d0", frontier:"#ffd24a", claimed:"#ffab40", blocked:"#7a4a48" };
+const STATUS_COLOR = { resolved:"#9db4d0", frontier:"#ffd24a", claimed:"#ffab40", blocked:"#7a4a48", proposed:"#ffab40" };
+
+/* extra fixtures for variant D: several maps per space */
+const EXP_TICKETS = [
+  {n:1, t:"CSV schema and column set",     type:"task", st:"resolved"},
+  {n:2, t:"Export service scaffolding",    type:"task", st:"resolved"},
+  {n:3, t:"Streaming export endpoint",     type:"task", st:"claimed",  dep:[2]},
+  {n:4, t:"Date-range and filter params",  type:"task", st:"frontier", dep:[1]},
+  {n:5, t:"Large-export pagination",       type:"task", st:"blocked",  dep:[3,4]},
+  {n:6, t:"Export audit log entry",        type:"task", st:"frontier", dep:[]},
+];
+const WF_TICKETS = [
+  {n:1, t:"Fuzz the map parser",           type:"task", st:"resolved"},
+  {n:2, t:"Graceful bad-frontmatter error",type:"task", st:"resolved"},
+  {n:3, t:"Cycle detection in blocked_by", type:"task", st:"proposed", dep:[1]},
+  {n:4, t:"Windows path handling",         type:"task", st:"frontier", dep:[]},
+  {n:5, t:"Big-map render performance",    type:"task", st:"blocked",  dep:[3]},
+];
+const WF2_TICKETS = [
+  {n:1, t:"fsnotify watch on .plan/",      type:"task", st:"frontier", dep:[]},
+  {n:2, t:"graph.json push channel",       type:"task", st:"frontier", dep:[]},
+  {n:3, t:"Client re-derive on push",      type:"task", st:"blocked",  dep:[1,2]},
+];
+const MAPS = {
+  "wayfinder-harness": [ {slug:"harness-design", kind:"planning", tickets:TICKETS} ],
+  "expensif":          [ {slug:"export-csv-impl", kind:"implementation", tickets:EXP_TICKETS} ],
+  "wayfinder":         [ {slug:"viewer-hardening", kind:"planning", tickets:WF_TICKETS},
+                         {slug:"starmap-live-impl", kind:"implementation", tickets:WF2_TICKETS} ],
+  "skills":            [],
+};
+const SPACE_SESSIONS = {
+  "wayfinder-harness": SESSIONS,
+  "expensif":  [ {id:"e1",ticket:4,role:"implement",state:"working",when:"41m",live:true},
+                 {id:"e0",ticket:2,role:"implement",state:"resolved",when:"3h ago"} ],
+  "wayfinder": [ {id:"w1",ticket:3,role:"review",state:"wants-you",when:"1h"},
+                 {id:"w0",ticket:2,role:"implement",state:"resolved",when:"yesterday"} ],
+  "skills": [],
+};
 const $ = (s,el=document)=>el.querySelector(s);
 function h(tag, attrs={}, ...kids){
   const el=document.createElement(tag);
@@ -259,17 +357,17 @@ let rafs=[];   function raf(fn){ const loop=t=>{ fn(t); rafs.push(requestAnimati
 let listeners=[]; function listen(t,ev,fn,opts){ t.addEventListener(ev,fn,opts); listeners.push([t,ev,fn]); }
 
 /* ============ shared star-map (deterministic layout, pan/zoom) ============ */
-function rank(t){ if(!t.dep||!t.dep.length) return 0; return 1+Math.max(...t.dep.map(d=>rank(TICKETS.find(x=>x.n===d)))); }
-function layoutStars(){
-  return TICKETS.map(t=>{
-    const r = 110 + rank(t)*150 + (t.n*53%80);
+function rank(t,list){ if(!t.dep||!t.dep.length) return 0; return 1+Math.max(...t.dep.map(d=>rank(list.find(x=>x.n===d),list))); }
+function layoutStars(list){
+  return list.map(t=>{
+    const r = 110 + rank(t,list)*150 + (t.n*53%80);
     const a = t.n*2.399 + 0.7;   // golden-angle spread, seeded by ticket number
     return {t, x:Math.cos(a)*r*1.25, y:Math.sin(a)*r*0.72};
   });
 }
-function makeStarmap(canvas, {interactive=true, onSelect=null, scale=1}={}){
+function makeStarmap(canvas, {tickets=TICKETS, interactive=true, onSelect=null, scale=1}={}){
   const ctx=canvas.getContext("2d");
-  const stars=layoutStars();
+  const stars=layoutStars(tickets);
   let cam={x:0,y:0,z:scale}, sel=null, drag=null;
   const bgStars=Array.from({length:130},(_,i)=>({x:(i*97%1000)-500,y:(i*61%700)-350,r:(i%3)*.5+.4,p:i%2?0.5:0.25}));
   function resize(){ canvas.width=canvas.clientWidth*devicePixelRatio; canvas.height=canvas.clientHeight*devicePixelRatio; }
@@ -347,13 +445,14 @@ function makeTerm(el){
 }
 
 /* ============ shared ticket pane ============ */
-function ticketPane(t, {onSpawn}={}){
+function ticketPane(t, {onSpawn, onExpand}={}){
   const acts=[];
   if(t.st==="frontier") acts.push(h("button",{class:"btn primary", onclick:()=>onSpawn&&onSpawn(t)},
     t.type==="prototype"?"Spawn prototype session":"Spawn grill session"));
   if(t.st==="claimed")  acts.push(h("button",{class:"btn primary", onclick:()=>onSpawn&&onSpawn(t)},"Open running session"));
   if(t.st==="blocked")  acts.push(h("span",{class:"chip blocked"},"waiting on "+t.dep.map(d=>"#"+String(d).padStart(2,"0")).join(", ")));
   if(t.st==="resolved") acts.push(h("button",{class:"btn"},"Read answer"));
+  if(onExpand) acts.push(h("button",{class:"btn",style:"margin-left:auto",onclick:()=>onExpand(t)},"Read full ticket ⤢"));
   return h("div",{class:"ticket-pane"},
     h("div",{class:"meta"},
       h("span",{class:"chip "+t.st}, t.st),
@@ -519,13 +618,200 @@ variantC.info=`
 <p><b>Nesting:</b> the sidebar is the whole story, herdr-style: every space, expanded, with its live session and its recent history nested under it. This is the one variant where <i>other spaces' sessions</i> are first-class rows you can focus directly.</p>
 <p><b>Other spaces:</b> always visible in the sidebar with status dots — the strongest attention surface of the three, and the busiest chrome.</p>`;
 
+/* ================= variant D : Bridge (the hybrid) ================= */
+function variantD(root){
+  let state={ space:"wayfinder-harness", map:MAPS["wayfinder-harness"][0], expanded:{ "wayfinder-harness":true } };
+  const grid=h("div",{class:"D-grid"});
+  const side=h("div",{class:"D-side"});
+  const mapcol=h("div",{class:"D-mapcol"});
+  const termcol=h("div",{class:"D-termcol"});
+  grid.append(side,mapcol,termcol); root.append(grid);
+
+  /* ---- sidebar: spaces → maps ---- */
+  function renderSide(){
+    side.replaceChildren();
+    for(const sp of SPACES){
+      const open=!!state.expanded[sp.id];
+      side.append(h("div",{class:"D-sp",onclick:()=>{ state.expanded[sp.id]=!open; renderSide(); }},
+        h("span",{class:"chev"},open?"▼":"▶"),
+        h("span",{class:"dot "+sp.attn}),
+        h("span",{class:"n"},sp.id),
+        sp.attn==="wants-you"?h("span",{class:"note"},"⚑ review"):null));
+      if(open){
+        const maps=MAPS[sp.id]||[];
+        if(!maps.length) side.append(h("div",{class:"D-nomap"},"no maps — chart one"));
+        for(const m of maps){
+          side.append(h("div",{class:"D-map"+(state.map===m?" selected":""),
+              onclick:()=>{ state.space=sp.id; state.map=m; renderAll(); }},
+            h("span",{},m.slug),
+            h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
+        }
+      }
+    }
+  }
+
+  /* ---- map column: starmap + HUD + action station + panels ---- */
+  let mapApi=null, panel=null, drawer=null, actionsOpen=false;
+  function counts(list){
+    const c={resolved:0,frontier:0,claimed:0,blocked:0,proposed:0};
+    list.forEach(t=>c[t.st]++);
+    return `${c.resolved} resolved · ${c.frontier} frontier · ${c.blocked} blocked`
+      +(c.claimed?` · ${c.claimed} claimed`:"")+(c.proposed?` · ${c.proposed} proposed`:"");
+  }
+  function actionsFor(m){
+    const dependents=n=>m.tickets.filter(x=>x.dep&&x.dep.includes(n)).length;
+    const reviews=m.tickets.filter(t=>t.st==="proposed")
+      .map(t=>({kind:"review",t,label:"Review proposed work",sub:"agent-review passed · diff + proposed answer waiting"}));
+    const spawns=m.tickets.filter(t=>t.st==="frontier")
+      .sort((a,b)=>dependents(b.n)-dependents(a.n)||a.n-b.n)
+      .map(t=>({kind:"spawn",t,label:(t.type==="prototype"?"Spawn prototype":t.type==="task"?"Spawn implement":"Spawn grill")+" session",
+                sub:dependents(t.n)?`unblocks ${dependents(t.n)} ticket${dependents(t.n)>1?"s":""}`:"unblocks nothing yet"}));
+    return [...reviews,...spawns];
+  }
+  function renderMapcol(){
+    mapcol.replaceChildren(); panel=null; drawer=null;
+    const m=state.map;
+    if(!m){ mapcol.append(h("div",{class:"D-empty"},"no map — chart one from this space")); return; }
+    const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+    mapcol.append(canvas);
+    mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.72, onSelect(t){
+      panel && panel.remove(); panel=null;
+      if(t){ panel=h("div",{class:"D-panel"}, ticketPane(t,{onSpawn:spawn,onExpand:openTicketDrawer})); mapcol.append(panel); }
+    }});
+    mapcol.append(h("div",{class:"D-hud"},
+      h("div",{}, h("span",{class:"title",onclick:()=>openMapDrawer(m)},m.slug),
+        h("span",{style:"color:var(--dim)"}," — "+m.kind+" map")),
+      h("div",{},counts(m.tickets))));
+    const acts=actionsFor(m);
+    const btn=h("div",{class:"D-actbtn",onclick:()=>{ actionsOpen=!actionsOpen; renderActions(); }},
+      "Next up", acts.length?h("span",{class:"badge"},String(acts.length)):null);
+    mapcol.append(btn);
+    renderActions();
+    function renderActions(){
+      const old=$(".D-actions",mapcol); old && old.remove();
+      if(!actionsOpen) return;
+      const box=h("div",{class:"D-actions"}, h("h5",{},"what you can do on this map"));
+      for(const a of acts){
+        box.append(h("div",{class:"D-act "+a.kind,
+            onmouseenter:()=>mapApi.select(a.t.n), onmouseleave:()=>mapApi.select(null),
+            onclick:()=>{ a.kind==="spawn"?spawn(a.t):openTicketDrawer(a.t); }},
+          h("span",{class:"chip "+(a.kind==="review"?"claimed":"frontier"),style:"flex:none"},"#"+String(a.t.n).padStart(2,"0")),
+          h("span",{class:"what"}, a.label, h("span",{class:"sub"},a.t.t+" — "+a.sub)),
+          h("span",{class:"go"}, a.kind==="review"?"⚑ open":"▸ start")));
+      }
+      if(!acts.length) box.append(h("div",{class:"D-act"},h("span",{class:"sub"},"nothing actionable — frontier is empty")));
+      mapcol.append(box);
+    }
+  }
+
+  /* ---- reading drawer: full ticket, or the map itself ---- */
+  function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
+  function openTicketDrawer(t){
+    closeDrawer();
+    const m=state.map;
+    const sess=(SPACE_SESSIONS[state.space]||[]).filter(s=>s.ticket===t.n);
+    drawer=h("div",{class:"D-drawer"},
+      h("button",{class:"btn close",onclick:closeDrawer},"✕ esc"),
+      h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
+        h("span",{class:"chip "+(t.st==="proposed"?"claimed":t.st)},t.st), h("span",{class:"chip"},t.type),
+        h("span",{style:"color:var(--dim);font-size:11px"},"#"+String(t.n).padStart(2,"0"))),
+      h("h2",{},t.t),
+      h("div",{class:"acts"},
+        t.st==="frontier"?h("button",{class:"btn primary",onclick:()=>{ closeDrawer(); spawn(t); }},"Spawn session"):null,
+        t.st==="proposed"?h("button",{class:"btn primary"},"Open review"):null,
+        t.st==="claimed"?h("button",{class:"btn primary"},"Open running session"):null),
+      h("h4",{},"Question"),
+      h("p",{}, BODIES[t.n] || "…the ticket's full question renders here, markdown and all — every heading of the file, not an excerpt…"),
+      h("h4",{},"Done-when"),
+      h("ul",{}, h("li",{},"…the ticket's Done-when bullets, verbatim from the file…"),
+                 h("li",{},"…nothing summarised away — this drawer is the file…")),
+      t.dep&&t.dep.length?h("h4",{},"Blockers · answers inline"):null,
+      ...(t.dep||[]).map(d=>{ const b=m.tickets.find(x=>x.n===d);
+        return h("div",{class:"D-blocker"},
+          h("div",{class:"q"},"#"+String(d).padStart(2,"0")+" "+(b?b.t:"?")+(b&&b.st==="resolved"?"  ✓":"  ○ open")),
+          h("div",{class:"a"},b&&b.st==="resolved"?"One-line gist of its Answer, zoomable to the full text.":"Not yet resolved — this is why the ticket is blocked.")); }),
+      h("h4",{},"Sessions on this ticket"),
+      sess.length? h("ul",{},...sess.map(s=>h("li",{},`${s.live?"● live":"✓ ended"} · ${s.role} · ${s.when}`)))
+                 : h("p",{},"none yet"));
+    mapcol.append(drawer);
+  }
+  function openMapDrawer(m){
+    closeDrawer();
+    drawer=h("div",{class:"D-drawer"},
+      h("button",{class:"btn close",onclick:closeDrawer},"✕ esc"),
+      h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
+        h("span",{class:"chip"},m.kind+" map"), h("span",{style:"color:var(--dim);font-size:11px"},state.space)),
+      h("h2",{},m.slug),
+      h("h4",{},"Destination"),
+      h("p",{},m.slug==="harness-design"
+        ?"A design spec for wayfinder-harness: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. Done when every decision the spec needs is settled."
+        :"…the map's Destination, verbatim from map.md…"),
+      h("h4",{},"Notes"),
+      h("p",{},"…the map's Notes: reference material, standing preferences, skills to consult…"),
+      h("h4",{},"Decisions so far"),
+      h("ul",{},
+        h("li",{},"#01 — the adapter contract: spawn/observe/stop, finished derived from the ticket"),
+        h("li",{},"#02 — every session is an interactive TUI in a PTY; surface, never act on a heuristic"),
+        h("li",{},"#03 — map kind is declared, never inferred (ADR 0007)")),
+      h("h4",{},"Fog"),
+      h("ul",{},
+        h("li",{},"A durable audit trail — clears with #06"),
+        h("li",{},"Concurrent-session resource limits"),
+        h("li",{},"First-run onboarding — clears with #11")));
+    mapcol.append(drawer);
+  }
+
+  /* ---- terminal column: the space's sessions as tabs ---- */
+  let addSession=null;
+  function renderTermcol(){
+    termcol.replaceChildren();
+    const sess=[...(SPACE_SESSIONS[state.space]||[])];
+    const tabs=h("div",{class:"B-tabs"});
+    const body=h("div",{style:"flex:1;display:flex;flex-direction:column;min-height:0"});
+    const statusEl=h("div",{class:"B-status"});
+    termcol.append(tabs,body,statusEl);
+    function render(activeId){
+      tabs.replaceChildren(...sess.map(s=>h("div",{class:"B-tab"+(s.id===activeId?" active":""),
+          onclick:()=>render(s.id)},
+        h("span",{class:"dot "+(s.live?"working":s.state==="wants-you"?"wants-you":"idle")}),
+        sessLabel(s), h("span",{style:"font-size:10px;color:var(--dim)"},s.when))));
+      body.replaceChildren();
+      if(!sess.length){ body.append(h("div",{class:"D-empty"},"no sessions in this space — spawn one from the map")); }
+      else { const termEl=h("div",{class:"term",style:"flex:1"}); body.append(termEl); makeTerm(termEl); }
+      const live=sess.find(s=>s.live);
+      statusEl.replaceChildren(
+        h("span",{},"state ",h("b",{},live?"working":"idle")),
+        h("span",{},"space ",h("b",{},state.space)),
+        h("span",{style:"margin-left:auto"},live?"61.9k tokens · ~$1.84":"—"));
+    }
+    render(sess.length?sess[0].id:null);
+    addSession=t=>{
+      const ns={id:"d"+Date.now(),ticket:t.n,role:t.type==="prototype"?"prototype":t.type==="task"?"implement":"grill",
+                state:"working",when:"now",live:true};
+      sess.forEach(x=>x.live=false); sess.unshift(ns); render(ns.id);
+    };
+  }
+  function spawn(t){ addSession && addSession(t); }
+
+  function renderAll(){ renderSide(); renderMapcol(); renderTermcol(); }
+  renderAll();
+  listen(window,"keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
+}
+variantD.info=`
+<h4>D — Bridge: the hybrid</h4>
+<p><b>Sidebar = navigation only:</b> spaces expand to their maps; selecting a map switches the star-map. Attention dots and the ⚑ ride on the space row. A space with no maps says so ("chart one" — ticket 07's door).</p>
+<p><b>Terminals are space-scoped:</b> the right column's tabs are the selected space's sessions — live first, history behind — never filtered by map. Selecting another map changes the stars, not the terminals.</p>
+<p><b>Action station:</b> the "Next up" button wears a numbered badge and toggles a drawer over the map — reviews waiting first, then spawnable frontier tickets ranked by what they unblock. Hovering an action highlights its star.</p>
+<p><b>Reading drawer:</b> the compact ticket pane expands ("Read full ticket") into a full-height drawer over the map — whole file, Done-when, blockers with answers inline, session history. Clicking the map's title opens map.md in the same drawer. Esc closes.</p>`;
+
 /* ============ switcher (not part of the design) ============ */
 const VARIANTS={A:{name:"Orbit — map as home",fn:variantA},
                 B:{name:"Cockpit — persistent split",fn:variantB},
-                C:{name:"Tower — terminal-first",fn:variantC}};
+                C:{name:"Tower — terminal-first",fn:variantC},
+                D:{name:"Bridge — the hybrid",fn:variantD}};
 const KEYS=Object.keys(VARIANTS);
 let current=new URLSearchParams(location.search).get("variant");
-if(!KEYS.includes(current)) current="A";
+if(!KEYS.includes(current)) current="D";
 function mount(k){
   timers.forEach(clearInterval); timers=[];
   rafs.forEach(cancelAnimationFrame); rafs=[];
