@@ -1,6 +1,8 @@
 ---
 type: prototype
 blocked_by: [06, 08]
+claimed_by: claude-fable-5
+claimed_at: 2026-07-18T19:04:38Z
 ---
 
 # The human review hub
