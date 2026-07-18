@@ -254,18 +254,34 @@
   /* ---------- variant E : Helm ---------- */
   .E-grid { position:fixed; inset:0; display:flex; }
   .E-side { width:230px; flex:none; }
+  .E-brand { display:flex; align-items:center; gap:8px; padding:4px 10px 12px 14px;
+             border-bottom:1px solid var(--line); margin-bottom:8px; }
+  .E-brand .glyph { color:var(--gold); font-size:15px; text-shadow:0 0 8px rgba(255,210,74,.6); }
+  .E-brand .word { font:700 12px var(--sans); letter-spacing:.05em; flex:1; }
+  .E-brand .word span { color:var(--dim); font-weight:400; }
+  .E-newspace { margin:12px; margin-top:auto; color:var(--dim); }
+  .E-sidetoggle { position:fixed; top:10px; left:10px; z-index:70; }
   .E-term { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; position:relative; }
-  .E-term.hidden { display:none; }
   .E-thead { flex:none; display:flex; align-items:center; background:var(--bg2);
-             border-bottom:1px solid var(--line); padding-right:8px; }
+             border-bottom:1px solid var(--line); }
   .E-thead .B-tabs { flex:1; border-bottom:none; min-width:0; }
-  .E-map { position:relative; width:44%; flex:none; border-left:1px solid var(--line);
-           overflow:hidden; background:var(--bg); }
-  .E-map.closed { width:0; border-left:none; }
-  .E-map.full { width:100%; border-left:none; }
-  .E-actions { position:absolute; top:42px; right:8px; z-index:30; width:310px; max-height:70%;
+  /* the map is a floating panel that slides over the terminal — the terminal never reflows */
+  .E-map { position:absolute; top:0; right:0; bottom:0; width:46%; z-index:40; background:var(--bg);
+           border-left:1px solid var(--line); box-shadow:-18px 0 44px rgba(0,0,0,.55);
+           transition:transform .28s ease, width .28s ease; }
+  .E-map.closed { transform:translateX(calc(100% + 2px)); box-shadow:none; }
+  .E-map.full { width:calc(100% - 230px); }
+  .E-grid.nosidebar .E-map.full { width:100%; }
+  .E-handle { position:absolute; top:10px; right:100%; margin-right:10px; z-index:41; white-space:nowrap; }
+  .E-mapctl { position:absolute; top:10px; right:52px; display:flex; gap:7px; z-index:6; }
+  .E-actions { position:absolute; top:46px; right:10px; z-index:30; width:310px; max-height:70%;
                overflow-y:auto; background:rgba(10,14,24,.97); border:1px solid var(--line);
                border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
+  /* ticket details: a bottom sheet on the map panel, wayfinder-maps style */
+  .E-sheet { top:auto; left:0; right:0; bottom:0; width:auto; max-height:52%; z-index:9;
+             border:none; border-top:1px solid var(--line); border-radius:14px 14px 0 0;
+             animation:E-up .26s ease; }
+  @keyframes E-up { from { transform:translateY(46px); opacity:0; } to { transform:none; opacity:1; } }
 
   /* ---------- variant F : Fleet ---------- */
   .F-top { position:fixed; top:0; left:0; right:0; height:42px; z-index:60; display:flex;
@@ -445,13 +461,15 @@ function layoutStars(list){
 function makeStarmap(canvas, {tickets=TICKETS, interactive=true, onSelect=null, scale=1}={}){
   const ctx=canvas.getContext("2d");
   const stars=layoutStars(tickets);
-  let cam={x:0,y:0,z:scale}, sel=null, drag=null;
+  let cam={x:0,y:0,z:scale}, sel=null, drag=null, camT=null;
   const bgStars=Array.from({length:130},(_,i)=>({x:(i*97%1000)-500,y:(i*61%700)-350,r:(i%3)*.5+.4,p:i%2?0.5:0.25}));
   function resize(){ canvas.width=canvas.clientWidth*devicePixelRatio; canvas.height=canvas.clientHeight*devicePixelRatio; }
   resize(); new ResizeObserver(resize).observe(canvas);
   function toScreen(p){ const w=canvas.width, hgt=canvas.height;
     return [w/2+(p.x-cam.x)*cam.z*devicePixelRatio, hgt/2+(p.y-cam.y)*cam.z*devicePixelRatio]; }
   function draw(time){
+    if(camT){ cam.x+=(camT.x-cam.x)*0.12; cam.y+=(camT.y-cam.y)*0.12;
+      if(Math.abs(camT.x-cam.x)+Math.abs(camT.y-cam.y)<0.5) camT=null; }
     const w=canvas.width, hgt=canvas.height; ctx.clearRect(0,0,w,hgt);
     ctx.fillStyle="#05070d"; ctx.fillRect(0,0,w,hgt);
     for(const b of bgStars){ // parallax field
@@ -487,7 +505,7 @@ function makeStarmap(canvas, {tickets=TICKETS, interactive=true, onSelect=null, 
   }
   raf(draw);
   if(interactive){
-    canvas.addEventListener("mousedown",e=>{ drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}; });
+    canvas.addEventListener("mousedown",e=>{ camT=null; drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}; });
     listen(window,"mousemove",e=>{ if(!drag) return;
       const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
       if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
@@ -505,7 +523,10 @@ function makeStarmap(canvas, {tickets=TICKETS, interactive=true, onSelect=null, 
     canvas.addEventListener("wheel",e=>{ e.preventDefault();
       cam.z=Math.min(2.4,Math.max(.45,cam.z*(e.deltaY<0?1.1:0.9))); },{passive:false});
   }
-  return { select(n){ sel=n; } };
+  return { select(n){ sel=n; },
+           /* ease the camera so star n sits at yFrac of the canvas height (0.5 = center) */
+           focus(n,yFrac=0.5){ const s=stars.find(x=>x.t.n===n); if(!s) return;
+             camT={ x:s.x, y:s.y-(yFrac-0.5)*canvas.height/(cam.z*devicePixelRatio) }; } };
 }
 
 /* ============ shared fake terminal ============ */
@@ -888,25 +909,45 @@ variantD.info=`
 <p><b>Action station:</b> the "Next up" button wears a numbered badge and toggles a drawer over the map — reviews waiting first, then spawnable frontier tickets ranked by what they unblock. Hovering an action highlights its star.</p>
 <p><b>Reading drawer:</b> the compact ticket pane expands ("Read full ticket") into a full-height drawer over the map — whole file, Done-when, blockers with answers inline, session history. Clicking the map's title opens map.md in the same drawer. Esc closes.</p>`;
 
-/* ================= variant E : Helm (D, columns swapped, collapsible map) ================= */
+/* ================= variant E : Helm (floating map, one-click ticket sheet) ================= */
 function variantE(root){
   let state={ space:"wayfinder-harness", map:MAPS["wayfinder-harness"][0],
-              expanded:{"wayfinder-harness":true}, layout:"split", actionsOpen:false };
+              expanded:{"wayfinder-harness":true}, mapView:"open", sideOpen:true, actionsOpen:false };
   const grid=h("div",{class:"E-grid"});
   const side=h("div",{class:"D-side E-side"});
   const termcol=h("div",{class:"E-term"});
   const mapwrap=h("div",{class:"E-map"});
   grid.append(side,termcol,mapwrap); root.append(grid);
-  let addSession=null, drawer=null, panel=null, mapApi=null;
+  let addSession=null, drawer=null, sheet=null, mapApi=null, sideToggle=null;
+  const badgeEl=n=>h("span",{style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(n));
 
-  function setLayout(l){ state.layout=l;
-    termcol.classList.toggle("hidden",l==="map");
-    mapwrap.classList.toggle("closed",l==="term");
-    mapwrap.classList.toggle("full",l==="map");
-    renderThead();
+  function applyMapView(){
+    mapwrap.classList.toggle("closed",state.mapView==="closed");
+    mapwrap.classList.toggle("full",state.mapView==="full");
+    grid.classList.toggle("nosidebar",!state.sideOpen);
+    renderHandle();
+  }
+  /* one control, riding the panel's left edge: shows the badge when the map is tucked away */
+  function renderHandle(){
+    const old=$(".E-handle",mapwrap); old && old.remove();
+    const acts=state.map?actionsFor(state.map):[];
+    const hd=h("div",{class:"E-handle"});
+    if(state.mapView==="closed")
+      hd.append(h("button",{class:"F-badgebtn",style:"box-shadow:0 4px 18px rgba(0,0,0,.5)",
+        onclick:()=>{ state.mapView="open"; applyMapView(); }},"🗺 Map", acts.length?badgeEl(acts.length):null));
+    else
+      hd.append(h("button",{class:"btn",title:"hide map (M)",
+        onclick:()=>{ state.mapView="closed"; applyMapView(); }},"⟩⟩"));
+    mapwrap.append(hd);
   }
   function renderSide(){
     side.replaceChildren();
+    side.style.display=state.sideOpen?"":"none";
+    side.append(h("div",{class:"E-brand"},
+      h("span",{class:"glyph"},"✦"),
+      h("div",{class:"word"},"wayfinder ",h("span",{},"harness")),
+      h("button",{class:"btn",style:"padding:3px 8px",title:"collapse sidebar",
+        onclick:()=>{ state.sideOpen=false; renderSide(); applyMapView(); }},"«")));
     for(const sp of SPACES){
       const open=!!state.expanded[sp.id];
       side.append(h("div",{class:"D-sp",onclick:()=>{ state.expanded[sp.id]=!open; renderSide(); }},
@@ -920,57 +961,53 @@ function variantE(root){
         for(const m of maps){
           side.append(h("div",{class:"D-map"+(state.map===m?" selected":""),
               onclick:()=>{ state.space=sp.id; state.map=m;
-                if(state.layout==="term") setLayout("split");   // picking a map reveals the map
+                if(state.mapView==="closed") state.mapView="open";   // picking a map reveals the map
                 renderAll(); }},
             h("span",{},m.slug), h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
         }
       }
     }
-  }
-  /* persistent chrome: tabs + Next-up badge + map toggle live on the terminal header */
-  let thead=null;
-  function renderThead(){
-    if(!thead) return;
-    const acts=state.map?actionsFor(state.map):[];
-    const right=$(".E-ctrl",thead); right.replaceChildren(
-      h("button",{class:"F-badgebtn",onclick:()=>{ state.actionsOpen=!state.actionsOpen; renderActions(); }},
-        "Next up", acts.length?h("span",{class:"badge",style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(acts.length)):null),
-      h("button",{class:"btn",onclick:()=>setLayout(state.layout==="split"?"term":"split")},
-        state.layout==="term"?"🗺 Show map":"🗺 Hide map"),
-      state.layout!=="map"?h("button",{class:"btn",title:"map fullscreen",onclick:()=>setLayout("map")},"⛶"):null);
+    side.append(h("button",{class:"btn E-newspace"},"+ New space"));
+    sideToggle && sideToggle.remove(); sideToggle=null;
+    if(!state.sideOpen){
+      sideToggle=h("button",{class:"btn E-sidetoggle",title:"show sidebar",
+        onclick:()=>{ state.sideOpen=true; renderSide(); applyMapView(); }},"☰");
+      root.append(sideToggle);
+    }
   }
   function renderActions(){
-    const old=$(".E-actions",grid); old && old.remove();
+    const old=$(".E-actions",mapwrap); old && old.remove();
     if(!state.actionsOpen||!state.map) return;
     const acts=actionsFor(state.map);
-    const box=h("div",{class:"E-actions"},h("h5",{style:"font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);padding:5px 8px 6px"},"what you can do on "+state.map.slug));
+    const box=h("div",{class:"E-actions"},
+      h("h5",{style:"font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);padding:5px 8px 6px"},
+        "what you can do on "+state.map.slug));
     for(const a of acts){
       box.append(h("div",{class:"D-act "+a.kind,
           onmouseenter:()=>mapApi&&mapApi.select(a.t.n), onmouseleave:()=>mapApi&&mapApi.select(null),
           onclick:()=>{ state.actionsOpen=false; renderActions();
             if(a.kind==="spawn"){ addSession&&addSession(a.t); }
-            else { if(state.layout==="term") setLayout("split"); openTicketDrawer(a.t); } }},
+            else selectTicket(a.t); }},
         h("span",{class:"chip "+(a.kind==="review"?"claimed":"frontier"),style:"flex:none"},"#"+String(a.t.n).padStart(2,"0")),
         h("span",{class:"what"}, a.label, h("span",{class:"sub"},a.t.t+" — "+a.sub)),
         h("span",{class:"go"}, a.kind==="review"?"⚑ open":"▸ start")));
     }
     if(!acts.length) box.append(h("div",{class:"D-act"},h("span",{class:"sub"},"nothing actionable")));
-    termcol.append(box);
+    mapwrap.append(box);
   }
   function renderTermcol(){
     termcol.replaceChildren();
     const sess=[...(SPACE_SESSIONS[state.space]||[])];
     const tabs=h("div",{class:"B-tabs"});
-    thead=h("div",{class:"E-thead"},tabs,h("div",{class:"E-ctrl",style:"display:flex;gap:7px;align-items:center"}));
     const body=h("div",{style:"flex:1;display:flex;flex-direction:column;min-height:0"});
     const statusEl=h("div",{class:"B-status"});
-    termcol.append(thead,body,statusEl);
+    termcol.append(h("div",{class:"E-thead"},tabs),body,statusEl);
     function render(activeId){
       tabs.replaceChildren(...sess.map(s=>h("div",{class:"B-tab"+(s.id===activeId?" active":""),onclick:()=>render(s.id)},
         h("span",{class:"dot "+(s.live?"working":s.state==="wants-you"?"wants-you":"idle")}),
         sessLabel(s), h("span",{style:"font-size:10px;color:var(--dim)"},s.when))));
       body.replaceChildren();
-      if(!sess.length) body.append(h("div",{class:"D-empty"},"no sessions in this space — spawn one from the map or Next up"));
+      if(!sess.length) body.append(h("div",{class:"D-empty"},"no sessions in this space — spawn one from the map"));
       else { const termEl=h("div",{class:"term",style:"flex:1"}); body.append(termEl); makeTerm(termEl); }
       const live=sess.find(s=>s.live);
       statusEl.replaceChildren(
@@ -980,44 +1017,67 @@ function variantE(root){
     }
     render(sess.length?sess[0].id:null);
     addSession=t=>{
-      if(state.layout==="map") setLayout("split");
       const ns={id:"e"+Date.now(),ticket:t.n,role:t.type==="prototype"?"prototype":t.type==="task"?"implement":"grill",
                 state:"working",when:"now",live:true};
       sess.forEach(x=>x.live=false); sess.unshift(ns); render(ns.id);
     };
-    renderThead();
   }
   function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
-  function openTicketDrawer(t){ closeDrawer();
-    drawer=buildTicketDoc(t,state.map,state.space,{onSpawn:tt=>{ closeDrawer(); addSession&&addSession(tt); },onClose:closeDrawer});
-    mapwrap.append(drawer); }
+  function closeSheet(){ sheet && sheet.remove(); sheet=null; }
+  /* one click: star → full ticket details in a bottom sheet; camera eases the star into the clear upper half */
+  function selectTicket(t){
+    if(state.mapView==="closed"){ state.mapView="open"; applyMapView(); }
+    closeSheet(); closeDrawer();
+    mapApi && mapApi.select(t.n);
+    sheet=buildTicketDoc(t,state.map,state.space,{wrapClass:"D-drawer E-sheet",
+      onSpawn:tt=>{ closeSheet(); mapApi&&mapApi.select(null); addSession&&addSession(tt); },
+      onClose:()=>{ closeSheet(); mapApi&&mapApi.select(null); }});
+    mapwrap.append(sheet);
+    mapApi && mapApi.focus(t.n,0.26);
+  }
   function renderMap(){
-    mapwrap.replaceChildren(); drawer=null; panel=null;
+    mapwrap.replaceChildren(); drawer=null; sheet=null;
     const m=state.map;
-    if(!m){ mapwrap.append(h("div",{class:"D-empty"},"no map")); return; }
+    if(!m){ mapwrap.append(h("div",{class:"D-empty"},"no map")); renderHandle(); return; }
     const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
     mapwrap.append(canvas);
     mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.62, onSelect(t){
-      panel && panel.remove(); panel=null;
-      if(t){ panel=h("div",{class:"D-panel"}, ticketPane(t,{onSpawn:tt=>addSession&&addSession(tt),onExpand:openTicketDrawer})); mapwrap.append(panel); }
+      if(t) selectTicket(t); else closeSheet();
     }});
     mapwrap.append(h("div",{class:"D-hud"},
-      h("div",{}, h("span",{class:"title",onclick:()=>{ closeDrawer(); drawer=buildMapDoc(m,state.space,{onClose:closeDrawer}); mapwrap.append(drawer); }},m.slug),
+      h("div",{}, h("span",{class:"title",onclick:()=>{ closeSheet(); closeDrawer();
+          drawer=buildMapDoc(m,state.space,{onClose:closeDrawer}); mapwrap.append(drawer); }},m.slug),
         h("span",{style:"color:var(--dim)"}," — "+m.kind+" map")),
-      h("div",{},mapCounts(m.tickets))),
-      h("button",{class:"btn",style:"position:absolute;top:10px;right:46px;z-index:6",
-        onclick:()=>setLayout(state.layout==="map"?"split":"term")}, state.layout==="map"?"◧ Split":"⟩⟩"));
+      h("div",{},mapCounts(m.tickets))));
+    const acts=actionsFor(m);
+    mapwrap.append(h("div",{class:"E-mapctl"},
+      h("button",{class:"F-badgebtn",onclick:()=>{ state.actionsOpen=!state.actionsOpen; renderActions(); }},
+        "Next up", acts.length?badgeEl(acts.length):null),
+      h("button",{class:"btn",title:"expand map",
+        onclick:()=>{ state.mapView=state.mapView==="full"?"open":"full"; applyMapView(); }},
+        state.mapView==="full"?"⇲":"⛶")));
+    renderHandle();
   }
-  function renderAll(){ renderSide(); renderTermcol(); renderMap(); renderActions(); setLayout(state.layout); }
+  function renderAll(){ renderSide(); renderTermcol(); renderMap(); renderActions(); applyMapView(); }
   renderAll();
-  listen(window,"keydown",e=>{ if(e.key==="Escape"){ if(drawer) closeDrawer(); else if(state.layout!=="split") setLayout("split"); } });
+  const selN=new URLSearchParams(location.search).get("sel");   // deep-link a star, e.g. ?variant=E&sel=8
+  if(selN && state.map){ const t=state.map.tickets.find(x=>x.n==selN); t && selectTicket(t); }
+  listen(window,"keydown",e=>{
+    if(e.key==="m"||e.key==="M"){ state.mapView=state.mapView==="closed"?"open":"closed"; applyMapView(); }
+    if(e.key==="Escape"){
+      if(state.actionsOpen){ state.actionsOpen=false; renderActions(); }
+      else if(sheet){ closeSheet(); mapApi&&mapApi.select(null); }
+      else if(drawer) closeDrawer();
+      else if(state.mapView==="full"){ state.mapView="open"; applyMapView(); }
+    }
+  });
 }
 variantE.info=`
-<h4>E — Helm: D with the columns swapped</h4>
-<p><b>Sidebar | terminal | map</b>, and the map is a collapsible right-edge panel. Three layouts, Esc returns to split: <b>split</b> (default), <b>terminal</b> (map hidden, terminal full width), <b>map</b> (⛶ — terminal hidden, the map breathes like variant A).</p>
-<p><b>The call to action never hides:</b> the "Next up" badge and the map toggle live on the terminal header — persistent chrome. Hiding the map costs ambience, never awareness.</p>
-<p><b>Auto-reveal:</b> picking a map in the sidebar, or opening a review/ticket from the action station, brings the map panel back if it was hidden. Hidden is a mode you chose, not the resting state.</p>
-<p><b>Everything else is D:</b> space-scoped session tabs, reading drawer over the map panel, map.md from the map title.</p>`;
+<h4>E — Helm: floating map, one-click tickets</h4>
+<p><b>The map is a floating panel</b> that slides over the terminal's right half (handle or <b>M</b>; ⛶ expands it). The terminal never reflows — it keeps its full width underneath and never re-wraps a line. When the map is tucked away, the handle carries the "Next up" count, so the call to action survives.</p>
+<p><b>One click to the whole ticket:</b> click a star and the full ticket file — question, Done-when, blockers with answers, session history — rises as a bottom sheet while the camera eases the star into the clear space above it (the wayfinder-maps pattern). Esc closes.</p>
+<p><b>Branded, collapsible sidebar:</b> ✦ wayfinder harness, spaces → maps, ⚑ attention, "+ New space" at the foot; « collapses it to a ☰ handle.</p>
+<p><b>Next up</b> lives on the map panel itself — actions are map-scoped, so they ride with the map. Spawning drops you back on the untouched terminal.</p>`;
 
 /* ================= variant F : Fleet (all spaces at once) ================= */
 function variantF(root){
