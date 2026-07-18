@@ -22,6 +22,10 @@ _Avoid_: design map, wayfinder map, decision map
 A map whose tickets deliver code, with every decision already settled in a spec. Its tickets pass through review before they resolve.
 _Avoid_: impl map, task map, build map
 
+**Kind**:
+Whether a map is a planning map or an implementation map — the property that decides which lifecycle its tickets follow. A property of the *map*, not the ticket: every ticket inherits the map's one lifecycle. Declared explicitly in committed harness config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
+_Avoid_: type, mode, flavour, class
+
 **Ticket**:
 One question or one unit of work in a map, sized to a single session. Its status is derived from its file, never stored in it.
 
