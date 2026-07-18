@@ -546,9 +546,19 @@ function makeStarmap(canvas, {tickets=TICKETS, interactive=true, onSelect=null, 
 }
 
 /* ============ shared fake terminal ============ */
-function makeTerm(el){
+const SHELL_LINES = [
+  ["p","❯ zsh — an ad-hoc terminal in this space's working tree"],
+  ["","$ git status"],
+  ["dm","On branch main — nothing to commit, working tree clean"],
+  ["","$ ls"],
+  ["dm","CONTEXT.md  docs/  README.md"],
+  ["","$ rg -n \"frontier\" docs | head -3"],
+  ["dm","docs/adr/0004-derived-ticket-state.md:12: the frontier is stricter here"],
+  ["","$ "],
+];
+function makeTerm(el, lines=TERM_LINES){
   let i=0;
-  const put=()=>{ const [cls,txt]=TERM_LINES[i%TERM_LINES.length]; i++;
+  const put=()=>{ const [cls,txt]=lines[i%lines.length]; i++;
     const line=h("div",{}, cls?h("span",{class:cls},txt):txt);
     el.append(line);
     while(el.children.length>400) el.firstChild.remove();
@@ -577,7 +587,7 @@ function ticketPane(t, {onSpawn, onExpand}={}){
     h("div",{class:"body"}, BODIES[t.n] || "…ticket body excerpt renders here (question, Done-when, notes)…"),
     h("div",{style:"display:flex;gap:8px;align-items:center"}, acts));
 }
-const sessLabel=s=>`#${String(s.ticket).padStart(2,"0")} · ${s.role}`;
+const sessLabel=s=>s.role==="shell"?"shell":`#${String(s.ticket).padStart(2,"0")} · ${s.role}`;
 
 /* ============ shared: map stats, action list, reading docs ============ */
 function mapCounts(list){
@@ -934,7 +944,7 @@ function variantE(root){
   const termcol=h("div",{class:"E-term"});
   const mapwrap=h("div",{class:"E-map"});
   grid.append(side,termcol,mapwrap); root.append(grid);
-  let addSession=null, drawer=null, sheet=null, mapApi=null;
+  let addSession=null, addShell=null, drawer=null, sheet=null, mapApi=null;
   const badgeEl=n=>h("span",{style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(n));
 
   function applyMapView(){
@@ -953,8 +963,7 @@ function variantE(root){
   function selectSpace(spId){
     state.space=spId; state.expanded[spId]=true;
     state.map=sortedMaps(spId)[0]||null;      // default: first unfinished map, or none
-    if(state.map && state.mapView==="closed") state.mapView="open";
-    renderAll();
+    renderAll();                              // map visibility is the user's — switching never toggles it
   }
   function renderSide(){
     side.replaceChildren();
@@ -991,9 +1000,7 @@ function variantE(root){
         if(!maps.length) side.append(h("div",{class:"D-nomap"},"no maps — chart one"));
         for(const m of maps){
           side.append(h("div",{class:"D-map"+(state.map===m?" selected":""),
-              onclick:()=>{ state.space=sp.id; state.map=m;
-                if(state.mapView==="closed") state.mapView="open";   // picking a map reveals the map
-                renderAll(); }},
+              onclick:()=>{ state.space=sp.id; state.map=m; renderAll(); }},
             h("span",{},m.slug),
             mapFinished(m)?h("span",{style:"color:var(--dim);font-size:10px"},"✓"):null,
             h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
@@ -1028,14 +1035,21 @@ function variantE(root){
     const tabs=h("div",{class:"B-tabs"});
     const body=h("div",{style:"flex:1;display:flex;flex-direction:column;min-height:0"});
     const statusEl=h("div",{class:"B-status"});
-    termcol.append(h("div",{class:"E-thead"},tabs),body,statusEl);
+    termcol.append(h("div",{class:"E-thead"},tabs,
+      h("button",{class:"btn",style:"margin:4px 8px;padding:3px 9px;flex:none",title:"open a terminal in this space",
+        onclick:()=>addShell()},"+")),body,statusEl);
     function render(activeId){
       tabs.replaceChildren(...sess.map(s=>h("div",{class:"B-tab"+(s.id===activeId?" active":""),onclick:()=>render(s.id)},
         h("span",{class:"dot "+(s.live?"working":s.state==="wants-you"?"wants-you":"idle")}),
         sessLabel(s), h("span",{style:"font-size:10px;color:var(--dim)"},s.when))));
       body.replaceChildren();
-      if(!sess.length) body.append(h("div",{class:"D-empty"},"no sessions in this space — spawn one from the map"));
-      else { const termEl=h("div",{class:"term",style:"flex:1"}); body.append(termEl); makeTerm(termEl); }
+      const act=sess.find(s=>s.id===activeId);
+      if(!act) body.append(h("div",{class:"D-empty"},
+        h("span",{},"no sessions in this space — ",
+          h("a",{style:"color:var(--accent);cursor:pointer",onclick:()=>addShell()},"open a terminal"),
+          (MAPS[state.space]||[]).length?" or spawn from the map":" (no maps here yet)")));
+      else { const termEl=h("div",{class:"term",style:"flex:1"}); body.append(termEl);
+        makeTerm(termEl, act.role==="shell"?SHELL_LINES:TERM_LINES); }
       const live=sess.find(s=>s.live);
       statusEl.replaceChildren(
         h("span",{},"state ",h("b",{},live?"working":"idle")),
@@ -1047,6 +1061,11 @@ function variantE(root){
                 state:"working",when:"now",live:true};
       sess.forEach(x=>x.live=false); sess.unshift(ns); render(ns.id);
       state.mapView="closed"; applyMapView();   // spawning drops you onto the terminal
+    };
+    addShell=()=>{
+      const ns={id:"sh"+Date.now(),ticket:null,role:"shell",state:"open",when:"now"};
+      sess.unshift(ns); render(ns.id);
+      if(state.mapView==="open"){ state.mapView="closed"; applyMapView(); }  // you asked for a terminal — show it
     };
   }
   function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
@@ -1066,9 +1085,16 @@ function variantE(root){
       mapApi.focus(t.n, Math.max(0.12, free/2/mapwrap.clientHeight)); });
   }
   function renderMap(){
-    mapwrap.replaceChildren(); drawer=null; sheet=null;
+    mapwrap.replaceChildren(); drawer=null; sheet=null; mapApi=null;
     const m=state.map;
-    if(!m){ mapwrap.append(h("div",{class:"D-empty"},"no map")); renderHandle(); return; }
+    if(!m){
+      mapwrap.append(h("div",{class:"D-empty",style:"flex-direction:column;gap:12px"},
+        h("span",{},"no maps in this space yet"),
+        h("div",{style:"display:flex;gap:8px"},
+          h("button",{class:"btn primary"},"Chart a map"),
+          h("button",{class:"btn",onclick:()=>{ state.mapView="closed"; applyMapView(); addShell&&addShell(); }},"Open a terminal"))));
+      renderHandle(); return;
+    }
     const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
     mapwrap.append(canvas);
     mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.8, onSelect(t){
@@ -1105,7 +1131,7 @@ variantE.info=`
 <h4>E — Helm: floating map, one-click tickets</h4>
 <p><b>The map is a floating card covering nearly the whole terminal</b> (a sliver of padding shows it's an overlay). Toggle with <b>M</b>, the ⟩⟩ on the panel, or the 🗺 handle that rides the panel's edge below the tab strip — carrying the "Next up" count while the map is tucked away. The terminal underneath keeps its full width and never re-wraps a line.</p>
 <p><b>One click to the whole ticket:</b> click a star and the full ticket file rises as a bottom sheet (half the panel at most) while the camera eases the star into whatever space the sheet actually leaves free. Esc closes; spawning drops you onto the terminal.</p>
-<p><b>Spaces are selectable</b>, not just their maps: picking a space auto-selects its first <i>unfinished</i> map (finished maps sort last, marked ✓), or shows "chart one" if it has none. The sidebar is branded ✦ <b>wayfinder</b>, has "+ New space" at the foot, and « collapses it to an icon rail — nothing ever floats over the tabs.</p>
+<p><b>Spaces are selectable</b>, not just their maps: picking a space auto-selects its first <i>unfinished</i> map (finished maps sort last, marked ✓). Switching spaces or maps <b>never toggles the map's visibility</b> — that state is yours. A mapless space still works: the "+" by the tabs opens an ad-hoc terminal in the space's working tree, and the empty map panel offers "chart a map" or "open a terminal". The sidebar is branded ✦ <b>wayfinder</b>, has "+ New space" at the foot, and « collapses it to an icon rail — nothing ever floats over the tabs.</p>
 <p><b>No cost readout</b> — tokens/dollars are ticket 14's problem, deliberately absent here.</p>`;
 
 /* ================= variant F : Fleet (all spaces at once) ================= */
