@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: []
+claimed_by: claude-fable-5
+claimed_at: 2026-07-18T18:02:09Z
 ---
 
 # Who commits, and how work gets abandoned
