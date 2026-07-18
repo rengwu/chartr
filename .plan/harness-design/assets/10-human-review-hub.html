@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — the human review hub (ticket 10)</title>
+<!--
+  PROTOTYPE — throwaway. Answers ticket 10: "a ticket is proposed and the human
+  must decide" — the hub with four exits: approve, take it further,
+  abandon, and arriving here FORCED after an agent-review rejection.
+
+  Lives inside ticket 08's canonical cockpit (E "Helm", simplified): icon rail,
+  terminal column, floating map card. The hub takes over the map card — review
+  is reading, and the card is the reading surface the layout already owns.
+
+  Three hub variants behind one shell, switchable with the pill, ← →, or
+  ?variant=A|B|C:
+
+    A  Dossier  — contract-first reading order: Done-when (with the reviewer's
+                  per-clause check), then Proposed Answer, then findings, then
+                  the diff. Approve lives BELOW the diff — the path to the
+                  button walks through the evidence. Unread sections are
+                  surfaced beside Approve, never enforced.
+    B  Counsel  — findings-first: the reviewer's findings are the spine, each
+                  deep-linked to its hunk. A finding may only BLOCK if it cites
+                  a Done-when clause — taste is advisory by rule. Approve is
+                  gated on dispositioning every blocking finding: send it back,
+                  or waive it with a reason that lands in the ticket file.
+    C  Evidence — diff-first, PR-style: findings pinned into the diff margin,
+                  contract and proposal in a sticky rail. The familiar posture —
+                  and familiarity is the rubber-stamp posture; kept honest here
+                  to compare against A and B.
+
+  Shared across variants: the forced-arrival banner (#06 — rejection never
+  loops, it halts to you), the abandon dialog (reason written to the next
+  attempt; levers, not automatic destruction — ticket 06's mechanics), take-it-
+  further (follow-up sessions accumulate commits; the Proposed Answer is
+  rewritten in place), and the post-approve "Next up" strip (a suggestion,
+  never a shove).
+
+  Fixture: expensif / export-csv-impl — the example implementation map named in
+  the map notes. Two proposed tickets: #03 (verdict: pass, advisories only) and
+  #06 (verdict: reject — the forced arrival). Diffs are fake but shaped real.
+
+  Press ? for how the current variant answers the ticket. Do not ship any of this.
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#05070d; --bg2:#0a0e18; --panel:#0d1220; --line:#1c2438;
+    --txt:#c7d2e8; --dim:#5c6a85; --gold:#ffd24a; --amber:#ffab40;
+    --ember:#9db4d0; --red:#e06b64; --green:#4ade80; --accent:#7aa2ff;
+    --mono:"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--txt); font-family:var(--sans); overflow:hidden; }
+  #root { position:fixed; inset:0; display:flex; }
+  canvas.starmap { display:block; cursor:pointer; }
+
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
+  .dot.working { background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 1.6s infinite; }
+  .dot.wants-you { background:var(--amber); box-shadow:0 0 8px var(--amber); animation:pulse 1s infinite; }
+  .dot.idle { background:#3a4560; }
+  @keyframes pulse { 50% { opacity:.35; } }
+
+  .chip { font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:2px 7px;
+          border-radius:9px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  .chip.frontier { color:var(--gold); border-color:#4d3f14; }
+  .chip.proposed { color:var(--amber); border-color:#4d3414; }
+  .chip.resolved { color:var(--ember); border-color:#26324d; }
+  .chip.blocked  { color:#b0524d; border-color:#3d1f1d; }
+  .chip.reject   { color:var(--red); border-color:#54211e; }
+  .chip.pass     { color:var(--green); border-color:#1d4028; }
+
+  .btn { font:600 12px var(--sans); padding:7px 14px; border-radius:7px; cursor:pointer;
+         border:1px solid var(--line); background:var(--panel); color:var(--txt); }
+  .btn.primary { background:#1a2c55; border-color:#2c4788; color:#dce7ff; }
+  .btn.primary:hover { background:#22386b; }
+  .btn.approve { background:#153524; border-color:#256b41; color:#c8f5da; }
+  .btn.approve:hover { background:#1b4b31; }
+  .btn.approve:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.danger { background:#3a1715; border-color:#6b2723; color:#ffd7d3; }
+  .btn.danger:hover { background:#512019; }
+  .btn.danger:disabled { opacity:.4; cursor:not-allowed; }
+  .btn:hover { background:#141b2e; }
+
+  .term { background:#04060b; font-family:var(--mono); font-size:12px; line-height:1.55;
+          padding:12px 14px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; }
+  .term .p  { color:var(--accent); }
+  .term .ok { color:var(--green); }
+  .term .wr { color:var(--amber); }
+  .term .dm { color:var(--dim); }
+  .cursor { display:inline-block; width:7px; height:13px; background:var(--txt);
+            vertical-align:text-bottom; animation:blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+
+  /* ---- shell: icon rail | terminal column | floating map card (E "Helm", mini) ---- */
+  .rail { width:54px; flex:none; background:var(--bg2); border-right:1px solid var(--line);
+          padding:10px 0; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .rail .glyph { color:var(--gold); font-size:15px; text-shadow:0 0 8px rgba(255,210,74,.6); margin-bottom:4px; }
+  .rail .sp { width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+              display:flex; align-items:center; justify-content:center; font:700 11px var(--sans);
+              color:var(--dim); cursor:pointer; position:relative; }
+  .rail .sp.active { border-color:#2c4788; color:var(--txt); background:#131b30; }
+  .rail .sp .dot { position:absolute; top:-3px; right:-3px; }
+  .termcol { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; }
+  .tabs { flex:none; display:flex; gap:2px; background:var(--bg2); border-bottom:1px solid var(--line);
+          padding:6px 8px 0; overflow-x:auto; scrollbar-width:none; }
+  .tab { display:flex; align-items:center; gap:7px; padding:7px 12px; font-size:12px; color:var(--dim);
+         border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer;
+         white-space:nowrap; }
+  .tab.active { background:#04060b; border-color:var(--line); color:var(--txt); }
+  .mapcard { position:absolute; top:8px; right:8px; bottom:8px; left:76px; z-index:40; background:var(--bg);
+             border:1px solid var(--line); border-radius:10px; box-shadow:-18px 0 44px rgba(0,0,0,.55);
+             overflow:hidden; }
+  .hud { position:absolute; top:10px; left:14px; z-index:5; font-size:11px; color:var(--dim); line-height:1.7; }
+  .hud b { color:var(--txt); font-weight:600; }
+  .actbtn { position:absolute; top:10px; right:12px; z-index:7; display:flex; align-items:center; gap:7px;
+            font:600 12px var(--sans); color:var(--txt); background:var(--panel);
+            border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer; }
+  .actbtn:hover { background:#141b2e; }
+  .badge { background:var(--amber); color:#20160a; font:700 10px var(--sans); border-radius:9px;
+           min-width:17px; height:17px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .actions { position:absolute; top:46px; right:12px; z-index:30; width:330px; max-height:70%;
+             overflow-y:auto; background:rgba(10,14,24,.97); border:1px solid var(--line);
+             border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
+  .actions h5 { font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); padding:5px 8px 6px; }
+  .act { display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px; font-size:12px; cursor:pointer; }
+  .act:hover { background:#141b2e; }
+  .act .what { flex:1; }
+  .act .sub { display:block; font-size:10px; color:var(--dim); }
+  .act .go { color:var(--accent); font-size:11px; font-weight:600; }
+  .act.review .go { color:var(--amber); }
+
+  /* ---- ticket bottom sheet (inherited from 08) ---- */
+  .sheet { position:absolute; left:0; right:0; bottom:0; max-height:52%; z-index:9; overflow-y:auto;
+           background:rgba(9,13,22,.97); border-top:1px solid var(--line); backdrop-filter:blur(10px);
+           padding:16px max(24px,calc(50% - 380px)) 18px; animation:up .26s ease; }
+  @keyframes up { from { transform:translateY(46px); opacity:0; } to { transform:none; opacity:1; } }
+  .sheet h2 { font-size:16px; margin:8px 0 4px; }
+  .sheet h4, .hub h4 { font-size:11px; color:#8fa8d8; margin:14px 0 6px; text-transform:uppercase; letter-spacing:.07em; }
+  .sheet p, .sheet li { font-size:12.5px; color:#9aa7c2; line-height:1.6; }
+  .sheet ul { padding-left:18px; }
+  .rejected { border:1px solid #54211e; border-radius:8px; padding:9px 12px; margin-top:10px; }
+  .rejected .rh { color:var(--red); font-size:11px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px; }
+  .rejected p { font-size:12px; }
+
+  /* ---- the hub ---- */
+  .hub { position:absolute; inset:0; z-index:50; background:#070a11; display:flex;
+         flex-direction:column; animation:up .22s ease; }
+  .hub-head { flex:none; padding:12px 22px 10px; border-bottom:1px solid var(--line); background:var(--bg2); }
+  .hub-title { display:flex; align-items:center; gap:9px; }
+  .hub-title h2 { font-size:15px; flex:1; }
+  .chain { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:10.5px; color:var(--dim); flex-wrap:wrap; }
+  .chain .ev { border:1px solid var(--line); border-radius:8px; padding:2px 8px; white-space:nowrap; }
+  .chain .ev b { color:var(--txt); font-weight:600; }
+  .chain .ev.you { border-color:#4d3414; color:var(--amber); }
+  .chain .ev.rej { border-color:#54211e; color:var(--red); }
+  .chain .sep { color:#2e3a55; }
+  .hub-body { flex:1; overflow-y:auto; padding:16px 22px 26px; scroll-behavior:smooth; }
+  .hub-body.narrow { max-width:880px; width:100%; margin:0 auto; }
+  .banner { border:1px solid #54211e; background:#1d0f0e; border-radius:9px; padding:10px 14px;
+            font-size:12.5px; color:#f0b6b1; margin-bottom:14px; line-height:1.55; }
+  .banner b { color:#ffd7d3; }
+  .scope { display:flex; gap:6px; align-items:center; margin:10px 0 2px; font-size:11px; color:var(--dim); }
+  .scope .sc { border:1px solid var(--line); border-radius:8px; padding:2px 9px; cursor:pointer; }
+  .scope .sc.on { border-color:#2c4788; color:var(--txt); background:#131b30; }
+
+  .dw { border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .dw-row { display:flex; gap:10px; padding:8px 12px; font-size:12.5px; line-height:1.5;
+            border-bottom:1px solid var(--line); }
+  .dw-row:last-child { border-bottom:none; }
+  .dw-row .mark { flex:none; width:16px; text-align:center; font-weight:700; }
+  .dw-row.ok .mark { color:var(--green); }
+  .dw-row.bad .mark { color:var(--red); }
+  .dw-row .cl { flex:1; color:#aeb9d2; }
+  .dw-row .rv { flex:none; max-width:38%; font-size:11px; color:var(--dim); }
+  .dw-row.bad { background:#190f0e; }
+  .dw-row.bad .cl { color:#f0c9c5; }
+
+  .pa { border:1px solid var(--line); border-radius:9px; padding:11px 14px; font-size:12.5px;
+        color:#9aa7c2; line-height:1.65; position:relative; }
+  .pa.rewritten { border-color:#4d3414; }
+  .pa .rw { position:absolute; top:-9px; right:10px; background:var(--bg); padding:0 7px;
+            font-size:10px; color:var(--amber); }
+
+  .find { border:1px solid var(--line); border-radius:9px; padding:10px 13px; margin-bottom:8px; }
+  .find.blocking { border-color:#54211e; background:#160d0c; }
+  .find .fh { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .find .claim { font-size:12.5px; color:#c3cde2; line-height:1.55; }
+  .find.blocking .claim { color:#f0d3d0; }
+  .find .cite { font-size:11px; color:var(--dim); margin-top:5px; }
+  .find .cite .loc { color:var(--accent); cursor:pointer; text-decoration:underline dotted #33538f; }
+  .find .cite .dwref { color:var(--amber); }
+  .find .cite .norule { color:var(--dim); font-style:italic; }
+  .find .fix { font-size:11.5px; color:#8fae94; margin-top:4px; }
+  .find .dispo { display:flex; gap:7px; margin-top:9px; align-items:center; }
+  .find .dispo input { flex:1; background:#0a0e18; border:1px solid var(--line); border-radius:6px;
+                       color:var(--txt); font:12px var(--sans); padding:6px 9px; }
+  .find .done { font-size:11.5px; color:var(--green); margin-top:8px; }
+  .find .done i { color:var(--dim); }
+
+  .diff { border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:10px; }
+  .df-head { background:var(--bg2); padding:6px 12px; font:600 11.5px var(--mono); color:#8fa8d8;
+             border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .df-head .new { color:var(--amber); font:600 10px var(--sans); border:1px solid #4d3414;
+                  border-radius:8px; padding:1px 6px; }
+  .df-line { display:flex; font:11.5px var(--mono); line-height:1.6; }
+  .df-line .ln { flex:none; width:38px; text-align:right; padding-right:9px; color:#39445f; user-select:none; }
+  .df-line .tx { flex:1; white-space:pre-wrap; word-break:break-all; padding-right:10px; }
+  .df-line.a { background:rgba(74,222,128,.07); } .df-line.a .tx { color:#b7e6c5; }
+  .df-line.d { background:rgba(224,107,100,.08); } .df-line.d .tx { color:#e0a5a1; text-decoration:line-through; text-decoration-color:rgba(224,107,100,.4); }
+  .df-line.c .tx { color:#6b7893; }
+  .df-line.hot { outline:1px solid var(--amber); outline-offset:-1px; background:rgba(255,171,64,.12); }
+  .pin { border:1px solid #4d3414; border-left-width:3px; background:#14100a; padding:8px 12px;
+         font-size:12px; color:#d8c9a8; margin:2px 10px 6px 48px; border-radius:7px; line-height:1.5; }
+  .pin.blocking { border-color:#54211e; background:#190f0e; color:#f0c9c5; }
+  .pin .who { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+
+  .bar { border-top:1px solid var(--line); background:var(--bg2); padding:12px 22px; flex:none;
+         display:flex; gap:10px; align-items:center; }
+  .bar .small { font-size:10.5px; color:var(--dim); line-height:1.5; flex:1; }
+  .bar .small b { color:var(--txt); }
+  .nudge { font-size:10.5px; color:var(--amber); }
+  .endbar { margin-top:18px; border:1px solid var(--line); border-radius:10px; padding:13px 16px;
+            display:flex; gap:10px; align-items:center; background:var(--bg2); }
+  .endbar .small { font-size:10.5px; color:var(--dim); line-height:1.5; flex:1; }
+  .endbar .small b { color:var(--txt); }
+
+  /* C: sticky side rail */
+  .c-grid { display:flex; gap:16px; align-items:flex-start; }
+  .c-rail { width:290px; flex:none; position:sticky; top:0; max-height:100%; overflow-y:auto;
+            display:flex; flex-direction:column; gap:4px; }
+  .c-rail .dw-row { padding:6px 9px; font-size:11.5px; }
+  .c-rail .pa { font-size:11.5px; padding:9px 11px; }
+  .c-main { flex:1; min-width:0; }
+
+  /* dialogs & strips */
+  .dim-back { position:absolute; inset:0; z-index:80; background:rgba(3,5,10,.7); backdrop-filter:blur(2px);
+              display:flex; align-items:center; justify-content:center; }
+  .dlg { width:min(560px,92%); background:var(--panel); border:1px solid var(--line); border-radius:12px;
+         padding:18px 20px; }
+  .dlg h3 { font-size:14px; margin-bottom:4px; }
+  .dlg .sub { font-size:11.5px; color:var(--dim); margin-bottom:12px; line-height:1.5; }
+  .dlg textarea { width:100%; min-height:84px; background:#0a0e18; border:1px solid var(--line);
+                  border-radius:8px; color:var(--txt); font:12.5px var(--sans); padding:9px 11px; resize:vertical; }
+  .dlg .does { border:1px solid var(--line); border-radius:8px; padding:9px 12px; margin:12px 0;
+               font-size:11.5px; color:#9aa7c2; line-height:1.7; }
+  .dlg .does b { color:var(--txt); }
+  .dlg .does .no { color:var(--dim); }
+  .dlg label.lever { display:flex; gap:8px; align-items:flex-start; font-size:11.5px; color:#9aa7c2;
+                     margin:10px 0 2px; line-height:1.5; cursor:pointer; }
+  .dlg .acts { display:flex; gap:9px; justify-content:flex-end; margin-top:14px; }
+  .dlg .menu-it { display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:8px;
+                  padding:9px 12px; margin-bottom:7px; cursor:pointer; font-size:12.5px; }
+  .dlg .menu-it:hover { background:#141b2e; border-color:#2c4788; }
+  .dlg .menu-it .sub2 { display:block; font-size:10.5px; color:var(--dim); }
+  .strip { position:absolute; left:0; right:0; bottom:0; z-index:60; background:#0c1a12;
+           border-top:1px solid #256b41; padding:13px 22px; display:flex; gap:12px; align-items:center;
+           animation:up .26s ease; }
+  .strip .msg { flex:1; font-size:12.5px; color:#c8f5da; line-height:1.5; }
+  .strip .msg .sub { display:block; font-size:10.5px; color:#6f9880; }
+  .strip.gone { background:#1a1210; border-top-color:#4d3414; }
+  .strip.gone .msg { color:#e8d9c8; } .strip.gone .msg .sub { color:#98826a; }
+
+  /* info card + switcher (not part of the design) */
+  #info-btn { position:fixed; top:12px; right:14px; z-index:900; width:26px; height:26px;
+              border-radius:50%; border:1px solid var(--line); background:var(--panel);
+              color:var(--dim); font:600 13px var(--sans); cursor:pointer; }
+  #info-card { position:fixed; top:46px; right:14px; z-index:900; width:400px; max-height:74vh;
+               overflow-y:auto; background:var(--panel); border:1px solid var(--line);
+               border-radius:10px; padding:16px 18px; font-size:12px; line-height:1.6;
+               color:#9aa7c2; display:none; }
+  #info-card b { color:var(--txt); }
+  #info-card h4 { font-size:12px; color:var(--gold); margin-bottom:8px; text-transform:uppercase; letter-spacing:.08em; }
+  #info-card p { margin-bottom:9px; }
+  #switcher { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:1000;
+              display:flex; align-items:center; gap:10px; background:#e8ecf5; color:#111827;
+              border-radius:999px; padding:6px 10px; font:600 12px var(--sans);
+              box-shadow:0 4px 24px rgba(0,0,0,.6); user-select:none; }
+  #switcher button { border:none; background:#c9d2e4; border-radius:50%; width:24px; height:24px;
+                     cursor:pointer; font-size:12px; color:#111827; }
+  #switcher button:hover { background:#aebad1; }
+  #switcher .lbl { min-width:190px; text-align:center; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<button id="info-btn" title="How this variant answers the ticket">?</button>
+<div id="info-card"></div>
+<div id="switcher">
+  <button id="sw-prev">◀</button>
+  <span class="lbl" id="sw-lbl"></span>
+  <button id="sw-next">▶</button>
+  <button id="sw-reset" title="reset the fixture">↺</button>
+</div>
+
+<script>
+/* ============ fixture: expensif / export-csv-impl (implementation map) ============ */
+const TICKETS = [
+  {n:1, t:"CSV schema and column set",    st:"resolved", dep:[]},
+  {n:2, t:"Export service scaffolding",   st:"resolved", dep:[]},
+  {n:3, t:"Streaming export endpoint",    st:"proposed", dep:[2]},
+  {n:4, t:"Date-range and filter params", st:"frontier", dep:[1]},
+  {n:5, t:"Large-export pagination",      st:"blocked",  dep:[3]},
+  {n:6, t:"Export audit log entry",       st:"proposed", dep:[]},
+];
+const FILE_OF = {3:"tickets/03-streaming-export-endpoint.md", 6:"tickets/06-export-audit-log-entry.md"};
+
+const DONE = {
+  3:["GET /exports/expenses.csv streams rows as they are read — the full set is never buffered",
+     "memory stays flat exporting 1,000,000 rows (bench in the test file)",
+     "a mid-stream store failure truncates the body and writes the #ERROR trailer — never a clean-looking 200",
+     "handler tests cover the happy path and an injected mid-stream failure"],
+  6:["an audit row exists if and only if a CSV was actually delivered",
+     "the row records requester, row count, and date range",
+     "an audit-write failure never fails the export — it logs and continues"],
+};
+const PROPOSED = {
+  3:"Streaming endpoint at GET /exports/expenses.csv: the handler pulls rows through store.IterateExpenses and encodes straight onto the ResponseWriter, flushing per batch. A mid-stream failure writes the #ERROR trailer and closes — the client sees a truncated file with an explicit marker, never a silent success. Happy path and an injected mid-stream failure are covered in handler_test.go; the 1M-row bench holds flat.",
+  6:"Audit entries are written by export.RecordAudit, called from the handler once the writer is set up; the row carries requester, row count and date range. Audit failures are logged and swallowed, per the Done-when.",
+};
+const VERDICTS = {
+  3:{ outcome:"pass", agent:"codex", model:"gpt-5.2-codex",
+      read:"diff · Done-when · spec §4 (carried in the review payload — ticket 04)",
+      clauses:[{ok:true, note:"iterator → encoder; no slice accumulates"},
+               {ok:true, note:"bench holds ~41MB RSS across 1M rows"},
+               {ok:true, note:"trailer written on injected failure; asserted in test"},
+               {ok:true, note:"both tests present and meaningful"}],
+      findings:[
+        {sev:"advisory", dw:2,
+         claim:"Flush() runs per row; the 1M bench passes but wall-time roughly doubles versus batching. The clause holds — this is throughput, which no clause names.",
+         loc:["internal/export/handler.go",17], fix:"flush every ~500 rows instead"},
+        {sev:"advisory", dw:null,
+         claim:"ExportCsv → exportCSV / ExportCSV; Go initialisms.",
+         loc:["internal/export/handler.go",7]},
+      ]},
+  6:{ outcome:"reject", agent:"codex", model:"gpt-5.2-codex",
+      read:"diff · Done-when · spec §6 (carried in the review payload — ticket 04)",
+      clauses:[{ok:false, note:"the row is written before streaming starts"},
+               {ok:true,  note:"requester, count, range all present"},
+               {ok:true,  note:"errors logged, export continues"}],
+      findings:[
+        {sev:"blocking", dw:1,
+         claim:"RecordAudit fires after headers are set but before a single row streams — a mid-stream failure still logs a delivered export. Clause 1 says a row exists iff a file was delivered; this implements “if attempted”.",
+         loc:["internal/export/handler.go",6], fix:"record after the final flush succeeds — or record attempt + outcome as two explicit states"},
+        {sev:"advisory", dw:null,
+         claim:"RecordAudit takes five positional arguments; a struct would read better at call sites.",
+         loc:["internal/export/audit.go",6]},
+      ]},
+};
+/* diffs: [kind, text]; kind a=add d=del c=context. Line numbers derive from base+index. */
+const DIFFS = {
+  3:[
+    {file:"internal/export/handler.go", isNew:true, base:1, lines:[
+      ["a","package export"],
+      ["a",""],
+      ["a","import ("],
+      ["a","    \"encoding/csv\""],
+      ["a","    \"fmt\""],
+      ["a","    \"net/http\""],
+      ["a",")"],
+      ["a",""],
+      ["a","// ExportCsv streams the expense set without buffering it."],
+      ["a","func ExportCsv(store Store) http.HandlerFunc {"],
+      ["a","    return func(w http.ResponseWriter, r *http.Request) {"],
+      ["a","        w.Header().Set(\"Content-Type\", \"text/csv\")"],
+      ["a","        w.Header().Set(\"Content-Disposition\", `attachment; filename=\"expenses.csv\"`)"],
+      ["a","        cw := csv.NewWriter(w)"],
+      ["a","        it := store.IterateExpenses(r.Context())"],
+      ["a","        for it.Next() {"],
+      ["a","            if err := cw.Write(it.Row().Fields()); err != nil { return }"],
+      ["a","            cw.Flush()"],
+      ["a","            if f, ok := w.(http.Flusher); ok { f.Flush() }"],
+      ["a","        }"],
+      ["a","        if err := it.Err(); err != nil {"],
+      ["a","            fmt.Fprintf(w, \"#ERROR export truncated: %v\\n\", err)"],
+      ["a","            return"],
+      ["a","        }"],
+      ["a","        cw.Flush()"],
+      ["a","    }"],
+      ["a","}"],
+    ]},
+    {file:"internal/export/handler_test.go", isNew:true, base:1, lines:[
+      ["a","func TestExportStreamsHappyPath(t *testing.T) {"],
+      ["a","    rec := drive(t, okStore(1200))"],
+      ["a","    if rec.Code != 200 { t.Fatalf(\"code %d\", rec.Code) }"],
+      ["a","    if rows(rec) != 1200 { t.Fatalf(\"rows %d\", rows(rec)) }"],
+      ["a","}"],
+      ["a",""],
+      ["a","func TestExportMidStreamFailure(t *testing.T) {"],
+      ["a","    rec := drive(t, failAfter(3))"],
+      ["a","    if !strings.Contains(rec.Body.String(), \"#ERROR\") {"],
+      ["a","        t.Fatal(\"no trailer on truncated body\")"],
+      ["a","    }"],
+      ["a","}"],
+    ]},
+    {file:"internal/http/routes.go", base:41, lines:[
+      ["c","    r.Get(\"/expenses\", listExpenses(store))"],
+      ["a","    r.Get(\"/exports/expenses.csv\", export.ExportCsv(store))"],
+      ["c","    r.Get(\"/expenses/{id}\", getExpense(store))"],
+    ]},
+  ],
+  6:[
+    {file:"internal/export/audit.go", isNew:true, base:1, lines:[
+      ["a","package export"],
+      ["a",""],
+      ["a","import \"time\""],
+      ["a",""],
+      ["a","// RecordAudit persists one audit row per export."],
+      ["a","func RecordAudit(db DB, user string, rows int, from, to time.Time) {"],
+      ["a","    if err := db.Insert(auditRow(user, rows, from, to)); err != nil {"],
+      ["a","        log.Printf(\"audit write failed (export continues): %v\", err)"],
+      ["a","    }"],
+      ["a","}"],
+    ]},
+    {file:"internal/export/handler.go", base:12, lines:[
+      ["c","        w.Header().Set(\"Content-Disposition\", `attachment; filename=\"expenses.csv\"`)"],
+      ["c","        cw := csv.NewWriter(w)"],
+      ["a","        rng := rangeOf(r)"],
+      ["a","        // row count is patched in after the stream; 0 for now"],
+      ["a","        RecordAudit(db, requester(r), 0, rng.From, rng.To)"],
+      ["c","        it := store.IterateExpenses(r.Context())"],
+    ]},
+  ],
+};
+/* session history per ticket: the chain the hub head renders */
+const HIST = {
+  3:[{k:"claim",  label:"claimed · harness commit 9f2c01"},
+     {k:"work",   who:"claude · implement · 24m", commits:[["a41c9f","Add streaming CSV export endpoint"],["b02d11","Trailer on mid-stream failure; tests; Proposed Answer"]]},
+     {k:"review", who:"codex · agent review · 6m", verdict:"pass"}],
+  6:[{k:"claim",  label:"claimed · harness commit 3d90b7"},
+     {k:"work",   who:"claude · implement · 17m", commits:[["c7301e","Audit row on export; RecordAudit; Proposed Answer"]]},
+     {k:"review", who:"codex · agent review · 5m", verdict:"reject"}],
+};
+const SESSIONS = [
+  {id:"x1", label:"#03 · implement", state:"ended · 2h"},
+  {id:"x2", label:"#03 · review",    state:"ended · 1h"},
+  {id:"x3", label:"#06 · implement", state:"ended · 1h"},
+  {id:"x4", label:"#06 · review",    state:"ended · 40m"},
+];
+const TERM_LINES = [
+  ["p","❯ codex — agent-review session · ticket #06 · expensif"],
+  ["dm","review payload: diff c7301e · Done-when · spec §6 · glossary"],
+  ["","● Reading internal/export/audit.go…"],
+  ["","● Clause 1: “a row exists iff a CSV was delivered”. Checking write ordering…"],
+  ["wr","▲ RecordAudit is called before the first row streams."],
+  ["","● Driving the failure path: failAfter(3) → body truncates → audit row persists."],
+  ["wr","▲ Blocking: clause 1 implements “if attempted”, not “iff delivered”."],
+  ["ok","✓ Verdict written: reject — 1 blocking, 1 advisory"],
+  ["dm","  tokens: 22.4k in / 3.1k out"],
+];
+const SPACES = [
+  {id:"expensif",          initials:"EX", attn:"wants-you", active:true},
+  {id:"wayfinder-harness", initials:"WH", attn:"working"},
+  {id:"wayfinder",         initials:"WF", attn:"idle"},
+];
+
+/* ============ tiny helpers ============ */
+const $=(s,el=document)=>el.querySelector(s);
+function h(tag, attrs={}, ...kids){
+  const el=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k==="class") el.className=v;
+    else if(k.startsWith("on")) el.addEventListener(k.slice(2),v);
+    else el.setAttribute(k,v);
+  }
+  for(const k of kids.flat()){ if(k!=null) el.append(k.nodeType?k:document.createTextNode(k)); }
+  return el;
+}
+const pad=n=>"#"+String(n).padStart(2,"0");
+const byN=n=>TICKETS.find(t=>t.n===n);
+function recompute(){ for(const t of TICKETS){ if(t.st==="resolved"||t.st==="proposed") continue;
+  t.st = t.dep.every(d=>byN(d).st==="resolved") ? "frontier" : "blocked"; } }
+const dependents=n=>TICKETS.filter(x=>x.dep.includes(n));
+
+/* ============ state ============ */
+const S = {
+  variant:new URLSearchParams(location.search).get("variant")||"A",
+  hub:null, sheet:null, strip:null, dialog:null,
+  dispo:{},            // B: finding dispositions, key "n:i" -> {kind, reason}
+  followup:{},         // n -> true once a follow-up session ran
+  scope:{},            // n -> "all" | "verdict" | "last"
+  rejected:{},         // n -> {reason, date, reverted}
+  seen:{},             // n -> Set of section keys scrolled into view
+  actionsOpen:false,
+};
+if(!["A","B","C"].includes(S.variant)) S.variant="A";
+const VNAMES={A:"Dossier — contract-first",B:"Counsel — findings-first",C:"Evidence — diff-first"};
+
+/* ============ shell ============ */
+const root=$("#root");
+let mapcard, mapCanvas, termBody, tabsEl, mapApi;
+let liveSessions=[...SESSIONS];
+
+function buildShell(){
+  root.replaceChildren();
+  const rail=h("div",{class:"rail"}, h("span",{class:"glyph"},"✦"),
+    SPACES.map(sp=>h("div",{class:"sp"+(sp.active?" active":""),title:sp.id},
+      sp.initials, sp.attn!=="idle"?h("span",{class:"dot "+sp.attn}):null)));
+  const termcol=h("div",{class:"termcol"});
+  tabsEl=h("div",{class:"tabs"});
+  termBody=h("div",{class:"term",style:"flex:1"});
+  termcol.append(tabsEl,termBody);
+  mapcard=h("div",{class:"mapcard"});
+  root.append(rail,termcol,mapcard);
+  renderTabs(liveSessions[liveSessions.length-1].id);
+  seedTerm();
+  renderMap();
+}
+function renderTabs(activeId){
+  tabsEl.replaceChildren(...liveSessions.map(s=>h("div",{class:"tab"+(s.id===activeId?" active":""),
+      onclick:()=>renderTabs(s.id)},
+    h("span",{class:"dot "+(s.live?"working":"idle")}), s.label,
+    h("span",{style:"font-size:10px;color:var(--dim)"}, s.live?"live":s.state))));
+}
+function seedTerm(){
+  termBody.replaceChildren();
+  TERM_LINES.forEach(([cls,txt])=>termBody.append(h("div",{},cls?h("span",{class:cls},txt):txt)));
+  termBody.append(h("div",{}, h("span",{class:"cursor"})));
+}
+
+/* ============ star-map (fixed camera, deterministic layout — lifted from 08) ============ */
+const C={resolved:"#9db4d0",frontier:"#ffd24a",proposed:"#ffab40",blocked:"#7a4a48"};
+function rank(t){ if(!t.dep.length) return 0; return 1+Math.max(...t.dep.map(d=>rank(byN(d)))); }
+function makeStarmap(canvas,onSelect){
+  const ctx=canvas.getContext("2d");
+  const stars=TICKETS.map(t=>{ const r=95+rank(t)*130+(t.n*53%60), a=t.n*2.399+0.7;
+    return {t, x:Math.cos(a)*r*1.25, y:Math.sin(a)*r*0.72}; });
+  let sel=null;
+  const bg=Array.from({length:110},(_,i)=>({x:(i*97%1000)-500,y:(i*61%700)-350,r:(i%3)*.5+.4}));
+  function resize(){ canvas.width=canvas.clientWidth*devicePixelRatio; canvas.height=canvas.clientHeight*devicePixelRatio; }
+  resize(); new ResizeObserver(resize).observe(canvas);
+  const toS=p=>[canvas.width/2+(p.x)*0.9*devicePixelRatio, canvas.height/2+(p.y)*0.9*devicePixelRatio];
+  function draw(time){
+    ctx.fillStyle="#05070d"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    for(const b of bg){ ctx.fillStyle="rgba(150,170,210,.3)";
+      ctx.beginPath(); ctx.arc(canvas.width/2+b.x*.9*devicePixelRatio,canvas.height/2+b.y*.9*devicePixelRatio,b.r*devicePixelRatio,0,7); ctx.fill(); }
+    ctx.lineWidth=devicePixelRatio;
+    for(const s of stars) for(const d of s.t.dep){
+      const from=stars.find(x=>x.t.n===d), sat=from.t.st==="resolved";
+      const [x1,y1]=toS(from),[x2,y2]=toS(s);
+      ctx.strokeStyle=sat?"rgba(122,162,255,.45)":"rgba(90,100,130,.18)";
+      ctx.setLineDash(sat?[]:[4,5]); ctx.beginPath(); ctx.moveTo(x1,y1);
+      ctx.quadraticCurveTo((x1+x2)/2+(y1-y2)*.12,(y1+y2)/2+(x2-x1)*.12,x2,y2); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for(const s of stars){
+      const [x,y]=toS(s), c=C[s.t.st];
+      const pulse=(s.t.st==="frontier"||s.t.st==="proposed")?1+0.18*Math.sin(time/420+s.t.n):1;
+      const base=(s.t.st==="resolved"?4.5:s.t.st==="blocked"?3.5:6)*pulse*devicePixelRatio;
+      const g=ctx.createRadialGradient(x,y,0,x,y,base*3.4);
+      g.addColorStop(0,c); g.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,base*3.4,0,7); ctx.fill();
+      ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,base,0,7); ctx.fill();
+      if(sel===s.t.n){ ctx.strokeStyle="#fff"; ctx.lineWidth=1.2*devicePixelRatio;
+        ctx.beginPath(); ctx.arc(x,y,base+5*devicePixelRatio,0,7); ctx.stroke(); }
+      ctx.fillStyle=sel===s.t.n?"#e8eefc":"#66738f";
+      ctx.font=`${10*devicePixelRatio}px ${getComputedStyle(document.body).getPropertyValue("--sans")}`;
+      ctx.textAlign="center";
+      ctx.fillText(`${String(s.t.n).padStart(2,"0")} ${s.t.t}`, x, y+base+13*devicePixelRatio);
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+  canvas.addEventListener("click",e=>{
+    const rect=canvas.getBoundingClientRect();
+    const mx=(e.clientX-rect.left)*devicePixelRatio, my=(e.clientY-rect.top)*devicePixelRatio;
+    let hit=null;
+    for(const s of stars){ const [x,y]=toS(s); if((mx-x)**2+(my-y)**2<(16*devicePixelRatio)**2) hit=s.t; }
+    sel=hit?hit.n:null; onSelect(hit);
+  });
+  return {select(n){sel=n;}};
+}
+
+/* ============ map card: hud, action station, sheet ============ */
+function counts(){ const c={resolved:0,frontier:0,proposed:0,blocked:0};
+  TICKETS.forEach(t=>c[t.st]++);
+  return `${c.resolved} resolved · ${c.frontier} frontier · ${c.blocked} blocked`+(c.proposed?` · ${c.proposed} proposed`:""); }
+function actionsFor(){
+  const reviews=TICKETS.filter(t=>t.st==="proposed")
+    .sort((a,b)=>(VERDICTS[b.n].outcome==="reject"?1:0)-(VERDICTS[a.n].outcome==="reject"?1:0))
+    .map(t=>({kind:"review",t,
+      label:VERDICTS[t.n].outcome==="reject"?"Review — agent review rejected this":"Review proposed work",
+      sub:VERDICTS[t.n].outcome==="reject"?"halted to you · never loops":"verdict: pass · "+VERDICTS[t.n].findings.length+" advisories"}));
+  const spawns=TICKETS.filter(t=>t.st==="frontier")
+    .sort((a,b)=>dependents(b.n).length-dependents(a.n).length||a.n-b.n)
+    .map(t=>({kind:"spawn",t,label:"Spawn implement session",
+      sub:dependents(t.n).length?`unblocks ${dependents(t.n).length} ticket${dependents(t.n).length>1?"s":""}`:"unblocks nothing yet"}));
+  return [...reviews,...spawns];
+}
+function renderMap(){
+  mapcard.replaceChildren();
+  mapCanvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+  mapcard.append(mapCanvas);
+  mapApi=makeStarmap(mapCanvas,t=>{ closeSheet(); if(t) openSheet(t); });
+  mapcard.append(h("div",{class:"hud"},
+    h("div",{}, h("b",{},"export-csv-impl"), " — implementation map · expensif"),
+    h("div",{class:"hud-counts"},counts())));
+  renderActBtn(); renderActions();
+  if(S.hub) renderHub();
+}
+function renderActBtn(){
+  const old=$(".actbtn",mapcard); old&&old.remove();
+  const acts=actionsFor();
+  mapcard.append(h("div",{class:"actbtn",onclick:()=>{S.actionsOpen=!S.actionsOpen;renderActions();}},
+    "Next up", acts.length?h("span",{class:"badge"},String(acts.length)):null));
+}
+function renderActions(){
+  const old=$(".actions",mapcard); old&&old.remove();
+  if(!S.actionsOpen) return;
+  const box=h("div",{class:"actions"},h("h5",{},"what you can do on export-csv-impl"));
+  for(const a of actionsFor()){
+    box.append(h("div",{class:"act "+a.kind,
+      onmouseenter:()=>mapApi.select(a.t.n), onmouseleave:()=>mapApi.select(null),
+      onclick:()=>{ S.actionsOpen=false; renderActions();
+        if(a.kind==="review") openHub(a.t.n); else spawnSession(a.t); }},
+      h("span",{class:"chip "+(a.kind==="review"?"proposed":"frontier"),style:"flex:none"},pad(a.t.n)),
+      h("span",{class:"what"},a.label,h("span",{class:"sub"},a.t.t+" — "+a.sub)),
+      h("span",{class:"go"},a.kind==="review"?"⚑ open":"▸ start")));
+  }
+  if(!actionsFor().length) box.append(h("div",{class:"act"},h("span",{class:"sub"},"nothing actionable")));
+  mapcard.append(box);
+}
+function closeSheet(){ S.sheet&&S.sheet.remove(); S.sheet=null; }
+function openSheet(t){
+  closeSheet();
+  const rej=S.rejected[t.n];
+  S.sheet=h("div",{class:"sheet"},
+    h("button",{class:"btn",style:"position:absolute;top:10px;right:12px",onclick:()=>{closeSheet();mapApi.select(null);}},"✕ esc"),
+    h("div",{style:"display:flex;gap:6px;align-items:center"},
+      h("span",{class:"chip "+t.st},t.st),h("span",{class:"chip"},"task"),
+      h("span",{style:"color:var(--dim);font-size:11px"},pad(t.n)+" · expensif")),
+    h("h2",{},t.t),
+    h("div",{style:"display:flex;gap:8px;margin-top:8px"},
+      t.st==="proposed"?h("button",{class:"btn primary",onclick:()=>{closeSheet();openHub(t.n);}},
+        VERDICTS[t.n]&&VERDICTS[t.n].outcome==="reject"?"⚑ Open review — rejected":"Open review"):null,
+      t.st==="frontier"?h("button",{class:"btn primary",onclick:()=>{closeSheet();spawnSession(t);}},"Spawn session"):null),
+    DONE[t.n]?h("h4",{},"Done-when"):null,
+    DONE[t.n]?h("ul",{},DONE[t.n].map(d=>h("li",{},d))):null,
+    rej?h("div",{class:"rejected"},
+      h("div",{class:"rh"},"### Rejected — "+rej.date+(rej.reverted?" · work commits reverted":" · work commits left in history")),
+      h("p",{},rej.reason)):null);
+  mapcard.append(S.sheet);
+}
+function spawnSession(t){
+  const ns={id:"s"+Date.now(),label:pad(t.n)+" · implement",live:true};
+  liveSessions=liveSessions.map(s=>({...s,live:false})).concat(ns);
+  renderTabs(ns.id);
+}
+
+/* ============ the hub ============ */
+function openHub(n){ S.hub=n; S.actionsOpen=false; closeSheet(); renderHub(); }
+function closeHub(){ const el=$(".hub",mapcard); el&&el.remove(); S.hub=null; mapApi.select(null); }
+function markSeen(n,key){ (S.seen[n]=S.seen[n]||new Set()).add(key); }
+function seenAll(n,keys){ return keys.every(k=>S.seen[n]&&S.seen[n].has(k)); }
+
+function renderHub(){
+  const old=$(".hub",mapcard); old&&old.remove();
+  if(S.hub==null) return;
+  const t=byN(S.hub);
+  if(t.st!=="proposed"){ S.hub=null; return; }
+  mapApi.select(t.n);
+  const v=VERDICTS[t.n];
+  const hub=h("div",{class:"hub"});
+  hub.append(hubHead(t,v));
+  const body=h("div",{class:"hub-body"+(S.variant==="C"?"":" narrow")});
+  hub.append(body);
+  if(v.outcome==="reject") body.append(h("div",{class:"banner"},
+    h("b",{},"⚑ Agent review rejected this proposal."),
+    " Rejection never loops back to the implementer — it halts here, to you. The reviewer may be wrong; every exit below is still yours."));
+  if(S.followup[t.n]) body.append(scopeBar(t));
+  ({A:hubA,B:hubB,C:hubC})[S.variant](body,t,v);
+  if(S.variant!=="A") hub.append(bottomBar(t,v));   /* A's approve lives inside the body, after the diff */
+  mapcard.append(hub);
+  body.addEventListener("scroll",()=>trackSeen(body,t));
+  requestAnimationFrame(()=>trackSeen(body,t));
+}
+function hubHead(t,v){
+  const chain=h("div",{class:"chain"});
+  const evs=[];
+  for(const e of HIST[t.n]){
+    if(e.k==="claim") evs.push(h("span",{class:"ev"},e.label));
+    if(e.k==="work") evs.push(h("span",{class:"ev"},h("b",{},e.who)," · "+e.commits.length+" commit"+(e.commits.length>1?"s":"")));
+    if(e.k==="review") evs.push(h("span",{class:"ev"+(e.verdict==="reject"?" rej":"")},h("b",{},e.who)," · "+e.verdict));
+  }
+  evs.push(h("span",{class:"ev you"},h("b",{},"you"),v.outcome==="reject"?" · halted here":" · the gate"));
+  evs.forEach((e,i)=>{ if(i) chain.append(h("span",{class:"sep"},"→")); chain.append(e); });
+  return h("div",{class:"hub-head"},
+    h("div",{class:"hub-title"},
+      h("span",{class:"chip proposed"},"proposed"),
+      h("span",{class:"chip "+(v.outcome==="reject"?"reject":"pass")},"agent review: "+v.outcome),
+      h("h2",{},pad(t.n)+" "+t.t),
+      h("button",{class:"btn",onclick:closeHub},"✕ esc")),
+    chain,
+    h("div",{style:"font-size:10.5px;color:var(--dim);margin-top:6px"},
+      "reviewer read: "+v.read+" · reviewer model ≠ implementer model (ticket 05's default, honoured here)"));
+}
+function scopeBar(t){
+  const cur=S.scope[t.n]||"all";
+  const mk=(id,label)=>h("span",{class:"sc"+(cur===id?" on":""),onclick:()=>{S.scope[t.n]=id;renderHub();}},label);
+  return h("div",{class:"scope"},"diff scope:",mk("all","all commits"),mk("verdict","since the verdict"),mk("last","since your last read"));
+}
+
+/* ---- shared blocks ---- */
+function dwBlock(t,v,compact){
+  const rows=DONE[t.n].map((cl,i)=>{ const c=v.clauses[i];
+    return h("div",{class:"dw-row "+(c.ok?"ok":"bad")},
+      h("span",{class:"mark"},c.ok?"✓":"✗"), h("span",{class:"cl"},cl),
+      compact?null:h("span",{class:"rv"},"reviewer: "+c.note)); });
+  return h("div",{class:"dw"},rows);
+}
+function paBlock(t){
+  const rewritten=S.followup[t.n];
+  return h("div",{class:"pa"+(rewritten?" rewritten":"")},
+    rewritten?h("span",{class:"rw"},"rewritten by follow-up · prior text in git"):null,
+    PROPOSED[t.n]+(rewritten?" — Amended: the audit row is now written after the final flush; the failure path logs an aborted attempt instead.":""));
+}
+function findingCard(t,v,f,i,{withDispo,embedHunk}={}){
+  const key=t.n+":"+i, dispo=S.dispo[key];
+  const card=h("div",{class:"find "+f.sev},
+    h("div",{class:"fh"},
+      h("span",{class:"chip "+(f.sev==="blocking"?"reject":"")},f.sev),
+      f.sev==="advisory"&&f.dw==null?h("span",{style:"font-size:10px;color:var(--dim);font-style:italic"},"cites no Done-when clause — advisory by rule"):null),
+    h("div",{class:"claim"},f.claim),
+    h("div",{class:"cite"},
+      f.dw!=null?h("span",{class:"dwref"},"cites Done-when "+(f.dw+1)+" · "):h("span",{class:"norule"},"taste, not contract · "),
+      h("span",{class:"loc",onclick:()=>jumpToDiff(t,f)},f.loc[0]+":"+(diffLineNo(t,f)||f.loc[1]))),
+    f.fix?h("div",{class:"fix"},"suggested: "+f.fix):null);
+  if(embedHunk) card.append(hunkAround(t,f));
+  if(withDispo&&f.sev==="blocking"){
+    if(!dispo){
+      const input=h("input",{placeholder:"…or waive it: why this doesn't block (lands in the ticket file)"});
+      card.append(h("div",{class:"dispo"},
+        h("button",{class:"btn primary",onclick:()=>{S.dispo[key]={kind:"sent-back"};furtherMenu(t,f);}},"Send back — fix this"),
+        input,
+        h("button",{class:"btn",onclick:()=>{ if(input.value.trim()){S.dispo[key]={kind:"waived",reason:input.value.trim()};renderHub();} }},"Waive")));
+    } else {
+      card.append(h("div",{class:"done"},
+        dispo.kind==="waived"?["✓ waived — ",h("i",{},"“"+dispo.reason+"” — recorded under the Answer")]
+                             :"✓ sent back — a follow-up session is on it"));
+    }
+  }
+  return card;
+}
+function verdictBlock(t,v,opts){ return h("div",{},v.findings.map((f,i)=>findingCard(t,v,f,i,opts))); }
+function diffLineNo(t,f){ const df=DIFFS[t.n].find(d=>d.file===f.loc[0]); return df?df.base+f.loc[1]:null; }
+function diffBlock(t,{pins}={}){
+  const wrap=h("div",{});
+  const scope=S.scope[t.n]||"all";
+  for(const df of DIFFS[t.n]){
+    const fileEl=h("div",{class:"diff"},
+      h("div",{class:"df-head"},df.file,df.isNew?h("span",{class:"new"},"new file"):null));
+    df.lines.forEach(([k,tx],i)=>{
+      const ln=h("div",{class:"df-line "+k,"data-df":t.n+"|"+df.file+"|"+i},
+        h("span",{class:"ln"},String(df.base+i)),h("span",{class:"tx"},(k==="a"?"+ ":k==="d"?"- ":"  ")+tx));
+      fileEl.append(ln);
+      if(pins){ const f=VERDICTS[t.n].findings.find(x=>x.loc[0]===df.file&&x.loc[1]===i);
+        if(f) fileEl.append(h("div",{class:"pin "+f.sev},
+          h("div",{class:"who"},"agent review · "+(f.sev==="blocking"?"blocking — cites Done-when "+(f.dw+1):f.dw!=null?"advisory — cites Done-when "+(f.dw+1):"advisory — cites no clause")),
+          f.claim, f.fix?h("div",{style:"color:#8fae94;margin-top:3px;font-size:11px"},"suggested: "+f.fix):null)); }
+    });
+    wrap.append(fileEl);
+  }
+  if(S.followup[t.n]&&scope!=="all"){
+    const fileEl=h("div",{class:"diff"},
+      h("div",{class:"df-head"},"internal/export/handler.go",h("span",{class:"new"},"follow-up · d94k02")),
+      [["d","        RecordAudit(db, requester(r), 0, rng.From, rng.To)"],
+       ["a","        defer func() { RecordAudit(db, requester(r), n, rng.From, rng.To, delivered) }()"],
+      ].map(([k,tx],i)=>h("div",{class:"df-line "+k},h("span",{class:"ln"},String(14+i)),h("span",{class:"tx"},(k==="a"?"+ ":"- ")+tx))));
+    wrap.prepend(h("div",{style:"font-size:10.5px;color:var(--amber);margin-bottom:6px"},
+      scope==="verdict"?"showing 1 follow-up commit since the verdict; the original proposal is collapsed below":"showing what changed since you last read — 1 commit"),fileEl);
+  }
+  return wrap;
+}
+function jumpToDiff(t,f){
+  const el=document.querySelector(`[data-df="${t.n}|${f.loc[0]}|${f.loc[1]}"]`);
+  if(!el) return;
+  el.scrollIntoView({block:"center",behavior:"smooth"});
+  el.classList.add("hot"); setTimeout(()=>el.classList.remove("hot"),1800);
+}
+function sec(nkey,t,title,el){ const s=h("div",{class:"sec","data-sec":nkey},h("h4",{},title),el); return s; }
+function trackSeen(body,t){
+  const vh=body.getBoundingClientRect().bottom;
+  body.querySelectorAll("[data-sec]").forEach(el=>{
+    if(el.getBoundingClientRect().top<vh-40) markSeen(t.n,el.getAttribute("data-sec"));
+  });
+  const bar=$(".nudge-slot",mapcard); bar&&updateNudge(bar,t);
+}
+function updateNudge(slot,t){
+  const missing=["contract","proposal","verdict","diff"].filter(k=>!(S.seen[t.n]&&S.seen[t.n].has(k)));
+  slot.replaceChildren(missing.length?h("span",{class:"nudge"},"not yet read: "+missing.join(" · ")):h("span",{style:"font-size:10.5px;color:var(--green)"},"all four read"));
+}
+
+/* ---- approve / abandon / further ---- */
+function approveBar(t,v,{inline}={}){
+  const unb=dependents(t.n).filter(d=>d.dep.every(x=>x===t.n||byN(x).st==="resolved"));
+  const blockingOpen=S.variant==="B"&&v.findings.some((f,i)=>f.sev==="blocking"&&!S.dispo[t.n+":"+i]);
+  const approve=h("button",{class:"btn approve",onclick:()=>doApprove(t),
+    ...(blockingOpen?{disabled:true,title:"disposition every blocking finding first"}:{})},
+    "Approve — promote to ## Answer");
+  const el=h("div",{class:inline?"endbar":"bar"},
+    h("div",{class:"small"},
+      h("div",{},"will commit ",h("b",{},"Resolve: "+t.t.toLowerCase()),
+        " — pathspec-limited to ",h("b",{},FILE_OF[t.n]),", safe against any live session (ticket 06)"),
+      h("div",{}, unb.length?["unblocks ",h("b",{},unb.map(d=>pad(d.n)).join(", ")),
+        " — approval is the act that lets work compound; a wrong approval seeds them"]:"unblocks nothing directly"),
+      blockingOpen?h("div",{style:"color:var(--amber)"},"blocking findings await your disposition — send back or waive"):null),
+    S.variant!=="B"?h("span",{class:"nudge-slot"}):null,
+    h("button",{class:"btn",onclick:()=>furtherMenu(t)},"Take it further…"),
+    h("button",{class:"btn danger",onclick:()=>abandonDialog(t)},"Abandon…"),
+    approve);
+  return el;
+}
+function bottomBar(t,v){ return approveBar(t,v,{}); }
+function doApprove(t){
+  const waived=Object.entries(S.dispo).filter(([k,d])=>k.startsWith(t.n+":")&&d.kind==="waived");
+  t.st="resolved"; recompute();
+  closeHub(); renderMap();
+  const unb=TICKETS.filter(x=>x.st==="frontier"&&x.dep.includes(t.n));
+  const next=unb[0]||TICKETS.find(x=>x.st==="frontier");
+  const spawnBtn=next?h("button",{class:"btn primary",disabled:true,
+    onclick:()=>{killStrip();spawnSession(next);}},"Spawn "+pad(next.n)):null;
+  if(spawnBtn) setTimeout(()=>{spawnBtn.disabled=false;},450);  /* never inherits the approve click */
+  S.strip=h("div",{class:"strip"},
+    h("div",{class:"msg"},"✓ "+pad(t.n)+" resolved — ## Proposed Answer promoted (commit e81c44"+
+      (waived.length?"; "+waived.length+" waived finding"+(waived.length>1?"s":"")+" recorded under the Answer":"")+")",
+      h("span",{class:"sub"},unb.length?("unblocked "+unb.map(x=>pad(x.n)).join(", ")+" — next up, ranked by what it unblocks:"):
+        "nothing newly unblocked — the frontier already had open tickets"),
+      next?h("span",{class:"sub"},pad(next.n)+" "+next.t+(unb.includes(next)?" (just unblocked by this approval)":"")):null),
+    spawnBtn, h("button",{class:"btn",onclick:killStrip},"Not now — esc"));
+  mapcard.append(S.strip);
+}
+function killStrip(){ S.strip&&S.strip.remove(); S.strip=null; }
+function abandonDialog(t){
+  killDialog();
+  const ta=h("textarea",{placeholder:"Why this fails — written to the next attempt, not to the log. The next session's context bundle carries this verbatim."});
+  const lever=h("input",{type:"checkbox"});
+  const confirm=h("button",{class:"btn danger",disabled:true,onclick:()=>doAbandon(t,ta.value.trim(),lever.checked)},
+    "Abandon — demote & return to the frontier");
+  ta.addEventListener("input",()=>{confirm.disabled=!ta.value.trim();});
+  const commits=HIST[t.n].filter(e=>e.k==="work").flatMap(e=>e.commits);
+  S.dialog=h("div",{class:"dim-back",onclick:e=>{if(e.target===S.dialog)killDialog();}},
+    h("div",{class:"dlg"},
+      h("h3",{},"Abandon "+pad(t.n)+" — "+t.t),
+      h("div",{class:"sub"},"Abandon rejects the proposal, not the ticket. It goes back on the frontier for another attempt — armed with your reason."),
+      ta,
+      h("div",{class:"does"},
+        h("div",{},h("b",{},"Will do:")," demote ## Proposed Answer → “### Rejected — 2026-07-18” with your reason appended · harness commit, pathspec-limited · "+pad(t.n)+" derives open again"),
+        h("div",{class:"no"},h("b",{style:"color:var(--dim)"},"Won't do:")," touch the work commits ("+commits.map(c=>c[0]).join(", ")+") — undoing history is yours, below, or later in your own terminal")),
+      h("label",{class:"lever"},lever,
+        h("span",{},"Also revert the "+commits.length+" work commit"+(commits.length>1?"s":"")+" now ",
+          h("i",{style:"color:var(--dim)"},"(offered because they are verifiably still the tip; a rejected attempt left in history is a truthful history)"))),
+      h("div",{class:"acts"},h("button",{class:"btn",onclick:killDialog},"Keep reviewing"),confirm)));
+  mapcard.append(S.dialog);
+}
+function doAbandon(t,reason,reverted){
+  killDialog();
+  S.rejected[t.n]={reason,date:"2026-07-18",reverted};
+  t.st="frontier"; recompute();
+  closeHub(); renderMap();
+  S.strip=h("div",{class:"strip gone"},
+    h("div",{class:"msg"},"Demoted — "+pad(t.n)+" is back on the frontier (commit d19a02)"+(reverted?"; work commits reverted (f003c1)":"; work commits left in history"),
+      h("span",{class:"sub"},"the rejection reason travels in the ticket file — the next attempt reads it before writing a line")),
+    h("button",{class:"btn",onclick:killStrip},"esc"));
+  mapcard.append(S.strip);
+}
+function furtherMenu(t,finding){
+  killDialog();
+  const item=(label,sub,role)=>h("div",{class:"menu-it",onclick:()=>{
+      killDialog();
+      S.followup[t.n]=true; if(!S.scope[t.n])S.scope[t.n]="verdict";
+      const ns={id:"f"+Date.now(),label:pad(t.n)+" · "+role,live:true};
+      liveSessions=liveSessions.map(s=>({...s,live:false})).concat(ns);
+      renderTabs(ns.id); renderHub();
+    }},
+    h("span",{class:"what"},label,h("span",{class:"sub2"},sub)));
+  S.dialog=h("div",{class:"dim-back",onclick:e=>{if(e.target===S.dialog)killDialog();}},
+    h("div",{class:"dlg"},
+      h("h3",{},"Take "+pad(t.n)+" further"),
+      h("div",{class:"sub"},"Spawns another session against this same ticket. Its commits accumulate on the proposal; the ticket stays proposed and comes back to this hub. "+(finding?"Pre-briefed with the finding you sent back.":"")),
+      item("Implement the fixes","an implement session, briefed with the verdict"+(finding?" and your sent-back finding":""),"fix-up"),
+      item("Grill the proposal","a grill session — interrogate the approach before more code lands","grill"),
+      item("Advice only","talk to a model about the diff; no commits, nothing accumulates","advice"),
+      h("div",{class:"acts"},h("button",{class:"btn",onclick:killDialog},"Cancel"))));
+  mapcard.append(S.dialog);
+}
+function killDialog(){ S.dialog&&S.dialog.remove(); S.dialog=null; }
+
+/* ---- variant A: Dossier — contract-first, approve below the diff ---- */
+function hubA(body,t,v){
+  body.append(
+    sec("contract",t,"1 · The contract — Done-when, with the reviewer's check",dwBlock(t,v)),
+    sec("proposal",t,"2 · The claim — ## Proposed Answer"+(S.followup[t.n]?" (rewritten in place — the file is the record)":""),paBlock(t)),
+    sec("verdict",t,"3 · The second reader — findings ("+v.findings.filter(f=>f.sev==="blocking").length+" blocking, "+v.findings.filter(f=>f.sev==="advisory").length+" advisory)",verdictBlock(t,v)),
+    sec("diff",t,"4 · The evidence — the diff, whole",diffBlock(t)),
+    approveBar(t,v,{inline:true}));
+}
+/* ---- variant B: Counsel — findings are the spine; approve gated on disposition ---- */
+function hubB(body,t,v){
+  body.append(
+    sec("verdict",t,"The findings — every blocking one needs your disposition",
+      h("div",{},
+        h("div",{style:"font-size:11px;color:var(--dim);margin-bottom:8px"},
+          "A finding may only block if it cites a Done-when clause — taste is advisory by rule. Send a blocking finding back, or waive it with a reason that is recorded under the Answer."),
+        verdictBlock(t,v,{withDispo:true,embedHunk:true}))),
+    sec("contract",t,"The contract — reviewer's per-clause check",dwBlock(t,v)),
+    sec("proposal",t,"The claim — ## Proposed Answer",paBlock(t)),
+    sec("diff",t,"The whole diff — the findings above are excerpts, this is everything",diffBlock(t)));
+}
+function hunkAround(t,f){
+  const df=DIFFS[t.n].find(d=>d.file===f.loc[0]); if(!df) return h("span",{});
+  const from=Math.max(0,f.loc[1]-2), to=Math.min(df.lines.length,f.loc[1]+3);
+  return h("div",{class:"diff",style:"margin-top:8px"},
+    h("div",{class:"df-head"},df.file),
+    df.lines.slice(from,to).map(([k,tx],j)=>h("div",{class:"df-line "+k+(from+j===f.loc[1]?" hot":"")},
+      h("span",{class:"ln"},String(df.base+from+j)),h("span",{class:"tx"},(k==="a"?"+ ":k==="d"?"- ":"  ")+tx))));
+}
+/* ---- variant C: Evidence — diff-first, findings pinned in the margin ---- */
+function hubC(body,t,v){
+  body.append(h("div",{class:"c-grid"},
+    h("div",{class:"c-rail"},
+      h("h4",{style:"margin-top:0"},"Done-when · reviewer's check"),dwBlock(t,v,true),
+      h("h4",{},"## Proposed Answer"),paBlock(t),
+      h("h4",{},"Findings"),
+      v.findings.map((f,i)=>h("div",{class:"find "+f.sev,style:"padding:8px 10px;cursor:pointer",onclick:()=>jumpToDiff(t,f)},
+        h("div",{class:"fh"},h("span",{class:"chip "+(f.sev==="blocking"?"reject":"")},f.sev)),
+        h("div",{class:"claim",style:"font-size:11.5px"},f.claim.length>90?f.claim.slice(0,88)+"…":f.claim)))),
+    h("div",{class:"c-main"},
+      sec("diff",t,"The diff — reviewer's findings pinned where they bite",diffBlock(t,{pins:true})),
+      h("div",{style:"font-size:10.5px;color:var(--dim);margin-top:6px"},
+        "contract, claim and findings rode along in the rail — scrolling the diff is the whole read"))));
+  markSeen(t.n,"contract"); markSeen(t.n,"proposal"); markSeen(t.n,"verdict"); /* the rail is always on screen */
+}
+
+/* ============ info card ============ */
+const INFO_COMMON=`
+<p><b>Entry & exits (all variants):</b> you arrive from the reviews-first action station or a proposed star's sheet (ticket 08's patterns) — or <b>forced</b>: an agent-review rejection halts here and never loops (#06 shows it; note the banner and the red chain). Four exits: <b>Approve</b> (promotes to ## Answer — its own pathspec-limited commit, ticket 06), <b>Take it further</b> (follow-up sessions accumulate commits; the ## Proposed Answer is rewritten in place, priors live in git; a diff-scope switcher appears: all / since verdict / since your last read), <b>Abandon</b> (asks for a reason <i>addressed to the next attempt</i>; destroys nothing — demotion is one commit, reverting the work is a lever you pull, or don't), and <b>Esc</b> — walking away is legal; the badge keeps count.</p>
+<p><b>After approve:</b> a strip replaces the hub — what was promoted, what it unblocked, and the next best frontier ticket <i>as a suggestion, never a shove</i>: a button that enables only after 450ms (it can never inherit the approve click), dismissed with Esc. Autopilot is a different, opt-in world.</p>
+<p><b>The verdict summary is anchored to the contract:</b> a per-Done-when-clause check (met/unmet) separates “the contract holds” from “the reviewer has opinions”. A finding that cites no clause is <b>advisory by rule</b> — that is how you tell nitpicking from a real bug: #03's reviewer found only advisories (one cites a clause that still holds, one is pure taste); #06's blocking finding cites clause 1 and shows it broken.</p>`;
+const INFO={
+A:`<h4>A — Dossier: contract-first</h4>
+<p><b>Reading order as an argument:</b> the contract (Done-when + per-clause check), then the claim (## Proposed Answer), then the second reader, then the evidence. You know what was promised before you read what anyone says about it.</p>
+<p><b>Approve lives below the diff</b> — the path to the button walks through the evidence. No enforcement: the bar also floats nothing; if you jump-scroll past, the “not yet read” nudge beside Approve says so, quietly. Surfaced, never gated — cockpit, not autopilot.</p>`+INFO_COMMON,
+B:`<h4>B — Counsel: findings-first, disposition to approve</h4>
+<p><b>The reviewer's findings are the spine</b>, each with its hunk embedded and its Done-when citation (or its lack — “advisory by rule”). <b>Approve is disabled until every blocking finding is dispositioned:</b> send it back (spawns the fix-up session, pre-briefed) or waive it with a reason that is recorded under the Answer. Rubber-stamping now requires deliberately writing a false waiver — the strongest gate of the three, and the most opinionated.</p>
+<p>The whole diff is still here, below — the findings are excerpts, never the record.</p>`+INFO_COMMON,
+C:`<h4>C — Evidence: diff-first, PR-style</h4>
+<p><b>The diff is the page;</b> findings are pinned into the margin where they bite, contract and claim ride in a sticky rail. The familiar GitHub posture — which is exactly its risk: familiarity is the rubber-stamp posture. Kept honest here to compare against A and B: same materials, weakest gate.</p>`+INFO_COMMON,
+};
+
+/* ============ chrome: switcher, info, keys ============ */
+const ORDER=["A","B","C"];
+function setVariant(v){
+  S.variant=v; S.dispo={};
+  history.replaceState(null,"","?variant="+v);
+  $("#sw-lbl").textContent="hub "+v+" — "+VNAMES[v].split(" — ")[0];
+  $("#info-card").innerHTML=INFO[v];
+  if(S.hub!=null) renderHub();
+}
+$("#sw-prev").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+2)%3]);
+$("#sw-next").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+1)%3]);
+$("#sw-reset").onclick=()=>location.reload();
+$("#info-btn").onclick=()=>{const c=$("#info-card");c.style.display=c.style.display==="block"?"none":"block";};
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft") $("#sw-prev").click();
+  if(e.key==="ArrowRight") $("#sw-next").click();
+  if(e.key==="Escape"){
+    if(S.dialog) killDialog();
+    else if($("#info-card").style.display==="block") $("#info-card").style.display="none";
+    else if(S.strip) killStrip();
+    else if(S.hub!=null) closeHub();
+    else if(S.sheet){ closeSheet(); mapApi.select(null); }
+  }
+});
+
+/* ============ boot: open the forced arrival first — the hub is the point ============ */
+buildShell();
+setVariant(S.variant);
+openHub(6);
+</script>
+</body>
+</html>

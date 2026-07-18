@@ -3,6 +3,7 @@ type: prototype
 blocked_by: [06, 08]
 claimed_by: claude-fable-5
 claimed_at: 2026-07-18T19:04:38Z
+assets: [.plan/harness-design/assets/10-human-review-hub.html]
 ---
 
 # The human review hub
@@ -20,3 +21,5 @@ Make it concrete, and settle:
 - Where the **"start the next best frontier ticket"** offer appears once approval lands, and whether it is a suggestion or a shove.
 
 Link the prototype as an asset.
+
+Prototype: [10-human-review-hub.html](../assets/10-human-review-hub.html) — open in a browser; three hub variants inside the E "Helm" shell, cycled with ←/→ or `?variant=`; `?` explains how each answers the ticket; ↺ resets the fixture. A **Dossier** (contract-first reading order, approve *below* the diff, unread-section nudges surfaced not enforced), B **Counsel** (findings-first; blocking findings gate approve on an explicit disposition — send back, or waive with a recorded reason), C **Evidence** (diff-first PR posture, findings pinned in the margin — the familiar, weakest gate, kept for comparison). Shared everywhere: the forced-arrival banner (#06's rejecting verdict — rejection halts, never loops), the per-Done-when-clause verdict table (a finding may only block by citing a clause — taste is advisory by rule), the abandon dialog (reason addressed to the next attempt; revert as an unticked lever), take-it-further (follow-ups accumulate; the `## Proposed Answer` is rewritten in place; diff scopes: all / since verdict / since last read), and the post-approve strip (next best frontier ticket as a suggestion whose button can never inherit the approve click). Fixture: expensif / export-csv-impl with #03 proposed-pass and #06 proposed-reject.
