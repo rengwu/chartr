@@ -50,6 +50,10 @@ _Avoid_: driver, plugin, backend, integration
 The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, this glossary. Assembled fresh each time and never accumulated.
 _Avoid_: memory, prompt context, preamble
 
+**Prompt library**:
+The harness-owned, hackable role prompts — one per role plus a common core — vendored from the wayfinder skills and resolved through space → user → built-in layers at spawn. Plain markdown on disk, editable by the operator.
+_Avoid_: skills, templates, system prompts
+
 **Cockpit**:
 The harness's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
