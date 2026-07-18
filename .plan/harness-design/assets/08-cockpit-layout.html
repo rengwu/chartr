@@ -18,6 +18,15 @@
                  repurposed as a space → map selector; toggleable action station
                  with a numbered badge; ticket pane expands to a full reading
                  drawer; map title opens map.md in the same drawer.
+    E  Helm    — D with the columns swapped: sidebar | terminal | collapsible
+                 map on the right edge; symmetric focus modes (split / terminal
+                 / map); badge lives in persistent chrome so hiding the map
+                 never hides the call to action.
+    F  Fleet   — mission control: every space on screen at once as a tiled
+                 grid (one live terminal each — ADR 0003 caps a space at one
+                 session), cells flip terminal ⇄ map, one global action station.
+    G  Inbox   — action-first: the Next-up queue is the primary rail, unified
+                 across spaces; map, tickets and terminals are documents it opens.
 
   Fixture: this repo's own harness-design map (real topology, fake terminals).
   All three variants share one reading of the nesting tension: ADR 0003 stands —
@@ -149,7 +158,8 @@
   .B-panel { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; max-height:46%; overflow-y:auto; }
   .B-termcol { display:flex; flex-direction:column; background:#04060b; }
   .B-tabs { flex:none; display:flex; gap:2px; background:var(--bg2); border-bottom:1px solid var(--line);
-            padding:6px 8px 0; overflow-x:auto; }
+            padding:6px 8px 0; overflow-x:auto; scrollbar-width:none; }
+  .B-tabs::-webkit-scrollbar { display:none; }
   .B-tab { display:flex; align-items:center; gap:7px; padding:7px 12px; font-size:12px; color:var(--dim);
            border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer;
            white-space:nowrap; }
@@ -240,6 +250,73 @@
   .D-termcol { display:flex; flex-direction:column; background:#04060b; }
   .D-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--dim);
              font-size:12px; font-style:italic; }
+
+  /* ---------- variant E : Helm ---------- */
+  .E-grid { position:fixed; inset:0; display:flex; }
+  .E-side { width:230px; flex:none; }
+  .E-term { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; position:relative; }
+  .E-term.hidden { display:none; }
+  .E-thead { flex:none; display:flex; align-items:center; background:var(--bg2);
+             border-bottom:1px solid var(--line); padding-right:8px; }
+  .E-thead .B-tabs { flex:1; border-bottom:none; min-width:0; }
+  .E-map { position:relative; width:44%; flex:none; border-left:1px solid var(--line);
+           overflow:hidden; background:var(--bg); }
+  .E-map.closed { width:0; border-left:none; }
+  .E-map.full { width:100%; border-left:none; }
+  .E-actions { position:absolute; top:42px; right:8px; z-index:30; width:310px; max-height:70%;
+               overflow-y:auto; background:rgba(10,14,24,.97); border:1px solid var(--line);
+               border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
+
+  /* ---------- variant F : Fleet ---------- */
+  .F-top { position:fixed; top:0; left:0; right:0; height:42px; z-index:60; display:flex;
+           align-items:center; gap:14px; padding:0 52px 0 14px; background:var(--bg2);
+           border-bottom:1px solid var(--line); font-size:13px; }
+  .F-grid { position:fixed; inset:42px 0 0 0; display:grid; gap:8px; padding:8px;
+            grid-template-columns:repeat(2,1fr); grid-template-rows:repeat(2,1fr); }
+  .F-cell { border:1px solid var(--line); border-radius:10px; overflow:hidden; display:flex;
+            flex-direction:column; background:#04060b; min-height:0; position:relative; }
+  .F-cell.max { position:fixed; inset:50px 8px 8px 8px; z-index:80; }
+  .F-chead { flex:none; display:flex; align-items:center; gap:9px; padding:7px 11px;
+             background:var(--bg2); border-bottom:1px solid var(--line); font-size:12px; }
+  .F-chead .n { font-weight:600; }
+  .F-chead .note { color:var(--dim); font-size:11px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .F-chead .btn { padding:3px 9px; font-size:11px; }
+  .F-cell .term { flex:1; font-size:10px; }
+  .F-idle { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:8px; color:var(--dim); font-size:12px; font-style:italic; }
+  .F-actions { position:fixed; top:46px; right:12px; z-index:90; width:340px; max-height:75vh;
+               overflow-y:auto; background:rgba(10,14,24,.97); border:1px solid var(--line);
+               border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
+  .F-actions .grp { font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+                    padding:8px 8px 4px; }
+  .F-badgebtn { display:flex; align-items:center; gap:7px; font:600 12px var(--sans); color:var(--txt);
+                background:var(--panel); border:1px solid var(--line); border-radius:8px;
+                padding:5px 11px; cursor:pointer; }
+  .F-badgebtn:hover { background:#141b2e; }
+
+  /* ---------- variant G : Inbox ---------- */
+  .G-grid { position:fixed; inset:0; display:flex; }
+  .G-queue { width:320px; flex:none; background:var(--bg2); border-right:1px solid var(--line);
+             overflow-y:auto; padding:10px 0; }
+  .G-queue h5 { font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim);
+                padding:10px 14px 5px; }
+  .G-item { display:flex; align-items:center; gap:9px; padding:8px 14px 8px 11px; cursor:pointer;
+            border-left:3px solid transparent; font-size:12px; }
+  .G-item:hover { background:#101728; }
+  .G-item.active { background:#101728; }
+  .G-item.review { border-left-color:var(--amber); }
+  .G-item.running { border-left-color:var(--green); }
+  .G-item.spawn { border-left-color:#3a4a6e; }
+  .G-item .what { flex:1; min-width:0; }
+  .G-item .what .t { color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .G-item .what .w { display:block; font-size:10px; color:var(--dim); }
+  .G-main { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; }
+  .G-crumb { flex:none; display:flex; align-items:center; gap:10px; height:40px; padding:0 46px 0 14px;
+             background:var(--bg2); border-bottom:1px solid var(--line); font-size:12px; }
+  .G-crumb .dim { color:var(--dim); }
+  .G-doc { flex:1; overflow-y:auto; padding:20px 26px; max-width:760px; }
+  .G-doc > .D-drawer { position:static; width:auto; border:none; background:transparent;
+                       padding:0; backdrop-filter:none; border-radius:0; }
 </style>
 </head>
 <body>
@@ -465,6 +542,73 @@ function ticketPane(t, {onSpawn, onExpand}={}){
 }
 const sessLabel=s=>`#${String(s.ticket).padStart(2,"0")} · ${s.role}`;
 
+/* ============ shared: map stats, action list, reading docs ============ */
+function mapCounts(list){
+  const c={resolved:0,frontier:0,claimed:0,blocked:0,proposed:0};
+  list.forEach(t=>c[t.st]++);
+  return `${c.resolved} resolved · ${c.frontier} frontier · ${c.blocked} blocked`
+    +(c.claimed?` · ${c.claimed} claimed`:"")+(c.proposed?` · ${c.proposed} proposed`:"");
+}
+function actionsFor(m){
+  const dependents=n=>m.tickets.filter(x=>x.dep&&x.dep.includes(n)).length;
+  const reviews=m.tickets.filter(t=>t.st==="proposed")
+    .map(t=>({kind:"review",t,label:"Review proposed work",sub:"agent-review passed · diff + proposed answer waiting"}));
+  const spawns=m.tickets.filter(t=>t.st==="frontier")
+    .sort((a,b)=>dependents(b.n)-dependents(a.n)||a.n-b.n)
+    .map(t=>({kind:"spawn",t,label:(t.type==="prototype"?"Spawn prototype":t.type==="task"?"Spawn implement":"Spawn grill")+" session",
+              sub:dependents(t.n)?`unblocks ${dependents(t.n)} ticket${dependents(t.n)>1?"s":""}`:"unblocks nothing yet"}));
+  return [...reviews,...spawns];
+}
+function buildTicketDoc(t, m, spaceId, {onSpawn,onClose,wrapClass}={}){
+  const sess=(SPACE_SESSIONS[spaceId]||[]).filter(s=>s.ticket===t.n);
+  return h("div",{class:wrapClass||"D-drawer"},
+    onClose?h("button",{class:"btn close",onclick:onClose},"✕ esc"):null,
+    h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
+      h("span",{class:"chip "+(t.st==="proposed"?"claimed":t.st)},t.st), h("span",{class:"chip"},t.type),
+      h("span",{style:"color:var(--dim);font-size:11px"},"#"+String(t.n).padStart(2,"0")+" · "+spaceId)),
+    h("h2",{},t.t),
+    h("div",{class:"acts"},
+      t.st==="frontier"&&onSpawn?h("button",{class:"btn primary",onclick:()=>onSpawn(t)},"Spawn session"):null,
+      t.st==="proposed"?h("button",{class:"btn primary"},"Open review"):null,
+      t.st==="claimed"?h("button",{class:"btn primary"},"Open running session"):null),
+    h("h4",{},"Question"),
+    h("p",{}, BODIES[t.n] || "…the ticket's full question renders here, markdown and all — every heading of the file, not an excerpt…"),
+    h("h4",{},"Done-when"),
+    h("ul",{}, h("li",{},"…the ticket's Done-when bullets, verbatim from the file…"),
+               h("li",{},"…nothing summarised away — this drawer is the file…")),
+    t.dep&&t.dep.length?h("h4",{},"Blockers · answers inline"):null,
+    ...(t.dep||[]).map(d=>{ const b=m.tickets.find(x=>x.n===d);
+      return h("div",{class:"D-blocker"},
+        h("div",{class:"q"},"#"+String(d).padStart(2,"0")+" "+(b?b.t:"?")+(b&&b.st==="resolved"?"  ✓":"  ○ open")),
+        h("div",{class:"a"},b&&b.st==="resolved"?"One-line gist of its Answer, zoomable to the full text.":"Not yet resolved — this is why the ticket is blocked.")); }),
+    h("h4",{},"Sessions on this ticket"),
+    sess.length? h("ul",{},...sess.map(s=>h("li",{},`${s.live?"● live":"✓ ended"} · ${s.role} · ${s.when}`)))
+               : h("p",{},"none yet"));
+}
+function buildMapDoc(m, spaceId, {onClose,wrapClass}={}){
+  return h("div",{class:wrapClass||"D-drawer"},
+    onClose?h("button",{class:"btn close",onclick:onClose},"✕ esc"):null,
+    h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
+      h("span",{class:"chip"},m.kind+" map"), h("span",{style:"color:var(--dim);font-size:11px"},spaceId)),
+    h("h2",{},m.slug),
+    h("h4",{},"Destination"),
+    h("p",{},m.slug==="harness-design"
+      ?"A design spec for wayfinder-harness: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. Done when every decision the spec needs is settled."
+      :"…the map's Destination, verbatim from map.md…"),
+    h("h4",{},"Notes"),
+    h("p",{},"…the map's Notes: reference material, standing preferences, skills to consult…"),
+    h("h4",{},"Decisions so far"),
+    h("ul",{},
+      h("li",{},"#01 — the adapter contract: spawn/observe/stop, finished derived from the ticket"),
+      h("li",{},"#02 — every session is an interactive TUI in a PTY; surface, never act on a heuristic"),
+      h("li",{},"#03 — map kind is declared, never inferred (ADR 0007)")),
+    h("h4",{},"Fog"),
+    h("ul",{},
+      h("li",{},"A durable audit trail — clears with #06"),
+      h("li",{},"Concurrent-session resource limits"),
+      h("li",{},"First-run onboarding — clears with #11")));
+}
+
 /* ================= variant A : Orbit ================= */
 function variantA(root){
   const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
@@ -652,22 +796,6 @@ function variantD(root){
 
   /* ---- map column: starmap + HUD + action station + panels ---- */
   let mapApi=null, panel=null, drawer=null, actionsOpen=false;
-  function counts(list){
-    const c={resolved:0,frontier:0,claimed:0,blocked:0,proposed:0};
-    list.forEach(t=>c[t.st]++);
-    return `${c.resolved} resolved · ${c.frontier} frontier · ${c.blocked} blocked`
-      +(c.claimed?` · ${c.claimed} claimed`:"")+(c.proposed?` · ${c.proposed} proposed`:"");
-  }
-  function actionsFor(m){
-    const dependents=n=>m.tickets.filter(x=>x.dep&&x.dep.includes(n)).length;
-    const reviews=m.tickets.filter(t=>t.st==="proposed")
-      .map(t=>({kind:"review",t,label:"Review proposed work",sub:"agent-review passed · diff + proposed answer waiting"}));
-    const spawns=m.tickets.filter(t=>t.st==="frontier")
-      .sort((a,b)=>dependents(b.n)-dependents(a.n)||a.n-b.n)
-      .map(t=>({kind:"spawn",t,label:(t.type==="prototype"?"Spawn prototype":t.type==="task"?"Spawn implement":"Spawn grill")+" session",
-                sub:dependents(t.n)?`unblocks ${dependents(t.n)} ticket${dependents(t.n)>1?"s":""}`:"unblocks nothing yet"}));
-    return [...reviews,...spawns];
-  }
   function renderMapcol(){
     mapcol.replaceChildren(); panel=null; drawer=null;
     const m=state.map;
@@ -681,7 +809,7 @@ function variantD(root){
     mapcol.append(h("div",{class:"D-hud"},
       h("div",{}, h("span",{class:"title",onclick:()=>openMapDrawer(m)},m.slug),
         h("span",{style:"color:var(--dim)"}," — "+m.kind+" map")),
-      h("div",{},counts(m.tickets))));
+      h("div",{},mapCounts(m.tickets))));
     const acts=actionsFor(m);
     const btn=h("div",{class:"D-actbtn",onclick:()=>{ actionsOpen=!actionsOpen; renderActions(); }},
       "Next up", acts.length?h("span",{class:"badge"},String(acts.length)):null);
@@ -708,56 +836,12 @@ function variantD(root){
   function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
   function openTicketDrawer(t){
     closeDrawer();
-    const m=state.map;
-    const sess=(SPACE_SESSIONS[state.space]||[]).filter(s=>s.ticket===t.n);
-    drawer=h("div",{class:"D-drawer"},
-      h("button",{class:"btn close",onclick:closeDrawer},"✕ esc"),
-      h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
-        h("span",{class:"chip "+(t.st==="proposed"?"claimed":t.st)},t.st), h("span",{class:"chip"},t.type),
-        h("span",{style:"color:var(--dim);font-size:11px"},"#"+String(t.n).padStart(2,"0"))),
-      h("h2",{},t.t),
-      h("div",{class:"acts"},
-        t.st==="frontier"?h("button",{class:"btn primary",onclick:()=>{ closeDrawer(); spawn(t); }},"Spawn session"):null,
-        t.st==="proposed"?h("button",{class:"btn primary"},"Open review"):null,
-        t.st==="claimed"?h("button",{class:"btn primary"},"Open running session"):null),
-      h("h4",{},"Question"),
-      h("p",{}, BODIES[t.n] || "…the ticket's full question renders here, markdown and all — every heading of the file, not an excerpt…"),
-      h("h4",{},"Done-when"),
-      h("ul",{}, h("li",{},"…the ticket's Done-when bullets, verbatim from the file…"),
-                 h("li",{},"…nothing summarised away — this drawer is the file…")),
-      t.dep&&t.dep.length?h("h4",{},"Blockers · answers inline"):null,
-      ...(t.dep||[]).map(d=>{ const b=m.tickets.find(x=>x.n===d);
-        return h("div",{class:"D-blocker"},
-          h("div",{class:"q"},"#"+String(d).padStart(2,"0")+" "+(b?b.t:"?")+(b&&b.st==="resolved"?"  ✓":"  ○ open")),
-          h("div",{class:"a"},b&&b.st==="resolved"?"One-line gist of its Answer, zoomable to the full text.":"Not yet resolved — this is why the ticket is blocked.")); }),
-      h("h4",{},"Sessions on this ticket"),
-      sess.length? h("ul",{},...sess.map(s=>h("li",{},`${s.live?"● live":"✓ ended"} · ${s.role} · ${s.when}`)))
-                 : h("p",{},"none yet"));
+    drawer=buildTicketDoc(t,state.map,state.space,{onSpawn:tt=>{ closeDrawer(); spawn(tt); },onClose:closeDrawer});
     mapcol.append(drawer);
   }
   function openMapDrawer(m){
     closeDrawer();
-    drawer=h("div",{class:"D-drawer"},
-      h("button",{class:"btn close",onclick:closeDrawer},"✕ esc"),
-      h("div",{class:"meta",style:"display:flex;gap:6px;align-items:center"},
-        h("span",{class:"chip"},m.kind+" map"), h("span",{style:"color:var(--dim);font-size:11px"},state.space)),
-      h("h2",{},m.slug),
-      h("h4",{},"Destination"),
-      h("p",{},m.slug==="harness-design"
-        ?"A design spec for wayfinder-harness: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. Done when every decision the spec needs is settled."
-        :"…the map's Destination, verbatim from map.md…"),
-      h("h4",{},"Notes"),
-      h("p",{},"…the map's Notes: reference material, standing preferences, skills to consult…"),
-      h("h4",{},"Decisions so far"),
-      h("ul",{},
-        h("li",{},"#01 — the adapter contract: spawn/observe/stop, finished derived from the ticket"),
-        h("li",{},"#02 — every session is an interactive TUI in a PTY; surface, never act on a heuristic"),
-        h("li",{},"#03 — map kind is declared, never inferred (ADR 0007)")),
-      h("h4",{},"Fog"),
-      h("ul",{},
-        h("li",{},"A durable audit trail — clears with #06"),
-        h("li",{},"Concurrent-session resource limits"),
-        h("li",{},"First-run onboarding — clears with #11")));
+    drawer=buildMapDoc(m,state.space,{onClose:closeDrawer});
     mapcol.append(drawer);
   }
 
@@ -804,14 +888,311 @@ variantD.info=`
 <p><b>Action station:</b> the "Next up" button wears a numbered badge and toggles a drawer over the map — reviews waiting first, then spawnable frontier tickets ranked by what they unblock. Hovering an action highlights its star.</p>
 <p><b>Reading drawer:</b> the compact ticket pane expands ("Read full ticket") into a full-height drawer over the map — whole file, Done-when, blockers with answers inline, session history. Clicking the map's title opens map.md in the same drawer. Esc closes.</p>`;
 
+/* ================= variant E : Helm (D, columns swapped, collapsible map) ================= */
+function variantE(root){
+  let state={ space:"wayfinder-harness", map:MAPS["wayfinder-harness"][0],
+              expanded:{"wayfinder-harness":true}, layout:"split", actionsOpen:false };
+  const grid=h("div",{class:"E-grid"});
+  const side=h("div",{class:"D-side E-side"});
+  const termcol=h("div",{class:"E-term"});
+  const mapwrap=h("div",{class:"E-map"});
+  grid.append(side,termcol,mapwrap); root.append(grid);
+  let addSession=null, drawer=null, panel=null, mapApi=null;
+
+  function setLayout(l){ state.layout=l;
+    termcol.classList.toggle("hidden",l==="map");
+    mapwrap.classList.toggle("closed",l==="term");
+    mapwrap.classList.toggle("full",l==="map");
+    renderThead();
+  }
+  function renderSide(){
+    side.replaceChildren();
+    for(const sp of SPACES){
+      const open=!!state.expanded[sp.id];
+      side.append(h("div",{class:"D-sp",onclick:()=>{ state.expanded[sp.id]=!open; renderSide(); }},
+        h("span",{class:"chev"},open?"▼":"▶"),
+        h("span",{class:"dot "+sp.attn}),
+        h("span",{class:"n"},sp.id),
+        sp.attn==="wants-you"?h("span",{class:"note"},"⚑ review"):null));
+      if(open){
+        const maps=MAPS[sp.id]||[];
+        if(!maps.length) side.append(h("div",{class:"D-nomap"},"no maps — chart one"));
+        for(const m of maps){
+          side.append(h("div",{class:"D-map"+(state.map===m?" selected":""),
+              onclick:()=>{ state.space=sp.id; state.map=m;
+                if(state.layout==="term") setLayout("split");   // picking a map reveals the map
+                renderAll(); }},
+            h("span",{},m.slug), h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
+        }
+      }
+    }
+  }
+  /* persistent chrome: tabs + Next-up badge + map toggle live on the terminal header */
+  let thead=null;
+  function renderThead(){
+    if(!thead) return;
+    const acts=state.map?actionsFor(state.map):[];
+    const right=$(".E-ctrl",thead); right.replaceChildren(
+      h("button",{class:"F-badgebtn",onclick:()=>{ state.actionsOpen=!state.actionsOpen; renderActions(); }},
+        "Next up", acts.length?h("span",{class:"badge",style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(acts.length)):null),
+      h("button",{class:"btn",onclick:()=>setLayout(state.layout==="split"?"term":"split")},
+        state.layout==="term"?"🗺 Show map":"🗺 Hide map"),
+      state.layout!=="map"?h("button",{class:"btn",title:"map fullscreen",onclick:()=>setLayout("map")},"⛶"):null);
+  }
+  function renderActions(){
+    const old=$(".E-actions",grid); old && old.remove();
+    if(!state.actionsOpen||!state.map) return;
+    const acts=actionsFor(state.map);
+    const box=h("div",{class:"E-actions"},h("h5",{style:"font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);padding:5px 8px 6px"},"what you can do on "+state.map.slug));
+    for(const a of acts){
+      box.append(h("div",{class:"D-act "+a.kind,
+          onmouseenter:()=>mapApi&&mapApi.select(a.t.n), onmouseleave:()=>mapApi&&mapApi.select(null),
+          onclick:()=>{ state.actionsOpen=false; renderActions();
+            if(a.kind==="spawn"){ addSession&&addSession(a.t); }
+            else { if(state.layout==="term") setLayout("split"); openTicketDrawer(a.t); } }},
+        h("span",{class:"chip "+(a.kind==="review"?"claimed":"frontier"),style:"flex:none"},"#"+String(a.t.n).padStart(2,"0")),
+        h("span",{class:"what"}, a.label, h("span",{class:"sub"},a.t.t+" — "+a.sub)),
+        h("span",{class:"go"}, a.kind==="review"?"⚑ open":"▸ start")));
+    }
+    if(!acts.length) box.append(h("div",{class:"D-act"},h("span",{class:"sub"},"nothing actionable")));
+    termcol.append(box);
+  }
+  function renderTermcol(){
+    termcol.replaceChildren();
+    const sess=[...(SPACE_SESSIONS[state.space]||[])];
+    const tabs=h("div",{class:"B-tabs"});
+    thead=h("div",{class:"E-thead"},tabs,h("div",{class:"E-ctrl",style:"display:flex;gap:7px;align-items:center"}));
+    const body=h("div",{style:"flex:1;display:flex;flex-direction:column;min-height:0"});
+    const statusEl=h("div",{class:"B-status"});
+    termcol.append(thead,body,statusEl);
+    function render(activeId){
+      tabs.replaceChildren(...sess.map(s=>h("div",{class:"B-tab"+(s.id===activeId?" active":""),onclick:()=>render(s.id)},
+        h("span",{class:"dot "+(s.live?"working":s.state==="wants-you"?"wants-you":"idle")}),
+        sessLabel(s), h("span",{style:"font-size:10px;color:var(--dim)"},s.when))));
+      body.replaceChildren();
+      if(!sess.length) body.append(h("div",{class:"D-empty"},"no sessions in this space — spawn one from the map or Next up"));
+      else { const termEl=h("div",{class:"term",style:"flex:1"}); body.append(termEl); makeTerm(termEl); }
+      const live=sess.find(s=>s.live);
+      statusEl.replaceChildren(
+        h("span",{},"state ",h("b",{},live?"working":"idle")),
+        h("span",{},"space ",h("b",{},state.space)),
+        h("span",{style:"margin-left:auto"},live?"61.9k tokens · ~$1.84":"—"));
+    }
+    render(sess.length?sess[0].id:null);
+    addSession=t=>{
+      if(state.layout==="map") setLayout("split");
+      const ns={id:"e"+Date.now(),ticket:t.n,role:t.type==="prototype"?"prototype":t.type==="task"?"implement":"grill",
+                state:"working",when:"now",live:true};
+      sess.forEach(x=>x.live=false); sess.unshift(ns); render(ns.id);
+    };
+    renderThead();
+  }
+  function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
+  function openTicketDrawer(t){ closeDrawer();
+    drawer=buildTicketDoc(t,state.map,state.space,{onSpawn:tt=>{ closeDrawer(); addSession&&addSession(tt); },onClose:closeDrawer});
+    mapwrap.append(drawer); }
+  function renderMap(){
+    mapwrap.replaceChildren(); drawer=null; panel=null;
+    const m=state.map;
+    if(!m){ mapwrap.append(h("div",{class:"D-empty"},"no map")); return; }
+    const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+    mapwrap.append(canvas);
+    mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.62, onSelect(t){
+      panel && panel.remove(); panel=null;
+      if(t){ panel=h("div",{class:"D-panel"}, ticketPane(t,{onSpawn:tt=>addSession&&addSession(tt),onExpand:openTicketDrawer})); mapwrap.append(panel); }
+    }});
+    mapwrap.append(h("div",{class:"D-hud"},
+      h("div",{}, h("span",{class:"title",onclick:()=>{ closeDrawer(); drawer=buildMapDoc(m,state.space,{onClose:closeDrawer}); mapwrap.append(drawer); }},m.slug),
+        h("span",{style:"color:var(--dim)"}," — "+m.kind+" map")),
+      h("div",{},mapCounts(m.tickets))),
+      h("button",{class:"btn",style:"position:absolute;top:10px;right:46px;z-index:6",
+        onclick:()=>setLayout(state.layout==="map"?"split":"term")}, state.layout==="map"?"◧ Split":"⟩⟩"));
+  }
+  function renderAll(){ renderSide(); renderTermcol(); renderMap(); renderActions(); setLayout(state.layout); }
+  renderAll();
+  listen(window,"keydown",e=>{ if(e.key==="Escape"){ if(drawer) closeDrawer(); else if(state.layout!=="split") setLayout("split"); } });
+}
+variantE.info=`
+<h4>E — Helm: D with the columns swapped</h4>
+<p><b>Sidebar | terminal | map</b>, and the map is a collapsible right-edge panel. Three layouts, Esc returns to split: <b>split</b> (default), <b>terminal</b> (map hidden, terminal full width), <b>map</b> (⛶ — terminal hidden, the map breathes like variant A).</p>
+<p><b>The call to action never hides:</b> the "Next up" badge and the map toggle live on the terminal header — persistent chrome. Hiding the map costs ambience, never awareness.</p>
+<p><b>Auto-reveal:</b> picking a map in the sidebar, or opening a review/ticket from the action station, brings the map panel back if it was hidden. Hidden is a mode you chose, not the resting state.</p>
+<p><b>Everything else is D:</b> space-scoped session tabs, reading drawer over the map panel, map.md from the map title.</p>`;
+
+/* ================= variant F : Fleet (all spaces at once) ================= */
+function variantF(root){
+  let actionsOpen=false;
+  const cellState={};  // per space: {mode:'term'|'map', mapIdx:0, max:false}
+  SPACES.forEach(sp=>cellState[sp.id]={mode:"term",mapIdx:0,max:false});
+  const allActs=()=>SPACES.flatMap(sp=>(MAPS[sp.id]||[]).flatMap(m=>actionsFor(m).map(a=>({...a,sp:sp.id,m}))));
+  const top=h("div",{class:"F-top"},
+    h("b",{},"fleet — all spaces"),
+    h("span",{style:"color:var(--dim);font-size:11px"},"one live session per space (ADR 0003) — so the whole fleet fits on one screen"),
+    h("div",{style:"margin-left:auto"}),
+    h("button",{class:"F-badgebtn",onclick:()=>{ actionsOpen=!actionsOpen; renderActions(); }},
+      "Next up — everywhere",
+      h("span",{style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(allActs().length))));
+  const grid=h("div",{class:"F-grid"});
+  root.append(top,grid);
+  function renderCell(sp){
+    const st=cellState[sp.id];
+    const maps=MAPS[sp.id]||[];
+    const sess=SPACE_SESSIONS[sp.id]||[];
+    const live=sess.find(s=>s.live);
+    const cell=h("div",{class:"F-cell"+(st.max?" max":"")});
+    cell.append(h("div",{class:"F-chead"},
+      h("span",{class:"dot "+sp.attn}),
+      h("span",{class:"n"},sp.id),
+      h("span",{class:"note"}, live?("● "+sessLabel(live)+" · "+live.when):sp.attn==="wants-you"?"⚑ review waiting":"idle"),
+      maps.length?h("button",{class:"btn",onclick:()=>{ st.mode=st.mode==="term"?"map":"term"; renderGrid(); }},
+        st.mode==="term"?"🗺 map":"▮ term"):null,
+      h("button",{class:"btn",onclick:()=>{ st.max=!st.max; renderGrid(); }}, st.max?"⇲":"⛶")));
+    if(st.mode==="map"&&maps.length){
+      const m=maps[st.mapIdx];
+      const wrap=h("div",{style:"flex:1;position:relative;min-height:0"});
+      const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+      wrap.append(canvas);
+      makeStarmap(canvas,{tickets:m.tickets,scale:st.max?.7:.42,onSelect(t){
+        const old=$(".D-panel",wrap); old&&old.remove();
+        if(t) wrap.append(h("div",{class:"D-panel"},ticketPane(t,{})));
+      }});
+      wrap.append(h("div",{class:"D-hud"},
+        h("div",{},...maps.map((mm,i)=>h("span",{class:"title",style:"margin-right:10px"+(i===st.mapIdx?"":";color:var(--dim);text-decoration:none"),
+          onclick:()=>{ st.mapIdx=i; renderGrid(); }},mm.slug)),
+          h("span",{style:"color:var(--dim)"}," — "+m.kind)),
+        h("div",{},mapCounts(m.tickets))));
+      cell.append(wrap);
+    } else if(live){
+      const termEl=h("div",{class:"term",style:"flex:1"}); cell.append(termEl); makeTerm(termEl);
+    } else {
+      const n=maps.reduce((k,m)=>k+actionsFor(m).length,0);
+      cell.append(h("div",{class:"F-idle"},
+        h("span",{},maps.length?"idle":"no maps — chart one"),
+        maps.length?h("span",{},n+" action"+(n===1?"":"s")+" waiting"):null,
+        sp.attn==="wants-you"?h("span",{style:"color:var(--amber)"},"⚑ a review wants you"):null));
+    }
+    return cell;
+  }
+  function renderGrid(){ grid.replaceChildren(...SPACES.map(renderCell)); }
+  function renderActions(){
+    const old=$(".F-actions",root); old&&old.remove();
+    if(!actionsOpen) return;
+    const box=h("div",{class:"F-actions"});
+    let lastKey="";
+    for(const a of allActs()){
+      const key=a.sp+" / "+a.m.slug;
+      if(key!==lastKey){ box.append(h("div",{class:"grp"},key)); lastKey=key; }
+      box.append(h("div",{class:"D-act "+a.kind,onclick:()=>{ actionsOpen=false; renderActions();
+          const st=cellState[a.sp]; st.mode="map"; st.mapIdx=(MAPS[a.sp]||[]).indexOf(a.m); st.max=true; renderGrid(); }},
+        h("span",{class:"chip "+(a.kind==="review"?"claimed":"frontier"),style:"flex:none"},"#"+String(a.t.n).padStart(2,"0")),
+        h("span",{class:"what"},a.label,h("span",{class:"sub"},a.t.t+" — "+a.sub)),
+        h("span",{class:"go"},a.kind==="review"?"⚑ open":"▸ start")));
+    }
+    root.append(box);
+  }
+  renderGrid();
+  listen(window,"keydown",e=>{ if(e.key==="Escape"){ SPACES.forEach(sp=>cellState[sp.id].max=false); renderGrid(); } });
+}
+variantF.info=`
+<h4>F — Fleet: every space at once</h4>
+<p><b>No sidebar, no switching — the whole fleet on one screen.</b> ADR 0003's one-session-per-space cap means four spaces is four terminals, and that fits. Each cell is a space: its live terminal, or its idle state with pending-action count.</p>
+<p><b>Cells flip</b> between terminal and star-map (🗺), maximise with ⛶ (Esc restores). A cell in map mode shows its space's maps as switchable titles.</p>
+<p><b>One global action station:</b> "Next up — everywhere" aggregates every map's reviews and spawnable tickets, grouped by space/map. Clicking an action flies you to that space's map, maximised.</p>
+<p><b>The trade:</b> unbeatable cross-space awareness, but no single surface is ever large by default — this is a monitoring posture, not a working posture. Arguably the view you want on a second monitor.</p>`;
+
+/* ================= variant G : Inbox (action-first) ================= */
+function variantG(root){
+  const grid=h("div",{class:"G-grid"});
+  const queue=h("div",{class:"G-queue"});
+  const main=h("div",{class:"G-main"});
+  grid.append(queue,main); root.append(grid);
+  let ws=null, activeItem=null;
+
+  function items(){
+    const out={wants:[],running:[],next:[]};
+    for(const sp of SPACES){
+      for(const s of (SPACE_SESSIONS[sp.id]||[])) if(s.live)
+        out.running.push({id:"run-"+sp.id+s.id,kind:"running",sp:sp.id,s,
+          t:`#${String(s.ticket).padStart(2,"0")} · ${s.role} · ${s.when}`,w:sp.id});
+      for(const m of (MAPS[sp.id]||[])) for(const a of actionsFor(m)){
+        const row={id:a.kind+"-"+sp.id+m.slug+a.t.n,kind:a.kind,sp:sp.id,m,a,
+          t:`#${String(a.t.n).padStart(2,"0")} ${a.t.t}`,w:`${sp.id} / ${m.slug} — ${a.sub}`};
+        (a.kind==="review"?out.wants:out.next).push(row);
+      }
+    }
+    return out;
+  }
+  function renderQueue(){
+    queue.replaceChildren();
+    const q=items();
+    const sec=(title,rows)=>{ if(!rows.length) return;
+      queue.append(h("h5",{},title));
+      for(const r of rows) queue.append(h("div",{class:"G-item "+r.kind+(activeItem===r.id?" active":""),onclick:()=>open(r)},
+        h("span",{class:"what"},h("span",{class:"t"},(r.kind==="review"?"⚑ ":r.kind==="running"?"● ":"▸ ")+r.t),h("span",{class:"w"},r.w))));
+    };
+    sec("wants you",q.wants); sec("running",q.running); sec("up next",q.next);
+    queue.append(h("h5",{},"everything else"),
+      h("div",{class:"G-item",onclick:()=>openMap(SPACES[0].id,MAPS["wayfinder-harness"][0])},
+        h("span",{class:"what"},h("span",{class:"t"},"🗺 browse the maps"),h("span",{class:"w"},"the star-maps, when you want them"))));
+  }
+  function crumb(...parts){
+    return h("div",{class:"G-crumb"},...parts.flatMap((p,i)=>i?[h("span",{class:"dim"},"/"),p]:[p]));
+  }
+  function open(r){
+    activeItem=r.id; renderQueue(); main.replaceChildren();
+    if(r.kind==="running"){
+      const c=crumb(h("b",{},r.sp),h("span",{},sessLabel(r.s)),h("span",{class:"chip claimed"},"working"));
+      c.append(h("button",{class:"btn",style:"margin-left:auto",onclick:()=>openMap(r.sp,(MAPS[r.sp]||[])[0])},"view on map"));
+      main.append(c);
+      const termEl=h("div",{class:"term",style:"flex:1"}); main.append(termEl); makeTerm(termEl);
+    } else {
+      const c=crumb(h("b",{},r.sp),h("span",{},r.m.slug),h("span",{},"#"+String(r.a.t.n).padStart(2,"0")));
+      c.append(h("button",{class:"btn",style:"margin-left:auto",onclick:()=>openMap(r.sp,r.m,r.a.t.n)},"view on map"));
+      main.append(c);
+      main.append(h("div",{class:"G-doc"},
+        buildTicketDoc(r.a.t,r.m,r.sp,{wrapClass:"",onSpawn(t){
+          SPACE_SESSIONS[r.sp].forEach(x=>x.live=false);
+          SPACE_SESSIONS[r.sp].unshift({id:"g"+Date.now(),ticket:t.n,role:t.type==="prototype"?"prototype":t.type==="task"?"implement":"grill",state:"working",when:"now",live:true});
+          const q=items(); const row=q.running.find(x=>x.sp===r.sp); row&&open(row);
+        }})));
+    }
+  }
+  function openMap(spId,m,selectN){
+    activeItem=null; renderQueue(); main.replaceChildren();
+    if(!m){ main.append(crumb(h("b",{},spId)),h("div",{class:"D-empty"},"no maps — chart one")); return; }
+    main.append(crumb(h("b",{},spId),
+      h("span",{},...(MAPS[spId]||[]).map((mm,i)=>h("span",{class:"title",style:"margin-right:10px;cursor:pointer"+(mm===m?";color:var(--txt);font-weight:600":";color:var(--dim)"),onclick:()=>openMap(spId,mm)},mm.slug))),
+      h("span",{class:"dim"},m.kind+" · "+mapCounts(m.tickets))));
+    const wrap=h("div",{style:"flex:1;position:relative;min-height:0"});
+    main.append(wrap);
+    const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+    wrap.append(canvas);
+    const api=makeStarmap(canvas,{tickets:m.tickets,scale:.8,onSelect(t){
+      const old=$(".D-panel",wrap); old&&old.remove();
+      if(t) wrap.append(h("div",{class:"D-panel"},ticketPane(t,{})));
+    }});
+    if(selectN) api.select(selectN);
+  }
+  renderQueue();
+  const q=items(); open(q.running[0]||q.wants[0]||q.next[0]);
+}
+variantG.info=`
+<h4>G — Inbox: the action station IS the cockpit</h4>
+<p><b>The queue is the primary rail</b>, unified across every space and map: <b>wants you</b> (reviews) first, then <b>running</b> (live sessions), then <b>up next</b> (spawnable frontier, ranked). No space tree, no map selector — navigation is "what deserves attention".</p>
+<p><b>Everything opens as a document</b> in the one workspace: a review or ticket opens as the full ticket file (the reading drawer promoted to a page), a running session opens as its terminal, and the star-map is just another thing the queue can open ("view on map", or browse).</p>
+<p><b>The trade:</b> strongest "what do I do next" of any variant — the gate can never be missed because it is literally the top of the screen. But the map is fully demoted: spatial memory, the frontier igniting, the calm — all behind a click. This is the anti-A.</p>`;
+
 /* ============ switcher (not part of the design) ============ */
 const VARIANTS={A:{name:"Orbit — map as home",fn:variantA},
                 B:{name:"Cockpit — persistent split",fn:variantB},
                 C:{name:"Tower — terminal-first",fn:variantC},
-                D:{name:"Bridge — the hybrid",fn:variantD}};
+                D:{name:"Bridge — the hybrid",fn:variantD},
+                E:{name:"Helm — collapsible map",fn:variantE},
+                F:{name:"Fleet — all spaces at once",fn:variantF},
+                G:{name:"Inbox — action-first",fn:variantG}};
 const KEYS=Object.keys(VARIANTS);
 let current=new URLSearchParams(location.search).get("variant");
-if(!KEYS.includes(current)) current="D";
+if(!KEYS.includes(current)) current="E";
 function mount(k){
   timers.forEach(clearInterval); timers=[];
   rafs.forEach(cancelAnimationFrame); rafs=[];
