@@ -3,6 +3,7 @@ type: prototype
 blocked_by: []
 claimed_by: claude-fable-5
 claimed_at: 2026-07-18T15:01:27Z
+assets: [.plan/harness-design/assets/08-cockpit-layout.html]
 ---
 
 # The cockpit layout
@@ -21,3 +22,5 @@ Make something cheap and concrete to react to, and settle:
 - How **other spaces cooking in the background** are present without stealing focus.
 
 The prototype is the deliverable — link it as an asset. Do not build the real frontend.
+
+Prototype: [08-cockpit-layout.html](../assets/08-cockpit-layout.html) — open in a browser; three variants (A Orbit — map as home, B Cockpit — persistent split, C Tower — terminal-first), cycled with ←/→ or `?variant=`; `?` explains how each variant answers the ticket.

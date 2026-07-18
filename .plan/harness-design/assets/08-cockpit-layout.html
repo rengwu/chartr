@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — cockpit layout (ticket 08)</title>
+<!--
+  PROTOTYPE — throwaway. Answers ticket 08: "what does the cockpit look like,
+  and how does it feel to drive?"
+
+  Three radically different layouts behind one file, switchable via the pill at
+  the bottom, the ← → arrow keys, or ?variant=A|B|C:
+
+    A  Orbit   — the star-map is the home screen; sessions are fullscreen dives.
+    B  Cockpit — persistent split: map left, terminal stack right.
+    C  Tower   — terminal-first multiplexer (herdr-style); map is an overlay.
+
+  Fixture: this repo's own harness-design map (real topology, fake terminals).
+  All three variants share one reading of the nesting tension: ADR 0003 stands —
+  the multiplexer's job is ATTENTION and HISTORY, not concurrency. Nested under
+  a space: its one live session plus its past sessions; other spaces' live
+  sessions surface as attention cues, never as terminals of the current space.
+
+  Press ? in any variant for how that variant answers the ticket's questions.
+  Do not ship any of this.
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#05070d; --bg2:#0a0e18; --panel:#0d1220; --line:#1c2438;
+    --txt:#c7d2e8; --dim:#5c6a85; --gold:#ffd24a; --amber:#ffab40;
+    --ember:#9db4d0; --red:#b0524d; --green:#4ade80; --accent:#7aa2ff;
+    --mono:"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--txt); font-family:var(--sans); overflow:hidden; }
+  #root { position:fixed; inset:0; }
+  canvas.starmap { display:block; cursor:grab; }
+  canvas.starmap:active { cursor:grabbing; }
+
+  /* ---------- shared bits ---------- */
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
+  .dot.working { background:var(--green); box-shadow:0 0 6px var(--green); animation:pulse 1.6s infinite; }
+  .dot.wants-you { background:var(--amber); box-shadow:0 0 8px var(--amber); animation:pulse 1s infinite; }
+  .dot.idle { background:#3a4560; }
+  @keyframes pulse { 50% { opacity:.35; } }
+
+  .term { background:#04060b; font-family:var(--mono); font-size:12px; line-height:1.55;
+          padding:12px 14px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; }
+  .term .p  { color:var(--accent); }
+  .term .ok { color:var(--green); }
+  .term .wr { color:var(--amber); }
+  .term .dm { color:var(--dim); }
+  .cursor { display:inline-block; width:7px; height:13px; background:var(--txt);
+            vertical-align:text-bottom; animation:blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+
+  .chip { font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:2px 7px;
+          border-radius:9px; border:1px solid var(--line); color:var(--dim); }
+  .chip.frontier { color:var(--gold); border-color:#4d3f14; }
+  .chip.claimed  { color:var(--amber); border-color:#4d3414; }
+  .chip.resolved { color:var(--ember); border-color:#26324d; }
+  .chip.blocked  { color:var(--red); border-color:#3d1f1d; }
+
+  .btn { font:600 12px var(--sans); padding:7px 14px; border-radius:7px; cursor:pointer;
+         border:1px solid var(--line); background:var(--panel); color:var(--txt); }
+  .btn.primary { background:#1a2c55; border-color:#2c4788; color:#dce7ff; }
+  .btn.primary:hover { background:#22386b; }
+  .btn:hover { background:#141b2e; }
+
+  /* ticket panel (shared look, positioned per variant) */
+  .ticket-pane { background:rgba(10,14,24,.92); border:1px solid var(--line); border-radius:10px;
+                 padding:16px 18px; backdrop-filter:blur(8px); }
+  .ticket-pane h3 { font-size:15px; margin:6px 0 10px; font-weight:600; }
+  .ticket-pane .meta { display:flex; gap:6px; align-items:center; }
+  .ticket-pane .body { font-size:12px; color:#8b98b3; line-height:1.55; margin:10px 0 14px; }
+  .ticket-pane .blockers { font-size:11px; color:var(--dim); margin-bottom:12px; }
+
+  /* info card (the ? overlay) */
+  #info-btn { position:fixed; top:12px; right:14px; z-index:900; width:26px; height:26px;
+              border-radius:50%; border:1px solid var(--line); background:var(--panel);
+              color:var(--dim); font:600 13px var(--sans); cursor:pointer; }
+  #info-card { position:fixed; top:46px; right:14px; z-index:900; width:380px; max-height:70vh;
+               overflow-y:auto; background:var(--panel); border:1px solid var(--line);
+               border-radius:10px; padding:16px 18px; font-size:12px; line-height:1.6;
+               color:#9aa7c2; display:none; }
+  #info-card b { color:var(--txt); }
+  #info-card h4 { font-size:12px; color:var(--gold); margin-bottom:8px; text-transform:uppercase; letter-spacing:.08em; }
+  #info-card p { margin-bottom:9px; }
+
+  /* switcher — NOT part of the design being evaluated */
+  #switcher { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:1000;
+              display:flex; align-items:center; gap:10px; background:#e8ecf5; color:#111827;
+              border-radius:999px; padding:6px 10px; font:600 12px var(--sans);
+              box-shadow:0 4px 24px rgba(0,0,0,.6); user-select:none; }
+  #switcher button { border:none; background:#c9d2e4; border-radius:50%; width:24px; height:24px;
+                     cursor:pointer; font-size:12px; color:#111827; }
+  #switcher button:hover { background:#aebad1; }
+  #switcher .lbl { min-width:210px; text-align:center; }
+
+  /* ---------- variant A : Orbit ---------- */
+  .A-topbar { position:fixed; top:0; left:0; right:0; height:44px; z-index:50; display:flex;
+              align-items:center; gap:8px; padding:0 16px;
+              background:linear-gradient(180deg, rgba(5,7,13,.9), rgba(5,7,13,0)); }
+  .A-space { display:flex; align-items:center; gap:7px; padding:5px 12px; border-radius:999px;
+             border:1px solid transparent; color:var(--dim); font-size:12px; cursor:pointer; }
+  .A-space.active { border-color:var(--line); background:rgba(13,18,32,.8); color:var(--txt); }
+  .A-space:hover { color:var(--txt); }
+  .A-hud { position:fixed; top:52px; left:16px; z-index:40; font-size:11px; color:var(--dim);
+           letter-spacing:.03em; line-height:1.7; }
+  .A-hud b { color:var(--txt); font-weight:600; }
+  .A-dock { position:fixed; bottom:0; left:0; right:0; z-index:50; display:flex; gap:10px;
+            padding:10px 16px 46px; align-items:flex-end;
+            background:linear-gradient(0deg, rgba(5,7,13,.92), rgba(5,7,13,0)); pointer-events:none; }
+  .A-card { pointer-events:auto; display:flex; align-items:center; gap:9px; padding:9px 13px;
+            background:var(--panel); border:1px solid var(--line); border-radius:9px;
+            font-size:12px; cursor:pointer; }
+  .A-card:hover { border-color:#2c4788; }
+  .A-card.live { border-color:#1f4d33; }
+  .A-card .sub { color:var(--dim); font-size:11px; }
+  .A-panel { position:fixed; top:56px; right:14px; bottom:70px; width:360px; z-index:60;
+             overflow-y:auto; }
+  .A-termwrap { position:fixed; inset:0; z-index:70; display:flex; flex-direction:column; background:#04060b; }
+  .A-termbar { height:40px; flex:none; display:flex; align-items:center; gap:12px; padding:0 14px;
+               background:var(--bg2); border-bottom:1px solid var(--line); font-size:12px; }
+  .A-termbar .back { color:var(--accent); cursor:pointer; font-weight:600; }
+  .A-minimap { position:fixed; right:14px; bottom:52px; width:190px; height:120px; z-index:80;
+               border:1px solid var(--line); border-radius:8px; overflow:hidden; cursor:pointer;
+               box-shadow:0 4px 20px rgba(0,0,0,.5); }
+  .A-minimap canvas { cursor:pointer; }
+
+  /* ---------- variant B : Cockpit ---------- */
+  .B-grid { position:fixed; inset:0; display:grid; grid-template-columns:52px 1fr 46%; }
+  .B-rail { background:var(--bg2); border-right:1px solid var(--line); display:flex;
+            flex-direction:column; align-items:center; padding-top:12px; gap:10px; }
+  .B-rail .sp { width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+                display:flex; align-items:center; justify-content:center; font:700 12px var(--sans);
+                color:var(--dim); cursor:pointer; position:relative; }
+  .B-rail .sp.active { border-color:#2c4788; color:var(--txt); background:#131b30; }
+  .B-rail .sp .dot { position:absolute; top:-3px; right:-3px; }
+  .B-mapcol { position:relative; border-right:1px solid var(--line); }
+  .B-mapcol .hud { position:absolute; top:10px; left:14px; z-index:5; font-size:11px; color:var(--dim); line-height:1.7; }
+  .B-mapcol .hud b { color:var(--txt); }
+  .B-panel { position:absolute; left:12px; right:12px; bottom:12px; z-index:6; max-height:46%; overflow-y:auto; }
+  .B-termcol { display:flex; flex-direction:column; background:#04060b; }
+  .B-tabs { flex:none; display:flex; gap:2px; background:var(--bg2); border-bottom:1px solid var(--line);
+            padding:6px 8px 0; overflow-x:auto; }
+  .B-tab { display:flex; align-items:center; gap:7px; padding:7px 12px; font-size:12px; color:var(--dim);
+           border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0; cursor:pointer;
+           white-space:nowrap; }
+  .B-tab.active { background:#04060b; border-color:var(--line); color:var(--txt); }
+  .B-status { flex:none; display:flex; gap:16px; padding:6px 14px; border-top:1px solid var(--line);
+              background:var(--bg2); font-size:11px; color:var(--dim); }
+  .B-status b { color:var(--txt); font-weight:600; }
+
+  /* ---------- variant C : Tower ---------- */
+  .C-grid { position:fixed; inset:0; display:grid; grid-template-columns:250px 1fr; }
+  .C-side { background:var(--bg2); border-right:1px solid var(--line); display:flex;
+            flex-direction:column; overflow-y:auto; padding:10px 0; }
+  .C-sp-head { display:flex; align-items:center; gap:8px; padding:8px 14px; font:600 12px var(--sans);
+               color:var(--txt); cursor:pointer; }
+  .C-sp-head .n { flex:1; }
+  .C-sess { display:flex; align-items:center; gap:8px; padding:6px 14px 6px 28px; font-size:12px;
+            color:var(--dim); cursor:pointer; border-left:2px solid transparent; }
+  .C-sess:hover { color:var(--txt); }
+  .C-sess.focused { color:var(--txt); background:#101728; border-left-color:var(--accent); }
+  .C-sess .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .C-sess .st { font-size:10px; }
+  .C-foot { margin-top:auto; padding:12px 14px; font-size:11px; color:var(--dim); border-top:1px solid var(--line); }
+  .C-foot kbd { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px;
+                font:600 10px var(--mono); color:var(--txt); }
+  .C-main { display:flex; flex-direction:column; background:#04060b; }
+  .C-head { flex:none; display:flex; align-items:center; gap:14px; height:40px; padding:0 56px 0 14px;
+            background:var(--bg2); border-bottom:1px solid var(--line); font-size:12px; }
+  .C-head .dim { color:var(--dim); }
+  .C-overlay { position:fixed; inset:0; z-index:200; background:rgba(3,5,10,.82);
+               backdrop-filter:blur(3px); display:flex; }
+  .C-overlay .hint { position:absolute; top:12px; left:50%; transform:translateX(-50%);
+                     font-size:11px; color:var(--dim); }
+  .C-overlay .panel { position:absolute; top:56px; right:16px; width:360px; max-height:70vh; overflow-y:auto; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<button id="info-btn" title="How this variant answers the ticket">?</button>
+<div id="info-card"></div>
+<div id="switcher">
+  <button id="sw-prev">◀</button>
+  <span class="lbl" id="sw-lbl"></span>
+  <button id="sw-next">▶</button>
+</div>
+
+<script>
+/* ============ fixture: this repo's own harness-design map ============ */
+const TICKETS = [
+  {n:1,  t:"The agent adapter contract",              type:"grilling",  st:"resolved"},
+  {n:2,  t:"Session finished, hung, or died",         type:"grilling",  st:"resolved"},
+  {n:3,  t:"Planning map vs implementation map",      type:"grilling",  st:"resolved"},
+  {n:4,  t:"The prompt library",                      type:"grilling",  st:"frontier", dep:[1]},
+  {n:5,  t:"Mapping roles to agents",                 type:"grilling",  st:"frontier", dep:[1]},
+  {n:6,  t:"Who commits; how work is abandoned",      type:"grilling",  st:"frontier", dep:[]},
+  {n:7,  t:"Charting a new map from a space",         type:"grilling",  st:"blocked",  dep:[3,4]},
+  {n:8,  t:"The cockpit layout",                      type:"prototype", st:"claimed",  dep:[]},
+  {n:9,  t:"Harness states on the star-map",          type:"prototype", st:"frontier", dep:[2]},
+  {n:10, t:"The human review hub",                    type:"prototype", st:"blocked",  dep:[6,8]},
+  {n:11, t:"The space registry and switching",        type:"prototype", st:"blocked",  dep:[8]},
+  {n:12, t:"Frontend framework and build",            type:"grilling",  st:"frontier", dep:[]},
+  {n:13, t:"Shipping cross-platform",                 type:"grilling",  st:"blocked",  dep:[12]},
+  {n:14, t:"Cost and token visibility",               type:"grilling",  st:"frontier", dep:[1]},
+];
+const BODIES = {
+  8:"What does the thing look like, and how does it feel to drive? The elements are known: a space switcher; sessions nested under a space, multiplexed; the star-map; and a ticket pane the human acts from…",
+  6:"History is linear and there are no branches (ADR 0003), so every commit lands in the space's one working tree. Decide precisely who writes which commit, and how work is undone…",
+  4:"The harness cannot lean on any one agent's skill mechanism (ADR 0002), so it ships its own prompts and injects them to wire a session to a role. What are they, and where do they live?…",
+};
+const SPACES = [
+  {id:"wayfinder-harness", initials:"WH", attn:"working",   note:"session on #08 · 12m"},
+  {id:"expensif",          initials:"EX", attn:"working",   note:"implementing #04 · 41m"},
+  {id:"wayfinder",         initials:"WF", attn:"wants-you", note:"#12 proposed — review waiting"},
+  {id:"skills",            initials:"SK", attn:"idle",      note:"idle"},
+];
+const SESSIONS = [
+  {id:"s3", ticket:8,  role:"prototype", state:"working",  when:"12m",  live:true},
+  {id:"s2", ticket:3,  role:"grill",     state:"resolved", when:"yesterday"},
+  {id:"s1", ticket:2,  role:"grill",     state:"resolved", when:"yesterday"},
+  {id:"s0", ticket:1,  role:"grill",     state:"resolved", when:"2d ago"},
+];
+const TERM_LINES = [
+  ["p","❯ claude — prototype session · ticket #08 · wayfinder-harness"],
+  ["dm","context bundle injected: map body · ticket 08 · glossary · 2 blocker answers"],
+  ["","● Reading docs/starmap-design.md…"],
+  ["","● The layout question splits three ways: map-as-home, split, terminal-first."],
+  ["ok","✓ Wrote assets/08-cockpit-layout.html (variant A: Orbit)"],
+  ["","● Wiring the space switcher into the top bar…"],
+  ["dm","  tokens: 48.2k in / 11.7k out"],
+  ["","● Variant B: persistent split. The map wants 60% of the width; the terminal disagrees."],
+  ["wr","▲ herdr nests panes under tabs under spaces — but ADR 0003 serialises per space."],
+  ["","● Resolving: nesting = attention + history, not concurrency."],
+  ["ok","✓ Wrote variant C: terminal-first, map as overlay"],
+  ["","● Checking arrow-key cycling doesn't collide with terminal focus…"],
+  ["dm","  tokens: 61.9k in / 18.3k out"],
+];
+
+const STATUS_COLOR = { resolved:"#9db4d0", frontier:"#ffd24a", claimed:"#ffab40", blocked:"#7a4a48" };
+const $ = (s,el=document)=>el.querySelector(s);
+function h(tag, attrs={}, ...kids){
+  const el=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k==="class") el.className=v;
+    else if(k.startsWith("on")) el.addEventListener(k.slice(2),v);
+    else el.setAttribute(k,v);
+  }
+  for(const k of kids.flat()){ if(k!=null) el.append(k.nodeType?k:document.createTextNode(k)); }
+  return el;
+}
+let timers=[]; function every(fn,ms){ timers.push(setInterval(fn,ms)); }
+let rafs=[];   function raf(fn){ const loop=t=>{ fn(t); rafs.push(requestAnimationFrame(loop)); }; rafs.push(requestAnimationFrame(loop)); }
+let listeners=[]; function listen(t,ev,fn,opts){ t.addEventListener(ev,fn,opts); listeners.push([t,ev,fn]); }
+
+/* ============ shared star-map (deterministic layout, pan/zoom) ============ */
+function rank(t){ if(!t.dep||!t.dep.length) return 0; return 1+Math.max(...t.dep.map(d=>rank(TICKETS.find(x=>x.n===d)))); }
+function layoutStars(){
+  return TICKETS.map(t=>{
+    const r = 110 + rank(t)*150 + (t.n*53%80);
+    const a = t.n*2.399 + 0.7;   // golden-angle spread, seeded by ticket number
+    return {t, x:Math.cos(a)*r*1.25, y:Math.sin(a)*r*0.72};
+  });
+}
+function makeStarmap(canvas, {interactive=true, onSelect=null, scale=1}={}){
+  const ctx=canvas.getContext("2d");
+  const stars=layoutStars();
+  let cam={x:0,y:0,z:scale}, sel=null, drag=null;
+  const bgStars=Array.from({length:130},(_,i)=>({x:(i*97%1000)-500,y:(i*61%700)-350,r:(i%3)*.5+.4,p:i%2?0.5:0.25}));
+  function resize(){ canvas.width=canvas.clientWidth*devicePixelRatio; canvas.height=canvas.clientHeight*devicePixelRatio; }
+  resize(); new ResizeObserver(resize).observe(canvas);
+  function toScreen(p){ const w=canvas.width, hgt=canvas.height;
+    return [w/2+(p.x-cam.x)*cam.z*devicePixelRatio, hgt/2+(p.y-cam.y)*cam.z*devicePixelRatio]; }
+  function draw(time){
+    const w=canvas.width, hgt=canvas.height; ctx.clearRect(0,0,w,hgt);
+    ctx.fillStyle="#05070d"; ctx.fillRect(0,0,w,hgt);
+    for(const b of bgStars){ // parallax field
+      const [x,y]=[w/2+(b.x-cam.x*b.p)*cam.z*devicePixelRatio, hgt/2+(b.y-cam.y*b.p)*cam.z*devicePixelRatio];
+      ctx.fillStyle="rgba(150,170,210,.35)"; ctx.beginPath(); ctx.arc(x,y,b.r*devicePixelRatio,0,7); ctx.fill();
+    }
+    ctx.lineWidth=1*devicePixelRatio;
+    for(const s of stars){ if(!s.t.dep) continue;
+      for(const d of s.t.dep){ const from=stars.find(x=>x.t.n===d); const sat=from.t.st==="resolved";
+        const [x1,y1]=toScreen(from),[x2,y2]=toScreen(s);
+        ctx.strokeStyle=sat?"rgba(122,162,255,.45)":"rgba(90,100,130,.18)";
+        ctx.setLineDash(sat?[]:[4,5]);
+        ctx.beginPath(); ctx.moveTo(x1,y1);
+        ctx.quadraticCurveTo((x1+x2)/2+(y1-y2)*.12,(y1+y2)/2+(x2-x1)*.12,x2,y2); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    for(const s of stars){
+      const [x,y]=toScreen(s); const c=STATUS_COLOR[s.t.st];
+      const pulse=s.t.st==="frontier" ? 1+0.18*Math.sin(time/420+s.t.n) : 1;
+      const base=(s.t.st==="resolved"?4.5:s.t.st==="blocked"?3.5:6)*pulse*cam.z*devicePixelRatio;
+      const g=ctx.createRadialGradient(x,y,0,x,y,base*3.4);
+      g.addColorStop(0,c); g.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,base*3.4,0,7); ctx.fill();
+      ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,base,0,7); ctx.fill();
+      if(sel===s.t.n){ ctx.strokeStyle="#fff"; ctx.lineWidth=1.2*devicePixelRatio;
+        ctx.beginPath(); ctx.arc(x,y,base+5*devicePixelRatio,0,7); ctx.stroke(); }
+      if(interactive && cam.z>0.6){
+        ctx.fillStyle=sel===s.t.n?"#e8eefc":"#66738f"; ctx.font=`${10*devicePixelRatio}px ${getComputedStyle(document.body).getPropertyValue("--sans")}`;
+        ctx.textAlign="center"; ctx.fillText(`${String(s.t.n).padStart(2,"0")} ${s.t.t}`, x, y+base+13*devicePixelRatio);
+      }
+    }
+  }
+  raf(draw);
+  if(interactive){
+    canvas.addEventListener("mousedown",e=>{ drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y,moved:false}; });
+    listen(window,"mousemove",e=>{ if(!drag) return;
+      const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+      if(Math.abs(dx)+Math.abs(dy)>3) drag.moved=true;
+      cam.x=drag.cx-dx/cam.z; cam.y=drag.cy-dy/cam.z; });
+    listen(window,"mouseup",e=>{
+      if(drag && !drag.moved){
+        const rect=canvas.getBoundingClientRect();
+        const mx=(e.clientX-rect.left)*devicePixelRatio, my=(e.clientY-rect.top)*devicePixelRatio;
+        let hit=null;
+        for(const s of stars){ const [x,y]=toScreen(s);
+          if((mx-x)**2+(my-y)**2 < (16*devicePixelRatio*cam.z)**2) hit=s.t; }
+        sel=hit?hit.n:null; onSelect && onSelect(hit);
+      }
+      drag=null; });
+    canvas.addEventListener("wheel",e=>{ e.preventDefault();
+      cam.z=Math.min(2.4,Math.max(.45,cam.z*(e.deltaY<0?1.1:0.9))); },{passive:false});
+  }
+  return { select(n){ sel=n; } };
+}
+
+/* ============ shared fake terminal ============ */
+function makeTerm(el){
+  let i=0;
+  const put=()=>{ const [cls,txt]=TERM_LINES[i%TERM_LINES.length]; i++;
+    const line=h("div",{}, cls?h("span",{class:cls},txt):txt);
+    el.append(line);
+    while(el.children.length>400) el.firstChild.remove();
+    el.scrollTop=el.scrollHeight; };
+  for(let k=0;k<9;k++) put();
+  el.append(h("div",{}, h("span",{class:"cursor"})));
+  every(()=>{ el.lastChild.remove(); put(); el.append(h("div",{}, h("span",{class:"cursor"}))); }, 1700);
+}
+
+/* ============ shared ticket pane ============ */
+function ticketPane(t, {onSpawn}={}){
+  const acts=[];
+  if(t.st==="frontier") acts.push(h("button",{class:"btn primary", onclick:()=>onSpawn&&onSpawn(t)},
+    t.type==="prototype"?"Spawn prototype session":"Spawn grill session"));
+  if(t.st==="claimed")  acts.push(h("button",{class:"btn primary", onclick:()=>onSpawn&&onSpawn(t)},"Open running session"));
+  if(t.st==="blocked")  acts.push(h("span",{class:"chip blocked"},"waiting on "+t.dep.map(d=>"#"+String(d).padStart(2,"0")).join(", ")));
+  if(t.st==="resolved") acts.push(h("button",{class:"btn"},"Read answer"));
+  return h("div",{class:"ticket-pane"},
+    h("div",{class:"meta"},
+      h("span",{class:"chip "+t.st}, t.st),
+      h("span",{class:"chip"}, t.type),
+      h("span",{style:"margin-left:auto;color:var(--dim);font-size:11px"},"#"+String(t.n).padStart(2,"0"))),
+    h("h3",{}, t.t),
+    t.dep&&t.dep.length ? h("div",{class:"blockers"},"blocked by "+t.dep.map(d=>"#"+String(d).padStart(2,"0")).join(" · ")) : null,
+    h("div",{class:"body"}, BODIES[t.n] || "…ticket body excerpt renders here (question, Done-when, notes)…"),
+    h("div",{style:"display:flex;gap:8px;align-items:center"}, acts));
+}
+const sessLabel=s=>`#${String(s.ticket).padStart(2,"0")} · ${s.role}`;
+
+/* ================= variant A : Orbit ================= */
+function variantA(root){
+  const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+  root.append(canvas);
+  let panel=null, termwrap=null;
+  const map=makeStarmap(canvas,{ onSelect(t){
+    panel && panel.remove(); panel=null;
+    if(t){ panel=h("div",{class:"A-panel"}, ticketPane(t,{onSpawn:dive})); root.append(panel); }
+  }});
+  root.append(h("div",{class:"A-topbar"},
+    SPACES.map(sp=>h("div",{class:"A-space"+(sp.id==="wayfinder-harness"?" active":"")},
+      h("span",{class:"dot "+sp.attn}), sp.id,
+      sp.attn!=="idle"&&sp.id!=="wayfinder-harness" ? h("span",{style:"color:var(--dim);font-size:11px"},"· "+sp.note):null))));
+  root.append(h("div",{class:"A-hud"},
+    h("div",{}, h("b",{},"harness-design"), " — planning map"),
+    h("div",{},"3 resolved · 7 frontier · 3 blocked · 1 claimed")));
+  root.append(h("div",{class:"A-dock"},
+    SESSIONS.map(s=>h("div",{class:"A-card"+(s.live?" live":""), onclick:()=>dive(TICKETS.find(t=>t.n===s.ticket))},
+      h("span",{class:"dot "+(s.live?"working":"idle")}),
+      h("div",{}, h("div",{},sessLabel(s)), h("div",{class:"sub"}, s.live?("live · "+s.when):("ended · "+s.when)))))));
+  function dive(t){
+    termwrap=h("div",{class:"A-termwrap"},
+      h("div",{class:"A-termbar"},
+        h("span",{class:"back",onclick:surface},"◀ Map"),
+        h("span",{class:"dm",style:"color:var(--dim)"},"esc"),
+        h("span",{},`wayfinder-harness / #${String(t.n).padStart(2,"0")} ${t.t}`),
+        h("span",{class:"chip claimed"},"working"),
+        h("span",{style:"margin-left:auto;color:var(--dim);font-size:11px"},"prototype · claude · 61.9k tokens")),
+      h("div",{class:"term",style:"flex:1"}));
+    root.append(termwrap); makeTerm($(".term",termwrap));
+    const mini=h("div",{class:"A-minimap",onclick:surface},
+      h("canvas",{style:"width:100%;height:100%"}));
+    termwrap.append(mini);
+    makeStarmap($("canvas",mini),{interactive:false,scale:.28});
+  }
+  function surface(){ termwrap && termwrap.remove(); termwrap=null; }
+  listen(window,"keydown",e=>{ if(e.key==="Escape") surface(); });
+}
+variantA.info=`
+<h4>A — Orbit: the map is home</h4>
+<p><b>Screen share:</b> neither splits nor tabs — the star-map IS the home screen, fullscreen, and a session is a fullscreen <b>dive</b>. You go down into a terminal and surface back to the map (Esc / ◀ Map). A corner minimap keeps orientation while diving. Both get to be "the main thing", just never at the same moment.</p>
+<p><b>Ticket pane:</b> a slide-in panel over the map (the wayfinder-maps pattern, kept). Star → panel → "Spawn session" → you're in the terminal. One gesture from looking to running.</p>
+<p><b>Nesting:</b> the bottom dock lists this space's sessions — the one live session plus history. Concurrency never appears inside a space; ADR 0003 stands. The multiplexer's job here is attention and history.</p>
+<p><b>Other spaces:</b> pills in the top bar with status dots and a one-line note ("review waiting"). Present, glanceable, never focus-stealing.</p>`;
+
+/* ================= variant B : Cockpit ================= */
+function variantB(root){
+  const grid=h("div",{class:"B-grid"});
+  const rail=h("div",{class:"B-rail"},
+    SPACES.map(sp=>h("div",{class:"sp"+(sp.id==="wayfinder-harness"?" active":""),title:sp.id+" — "+sp.note},
+      sp.initials, sp.attn!=="idle"?h("span",{class:"dot "+sp.attn}):null)));
+  const mapcol=h("div",{class:"B-mapcol"},
+    h("canvas",{class:"starmap",style:"width:100%;height:100%"}),
+    h("div",{class:"hud"}, h("div",{},h("b",{},"harness-design")," — planning map"),
+      h("div",{},"3 resolved · 7 frontier · 3 blocked · 1 claimed")));
+  const termcol=h("div",{class:"B-termcol"});
+  grid.append(rail,mapcol,termcol); root.append(grid);
+
+  const tabs=h("div",{class:"B-tabs"});
+  const termEl=h("div",{class:"term",style:"flex:1"});
+  const status=h("div",{class:"B-status"},
+    h("span",{},"state ",h("b",{},"working")), h("span",{},"role ",h("b",{},"prototype")),
+    h("span",{},"agent ",h("b",{},"claude")), h("span",{style:"margin-left:auto"},"61.9k tokens · ~$1.84"));
+  termcol.append(tabs,termEl,status);
+  let sess=[...SESSIONS];
+  function renderTabs(activeId){
+    tabs.replaceChildren(...sess.map(s=>h("div",{class:"B-tab"+(s.id===activeId?" active":""),
+        onclick:()=>renderTabs(s.id)},
+      h("span",{class:"dot "+(s.live?"working":"idle")}), sessLabel(s),
+      h("span",{style:"font-size:10px;color:var(--dim)"}, s.live?s.when:s.when))));
+  }
+  renderTabs("s3"); makeTerm(termEl);
+
+  let panel=null;
+  makeStarmap($("canvas",mapcol),{ scale:.72, onSelect(t){
+    panel && panel.remove(); panel=null;
+    if(t){ panel=h("div",{class:"B-panel"}, ticketPane(t,{onSpawn(tt){
+        const ns={id:"s"+Date.now(),ticket:tt.n,role:tt.type==="prototype"?"prototype":"grill",state:"working",when:"now",live:true};
+        sess.forEach(x=>x.live=false); sess.unshift(ns); renderTabs(ns.id);
+      }})); mapcol.append(panel); }
+  }});
+}
+variantB.info=`
+<h4>B — Cockpit: persistent split</h4>
+<p><b>Screen share:</b> side by side, always. Map left, terminal column right (46%). Neither is ever hidden; the cost is that neither ever gets the whole screen — the terminal is IDE-panel sized, not immersive, and the map breathes less than fullscreen.</p>
+<p><b>Ticket pane:</b> docked over the map's lower half on star-select. Spawning opens a new tab in the terminal column on the right — the ticket panel and the running session are visible <i>at the same time</i>, which no other variant gives you.</p>
+<p><b>Nesting:</b> the tab strip over the terminal is this space's sessions — live first, history behind it. Tabs are attention + history, not concurrency (one live tab per space, ADR 0003).</p>
+<p><b>Other spaces:</b> a thin icon rail on the far left, dots for attention (green working, amber wants-you). Closest to herdr's sidebar, at minimum width.</p>`;
+
+/* ================= variant C : Tower ================= */
+function variantC(root){
+  const grid=h("div",{class:"C-grid"});
+  const side=h("div",{class:"C-side"});
+  const main=h("div",{class:"C-main"});
+  grid.append(side,main); root.append(grid);
+
+  for(const sp of SPACES){
+    side.append(h("div",{class:"C-sp-head"},
+      h("span",{class:"dot "+sp.attn}), h("span",{class:"n"},sp.id),
+      h("span",{style:"color:var(--dim);font-weight:400;font-size:10px"},
+        sp.attn==="wants-you"?"review":"")));
+    const list = sp.id==="wayfinder-harness" ? SESSIONS
+      : sp.attn==="working" ? [{id:sp.id+"-live",ticket:4,role:"implement",state:"working",when:"41m",live:true}]
+      : sp.attn==="wants-you" ? [{id:sp.id+"-rev",ticket:12,role:"review",state:"wants-you",when:"1h"}]
+      : [];
+    for(const s of list){
+      side.append(h("div",{class:"C-sess"+(s.id==="s3"?" focused":""), onclick:e=>{
+          side.querySelectorAll(".C-sess").forEach(x=>x.classList.remove("focused"));
+          e.currentTarget.classList.add("focused"); }},
+        h("span",{class:"dot "+(s.live?"working":s.state==="wants-you"?"wants-you":"idle")}),
+        h("span",{class:"t"},sessLabel(s)),
+        h("span",{class:"st",style:"color:var(--dim)"},s.live?s.when:s.state==="wants-you"?"⚑":"✓")));
+    }
+  }
+  side.append(h("div",{class:"C-foot"},"press ",h("kbd",{},"M")," for the star-map · ",h("kbd",{},"Esc")," closes"));
+
+  const termEl=h("div",{class:"term",style:"flex:1"});
+  main.append(
+    h("div",{class:"C-head"},
+      h("span",{},h("b",{style:"font-weight:600"},"wayfinder-harness")),
+      h("span",{class:"dim"},"/"),
+      h("span",{},"#08 the cockpit layout"),
+      h("span",{class:"chip claimed"},"working"),
+      h("span",{class:"dim",style:"margin-left:auto"},"prototype · claude · 61.9k tokens"),
+      h("button",{class:"btn",style:"margin-left:14px",onclick:toggleMap},"🗺 Map (M)")),
+    termEl);
+  makeTerm(termEl);
+
+  let overlay=null;
+  function toggleMap(){
+    if(overlay){ overlay.remove(); overlay=null; return; }
+    const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
+    overlay=h("div",{class:"C-overlay"}, canvas,
+      h("div",{class:"hint"},"harness-design — planning map · click a star · M / Esc to return to the terminal"));
+    root.append(overlay);
+    let panel=null;
+    makeStarmap(canvas,{ onSelect(t){
+      panel && panel.remove(); panel=null;
+      if(t){ panel=h("div",{class:"panel"}, ticketPane(t,{onSpawn(){ toggleMap(); }})); overlay.append(panel); }
+    }});
+  }
+  listen(window,"keydown",e=>{
+    if(e.key==="m"||e.key==="M") toggleMap();
+    if(e.key==="Escape"&&overlay) toggleMap();
+  });
+}
+variantC.info=`
+<h4>C — Tower: terminal-first</h4>
+<p><b>Screen share:</b> the terminal owns the screen; the star-map is a game-style overlay you summon with <b>M</b> and dismiss the same way. The map is a place you consult, not a place you live. Maximum terminal, but the map stops being ambient — you only see state when you ask.</p>
+<p><b>Ticket pane:</b> lives inside the map overlay. Star → panel → spawn closes the overlay and drops you back on the terminal, now running that ticket.</p>
+<p><b>Nesting:</b> the sidebar is the whole story, herdr-style: every space, expanded, with its live session and its recent history nested under it. This is the one variant where <i>other spaces' sessions</i> are first-class rows you can focus directly.</p>
+<p><b>Other spaces:</b> always visible in the sidebar with status dots — the strongest attention surface of the three, and the busiest chrome.</p>`;
+
+/* ============ switcher (not part of the design) ============ */
+const VARIANTS={A:{name:"Orbit — map as home",fn:variantA},
+                B:{name:"Cockpit — persistent split",fn:variantB},
+                C:{name:"Tower — terminal-first",fn:variantC}};
+const KEYS=Object.keys(VARIANTS);
+let current=new URLSearchParams(location.search).get("variant");
+if(!KEYS.includes(current)) current="A";
+function mount(k){
+  timers.forEach(clearInterval); timers=[];
+  rafs.forEach(cancelAnimationFrame); rafs=[];
+  listeners.forEach(([t,ev,fn])=>t.removeEventListener(ev,fn)); listeners=[];
+  current=k;
+  const root=$("#root"); root.replaceChildren();
+  const clone=root.cloneNode(false); root.replaceWith(clone); // drop stray listeners' targets
+  VARIANTS[k].fn(clone);
+  $("#sw-lbl").textContent=`${k} — ${VARIANTS[k].name}`;
+  $("#info-card").innerHTML=VARIANTS[k].fn.info+`<p style="margin-top:10px;color:var(--dim)">Shared premise: nesting = attention + history. One live session per space (ADR 0003); parallelism is across spaces.</p>`;
+  try{ history.replaceState(null,"","?variant="+k); }catch(e){}
+}
+function cycle(d){ mount(KEYS[(KEYS.indexOf(current)+d+KEYS.length)%KEYS.length]); }
+$("#sw-prev").onclick=()=>cycle(-1);
+$("#sw-next").onclick=()=>cycle(1);
+$("#info-btn").onclick=()=>{ const c=$("#info-card"); c.style.display=c.style.display==="block"?"none":"block"; };
+window.addEventListener("keydown",e=>{
+  if(e.target.matches("input,textarea,[contenteditable]")) return;
+  if(e.key==="ArrowLeft") cycle(-1);
+  if(e.key==="ArrowRight") cycle(1);
+  if(e.key==="?") $("#info-btn").click();
+});
+mount(current);
+</script>
+</body>
+</html>
