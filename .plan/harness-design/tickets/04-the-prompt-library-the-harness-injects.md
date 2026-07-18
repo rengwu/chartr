@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01]
+claimed_by: claude-fable-5
+claimed_at: 2026-07-18T18:45:28Z
 ---
 
 # The prompt library the harness injects
