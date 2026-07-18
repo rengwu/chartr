@@ -1,6 +1,8 @@
 ---
 type: prototype
 blocked_by: []
+claimed_by: claude-fable-5
+claimed_at: 2026-07-18T15:01:27Z
 ---
 
 # The cockpit layout
