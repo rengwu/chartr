@@ -260,26 +260,33 @@
   .E-brand .word { font:700 12px var(--sans); letter-spacing:.05em; flex:1; }
   .E-brand .word span { color:var(--dim); font-weight:400; }
   .E-newspace { margin:12px; margin-top:auto; color:var(--dim); }
-  .E-sidetoggle { position:fixed; top:10px; left:10px; z-index:70; }
+  .E-side.mini { width:54px; padding:10px 0; }
+  .E-mini-sp { width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+               display:flex; align-items:center; justify-content:center; font:700 11px var(--sans);
+               color:var(--dim); cursor:pointer; position:relative; margin:0 auto 8px; }
+  .E-mini-sp.active { border-color:#2c4788; color:var(--txt); background:#131b30; }
+  .E-mini-sp .dot { position:absolute; top:-3px; right:-3px; }
+  .D-sp.active { background:#101728; }
   .E-term { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; position:relative; }
   .E-thead { flex:none; display:flex; align-items:center; background:var(--bg2);
              border-bottom:1px solid var(--line); }
   .E-thead .B-tabs { flex:1; border-bottom:none; min-width:0; }
-  /* the map is a floating panel that slides over the terminal — the terminal never reflows */
-  .E-map { position:absolute; top:0; right:0; bottom:0; width:46%; z-index:40; background:var(--bg);
-           border-left:1px solid var(--line); box-shadow:-18px 0 44px rgba(0,0,0,.55);
-           transition:transform .28s ease, width .28s ease; }
-  .E-map.closed { transform:translateX(calc(100% + 2px)); box-shadow:none; }
-  .E-map.full { width:calc(100% - 230px); }
-  .E-grid.nosidebar .E-map.full { width:100%; }
-  .E-handle { position:absolute; top:10px; right:100%; margin-right:10px; z-index:41; white-space:nowrap; }
+  /* the map is a floating card that slides over (nearly all of) the terminal — the terminal never reflows */
+  .E-map { position:absolute; top:8px; right:8px; bottom:8px; left:252px; z-index:40; background:var(--bg);
+           border:1px solid var(--line); border-radius:10px; box-shadow:-18px 0 44px rgba(0,0,0,.55);
+           transition:transform .28s ease, left .2s ease; }
+  .E-grid.mini .E-map { left:76px; }
+  .E-map.closed { transform:translateX(calc(100% + 18px)); box-shadow:none; }
+  /* the reopen handle rides the panel's edge, below the tab strip — never over the tabs */
+  .E-handle { position:absolute; top:44px; right:100%; margin-right:10px; z-index:41; white-space:nowrap; }
   .E-mapctl { position:absolute; top:10px; right:52px; display:flex; gap:7px; z-index:6; }
   .E-actions { position:absolute; top:46px; right:10px; z-index:30; width:310px; max-height:70%;
                overflow-y:auto; background:rgba(10,14,24,.97); border:1px solid var(--line);
                border-radius:10px; backdrop-filter:blur(8px); padding:8px; }
-  /* ticket details: a bottom sheet on the map panel, wayfinder-maps style */
-  .E-sheet { top:auto; left:0; right:0; bottom:0; width:auto; max-height:52%; z-index:9;
-             border:none; border-top:1px solid var(--line); border-radius:14px 14px 0 0;
+  /* ticket details: a bottom sheet on the map panel, wayfinder-maps style; half the panel at most */
+  .E-sheet { top:auto; left:0; right:0; bottom:0; width:auto; max-height:50%; z-index:9;
+             border:none; border-top:1px solid var(--line); border-radius:0 0 10px 10px;
+             padding-left:max(24px,calc(50% - 380px)); padding-right:max(24px,calc(50% - 380px));
              animation:E-up .26s ease; }
   @keyframes E-up { from { transform:translateY(46px); opacity:0; } to { transform:none; opacity:1; } }
 
@@ -419,13 +426,22 @@ const WF2_TICKETS = [
   {n:2, t:"graph.json push channel",       type:"task", st:"frontier", dep:[]},
   {n:3, t:"Client re-derive on push",      type:"task", st:"blocked",  dep:[1,2]},
 ];
+const WF3_TICKETS = [
+  {n:1, t:"Extract frontmatter parser",    type:"task", st:"resolved"},
+  {n:2, t:"Table-driven parser tests",     type:"task", st:"resolved", dep:[1]},
+  {n:3, t:"Delete dead regex paths",       type:"task", st:"resolved", dep:[1]},
+];
 const MAPS = {
   "wayfinder-harness": [ {slug:"harness-design", kind:"planning", tickets:TICKETS} ],
   "expensif":          [ {slug:"export-csv-impl", kind:"implementation", tickets:EXP_TICKETS} ],
-  "wayfinder":         [ {slug:"viewer-hardening", kind:"planning", tickets:WF_TICKETS},
+  "wayfinder":         [ {slug:"parser-cleanup-impl", kind:"implementation", tickets:WF3_TICKETS},
+                         {slug:"viewer-hardening", kind:"planning", tickets:WF_TICKETS},
                          {slug:"starmap-live-impl", kind:"implementation", tickets:WF2_TICKETS} ],
   "skills":            [],
 };
+const mapFinished=m=>m.tickets.every(t=>t.st==="resolved");
+/* unfinished maps sort first — they're what a space is *for* right now */
+const sortedMaps=spId=>(MAPS[spId]||[]).slice().sort((a,b)=>(mapFinished(a)?1:0)-(mapFinished(b)?1:0));
 const SPACE_SESSIONS = {
   "wayfinder-harness": SESSIONS,
   "expensif":  [ {id:"e1",ticket:4,role:"implement",state:"working",when:"41m",live:true},
@@ -918,62 +934,73 @@ function variantE(root){
   const termcol=h("div",{class:"E-term"});
   const mapwrap=h("div",{class:"E-map"});
   grid.append(side,termcol,mapwrap); root.append(grid);
-  let addSession=null, drawer=null, sheet=null, mapApi=null, sideToggle=null;
+  let addSession=null, drawer=null, sheet=null, mapApi=null;
   const badgeEl=n=>h("span",{style:"background:var(--amber);color:#20160a;font:700 10px var(--sans);border-radius:9px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px"},String(n));
 
   function applyMapView(){
     mapwrap.classList.toggle("closed",state.mapView==="closed");
-    mapwrap.classList.toggle("full",state.mapView==="full");
-    grid.classList.toggle("nosidebar",!state.sideOpen);
     renderHandle();
   }
-  /* one control, riding the panel's left edge: shows the badge when the map is tucked away */
+  /* the reopen handle rides the panel's edge below the tab strip; the hide control lives on the panel */
   function renderHandle(){
     const old=$(".E-handle",mapwrap); old && old.remove();
+    if(state.mapView!=="closed") return;
     const acts=state.map?actionsFor(state.map):[];
-    const hd=h("div",{class:"E-handle"});
-    if(state.mapView==="closed")
-      hd.append(h("button",{class:"F-badgebtn",style:"box-shadow:0 4px 18px rgba(0,0,0,.5)",
-        onclick:()=>{ state.mapView="open"; applyMapView(); }},"🗺 Map", acts.length?badgeEl(acts.length):null));
-    else
-      hd.append(h("button",{class:"btn",title:"hide map (M)",
-        onclick:()=>{ state.mapView="closed"; applyMapView(); }},"⟩⟩"));
-    mapwrap.append(hd);
+    mapwrap.append(h("div",{class:"E-handle"},
+      h("button",{class:"F-badgebtn",style:"box-shadow:0 4px 18px rgba(0,0,0,.5)",
+        onclick:()=>{ state.mapView="open"; applyMapView(); }},"🗺 Map", acts.length?badgeEl(acts.length):null)));
+  }
+  function selectSpace(spId){
+    state.space=spId; state.expanded[spId]=true;
+    state.map=sortedMaps(spId)[0]||null;      // default: first unfinished map, or none
+    if(state.map && state.mapView==="closed") state.mapView="open";
+    renderAll();
   }
   function renderSide(){
     side.replaceChildren();
-    side.style.display=state.sideOpen?"":"none";
+    side.classList.toggle("mini",!state.sideOpen);
+    grid.classList.toggle("mini",!state.sideOpen);
+    if(!state.sideOpen){                       /* icon rail — nothing floats over the tabs */
+      side.append(h("div",{style:"text-align:center;padding:0 0 8px"},
+        h("span",{style:"color:var(--gold);font-size:15px;text-shadow:0 0 8px rgba(255,210,74,.6)"},"✦")));
+      side.append(h("div",{style:"text-align:center;margin-bottom:10px"},
+        h("button",{class:"btn",style:"padding:3px 8px",title:"expand sidebar",
+          onclick:()=>{ state.sideOpen=true; renderSide(); grid.classList.remove("mini"); }},"»")));
+      for(const sp of SPACES)
+        side.append(h("div",{class:"E-mini-sp"+(state.space===sp.id?" active":""),title:sp.id+" — "+sp.note,
+          onclick:()=>selectSpace(sp.id)}, sp.initials,
+          sp.attn!=="idle"?h("span",{class:"dot "+sp.attn}):null));
+      side.append(h("div",{style:"margin-top:auto;text-align:center;padding-bottom:6px"},
+        h("button",{class:"btn",style:"padding:3px 10px",title:"new space"},"+")));
+      return;
+    }
     side.append(h("div",{class:"E-brand"},
       h("span",{class:"glyph"},"✦"),
-      h("div",{class:"word"},"wayfinder ",h("span",{},"harness")),
+      h("div",{class:"word"},"wayfinder"),
       h("button",{class:"btn",style:"padding:3px 8px",title:"collapse sidebar",
-        onclick:()=>{ state.sideOpen=false; renderSide(); applyMapView(); }},"«")));
+        onclick:()=>{ state.sideOpen=false; renderSide(); }},"«")));
     for(const sp of SPACES){
       const open=!!state.expanded[sp.id];
-      side.append(h("div",{class:"D-sp",onclick:()=>{ state.expanded[sp.id]=!open; renderSide(); }},
-        h("span",{class:"chev"},open?"▼":"▶"),
+      side.append(h("div",{class:"D-sp"+(state.space===sp.id?" active":""),onclick:()=>selectSpace(sp.id)},
+        h("span",{class:"chev",onclick:e=>{ e.stopPropagation(); state.expanded[sp.id]=!open; renderSide(); }},open?"▼":"▶"),
         h("span",{class:"dot "+sp.attn}),
         h("span",{class:"n"},sp.id),
         sp.attn==="wants-you"?h("span",{class:"note"},"⚑ review"):null));
       if(open){
-        const maps=MAPS[sp.id]||[];
+        const maps=sortedMaps(sp.id);
         if(!maps.length) side.append(h("div",{class:"D-nomap"},"no maps — chart one"));
         for(const m of maps){
           side.append(h("div",{class:"D-map"+(state.map===m?" selected":""),
               onclick:()=>{ state.space=sp.id; state.map=m;
                 if(state.mapView==="closed") state.mapView="open";   // picking a map reveals the map
                 renderAll(); }},
-            h("span",{},m.slug), h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
+            h("span",{},m.slug),
+            mapFinished(m)?h("span",{style:"color:var(--dim);font-size:10px"},"✓"):null,
+            h("span",{class:"kind"},m.kind==="planning"?"plan":"impl")));
         }
       }
     }
     side.append(h("button",{class:"btn E-newspace"},"+ New space"));
-    sideToggle && sideToggle.remove(); sideToggle=null;
-    if(!state.sideOpen){
-      sideToggle=h("button",{class:"btn E-sidetoggle",title:"show sidebar",
-        onclick:()=>{ state.sideOpen=true; renderSide(); applyMapView(); }},"☰");
-      root.append(sideToggle);
-    }
   }
   function renderActions(){
     const old=$(".E-actions",mapwrap); old && old.remove();
@@ -1012,14 +1039,14 @@ function variantE(root){
       const live=sess.find(s=>s.live);
       statusEl.replaceChildren(
         h("span",{},"state ",h("b",{},live?"working":"idle")),
-        h("span",{},"space ",h("b",{},state.space)),
-        h("span",{style:"margin-left:auto"},live?"61.9k tokens · ~$1.84":"—"));
+        h("span",{},"space ",h("b",{},state.space)));
     }
     render(sess.length?sess[0].id:null);
     addSession=t=>{
       const ns={id:"e"+Date.now(),ticket:t.n,role:t.type==="prototype"?"prototype":t.type==="task"?"implement":"grill",
                 state:"working",when:"now",live:true};
       sess.forEach(x=>x.live=false); sess.unshift(ns); render(ns.id);
+      state.mapView="closed"; applyMapView();   // spawning drops you onto the terminal
     };
   }
   function closeDrawer(){ drawer && drawer.remove(); drawer=null; }
@@ -1033,7 +1060,10 @@ function variantE(root){
       onSpawn:tt=>{ closeSheet(); mapApi&&mapApi.select(null); addSession&&addSession(tt); },
       onClose:()=>{ closeSheet(); mapApi&&mapApi.select(null); }});
     mapwrap.append(sheet);
-    mapApi && mapApi.focus(t.n,0.26);
+    /* center the star in the space the sheet actually leaves free (sheet may be shorter than its 50% cap) */
+    requestAnimationFrame(()=>{ if(!sheet||!mapApi) return;
+      const free=mapwrap.clientHeight-sheet.offsetHeight;
+      mapApi.focus(t.n, Math.max(0.12, free/2/mapwrap.clientHeight)); });
   }
   function renderMap(){
     mapwrap.replaceChildren(); drawer=null; sheet=null;
@@ -1041,7 +1071,7 @@ function variantE(root){
     if(!m){ mapwrap.append(h("div",{class:"D-empty"},"no map")); renderHandle(); return; }
     const canvas=h("canvas",{class:"starmap",style:"width:100%;height:100%"});
     mapwrap.append(canvas);
-    mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.62, onSelect(t){
+    mapApi=makeStarmap(canvas,{ tickets:m.tickets, scale:.8, onSelect(t){
       if(t) selectTicket(t); else closeSheet();
     }});
     mapwrap.append(h("div",{class:"D-hud"},
@@ -1053,9 +1083,8 @@ function variantE(root){
     mapwrap.append(h("div",{class:"E-mapctl"},
       h("button",{class:"F-badgebtn",onclick:()=>{ state.actionsOpen=!state.actionsOpen; renderActions(); }},
         "Next up", acts.length?badgeEl(acts.length):null),
-      h("button",{class:"btn",title:"expand map",
-        onclick:()=>{ state.mapView=state.mapView==="full"?"open":"full"; applyMapView(); }},
-        state.mapView==="full"?"⇲":"⛶")));
+      h("button",{class:"btn",title:"hide map (M)",
+        onclick:()=>{ state.mapView="closed"; applyMapView(); }},"⟩⟩")));
     renderHandle();
   }
   function renderAll(){ renderSide(); renderTermcol(); renderMap(); renderActions(); applyMapView(); }
@@ -1068,16 +1097,16 @@ function variantE(root){
       if(state.actionsOpen){ state.actionsOpen=false; renderActions(); }
       else if(sheet){ closeSheet(); mapApi&&mapApi.select(null); }
       else if(drawer) closeDrawer();
-      else if(state.mapView==="full"){ state.mapView="open"; applyMapView(); }
+      else if(state.mapView==="open"){ state.mapView="closed"; applyMapView(); }
     }
   });
 }
 variantE.info=`
 <h4>E — Helm: floating map, one-click tickets</h4>
-<p><b>The map is a floating panel</b> that slides over the terminal's right half (handle or <b>M</b>; ⛶ expands it). The terminal never reflows — it keeps its full width underneath and never re-wraps a line. When the map is tucked away, the handle carries the "Next up" count, so the call to action survives.</p>
-<p><b>One click to the whole ticket:</b> click a star and the full ticket file — question, Done-when, blockers with answers, session history — rises as a bottom sheet while the camera eases the star into the clear space above it (the wayfinder-maps pattern). Esc closes.</p>
-<p><b>Branded, collapsible sidebar:</b> ✦ wayfinder harness, spaces → maps, ⚑ attention, "+ New space" at the foot; « collapses it to a ☰ handle.</p>
-<p><b>Next up</b> lives on the map panel itself — actions are map-scoped, so they ride with the map. Spawning drops you back on the untouched terminal.</p>`;
+<p><b>The map is a floating card covering nearly the whole terminal</b> (a sliver of padding shows it's an overlay). Toggle with <b>M</b>, the ⟩⟩ on the panel, or the 🗺 handle that rides the panel's edge below the tab strip — carrying the "Next up" count while the map is tucked away. The terminal underneath keeps its full width and never re-wraps a line.</p>
+<p><b>One click to the whole ticket:</b> click a star and the full ticket file rises as a bottom sheet (half the panel at most) while the camera eases the star into whatever space the sheet actually leaves free. Esc closes; spawning drops you onto the terminal.</p>
+<p><b>Spaces are selectable</b>, not just their maps: picking a space auto-selects its first <i>unfinished</i> map (finished maps sort last, marked ✓), or shows "chart one" if it has none. The sidebar is branded ✦ <b>wayfinder</b>, has "+ New space" at the foot, and « collapses it to an icon rail — nothing ever floats over the tabs.</p>
+<p><b>No cost readout</b> — tokens/dollars are ticket 14's problem, deliberately absent here.</p>`;
 
 /* ================= variant F : Fleet (all spaces at once) ================= */
 function variantF(root){
