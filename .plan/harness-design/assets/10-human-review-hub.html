@@ -932,11 +932,54 @@ function doAbandon(t,reason,reverted){
     h("button",{class:"btn",onclick:killStrip},"esc"));
   mapcard.append(S.strip);
 }
-function spawnFollowup(t,role,accumulates=true){
+function spawnFollowup(t,role,accumulates=true,opts={}){
   if(accumulates){ S.followup[t.n]=true; if(!S.scope[t.n])S.scope[t.n]="verdict"; }
   const ns={id:"f"+Date.now(),label:pad(t.n)+" · "+role,live:true};
   liveSessions=liveSessions.map(s=>({...s,live:false})).concat(ns);
-  renderTabs(ns.id); renderHub();
+  renderTabs(ns.id);
+  if(role==="fix-up") seedFixTerm(t,opts);
+  renderHub();
+}
+function seedFixTerm(t,{note,advisories=0}={}){
+  termBody.replaceChildren();
+  const lines=[
+    ["p","❯ claude — fix-up session · ticket "+pad(t.n)+" · expensif"],
+    ["dm","payload: ticket + Done-when + spec · the verdict (1 blocking"+(advisories?", "+advisories+" advisory":"")+")"
+      +(note?" · your note":"")+" — archived per ticket 04"],
+    ...(note?[["wr","» your note: “"+note+"”"]]:[]),
+    ["","● Reading the blocking finding…"],
+    ["","● Moving the audit write behind the final flush…"],
+  ];
+  lines.forEach(([cls,txt])=>termBody.append(h("div",{},cls?h("span",{class:cls},txt):txt)));
+  termBody.append(h("div",{}, h("span",{class:"cursor"})));
+}
+function sendBackDialog(t,v){
+  killDialog();
+  const blocking=v.findings.filter(f=>f.sev==="blocking");
+  const adv=v.findings.filter(f=>f.sev==="advisory");
+  const short=s=>s.length>84?s.slice(0,82)+"…":s;
+  const ta=h("textarea",{placeholder:"Anything to add? Steer the fix beyond the findings — optional."});
+  const advBoxes=adv.map(f=>{ const cb=h("input",{type:"checkbox"}); return {cb,f}; });
+  S.dialog=h("div",{class:"dim-back",onclick:e=>{if(e.target===S.dialog)killDialog();}},
+    h("div",{class:"dlg"},
+      h("h3",{},"Send "+pad(t.n)+" back to fix"),
+      h("div",{class:"sub"},"Spawns a fix-up session against this same ticket. Its commits accumulate on the proposal and it comes back to this hub — the ticket stays proposed throughout."),
+      h("div",{class:"does"},
+        h("div",{},h("b",{},"The session will be briefed with:")),
+        h("div",{},"· the ticket, its Done-when and the spec — the standard bundle"),
+        ...blocking.map(f=>h("div",{},"· the blocking finding — "+short(f.claim))),
+        ...advBoxes.map(({cb,f})=>h("label",{style:"display:flex;gap:7px;align-items:flex-start;cursor:pointer;margin-top:3px"},
+          cb,h("span",{},"also include the advisory — "+short(f.claim))))),
+      ta,
+      h("div",{style:"font-size:10.5px;color:var(--dim);margin-top:8px"},
+        "Your note travels in the injected payload (and its archive) — not in the ticket file; only abandonment writes there."),
+      h("div",{class:"acts"},
+        h("button",{class:"btn",onclick:killDialog},"Cancel"),
+        h("button",{class:"btn primary",onclick:()=>{
+          const note=ta.value.trim(), n=advBoxes.filter(x=>x.cb.checked).length;
+          killDialog(); spawnFollowup(t,"fix-up",true,{note,advisories:n});
+        }},"Spawn fix-up session"))));
+  mapcard.append(S.dialog);
 }
 function furtherMenu(t,finding){
   killDialog();
@@ -1084,7 +1127,7 @@ function dActions(t,v){
     "Approve — resolve "+pad(t.n));
   const row=h("div",{class:"d-actions"});
   if(v.outcome==="reject")
-    row.append(h("button",{class:"btn primary",onclick:()=>spawnFollowup(t,"fix-up")},"Send back to fix"));
+    row.append(h("button",{class:"btn primary",onclick:()=>sendBackDialog(t,v)},"Send back to fix…"));
   row.append(approve);
   if(v.outcome!=="reject")
     row.append(h("button",{class:"btn",onclick:()=>furtherMenu(t)},"Take it further…"));
@@ -1111,7 +1154,8 @@ const INFO={
 D:`<h4>D — Brief: the distilled hub (round two — canonical)</h4>
 <p><b>One screen, three headings:</b> what was done (the ## Proposed Answer verbatim — it already is the claim), what the reviewer found (one line, plus the blocking finding if there is one), and a recommendation the <b>harness derives mechanically from the verdict</b> — pass → “ready to approve”, reject → “send back to fix”. No agent editorializes at the human's gate.</p>
 <p><b>Everything else is one click deeper:</b> the per-clause Done-when check and full findings under “Full verdict”; the diff collapsed to “N files, +M lines”. The blocking finding's file name jumps straight into the expanded diff. Progressive disclosure per the distill/clarify references — the 20% that decides sits on top.</p>
-<p><b>Friction distilled to one tick:</b> approve is one click on a pass; a rejecting verdict adds exactly one acknowledgement — “I've read the blocking finding” — no waiver prose. Buttons name their outcomes: “Approve — resolve #06”, “Send back to fix”.</p>
+<p><b>Friction distilled to one tick:</b> approve is one click on a pass; a rejecting verdict adds exactly one acknowledgement — “I've read the blocking finding” — no waiver prose. Buttons name their outcomes: “Approve — resolve #06”, “Send back to fix…”.</p>
+<p><b>Send back is the human's feedback channel:</b> its dialog shows exactly what the fix-up session will be briefed with — the standard bundle, the blocking finding always, advisories as opt-in ticks — plus an optional note from you. The note rides in the injected payload and its archive (ticket 04), never the ticket file: only abandonment writes feedback into the ticket, because only abandonment needs the <i>next fresh attempt</i> to read it.</p>
 <p><b>TUI parity:</b> the brief is assembled as plain markdown on disk — <b>{ } raw</b> shows the exact file. A CLI user reads the same brief; the GUI adds buttons and nothing else.</p>`+INFO_COMMON,
 A:`<h4>A — Dossier: contract-first</h4>
 <p><b>Reading order as an argument:</b> the contract (Done-when + per-clause check), then the claim (## Proposed Answer), then the second reader, then the evidence. You know what was promised before you read what anyone says about it.</p>
