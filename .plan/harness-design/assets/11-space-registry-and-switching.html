@@ -37,6 +37,32 @@
                 pole, queue-only-as-a-persistent-rail, was cut outright — a
                 monitoring posture, 08's rejected variant F.)
 
+  The star-map is now LIVE (was a stub): summon it with the ◀ map handle or M,
+  dismiss with Esc. It builds a real per-space graph from the fixture and paints
+  the session's harness state with ticket 09's canonical "Moons" overlay
+  (working orbits, a died session freezes grey, human-review pings gold with an
+  offscreen chevron). Drag to pan, scroll to zoom, click a star to open its
+  detail pane. Switching spaces swaps the map under you; the ⚑ queue's "jump"
+  summons it.
+
+  Two ways to hold the map, toggled from its top-right control:
+    - Overlay (default): slides in from the right over the terminal.
+    - Split: docks as a resizable column beside the terminal (terminal left,
+      map right). Drag the divider to resize; the terminal is the priority pane —
+      on window resize it keeps its width and the map flexes.
+  The detail pane docks to the right, and re-docks to the bottom (capped at 50%
+  of the map panel) once the map panel is narrower than ~780px; either way its
+  action footer stays pinned while the body scrolls. Selecting a star measures the
+  pane's real size and seats the star in the space it leaves.
+
+  NB — AMENDS TICKET 08 (operator-approved, 2026-07-19). Ticket 08 originally chose
+  overlay-only (no split, ticket detail as a bottom sheet on the map card). The
+  operator revisited that here and accepted BOTH the split mode and the responsive
+  right/bottom detail pane: a window resize already reflows the terminal, and the
+  split is terminal-priority (the terminal holds its width; the map takes the
+  slack), so xterm churn is confined to deliberate divider drags. See ticket 08's
+  Amendment note for the record; overlay + the pane both remain first-class.
+
   Also shown, shared across variants and reachable from the chrome row:
     - Register a space (+ button): path -> git-repo check ("not a repo? git
       init") -> .plan scan ("3 maps" / "no maps yet, usable as shells").
@@ -151,8 +177,15 @@
   .mp .confirm:hover { background:#1a1408; }
   .mp .none { font-size:11px; color:#45527085; font-style:italic; }
 
-  /* ---- terminal column (stub — 08 owns it) ---- */
-  .stage { flex:1; min-width:0; display:flex; flex-direction:column; background:#04060b; position:relative; }
+  /* ---- terminal column (stub — 08 owns it) ----
+     .stage is a horizontal row: [ term-col | (divider) | map ]. term-col stacks
+     tabs+terminal; in split mode it keeps a fixed px width (the priority pane),
+     the map takes the rest. overflow:hidden keeps the map's shadow off the sidebar. */
+  .stage { flex:1; min-width:0; display:flex; flex-direction:row; background:#04060b; position:relative; overflow:hidden; }
+  .term-col { flex:1; min-width:0; display:flex; flex-direction:column; position:relative; }
+  .divider { flex:none; width:6px; cursor:col-resize; background:var(--line); position:relative; z-index:31; }
+  .divider::after { content:""; position:absolute; inset:0 -4px; }   /* fatter hit area than the visible line */
+  .divider:hover, .divider.active { background:#2c4788; }
   .tabs { flex:none; display:flex; gap:2px; background:var(--bg2); border-bottom:1px solid var(--line);
           padding:7px 9px 0; }
   .tab { display:flex; align-items:center; gap:7px; padding:7px 12px; font-size:12px; color:var(--dim);
@@ -170,6 +203,85 @@
                padding:8px 9px; font-size:11px; color:var(--dim); cursor:pointer; writing-mode:vertical-rl;
                display:flex; align-items:center; gap:8px; }
   .maphandle:hover { color:var(--txt); }
+
+  /* ---- summoned star-map: ticket 08/09's surface, made live in this cockpit ----
+     Overlay mode: covers most of the terminal (generous padding) and SLIDES in/out
+     from the right. Split mode (.split): an in-flow flex child docked beside the
+     terminal. The element is persistent so re-renders never re-run the animation. */
+  .mapview { position:absolute; top:16px; right:16px; bottom:16px; left:16px; z-index:30; background:#04060b;
+             border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 6px 22px rgba(0,0,0,.3);
+             transform:translateX(calc(100% + 34px)); transition:transform .28s cubic-bezier(.33,0,.2,1); }
+  .mapview.open { transform:none; }
+  /* split: leave the absolute-overlay world and become a resizable column that
+     fills its area flush — no floating-panel chrome, the divider is the only seam */
+  .mapview.split { position:relative; top:auto; right:auto; bottom:auto; left:auto; flex:1 1 0; min-width:0;
+                   margin:0; border:none; border-radius:0; transform:none; box-shadow:none; transition:none; }
+  .mapview.split:not(.open) { display:none; }
+  .mapview canvas { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; }
+  .mapview canvas:active { cursor:grabbing; }
+  .mv-overlay { position:absolute; inset:0; pointer-events:none; }   /* clicks fall through to the canvas… */
+  .mv-overlay > * { pointer-events:auto; }                          /* …except the controls that need them */
+  .mv-hud, .mv-hint, .mv-legend { pointer-events:none; }
+  /* top-right controls: split/overlay toggle + dismiss, grouped so has-pane shifts both */
+  .mv-ctl { position:absolute; top:10px; right:12px; z-index:6; display:flex; gap:7px; }
+  .mv-btn { display:flex; align-items:center; gap:6px; font:600 11px var(--sans); color:var(--dim);
+            background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  .mv-btn:hover { color:var(--txt); background:#141b2e; }
+  .mv-btn kbd { font:10px var(--mono); border:1px solid var(--line); border-radius:3px; padding:0 4px; color:var(--dim); }
+  .mv-hud { position:absolute; top:12px; left:14px; z-index:4; pointer-events:none; }
+  .mv-hud .nm { font:600 13px var(--sans); color:var(--txt); display:flex; align-items:center; gap:8px; }
+  .mv-hud .counts { font-size:11px; color:var(--dim); margin-top:5px; }
+  /* the ticket detail: a full-height pane docked to the right edge (not a floating card),
+     laid out as head / scrollable body / pinned action footer */
+  .mv-pane { position:absolute; top:0; right:0; bottom:0; width:376px; z-index:6; display:flex; flex-direction:column;
+             overflow:hidden; background:rgba(9,13,22,.98); border-left:1px solid var(--line); backdrop-filter:blur(10px);
+             animation:panein .2s ease; }
+  @keyframes panein { from { opacity:0; } to { opacity:1; } }
+  .mv-pane-body { flex:1; min-height:0; overflow-y:auto; padding:0 18px 16px; scrollbar-width:thin; }
+  .mv-pane-foot { flex:none; padding:13px 18px; border-top:1px solid var(--line); background:rgba(6,9,16,.55); }
+  .mv-pane-foot .btn { width:100%; text-align:center; }
+  .mv-pane-head { flex:none; display:flex; align-items:center; gap:8px; padding:16px 18px 12px; }
+  .mv-pane-head .meta { display:flex; align-items:center; gap:6px; flex:1; min-width:0; }
+  .mv-pane-head .num { font:10px var(--mono); color:var(--dim); }
+  .mv-pane-head .x { color:var(--dim); cursor:pointer; font-size:15px; flex:none; }
+  .mv-pane-head .x:hover { color:var(--txt); }
+  .mv-pane h3 { font-size:15px; font-weight:600; line-height:1.35; margin-bottom:8px; }
+  .mv-pane .st { font:11px var(--mono); color:var(--gold); margin-bottom:9px; }
+  .mv-pane .why { font-size:12px; color:#9aa7c2; line-height:1.6; margin-bottom:17px; }
+  .mv-pane .sec { margin-bottom:16px; }
+  .mv-pane .sec h5 { font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); margin-bottom:7px; }
+  .mv-pane .sec ul { padding-left:16px; }
+  .mv-pane .sec li { font-size:12px; color:#9aa7c2; line-height:1.6; }
+  .mv-pane .dep { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #131a2b; }
+  .mv-pane .dep:last-child { border-bottom:none; }
+  .mv-pane .dep-n { font:10px var(--mono); color:var(--dim); flex:none; }
+  .mv-pane .dep-t { flex:1; font-size:12px; color:#aeb9d2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mv-pane .dep-s { font-size:10.5px; flex:none; }
+  .mv-pane .dep-s.ok { color:var(--green); } .mv-pane .dep-s.open { color:var(--dim); }
+  .mv-pane .sess { font-size:12px; color:#9aa7c2; line-height:1.55; }
+  .mv-pane .unblocks { font-size:11.5px; color:#8fa8d8; }
+  /* ticket-status chips for the pane header (map palette, kept off the kind chips) */
+  .chip.s-resolved { color:var(--green); border-color:#1d4028; }
+  .chip.s-frontier { color:var(--accent); border-color:#2c4788; }
+  .chip.s-blocked  { color:var(--red); border-color:#4d2320; }
+  .chip.s-claimed  { color:var(--amber); border-color:#4d3414; }
+  /* when the pane is docked, keep the map-dismiss control and hint clear of it */
+  .mapview.has-pane .mv-ctl { right:388px; }
+  .mapview.has-pane .mv-hint { display:none; }
+  /* in split, the pane narrows so it doesn't swallow the whole map column */
+  .mapview.split .mv-pane { width:min(344px,56%); }
+  .mapview.split.has-pane .mv-ctl { right:calc(min(344px,56%) + 12px); }
+  /* when the map panel itself is narrow, the right dock is cramped — re-dock the pane
+     to the BOTTOM (full width, capped height). Its flex column keeps the footer pinned
+     while the body scrolls. Placed after the split rules so it wins the .mv-ctl offset. */
+  .mapview.pane-bottom .mv-pane { top:auto; left:0; right:0; width:auto; max-height:50%;
+                                  border-left:none; border-top:1px solid var(--line); }
+  .mapview.pane-bottom.has-pane .mv-ctl { right:12px; }
+  .mv-legend { position:absolute; left:14px; bottom:12px; z-index:4; display:flex; flex-wrap:wrap; gap:7px 15px;
+               background:rgba(10,14,24,.9); border:1px solid var(--line); border-radius:9px; padding:8px 12px; max-width:62%; }
+  .mv-legend .lg { display:flex; align-items:center; gap:7px; font-size:10.5px; color:var(--dim); }
+  .mv-legend .lg .d { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
+  .mv-hint { position:absolute; right:13px; bottom:14px; z-index:4; font-size:10px; color:#3f4c68; pointer-events:none; }
 
   /* ---- cross-space queue: the summonable overlay (A) ---- */
   .queue { position:absolute; top:8px; left:8px; z-index:60; width:378px; max-height:calc(100% - 16px);
@@ -322,6 +434,402 @@ function actionables(){
   return SPACES.filter(s=>s.want).map(s=>({s, m:s.maps.find(m=>m.wantN)||s.maps[0]}));
 }
 
+/* ============================================================================
+   THE STAR-MAP — ticket 09's canonical "Moons" surface, made live here.
+   Ticket 08 owns the map pane and its M / Esc summon; ticket 09 owns how the
+   harness's session states paint on it. This viewer ports the *decided* pieces
+   of both (only the canonical A overlay, not 09's rejected B/C) so the "◀ map"
+   handle stops being a stub. Everything below is throwaway prototype code.
+
+   Camera + selection live on MAP, NOT the DOM, so the cockpit's frequent full
+   re-renders (a toast, a filter keystroke) rebuild the <canvas> without ever
+   disturbing the view or spawning a second animation loop.
+   ========================================================================== */
+const TAU=6.2831853, DPR=Math.max(1,window.devicePixelRatio||1);
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function mod(a,b){ return ((a%b)+b)%b; }
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^t>>>15,1|t); r^=r+Math.imul(r^r>>>7,61|r); return ((r^r>>>14)>>>0)/4294967296; }; }
+function hexA(hex,a){ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return "rgba("+r+","+g+","+b+","+a+")"; }
+
+/* base six ported from the shipped viewer (ticket 09); harness axis stays off these hues */
+const COL={
+  resolved:{core:"#b9d6c4",glow:"#5b9077",r:5},
+  frontier:{core:"#8ad8ff",glow:"#2f9be0",r:7},
+  claimed:{core:"#ffd873",glow:"#ffb020",r:6.4},
+  blocked:{core:"#e2c3c3",glow:"#9a6f6f",r:4.4},
+  out_of_scope:{core:"#7d7789",glow:"#4a4550",r:4.2}
+};
+const LABELCOL={ resolved:"#a2c1ac", frontier:"#b3e5ff", claimed:"#ffe6a0", blocked:"#d0b3b3", out_of_scope:"#8a8496" };
+const HH={ session:"#ffd873", violet:"#c792ea", human:"#ffedbe", dead:"#8894a5" };  /* harness overlay colours */
+
+/* real-ish ticket titles per map so the graphs read as real work, not lorem */
+const TITLES={
+  "harness-design":["The agent adapter contract","Knowing a session finished, hung, or died","Planning map vs implementation map","The prompt library the harness injects","Mapping roles to agents","Who commits, and how work is abandoned","Charting a new map from a space","The cockpit layout","Rendering harness states on the star-map","The human review hub","The space registry and switching","Frontend framework and build","Shipping the harness cross-platform","Cost and token visibility"],
+  "export-csv-impl":["The filtering seam and streaming CSV download","Per-date historical conversion & rate backfill","The streaming-export endpoint","The Export page and its preview fragment","Large-export pagination & backpressure","Docs and architecture catch up"],
+  "starmap-v2":["Port the shipped viewer's draw layer","Deterministic layout, computed once","The status → overlay mapping","Human-review call-to-action rendering","Offscreen beacon chevrons","fsnotify → re-derive → push","Live flare + ticker on change","Touch and trackpad input","WebKit verification pass"],
+  "adapter-impl":["Spawn: launch the agent CLI in a PTY","Inject the context bundle at spawn","Observe: liveness from PTY output","Stop: reclaim the process cleanly","Detect finished vs hung vs died","The proposed-answer handshake","Adapter conformance tests"],
+  "cache-layer":["Cache key and invalidation model","In-memory LRU with TTL","Read-through wiring","Write-through & eviction metrics","Bench against the hot path"],
+  "redesign-plan":["Audience and information architecture","The navigation model","Landing-page narrative","Reference vs guide split","Search and versioning","Code-sample tooling","Migrate the existing docs","Launch checklist"],
+  "lifecycle-rework":["Model the ticket lifecycle","Derive state from files","Proposed-answer semantics","Abandon & revert flow","Autopilot opt-out path","Docs & examples"],
+  "billing-webhooks":["Webhook signature verification","Idempotent event handling","Retry & backoff policy","Reconciliation job"]
+};
+const MVCOPY={
+  "resolved":"Answered and blessed. On disk, resolved always means human-approved (ADR 0004).",
+  "frontier":"Open, unblocked, unclaimed — takeable now. Spawn a session against it.",
+  "blocked":"Open, but a blocker is not yet approved. The harness's frontier is stricter than wayfinder's.",
+  "out_of_scope":"Ruled out of this map's destination.",
+  "implementing-working":"A session holds the ticket and its PTY is producing output.",
+  "implementing-quiet":"Silent past the threshold with no Proposed Answer — a hint the cockpit surfaces and never acts on (ticket 02).",
+  "implementing-dead":"The PTY closed mid-ticket. The claim stands; the star halts to you — resume, respawn, or abandon.",
+  "proposed":"## Proposed Answer written, work committed, session gone. Unresolved until the gate blesses it.",
+  "agentreview":"An adversarial session on a different model critiques the proposal against its Done-when.",
+  "humanreview":"The call to action — the review brief awaits you in the hub (ticket 10). The one star that wants you."
+};
+
+const MAP={ open:false, split:false, splitW:640, divDrag:null, narrow:false, spaceId:null, graph:null, sel:null, drag:null, pendingFocus:null,
+            cam:{x:0,y:0,z:1}, goal:{x:0,y:0,z:1}, clock:0, last:0, needFit:false, fitted:false };
+const PANE_BOTTOM_W=780;   // below this map-panel width, the detail pane docks to the bottom instead of the right
+
+/* ---- build a plausible graph for a space's selected map from the fixture ---- */
+function mapBuildGraph(space){
+  const m=space.maps.find(x=>x.sel)||space.maps[0];
+  if(!m) return null;
+  const [rn,tot]=m.prog.split("/").map(Number);
+  const titles=TITLES[m.nm]||Array.from({length:tot},(_,i)=>"Ticket "+(i+1));
+  /* the one live session (ADR 0003 caps a space at one), painted from the fixture's ambient state */
+  let sess=null;
+  if(space.want==="review") sess={num:parseInt((m.wantN||"#0").slice(1))||0, h:{phase:"humanreview"}};
+  else if(space.want==="halt"||space.live==="dead") sess={num:parseInt((m.wantN||"#0").slice(1))||0, h:{phase:"implementing",live:"dead"}};
+  else if(space.live==="working"||space.live==="quiet"){
+    const mm=(space.session||"").match(/#(\d+)/); sess={num:mm?+mm[1]:(rn+1), h:{phase:"implementing",live:space.live}};
+  }
+  /* resolved = the first rn tickets, but never the one a session is holding */
+  const resolved=new Set();
+  for(let i=1;i<=tot;i++){ if(resolved.size>=rn) break; if(sess&&i===sess.num) continue; resolved.add(i); }
+  /* a light ranked DAG: each ticket leans on one or two earlier ones */
+  const edges=[];
+  for(let i=2;i<=tot;i++){ edges.push({from:Math.max(1,i-2), to:i}); if(i%3===0 && i>3) edges.push({from:i-2, to:i}); }
+  const type = m.kind==="planning" ? "grilling" : "task";
+  const nodes=[];
+  for(let i=1;i<=tot;i++){
+    let status, h=null;
+    if(sess&&i===sess.num){ status="claimed"; h=sess.h; }
+    else if(resolved.has(i)) status="resolved";
+    else { const deps=edges.filter(e=>e.to===i).map(e=>e.from); status = deps.every(d=>resolved.has(d)) ? "frontier" : "blocked"; }
+    nodes.push({num:i, title:titles[i-1]||("Ticket "+i), type, status, h, flare:0, x:0, y:0, _x:0, _y:0});
+  }
+  edges.forEach(e=>{ e.satisfied = resolved.has(e.from); });
+  return { slug:m.nm, kind:m.kind, nodes, edges,
+           wantNum: (sess && sess.h.phase==="humanreview") ? sess.num : null };
+}
+
+/* ---- deterministic force layout, computed once per graph (ticket 09, ported) ---- */
+function ringR(rank){ return 120 + rank*150; }
+function mapLayout(g){
+  const rank={}; g.nodes.forEach(n=>rank[n.num]=0);
+  for(let p=0;p<g.nodes.length;p++) g.edges.forEach(e=>{ if(rank[e.to]<rank[e.from]+1) rank[e.to]=rank[e.from]+1; });
+  const rnd=mulberry32(1337);
+  g.nodes.forEach(n=>{ n.rank=rank[n.num]; const a=rnd()*TAU, jit=(rnd()-0.5)*70, R=ringR(n.rank)+jit; n.x=Math.cos(a)*R; n.y=Math.sin(a)*R; });
+  const byNum={}; g.nodes.forEach(n=>byNum[n.num]=n);
+  const REP=9000, SPRING=0.02, REST=150, RADIAL=0.05;
+  for(let it=0; it<320; it++){
+    for(let i=0;i<g.nodes.length;i++){ const a=g.nodes[i];
+      for(let j=i+1;j<g.nodes.length;j++){ const b=g.nodes[j];
+        const dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2), f=REP/d2, ux=dx/d, uy=dy/d;
+        a.x+=ux*f; a.y+=uy*f; b.x-=ux*f; b.y-=uy*f; } }
+    g.edges.forEach(e=>{ const a=byNum[e.from], b=byNum[e.to]; if(!a||!b) return;
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||0.01, f=(d-REST)*SPRING, ux=dx/d, uy=dy/d;
+      a.x+=ux*f; a.y+=uy*f; b.x-=ux*f; b.y-=uy*f; });
+    g.nodes.forEach(n=>{ const d=Math.hypot(n.x,n.y)||0.01, f=(ringR(n.rank)-d)*RADIAL; n.x+=(n.x/d)*f; n.y+=(n.y/d)*f; });
+  }
+}
+
+function mapOpen(space){
+  const g=mapBuildGraph(space);
+  if(!g){ mapClose(); return; }
+  MAP.graph=g; MAP.spaceId=space.id; MAP.open=true; MAP.sel=null;
+  MAP.needFit=true; MAP.fitted=false; MAP.last=performance.now()/1000;
+  mapLayout(g); render();
+}
+function mapClose(){ MAP.open=false; MAP.sel=null; render(); }
+function mapToggle(){ if(MAP.open){ mapClose(); return; } const s=SPACES.find(x=>x.active); if(s&&s.maps.length) mapOpen(s); }
+
+/* ---- the panel: ONE persistent element (canvas keeps its camera; the .open
+       class slides it in/out). render() rebuilds the cockpit around it; mountMap
+       moves this same node into the fresh stage so nothing re-animates. ---- */
+function ensureMapEl(){
+  if(MAP.el) return MAP.el;
+  const cv=h("canvas",{id:"mapcanvas"});
+  const overlay=h("div",{class:"mv-overlay"});
+  const el=h("div",{class:"mapview"}, cv, overlay);
+  cv.onmousedown=e=>{ MAP.drag={x:e.clientX,y:e.clientY,cx:MAP.cam.x,cy:MAP.cam.y,moved:false}; };
+  cv.onwheel=e=>{ e.preventDefault(); MAP.goal.z=clamp(MAP.goal.z*(e.deltaY<0?1.1:0.9),0.2,2.4); };
+  MAP.el=el; MAP.overlayEl=overlay;
+  return el;
+}
+function mountMap(){
+  const stage=$(".stage"); if(!stage) return;
+  const s=SPACES.find(x=>x.active);
+  if(S.firstrun || !s || !s.maps.length){                 // nowhere to summon a map — take it out
+    if(MAP.el && MAP.el.parentNode) MAP.el.parentNode.removeChild(MAP.el);
+    MAP.open=false; return;
+  }
+  if(MAP.spaceId!==s.id || !MAP.graph){                    // self-heal after a space switch — the map follows
+    MAP.graph=mapBuildGraph(s); MAP.spaceId=s.id; MAP.sel=null; MAP.needFit=true; MAP.fitted=false; mapLayout(MAP.graph);
+  }
+  ensureMapEl();
+  stage.append(MAP.el);                                    // move the persistent node into the new stage
+  buildMapOverlay();
+  MAP.el.classList.toggle("split", !!MAP.split);           // docked-column vs sliding-overlay
+  MAP.el.classList.toggle("has-pane", MAP.sel!=null);
+  requestAnimationFrame(()=>{ if(MAP.el) MAP.el.classList.toggle("open", MAP.open); });  // toggling .open next frame slides it
+}
+/* flip between the sliding overlay and the docked, resizable split column */
+function toggleSplit(){ MAP.split=!MAP.split; if(!MAP.open) MAP.open=true; render(); }
+/* divider drag: the terminal (left) keeps whatever width you set; the map (right) flexes */
+function startDivider(e){
+  e.preventDefault();
+  const stage=$(".stage"); if(!stage) return;
+  MAP.divDrag={ x:e.clientX, startW:MAP.splitW, stageW:stage.getBoundingClientRect().width };
+  document.body.style.cursor="col-resize";
+  if(e.currentTarget && e.currentTarget.classList) e.currentTarget.classList.add("active");
+}
+function buildMapOverlay(){
+  const g=MAP.graph, ov=MAP.overlayEl; if(!ov||!g) return;
+  ov.innerHTML="";
+  const counts={resolved:0,frontier:0,blocked:0,claimed:0,out_of_scope:0}; g.nodes.forEach(n=>counts[n.status]++);
+  const kindWord = g.kind==="unknown" ? "unclassified" : g.kind==="impl" ? "impl" : "planning";
+  const kindCls  = g.kind==="unknown" ? "unknown"      : g.kind==="impl" ? "impl"  : "planning";
+  ov.append(h("div",{class:"mv-hud"},
+    h("div",{class:"nm"}, g.slug, h("span",{class:"chip "+kindCls}, kindWord)),
+    h("div",{class:"counts"}, counts.resolved+" resolved · "+counts.frontier+" frontier · "+counts.blocked+" blocked"
+      +(counts.claimed?" · 1 in session":""))));
+  ov.append(h("div",{class:"mv-ctl"},
+    h("div",{class:"mv-btn",title:MAP.split?"Float the map over the terminal":"Dock the map beside the terminal (resizable)",
+      onclick:toggleSplit}, MAP.split?"⤢ Overlay":"⊟ Split"),
+    h("div",{class:"mv-btn",title:"Dismiss the map (Esc)",onclick:mapClose},"✕ ",h("kbd",{},"Esc"))));
+  const leg=h("div",{class:"mv-legend"});
+  const legItem=(node,label)=>h("div",{class:"lg"},node,label);
+  const d=color=>h("span",{class:"d",style:"background:"+color});
+  leg.append(legItem(d(COL.resolved.core),"resolved"), legItem(d(COL.frontier.core),"frontier"), legItem(d(COL.blocked.core),"blocked"));
+  if(g.nodes.some(n=>n.h&&n.h.phase==="implementing"&&n.h.live==="working")) leg.append(legItem(d(HH.session),"session · orbiting"));
+  if(g.nodes.some(n=>n.h&&n.h.phase==="humanreview")) leg.append(legItem(h("span",{class:"beacon"}),"wants you — review"));
+  if(g.nodes.some(n=>n.h&&n.h.live==="dead")) leg.append(legItem(h("span",{class:"halt"},"✕"),"session died"));
+  ov.append(leg);
+  if(MAP.sel){ const n=g.nodes.find(x=>x.num===MAP.sel); if(n) ov.append(mapPane(n)); }
+  ov.append(h("div",{class:"mv-hint"},"drag to pan · scroll to zoom · click a star"));
+}
+function mapStateName(n){
+  if(n.h){ const p=n.h.phase;
+    if(p==="implementing") return n.h.live==="dead" ? "session died" : n.h.live==="quiet" ? "implementing · quiet" : "implementing · working";
+    if(p==="proposed") return "proposed";
+    if(p==="agentreview") return "agent review";
+    if(p==="humanreview") return "human review — wants you";
+  }
+  return n.status.replace("_"," ");
+}
+function mapCardAction(n){
+  if(n.h){
+    if(n.h.phase==="humanreview") return h("button",{class:"btn primary",onclick:()=>toast("Opening the review hub for <b>#0"+n.num+"</b> — brief, verdict, diff (ticket 10).")},"Open review →");
+    if(n.h.phase==="implementing"&&n.h.live==="dead") return h("button",{class:"btn danger",onclick:()=>toast("<b>#0"+n.num+"</b> halted to you — resume · respawn · abandon (ticket 02).")},"Attend — session died");
+    if(n.h.phase==="implementing") return h("button",{class:"btn primary",onclick:()=>toast("Opening the live session on <b>#0"+n.num+"</b>.")},"Open running session");
+    return h("button",{class:"btn primary",onclick:()=>toast("Opening review for <b>#0"+n.num+"</b>.")},"Open review →");
+  }
+  if(n.status==="frontier") return h("button",{class:"btn primary",onclick:()=>toast("Spawning a "+(n.type==="grilling"?"grill":"session")+" against <b>#0"+n.num+"</b> — the freshly-takeable frontier ticket.")},"Spawn session →");
+  if(n.status==="resolved") return h("button",{class:"btn",onclick:()=>toast("Reading the Answer for <b>#0"+n.num+"</b>.")},"Read answer");
+  if(n.status==="blocked"){ const deps=MAP.graph.edges.filter(e=>e.to===n.num&&!e.satisfied).map(e=>"#0"+e.from); return h("span",{class:"chip"},"waiting on "+(deps.join(" · ")||"a blocker")); }
+  return null;
+}
+function stChip(n){
+  if(n.h){ if(n.h.phase==="implementing"&&n.h.live==="dead") return ["s-blocked","died"]; return ["s-claimed","in session"]; }
+  return ({resolved:["s-resolved","resolved"],frontier:["s-frontier","frontier"],blocked:["s-blocked","blocked"],out_of_scope:["s-blocked","out of scope"]})[n.status] || ["s-frontier",n.status];
+}
+function sessionLine(n){
+  if(!n.h) return "none yet — no session has held this ticket.";
+  if(n.h.phase==="implementing"){
+    if(n.h.live==="dead")  return "✕ ended — the PTY closed mid-ticket; the claim still stands.";
+    if(n.h.live==="quiet") return "● live · quiet — silent past the threshold, no Proposed Answer yet.";
+    return "● live · working — the PTY is producing output.";
+  }
+  if(n.h.phase==="humanreview") return "✓ committed · agent-review passed — the brief is waiting for you.";
+  return "✓ committed · in review.";
+}
+/* the ticket detail, as the right-docked reading pane */
+function mapPane(n){
+  const g=MAP.graph;
+  const key=n.h ? (n.h.phase==="implementing" ? "implementing-"+(n.h.live||"working") : n.h.phase) : n.status;
+  const [scls,slabel]=stChip(n);
+  const deps=g.edges.filter(e=>e.to===n.num).map(e=>({num:e.from, sat:e.satisfied}));
+  const dependents=g.edges.filter(e=>e.from===n.num).length;
+  return h("div",{class:"mv-pane"},
+    h("div",{class:"mv-pane-head"},
+      h("div",{class:"meta"},
+        h("span",{class:"chip "+scls}, slabel),
+        h("span",{class:"chip"}, n.type),
+        h("span",{class:"num"}, "#0"+n.num)),
+      h("span",{class:"x",title:"Close the pane",onclick:()=>{ MAP.sel=null; render(); }},"✕")),
+    h("div",{class:"mv-pane-body"},
+      h("h3",{}, n.title),
+      /* the gold state line only earns its place when it says more than the header chip */
+      n.h ? h("div",{class:"st"}, mapStateName(n)) : null,
+      h("div",{class:"why"}, MVCOPY[key]||""),
+      deps.length ? h("div",{class:"sec"},
+        h("h5",{}, "Blockers · answers inline"),
+        ...deps.map(d=>{ const bn=g.nodes.find(x=>x.num===d.num);
+          return h("div",{class:"dep"},
+            h("span",{class:"dep-n"}, "#0"+d.num),
+            h("span",{class:"dep-t"}, bn?bn.title:"—"),
+            h("span",{class:"dep-s "+(d.sat?"ok":"open")}, d.sat?"✓ resolved":"○ open")); })) : null,
+      h("div",{class:"sec"},
+        h("h5",{}, "Done-when"),
+        h("ul",{}, h("li",{},"…the ticket's Done-when bullets render here, verbatim from the file…"),
+                   h("li",{},"…this pane is the file, not a summary…"))),
+      h("div",{class:"sec"},
+        h("h5",{}, "Sessions on this ticket"),
+        h("div",{class:"sess"}, sessionLine(n))),
+      dependents ? h("div",{class:"sec unblocks"}, "Resolving this unblocks "+dependents+" ticket"+(dependents>1?"s":"")+".") : null),
+    h("div",{class:"mv-pane-foot"}, mapCardAction(n)));
+}
+
+/* ---- the render loop's per-frame draw (only runs while the map is open) ---- */
+const MVSTARS=(function(){ const rnd=mulberry32(9001); const a=[]; for(let i=0;i<150;i++) a.push({x:rnd(),y:rnd(),r:rnd()*1.2+0.3,t:rnd(),p:0.3+rnd()*0.4}); return a; })();
+function mapFit(W,Ht){
+  const g=MAP.graph; let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  g.nodes.forEach(n=>{ minx=Math.min(minx,n.x); miny=Math.min(miny,n.y); maxx=Math.max(maxx,n.x); maxy=Math.max(maxy,n.y); });
+  const spanx=(maxx-minx)||1, spany=(maxy-miny)||1;
+  const z=clamp(Math.min((W-140*DPR)/(spanx*DPR),(Ht-180*DPR)/(spany*DPR)),0.22,1.5);
+  MAP.cam.z=MAP.goal.z=z; MAP.cam.x=MAP.goal.x=(minx+maxx)/2; MAP.cam.y=MAP.goal.y=(miny+maxy)/2;
+}
+/* seat a selected star in the canvas strip the detail pane leaves visible. The pane
+   must already be rendered — we measure its ACTUAL size (its bottom-dock height is
+   content-dependent, up to the 50% cap), so the star centres correctly regardless of
+   how tall the pane turned out. Offsetting the camera by half the pane's occluding
+   dimension puts the star in the middle of the remaining space. */
+function focusSelected(node){
+  const cv=$("#mapcanvas"); if(!cv) return;
+  const z=Math.max(0.2,MAP.cam.z), pane=$(".mv-pane");
+  if(MAP.narrow){
+    const paneH=pane?pane.getBoundingClientRect().height:cv.clientHeight*0.5;
+    MAP.goal.x=node.x; MAP.goal.y=node.y + paneH/(2*z);      // bottom pane: lift by half its measured height
+  } else {
+    const paneW=pane?pane.getBoundingClientRect().width:(MAP.split?Math.min(344,cv.clientWidth*0.56):376);
+    MAP.goal.x=node.x + paneW/(2*z); MAP.goal.y=node.y;      // right pane: shift left by half its measured width
+  }
+}
+function mapFrame(){
+  const cv=$("#mapcanvas"); if(!cv||!MAP.graph) return;
+  const cw=cv.clientWidth, ch=cv.clientHeight; if(!cw||!ch) return;
+  const narrow=cw<PANE_BOTTOM_W;                           // reacts live to divider drags and window resizes
+  if(narrow!==MAP.narrow){ MAP.narrow=narrow; if(MAP.el) MAP.el.classList.toggle("pane-bottom", narrow); }
+  const W=Math.round(cw*DPR), Ht=Math.round(ch*DPR);
+  if(cv.width!==W||cv.height!==Ht){ cv.width=W; cv.height=Ht; if(!MAP.fitted) MAP.needFit=true; }
+  const ctx=cv.getContext("2d");
+  const now=performance.now()/1000; let dt=now-MAP.last; if(dt<0||dt>0.1) dt=0.016; MAP.last=now; MAP.clock=now;
+  if(MAP.needFit){ mapFit(W,Ht); MAP.needFit=false; MAP.fitted=true;
+    if(MAP.pendingFocus!=null){ const fn=MAP.graph.nodes.find(n=>n.num===MAP.pendingFocus); if(fn){ if(MAP.sel!=null) focusSelected(fn); else { MAP.goal.x=fn.x; MAP.goal.y=fn.y; } } MAP.pendingFocus=null; } }
+  MAP.cam.x+=(MAP.goal.x-MAP.cam.x)*0.16; MAP.cam.y+=(MAP.goal.y-MAP.cam.y)*0.16; MAP.cam.z+=(MAP.goal.z-MAP.cam.z)*0.16;
+  const g=MAP.graph;
+  g.nodes.forEach(n=>{ const ph=n.num*1.7; n._x=n.x+Math.sin(MAP.clock*0.7+ph)*2.2; n._y=n.y+Math.cos(MAP.clock*0.55+ph)*2.2; if(n.flare>0) n.flare=Math.max(0,n.flare-dt/1.1); });
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle="#04060b"; ctx.fillRect(0,0,W,Ht);
+  drawFieldMV(ctx,W,Ht);
+  const S2=n=>[W/2+(n._x-MAP.cam.x)*MAP.cam.z*DPR, Ht/2+(n._y-MAP.cam.y)*MAP.cam.z*DPR];
+  const byNum={}; g.nodes.forEach(n=>byNum[n.num]=n);
+  g.edges.forEach(e=>{ const a=byNum[e.from], b=byNum[e.to]; if(a&&b) drawEdgeMV(ctx,e,S2(a),S2(b)); });
+  g.nodes.forEach(n=>{ const p=S2(n); drawStarMV(ctx,n,p[0],p[1],MAP.clock); });
+  drawLabelsMV(ctx,S2);
+  drawBeaconsMV(ctx,S2,W,Ht);
+}
+function drawFieldMV(ctx,W,Ht){
+  MVSTARS.forEach(s=>{ const x=mod(s.x*W - MAP.cam.x*s.p*MAP.cam.z*DPR, W), y=mod(s.y*Ht - MAP.cam.y*s.p*MAP.cam.z*DPR, Ht);
+    ctx.globalAlpha=0.5*(0.6+0.4*Math.sin(s.t*TAU+MAP.clock*0.5)); ctx.fillStyle="#9fb0d6";
+    ctx.beginPath(); ctx.arc(x,y,s.r*DPR,0,TAU); ctx.fill(); });
+  ctx.globalAlpha=1;
+}
+function drawEdgeMV(ctx,e,A,B){
+  const ax=A[0],ay=A[1],bx=B[0],by=B[1];
+  const mx=(ax+bx)/2,my=(ay+by)/2,dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1;
+  const nx=-dy/len,ny=dx/len,bow=Math.min(46*DPR,len*0.13),cx=mx+nx*bow,cy=my+ny*bow;
+  ctx.beginPath(); ctx.moveTo(ax,ay); ctx.quadraticCurveTo(cx,cy,bx,by);
+  if(e.satisfied){ ctx.strokeStyle="rgba(160,192,166,0.55)"; ctx.lineWidth=1.6*DPR; ctx.setLineDash([]); }
+  else { ctx.strokeStyle="rgba(132,146,168,0.28)"; ctx.lineWidth=1.2*DPR; ctx.setLineDash([4*DPR,6*DPR]); }
+  ctx.stroke(); ctx.setLineDash([]);
+  if(e.satisfied){ for(let k=0;k<2;k++){ const u=mod(MAP.clock*0.10+k/2+(e.from*0.13+e.to*0.07),1), m=1-u;
+    const fx=m*m*ax+2*m*u*cx+u*u*bx, fy=m*m*ay+2*m*u*cy+u*u*by;
+    ctx.fillStyle="rgba(190,225,200,"+(0.16+0.44*Math.sin(u*Math.PI))+")"; ctx.beginPath(); ctx.arc(fx,fy,1.7*DPR,0,TAU); ctx.fill(); } }
+}
+function drawStarMV(ctx,n,x,y,t){
+  const c=COL[n.status]||COL.blocked, sc=MAP.cam.z*DPR;
+  const isF=n.status==="frontier", isC=n.status==="claimed";
+  const beat=0.5+0.5*Math.sin(t*2.8+n.num*0.6), fl=n.flare||0;
+  const gr=c.r*3.4*sc*(isF?(0.9+0.18*beat):1)*(1+fl*0.4);
+  let grd=ctx.createRadialGradient(x,y,0,x,y,gr);
+  grd.addColorStop(0,hexA(c.glow,Math.min(1,0.8*(isF?(0.8+0.2*beat):1)+fl*0.5)));
+  grd.addColorStop(0.4,hexA(c.glow,0.20)); grd.addColorStop(1,hexA(c.glow,0));
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(x,y,gr,0,TAU); ctx.fill();
+  const cr=c.r*sc;
+  let cg=ctx.createRadialGradient(x,y,0,x,y,cr*1.4);
+  cg.addColorStop(0,hexA(c.core,1)); cg.addColorStop(0.6,hexA(c.core,0.9)); cg.addColorStop(0.82,hexA(c.core,0.42)); cg.addColorStop(1,hexA(c.core,0));
+  ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(x,y,cr*1.4,0,TAU); ctx.fill();
+  if(fl>0){ ctx.strokeStyle=hexA(c.core,fl*0.6); ctx.lineWidth=(1.5+2*fl)*DPR; ctx.beginPath(); ctx.arc(x,y,cr+(1-fl)*40*sc,0,TAU); ctx.stroke(); }
+  if(isC&&!n.h){ ctx.strokeStyle=hexA(c.core,0.4+0.22*beat); ctx.lineWidth=1.4*DPR; ctx.beginPath(); ctx.arc(x,y,cr+6*sc,0,TAU); ctx.stroke(); }
+  if(n.h) moonsMV(ctx,n,x,y,c,t,sc);
+  if(MAP.sel===n.num){ ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=1.4*DPR; ctx.beginPath(); ctx.arc(x,y,cr+12*sc,0,TAU); ctx.stroke(); }
+}
+function pingMV(ctx,x,y,r0,t,period,color,sc){
+  for(let k=0;k<2;k++){ const u=mod(t/period+k*0.5,1); ctx.strokeStyle=hexA(color,(1-u)*0.55); ctx.lineWidth=(1.6*(1-u)+0.4)*DPR;
+    ctx.beginPath(); ctx.arc(x,y,r0+u*30*sc,0,TAU); ctx.stroke(); }
+}
+/* the canonical "Moons" overlay (ticket 09 variant A): the session is a body */
+function moonsMV(ctx,n,x,y,c,t,sc){
+  const H2=n.h, orbR=(c.r+10)*sc;
+  if(H2.phase==="implementing"){
+    const dead=H2.live==="dead", quiet=H2.live==="quiet";
+    if(dead){ ctx.strokeStyle=hexA(HH.dead,0.32); ctx.setLineDash([3*DPR,5*DPR]); } else ctx.strokeStyle=hexA(HH.session,0.16);
+    ctx.lineWidth=1*DPR; ctx.beginPath(); ctx.arc(x,y,orbR,0,TAU); ctx.stroke(); ctx.setLineDash([]);
+    const speed=dead?0:(quiet?0.18:1.5), ang=dead?n.num*1.3:t*speed+n.num;
+    const mx=x+Math.cos(ang)*orbR, my=y+Math.sin(ang)*orbR;
+    if(!dead&&!quiet){ for(let k=1;k<=3;k++){ const ta=ang-k*0.22; ctx.fillStyle=hexA(HH.session,0.30-k*0.09);
+      ctx.beginPath(); ctx.arc(x+Math.cos(ta)*orbR,y+Math.sin(ta)*orbR,1.6*DPR,0,TAU); ctx.fill(); } }
+    ctx.fillStyle=hexA(dead?HH.dead:HH.session, dead?0.9:(quiet?(0.35+0.3*Math.sin(t*1.2)):1));
+    ctx.beginPath(); ctx.arc(mx,my,(dead?2.4:2.7)*DPR,0,TAU); ctx.fill();
+    if(dead){ ctx.strokeStyle=hexA(HH.dead,0.7); ctx.lineWidth=1*DPR; ctx.beginPath(); ctx.arc(mx,my,4.6*DPR,0,TAU); ctx.stroke(); }
+  } else {
+    ctx.strokeStyle=hexA(HH.session,0.12); ctx.lineWidth=1*DPR; ctx.beginPath(); ctx.arc(x,y,orbR,0,TAU); ctx.stroke();
+    ctx.fillStyle=hexA(H2.phase==="humanreview"?"#ffffff":HH.human,0.95); ctx.beginPath(); ctx.arc(x,y-orbR,3.1*DPR,0,TAU); ctx.fill();
+    if(H2.phase==="agentreview"){ const ang2=-t*2.8+n.num;
+      for(let j=1;j<=3;j++){ const tb=ang2+j*0.3; ctx.fillStyle=hexA(HH.violet,0.32-j*0.09);
+        ctx.beginPath(); ctx.arc(x+Math.cos(tb)*(orbR+5*sc),y+Math.sin(tb)*(orbR+5*sc),1.5*DPR,0,TAU); ctx.fill(); }
+      ctx.fillStyle=hexA(HH.violet,0.95); ctx.beginPath(); ctx.arc(x+Math.cos(ang2)*(orbR+5*sc),y+Math.sin(ang2)*(orbR+5*sc),2.3*DPR,0,TAU); ctx.fill(); }
+    if(H2.phase==="humanreview"){ const wg=ctx.createRadialGradient(x,y,0,x,y,c.r*sc*4.2);
+      wg.addColorStop(0,hexA(HH.human,0.32)); wg.addColorStop(1,hexA(HH.human,0));
+      ctx.fillStyle=wg; ctx.beginPath(); ctx.arc(x,y,c.r*sc*4.2,0,TAU); ctx.fill(); pingMV(ctx,x,y,(c.r+7)*sc,t,1.7,HH.human,sc); }
+  }
+}
+function drawLabelsMV(ctx,S2){
+  if(MAP.cam.z<0.4) return;
+  const numOnly=MAP.cam.z<0.62, fs=clamp(11*Math.pow(MAP.cam.z,0.3),8,13)*DPR;
+  ctx.textAlign="center"; ctx.font=fs+"px "+getComputedStyle(document.body).getPropertyValue("--sans");
+  ctx.shadowColor="rgba(0,0,0,0.85)"; ctx.shadowBlur=4*DPR;
+  MAP.graph.nodes.forEach(n=>{ const p=S2(n), c=COL[n.status]||COL.blocked;
+    let label=(n.num<10?"0":"")+n.num;
+    if(!numOnly){ const tt=n.title.length>28?n.title.slice(0,27)+"…":n.title; label+="  "+tt; }
+    ctx.fillStyle=hexA(LABELCOL[n.status]||"#c8ccd6",1);
+    ctx.fillText(label,p[0],p[1]+c.r*MAP.cam.z*DPR+fs+3*DPR); });
+  ctx.shadowBlur=0;
+}
+/* a human-review star panned offscreen still calls: a chevron pinned to the edge */
+function drawBeaconsMV(ctx,S2,W,Ht){
+  const M=70*DPR;
+  MAP.graph.nodes.forEach(n=>{ if(!(n.h&&n.h.phase==="humanreview")) return; const p=S2(n);
+    if(p[0]>M&&p[0]<W-M&&p[1]>M&&p[1]<Ht-M) return;
+    const bx=clamp(p[0],M,W-M), by=clamp(p[1],M,Ht-M);
+    const dx=p[0]-bx,dy=p[1]-by,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d, pulse=0.6+0.4*Math.sin(MAP.clock*4);
+    ctx.save(); ctx.translate(bx,by); ctx.rotate(Math.atan2(uy,ux)); ctx.fillStyle=hexA(HH.human,pulse);
+    ctx.beginPath(); ctx.moveTo(10*DPR,0); ctx.lineTo(-4*DPR,-7*DPR); ctx.lineTo(-4*DPR,7*DPR); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.font=(10*DPR)+"px "+getComputedStyle(document.body).getPropertyValue("--mono"); ctx.textAlign="center"; ctx.fillStyle=hexA(HH.human,0.9);
+    ctx.fillText("#0"+n.num+" wants you", bx, by+(uy<0?22*DPR:-14*DPR)); });
+}
 /* ============ render ============ */
 function render(){
   const root=$("#root"); root.innerHTML="";
@@ -336,6 +844,7 @@ function render(){
 }
 function afterRender(){
   const f=$("#filter-in"); if(f){ f.value=S.filter; f.oninput=()=>{S.filter=f.value; render(); f2focus();}; }
+  mountMap();
 }
 function f2focus(){ const f=$("#filter-in"); if(f){ f.focus(); f.setSelectionRange(f.value.length,f.value.length);} }
 
@@ -430,8 +939,11 @@ function stage(){
       :t.live==="dead"?[h("span",{class:"dm"},"process exited — code 137. Halted to you: resume · respawn · abandon.\n")]
       :[h("span",{class:"dm"},"idle. Summon the map to pick a frontier ticket, or open a shell.\n"),h("span",{class:"cursor"})]);
 
-  const stg=h("div",{class:"stage"},tabs,body);
-  if(s.maps.length) stg.append(h("div",{class:"maphandle",title:"Summon the star-map (M)"},"◀ map",
+  const split = MAP.open && MAP.split;
+  const termcol=h("div",{class:"term-col", style: split?("flex:none;width:"+MAP.splitW+"px"):null}, tabs, body);
+  const stg=h("div",{class:"stage"}, termcol);
+  if(split) stg.append(h("div",{class:"divider",title:"Drag to resize — the terminal keeps its width",onmousedown:startDivider}));
+  if(s.maps.length && !MAP.open) stg.append(h("div",{class:"maphandle",title:"Summon the star-map (M)",onclick:mapToggle},"◀ map",
     actionables().length&&S.variant!=="A"?h("span",{class:"beacon"}):null));
   return stg;
 }
@@ -460,6 +972,8 @@ function queuePanel(){
 }
 function jumpTo(s,m){
   SPACES.forEach(x=>x.active=false); s.active=true; S.open[s.id]=true; S.queue=false;
+  mapOpen(s);                                                      // …its map summoned…
+  if(MAP.graph && MAP.graph.wantNum!=null){ MAP.sel=MAP.graph.wantNum; MAP.pendingFocus=MAP.graph.wantNum; }  // …the ticket in focus
   toast("Jumped to <b>"+s.nm+" › "+m.nm+"</b> — the space is selected, its map summoned, "+m.wantN+" in focus.");
   render();
 }
@@ -616,6 +1130,7 @@ $("#sw-reset").onclick=()=>location.reload();
 $("#info-btn").onclick=()=>{const c=$("#info-card");c.style.display=c.style.display==="block"?"none":"block";};
 window.addEventListener("keydown",e=>{
   if(e.target.tagName==="INPUT"&&e.key!=="Escape") return;
+  if(e.key==="m"||e.key==="M"){ mapToggle(); return; }   // ticket 08's summon-the-map binding
   if(e.key==="ArrowLeft") $("#sw-prev").click();
   if(e.key==="ArrowRight") $("#sw-next").click();
   if(e.key==="Escape"){
@@ -623,11 +1138,61 @@ window.addEventListener("keydown",e=>{
     if(S.menu){closeMenu();return;}
     if($("#info-card").style.display==="block"){$("#info-card").style.display="none";return;}
     if(S.queue){S.queue=false;render();return;}
+    if(MAP.open){mapClose();return;}
   }
 });
 
 /* ============ boot ============ */
 setVariant(S.variant);
+
+/* one animation loop drives whatever star-map is summoned; pan/select live on
+   MAP so the cockpit's re-renders never fight the view or leak a second loop. */
+(function loop(){ if(MAP.open) mapFrame(); requestAnimationFrame(loop); })();
+window.addEventListener("mousemove",e=>{
+  if(!MAP.drag) return;
+  const dx=e.clientX-MAP.drag.x, dy=e.clientY-MAP.drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>3) MAP.drag.moved=true;
+  MAP.cam.x=MAP.goal.x=MAP.drag.cx-dx/MAP.cam.z;
+  MAP.cam.y=MAP.goal.y=MAP.drag.cy-dy/MAP.cam.z;
+});
+window.addEventListener("mouseup",e=>{
+  const dr=MAP.drag; MAP.drag=null;
+  if(!dr||dr.moved||!MAP.open) return;                 // a click (not a drag) selects a star
+  const cv=$("#mapcanvas"); if(!cv||!MAP.graph) return;
+  const rect=cv.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*DPR, my=(e.clientY-rect.top)*DPR, W=cv.width, Ht=cv.height;
+  let hit=null;
+  MAP.graph.nodes.forEach(n=>{
+    const nx=(n._x??n.x), ny=(n._y??n.y);
+    const sx=W/2+(nx-MAP.cam.x)*MAP.cam.z*DPR, sy=Ht/2+(ny-MAP.cam.y)*MAP.cam.z*DPR;
+    const rr=Math.max(16*DPR,(COL[n.status]||COL.blocked).r*MAP.cam.z*DPR+12*DPR);
+    if((mx-sx)**2+(my-sy)**2<rr*rr) hit=n;
+  });
+  MAP.sel=hit?hit.num:null;
+  if(hit) hit.flare=Math.max(hit.flare,0.6);
+  render();                        // build the pane first, so focusSelected can measure its real size
+  if(hit) focusSelected(hit);      // then seat the star in the space the pane actually leaves
+});
+
+/* divider drag + window resize: the terminal keeps its width, the map flexes */
+window.addEventListener("mousemove",e=>{
+  if(!MAP.divDrag) return;
+  const dx=e.clientX-MAP.divDrag.x;
+  MAP.splitW=clamp(MAP.divDrag.startW+dx, 320, Math.max(320, MAP.divDrag.stageW-260));
+  const tc=$(".term-col"); if(tc) tc.style.width=MAP.splitW+"px";
+});
+window.addEventListener("mouseup",()=>{
+  if(!MAP.divDrag) return;
+  MAP.divDrag=null; document.body.style.cursor="";
+  const dv=$(".divider"); if(dv&&dv.classList) dv.classList.remove("active");
+});
+window.addEventListener("resize",()=>{
+  if(!(MAP.open&&MAP.split)) return;               // terminal stays put; only give ground if the window got too small
+  const stage=$(".stage"); if(!stage) return;
+  const sw=stage.getBoundingClientRect().width;
+  MAP.splitW=clamp(MAP.splitW, 320, Math.max(320, sw-260));
+  const tc=$(".term-col"); if(tc) tc.style.width=MAP.splitW+"px";
+});
 </script>
 </body>
 </html>
