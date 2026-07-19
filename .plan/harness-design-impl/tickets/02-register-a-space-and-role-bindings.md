@@ -11,7 +11,7 @@ The two config-layer slices, delivered together. **The registry:** the empty reg
 
 Done when: process-boundary tests cover register (including the announced `git init`), forget-not-destroy removal, registry loss costing only re-adding folders, the binding merge matrix (field-level inheritance, user-over-workspace), and the ignored committed autopilot warning; in the browser, first run shows the register affordance, a registered space shows its row with ordering and filter working, and the effective bindings with any absence badge are visible.
 
-## Proposed Answer
+## Answer
 
 The registry and role-binding slices delivered together, both derived into the pushed model and driven by plain HTTP actions. Layout:
 
