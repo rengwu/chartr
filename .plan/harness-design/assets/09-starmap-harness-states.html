@@ -12,7 +12,8 @@
 
   Three variants of the state overlay behind one star-map, switchable with the
   pill, ← →, or ?variant=A|B|C. Each answers "is the new axis colour, or
-  something orthogonal?" differently:
+  something orthogonal?" differently. A "Moons" is CANONICAL after review;
+  B and C are round one, kept for the record:
 
     A  Moons    — the session is a BODY: an amber mote orbiting the star.
                   Liveness rides on the mote's motion (working orbits, quiet
@@ -175,20 +176,20 @@
      a pipeline (implementing → proposed → agent review → human review) and a liveness hint
      (working / quiet / dead). Adding five more colours is a christmas tree — so each variant
      proposes a different <em>orthogonal axis</em>, leaving the base palette untouched.</p>
-  <h3>A — Moons</h3>
+  <h3>A — Moons (canonical)</h3>
   <p>The session is a <em>body</em>: an amber mote orbits the star it holds. Liveness is motion —
      working orbits, quiet crawls and dims, dead freezes grey mid-orbit. Proposed docks the mote
      at the rim (the work has landed, nobody is circling). Agent review adds a violet mote
      counter-orbiting the docked one — an adversary circling the proposal. Human review breaks
      the orbital language on purpose: a gold beacon pings outward, because a call to action
      should not read like one more orbital fact.</p>
-  <h3>B — Rings</h3>
+  <h3>B — Rings (round one, kept for the record)</h3>
   <p>The pipeline stage is <em>geometry</em>, extending the claimed star's existing ring language.
      One dashed ring rotating = implementing (rotation is the liveness: static-dim is quiet,
      broken-grey is dead). The ring sealing solid = proposed. A violet dashed counter-ring =
      agent review. Human review turns the rings into a gold reticle — a target to act on, not a
      status to note. Nothing orbits; the calmest variant.</p>
-  <h3>C — Signals</h3>
+  <h3>C — Signals (round one, kept for the record)</h3>
   <p>Nothing is added at all: state rides on the star's own light. Implementing breathes; quiet
      breathes shallow; dead is extinguished under a veil. Proposed holds a steady four-point
      glint. Agent review oscillates amber↔violet. Human review pings — and <em>the rest of the
@@ -297,7 +298,7 @@ var S = {
   clock:0, last:0, selected:null,
   beat:0, playing:false, playT:0
 };
-var VARIANTS = [["A","Moons"],["B","Rings"],["C","Signals"]];
+var VARIANTS = [["A","Moons · canonical"],["B","Rings"],["C","Signals"]];
 var BEAT_DUR = 6.5;
 
 /* --- fixture load + deterministic layout (ported constants, computed ONCE) -- */
@@ -477,9 +478,13 @@ var OVERLAY = {
   A: function(g,n,x,y,c,t,a){
     var h=n.h, orbR=c.r+10;
     if (h.phase==="implementing"){
-      g.strokeStyle=hexA(H.session,0.16*a); g.lineWidth=1;
-      g.beginPath(); g.arc(x,y,orbR,0,TAU); g.stroke();
       var dead=h.live==="dead", quiet=h.live==="quiet";
+      /* dead greys the whole apparatus, not just the mote — the orbit itself is defunct */
+      if (dead){ g.strokeStyle=hexA(H.dead,0.30*a); g.setLineDash([3,5]); }
+      else g.strokeStyle=hexA(H.session,0.16*a);
+      g.lineWidth=1;
+      g.beginPath(); g.arc(x,y,orbR,0,TAU); g.stroke();
+      g.setLineDash([]);
       var speed=dead?0:(quiet?0.18:1.5);
       var ang=dead ? n.num*1.3 : t*speed+n.num;
       var mx=x+Math.cos(ang)*orbR, my=y+Math.sin(ang)*orbR;
@@ -508,10 +513,10 @@ var OVERLAY = {
         g.fillStyle=hexA(H.violet,0.95*a); g.beginPath(); g.arc(rx,ry,2.3,0,TAU); g.fill();
       }
       if (h.phase==="humanreview"){
-        var wg=g.createRadialGradient(x,y,0,x,y,c.gr*1.15);
-        wg.addColorStop(0,hexA(H.human,0.28*a)); wg.addColorStop(1,hexA(H.human,0));
-        g.fillStyle=wg; g.beginPath(); g.arc(x,y,c.gr*1.15,0,TAU); g.fill();
-        ping(g,x,y,c.r+7,t,1.7,H.human,a);
+        var wg=g.createRadialGradient(x,y,0,x,y,c.gr*1.2);
+        wg.addColorStop(0,hexA(H.human,0.36*a)); wg.addColorStop(1,hexA(H.human,0));
+        g.fillStyle=wg; g.beginPath(); g.arc(x,y,c.gr*1.2,0,TAU); g.fill();
+        ping(g,x,y,c.r+7,t,1.7,H.human,a*1.3);
       }
     }
   },
