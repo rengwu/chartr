@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [03, 04]
+claimed_by: claude-opus-4-8
+claimed_at: 2026-07-19T08:12:39Z
 ---
 
 # Charting a new map from a space
