@@ -18,7 +18,15 @@ import (
 	"sort"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/rengwu/wayfinder-harness/internal/model"
 )
+
+// WorkspaceConfigName is the committed workspace config file in a space's repo
+// (ADR 0009): the shared, versioned, portable layer holding role bindings and
+// map kinds. Config owns the filename because it owns the file's shape — the
+// server reads and writes it through this package.
+const WorkspaceConfigName = ".wayfinder-harness.toml"
 
 // Role is one of the closed set of things a session is spawned to do (ADR
 // 0002). The set is fixed here; config that names anything outside it is
@@ -93,10 +101,13 @@ type Resolved struct {
 }
 
 // Resolution is the whole outcome for one space: its effective bindings in role
-// order, any warnings to surface (a committed autopilot flag, an unknown role, a
-// malformed config file), and the effective autopilot flag (user layer only).
+// order, the committed map-kind declarations (slug → kind, ADR 0007), any
+// warnings to surface (a committed autopilot flag, an unknown role, an
+// unrecognised kind, a malformed config file), and the effective autopilot flag
+// (user layer only).
 type Resolution struct {
 	Bindings  []Resolved
+	Kinds     map[string]string
 	Warnings  []string
 	Autopilot bool
 }
@@ -124,7 +135,15 @@ type rawBinding struct {
 
 type workspaceFile struct {
 	Roles     map[string]rawBinding `toml:"roles"`
+	Maps      map[string]rawMap     `toml:"maps"`
 	Autopilot *bool                 `toml:"autopilot"`
+}
+
+// rawMap is one map's committed harness config, keyed by map slug (ADR 0007).
+// Kind is the only field today; the table exists so per-map committed state has
+// a home to grow into without another top-level key.
+type rawMap struct {
+	Kind string `toml:"kind"`
 }
 
 type userFile struct {
@@ -150,7 +169,9 @@ func Resolve(in Input) Resolution {
 
 	var warnings []string
 
-	ws, wsAuto := parseWorkspace(in.WorkspaceTOML, &warnings)
+	wf := parseWorkspace(in.WorkspaceTOML, &warnings)
+	ws, wsAuto := wf.Roles, wf.Autopilot
+	kinds := resolveKinds(wf.Maps, &warnings)
 	us, usAuto := parseUser(in.UserTOML, in.SpacePath, &warnings)
 
 	// A committed autopilot flag is ignored with a warning; only the local user
@@ -188,7 +209,41 @@ func Resolve(in Input) Resolution {
 		bindings = append(bindings, r)
 	}
 
-	return Resolution{Bindings: bindings, Warnings: warnings, Autopilot: autopilot}
+	return Resolution{Bindings: bindings, Kinds: kinds, Warnings: warnings, Autopilot: autopilot}
+}
+
+// resolveKinds turns the committed [maps.<slug>] tables into a slug → kind map,
+// keeping only recognised kinds (ADR 0007: kind is planning or implementation).
+// A table with no kind declares nothing, and an unrecognised kind is surfaced as
+// a warning and dropped — either way the map stays unclassified and inert rather
+// than being refused. Kind is committed-layer only: teammates must agree on it
+// (story 15), so the user layer never declares it.
+func resolveKinds(maps map[string]rawMap, warnings *[]string) map[string]string {
+	if len(maps) == 0 {
+		return nil
+	}
+	slugs := make([]string, 0, len(maps))
+	for slug := range maps {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs) // deterministic warning order
+
+	kinds := make(map[string]string)
+	for _, slug := range slugs {
+		k := maps[slug].Kind
+		if k == "" {
+			continue
+		}
+		if !model.ValidKind(k) {
+			*warnings = append(*warnings, fmt.Sprintf(
+				"committed config declares map %q as kind %q, which the harness does not recognise (want planning or implementation); the map stays unclassified",
+				slug, k,
+			))
+			continue
+		}
+		kinds[slug] = k
+	}
+	return kinds
 }
 
 // apply overrides r's fields with those set in b (nil fields inherit), tagging
@@ -205,16 +260,16 @@ func apply(r *Resolved, b rawBinding, layer Layer) {
 	}
 }
 
-func parseWorkspace(data []byte, warnings *[]string) (map[string]rawBinding, *bool) {
+func parseWorkspace(data []byte, warnings *[]string) workspaceFile {
 	if len(data) == 0 {
-		return nil, nil
+		return workspaceFile{}
 	}
 	var wf workspaceFile
 	if _, err := toml.Decode(string(data), &wf); err != nil {
 		*warnings = append(*warnings, "committed workspace config is malformed and was ignored: "+err.Error())
-		return nil, nil
+		return workspaceFile{}
 	}
-	return wf.Roles, wf.Autopilot
+	return wf
 }
 
 func parseUser(data []byte, spacePath string, warnings *[]string) (map[string]rawBinding, *bool) {

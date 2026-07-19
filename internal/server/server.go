@@ -73,6 +73,7 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/spaces", s.handleRegister)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/classify", s.handleClassify)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))
 

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
   import { needsAgents, type Map, type Space } from './lib/model'
-  import { deregisterSpace, setPin } from './lib/actions'
+  import { classifyMap, deregisterSpace, setPin } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
@@ -58,6 +58,17 @@
   // edge. Shown as a small count so the most spawnable maps read at a glance.
   function frontierCount(m: Map): number {
     return m.tickets.filter((t) => t.frontier).length
+  }
+
+  // Classifying an undeclared map is one confirm (story 14): the guess is
+  // pre-emphasised, but either button declares the kind. The resulting state —
+  // the map going inert-no-more — arrives over the control socket.
+  async function doClassify(space: Space, m: Map, kind: 'planning' | 'implementation') {
+    try {
+      await classifyMap(space.id, m.slug, kind)
+    } catch (e) {
+      alert(`Couldn’t classify “${m.name}”: ${(e as Error).message}`)
+    }
   }
 </script>
 
@@ -127,15 +138,37 @@
             {#if space.maps.length}
               <ul class="map-list">
                 {#each space.maps as m (m.slug)}
-                  <li class="map-row" class:finished={m.finished}>
+                  <li class="map-row" class:finished={m.finished} class:inert={m.kind === ''}>
                     <span class="map-name" title={m.name}>{m.name}</span>
-                    {#if frontierCount(m) > 0}
-                      <span class="map-count" title="{frontierCount(m)} ticket(s) at the frontier"
-                        >{frontierCount(m)}</span
-                      >
-                    {/if}
-                    {#if m.finished}
-                      <span class="map-done" title="every ticket resolved" aria-label="finished">✓</span>
+                    {#if m.kind === ''}
+                      <!-- Undeclared: inert until classified (ADR 0007). The
+                           confirm pre-emphasises the convention guess; no session
+                           action is offered until one is chosen. -->
+                      <span class="map-classify" role="group" aria-label="Classify {m.name}">
+                        <span class="classify-label">kind?</span>
+                        <button
+                          class="kind-btn"
+                          class:guess={m.kindGuess === 'planning'}
+                          title="Planning map — tickets resolve live, no review gate"
+                          onclick={() => doClassify(space, m, 'planning')}>plan</button
+                        >
+                        <button
+                          class="kind-btn"
+                          class:guess={m.kindGuess === 'implementation'}
+                          title="Implementation map — tickets pass through review before resolving"
+                          onclick={() => doClassify(space, m, 'implementation')}>impl</button
+                        >
+                      </span>
+                    {:else}
+                      {#if frontierCount(m) > 0}
+                        <span class="map-count" title="{frontierCount(m)} ticket(s) at the frontier"
+                          >{frontierCount(m)}</span
+                        >
+                      {/if}
+                      {#if m.finished}
+                        <span class="map-done" title="every ticket resolved" aria-label="finished">✓</span
+                        >
+                      {/if}
                     {/if}
                     {#if m.malformations?.length}
                       <span

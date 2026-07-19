@@ -35,9 +35,15 @@ export interface Ticket {
   frontier: boolean
 }
 
+// A map's declared lifecycle (ADR 0007). The empty string is the third state:
+// an undeclared map, inert until a human classifies it.
+export type Kind = '' | 'planning' | 'implementation'
+
 // Map is one discovered wayfinder map beneath a space, derived live from
 // `.plan/` and re-pushed on every filesystem notice. Rendered as-is: a malformed
-// map is never dropped, only surfaced through `malformations`.
+// map is never dropped, only surfaced through `malformations`. `kind` gates the
+// map's session actions: while it is unclassified (`''`) the map is inert, and
+// `kindGuess` carries the convention proposal the classify confirm pre-fills.
 export interface Map {
   slug: string
   name: string
@@ -45,6 +51,8 @@ export interface Map {
   destination: string
   tickets: Ticket[]
   finished: boolean
+  kind: Kind
+  kindGuess?: Kind
   malformations?: string[]
 }
 

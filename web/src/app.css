@@ -424,6 +424,47 @@ body {
   cursor: help;
 }
 
+/* An undeclared map is inert until classified: its name reads dimmed and the
+   inline confirm takes the place of the frontier count. */
+.map-row.inert .map-name {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.map-classify {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.classify-label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.kind-btn {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.kind-btn:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* The convention guess is pre-emphasised so confirming it is a single click. */
+.kind-btn.guess {
+  color: var(--accent, #d9a441);
+  border-color: rgba(217, 164, 65, 0.55);
+}
+
 /* --- Register form -------------------------------------------------------- */
 
 .register.first-run {

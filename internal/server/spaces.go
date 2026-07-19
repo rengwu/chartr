@@ -12,11 +12,6 @@ import (
 	"github.com/rengwu/wayfinder-harness/internal/registry"
 )
 
-// workspaceConfigName is the committed workspace config file in a space's repo
-// (ADR 0009): the shared, versioned, portable layer holding role bindings (and,
-// from ticket 04, map kinds). Absent is the common case and never an error.
-const workspaceConfigName = ".wayfinder-harness.toml"
-
 // userConfigName is the operator's local, uncommitted config under the harness
 // state root, keyed by space path. It carries per-machine binding overrides and
 // the local-only autopilot flag.
@@ -83,6 +78,54 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleClassify declares a map's kind (ADR 0007). Classification is one HTTP
+// action: the operator confirms the convention guess, and the harness writes the
+// kind into the space's committed workspace config, keyed by map slug, so the
+// classification rides the repo to every teammate (story 15). The write appends
+// to the config and is left in the working tree — the harness owns no commit here
+// (its commits are the lifecycle writes of later tickets), the operator commits
+// their config as they commit their bindings.
+func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+	slug := r.PathValue("slug")
+
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !model.ValidKind(body.Kind) {
+		httpError(w, http.StatusBadRequest, "kind must be planning or implementation")
+		return
+	}
+
+	path := filepath.Join(e.Path, config.WorkspaceConfigName)
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		httpError(w, http.StatusInternalServerError, "reading committed config: "+err.Error())
+		return
+	}
+	next, err := config.DeclareMapKind(existing, slug, body.Kind)
+	if err != nil {
+		// An already-declared slug or an unknown kind is the operator's to fix.
+		httpError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := writeFileAtomic(path, next); err != nil {
+		httpError(w, http.StatusInternalServerError, "writing committed config: "+err.Error())
+		return
+	}
+	s.rebuild()
+
+	writeJSON(w, http.StatusOK, map[string]any{"slug": slug, "kind": body.Kind})
+}
+
 // rebuild recomputes the whole derived model from the registry and current
 // config on disk, and pushes it to every browser. It is the one place the
 // registry slice of the model is published, called after every mutating action,
@@ -117,7 +160,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
-	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, workspaceConfigName))
+	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, config.WorkspaceConfigName))
 
 	res := config.Resolve(config.Input{
 		WorkspaceTOML: workspaceTOML,
@@ -140,15 +183,43 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		})
 	}
 
+	// Discovery derives every map with its convention guess; the committed
+	// declaration overlays it, so a classified map goes inert-no-more and its
+	// lingering guess is cleared. A declared kind whose slug matches no discovered
+	// map simply dangles (a renamed directory), which is inert-and-fine, never an
+	// error (ADR 0007).
+	maps := mapscan.Discover(e.Path)
+	for i := range maps {
+		if kind, ok := res.Kinds[maps[i].Slug]; ok {
+			maps[i].Kind = kind
+			maps[i].KindGuess = ""
+		}
+	}
+
 	return model.Space{
 		ID:       e.ID,
 		Name:     filepath.Base(e.Path),
 		Path:     e.Path,
 		Pinned:   e.Pinned,
 		Bindings: bindings,
-		Maps:     mapscan.Discover(e.Path),
+		Maps:     maps,
 		Warnings: res.Warnings,
 	}
+}
+
+// writeFileAtomic writes data to path via a temp file and rename, so a crash
+// mid-write cannot leave the operator's committed config truncated. The parent
+// directory is the space repo, which already exists.
+func writeFileAtomic(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

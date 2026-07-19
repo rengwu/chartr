@@ -43,3 +43,18 @@ export function deregisterSpace(id: string): Promise<void> {
 export function setPin(id: string, pinned: boolean): Promise<void> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/pin`, { pinned }) as Promise<void>
 }
+
+// classifyMap declares a map's kind (ADR 0007), writing it into the space's
+// committed workspace config. The new classification arrives over the control
+// socket like any other state; this returns only the action's own result.
+export function classifyMap(
+  id: string,
+  slug: string,
+  kind: 'planning' | 'implementation',
+): Promise<{ slug: string; kind: string }> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/classify`,
+    { kind },
+  ) as Promise<{ slug: string; kind: string }>
+}
