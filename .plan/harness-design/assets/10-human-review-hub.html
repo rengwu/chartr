@@ -13,8 +13,20 @@
   terminal column, floating map card. The hub takes over the map card — review
   is reading, and the card is the reading surface the layout already owns.
 
-  Three hub variants behind one shell, switchable with the pill, ← →, or
-  ?variant=A|B|C:
+  Four hub variants behind one shell, switchable with the pill, ← →, or
+  ?variant=D|A|B|C. D is round two, distilled after review (impeccable's
+  distill/clarify references), and is the canonical default:
+
+    D  Brief    — one screen, three headings: what was done (the Proposed
+                  Answer verbatim), what the reviewer found (one line + the
+                  blocking finding), and a recommendation the harness derives
+                  mechanically from the verdict. Done-when check, findings and
+                  diff collapse behind expanders. Approve is one click; a
+                  rejecting verdict adds exactly one acknowledgement tick.
+                  The brief is plain markdown on disk ({ } raw shows it) —
+                  a TUI user reads the same text.
+
+  Round one, kept for the record:
 
     A  Dossier  — contract-first reading order: Done-when (with the reviewer's
                   per-clause check), then Proposed Answer, then findings, then
@@ -236,6 +248,30 @@
   .c-rail .pa { font-size:11.5px; padding:9px 11px; }
   .c-main { flex:1; min-width:0; }
 
+  /* ---- variant D : Brief ---- */
+  .hub-body.brief { max-width:680px; width:100%; margin:0 auto; }
+  .d-sec { margin-bottom:24px; }
+  .d-sec h4 { margin:0 0 7px; }
+  .d-sec p { font-size:13px; color:#aeb9d2; line-height:1.7; }
+  .d-verdict { font-size:13px; color:#aeb9d2; line-height:1.7; }
+  .d-verdict.bad b { color:var(--red); } .d-verdict.good b { color:var(--green); }
+  .d-block { border-left:3px solid #54211e; padding:2px 0 2px 12px; margin:9px 0; font-size:12.5px;
+             color:#e8c9c5; line-height:1.6; }
+  .d-block .where { color:var(--accent); cursor:pointer; font-size:11px; white-space:nowrap; }
+  .d-rec { font-size:13px; color:#d8e4f8; line-height:1.7; }
+  .exp { border-top:1px solid var(--line); }
+  .exp-head { display:flex; align-items:center; gap:8px; padding:11px 2px; font-size:12px;
+              color:var(--dim); cursor:pointer; user-select:none; }
+  .exp-head:hover { color:var(--txt); }
+  .exp-head .tri { font-size:9px; width:10px; flex:none; }
+  .exp-body { padding:2px 0 16px; }
+  .d-actions { display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-top:28px;
+               padding-top:16px; border-top:1px solid var(--line); }
+  .d-actions .why { flex-basis:100%; font-size:10.5px; color:var(--dim); line-height:1.6; }
+  .ack { display:flex; gap:7px; align-items:center; font-size:11.5px; color:#c9a9a5; cursor:pointer; }
+  .rawmd { background:#04060b; border:1px solid var(--line); border-radius:9px; padding:14px 16px;
+           font:11.5px var(--mono); color:#9fb0cd; white-space:pre-wrap; line-height:1.65; }
+
   /* dialogs & strips */
   .dim-back { position:absolute; inset:0; z-index:80; background:rgba(3,5,10,.7); backdrop-filter:blur(2px);
               display:flex; align-items:center; justify-content:center; }
@@ -329,7 +365,7 @@ const VERDICTS = {
                {ok:true, note:"trailer written on injected failure; asserted in test"},
                {ok:true, note:"both tests present and meaningful"}],
       findings:[
-        {sev:"advisory", dw:2,
+        {sev:"advisory", dw:1,
          claim:"Flush() runs per row; the 1M bench passes but wall-time roughly doubles versus batching. The clause holds — this is throughput, which no clause names.",
          loc:["internal/export/handler.go",17], fix:"flush every ~500 rows instead"},
         {sev:"advisory", dw:null,
@@ -342,7 +378,7 @@ const VERDICTS = {
                {ok:true,  note:"requester, count, range all present"},
                {ok:true,  note:"errors logged, export continues"}],
       findings:[
-        {sev:"blocking", dw:1,
+        {sev:"blocking", dw:0,
          claim:"RecordAudit fires after headers are set but before a single row streams — a mid-stream failure still logs a delivered export. Clause 1 says a row exists iff a file was delivered; this implements “if attempted”.",
          loc:["internal/export/handler.go",6], fix:"record after the final flush succeeds — or record attempt + outcome as two explicit states"},
         {sev:"advisory", dw:null,
@@ -477,17 +513,19 @@ const dependents=n=>TICKETS.filter(x=>x.dep.includes(n));
 
 /* ============ state ============ */
 const S = {
-  variant:new URLSearchParams(location.search).get("variant")||"A",
+  variant:new URLSearchParams(location.search).get("variant")||"D",
   hub:null, sheet:null, strip:null, dialog:null,
   dispo:{},            // B: finding dispositions, key "n:i" -> {kind, reason}
   followup:{},         // n -> true once a follow-up session ran
   scope:{},            // n -> "all" | "verdict" | "last"
   rejected:{},         // n -> {reason, date, reverted}
   seen:{},             // n -> Set of section keys scrolled into view
+  ack:{},              // D: n -> blocking finding acknowledged
+  raw:{},              // D: n -> viewing the on-disk markdown
   actionsOpen:false,
 };
-if(!["A","B","C"].includes(S.variant)) S.variant="A";
-const VNAMES={A:"Dossier — contract-first",B:"Counsel — findings-first",C:"Evidence — diff-first"};
+if(!["D","A","B","C"].includes(S.variant)) S.variant="D";
+const VNAMES={D:"Brief — distilled",A:"Dossier — contract-first",B:"Counsel — findings-first",C:"Evidence — diff-first"};
 
 /* ============ shell ============ */
 const root=$("#root");
@@ -665,19 +703,35 @@ function renderHub(){
   const v=VERDICTS[t.n];
   const hub=h("div",{class:"hub"});
   hub.append(hubHead(t,v));
-  const body=h("div",{class:"hub-body"+(S.variant==="C"?"":" narrow")});
+  const body=h("div",{class:"hub-body"+(S.variant==="C"?"":S.variant==="D"?" brief":" narrow")});
   hub.append(body);
   if(v.outcome==="reject") body.append(h("div",{class:"banner"},
-    h("b",{},"⚑ Agent review rejected this proposal."),
-    " Rejection never loops back to the implementer — it halts here, to you. The reviewer may be wrong; every exit below is still yours."));
-  if(S.followup[t.n]) body.append(scopeBar(t));
-  ({A:hubA,B:hubB,C:hubC})[S.variant](body,t,v);
-  if(S.variant!=="A") hub.append(bottomBar(t,v));   /* A's approve lives inside the body, after the diff */
+    S.variant==="D"
+      ?[h("b",{},"⚑ The reviewer rejected this.")," Rejection never loops — it halts here. The exits are yours."]
+      :[h("b",{},"⚑ Agent review rejected this proposal."),
+        " Rejection never loops back to the implementer — it halts here, to you. The reviewer may be wrong; every exit below is still yours."]));
+  if(S.followup[t.n]&&S.variant!=="D") body.append(scopeBar(t));
+  ({A:hubA,B:hubB,C:hubC,D:hubD})[S.variant](body,t,v);
+  if(S.variant==="B"||S.variant==="C") hub.append(bottomBar(t,v));   /* A and D carry their actions inside the body */
   mapcard.append(hub);
   body.addEventListener("scroll",()=>trackSeen(body,t));
   requestAnimationFrame(()=>trackSeen(body,t));
 }
 function hubHead(t,v){
+  if(S.variant==="D"){
+    const work=HIST[t.n].find(e=>e.k==="work");
+    return h("div",{class:"hub-head"},
+      h("div",{class:"hub-title"},
+        h("span",{class:"chip proposed"},"proposed"),
+        h("h2",{},pad(t.n)+" "+t.t),
+        h("button",{class:"btn",style:"padding:5px 10px",title:"the same brief, as the markdown the harness wrote to disk",
+          onclick:()=>{S.raw[t.n]=!S.raw[t.n];renderHub();}},S.raw[t.n]?"rendered":"{ } raw"),
+        h("button",{class:"btn",onclick:closeHub},"✕ esc")),
+      h("div",{style:"font-size:11px;color:var(--dim);margin-top:5px"},
+        "claude implemented ("+work.commits.length+" commit"+(work.commits.length>1?"s":"")+
+        ") → codex reviewed, on a different model → "+
+        (v.outcome==="reject"?"rejected — halted to you":"passed — your gate")));
+  }
   const chain=h("div",{class:"chain"});
   const evs=[];
   for(const e of HIST[t.n]){
@@ -711,11 +765,23 @@ function dwBlock(t,v,compact){
       compact?null:h("span",{class:"rv"},"reviewer: "+c.note)); });
   return h("div",{class:"dw"},rows);
 }
+const AMEND={
+  3:" — Amended: flushing per ~500 rows now; the bench wall-time halved.",
+  6:" — Amended: the audit row is written after the final flush; a failed stream logs an aborted attempt instead.",
+};
+const FUP={
+  3:{file:"internal/export/handler.go",base:17,sha:"a90cd4",
+     lines:[["d","            cw.Flush()"],["a","            if n%500 == 0 { cw.Flush() }"]]},
+  6:{file:"internal/export/handler.go",base:14,sha:"d94k02",
+     lines:[["d","        RecordAudit(db, requester(r), 0, rng.From, rng.To)"],
+            ["a","        defer func() { RecordAudit(db, requester(r), n, rng.From, rng.To, delivered) }()"]]},
+};
+function paText(t){ return PROPOSED[t.n]+(S.followup[t.n]?AMEND[t.n]:""); }
 function paBlock(t){
   const rewritten=S.followup[t.n];
   return h("div",{class:"pa"+(rewritten?" rewritten":"")},
     rewritten?h("span",{class:"rw"},"rewritten by follow-up · prior text in git"):null,
-    PROPOSED[t.n]+(rewritten?" — Amended: the audit row is now written after the final flush; the failure path logs an aborted attempt instead.":""));
+    paText(t));
 }
 function findingCard(t,v,f,i,{withDispo,embedHunk}={}){
   const key=t.n+":"+i, dispo=S.dispo[key];
@@ -764,11 +830,10 @@ function diffBlock(t,{pins}={}){
     wrap.append(fileEl);
   }
   if(S.followup[t.n]&&scope!=="all"){
+    const fu=FUP[t.n];
     const fileEl=h("div",{class:"diff"},
-      h("div",{class:"df-head"},"internal/export/handler.go",h("span",{class:"new"},"follow-up · d94k02")),
-      [["d","        RecordAudit(db, requester(r), 0, rng.From, rng.To)"],
-       ["a","        defer func() { RecordAudit(db, requester(r), n, rng.From, rng.To, delivered) }()"],
-      ].map(([k,tx],i)=>h("div",{class:"df-line "+k},h("span",{class:"ln"},String(14+i)),h("span",{class:"tx"},(k==="a"?"+ ":"- ")+tx))));
+      h("div",{class:"df-head"},fu.file,h("span",{class:"new"},"follow-up · "+fu.sha)),
+      fu.lines.map(([k,tx],i)=>h("div",{class:"df-line "+k},h("span",{class:"ln"},String(fu.base+i)),h("span",{class:"tx"},(k==="a"?"+ ":"- ")+tx))));
     wrap.prepend(h("div",{style:"font-size:10.5px;color:var(--amber);margin-bottom:6px"},
       scope==="verdict"?"showing 1 follow-up commit since the verdict; the original proposal is collapsed below":"showing what changed since you last read — 1 commit"),fileEl);
   }
@@ -825,7 +890,8 @@ function doApprove(t){
   if(spawnBtn) setTimeout(()=>{spawnBtn.disabled=false;},450);  /* never inherits the approve click */
   S.strip=h("div",{class:"strip"},
     h("div",{class:"msg"},"✓ "+pad(t.n)+" resolved — ## Proposed Answer promoted (commit e81c44"+
-      (waived.length?"; "+waived.length+" waived finding"+(waived.length>1?"s":"")+" recorded under the Answer":"")+")",
+      (waived.length?"; "+waived.length+" waived finding"+(waived.length>1?"s":"")+" recorded under the Answer":"")+
+      (S.ack[t.n]&&VERDICTS[t.n].outcome==="reject"?"; approved over a rejecting verdict — acknowledged":"")+")",
       h("span",{class:"sub"},unb.length?("unblocked "+unb.map(x=>pad(x.n)).join(", ")+" — next up, ranked by what it unblocks:"):
         "nothing newly unblocked — the frontier already had open tickets"),
       next?h("span",{class:"sub"},pad(next.n)+" "+next.t+(unb.includes(next)?" (just unblocked by this approval)":"")):null),
@@ -866,14 +932,16 @@ function doAbandon(t,reason,reverted){
     h("button",{class:"btn",onclick:killStrip},"esc"));
   mapcard.append(S.strip);
 }
+function spawnFollowup(t,role,accumulates=true){
+  if(accumulates){ S.followup[t.n]=true; if(!S.scope[t.n])S.scope[t.n]="verdict"; }
+  const ns={id:"f"+Date.now(),label:pad(t.n)+" · "+role,live:true};
+  liveSessions=liveSessions.map(s=>({...s,live:false})).concat(ns);
+  renderTabs(ns.id); renderHub();
+}
 function furtherMenu(t,finding){
   killDialog();
-  const item=(label,sub,role)=>h("div",{class:"menu-it",onclick:()=>{
-      killDialog();
-      S.followup[t.n]=true; if(!S.scope[t.n])S.scope[t.n]="verdict";
-      const ns={id:"f"+Date.now(),label:pad(t.n)+" · "+role,live:true};
-      liveSessions=liveSessions.map(s=>({...s,live:false})).concat(ns);
-      renderTabs(ns.id); renderHub();
+  const item=(label,sub,role,accumulates=true)=>h("div",{class:"menu-it",onclick:()=>{
+      killDialog(); spawnFollowup(t,role,accumulates);
     }},
     h("span",{class:"what"},label,h("span",{class:"sub2"},sub)));
   S.dialog=h("div",{class:"dim-back",onclick:e=>{if(e.target===S.dialog)killDialog();}},
@@ -882,7 +950,7 @@ function furtherMenu(t,finding){
       h("div",{class:"sub"},"Spawns another session against this same ticket. Its commits accumulate on the proposal; the ticket stays proposed and comes back to this hub. "+(finding?"Pre-briefed with the finding you sent back.":"")),
       item("Implement the fixes","an implement session, briefed with the verdict"+(finding?" and your sent-back finding":""),"fix-up"),
       item("Grill the proposal","a grill session — interrogate the approach before more code lands","grill"),
-      item("Advice only","talk to a model about the diff; no commits, nothing accumulates","advice"),
+      item("Advice only","talk to a model about the diff; no commits, nothing accumulates","advice",false),
       h("div",{class:"acts"},h("button",{class:"btn",onclick:killDialog},"Cancel"))));
   mapcard.append(S.dialog);
 }
@@ -933,6 +1001,106 @@ function hubC(body,t,v){
         "contract, claim and findings rode along in the rail — scrolling the diff is the whole read"))));
   markSeen(t.n,"contract"); markSeen(t.n,"proposal"); markSeen(t.n,"verdict"); /* the rail is always on screen */
 }
+/* ---- variant D: Brief — the distilled hub (round two, canonical) ---- */
+function recLine(t,v){
+  const blocking=v.findings.filter(f=>f.sev==="blocking");
+  if(v.outcome==="reject")
+    return "Send back to fix — the blocking finding breaks Done-when "+(blocking[0].dw+1)+". One follow-up session should clear it.";
+  const unb=dependents(t.n).filter(d=>d.dep.every(x=>x===t.n||byN(x).st==="resolved"));
+  return "Ready to approve — nothing blocks. The "+v.findings.length+" advisory notes can ride along or wait."
+    +(unb.length?" Approving unblocks "+unb.map(d=>pad(d.n)).join(", ")+".":"");
+}
+function briefMarkdown(t,v){
+  const blocking=v.findings.filter(f=>f.sev==="blocking");
+  return [
+    "# Review — "+pad(t.n)+" "+t.t,
+    "_claude implemented · codex reviewed ("+v.outcome+") · different models (ticket 05)_","",
+    "## What was done",
+    paText(t),"",
+    "## What the reviewer found",
+    v.outcome==="reject"
+      ? "Rejected — "+blocking.length+" blocking, "+(v.findings.length-blocking.length)+" advisory."
+      : "Passed — all "+v.clauses.length+" Done-when clauses check out; "+v.findings.length+" advisory notes.",
+    ...v.findings.map(f=>"- ["+f.sev+(f.dw!=null?" · Done-when "+(f.dw+1):"")+"] "+f.claim+" ("+f.loc[0]+")"),"",
+    "## Recommended",
+    recLine(t,v),"",
+    "## Exits",
+    v.outcome==="reject"
+      ? "send back · approve (acknowledge the blocking finding first) · abandon"
+      : "approve · take it further · abandon",
+  ].join("\n");
+}
+function expander(title,build,cls){
+  const bodyEl=h("div",{class:"exp-body",style:"display:none"});
+  let built=false;
+  const tri=h("span",{class:"tri"},"▶");
+  const head=h("div",{class:"exp-head",onclick:()=>{
+    const open=bodyEl.style.display==="none";
+    if(open&&!built){ bodyEl.append(build()); built=true; }
+    bodyEl.style.display=open?"block":"none"; tri.textContent=open?"▼":"▶";
+  }},tri,title);
+  return h("div",{class:"exp"+(cls?" "+cls:"")},head,bodyEl);
+}
+function hubD(body,t,v){
+  if(S.raw[t.n]){
+    body.append(h("pre",{class:"rawmd"},briefMarkdown(t,v)),dActions(t,v));
+    markSeen(t.n,"contract");markSeen(t.n,"proposal");markSeen(t.n,"verdict");markSeen(t.n,"diff");
+    return;
+  }
+  const blocking=v.findings.filter(f=>f.sev==="blocking");
+  const files=DIFFS[t.n].length, adds=DIFFS[t.n].reduce((a,d)=>a+d.lines.filter(l=>l[0]==="a").length,0);
+  const rewritten=S.followup[t.n];
+  body.append(h("div",{class:"d-sec"},h("h4",{},"What was done"),
+    h("p",{},paText(t),
+      rewritten?h("span",{style:"color:var(--amber);font-size:10.5px;display:block;margin-top:4px"},"rewritten in place by the follow-up — prior text in git"):null)));
+  body.append(h("div",{class:"d-sec"},h("h4",{},"What the reviewer found"),
+    h("div",{class:"d-verdict "+(v.outcome==="reject"?"bad":"good")},
+      v.outcome==="reject"
+        ?[h("b",{},"Rejected")," — "+blocking.length+" blocking finding"+(blocking.length>1?"s":"")+", "+(v.findings.length-blocking.length)+" advisory."]
+        :[h("b",{},"Passed")," — all "+v.clauses.length+" Done-when clauses check out; "+v.findings.length+" advisory notes."]),
+    blocking.map(f=>h("div",{class:"d-block"},f.claim+" ",
+      h("span",{class:"where",onclick:()=>{
+        const exp=body.querySelector(".exp.diff-exp .exp-head");
+        const bodyOpen=body.querySelector(".exp.diff-exp .exp-body");
+        if(exp&&bodyOpen&&bodyOpen.style.display==="none") exp.click();
+        setTimeout(()=>jumpToDiff(t,f),60);
+      }},f.loc[0]))),
+    expander("Full verdict — the Done-when check and all findings",
+      ()=>h("div",{},dwBlock(t,v),h("div",{style:"height:10px"}),verdictBlock(t,v)))));
+  body.append(h("div",{class:"d-sec"},h("h4",{},"Recommended"),h("p",{class:"d-rec"},recLine(t,v))));
+  const evid=h("div",{class:"d-sec"});
+  if(S.followup[t.n]) evid.append(scopeBar(t));
+  evid.append(expander("Diff — "+files+" file"+(files>1?"s":"")+", +"+adds+" lines",()=>diffBlock(t),"diff-exp"));
+  body.append(evid);
+  body.append(dActions(t,v));
+  markSeen(t.n,"contract");markSeen(t.n,"proposal");markSeen(t.n,"verdict");markSeen(t.n,"diff");
+}
+function dActions(t,v){
+  const blocking=v.findings.filter(f=>f.sev==="blocking");
+  const needAck=blocking.length>0;
+  const unb=dependents(t.n).filter(d=>d.dep.every(x=>x===t.n||byN(x).st==="resolved"));
+  const approve=h("button",{class:"btn approve",onclick:()=>doApprove(t),
+    ...(needAck&&!S.ack[t.n]?{disabled:true,title:"acknowledge the blocking finding first"}:{})},
+    "Approve — resolve "+pad(t.n));
+  const row=h("div",{class:"d-actions"});
+  if(v.outcome==="reject")
+    row.append(h("button",{class:"btn primary",onclick:()=>spawnFollowup(t,"fix-up")},"Send back to fix"));
+  row.append(approve);
+  if(v.outcome!=="reject")
+    row.append(h("button",{class:"btn",onclick:()=>furtherMenu(t)},"Take it further…"));
+  row.append(h("button",{class:"btn danger",onclick:()=>abandonDialog(t)},"Abandon…"));
+  if(needAck){
+    const cb=h("input",{type:"checkbox",...(S.ack[t.n]?{checked:true}:{})});
+    cb.addEventListener("change",()=>{S.ack[t.n]=cb.checked;renderHub();});
+    row.append(h("label",{class:"ack"},cb,"I've read the blocking finding"));
+  }
+  row.append(h("div",{class:"why"},
+    "Approve promotes ## Proposed Answer → ## Answer, as its own commit"+
+    (unb.length?", and unblocks "+unb.map(d=>pad(d.n)).join(", "):"")+
+    ". Esc walks away — this stays counted in Next up. This brief is plain markdown on disk ("+
+    ".plan/export-csv-impl/.harness/review/"+String(t.n).padStart(2,"0")+"-brief.md) — the same text from any CLI."));
+  return row;
+}
 
 /* ============ info card ============ */
 const INFO_COMMON=`
@@ -940,6 +1108,11 @@ const INFO_COMMON=`
 <p><b>After approve:</b> a strip replaces the hub — what was promoted, what it unblocked, and the next best frontier ticket <i>as a suggestion, never a shove</i>: a button that enables only after 450ms (it can never inherit the approve click), dismissed with Esc. Autopilot is a different, opt-in world.</p>
 <p><b>The verdict summary is anchored to the contract:</b> a per-Done-when-clause check (met/unmet) separates “the contract holds” from “the reviewer has opinions”. A finding that cites no clause is <b>advisory by rule</b> — that is how you tell nitpicking from a real bug: #03's reviewer found only advisories (one cites a clause that still holds, one is pure taste); #06's blocking finding cites clause 1 and shows it broken.</p>`;
 const INFO={
+D:`<h4>D — Brief: the distilled hub (round two — canonical)</h4>
+<p><b>One screen, three headings:</b> what was done (the ## Proposed Answer verbatim — it already is the claim), what the reviewer found (one line, plus the blocking finding if there is one), and a recommendation the <b>harness derives mechanically from the verdict</b> — pass → “ready to approve”, reject → “send back to fix”. No agent editorializes at the human's gate.</p>
+<p><b>Everything else is one click deeper:</b> the per-clause Done-when check and full findings under “Full verdict”; the diff collapsed to “N files, +M lines”. The blocking finding's file name jumps straight into the expanded diff. Progressive disclosure per the distill/clarify references — the 20% that decides sits on top.</p>
+<p><b>Friction distilled to one tick:</b> approve is one click on a pass; a rejecting verdict adds exactly one acknowledgement — “I've read the blocking finding” — no waiver prose. Buttons name their outcomes: “Approve — resolve #06”, “Send back to fix”.</p>
+<p><b>TUI parity:</b> the brief is assembled as plain markdown on disk — <b>{ } raw</b> shows the exact file. A CLI user reads the same brief; the GUI adds buttons and nothing else.</p>`+INFO_COMMON,
 A:`<h4>A — Dossier: contract-first</h4>
 <p><b>Reading order as an argument:</b> the contract (Done-when + per-clause check), then the claim (## Proposed Answer), then the second reader, then the evidence. You know what was promised before you read what anyone says about it.</p>
 <p><b>Approve lives below the diff</b> — the path to the button walks through the evidence. No enforcement: the bar also floats nothing; if you jump-scroll past, the “not yet read” nudge beside Approve says so, quietly. Surfaced, never gated — cockpit, not autopilot.</p>`+INFO_COMMON,
@@ -951,7 +1124,7 @@ C:`<h4>C — Evidence: diff-first, PR-style</h4>
 };
 
 /* ============ chrome: switcher, info, keys ============ */
-const ORDER=["A","B","C"];
+const ORDER=["D","A","B","C"];
 function setVariant(v){
   S.variant=v; S.dispo={};
   history.replaceState(null,"","?variant="+v);
@@ -959,8 +1132,8 @@ function setVariant(v){
   $("#info-card").innerHTML=INFO[v];
   if(S.hub!=null) renderHub();
 }
-$("#sw-prev").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+2)%3]);
-$("#sw-next").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+1)%3]);
+$("#sw-prev").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+ORDER.length-1)%ORDER.length]);
+$("#sw-next").onclick=()=>setVariant(ORDER[(ORDER.indexOf(S.variant)+1)%ORDER.length]);
 $("#sw-reset").onclick=()=>location.reload();
 $("#info-btn").onclick=()=>{const c=$("#info-card");c.style.display=c.style.display==="block"?"none":"block";};
 window.addEventListener("keydown",e=>{
