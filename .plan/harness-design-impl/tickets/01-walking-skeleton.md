@@ -13,7 +13,7 @@ This ticket also establishes the **process-boundary test rig** the whole map's t
 
 Done when: running the binary and opening a browser shows the empty cockpit shell served from the embedded build; the rig's first tests are green — a snapshot arrives on connect, and a dropped connection gets the full snapshot again on reconnect.
 
-## Proposed Answer
+## Answer
 
 One Go binary serves the cockpit shell and pushes the derived model; the process-boundary rig is stood up. Layout:
 
