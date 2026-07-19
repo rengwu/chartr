@@ -1,0 +1,14 @@
+# Compiled binary
+/bin/
+
+# Node
+/web/node_modules/
+
+# Embedded frontend build output. The committed .gitkeep keeps the directory so
+# `go:embed all:dist` compiles on a fresh checkout; `make web` fills in the real
+# index.html and assets, which are not committed.
+/web/dist/*
+!/web/dist/.gitkeep
+
+# macOS
+.DS_Store

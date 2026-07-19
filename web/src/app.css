@@ -1,0 +1,139 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #11151f;
+  --border: #1e2530;
+  --text: #d6dbe4;
+  --muted: #7d8798;
+  --accent: #d9a441; /* the amber the star-map session moons will use */
+  --ok: #4ec9a3;
+  --warn: #d9a441;
+  --down: #6b7280;
+
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.cockpit {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    "sidebar stage"
+    "statusbar statusbar";
+  height: 100%;
+}
+
+.sidebar {
+  grid-area: sidebar;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  padding: 14px 12px;
+  overflow-y: auto;
+}
+
+.sidebar-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.space-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.space-list li {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.space-list li:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.stage {
+  grid-area: stage;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.stage-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  max-width: 460px;
+}
+
+.stage-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stage-sub {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.statusbar {
+  grid-area: statusbar;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.statusbar .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--down);
+}
+
+.statusbar[data-status="open"] .dot {
+  background: var(--ok);
+}
+.statusbar[data-status="connecting"] .dot {
+  background: var(--warn);
+}
+.statusbar[data-status="closed"] .dot {
+  background: var(--down);
+}
