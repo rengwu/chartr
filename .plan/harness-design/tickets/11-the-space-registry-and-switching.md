@@ -1,6 +1,8 @@
 ---
 type: prototype
 blocked_by: [08]
+claimed_by: claude-opus-4-8
+claimed_at: 2026-07-19T09:15:07Z
 ---
 
 # The space registry and switching
