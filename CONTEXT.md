@@ -58,6 +58,24 @@ _Avoid_: skills, templates, system prompts
 The harness's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
 
+### The frontend
+
+**Chrome**:
+The Svelte-rendered UI around the islands — sidebar, tabs, queue, brief, panes — reacting to the pushed model.
+_Avoid_: shell, layout, wrapper
+
+**Island**:
+An imperative surface the chrome hosts but never reaches inside: an xterm.js terminal, or the star-map's canvas renderer behind its narrow seam (mount, receive model, emit selection).
+_Avoid_: component, widget, embed
+
+**Control socket**:
+The one JSON websocket per browser carrying the derived model downstream — server-authoritative, whole-snapshot on every change, resent on reconnect.
+_Avoid_: state socket, event bus, sync channel
+
+**Terminal socket**:
+The binary websocket per attached terminal — raw PTY bytes down, keystrokes up, buffered scrollback replayed on attach.
+_Avoid_: pty stream, data channel
+
 ### Configuration
 
 **Role binding**:
