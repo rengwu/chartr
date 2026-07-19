@@ -23,6 +23,11 @@ The map is done when every decision the spec needs is settled — nothing left t
 
 **Standing preference:** the client is **hackable**. What the harness injects and reasons with — prompts first of all — is visible on disk as plain markdown, accessible, and editable by the operator; never sealed inside the binary. (Surfaced in ticket 04.)
 
+**Two warnings for the spec writer** (`to-spec` reads these before the tickets):
+
+- **Map discovery follows the adapter, not a hard-coded path.** Ticket 11's resolution names `.plan/maps/<slug>/` as where wayfinder writes; that is an *anticipated* layout — today the markdown adapter (`TRACKER-MARKDOWN.md`) writes `.plan/<slug>/`, which is where this very map lives. The binding decision is ticket 11's own phrase "reading wherever wayfinder writes": the spec should have discovery handle the current layout (and tolerate the move), never bake in either path.
+- **Read ticket 01 through ticket 02's amendment.** Ticket 01 is marked undermined: its survey researched a headless floor that ticket 02 moved (interactive-only spawn, `observe` degraded to alive/dead, tokens and caps demoted). The survey's facts stand; its contract does not.
+
 **The honest ceiling, worth remembering when a ticket promises too much:** this design can make *orchestration* correct, reliable and reversible. It cannot make the *work* correct. Residual risk lands on leaf-implementation quality and on human diligence at the one gate.
 
 ## Decisions so far
