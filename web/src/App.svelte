@@ -5,6 +5,7 @@
   import { deregisterSpace, setPin } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
+  import Modal from './lib/Modal.svelte'
 
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
@@ -73,12 +74,6 @@
     {:else if spaces.length === 0}
       <p class="hint">No spaces yet.</p>
     {:else}
-      {#if showAdd}
-        <div class="sidebar-add">
-          <RegisterForm variant="inline" onRegistered={(id) => { selectedId = id; showAdd = false }} />
-        </div>
-      {/if}
-
       <input
         class="filter"
         type="text"
@@ -140,4 +135,18 @@
     <span class="dot" aria-hidden="true"></span>
     <span>control socket: {control.status}</span>
   </footer>
+
+  <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
+    <p class="modal-hint">
+      Point the harness at a project folder — paste its absolute path. If it isn’t a git
+      repository yet, one is initialized there, announced.
+    </p>
+    <RegisterForm
+      variant="inline"
+      onRegistered={(id) => {
+        selectedId = id
+        showAdd = false
+      }}
+    />
+  </Modal>
 </div>
