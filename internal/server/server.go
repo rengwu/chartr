@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rengwu/wayfinder-harness/internal/registry"
 	"github.com/rengwu/wayfinder-harness/web"
 )
 
@@ -31,6 +32,7 @@ type Server struct {
 	opts Options
 	hub  *hub
 	mux  *http.ServeMux
+	reg  *registry.Registry
 }
 
 // New builds a Server with the control-socket hub seeded to the empty model and
@@ -44,21 +46,33 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	reg, err := registry.Load(opts.DataDir)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		opts: opts,
 		hub:  newHub(),
 		mux:  http.NewServeMux(),
+		reg:  reg,
 	}
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
 	// Operator actions are plain HTTP request/response so a failure surfaces as
-	// a response (ADR 0010). Health is the skeleton's one action; ticket 02
-	// onward adds register, classify, spawn, approve, and the rest here.
+	// a response (ADR 0010). Health is the skeleton's; ticket 02 adds the
+	// registry actions; classify, spawn, approve, and the rest hang here later.
 	s.mux.HandleFunc("/api/health", s.handleHealth)
+	s.mux.HandleFunc("POST /api/spaces", s.handleRegister)
+	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
+	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))
+
+	// Reflect any registry persisted from a prior run in the first snapshot, so
+	// a restart restores the operator's spaces without a re-register.
+	s.rebuild()
 
 	return s, nil
 }

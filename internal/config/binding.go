@@ -1,0 +1,254 @@
+// Package config resolves the harness's layered configuration. Ticket 02 owns
+// the role→agent bindings: what a role runs as, merged across three layers.
+//
+// A role binds to {adapter, model, args?} (ADR 0009). Three layers stack —
+// shipped built-in defaults ‹ committed workspace config ‹ local user config —
+// and merge field by field, with the user layer winning: the reconciling rule
+// is that content the project ships wins (prompts, a later ticket) while
+// execution choices the operator makes win (bindings, here). Because a user
+// override may set one field and inherit the rest, the effective binding
+// records where each field came from so silent inheritance stays visible
+// (story 39). Autopilot has no committed meaning: a committed autopilot flag is
+// ignored with a warning (ADR 0009); only the local user layer may set it.
+package config
+
+import (
+	"fmt"
+	"os/exec"
+	"sort"
+
+	"github.com/BurntSushi/toml"
+)
+
+// Role is one of the closed set of things a session is spawned to do (ADR
+// 0002). The set is fixed here; config that names anything outside it is
+// surfaced as a warning, never silently honoured.
+type Role string
+
+const (
+	RoleGrill     Role = "grill"
+	RolePrototype Role = "prototype"
+	RoleResearch  Role = "research"
+	RoleImplement Role = "implement"
+	RoleReview    Role = "review"
+)
+
+// Roles is the closed role set in a stable display order.
+var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement, RoleReview}
+
+func isRole(name string) bool {
+	for _, r := range Roles {
+		if string(r) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Layer identifies where a binding field was resolved from, so field-level
+// inheritance is rendered rather than guessed.
+type Layer string
+
+const (
+	LayerBuiltin   Layer = "built-in"
+	LayerWorkspace Layer = "workspace"
+	LayerUser      Layer = "user"
+)
+
+// builtins are the shipped default bindings — the starting point every layer
+// above may override. implement and review deliberately differ, so
+// heterogeneity at the review gate (the one real mitigation against a model
+// marking its own homework) holds by default rather than being bolted on.
+var builtins = map[Role]Binding{
+	RoleGrill:     {Adapter: "claude", Model: "opus"},
+	RolePrototype: {Adapter: "claude", Model: "sonnet"},
+	RoleResearch:  {Adapter: "claude", Model: "sonnet"},
+	RoleImplement: {Adapter: "claude", Model: "sonnet"},
+	RoleReview:    {Adapter: "codex", Model: "gpt-5"},
+}
+
+// Binding is a fully-resolved role→agent binding: which adapter to launch, on
+// which model, with any extra args the adapter does not model (ADR 0009).
+type Binding struct {
+	Adapter string   `json:"adapter"`
+	Model   string   `json:"model"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// Resolved is one role's effective binding, plus per-field provenance and
+// whether the adapter's binary is actually on PATH.
+type Resolved struct {
+	Role Role `json:"role"`
+	Binding
+	// Each *From names the layer that last set that field, so a user override
+	// of just `model` shows model←user, adapter←workspace, and nothing is a
+	// surprise (story 39).
+	AdapterFrom Layer `json:"adapterFrom"`
+	ModelFrom   Layer `json:"modelFrom"`
+	ArgsFrom    Layer `json:"argsFrom"`
+	// Present is whether the adapter binary was found on PATH at resolve time.
+	// Missing carries the absence badge — empty when Present is true.
+	Present bool   `json:"present"`
+	Missing string `json:"missing,omitempty"`
+}
+
+// Resolution is the whole outcome for one space: its effective bindings in role
+// order, any warnings to surface (a committed autopilot flag, an unknown role, a
+// malformed config file), and the effective autopilot flag (user layer only).
+type Resolution struct {
+	Bindings  []Resolved
+	Warnings  []string
+	Autopilot bool
+}
+
+// Input is everything Resolve needs for one space. The TOML byte slices are the
+// raw file contents (nil or empty when the file is absent); SpacePath is the
+// key into the user layer, which is keyed by space; OnPath probes the PATH and
+// defaults to exec.LookPath when nil.
+type Input struct {
+	WorkspaceTOML []byte
+	UserTOML      []byte
+	SpacePath     string
+	OnPath        func(binary string) bool
+}
+
+// rawBinding is one layer's view of a binding: a pointer per field so an unset
+// field (nil) inherits the layer below while a set field overrides it. Args
+// follows the same rule via nil-vs-non-nil, so an explicit `args = []` clears
+// inherited args.
+type rawBinding struct {
+	Adapter *string  `toml:"adapter"`
+	Model   *string  `toml:"model"`
+	Args    []string `toml:"args"`
+}
+
+type workspaceFile struct {
+	Roles     map[string]rawBinding `toml:"roles"`
+	Autopilot *bool                 `toml:"autopilot"`
+}
+
+type userFile struct {
+	// Spaces is keyed by absolute space path — the user layer is keyed by
+	// space (ADR 0009). Quoted TOML keys carry the path verbatim.
+	Spaces map[string]userSpace `toml:"spaces"`
+}
+
+type userSpace struct {
+	Roles     map[string]rawBinding `toml:"roles"`
+	Autopilot *bool                 `toml:"autopilot"`
+}
+
+// Resolve merges the three layers for one space and reports the effective
+// bindings, warnings, and autopilot. It never errors: a malformed config file
+// degrades to a warning and the layers below it, because adoption is never
+// gated on config lint.
+func Resolve(in Input) Resolution {
+	onPath := in.OnPath
+	if onPath == nil {
+		onPath = LookPath
+	}
+
+	var warnings []string
+
+	ws, wsAuto := parseWorkspace(in.WorkspaceTOML, &warnings)
+	us, usAuto := parseUser(in.UserTOML, in.SpacePath, &warnings)
+
+	// A committed autopilot flag is ignored with a warning; only the local user
+	// layer may enable it (ADR 0009).
+	if wsAuto != nil {
+		warnings = append(warnings, "committed autopilot flag ignored — autopilot is a local-only choice, never committed for everyone who clones")
+	}
+	autopilot := false
+	if usAuto != nil {
+		autopilot = *usAuto
+	}
+
+	warnings = append(warnings, unknownRoleWarnings(ws)...)
+	warnings = append(warnings, unknownRoleWarnings(us)...)
+
+	bindings := make([]Resolved, 0, len(Roles))
+	for _, role := range Roles {
+		r := Resolved{Role: role, Binding: builtins[role]}
+		r.AdapterFrom, r.ModelFrom, r.ArgsFrom = LayerBuiltin, LayerBuiltin, LayerBuiltin
+
+		if b, ok := ws[string(role)]; ok {
+			apply(&r, b, LayerWorkspace)
+		}
+		if b, ok := us[string(role)]; ok {
+			apply(&r, b, LayerUser)
+		}
+
+		r.Present = onPath(r.Adapter)
+		if !r.Present {
+			r.Missing = fmt.Sprintf(
+				"%q isn't on your PATH (%s → %s config); install it or set a local override",
+				r.Adapter, role, r.AdapterFrom,
+			)
+		}
+		bindings = append(bindings, r)
+	}
+
+	return Resolution{Bindings: bindings, Warnings: warnings, Autopilot: autopilot}
+}
+
+// apply overrides r's fields with those set in b (nil fields inherit), tagging
+// each overridden field with the layer it came from.
+func apply(r *Resolved, b rawBinding, layer Layer) {
+	if b.Adapter != nil {
+		r.Adapter, r.AdapterFrom = *b.Adapter, layer
+	}
+	if b.Model != nil {
+		r.Model, r.ModelFrom = *b.Model, layer
+	}
+	if b.Args != nil {
+		r.Args, r.ArgsFrom = b.Args, layer
+	}
+}
+
+func parseWorkspace(data []byte, warnings *[]string) (map[string]rawBinding, *bool) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var wf workspaceFile
+	if _, err := toml.Decode(string(data), &wf); err != nil {
+		*warnings = append(*warnings, "committed workspace config is malformed and was ignored: "+err.Error())
+		return nil, nil
+	}
+	return wf.Roles, wf.Autopilot
+}
+
+func parseUser(data []byte, spacePath string, warnings *[]string) (map[string]rawBinding, *bool) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var uf userFile
+	if _, err := toml.Decode(string(data), &uf); err != nil {
+		*warnings = append(*warnings, "local user config is malformed and was ignored: "+err.Error())
+		return nil, nil
+	}
+	us, ok := uf.Spaces[spacePath]
+	if !ok {
+		return nil, nil
+	}
+	return us.Roles, us.Autopilot
+}
+
+// unknownRoleWarnings flags config that binds a name outside the closed role
+// set — a typo or a role the harness does not offer — rather than honouring it
+// silently.
+func unknownRoleWarnings(roles map[string]rawBinding) []string {
+	var out []string
+	for name := range roles {
+		if !isRole(name) {
+			out = append(out, fmt.Sprintf("config binds unknown role %q, which the harness ignores", name))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// LookPath reports whether a binary is resolvable on the current PATH.
+func LookPath(binary string) bool {
+	_, err := exec.LookPath(binary)
+	return err == nil
+}

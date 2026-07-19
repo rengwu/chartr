@@ -12,6 +12,7 @@
 package harnesstest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -101,6 +102,53 @@ func (h *Harness) Get(path string) (int, string) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(body)
+}
+
+// Post performs a JSON POST — an operator action (ADR 0010) — and returns the
+// status code and body. A nil body sends no request body.
+func (h *Harness) Post(path string, body any) (int, string) {
+	h.t.Helper()
+	var r io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			h.t.Fatalf("harnesstest: marshal POST body: %v", err)
+		}
+		r = bytes.NewReader(b)
+	}
+	resp, err := http.Post(h.BaseURL+path, "application/json", r)
+	if err != nil {
+		h.t.Fatalf("harnesstest: POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(out)
+}
+
+// Delete performs a DELETE and returns the status code and body.
+func (h *Harness) Delete(path string) (int, string) {
+	h.t.Helper()
+	req, err := http.NewRequest(http.MethodDelete, h.BaseURL+path, nil)
+	if err != nil {
+		h.t.Fatalf("harnesstest: build DELETE %s: %v", path, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatalf("harnesstest: DELETE %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(out)
+}
+
+// Snapshot connects a control socket, reads exactly one whole snapshot, and
+// closes it. Because operator actions push the new model before their HTTP
+// response returns, a snapshot taken after an action already reflects it.
+func (h *Harness) Snapshot(ctx context.Context) model.Model {
+	h.t.Helper()
+	conn := h.DialControl(ctx)
+	defer conn.Close()
+	return conn.ReadSnapshot(ctx)
 }
 
 // DialControl connects a control socket and returns it. The caller closes it.
