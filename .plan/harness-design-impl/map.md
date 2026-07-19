@@ -16,7 +16,9 @@ The [spec](../harness-design/spec.md) implemented end to end: one distributed, s
 
 ## Decisions so far
 
-<!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
+<!-- one line per resolved ticket: gist + link. -->
+
+- **01 — walking skeleton**: one Go binary serves the embedded Svelte cockpit shell and pushes the whole derived model over a JSON control socket (resent on reconnect); operator actions are plain HTTP; the process-boundary test rig every later ticket extends is established. [ticket](tickets/01-walking-skeleton.md)
 
 ## Not yet specified
 
