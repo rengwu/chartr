@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
-  import { needsAgents, type Space } from './lib/model'
+  import { needsAgents, type Map, type Space } from './lib/model'
   import { deregisterSpace, setPin } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
@@ -53,6 +53,12 @@
   async function togglePin(space: Space) {
     await setPin(space.id, !space.pinned)
   }
+
+  // How many of a map's tickets sit on the stricter frontier — the takeable
+  // edge. Shown as a small count so the most spawnable maps read at a glance.
+  function frontierCount(m: Map): number {
+    return m.tickets.filter((t) => t.frontier).length
+  }
 </script>
 
 <div class="cockpit">
@@ -88,31 +94,61 @@
       <ul class="space-list">
         {#each filtered as space (space.id)}
           <li class="space-row" class:active={selected?.id === space.id}>
-            <button class="row-main" onclick={() => (selectedId = space.id)}>
-              <span class="row-name">
-                {space.name}
-                {#if needsAgents(space)}
-                  <span class="row-badge" title="An agent for one or more roles isn’t on your PATH">
-                    <span aria-hidden="true">▲</span> agent
-                  </span>
-                {/if}
-              </span>
-              <span class="row-path">{space.path}</span>
-            </button>
-            <button
-              class="icon-btn row-pin"
-              class:pinned={space.pinned}
-              aria-pressed={space.pinned}
-              aria-label={space.pinned ? 'Unpin space' : 'Pin space'}
-              title={space.pinned ? 'Unpin' : 'Pin to top'}
-              onclick={() => togglePin(space)}>📌</button
-            >
-            <button
-              class="icon-btn row-forget"
-              aria-label="Forget space"
-              title="Forget (repository untouched)"
-              onclick={() => forget(space)}>×</button
-            >
+            <div class="row-head">
+              <button class="row-main" onclick={() => (selectedId = space.id)}>
+                <span class="row-name">
+                  {space.name}
+                  {#if needsAgents(space)}
+                    <span class="row-badge" title="An agent for one or more roles isn’t on your PATH">
+                      <span aria-hidden="true">▲</span> agent
+                    </span>
+                  {/if}
+                </span>
+                <span class="row-path">{space.path}</span>
+              </button>
+              <button
+                class="icon-btn row-pin"
+                class:pinned={space.pinned}
+                aria-pressed={space.pinned}
+                aria-label={space.pinned ? 'Unpin space' : 'Pin space'}
+                title={space.pinned ? 'Unpin' : 'Pin to top'}
+                onclick={() => togglePin(space)}>📌</button
+              >
+              <button
+                class="icon-btn row-forget"
+                aria-label="Forget space"
+                title="Forget (repository untouched)"
+                onclick={() => forget(space)}>×</button
+              >
+            </div>
+
+            <!-- Maps nest under their space; they arrive already ordered
+                 (finished last) so we render in slice order. -->
+            {#if space.maps.length}
+              <ul class="map-list">
+                {#each space.maps as m (m.slug)}
+                  <li class="map-row" class:finished={m.finished}>
+                    <span class="map-name" title={m.name}>{m.name}</span>
+                    {#if frontierCount(m) > 0}
+                      <span class="map-count" title="{frontierCount(m)} ticket(s) at the frontier"
+                        >{frontierCount(m)}</span
+                      >
+                    {/if}
+                    {#if m.finished}
+                      <span class="map-done" title="every ticket resolved" aria-label="finished">✓</span>
+                    {/if}
+                    {#if m.malformations?.length}
+                      <span
+                        class="map-warn"
+                        title={m.malformations.join('\n')}
+                        aria-label="{m.malformations.length} malformation(s) surfaced"
+                        >⚠</span
+                      >
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           </li>
         {:else}
           <li class="space-empty">No spaces match “{filter}”.</li>

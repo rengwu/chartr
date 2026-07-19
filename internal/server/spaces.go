@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/wayfinder-harness/internal/mapscan"
 	"github.com/rengwu/wayfinder-harness/internal/model"
 	"github.com/rengwu/wayfinder-harness/internal/registry"
 )
@@ -84,22 +85,30 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 
 // rebuild recomputes the whole derived model from the registry and current
 // config on disk, and pushes it to every browser. It is the one place the
-// registry slice of the model is published, called after every mutating action
-// and once at startup.
+// registry slice of the model is published, called after every mutating action,
+// on every filesystem notice, and once at startup. It also reconciles the
+// discovery watch set to the registry, so a newly registered space starts being
+// watched and a forgotten one stops.
 func (s *Server) rebuild() {
-	s.hub.setModel(s.buildModel())
+	entries := s.reg.List()
+	roots := make([]string, 0, len(entries))
+	for _, e := range entries {
+		roots = append(roots, e.Path)
+	}
+	s.watch.setRoots(roots)
+	s.hub.setModel(s.buildModelFor(entries))
 }
 
-// buildModel derives the model from the registry: each registered space in
-// sidebar order, with its role bindings resolved fresh across the three config
-// layers. Config is read from disk on every rebuild — ticket 02 has no config
-// watch, so the effective bindings reflect the files as of the last action.
-func (s *Server) buildModel() model.Model {
+// buildModelFor derives the model from the given registry entries (already in
+// sidebar order): each space with its role bindings resolved fresh across the
+// three config layers and its maps discovered live from `.plan/`. Config and
+// maps are read from disk on every rebuild, so the snapshot reflects the files
+// as of this moment.
+func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// The user layer is one file for all spaces, keyed by space path; read it
 	// once. A missing or unreadable file resolves as "no local overrides".
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
 
-	entries := s.reg.List()
 	spaces := make([]model.Space, 0, len(entries))
 	for _, e := range entries {
 		spaces = append(spaces, s.deriveSpace(e, userTOML))
@@ -137,6 +146,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Path:     e.Path,
 		Pinned:   e.Pinned,
 		Bindings: bindings,
+		Maps:     mapscan.Discover(e.Path),
 		Warnings: res.Warnings,
 	}
 }

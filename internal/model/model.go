@@ -34,10 +34,58 @@ type Space struct {
 	// order, each carrying per-field provenance and PATH presence so the
 	// operator sees what will actually run (stories 39, 40).
 	Bindings []RoleBinding `json:"bindings"`
+	// Maps are the space's discovered wayfinder maps (ticket 03), derived live
+	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
+	// Ordered for the sidebar: finished maps sort last. Never nil on the wire.
+	Maps []Map `json:"maps"`
 	// Warnings are non-fatal notices surfaced against the space — a committed
 	// autopilot flag ignored, an unknown role in config, a malformed config
 	// file. Surface, never enforce.
 	Warnings []string `json:"warnings,omitempty"`
+}
+
+// Map is one discovered wayfinder map beneath a space: its body material and its
+// tickets with their derived status. It is read wherever wayfinder writes — the
+// `.plan/<slug>/` layout or the `.plan/maps/<slug>/` one — and rendered as-is: a
+// malformed map is never refused, only surfaced through Malformations (story
+// 17). Ticket 04 adds the declared kind and the session actions it gates; here a
+// map is discovered, derived, and read-only.
+type Map struct {
+	// Slug is the map directory's name — its stable identity within the space.
+	Slug string `json:"slug"`
+	// Name is the map's H1 title; Slug stands in when the body has none.
+	Name string `json:"name"`
+	// Dir is the absolute path of the map directory (the one holding map.md).
+	Dir string `json:"dir"`
+	// Destination is the map's stated destination, shown when the map material
+	// pane opens (ticket 07). Empty on a map that omits it — surfaced, not refused.
+	Destination string `json:"destination"`
+	// Tickets are the map's tickets in number order, each with its derived
+	// status and stricter-frontier membership.
+	Tickets []Ticket `json:"tickets"`
+	// Finished is true when the map has tickets and every one of them is closed
+	// (resolved or ruled out); finished maps sort last in the sidebar.
+	Finished bool `json:"finished"`
+	// Malformations are the map's surfaced defects — an unparseable ticket, a
+	// dangling blocked_by, a drifted index — each rendered where it bites and
+	// never a reason to refuse the map (story 17).
+	Malformations []string `json:"malformations,omitempty"`
+}
+
+// Ticket is one ticket's derived state on the wire: its identity, type, the
+// status derived from its file (open, claimed, proposed, resolved, out_of_scope
+// — ADR 0004), its blockers, and whether it sits on the harness's stricter
+// frontier (open, unclaimed, every blocker blessed).
+type Ticket struct {
+	Num       int    `json:"num"`
+	Slug      string `json:"slug"`
+	Title     string `json:"title"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	BlockedBy []int  `json:"blockedBy,omitempty"`
+	// Frontier is membership in the stricter frontier — the takeable edge. A
+	// ticket blocked by merely-proposed (ungated) work is never on it.
+	Frontier bool `json:"frontier"`
 }
 
 // RoleBinding is one role's effective binding on the wire: which adapter runs on

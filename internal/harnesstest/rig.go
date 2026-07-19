@@ -186,6 +186,31 @@ func (cc *ControlConn) ReadSnapshot(ctx context.Context) model.Model {
 	return m
 }
 
+// WaitFor reads whole snapshots until pred is satisfied, returning the matching
+// one. Because the control socket pushes a fresh snapshot on every change, a
+// test asserting discovery-by-notice dials before the act it waits on, performs
+// the act (dropping a map from outside — no refresh), then calls WaitFor: the
+// push arrives on its own. It fails the test if ctx expires first.
+func (cc *ControlConn) WaitFor(ctx context.Context, pred func(model.Model) bool) model.Model {
+	cc.t.Helper()
+	for {
+		typ, data, err := cc.c.Read(ctx)
+		if err != nil {
+			cc.t.Fatalf("harnesstest: waiting for a matching snapshot: %v", err)
+		}
+		if typ != websocket.MessageText {
+			cc.t.Fatalf("harnesstest: snapshot was %v, want text", typ)
+		}
+		var m model.Model
+		if err := json.Unmarshal(data, &m); err != nil {
+			cc.t.Fatalf("harnesstest: snapshot not valid model JSON: %v (%q)", err, data)
+		}
+		if pred(m) {
+			return m
+		}
+	}
+}
+
 // Close closes the control socket.
 func (cc *ControlConn) Close() {
 	_ = cc.c.Close(websocket.StatusNormalClosure, "")

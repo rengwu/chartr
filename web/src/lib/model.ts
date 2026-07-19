@@ -20,12 +20,41 @@ export interface RoleBinding {
   missing?: string
 }
 
+// Ticket is one ticket's derived state: its identity, type, the status derived
+// from its file (open | claimed | proposed | resolved | out_of_scope, ADR 0004),
+// its blockers, and whether it sits on the harness's stricter frontier.
+export type TicketStatus = 'open' | 'claimed' | 'proposed' | 'resolved' | 'out_of_scope'
+
+export interface Ticket {
+  num: number
+  slug: string
+  title: string
+  type: string
+  status: TicketStatus
+  blockedBy?: number[]
+  frontier: boolean
+}
+
+// Map is one discovered wayfinder map beneath a space, derived live from
+// `.plan/` and re-pushed on every filesystem notice. Rendered as-is: a malformed
+// map is never dropped, only surfaced through `malformations`.
+export interface Map {
+  slug: string
+  name: string
+  dir: string
+  destination: string
+  tickets: Ticket[]
+  finished: boolean
+  malformations?: string[]
+}
+
 export interface Space {
   id: string
   name: string
   path: string
   pinned: boolean
   bindings: RoleBinding[]
+  maps: Map[]
   warnings?: string[]
 }
 

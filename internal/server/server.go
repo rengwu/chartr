@@ -29,10 +29,11 @@ type Options struct {
 // Server is a single operator's harness backend. Construct with New, then run
 // with Serve.
 type Server struct {
-	opts Options
-	hub  *hub
-	mux  *http.ServeMux
-	reg  *registry.Registry
+	opts  Options
+	hub   *hub
+	mux   *http.ServeMux
+	reg   *registry.Registry
+	watch *watcher
 }
 
 // New builds a Server with the control-socket hub seeded to the empty model and
@@ -57,6 +58,11 @@ func New(opts Options) (*Server, error) {
 		mux:  http.NewServeMux(),
 		reg:  reg,
 	}
+	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild
+	// whenever a space's `.plan/` changes, so a map created outside the harness
+	// appears on its own. rebuild also reconciles the watch set, so this starts
+	// covering whatever the persisted registry already holds.
+	s.watch = newWatcher(s.rebuild)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
@@ -80,6 +86,8 @@ func New(opts Options) (*Server, error) {
 // Serve runs the HTTP server on ln until ctx is cancelled, then drains
 // in-flight requests within a short grace period. Serve owns ln and closes it.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	defer s.watch.close()
+
 	httpSrv := &http.Server{
 		Handler:           s.mux,
 		ReadHeaderTimeout: 10 * time.Second,

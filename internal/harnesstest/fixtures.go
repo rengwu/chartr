@@ -44,6 +44,14 @@ func WriteMap(t testing.TB, repo, slug, body string) string {
 	return WriteFile(t, repo, filepath.Join(".plan", slug, "map.md"), body)
 }
 
+// WriteTicket writes a ticket file at .plan/<slug>/tickets/<filename> under
+// repo. It does not commit — discovery reads the working tree, so a test drives
+// derivation by dropping files exactly as a session or a `git pull` would.
+func WriteTicket(t testing.TB, repo, slug, filename, body string) string {
+	t.Helper()
+	return WriteFile(t, repo, filepath.Join(".plan", slug, "tickets", filename), body)
+}
+
 // WriteFile writes body to relPath under repo, creating parent directories. It
 // returns the absolute path written.
 func WriteFile(t testing.TB, repo, relPath, body string) string {
