@@ -11,7 +11,7 @@ A registered space's maps enter the snapshot, live. Port wayfinder-maps' model l
 
 Done when: process-boundary tests show a fixture map dropped into a registered space from outside appearing in the snapshot without any refresh action, under both layouts; derived statuses — including `proposed` and the stricter frontier — are asserted against fixture tickets; the ported model-layer tests pass; the sidebar shows the space's maps.
 
-## Proposed Answer
+## Answer
 
 A registered space's maps now enter the pushed snapshot, discovered live and derived through the ported wayfinder model layer. Layout:
 
