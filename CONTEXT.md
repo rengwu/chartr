@@ -58,6 +58,20 @@ _Avoid_: skills, templates, system prompts
 The harness's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
 
+### Configuration
+
+**Role binding**:
+What a role resolves to — an `{adapter, model, args?}` triple. Structured so the harness can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
+_Avoid_: mapping, agent config, role config
+
+**Workspace config**:
+The committed, shared harness config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (prompts); yields to it for *execution* (bindings).
+_Avoid_: project config, repo config, settings
+
+**User config**:
+The operator's local, uncommitted harness config under `~/.config/wayfinder-harness/`, keyed by space. Overrides workspace bindings for execution choices, and is the only layer where autopilot may be enabled.
+_Avoid_: local settings, preferences, overrides
+
 ### Ticket lifecycle
 
 **Implementing**:
