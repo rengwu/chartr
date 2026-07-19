@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [12]
+claimed_by: claude-fable-5
+claimed_at: 2026-07-19T15:30:00Z
 ---
 
 # Shipping the harness cross-platform
