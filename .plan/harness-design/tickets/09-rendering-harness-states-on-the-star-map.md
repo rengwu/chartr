@@ -1,6 +1,8 @@
 ---
 type: prototype
 blocked_by: [02]
+claimed_by: claude-fable-5
+claimed_at: 2026-07-19T06:53:57Z
 ---
 
 # Rendering harness states on the star-map
