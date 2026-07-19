@@ -16,3 +16,7 @@ The harness owns PTYs directly rather than delegating to tmux, and renders termi
 
 - xterm.js is an npm dependency, so a frontend build step exists. wayfinder-maps' no-build ethos does not survive.
 - Raw PTY output must be buffered server-side so a reconnecting browser can replay scrollback.
+
+## Amendment: the PTY library must be cross-platform
+
+This ADR named `creack/pty`, which has no Windows support and no merged ConPTY path. Ticket 13 decided Windows is best-effort native rather than quietly unsupported (ADR 0011), so the PTY layer is built from day one on a cross-platform, ConPTY-capable interface (e.g. `aymanbagabas/go-pty`) — the session core must never ossify unix-only. Everything else here stands; ticket 13 also re-affirmed the Go choice itself against a Rust + Tauri challenge, with the model-layer-reuse argument re-weighed honestly (see the ticket).
