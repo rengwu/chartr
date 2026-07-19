@@ -19,6 +19,7 @@ The [spec](../harness-design/spec.md) implemented end to end: one distributed, s
 <!-- one line per resolved ticket: gist + link. -->
 
 - **01 — walking skeleton**: one Go binary serves the embedded Svelte cockpit shell and pushes the whole derived model over a JSON control socket (resent on reconnect); operator actions are plain HTTP; the process-boundary test rig every later ticket extends is established. [ticket](tickets/01-walking-skeleton.md)
+- **02 — register a space, and role bindings**: the space registry is a rebuildable index in user config (register with an announced `git init`, forget-not-destroy removal, pinned-then-recency ordering, a path-derived stable id); role bindings resolve `{adapter, model, args?}` across built-in ‹ committed workspace (`.wayfinder-harness.toml`) ‹ local user, field-level and user-over-workspace, with absent adapters badged and a committed autopilot flag ignored with a warning; register/deregister/pin are plain HTTP actions that rebuild-and-push the model. [ticket](tickets/02-register-a-space-and-role-bindings.md)
 
 ## Not yet specified
 
