@@ -72,8 +72,12 @@ An adversarial session, on a different model than the implementer, critiquing a 
 _Avoid_: QA, lint, check, verification
 
 **Human review**:
-The hub where a human reads the diff and any agent-review verdict, then approves, takes it further, or abandons it.
+The hub where a human reads the review brief — and beneath it the verdict detail and diff — then approves, sends back, takes it further, or abandons.
 _Avoid_: gate, approval, sign-off
+
+**Review brief**:
+The one-screen summary the hub leads with — what was done, what the reviewer found, and a harness-derived recommendation — assembled as plain markdown on disk, detail behind expanders. The GUI renders it and adds buttons, nothing else.
+_Avoid_: dossier, report, verdict summary
 
 **Resolved**:
 A ticket whose `## Answer` is written. On disk, resolved always means blessed.
