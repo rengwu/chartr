@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: []
+claimed_by: claude-fable-5
+claimed_at: 2026-07-19T14:01:25Z
 ---
 
 # Frontend framework and build
