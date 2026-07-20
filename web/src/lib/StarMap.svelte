@@ -48,4 +48,4 @@
   })
 </script>
 
-<div class="starmap-island" bind:this={host}></div>
+<div class="starmap-island h-full w-full" bind:this={host}></div>

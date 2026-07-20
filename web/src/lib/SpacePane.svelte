@@ -4,6 +4,24 @@
   import { closeTerminal, openTerminal } from './actions'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
+  import { Button } from './components/ui/button'
+  import { Badge, type BadgeVariant } from './components/ui/badge'
+  import * as Tabs from './components/ui/tabs'
+  import * as Sheet from './components/ui/sheet'
+  import * as ScrollArea from './components/ui/scroll-area'
+  import type { Layer } from './model'
+  import { Plus, X, Warning, CheckCircle, Sparkle, SlidersHorizontal } from 'phosphor-svelte'
+
+  // Which layer a field was inherited from, told apart by badge weight rather than
+  // hue (the palette is monochrome + destructive): built-in is the lightest touch
+  // (the shipped baseline), workspace the shared committed layer, user the
+  // operator's own override and so the strongest emphasis. Mirrors the payload
+  // preview's layer scale (ticket 08) so provenance reads the same everywhere.
+  const layerVariant: Record<Layer, BadgeVariant> = {
+    'built-in': 'outline',
+    workspace: 'secondary',
+    user: 'default',
+  }
 
   // The stage for the selected space: a full-width title bar carrying the space's
   // identity (name and path), over a row of the space's subpanes. The identity
@@ -49,7 +67,6 @@
   let dockTermWidth = $state(0)
   let floatWidth = $state(0)
   let bodyEl: HTMLDivElement
-  let termColEl: HTMLElement
 
   const terminals = $derived<Term[]>(space.terminals ?? [])
   const warnings = $derived<string[]>(space.warnings ?? [])
@@ -189,7 +206,10 @@
       (el.tagName === 'INPUT' ||
         el.tagName === 'TEXTAREA' ||
         el.isContentEditable ||
-        el.closest('.terminal-island') !== null)
+        el.closest('.terminal-island') !== null ||
+        // A summoned Sheet/Dialog (the bindings drawer) owns its own Escape; the
+        // chrome's M/Esc bindings must not also fire while it holds focus.
+        el.closest('[role="dialog"]') !== null)
     if (e.key === 'Escape' && !editing) {
       // Esc peels back one layer: an open detail pane first, then the card.
       if (selectedTicket !== null || showMaterial) {
@@ -244,170 +264,205 @@
      the panes, so the hierarchy reads "space › {terminals, map}": each pane
      carries only its own chrome. A floating map overlays the panes row but never
      this header — the panes row is its positioning context, and it sits below. -->
-<div class="space-stage">
-  <header class="space-header">
-    <div class="space-id" title={space.path}>
-      <span class="space-id-name">{space.name}</span>
-      <code class="space-id-path">{space.path}</code>
+<div class="flex h-full min-h-0 flex-col">
+  <header class="cockpit-bar justify-between">
+    <div class="flex min-w-0 items-baseline gap-2" title={space.path}>
+      <span class="truncate text-sm font-semibold">{space.name}</span>
+      <code class="truncate font-mono text-[0.7rem] text-muted-foreground">{space.path}</code>
     </div>
 
     {#if maps.length}
       <!-- The one map show/hide control for the whole stage: a toggle in the space
            header, right-aligned, reflecting mapShown via aria-pressed. -->
-      <button
-        class="map-toggle"
+      <Button
+        variant={mapShown ? 'secondary' : 'ghost'}
+        size="sm"
         aria-pressed={mapShown}
         title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
         onclick={toggleMap}
       >
-        <span class="map-toggle-glyph" aria-hidden="true">✦</span>
-        <span class="map-toggle-label">Map</span>
-      </button>
+        <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
+      </Button>
     {/if}
   </header>
 
-  <div
-    class="space-panes"
-    class:map-docked={mapShown && dock}
-    class:map-floating={mapShown && !dock}
-    bind:this={bodyEl}
-  >
-  <!-- The ticket pane: its own header is the shell tab strip (the space's ad-hoc
-       shells plus a "+") and the pane's actions; below it the active terminal. -->
-  <section
-    class="term-col"
-    bind:this={termColEl}
-    style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
-  >
-  <div class="term-bar">
-    <div class="term-tabs" role="tablist">
-      {#each terminals as t (t.id)}
-        <div class="term-tab" class:active={active?.id === t.id} class:dead={!t.alive}>
-          <button
-            class="term-tab-main"
-            role="tab"
-            aria-selected={active?.id === t.id}
-            title={t.alive ? t.title : `${t.title} (ended)`}
-            onclick={() => (activeId = t.id)}
-          >
-            <span class="term-dot" aria-hidden="true"></span>
-            {t.title}{#if !t.alive}<span class="term-ended"> · ended</span>{/if}
-          </button>
-          <button
-            class="term-close"
-            aria-label="End {t.title}"
-            title={t.alive ? 'End this shell' : 'Dismiss'}
-            onclick={() => endShell(t)}>×</button
-          >
-        </div>
-      {/each}
-      <button
-        class="term-add"
-        aria-label="Open a shell in the working tree"
-        title="Open a shell in {space.name}"
-        disabled={opening}
-        onclick={openShell}>＋</button
-      >
-    </div>
-
-    <div class="term-actions">
-      {#if warnings.length}
-        <span class="term-warn-pip" title={warnings.join('\n')} aria-label="{warnings.length} warning(s)">⚠ {warnings.length}</span>
-      {/if}
-      <button
-        class="term-config"
-        aria-pressed={showBindings}
-        title="Effective role bindings"
-        onclick={() => (showBindings = !showBindings)}>bindings</button
-      >
-    </div>
-  </div>
-
-  <div class="term-body">
-    {#if active}
-      {#key active.id}
-        <Terminal term={active} />
-      {/key}
-    {:else}
-      <div class="term-empty">
-        <p>No shell open in this space.</p>
-        <button class="term-empty-open" disabled={opening} onclick={openShell}
-          >Open a shell</button
-        >
-        <p class="term-empty-note">
-          A plain shell in <code>{space.name}</code>’s working tree — no ticket, no review,
-          ended when you close it.
-        </p>
-      </div>
-    {/if}
-
-    {#if showBindings}
-      <aside class="bindings-drawer" aria-label="Effective role bindings">
-        <header class="drawer-head">
-          <h3 class="drawer-title">Effective role bindings</h3>
-          <button class="drawer-close" aria-label="Close bindings" onclick={() => (showBindings = false)}>×</button>
-        </header>
-        <p class="pane-note">
-          What each role resolves to after merging built-in ‹ workspace ‹ user. The tag on a
-          field names the layer it was inherited from.
-        </p>
-
-        {#if warnings.length}
-          <ul class="warnings">
-            {#each warnings as w}
-              <li class="warning"><span aria-hidden="true">⚠</span> {w}</li>
-            {/each}
-          </ul>
-        {/if}
-
-        <ul class="bindings">
-          {#each space.bindings as b (b.role)}
-            <li class="binding" class:absent={!b.present}>
-              <div class="binding-role">{b.role}</div>
-              <div class="binding-fields">
-                <span class="field">
-                  <span class="field-val">{b.adapter}</span>
-                  <span class="field-src" data-layer={b.adapterFrom}>{b.adapterFrom}</span>
-                </span>
-                <span class="field">
-                  <span class="field-val">{b.model}</span>
-                  <span class="field-src" data-layer={b.modelFrom}>{b.modelFrom}</span>
-                </span>
-                {#if b.args && b.args.length}
-                  <span class="field">
-                    <span class="field-val">{b.args.join(' ')}</span>
-                    <span class="field-src" data-layer={b.argsFrom}>{b.argsFrom}</span>
-                  </span>
-                {/if}
+  <!-- The panes row: the terminal column and, over it, the star-map card. It is
+       the positioning context for a floating card (relative), and a flex row for
+       the docked split — the terminal's frozen width lives in an inline flex-basis
+       and the card takes the rest. -->
+  <div class="relative flex min-h-0 flex-1" bind:this={bodyEl}>
+    <!-- The ticket pane: its own header is the shell tab strip (the space's ad-hoc
+         shells plus a "+") and the pane's actions; below it the active terminal.
+         The strip is a Tabs.Root whose value tracks the effective active shell. -->
+    <Tabs.Root
+      value={active?.id ?? ''}
+      onValueChange={(v) => (activeId = v)}
+      class="flex min-h-0 min-w-0 flex-1 flex-col gap-0"
+      style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
+    >
+      <div class="cockpit-bar">
+        <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <Tabs.List class="h-auto gap-1 rounded-none bg-transparent p-0">
+            {#each terminals as t (t.id)}
+              <div
+                class={[
+                  'group/tab flex items-center rounded-md pr-0.5',
+                  active?.id === t.id
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                ]}
+              >
+                <Tabs.Trigger
+                  value={t.id}
+                  title={t.alive ? t.title : `${t.title} (ended)`}
+                  class={[
+                    'h-6 flex-none gap-1.5 px-2 text-xs font-normal after:hidden data-active:bg-transparent dark:data-active:border-transparent dark:data-active:bg-transparent',
+                    !t.alive && 'opacity-60',
+                  ]}
+                >
+                  <span
+                    class={['size-1.5 rounded-full', t.alive ? 'bg-primary/70' : 'bg-muted-foreground/50']}
+                    aria-hidden="true"
+                  ></span>
+                  {t.title}{#if !t.alive}<span class="text-muted-foreground"> · ended</span>{/if}
+                </Tabs.Trigger>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  class="opacity-0 hover:text-destructive group-hover/tab:opacity-100 focus-visible:opacity-100"
+                  aria-label="End {t.title}"
+                  title={t.alive ? 'End this shell' : 'Dismiss'}
+                  onclick={() => endShell(t)}
+                >
+                  <X />
+                </Button>
               </div>
-              {#if b.present}
-                <div class="binding-status ok"><span aria-hidden="true">●</span> on PATH</div>
-              {:else}
-                <div class="binding-status missing"><span aria-hidden="true">▲</span> not found</div>
-              {/if}
-            </li>
-            {#if !b.present && b.missing}
-              <li class="binding-missing">{b.missing}</li>
-            {/if}
-          {/each}
-        </ul>
-      </aside>
-    {/if}
-  </div>
-  </section>
+            {/each}
+          </Tabs.List>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Open a shell in the working tree"
+            title="Open a shell in {space.name}"
+            disabled={opening}
+            onclick={openShell}
+          >
+            <Plus />
+          </Button>
+        </div>
 
-  {#if focusedMap && mapShown}
-    <MapCard
-      {maps}
-      spaceId={space.id}
-      bind:slug={mapSlug}
-      bind:dock
-      bind:selected={selectedTicket}
-      bind:showMaterial
-      {floatWidth}
-      onclose={dismiss}
-      onresizestart={startResize}
-    />
-  {/if}
+        <div class="flex items-center gap-1.5">
+          {#if warnings.length}
+            <span
+              class="flex items-center gap-1 text-[0.7rem] text-muted-foreground"
+              title={warnings.join('\n')}
+              aria-label="{warnings.length} warning(s)"
+            >
+              <Warning class="size-3.5" /> {warnings.length}
+            </span>
+          {/if}
+          <!-- Effective role bindings, summoned into a right Sheet from the bar so
+               they never occupy the terminal's real estate. -->
+          <Sheet.Root bind:open={showBindings}>
+            <Sheet.Trigger>
+              {#snippet child({ props })}
+                <Button {...props} variant="outline" size="sm" title="Effective role bindings">
+                  <SlidersHorizontal /> bindings
+                </Button>
+              {/snippet}
+            </Sheet.Trigger>
+            <Sheet.Content side="right" class="w-full gap-0 p-0 sm:max-w-md">
+              <Sheet.Header class="border-b border-border px-4 py-3 text-left">
+                <Sheet.Title class="text-sm">Effective role bindings</Sheet.Title>
+                <Sheet.Description class="text-xs text-muted-foreground">
+                  What each role resolves to after merging built-in ‹ workspace ‹ user. The tag on
+                  a field names the layer it was inherited from.
+                </Sheet.Description>
+              </Sheet.Header>
+              <ScrollArea.Root class="min-h-0 flex-1">
+                <div class="flex flex-col gap-3 p-4">
+                  {#if warnings.length}
+                    <ul class="flex flex-col gap-1.5 rounded-md border border-border p-2.5">
+                      {#each warnings as w}
+                        <li class="flex items-start gap-1.5 text-xs text-muted-foreground">
+                          <Warning class="mt-0.5 size-3.5 shrink-0" /> <span>{w}</span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+
+                  <ul class="flex flex-col gap-2">
+                    {#each space.bindings as b (b.role)}
+                      <li class="rounded-md border border-border p-2.5">
+                        <div class="mb-1.5 flex items-center justify-between gap-2">
+                          <span class="text-xs font-semibold">{b.role}</span>
+                          {#if b.present}
+                            <span class="flex items-center gap-1 text-[0.7rem] text-muted-foreground">
+                              <CheckCircle class="size-3.5" /> on PATH
+                            </span>
+                          {:else}
+                            <Badge variant="destructive" class="gap-1"><Warning /> not found</Badge>
+                          {/if}
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <div class="flex items-center gap-1.5">
+                            <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.adapter}</span>
+                            <Badge variant={layerVariant[b.adapterFrom]}>{b.adapterFrom}</Badge>
+                          </div>
+                          <div class="flex items-center gap-1.5">
+                            <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.model}</span>
+                            <Badge variant={layerVariant[b.modelFrom]}>{b.modelFrom}</Badge>
+                          </div>
+                          {#if b.args && b.args.length}
+                            <div class="flex items-center gap-1.5">
+                              <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.args.join(' ')}</span>
+                              <Badge variant={layerVariant[b.argsFrom]}>{b.argsFrom}</Badge>
+                            </div>
+                          {/if}
+                        </div>
+                        {#if !b.present && b.missing}
+                          <p class="mt-1.5 text-[0.7rem] text-muted-foreground">{b.missing}</p>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
+              </ScrollArea.Root>
+            </Sheet.Content>
+          </Sheet.Root>
+        </div>
+      </div>
+
+      <div class="relative min-h-0 flex-1">
+        {#if active}
+          {#key active.id}
+            <Terminal term={active} />
+          {/key}
+        {:else}
+          <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+            <p class="text-sm text-muted-foreground">No shell open in this space.</p>
+            <Button variant="outline" size="sm" disabled={opening} onclick={openShell}>Open a shell</Button>
+            <p class="max-w-xs text-xs text-muted-foreground">
+              A plain shell in <code class="font-mono">{space.name}</code>’s working tree — no ticket, no
+              review, ended when you close it.
+            </p>
+          </div>
+        {/if}
+      </div>
+    </Tabs.Root>
+
+    {#if focusedMap && mapShown}
+      <MapCard
+        {maps}
+        spaceId={space.id}
+        bind:slug={mapSlug}
+        bind:dock
+        bind:selected={selectedTicket}
+        bind:showMaterial
+        {floatWidth}
+        onclose={dismiss}
+        onresizestart={startResize}
+      />
+    {/if}
   </div>
 </div>

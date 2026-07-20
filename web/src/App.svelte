@@ -6,6 +6,18 @@
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
+  import { Button } from './lib/components/ui/button'
+  import { Input } from './lib/components/ui/input'
+  import { Badge } from './lib/components/ui/badge'
+  import { Plus, PushPin, X, Warning, WarningDiamond, Check } from 'phosphor-svelte'
+
+  // The control-socket status drives the status-bar dot: on is the neutral "up"
+  // primary, connecting a pulsing muted, closed the one true problem (destructive).
+  const statusDot: Record<string, string> = {
+    open: 'bg-primary',
+    connecting: 'bg-muted-foreground animate-pulse',
+    closed: 'bg-destructive',
+  }
 
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
@@ -77,111 +89,147 @@
   }
 </script>
 
-<div class="cockpit">
-  <aside class="sidebar">
-    <div class="sidebar-head">
-      <span>Spaces</span>
+<div class="grid h-full grid-cols-[15rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
+  <aside class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <div class="cockpit-bar justify-between bg-transparent">
+      <span class="text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
-        <button
-          class="icon-btn"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label="Add a space"
           aria-expanded={showAdd}
-          onclick={() => (showAdd = !showAdd)}>＋</button
+          onclick={() => (showAdd = !showAdd)}
         >
+          <Plus />
+        </Button>
       {/if}
     </div>
 
     {#if control.model === null}
-      <p class="hint">Connecting…</p>
+      <p class="px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
     {:else if spaces.length === 0}
-      <p class="hint">No spaces yet.</p>
+      <p class="px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
     {:else}
-      <input
-        class="filter"
-        type="text"
-        placeholder="Filter spaces…"
-        bind:value={filter}
-        spellcheck="false"
-        autocapitalize="off"
-        autocomplete="off"
-        aria-label="Filter spaces"
-      />
+      <div class="p-2">
+        <Input
+          type="text"
+          class="h-7"
+          placeholder="Filter spaces…"
+          bind:value={filter}
+          spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
+          aria-label="Filter spaces"
+        />
+      </div>
 
-      <ul class="space-list">
+      <ul class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
         {#each filtered as space (space.id)}
-          <li class="space-row" class:active={selected?.id === space.id}>
-            <div class="row-head">
-              <button class="row-main" onclick={() => (selectedId = space.id)}>
-                <span class="row-name">
+          <li class="group/row">
+            <div
+              class={[
+                'flex items-center gap-0.5 rounded-md pr-0.5',
+                selected?.id === space.id ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/60',
+              ]}
+            >
+              <button
+                class="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-1.5 pl-2 text-left"
+                onclick={() => (selectedId = space.id)}
+              >
+                <span class="flex max-w-full items-center gap-1.5 truncate text-xs font-medium">
                   {space.name}
                   {#if needsAgents(space)}
-                    <span class="row-badge" title="An agent for one or more roles isn’t on your PATH">
-                      <span aria-hidden="true">▲</span> agent
-                    </span>
+                    <Badge
+                      variant="outline"
+                      class="gap-1 border-border text-muted-foreground"
+                      title="An agent for one or more roles isn’t on your PATH"
+                    >
+                      <Warning /> agent
+                    </Badge>
                   {/if}
                 </span>
-                <span class="row-path">{space.path}</span>
+                <span class="max-w-full truncate font-mono text-[0.65rem] text-muted-foreground">{space.path}</span>
               </button>
-              <button
-                class="icon-btn row-pin"
-                class:pinned={space.pinned}
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class={[
+                  space.pinned
+                    ? 'text-primary'
+                    : 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100',
+                ]}
                 aria-pressed={space.pinned}
                 aria-label={space.pinned ? 'Unpin space' : 'Pin space'}
                 title={space.pinned ? 'Unpin' : 'Pin to top'}
-                onclick={() => togglePin(space)}>📌</button
+                onclick={() => togglePin(space)}
               >
-              <button
-                class="icon-btn row-forget"
+                <PushPin weight={space.pinned ? 'fill' : 'regular'} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class="opacity-0 hover:text-destructive group-hover/row:opacity-100 focus-visible:opacity-100"
                 aria-label="Forget space"
                 title="Forget (repository untouched)"
-                onclick={() => forget(space)}>×</button
+                onclick={() => forget(space)}
               >
+                <X />
+              </Button>
             </div>
 
             <!-- Maps nest under their space; they arrive already ordered
                  (finished last) so we render in slice order. -->
             {#if space.maps.length}
-              <ul class="map-list">
+              <ul class="mt-0.5 mb-1 ml-3 flex flex-col gap-px border-l border-sidebar-border pl-2">
                 {#each space.maps as m (m.slug)}
-                  <li class="map-row" class:finished={m.finished} class:inert={m.kind === ''}>
-                    <span class="map-name" title={m.name}>{m.name}</span>
+                  <li
+                    class={[
+                      'flex items-center gap-1.5 py-0.5 pr-1 text-[0.7rem]',
+                      m.finished && 'text-muted-foreground',
+                      m.kind === '' && 'text-muted-foreground italic',
+                    ]}
+                  >
+                    <span class="min-w-0 flex-1 truncate" title={m.name}>{m.name}</span>
                     {#if m.kind === ''}
                       <!-- Undeclared: inert until classified (ADR 0007). The
                            confirm pre-emphasises the convention guess; no session
                            action is offered until one is chosen. -->
-                      <span class="map-classify" role="group" aria-label="Classify {m.name}">
-                        <span class="classify-label">kind?</span>
-                        <button
-                          class="kind-btn"
-                          class:guess={m.kindGuess === 'planning'}
+                      <span class="flex items-center gap-1" role="group" aria-label="Classify {m.name}">
+                        <span class="text-[0.65rem] text-muted-foreground not-italic">kind?</span>
+                        <Button
+                          size="xs"
+                          variant={m.kindGuess === 'planning' ? 'default' : 'outline'}
                           title="Planning map — tickets resolve live, no review gate"
-                          onclick={() => doClassify(space, m, 'planning')}>plan</button
+                          onclick={() => doClassify(space, m, 'planning')}>plan</Button
                         >
-                        <button
-                          class="kind-btn"
-                          class:guess={m.kindGuess === 'implementation'}
+                        <Button
+                          size="xs"
+                          variant={m.kindGuess === 'implementation' ? 'default' : 'outline'}
                           title="Implementation map — tickets pass through review before resolving"
-                          onclick={() => doClassify(space, m, 'implementation')}>impl</button
+                          onclick={() => doClassify(space, m, 'implementation')}>impl</Button
                         >
                       </span>
                     {:else}
                       {#if frontierCount(m) > 0}
-                        <span class="map-count" title="{frontierCount(m)} ticket(s) at the frontier"
-                          >{frontierCount(m)}</span
-                        >
+                        <Badge variant="secondary" title="{frontierCount(m)} ticket(s) at the frontier">
+                          {frontierCount(m)}
+                        </Badge>
                       {/if}
                       {#if m.finished}
-                        <span class="map-done" title="every ticket resolved" aria-label="finished">✓</span
-                        >
+                        <span class="text-muted-foreground" title="every ticket resolved" aria-label="finished">
+                          <Check class="size-3.5" />
+                        </span>
                       {/if}
                     {/if}
                     {#if m.malformations?.length}
                       <span
-                        class="map-warn"
+                        class="text-muted-foreground"
                         title={m.malformations.join('\n')}
                         aria-label="{m.malformations.length} malformation(s) surfaced"
-                        >⚠</span
                       >
+                        <WarningDiamond class="size-3.5" />
+                      </span>
                     {/if}
                   </li>
                 {/each}
@@ -189,15 +237,15 @@
             {/if}
           </li>
         {:else}
-          <li class="space-empty">No spaces match “{filter}”.</li>
+          <li class="px-2 py-1.5 text-xs text-muted-foreground">No spaces match “{filter}”.</li>
         {/each}
       </ul>
     {/if}
   </aside>
 
-  <main class="stage">
+  <main class="col-start-2 row-start-1 min-h-0 min-w-0">
     {#if spaces.length === 0}
-      <div class="stage-center">
+      <div class="grid h-full place-items-center p-6">
         <RegisterForm variant="first-run" onRegistered={(id) => (selectedId = id)} />
       </div>
     {:else if selected}
@@ -205,13 +253,13 @@
     {/if}
   </main>
 
-  <footer class="statusbar" data-status={control.status}>
-    <span class="dot" aria-hidden="true"></span>
+  <footer class="col-span-2 row-start-2 flex items-center gap-2 border-t border-border bg-card px-3 py-1.5 text-[0.7rem] text-muted-foreground">
+    <span class={['size-2 rounded-full', statusDot[control.status] ?? 'bg-muted-foreground']} aria-hidden="true"></span>
     <span>control socket: {control.status}</span>
   </footer>
 
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
-    <p class="modal-hint">
+    <p class="mb-3 text-xs text-muted-foreground">
       Point the harness at a project folder — paste its absolute path. If it isn’t a git
       repository yet, one is initialized there, announced.
     </p>

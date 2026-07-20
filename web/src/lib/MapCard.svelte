@@ -4,6 +4,8 @@
   import StarMap from './StarMap.svelte'
   import DetailPane from './DetailPane.svelte'
   import { decideDock, type Dock } from './starmap/dock'
+  import { Button } from './components/ui/button'
+  import { Columns, CornersOut, X } from 'phosphor-svelte'
 
   // The star-map presented as a card over the terminal (spec, The interface):
   // summoned, never toggled by switching spaces or maps. It hosts the island and,
@@ -109,9 +111,17 @@
   }
 </script>
 
+<!-- The star-map card. Docked, it is a flex item in the panes row, taking the
+     slack the terminal's frozen basis leaves (min 300). Floating, it is absolute
+     over the panes row with its right edge pinned (inset 10px), grown leftward by
+     the resize grip; a CSS max-width keeps it within the row on a window resize. -->
 <section
-  class="map-card"
-  class:docked={dock}
+  class={[
+    'flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
+    dock
+      ? 'relative min-w-[300px] flex-1'
+      : 'absolute inset-y-2 right-2.5 z-20 w-[min(400px,58%)] max-w-[calc(100%-40px)] shadow-lg',
+  ]}
   aria-label="Star-map"
   style={!dock && floatWidth ? `width:${floatWidth}px` : ''}
 >
@@ -121,19 +131,19 @@
        toggle's sensible defaults. -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
-    class="map-resizer"
+    class="absolute inset-y-0 left-0 z-30 w-1.5 -translate-x-1/2 cursor-ew-resize transition-colors hover:bg-ring/60"
     role="separator"
     aria-orientation="vertical"
     aria-label="Resize star-map"
     onmousedown={onresizestart}
   ></div>
 
-  <header class="map-card-bar">
+  <header class="cockpit-bar">
     {#if maps.length > 1}
       <!-- Switching the focused map inside an open card never opens or closes it
            — visibility changes only on an explicit summon/dismiss (spec). -->
       <select
-        class="map-switch"
+        class="max-w-[12rem] min-w-0 truncate rounded-md border border-border bg-transparent px-2 py-1 text-xs font-medium text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
         aria-label="Map"
         value={map?.slug}
         onchange={(e) => (slug = (e.currentTarget as HTMLSelectElement).value)}
@@ -142,42 +152,71 @@
           <option value={m.slug}>{m.name}</option>
         {/each}
       </select>
-      <button class="map-card-note" class:on={showMaterial} title="Map material" onclick={openMaterial}>notes</button>
+      <Button
+        variant={showMaterial ? 'secondary' : 'ghost'}
+        size="sm"
+        aria-pressed={showMaterial}
+        title="Map material"
+        onclick={openMaterial}>notes</Button
+      >
     {:else if map}
-      <button
-        class="map-card-name"
-        class:on={showMaterial}
+      <Button
+        variant={showMaterial ? 'secondary' : 'ghost'}
+        size="sm"
+        class="min-w-0 truncate"
+        aria-pressed={showMaterial}
         title="Open map material — destination, notes, decisions, fog"
-        onclick={openMaterial}>{map.name}</button
+        onclick={openMaterial}>{map.name}</Button
       >
     {/if}
 
-    <div class="map-card-actions">
-      <button
-        class="map-card-btn"
+    <div class="ml-auto flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-pressed={dock}
         title={dock ? 'Float over the terminal' : 'Dock as a split (terminal keeps its width)'}
-        onclick={() => (dock = !dock)}>{dock ? '⧉ float' : '⇥ dock'}</button
+        onclick={() => (dock = !dock)}
       >
-      <button class="map-card-btn map-card-close" aria-label="Dismiss star-map (Esc)" title="Dismiss (M / Esc)" onclick={onclose}
-        >×</button
+        {#if dock}<CornersOut />{:else}<Columns />{/if}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Dismiss star-map (Esc)"
+        title="Dismiss (M / Esc)"
+        onclick={onclose}
       >
+        <X />
+      </Button>
     </div>
   </header>
 
-  <div class="map-card-body" bind:this={bodyEl}>
+  <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
     {#if map}
       {#key map.slug}
         <StarMap {map} {insets} bind:selected />
       {/key}
 
       {#if paneOpen}
-        <div class="dp-holder" class:bottom={paneDock === 'bottom'} bind:this={paneEl}>
+        <!-- The detail pane overlays one edge of the island: full-height on the
+             right by default, half-height along the bottom when the card is narrow
+             or tall. Its bg occludes the stars behind it; the camera (insets) eases
+             the selected star into the space it leaves free. -->
+        <div
+          class={[
+            'absolute z-10 p-3',
+            paneDock === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-y-0 right-0 w-[min(400px,58%)]',
+          ]}
+          bind:this={paneEl}
+        >
           <DetailPane {map} ticket={paneTicket} dock={paneDock} {spaceId} onclose={closePane} />
         </div>
       {/if}
     {:else}
-      <p class="map-card-empty">No map to render in this space.</p>
+      <p class="grid h-full place-items-center p-6 text-sm text-muted-foreground">
+        No map to render in this space.
+      </p>
     {/if}
   </div>
 </section>
