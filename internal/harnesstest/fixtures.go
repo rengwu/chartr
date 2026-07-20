@@ -89,6 +89,36 @@ func StubAgent(t testing.TB, name string) (recordPath string) {
 	return recordPath
 }
 
+// StubDyingAgent installs a fake agent CLI that emits a unique marker to its PTY
+// and then exits — the stub the death-halt tests drive against (ticket 10). Unlike
+// StubAgent, which blocks so the session stays live, this one dies on cue, so a
+// test can assert the harness detects the death, pins the dead session with its
+// scrollback (the marker) intact, and takes no action of its own. It returns the
+// marker so a test asserts scrollback survival by finding it after the death.
+//
+// Like StubAgent it prepends a fresh bin directory to PATH via t.Setenv (so the
+// stub shadows any real CLI of the name and parallel tests are forbidden) and
+// skips on Windows, where the POSIX-shell stub would not run.
+func StubDyingAgent(t testing.TB, name string) (marker string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent CLI uses a POSIX shell script; not supported on Windows")
+	}
+	binDir := t.TempDir()
+	marker = "SESSION-OUTPUT-" + name
+
+	// Print the marker to the PTY (so it lands in scrollback), then exit — the read
+	// loop sees EOF and the harness detects the death.
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\nexit 0\n", marker)
+	stub := filepath.Join(binDir, name)
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("harnesstest: writing dying stub agent %q: %v", name, err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return marker
+}
+
 // WaitForFileContains polls path until it contains want or the deadline passes,
 // returning its contents. It fails the test on timeout — a test asserting the
 // opener reached the stub's stdin names the marker it expects rather than guessing

@@ -49,6 +49,14 @@ func WithDataDir(dir string) Option {
 	return func(o *server.Options) { o.DataDir = dir }
 }
 
+// WithQuietAfter sets the session silence threshold (ticket 10). Tests set it
+// short so an AFK session's "quiet" hint is crossable within a test rather than
+// after the calm production default. It is the real config knob, tuned down — not
+// a test-only seam.
+func WithQuietAfter(d time.Duration) Option {
+	return func(o *server.Options) { o.QuietAfter = d }
+}
+
 // Start launches a harness on a random loopback port and registers cleanup that
 // shuts it down when the test ends. It fails the test on any startup error.
 func Start(t testing.TB, opts ...Option) *Harness {
@@ -169,6 +177,24 @@ func (h *Harness) Spawn(spaceID, slug string, num int, role string) (int, string
 		map[string]string{"role": role})
 }
 
+// Resume, Respawn, and Release drive the three death-halt choices for a pinned
+// dead session (ticket 10). Each is a plain HTTP action so a test asserts that the
+// halt takes none of them on its own and that each does exactly its one thing.
+func (h *Harness) Resume(spaceID, sessionID string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/resume", spaceID, sessionID), nil)
+}
+
+func (h *Harness) Respawn(spaceID, sessionID string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/respawn", spaceID, sessionID), nil)
+}
+
+func (h *Harness) Release(spaceID, sessionID string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/release", spaceID, sessionID), nil)
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.
@@ -177,6 +203,27 @@ func (h *Harness) Snapshot(ctx context.Context) model.Model {
 	conn := h.DialControl(ctx)
 	defer conn.Close()
 	return conn.ReadSnapshot(ctx)
+}
+
+// SnapshotUntil polls fresh snapshots until pred holds, returning the matching
+// one. Each poll dials a new control socket, which the server answers with the
+// current model immediately, so this suits an act-then-wait test that performs an
+// action (or triggers an async one, like a stub agent dying) and then waits for
+// the resulting state without having dialled beforehand. It fails the test if ctx
+// expires first.
+func (h *Harness) SnapshotUntil(ctx context.Context, pred func(model.Model) bool) model.Model {
+	h.t.Helper()
+	for {
+		m := h.Snapshot(ctx)
+		if pred(m) {
+			return m
+		}
+		select {
+		case <-ctx.Done():
+			h.t.Fatalf("harnesstest: snapshot never matched predicate: %v", ctx.Err())
+		case <-time.After(30 * time.Millisecond):
+		}
+	}
 }
 
 // DialControl connects a control socket and returns it. The caller closes it.
