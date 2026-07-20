@@ -92,3 +92,36 @@ export interface Model {
 export function needsAgents(space: Space): boolean {
   return space.bindings.some((b) => !b.present)
 }
+
+// The payload preview (ticket 08): exactly what a session for a ticket and role
+// would be told, with per-part layer provenance. `layer` is the config layer a
+// prompt segment resolved from, or 'context' for an assembled bundle artifact.
+export type PartLayer = Layer | 'context'
+
+export interface PayloadSegment {
+  layer: PartLayer
+  label?: string
+  text: string
+}
+
+// A labelled block of the payload — a resolved prompt (`kind: 'prompt'`, e.g.
+// core or a role) or an assembled context artifact (`kind: 'context'`, e.g. the
+// glossary, map body, ticket, a blocker's answer, or the review guarantees).
+export interface PayloadPart {
+  name: string
+  kind: 'prompt' | 'context'
+  segments: PayloadSegment[]
+}
+
+export interface Payload {
+  role: string
+  ticketNum: number
+  parts: PayloadPart[]
+  warnings?: string[]
+  markdown: string
+}
+
+// The closed role set a session can be spawned as (config.Roles), in display
+// order — what the preview lets the operator choose between.
+export const ROLES = ['grill', 'prototype', 'research', 'implement', 'review'] as const
+export type Role = (typeof ROLES)[number]

@@ -399,6 +399,7 @@
   {#if focusedMap && mapShown}
     <MapCard
       {maps}
+      spaceId={space.id}
       bind:slug={mapSlug}
       bind:dock
       bind:selected={selectedTicket}

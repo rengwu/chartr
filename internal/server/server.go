@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
 	"github.com/rengwu/wayfinder-harness/internal/registry"
 	"github.com/rengwu/wayfinder-harness/internal/terminal"
 	"github.com/rengwu/wayfinder-harness/web"
@@ -53,6 +54,12 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Materialize the prompt library to disk so the operator can read and edit
+	// exactly what a session is told (ticket 08, story 45). Existing files are
+	// preserved, so edits survive a restart and compose on the next preview.
+	if err := prompt.Materialize(opts.DataDir); err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		opts: opts,
@@ -85,6 +92,10 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/classify", s.handleClassify)
+	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
+	// session would be told, with per-part layer provenance. Read-only, so a GET;
+	// the composition reads the library and the map fresh off disk each time.
+	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

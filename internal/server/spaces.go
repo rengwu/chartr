@@ -9,6 +9,7 @@ import (
 	"github.com/rengwu/wayfinder-harness/internal/config"
 	"github.com/rengwu/wayfinder-harness/internal/mapscan"
 	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
 	"github.com/rengwu/wayfinder-harness/internal/registry"
 )
 
@@ -208,6 +209,12 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		})
 	}
 
+	// Fold in the prompt library's own notices — a replacement forked from an
+	// older shipped default (ticket 08, story 47) — so a stale fork is surfaced on
+	// the space without the operator opening every role in the preview.
+	warnings := append([]string{}, res.Warnings...)
+	warnings = append(warnings, prompt.LibraryWarnings(s.opts.DataDir, e.Path)...)
+
 	return model.Space{
 		ID:        e.ID,
 		Name:      filepath.Base(e.Path),
@@ -216,7 +223,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Bindings:  bindings,
 		Maps:      maps,
 		Terminals: terminals,
-		Warnings:  res.Warnings,
+		Warnings:  warnings,
 	}
 }
 

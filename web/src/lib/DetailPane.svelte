@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Map as WMap, Ticket } from './model'
   import { renderMarkdown, sectionOf } from './markdown'
+  import PayloadPreview from './PayloadPreview.svelte'
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
   // click. It renders one ticket — question, Done-when, its blockers with their
@@ -12,15 +13,22 @@
     map,
     ticket = null,
     dock = 'right',
+    spaceId,
     onclose,
   }: {
     map: WMap
     ticket?: Ticket | null
     dock?: 'right' | 'bottom'
+    // The space the ticket belongs to — the key the payload preview fetches by.
+    spaceId?: string
     onclose: () => void
   } = $props()
 
   const isMap = $derived(ticket === null)
+
+  // The payload preview (ticket 08): from reading a ticket to seeing exactly what
+  // a session on it would be told. Available only with a spaceId in hand.
+  let showPreview = $state(false)
 
   // The closing-answer section names, in the order a resolved/proposed/ruled-out
   // ticket carries them — used to show a blocker's answer inline.
@@ -88,6 +96,13 @@
         #{pad(ticket.num)} · {ticket.type}
         <span class="dp-status" data-status={ticket.status}>{statusLabel[ticket.status] ?? ticket.status}</span>
         {#if ticket.frontier}<span class="dp-status frontier">frontier</span>{/if}
+        {#if spaceId}
+          <button
+            class="dp-preview"
+            title="Preview the payload a session on this ticket would be told"
+            onclick={() => (showPreview = true)}>⧉ payload</button
+          >
+        {/if}
       </span>
       <span class="dp-title">{ticket.title}</span>
     {/if}
@@ -141,3 +156,34 @@
     {/if}
   </div>
 </aside>
+
+<style>
+  .dp-preview {
+    border: 1px solid var(--border, #2b3242);
+    background: transparent;
+    color: var(--muted, #8a94a6);
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 10px;
+    line-height: 1.5;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .dp-preview:hover {
+    border-color: var(--accent, #6ea8fe);
+    color: var(--text, inherit);
+  }
+</style>
+
+{#if !isMap && ticket && spaceId}
+  <PayloadPreview
+    open={showPreview}
+    {spaceId}
+    mapSlug={map.slug}
+    ticketNum={ticket.num}
+    ticketTitle={ticket.title}
+    ticketType={ticket.type}
+    onClose={() => (showPreview = false)}
+  />
+{/if}

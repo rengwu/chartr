@@ -11,6 +11,12 @@
 # the repo root when the harness runs with cwd here — never committed.
 /registry.toml
 
+# The materialized prompt library (ticket 08) is user-config runtime state too: a
+# copy lands under the data root — the repo root when run with cwd here — as the
+# operator's editable copy. Never committed. (A space's *committed* prompt overlay
+# lives under .wayfinder-harness/prompts/, which is a different, intentional path.)
+/prompts/
+
 # Embedded frontend build output. The committed .gitkeep keeps the directory so
 # `go:embed all:dist` compiles on a fresh checkout; `make web` fills in the real
 # index.html and assets, which are not committed.

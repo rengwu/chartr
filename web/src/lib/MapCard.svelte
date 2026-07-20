@@ -13,6 +13,7 @@
   // terminal-priority split is the parent's layout decision.
   let {
     maps,
+    spaceId,
     slug = $bindable(),
     dock = $bindable(false),
     selected = $bindable(null),
@@ -22,6 +23,9 @@
     onresizestart,
   }: {
     maps: WMap[]
+    // The space these maps belong to — threaded to the detail pane so its payload
+    // preview can fetch (ticket 08).
+    spaceId: string
     slug: string | null
     dock?: boolean
     selected?: number | null
@@ -169,7 +173,7 @@
 
       {#if paneOpen}
         <div class="dp-holder" class:bottom={paneDock === 'bottom'} bind:this={paneEl}>
-          <DetailPane {map} ticket={paneTicket} dock={paneDock} onclose={closePane} />
+          <DetailPane {map} ticket={paneTicket} dock={paneDock} {spaceId} onclose={closePane} />
         </div>
       {/if}
     {:else}

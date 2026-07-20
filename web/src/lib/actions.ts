@@ -63,6 +63,22 @@ export function closeTerminal(spaceId: string, termId: string): Promise<void> {
   ) as Promise<void>
 }
 
+// previewPayload composes what a session for one ticket and role would be told
+// (ticket 08) — the resolved prompts, the context bundle, and the review
+// guarantees — with per-part provenance. Read-only inspection, so a GET; the
+// harness reads the library and the map fresh, so an edit on disk shows up here.
+export function previewPayload(
+  id: string,
+  slug: string,
+  num: number,
+  role: string,
+): Promise<import('./model').Payload> {
+  return send(
+    'GET',
+    `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/tickets/${num}/payload?role=${encodeURIComponent(role)}`,
+  ) as Promise<import('./model').Payload>
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.
