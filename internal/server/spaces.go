@@ -197,8 +197,8 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		}
 	}
 
-	// Ad-hoc shells are runtime state the manager owns, not derived from disk;
-	// fold them in so a mapless space still shows its terminal tabs and a
+	// Ad-hoc shells and sessions are runtime state the manager owns, not derived
+	// from disk; fold them in so a mapless space still shows its terminal tabs and a
 	// reconnecting browser rediscovers the open shells (story 29).
 	terminals := make([]model.Terminal, 0)
 	for _, info := range s.terms.ForSpace(e.ID) {
@@ -217,6 +217,15 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 				Agent:     info.Session.Agent,
 				Model:     info.Session.Model,
 			}
+			// The quiet hint is the server's call, not the terminal's: the sampler
+			// reports raw silence, and here — where the role and the ticket's derived
+			// status are both in hand — that silence becomes "quiet" only for an AFK
+			// role whose ticket carries no `## Proposed Answer` yet. An idle grilling
+			// session, or a session that has already landed its answer, shows nothing
+			// (spec, Sessions and adapters; stories 34–35).
+			if info.Silent && config.RoleIsAFK(info.Session.Role) && !ticketProposed(maps, info.Session.MapSlug, info.Session.TicketNum) {
+				term.Status = model.TerminalQuiet
+			}
 		}
 		terminals = append(terminals, term)
 	}
@@ -233,11 +242,30 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Path:      e.Path,
 		Branch:    gitBranch(e.Path),
 		Pinned:    e.Pinned,
+		Dirty:     gitDirty(e.Path),
 		Bindings:  bindings,
 		Maps:      maps,
 		Terminals: terminals,
 		Warnings:  warnings,
 	}
+}
+
+// ticketProposed reports whether the ticket a session is bound to already derives
+// `proposed` — its `## Proposed Answer` is on disk. Once it has, the session's
+// silence is expected (its work has landed, the gate is next), so the quiet hint is
+// suppressed. A binding naming a map or ticket that no longer exists reads as
+// not-proposed, so a dangling session still surfaces its silence rather than
+// swallowing it.
+func ticketProposed(maps []model.Map, slug string, num int) bool {
+	m, ok := findMap(maps, slug)
+	if !ok {
+		return false
+	}
+	tk, ok := findTicket(m, num)
+	if !ok {
+		return false
+	}
+	return tk.Status == "proposed"
 }
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash

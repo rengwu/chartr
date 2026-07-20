@@ -26,6 +26,10 @@ type Options struct {
 	// archives, scrollback). The skeleton only holds it; ticket 02 onward reads
 	// and writes beneath it. Defaults to the current directory when empty.
 	DataDir string
+	// QuietAfter is how long a session's PTY may stay silent before an AFK session
+	// reads quiet (ticket 10). Zero takes the manager's calm default; tests set it
+	// short so the threshold is crossable within a test.
+	QuietAfter time.Duration
 }
 
 // Server is a single operator's harness backend. Construct with New, then run
@@ -75,7 +79,7 @@ func New(opts Options) (*Server, error) {
 	// Ad-hoc shells are harness-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
-	s.terms = terminal.NewManager(s.rebuild)
+	s.terms = terminal.NewManager(s.rebuild, opts.QuietAfter)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
@@ -102,6 +106,14 @@ func New(opts Options) (*Server, error) {
 	// or hard-blocks the one spawn when the bound agent is absent. A plain HTTP
 	// action so a refusal (missing agent, unclassified map) surfaces as a response.
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/spawn", s.handleSpawn)
+	// The death halt (ticket 10): a session that died stays pinned to its ticket,
+	// and the operator resolves it one of exactly three ways — resume it (same-
+	// ticket crash recovery), respawn a fresh session on the same ticket, or release
+	// the claim back to the frontier. The harness itself takes none of these; each is
+	// an explicit operator action, so nothing changes without an HTTP call.
+	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
+	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)
+	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/release", s.handleRelease)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

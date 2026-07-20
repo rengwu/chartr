@@ -14,7 +14,7 @@ import (
 // command's name, and the change is observable — which is the whole basis for
 // the sidebar's live status indicator.
 func TestSampleTracksForegroundCommand(t *testing.T) {
-	m := NewManager(nil) // nil onChange: no background sampler, we drive sample() by hand
+	m := NewManager(nil, 0) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)
@@ -46,7 +46,7 @@ func waitStatus(t *testing.T, term *Terminal, want string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		term.sample()
+		term.sample(45 * time.Second)
 		term.mu.Lock()
 		got := term.state
 		term.mu.Unlock()

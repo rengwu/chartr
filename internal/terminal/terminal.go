@@ -18,6 +18,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/aymanbagabas/go-pty"
 
@@ -83,12 +84,26 @@ type Terminal struct {
 	subs       map[*subscriber]struct{}
 	alive      bool
 	done       chan struct{}
+	// killed records that the operator ended this tab (Close/Shutdown) rather than
+	// its process dying on its own. It is the one thing that tells a death-halt from
+	// a dismissal: a session whose process exits stays pinned to its ticket for the
+	// operator to resume/respawn/release, but a session the operator closed — like
+	// any ad-hoc shell — drops from the model (ticket 10).
+	killed bool
+	// lastActivity is when this PTY last produced output. Silence past a threshold
+	// is what earns an AFK session the "quiet" hint (ticket 10); it is refreshed on
+	// every chunk broadcast, so any agent output — even a spinner redraw — resets it.
+	lastActivity time.Time
 	// proc/state are the last sampled foreground process and activity (one of the
 	// model.Terminal* states); lastPgrp caches the foreground group so a name is
-	// only re-resolved when the foreground actually changes.
+	// only re-resolved when the foreground actually changes. silent is the last
+	// sampled silence verdict for a session (alive and quiet past the threshold),
+	// which the server folds together with the role and the ticket's proposed
+	// status to decide whether the tab actually reads quiet.
 	proc     string
 	state    string
 	lastPgrp int
+	silent   bool
 }
 
 // subscriber is one attached terminal socket. Down-frames are delivered through
@@ -162,6 +177,7 @@ func (t *Terminal) broadcast(chunk []byte) {
 	copy(b, chunk)
 
 	t.mu.Lock()
+	t.lastActivity = time.Now()
 	t.scrollback = appendCapped(t.scrollback, b, scrollbackCap)
 	for s := range t.subs {
 		select {
@@ -205,17 +221,33 @@ func (t *Terminal) pump(done func()) {
 	done()
 }
 
-// close ends the shell on the human's command. Killing the process makes the
-// read loop's Read return, which runs the same cleanup path as a natural exit.
-// A terminal already dead is a no-op.
-func (t *Terminal) close() {
+// close ends the tab on the human's command. It marks the tab killed — so a
+// pinned dead session the operator dismisses drops from the model rather than
+// halting a second time — then, if the process is still live, kills it, which
+// makes the read loop's Read return and runs the same cleanup path as a natural
+// exit. It reports whether it killed a live process; a caller closing an
+// already-dead pinned session gets false and drops the tab itself, since no exit
+// will fire to do it.
+func (t *Terminal) close() bool {
 	t.mu.Lock()
 	alive := t.alive
 	proc := t.cmd.Process
+	t.killed = true
 	t.mu.Unlock()
 	if alive && proc != nil {
 		_ = proc.Kill()
+		return true
 	}
+	return false
+}
+
+// pinOnDeath reports whether this tab should stay pinned to its ticket when its
+// process exits — true only for a session that died on its own (ticket 10). An
+// ad-hoc shell, or a session the operator killed, drops from the model instead.
+func (t *Terminal) pinOnDeath() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.session != nil && !t.killed
 }
 
 // appendCapped appends chunk to buf and, if the result exceeds capBytes, trims
@@ -296,6 +328,13 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	if title == "" {
 		title = shellTitle(spec.name)
 	}
+	state := model.TerminalIdle
+	if spec.session != nil {
+		// A session reads the session grammar, not a shell's idle/working: seat it
+		// as working until the first sample decides otherwise, so a just-spawned
+		// session orbits rather than flashing a spurious idle tick.
+		state = model.TerminalWorking
+	}
 	return &Terminal{
 		ID:       id,
 		SpaceID:  spaceID,
@@ -307,10 +346,12 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		subs:     make(map[*subscriber]struct{}),
 		alive:    true,
 		done:     make(chan struct{}),
-		// Seat the initial view at the prompt so a just-opened tab reads idle under
-		// its own process name before the first sample lands.
+		// Seed silence from launch, so an AFK session that never emits a byte still
+		// crosses into quiet once the threshold elapses.
+		lastActivity: time.Now(),
+		// Seat the initial view under the tab's own name before the first sample.
 		proc:  title,
-		state: model.TerminalIdle,
+		state: state,
 	}, nil
 }
 
@@ -323,14 +364,47 @@ func newTerminal(id, spaceID, cwd string) (*Terminal, error) {
 // start begins the read loop; cleanup runs once the shell exits.
 func (t *Terminal) start(cleanup func()) { go t.pump(cleanup) }
 
-// sample recomputes the shell's foreground process and activity, returning
-// whether either changed since the last sample. The manager's sampler loop calls
-// it off the manager lock, and a change is what triggers a fresh model push — so
-// a shell going busy or returning to its prompt updates the sidebar on its own,
-// with no filesystem or socket event behind it. The exec that resolves a
-// process name happens outside the terminal lock, and only when the foreground
-// group actually changes, so a busy shell doesn't pay for it every tick.
-func (t *Terminal) sample() bool {
+// sample recomputes a tab's activity, returning whether it changed since the last
+// sample. The manager's sampler loop calls it off the manager lock, and a change
+// is what triggers a fresh model push — so a shell going busy, or an AFK session
+// falling silent, updates the sidebar on its own with no filesystem or socket
+// event behind it. A session reads on output silence (its agent holds the PTY's
+// foreground for its whole life, so a shell's foreground-group signal says
+// nothing); an ad-hoc shell reads on its foreground group as before.
+func (t *Terminal) sample(quietAfter time.Duration) bool {
+	if t.session != nil {
+		return t.sampleSession(quietAfter)
+	}
+	return t.sampleShell()
+}
+
+// sampleSession recomputes a session tab: dead once its process exits, otherwise
+// working, with a silence verdict (alive and quiet past the threshold) the server
+// folds together with the role and the ticket's proposed status to decide whether
+// it actually reads quiet. The quiet decision is deliberately not made here — the
+// terminal knows the silence but not the role's AFK-ness or the ticket's answer —
+// so a threshold crossing still pushes, and the server has the last word.
+func (t *Terminal) sampleSession(quietAfter time.Duration) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	state, silent := model.TerminalWorking, false
+	if !t.alive {
+		state = model.TerminalDead
+	} else {
+		silent = time.Since(t.lastActivity) > quietAfter
+	}
+	if state == t.state && silent == t.silent {
+		return false
+	}
+	t.state, t.silent = state, silent
+	return true
+}
+
+// sampleShell recomputes an ad-hoc shell's foreground process and activity. The
+// exec that resolves a process name happens outside the terminal lock, and only
+// when the foreground group actually changes, so a busy shell doesn't pay for it
+// every tick.
+func (t *Terminal) sampleShell() bool {
 	t.mu.Lock()
 	alive := t.alive
 	prevPgrp := t.lastPgrp

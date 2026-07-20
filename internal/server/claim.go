@@ -79,15 +79,17 @@ func git(repo string, args ...string) (string, error) {
 }
 
 // stampClaim inserts claimed_by/claimed_at into the ticket's YAML frontmatter so
-// it derives `claimed` (wayfinder reads the claim from these two keys). It adds
-// them just inside the closing fence of an existing frontmatter block, preserving
-// the operator's other keys and ordering; a ticket with no frontmatter at all
-// (rare, a legacy loose-header ticket) gets a fresh block prepended so the claim
-// is still expressible.
+// it derives `claimed` (wayfinder reads the claim from these two keys). It first
+// strips any existing claim keys, so re-stamping is idempotent — a respawn onto a
+// ticket that already carries a dead session's stale claim replaces it cleanly
+// (ticket 10), never doubling the keys. It adds them just inside the closing fence
+// of an existing frontmatter block, preserving the operator's other keys and
+// ordering; a ticket with no frontmatter at all (rare, a legacy loose-header
+// ticket) gets a fresh block prepended so the claim is still expressible.
 func stampClaim(src, sessionID, at string) string {
 	fields := fmt.Sprintf("claimed_by: %s\nclaimed_at: %s\n", sessionID, at)
 
-	lines := strings.Split(src, "\n")
+	lines := strings.Split(stripClaim(src), "\n")
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
@@ -101,6 +103,65 @@ func stampClaim(src, sessionID, at string) string {
 	}
 	// No frontmatter block — prepend one.
 	return "---\n" + fields + "---\n\n" + src
+}
+
+// stripClaim removes the claimed_by/claimed_at keys from the ticket's frontmatter,
+// so the ticket derives open again (wayfinder reads the claim from exactly these
+// two keys). It touches only the frontmatter block — a `claimed_by:` that somehow
+// appeared in the ticket body is left alone — and preserves every other key and
+// the operator's ordering. Releasing a claim (ticket 10) is this plus a commit.
+func stripClaim(src string) string {
+	lines := strings.Split(src, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return src
+	}
+	out := make([]string, 0, len(lines))
+	out = append(out, lines[0])
+	inFrontmatter := true
+	for i := 1; i < len(lines); i++ {
+		if inFrontmatter {
+			if strings.TrimSpace(lines[i]) == "---" {
+				inFrontmatter = false
+				out = append(out, lines[i])
+				continue
+			}
+			key := strings.TrimSpace(lines[i])
+			if strings.HasPrefix(key, "claimed_by:") || strings.HasPrefix(key, "claimed_at:") {
+				continue
+			}
+		}
+		out = append(out, lines[i])
+	}
+	return strings.Join(out, "\n")
+}
+
+// writeReleaseCommit is the death-halt's third choice: it releases a dead
+// session's claim back to the frontier (ticket 10). It strips claimed_by/claimed_at
+// from the ticket — so the ticket derives open and takeable again — and commits
+// *only that file*, the same pathspec-limited, never-amending, never-pushing
+// discipline the claim uses (ADR 0008). Recording the release as its own commit
+// keeps git the whole audit trail: the ticket's history reads claim → release, and
+// the stale claim is cleared by an operator act, never on its own.
+func writeReleaseCommit(repo, ticketPath, sessionID string) error {
+	rel, err := filepath.Rel(repo, ticketPath)
+	if err != nil {
+		return fmt.Errorf("locating ticket under the space: %w", err)
+	}
+	src, err := os.ReadFile(ticketPath)
+	if err != nil {
+		return fmt.Errorf("reading ticket: %w", err)
+	}
+	if err := os.WriteFile(ticketPath, []byte(stripClaim(string(src))), 0o644); err != nil {
+		return fmt.Errorf("clearing the claim on the ticket: %w", err)
+	}
+	if out, err := git(repo, "add", "--", rel); err != nil {
+		return fmt.Errorf("staging the release: %w\n%s", err, out)
+	}
+	msg := fmt.Sprintf("Release %s back to the frontier\n\nSession: %s\n", rel, sessionID)
+	if out, err := git(repo, "commit", "--only", "-m", msg, "--", rel); err != nil {
+		return fmt.Errorf("committing the release: %w\n%s", err, out)
+	}
+	return nil
 }
 
 // claimMessage renders the claim commit's message: a human subject naming the

@@ -35,6 +35,12 @@ type Space struct {
 	Branch string `json:"branch,omitempty"`
 	// Pinned spaces sort first; the flag is local, per-machine registry state.
 	Pinned bool `json:"pinned"`
+	// Dirty is true when the working tree carries uncommitted changes — modified,
+	// staged, or untracked files a session or an ad-hoc shell left behind. It is a
+	// badge, never a spawn gate (spec, Git and the gate; story 68): the operator
+	// decides whether the debris is harmless, and the harness spawns into it all
+	// the same. A label, not a guarantee — empty on a tree it cannot read.
+	Dirty bool `json:"dirty"`
 	// Bindings are the space's effective, fully-resolved role bindings in role
 	// order, each carrying per-field provenance and PATH presence so the
 	// operator sees what will actually run (stories 39, 40).
@@ -148,12 +154,15 @@ type Terminal struct {
 	// shell itself while it sits at its prompt, or the command it is running (an
 	// agent, an editor). Falls back to Title where the platform can't report it.
 	Proc string `json:"proc"`
-	// Status is the shell's live activity: TerminalIdle at the prompt,
-	// TerminalWorking while a foreground command runs, TerminalExited once the
-	// process is gone. It drives the sidebar's per-session status indicator.
+	// Status is the tab's live activity. An ad-hoc shell reads TerminalIdle at the
+	// prompt, TerminalWorking while a foreground command runs, TerminalExited once
+	// the process is gone. A session tab reads the session grammar instead
+	// (TerminalWorking / TerminalQuiet / TerminalDead — ticket 10). It drives the
+	// sidebar's per-tab status indicator.
 	Status string `json:"status"`
-	// Alive is false the instant the shell exits; the chrome greys a dead tab
-	// until the operator dismisses it.
+	// Alive is false the instant the process exits. A dead ad-hoc shell drops from
+	// the model; a dead session stays pinned (Alive false, Status TerminalDead) so
+	// the operator can resume, respawn, or release it.
 	Alive bool `json:"alive"`
 	// Session is set only when this tab is a session — a PTY running an agent
 	// against exactly one ticket (ticket 09). It carries the binding the tab
@@ -176,12 +185,19 @@ type Session struct {
 }
 
 // A terminal's activity states, uniform across the wire and the sidebar's status
-// indicator: idle at the prompt (a tick), working while a foreground command
-// runs (a spinner), exited once the shell is gone.
+// indicator. An ad-hoc shell is idle at the prompt (a tick), working while a
+// foreground command runs (a spinner), or exited once the shell is gone. A session
+// tab reads on the session grammar instead (ticket 10): working while it is live
+// and producing, quiet when an AFK session has fallen silent past the threshold
+// with no proposed answer yet (a hint, never an alarm), and dead once its process
+// exits — a dead session freezes in place rather than vanishing, pinned to its
+// ticket until the operator resumes, respawns, or releases it.
 const (
 	TerminalIdle    = "idle"
 	TerminalWorking = "working"
 	TerminalExited  = "exited"
+	TerminalQuiet   = "quiet"
+	TerminalDead    = "dead"
 )
 
 // RoleBinding is one role's effective binding on the wire: which adapter runs on

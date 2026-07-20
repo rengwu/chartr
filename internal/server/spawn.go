@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -129,100 +130,129 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compose the payload fresh off disk — the same assembly the preview shows, so
-	// what a session is told is exactly what the operator inspected (ADR 0005).
-	bundle := prompt.Bundle{
-		MapName:     m.Name,
-		MapBody:     m.Body,
-		MapDir:      m.Dir,
-		TicketNum:   tk.Num,
-		TicketTitle: tk.Title,
-		TicketBody:  tk.Body,
-		Blockers:    blockersOf(m, tk),
-	}
-	payload, err := prompt.Compose(prompt.ComposeInput{
-		Role:    role,
-		DataDir: s.opts.DataDir,
-		RepoDir: e.Path,
-		Bundle:  bundle,
+	// From here the mechanics are shared with respawn (ticket 10): compose the
+	// payload, write the claim commit, drop the gitignored and archived copies, and
+	// launch the TUI. A fresh spawn mints a new session id.
+	result, status, err := s.launchSession(sessionLaunch{
+		entry:     e,
+		slug:      slug,
+		m:         m,
+		tk:        tk,
+		role:      role,
+		binding:   binding,
+		sessionID: newSessionID(),
 	})
 	if err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
+		httpError(w, status, err.Error())
 		return
 	}
+	writeJSON(w, http.StatusOK, result)
+}
 
-	sessionID := newSessionID()
+// sessionLaunch carries the resolved inputs the launch mechanics need once every
+// gate has passed. It is the seam a fresh spawn and a respawn share (ticket 10):
+// both compose the same payload, write the same claim, and open the same kind of
+// session tab — they differ only in the gating that precedes this and in whether
+// the session id is new.
+type sessionLaunch struct {
+	entry     registry.Entry
+	slug      string
+	m         model.Map
+	tk        model.Ticket
+	role      string
+	binding   config.Resolved
+	sessionID string
+}
+
+// launchSession runs the post-gate spawn mechanics: it composes the payload fresh
+// off disk (the same assembly the preview shows — ADR 0005), writes the claim
+// commit (ADR 0008), drops the payload gitignored inside the space and archived in
+// harness state (story 49), and launches the agent's TUI with the read-this-file
+// opener typed in. It returns the action's result and, on failure, the HTTP status
+// the caller should surface. Every write that can fail happens here in order, so a
+// failure after the claim leaves the claim standing (never rolled back) for the
+// death halt to resolve.
+func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
+	payload, err := prompt.Compose(prompt.ComposeInput{
+		Role:    in.role,
+		DataDir: s.opts.DataDir,
+		RepoDir: in.entry.Path,
+		Bundle: prompt.Bundle{
+			MapName:     in.m.Name,
+			MapBody:     in.m.Body,
+			MapDir:      in.m.Dir,
+			TicketNum:   in.tk.Num,
+			TicketTitle: in.tk.Title,
+			TicketBody:  in.tk.Body,
+			Blockers:    blockersOf(in.m, in.tk),
+		},
+	})
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
 	sum := sha256.Sum256([]byte(payload.Markdown))
 	payloadSHA := hex.EncodeToString(sum[:])
 	claimedAt := time.Now().UTC().Format(time.RFC3339)
 
-	ticketPath, err := ticketFilePath(m.Dir, num)
+	ticketPath, err := ticketFilePath(in.m.Dir, in.tk.Num)
 	if err != nil {
-		httpError(w, http.StatusNotFound, err.Error())
-		return
+		return nil, http.StatusNotFound, err
 	}
 
 	// The claim commit — the harness's one write here (ADR 0008), pathspec-limited
-	// to the ticket file and carrying the binding and payload-hash trailers.
-	if err := writeClaimCommit(e.Path, ticketPath, sessionID, claimedAt, claim{
-		SessionID:   sessionID,
-		Role:        role,
-		Agent:       binding.Adapter,
-		Model:       binding.Model,
+	// to the ticket file and carrying the binding and payload-hash trailers. On a
+	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
+	// the new session id supersedes the dead one.
+	if err := writeClaimCommit(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
+		SessionID:   in.sessionID,
+		Role:        in.role,
+		Agent:       in.binding.Adapter,
+		Model:       in.binding.Model,
 		PayloadSHA:  payloadSHA,
-		AdapterFrom: binding.AdapterFrom,
-		ModelFrom:   binding.ModelFrom,
-		ArgsFrom:    binding.ArgsFrom,
+		AdapterFrom: in.binding.AdapterFrom,
+		ModelFrom:   in.binding.ModelFrom,
+		ArgsFrom:    in.binding.ArgsFrom,
 	}); err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the claim commit: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim commit: %w", err)
 	}
 
-	// The composed payload, written to a gitignored path inside the space (the
-	// agent reads it there) and archived per session in harness state outside git
-	// (so "what was this session told" is answerable word for word — story 49).
-	payloadPath, err := s.writeSessionPayload(e.Path, sessionID, payload.Markdown)
+	payloadPath, err := s.writeSessionPayload(in.entry.Path, in.sessionID, payload.Markdown)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the session payload: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("writing the session payload: %w", err)
 	}
-	if err := s.archivePayload(sessionID, payload.Markdown); err != nil {
-		httpError(w, http.StatusInternalServerError, "archiving the session payload: "+err.Error())
-		return
+	if err := s.archivePayload(in.sessionID, payload.Markdown); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("archiving the session payload: %w", err)
 	}
 
 	// Resolve the binding onto this agent's command line (ADR 0002) and launch its
 	// TUI in a PTY, with the read-this-file opener typed in.
-	launch := adapter.For(binding.Adapter).Command(binding.Model, binding.Args)
-	_, err = s.terms.OpenSession(e.ID, e.Path, sessionID, launch.Name, launch.Args,
+	launch := adapter.For(in.binding.Adapter).Command(in.binding.Model, in.binding.Args)
+	if _, err := s.terms.OpenSession(in.entry.ID, in.entry.Path, in.sessionID, launch.Name, launch.Args,
 		adapter.Opener(payloadPath), terminal.Session{
-			MapSlug:   slug,
-			TicketNum: num,
-			Role:      role,
-			Agent:     binding.Adapter,
-			Model:     binding.Model,
-		})
-	if err != nil {
+			MapSlug:   in.slug,
+			TicketNum: in.tk.Num,
+			Role:      in.role,
+			Agent:     in.binding.Adapter,
+			Model:     in.binding.Model,
+		}); err != nil {
 		// The claim already stands (ADR 0008: it is not rolled back). A live-session
 		// race is a conflict; a launch failure after a present-on-PATH check is an
-		// environment fault the operator sees and the dead-session halt (ticket 10)
-		// will pick up.
+		// environment fault the death halt (ticket 10) picks up.
 		if errors.Is(err, terminal.ErrSessionExists) {
-			httpError(w, http.StatusConflict, "this space already has a live session")
-			return
+			return nil, http.StatusConflict, errors.New("this space already has a live session")
 		}
-		httpError(w, http.StatusInternalServerError, "launching the session: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("launching the session: %w", err)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"sessionId":  sessionID,
-		"ticketNum":  num,
-		"role":       role,
-		"agent":      binding.Adapter,
-		"model":      binding.Model,
+	return map[string]any{
+		"sessionId":  in.sessionID,
+		"ticketNum":  in.tk.Num,
+		"role":       in.role,
+		"agent":      in.binding.Adapter,
+		"model":      in.binding.Model,
 		"payloadSha": payloadSHA,
-	})
+	}, http.StatusOK, nil
 }
 
 // resolve resolves a space's whole config — bindings and committed map kinds —

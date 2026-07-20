@@ -33,6 +33,11 @@ type Manager struct {
 	seq      int
 	onChange func()
 
+	// quietAfter is how long a session's PTY may stay silent before the sampler
+	// marks it quiet (ticket 10). Held here so the whole manager samples on one
+	// threshold; the server sets it (short in tests, a calm default in production).
+	quietAfter time.Duration
+
 	stop     chan struct{}
 	stopOnce sync.Once
 }
@@ -47,14 +52,25 @@ const sampleInterval = 900 * time.Millisecond
 // opened or ends, and whenever a live shell's activity changes; a nil onChange
 // is tolerated (the manager is usable without a push, as in a focused unit
 // test) and, with no one to notify, the background sampler is not started.
-func NewManager(onChange func()) *Manager {
-	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange}
+// quietAfter is the session silence threshold; a non-positive value falls back to
+// defaultQuietAfter so a zero value is never mistaken for "quiet immediately".
+func NewManager(onChange func(), quietAfter time.Duration) *Manager {
+	if quietAfter <= 0 {
+		quietAfter = defaultQuietAfter
+	}
+	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange, quietAfter: quietAfter}
 	if onChange != nil {
 		m.stop = make(chan struct{})
 		go m.sampleLoop()
 	}
 	return m
 }
+
+// defaultQuietAfter is the silence a session may keep before the sampler marks it
+// quiet when the server names no other threshold. Long enough that an agent
+// thinking, compiling, or waiting on a slow tool is not dressed as stuck; the hint
+// is a nudge, never an alarm, and never enacted (ticket 10).
+const defaultQuietAfter = 45 * time.Second
 
 // sampleLoop re-samples every live shell on a fixed cadence and pushes a fresh
 // model only when something changed, so a shell going busy or idle drives the
@@ -87,7 +103,7 @@ func (m *Manager) sampleOnce() {
 
 	changed := false
 	for _, t := range terms {
-		if t.sample() {
+		if t.sample(m.quietAfter) {
 			changed = true
 		}
 	}
@@ -117,7 +133,7 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 	m.order = append(m.order, id)
 	m.mu.Unlock()
 
-	t.start(func() { m.remove(id) })
+	t.start(func() { m.onExit(id) })
 
 	m.notify()
 	return t, nil
@@ -164,7 +180,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 	m.order = append(m.order, id)
 	m.mu.Unlock()
 
-	t.start(func() { m.remove(id) })
+	t.start(func() { m.onExit(id) })
 
 	// Type the opener into the live TUI. The PTY's input buffer holds it until the
 	// agent reads, so no readiness handshake is needed; a write error only means the
@@ -185,29 +201,72 @@ func (m *Manager) Get(id string) (*Terminal, bool) {
 	return t, ok
 }
 
-// Close ends the terminal on the human's command. The terminal drops from the
-// listing and the model is pushed once its process finishes exiting (through the
-// same cleanup path a natural exit takes).
+// Close ends the terminal on the human's command. A live terminal is killed and
+// drops from the listing once its process finishes exiting (the same cleanup path
+// a natural exit takes). A pinned dead session — one that already died and is
+// waiting for the operator — has no process left to exit, so Close drops it right
+// away; this is how the operator dismisses a halted session without resuming,
+// respawning, or releasing it.
 func (m *Manager) Close(id string) error {
 	t, ok := m.Get(id)
 	if !ok {
 		return ErrNoTerminal
 	}
-	t.close()
+	if !t.close() {
+		m.remove(id)
+	}
 	return nil
+}
+
+// Discard drops a tab from the listing without touching a process, then pushes a
+// fresh model — the seam the death-halt actions (resume/respawn/release) use to
+// clear the pinned dead session they are replacing. Dropping an id that names no
+// terminal is a no-op.
+func (m *Manager) Discard(id string) { m.remove(id) }
+
+// Lookup returns the public Info for one terminal by id — enough for the
+// death-halt handlers to read a tab's session binding and liveness without
+// reaching into the PTY. false when the id names no terminal.
+func (m *Manager) Lookup(id string) (Info, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t := m.terms[id]
+	if t == nil {
+		return Info{}, false
+	}
+	return t.info(), true
 }
 
 // Info is one terminal's public shape on the pushed model: enough for a session
 // row — its tab title, the process in its foreground, its activity, and its
 // liveness — never the PTY itself. Session is set when the tab is a session (a
-// PTY bound to a ticket), nil for an ad-hoc shell.
+// PTY bound to a ticket), nil for an ad-hoc shell. Silent is the sampler's raw
+// silence verdict for a live session (quiet past the threshold); the server, which
+// alone knows the role's AFK-ness and the ticket's proposed status, turns it into
+// the tab's final quiet reading.
 type Info struct {
 	ID      string
+	SpaceID string
 	Title   string
 	Proc    string
 	Status  string
 	Alive   bool
+	Silent  bool
 	Session *Session
+}
+
+// info snapshots one terminal's public shape under its own lock.
+func (t *Terminal) info() Info {
+	t.mu.Lock()
+	alive, proc, state, silent := t.alive, t.proc, t.state, t.silent
+	t.mu.Unlock()
+	if proc == "" {
+		proc = t.Title
+	}
+	if state == "" {
+		state = model.TerminalIdle
+	}
+	return Info{ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Silent: silent, Session: t.session}
 }
 
 // ForSpace returns the space's terminals in creation order, so sessions seat top
@@ -222,16 +281,7 @@ func (m *Manager) ForSpace(spaceID string) []Info {
 		if t == nil || t.SpaceID != spaceID {
 			continue
 		}
-		t.mu.Lock()
-		alive, proc, state := t.alive, t.proc, t.state
-		t.mu.Unlock()
-		if proc == "" {
-			proc = t.Title
-		}
-		if state == "" {
-			state = model.TerminalIdle
-		}
-		out = append(out, Info{ID: t.ID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Session: t.session})
+		out = append(out, t.info())
 	}
 	return out
 }
@@ -282,10 +332,34 @@ func (m *Manager) Shutdown() {
 	}
 }
 
-// remove drops a terminal from the listing after its process has exited, then
-// pushes a fresh model so the tab disappears on its own.
+// onExit runs when a terminal's process exits. An ad-hoc shell, or a session the
+// operator killed, drops from the listing so its tab disappears on its own. A
+// session that died on its own stays put — pinned to its ticket with its
+// scrollback intact — for the operator to resume, respawn, or release (ticket 10);
+// it is already marked dead by the read loop's cleanup, so the push just re-renders
+// it frozen. Either way a fresh model is pushed.
+func (m *Manager) onExit(id string) {
+	m.mu.Lock()
+	t := m.terms[id]
+	pin := t != nil && t.pinOnDeath()
+	if !pin {
+		m.drop(id)
+	}
+	m.mu.Unlock()
+	m.notify()
+}
+
+// remove drops a terminal from the listing, then pushes a fresh model so the tab
+// disappears on its own.
 func (m *Manager) remove(id string) {
 	m.mu.Lock()
+	m.drop(id)
+	m.mu.Unlock()
+	m.notify()
+}
+
+// drop deletes a terminal from the map and order. The caller holds m.mu.
+func (m *Manager) drop(id string) {
 	delete(m.terms, id)
 	for i, x := range m.order {
 		if x == id {
@@ -293,8 +367,6 @@ func (m *Manager) remove(id string) {
 			break
 		}
 	}
-	m.mu.Unlock()
-	m.notify()
 }
 
 func (m *Manager) notify() {
