@@ -11,7 +11,7 @@ The star-map renderer, reimplemented cleanly in TypeScript behind the narrow isl
 
 Done when: fixture maps render with the six states; island-seam tests prove determinism (same data, same positions) and that model pushes change overlays but never move a star; summon/dismiss works by handle, key, and Esc; the split toggle docks the map without reflowing the terminal on window resize; clicking a star emits selection.
 
-## Proposed Answer
+## Answer
 
 The star-map renderer is reimplemented cleanly in TypeScript behind the narrow island seam — mount, receive the pushed model, emit selection — never decomposed into components (ADR 0010). The Svelte chrome hosts it but never reaches inside. Layout:
 
