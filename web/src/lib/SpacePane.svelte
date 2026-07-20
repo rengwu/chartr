@@ -58,10 +58,11 @@
   // read deliberate (this must not react to later space switches).
   const bootApplies = !boot.s || boot.s === untrack(() => space.id)
 
-  // Star-map card state (persists across space switches by design).
+  // Star-map card state (persists across space switches by design). `openSlug`
+  // names the open map, or is null for the picker screen.
   let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat))
   let dock = $state(false)
-  let mapSlug = $state<string | null>(bootApplies ? boot.m : null)
+  let openSlug = $state<string | null>(bootApplies ? boot.m : null)
   let selectedTicket = $state<number | null>(bootApplies && boot.t ? Number(boot.t) : null)
   let showMaterial = $state(bootApplies && !!boot.mat)
   let dockTermWidth = $state(0)
@@ -72,25 +73,36 @@
   const warnings = $derived<string[]>(space.warnings ?? [])
   const maps = $derived<WMap[]>(space.maps ?? [])
 
-  // A stale slug (a map that vanished, or a switch to a space without it) falls
-  // back to the first map, so the card always has something to render.
-  const focusedMap = $derived<WMap | null>(
-    maps.find((m) => m.slug === mapSlug) ?? maps[0] ?? null,
-  )
-
-  // A selection belongs to one map: when the focused map *changes*, drop it (and
-  // any open material) so the island never carries a ticket number from a
-  // different graph. The first run only records the slug — it must not clear a
-  // selection the deep link just seeded.
-  let lastSlug: string | null = null
+  // A selection belongs to one map: when the open map *changes*, drop it (and any
+  // open material) so the island never carries a ticket number from a different
+  // graph. The first run only records the slug — it must not clear a selection the
+  // deep link just seeded. (undefined is the "not yet recorded" sentinel, since
+  // openSlug itself is legitimately null on the picker.)
+  let lastOpen: string | null | undefined = undefined
   $effect(() => {
-    const slug = focusedMap?.slug ?? ''
-    if (lastSlug === null) {
-      lastSlug = slug
+    const s = openSlug
+    if (lastOpen === undefined) {
+      lastOpen = s
       return
     }
-    if (slug !== lastSlug) {
-      lastSlug = slug
+    if (s !== lastOpen) {
+      lastOpen = s
+      selectedTicket = null
+      showMaterial = false
+    }
+  })
+
+  // Switching spaces while the panel is open: an open slug from the previous
+  // space won't match here. Fall to this space's picker — or straight into its
+  // one map, the same auto-open a fresh summon does — and drop any stale
+  // selection. Guarded on an actual space change so the back button (which nulls
+  // openSlug within a space) still lands on, and stays on, the picker.
+  let lastSpaceId = untrack(() => space.id)
+  $effect(() => {
+    if (space.id === lastSpaceId) return
+    lastSpaceId = space.id
+    if (!maps.some((m) => m.slug === openSlug)) {
+      openSlug = maps.length === 1 ? (maps[0]?.slug ?? null) : null
       selectedTicket = null
       showMaterial = false
     }
@@ -102,7 +114,7 @@
   $effect(() => {
     const p = new URLSearchParams()
     p.set('s', space.id)
-    if (mapSlug) p.set('m', mapSlug)
+    if (openSlug) p.set('m', openSlug)
     if (selectedTicket !== null) p.set('t', String(selectedTicket))
     else if (showMaterial) p.set('mat', '1')
     const want = mapShown && (selectedTicket !== null || showMaterial) ? '#' + p.toString() : ''
@@ -117,7 +129,7 @@
     const apply = () => {
       const h = parseHash()
       if (h.s && h.s !== space.id) return
-      if (h.m) mapSlug = h.m
+      if (h.m) openSlug = h.m
       if (h.t) {
         selectedTicket = Number(h.t)
         showMaterial = false
@@ -141,6 +153,10 @@
   // is shrinkable to 240; the map card holds 300), so window resizes need no JS.
   function summon() {
     mapShown = true
+    // A single-map space has nothing to pick — open straight into its one map.
+    // With several, land on the picker (openSlug stays null). Never overrides a
+    // slug a deep link or an earlier session already opened.
+    if (openSlug === null && maps.length === 1) openSlug = maps[0].slug
   }
   function dismiss() {
     mapShown = false
@@ -211,10 +227,15 @@
         // chrome's M/Esc bindings must not also fire while it holds focus.
         el.closest('[role="dialog"]') !== null)
     if (e.key === 'Escape' && !editing) {
-      // Esc peels back one layer: an open detail pane first, then the card.
+      // Esc peels back one layer: the open detail pane first, then the open map
+      // (back to the picker), then the panel.
       if (selectedTicket !== null || showMaterial) {
         selectedTicket = null
         showMaterial = false
+        return
+      }
+      if (openSlug !== null) {
+        openSlug = null
         return
       }
       if (mapShown) {
@@ -451,11 +472,11 @@
       </div>
     </Tabs.Root>
 
-    {#if focusedMap && mapShown}
+    {#if mapShown && maps.length}
       <MapCard
         {maps}
         spaceId={space.id}
-        bind:slug={mapSlug}
+        bind:slug={openSlug}
         bind:dock
         bind:selected={selectedTicket}
         bind:showMaterial
