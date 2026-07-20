@@ -15,7 +15,7 @@ The behaviour is fixed (map "Out of scope"): the dialog open/close contract, the
 
 Done when: each listed surface renders on shadcn-svelte primitives with tokens, IBM Plex, and Phosphor icons, and its old `app.css` block is deleted; the register/add-space, detail-pane, and payload-preview flows behave identically (open, validate, select, scroll, dismiss); no amber remains on these surfaces; `svelte-check` is clean and the Vite build, `vitest`, `go vet`, and `go test` pass.
 
-## Proposed Answer
+## Answer
 
 All four surfaces are rebuilt on shadcn-svelte primitives, vendored via the CLI (`npx shadcn-svelte add dialog button input card badge scroll-area label`, same manual-vendor path as ticket 01 — the CLI writes files but is not run as a live codegen step against a Kit app) into `web/src/lib/components/ui/`. The CLI's default `dialog-content.svelte` imported `@lucide/svelte`'s `X`; swapped for `phosphor-svelte`'s `X` and the `@lucide/svelte` dependency removed, keeping the map's "icons are Phosphor" decision intact everywhere, including inside vendored primitives. `bits-ui` (the Bits UI headless primitives shadcn-svelte's Svelte port sits on) is a new runtime dependency, filed under `dependencies` alongside the other UI libraries; the CLI's `@internationalized/date` (a Bits UI calendar/date-picker peer we never touch — no date components were added) was pruned as unused. `web/src/lib/utils.ts` gained the three prop-shape helpers (`WithElementRef`, `WithoutChild(ren)`, `WithoutChildrenOrChild`) the vendored primitives are typed against.
 
