@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import type { Map as WMap } from './model'
   import { StarMap } from './starmap/starmap'
+  import { readColor } from './tokens'
 
   // The star-map is an imperative island: the Svelte chrome hosts it but never
   // reaches inside (ADR 0010). This wrapper mounts the renderer, feeds it the
@@ -24,6 +25,9 @@
     island = sm
     sm.onSelect((n) => (selected = n))
     sm.mount(host)
+    // The card surface colour, resolved off the live tokens at the seam so the
+    // field paints the same warm near-black as the reskinned chrome (ticket 04).
+    sm.setBackground(readColor('--card'))
     sm.setModel(map.tickets)
     return () => {
       island = null

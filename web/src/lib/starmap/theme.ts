@@ -33,13 +33,20 @@ export interface StarStyle {
 // verbatim from the viewer's theme; `proposed` is the harness's one added base
 // status (ADR 0004) — a warm, sealed star that reads as "work has landed, the
 // gate has not yet blessed it", distinct from the amber of a live claim.
+// Ticket 04: the card the map sits on moved from a near-black `#05070d` to the
+// theme's warm near-black `--card` (`oklch(0.228 0.013 107.4)`, ~`#1d1d16`) —
+// meaningfully lighter than before. Five of six states still clear WCAG-ish
+// contrast comfortably against it; `out_of_scope`, deliberately the dimmest
+// star, fell under 4:1. Its three values are lifted just enough to stay
+// legible on the new card; sizes, glow radii, and every other state are
+// untouched (map decision: this is a palette re-tune, not a renderer change).
 export const STAR: Record<VisualState, StarStyle> = {
   resolved: { core: '#b9d6c4', glow: '#5b9077', r: 5.4, gr: 24 },
   frontier: { core: '#8ad8ff', glow: '#2f9be0', r: 8.1, gr: 49 },
   claimed: { core: '#ffd873', glow: '#ffb020', r: 7.2, gr: 36 },
   proposed: { core: '#ffedbe', glow: '#d9a441', r: 6.6, gr: 30 },
   blocked: { core: '#e2c3c3', glow: '#9a6f6f', r: 4.5, gr: 20 },
-  out_of_scope: { core: '#7d7789', glow: '#4a4550', r: 4.5, gr: 18 },
+  out_of_scope: { core: '#948da4', glow: '#6b6478', r: 4.5, gr: 18 },
 }
 
 export const LABEL: Record<VisualState, string> = {
@@ -48,7 +55,7 @@ export const LABEL: Record<VisualState, string> = {
   claimed: '#ffe6a0',
   proposed: '#ffe6bf',
   blocked: '#d0b3b3',
-  out_of_scope: '#8a8496',
+  out_of_scope: '#a89fb2',
 }
 
 // Derive the visual state of a ticket from its pushed status and frontier flag.

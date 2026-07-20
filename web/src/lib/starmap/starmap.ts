@@ -21,6 +21,12 @@ import type { Ticket } from '../model'
 
 export type SelectHandler = (num: number | null) => void
 
+// Fallback only — used until the wrapper's first setBackground() call. Ticket
+// 04 moves the real value to the token-derived `--card` colour, resolved by
+// StarMap.svelte through tokens.ts and handed in at the seam; the renderer
+// itself never reads CSS (ADR 0010).
+const DEFAULT_BG = '#05070d'
+
 interface Node {
   num: number
   title: string
@@ -102,6 +108,7 @@ export class StarMap {
   #selected: number | null = null
 
   #starfield = makeStarfield()
+  #bg = DEFAULT_BG
   #onSelect: SelectHandler = () => {}
   #ro: ResizeObserver | null = null
   #detach: (() => void)[] = []
@@ -207,6 +214,15 @@ export class StarMap {
       this.#refit(false)
       this.#settleIfHeadless()
     }
+  }
+
+  // --- seam: palette ---------------------------------------------------------
+  // The card surface colour, resolved from the shared design tokens by the
+  // wrapper and handed in here (ticket 04) — the renderer never reads CSS
+  // itself (ADR 0010). A no-op on the next-drawn frame's positions; it only
+  // changes what colour the field paints on.
+  setBackground(color: string): void {
+    this.#bg = color || DEFAULT_BG
   }
 
   destroy(): void {
@@ -427,7 +443,7 @@ export class StarMap {
     this.#cam.s += (this.#goal.s - this.#cam.s) * 0.28
 
     g.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0)
-    g.fillStyle = '#05070d'
+    g.fillStyle = this.#bg
     g.fillRect(0, 0, this.#w, this.#h)
     this.#drawStarfield(g)
 
