@@ -11,7 +11,7 @@ The hackable prompt library, live before any PTY exists. Five role prompts plus 
 
 Done when: process-boundary tests cover the resolution matrix (replace/append across all three layers), behind-default surfacing, bundle assembly from fixture tickets, and the review payload provably containing Done-when and spec; the preview renders the composed payload with provenance in the browser; the materialized library is editable on disk and edits show up in the next composition.
 
-## Proposed Answer
+## Answer
 
 The prompt library and payload preview land whole, live before any PTY exists. A new `internal/prompt` package owns the library and composition; a read-only preview endpoint and a Svelte modal render exactly what a session would be told. Layout:
 
