@@ -674,3 +674,159 @@ body {
   padding: 0 14px 10px;
   margin: -2px 0 0;
 }
+
+/* --- Terminal column ------------------------------------------------------ */
+/* The space's ad-hoc shells: a tab strip with a "+" to open another, and the
+   active xterm.js island below. The island is imperative — the chrome styles
+   its frame but never its contents (ADR 0010). */
+
+.terminals {
+  display: flex;
+  flex-direction: column;
+  min-height: 22rem;
+  margin: 4px 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.term-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 4px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.term-tab {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+}
+
+.term-tab.active {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.term-tab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.term-tab.active .term-tab-main {
+  color: var(--text);
+}
+
+.term-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: 0 0 auto;
+}
+
+.term-tab.dead .term-dot {
+  background: var(--down);
+}
+
+.term-ended,
+.term-tab.dead .term-tab-main {
+  color: var(--muted);
+}
+
+.term-close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px 6px 4px;
+  cursor: pointer;
+}
+
+.term-close:hover {
+  color: var(--danger);
+}
+
+.term-add {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  padding: 4px 12px 8px;
+  cursor: pointer;
+}
+
+.term-add:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.term-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.term-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.terminal-island {
+  position: absolute;
+  inset: 0;
+  padding: 6px 8px;
+}
+
+.terminal-island .xterm {
+  height: 100%;
+}
+
+.term-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 28px;
+  color: var(--muted);
+}
+
+.term-empty-open {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.term-empty-open:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.term-empty-note {
+  font-size: 12px;
+  max-width: 40ch;
+  line-height: 1.5;
+}
+
+.bindings-panel > summary {
+  cursor: pointer;
+}

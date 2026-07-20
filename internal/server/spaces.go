@@ -196,14 +196,27 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		}
 	}
 
+	// Ad-hoc shells are runtime state the manager owns, not derived from disk;
+	// fold them in so a mapless space still shows its terminal tabs and a
+	// reconnecting browser rediscovers the open shells (story 29).
+	terminals := make([]model.Terminal, 0)
+	for _, info := range s.terms.ForSpace(e.ID) {
+		terminals = append(terminals, model.Terminal{
+			ID:    info.ID,
+			Title: info.Title,
+			Alive: info.Alive,
+		})
+	}
+
 	return model.Space{
-		ID:       e.ID,
-		Name:     filepath.Base(e.Path),
-		Path:     e.Path,
-		Pinned:   e.Pinned,
-		Bindings: bindings,
-		Maps:     maps,
-		Warnings: res.Warnings,
+		ID:        e.ID,
+		Name:      filepath.Base(e.Path),
+		Path:      e.Path,
+		Pinned:    e.Pinned,
+		Bindings:  bindings,
+		Maps:      maps,
+		Terminals: terminals,
+		Warnings:  res.Warnings,
 	}
 }
 

@@ -44,6 +44,25 @@ export function setPin(id: string, pinned: boolean): Promise<void> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/pin`, { pinned }) as Promise<void>
 }
 
+// openTerminal opens an ad-hoc shell in the space's working tree (story 29) and
+// returns its terminal id — the key the terminal socket attaches by. The new tab
+// also arrives over the control socket.
+export function openTerminal(id: string): Promise<{ id: string }> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/terminals`) as Promise<{
+    id: string
+  }>
+}
+
+// closeTerminal ends an ad-hoc shell on the operator's command — ad-hoc shells
+// have no lifecycle and are ended only by the human. The tab drops from the next
+// snapshot.
+export function closeTerminal(spaceId: string, termId: string): Promise<void> {
+  return send(
+    'DELETE',
+    `/api/spaces/${encodeURIComponent(spaceId)}/terminals/${encodeURIComponent(termId)}`,
+  ) as Promise<void>
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.

@@ -141,6 +141,23 @@ func (h *Harness) Delete(path string) (int, string) {
 	return resp.StatusCode, string(out)
 }
 
+// OpenTerminal opens an ad-hoc shell in the space and returns its terminal id.
+// It fails the test on a non-200 response.
+func (h *Harness) OpenTerminal(spaceID string) string {
+	h.t.Helper()
+	code, body := h.Post("/api/spaces/"+spaceID+"/terminals", nil)
+	if code != 200 {
+		h.t.Fatalf("harnesstest: open terminal in %s = %d, body %s", spaceID, code, body)
+	}
+	var r struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &r); err != nil {
+		h.t.Fatalf("harnesstest: open-terminal response not JSON: %v (%q)", err, body)
+	}
+	return r.ID
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.
@@ -160,6 +177,62 @@ func (h *Harness) DialControl(ctx context.Context) *ControlConn {
 		h.t.Fatalf("harnesstest: dial control socket: %v", err)
 	}
 	return &ControlConn{c: c, t: h.t}
+}
+
+// DialTerminal connects the binary terminal socket for a terminal id and returns
+// it. The caller closes it. It fails the test if the socket cannot be dialled
+// (e.g. the terminal does not exist).
+func (h *Harness) DialTerminal(ctx context.Context, termID string) *TerminalConn {
+	h.t.Helper()
+	wsURL := "ws" + strings.TrimPrefix(h.BaseURL, "http") + "/ws/terminal/" + termID
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		h.t.Fatalf("harnesstest: dial terminal socket %s: %v", termID, err)
+	}
+	return &TerminalConn{c: c, t: h.t}
+}
+
+// TerminalConn is a connected terminal socket in a test. Raw PTY bytes arrive as
+// binary frames down; keystrokes go up as binary frames; resize goes up as a
+// text control frame.
+type TerminalConn struct {
+	c *websocket.Conn
+	t testing.TB
+}
+
+// Send writes keystrokes up to the shell as a binary frame.
+func (tc *TerminalConn) Send(ctx context.Context, keys string) {
+	tc.t.Helper()
+	if err := tc.c.Write(ctx, websocket.MessageBinary, []byte(keys)); err != nil {
+		tc.t.Fatalf("harnesstest: send keystrokes: %v", err)
+	}
+}
+
+// ReadUntil reads down-frames, accumulating them, until the accumulated output
+// contains want, and returns everything read. It fails the test if ctx expires
+// first — so a test asserts an echo or a replay by naming the marker it expects,
+// not by guessing how the bytes are chunked.
+func (tc *TerminalConn) ReadUntil(ctx context.Context, want string) string {
+	tc.t.Helper()
+	var buf []byte
+	for {
+		typ, data, err := tc.c.Read(ctx)
+		if err != nil {
+			tc.t.Fatalf("harnesstest: reading terminal until %q: %v\nso far: %q", want, err, buf)
+		}
+		if typ != websocket.MessageBinary {
+			tc.t.Fatalf("harnesstest: terminal frame was %v, want binary", typ)
+		}
+		buf = append(buf, data...)
+		if strings.Contains(string(buf), want) {
+			return string(buf)
+		}
+	}
+}
+
+// Close closes the terminal socket — the test's stand-in for a browser detaching.
+func (tc *TerminalConn) Close() {
+	_ = tc.c.Close(websocket.StatusNormalClosure, "")
 }
 
 // ControlConn is a connected control socket in a test.

@@ -38,6 +38,12 @@ type Space struct {
 	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
 	// Ordered for the sidebar: finished maps sort last. Never nil on the wire.
 	Maps []Map `json:"maps"`
+	// Terminals are the space's open ad-hoc shells (ticket 05) in the order the
+	// operator opened them — the tabs of the terminal column. They are harness-
+	// owned runtime state, not derived from disk: deliberately *not* sessions
+	// (no ticket, no lifecycle, ended by the human), so a mapless space is still
+	// usable as a plain multiplexer. Never nil on the wire.
+	Terminals []Terminal `json:"terminals"`
 	// Warnings are non-fatal notices surfaced against the space — a committed
 	// autopilot flag ignored, an unknown role in config, a malformed config
 	// file. Surface, never enforce.
@@ -115,6 +121,18 @@ type Ticket struct {
 	// Frontier is membership in the stricter frontier — the takeable edge. A
 	// ticket blocked by merely-proposed (ungated) work is never on it.
 	Frontier bool `json:"frontier"`
+}
+
+// Terminal is one open ad-hoc shell on the wire: its identity, a tab label, and
+// whether its process is still alive. It is not a session — it carries no ticket
+// and no lifecycle. Its raw bytes travel on the separate terminal socket keyed
+// by ID, never in this snapshot (ADR 0010).
+type Terminal struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Alive is false the instant the shell exits; the chrome greys a dead tab
+	// until the operator dismisses it.
+	Alive bool `json:"alive"`
 }
 
 // RoleBinding is one role's effective binding on the wire: which adapter runs on

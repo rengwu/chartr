@@ -56,6 +56,16 @@ export interface Map {
   malformations?: string[]
 }
 
+// Terminal is one open ad-hoc shell — a tab in the space's terminal column. It
+// is deliberately not a session (no ticket, no lifecycle, ended by the human):
+// its raw bytes travel on the separate terminal socket keyed by `id`, never in
+// this snapshot. `alive` goes false the instant the shell exits.
+export interface Terminal {
+  id: string
+  title: string
+  alive: boolean
+}
+
 export interface Space {
   id: string
   name: string
@@ -63,6 +73,7 @@ export interface Space {
   pinned: boolean
   bindings: RoleBinding[]
   maps: Map[]
+  terminals: Terminal[]
   warnings?: string[]
 }
 

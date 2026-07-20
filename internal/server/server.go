@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rengwu/wayfinder-harness/internal/registry"
+	"github.com/rengwu/wayfinder-harness/internal/terminal"
 	"github.com/rengwu/wayfinder-harness/web"
 )
 
@@ -34,6 +35,7 @@ type Server struct {
 	mux   *http.ServeMux
 	reg   *registry.Registry
 	watch *watcher
+	terms *terminal.Manager
 }
 
 // New builds a Server with the control-socket hub seeded to the empty model and
@@ -63,9 +65,18 @@ func New(opts Options) (*Server, error) {
 	// appears on its own. rebuild also reconciles the watch set, so this starts
 	// covering whatever the persisted registry already holds.
 	s.watch = newWatcher(s.rebuild)
+	// Ad-hoc shells are harness-owned runtime state (ticket 05). The manager
+	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
+	// and disappears on its own; the model is built before the first rebuild.
+	s.terms = terminal.NewManager(s.rebuild)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
+	// The terminal socket: binary, one per attached terminal, raw PTY bytes down
+	// and keystrokes up, scrollback replayed on attach. A separate connection
+	// from the control socket by design, so a flooding shell cannot block map
+	// updates (ADR 0010).
+	s.mux.HandleFunc("/ws/terminal/{termID}", s.handleTerminal)
 	// Operator actions are plain HTTP request/response so a failure surfaces as
 	// a response (ADR 0010). Health is the skeleton's; ticket 02 adds the
 	// registry actions; classify, spawn, approve, and the rest hang here later.
@@ -74,6 +85,11 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/classify", s.handleClassify)
+	// Ad-hoc shells: open one in the space's working tree, end one by the human's
+	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
+	// response (ADR 0010); the shell itself lives on the terminal socket.
+	s.mux.HandleFunc("POST /api/spaces/{id}/terminals", s.handleOpenTerminal)
+	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}", s.handleCloseTerminal)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))
 
@@ -88,6 +104,7 @@ func New(opts Options) (*Server, error) {
 // in-flight requests within a short grace period. Serve owns ln and closes it.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	defer s.watch.close()
+	defer s.terms.Shutdown()
 
 	httpSrv := &http.Server{
 		Handler:           s.mux,
