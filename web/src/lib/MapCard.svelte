@@ -117,10 +117,15 @@
      the resize grip; a CSS max-width keeps it within the row on a window resize. -->
 <section
   class={[
-    'flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card',
+    'flex min-h-0 flex-col overflow-hidden bg-card',
     dock
-      ? 'relative min-w-[300px] flex-1'
-      : 'absolute inset-y-2 right-2.5 z-20 w-[min(400px,58%)] max-w-[calc(100%-40px)] shadow-lg',
+      ? // Docked, this is a flush column next to the terminal — a plain square
+        // edge like the terminal's own outer edges, with a border only on the
+        // seam it shares with the terminal (the split divider). No radius, no
+        // border on the other three sides, so there's nothing to misalign by
+        // even a pixel against the terminal's borderless top/bottom.
+        'relative min-w-[300px] flex-1 border-l border-border'
+      : 'absolute inset-y-2 right-2.5 z-20 w-[min(400px,58%)] max-w-[calc(100%-40px)] rounded-lg border border-border shadow-lg',
   ]}
   aria-label="Star-map"
   style={!dock && floatWidth ? `width:${floatWidth}px` : ''}
