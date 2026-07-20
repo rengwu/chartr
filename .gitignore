@@ -3,6 +3,13 @@
 
 # Node
 /web/node_modules/
+# A stray Vite cache lands here when Vite runs with the repo root as cwd
+# instead of web/; never a tracked artifact.
+/node_modules/
+
+# The space registry is user-config runtime state (ticket 02); a copy lands at
+# the repo root when the harness runs with cwd here — never committed.
+/registry.toml
 
 # Embedded frontend build output. The committed .gitkeep keeps the directory so
 # `go:embed all:dist` compiles on a fresh checkout; `make web` fills in the real
