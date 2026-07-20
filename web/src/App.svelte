@@ -2,14 +2,14 @@
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
   import { needsAgents, type Map, type Space } from './lib/model'
-  import { classifyMap, deregisterSpace, setPin } from './lib/actions'
+  import { deregisterSpace, setPin } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
   import { Badge } from './lib/components/ui/badge'
-  import { Plus, PushPin, X, Warning, WarningDiamond, Check } from 'phosphor-svelte'
+  import { Plus, PushPin, X, Warning, WarningDiamond, Check, CircleDashed } from 'phosphor-svelte'
 
   // The control-socket status drives the status-bar dot: on is the neutral "up"
   // primary, connecting a pulsing muted, closed the one true problem (destructive).
@@ -77,16 +77,6 @@
     return m.tickets.filter((t) => t.frontier).length
   }
 
-  // Classifying an undeclared map is one confirm (story 14): the guess is
-  // pre-emphasised, but either button declares the kind. The resulting state —
-  // the map going inert-no-more — arrives over the control socket.
-  async function doClassify(space: Space, m: Map, kind: 'planning' | 'implementation') {
-    try {
-      await classifyMap(space.id, m.slug, kind)
-    } catch (e) {
-      alert(`Couldn’t classify “${m.name}”: ${(e as Error).message}`)
-    }
-  }
 </script>
 
 <div class="grid h-full grid-cols-[15rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
@@ -193,22 +183,17 @@
                     <span class="min-w-0 flex-1 truncate" title={m.name}>{m.name}</span>
                     {#if m.kind === ''}
                       <!-- Undeclared: inert until classified (ADR 0007). The
-                           confirm pre-emphasises the convention guess; no session
-                           action is offered until one is chosen. -->
-                      <span class="flex items-center gap-1" role="group" aria-label="Classify {m.name}">
-                        <span class="text-[0.65rem] text-muted-foreground not-italic">kind?</span>
-                        <Button
-                          size="xs"
-                          variant={m.kindGuess === 'planning' ? 'default' : 'outline'}
-                          title="Planning map — tickets resolve live, no review gate"
-                          onclick={() => doClassify(space, m, 'planning')}>plan</Button
-                        >
-                        <Button
-                          size="xs"
-                          variant={m.kindGuess === 'implementation' ? 'default' : 'outline'}
-                          title="Implementation map — tickets pass through review before resolving"
-                          onclick={() => doClassify(space, m, 'implementation')}>impl</Button
-                        >
+                           declaration is meant to be recorded on creation (the
+                           wayfinder adapter, docs/wayfinder-adapter.md); this quiet
+                           marker is the fallback for a map that arrived without one.
+                           The confirm itself lives in the star-map panel — never
+                           hoisted into the nav as a pair of buttons per row. -->
+                      <span
+                        class="text-muted-foreground"
+                        title="Unclassified — open the map to set its kind"
+                        aria-label="unclassified"
+                      >
+                        <CircleDashed class="size-3.5" />
                       </span>
                     {:else}
                       {#if frontierCount(m) > 0}

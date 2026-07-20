@@ -3,6 +3,7 @@
   import type { Map as WMap, Ticket } from './model'
   import StarMap from './StarMap.svelte'
   import DetailPane from './DetailPane.svelte'
+  import { classifyMap } from './actions'
   import { decideDock, type Dock } from './starmap/dock'
   import { Button } from './components/ui/button'
   import { Columns, CornersOut, X } from 'phosphor-svelte'
@@ -109,6 +110,27 @@
     selected = null
     showMaterial = false
   }
+
+  // An unclassified map is inert until a human declares its kind (ADR 0007). The
+  // declaration is normally recorded on creation by the wayfinder adapter, so
+  // this confirm is the fallback for a map that arrived without one — and it
+  // lives here, in the opened panel, never as buttons in the sidebar nav. The
+  // convention guess is pre-emphasised; the resulting kind arrives over the
+  // control socket and the banner clears itself.
+  async function doClassify(kind: 'planning' | 'implementation') {
+    if (!map) return
+    try {
+      await classifyMap(spaceId, map.slug, kind)
+    } catch (e) {
+      alert(`Couldn’t classify “${map.name}”: ${(e as Error).message}`)
+    }
+  }
+  // p / i confirm the two kinds without reaching for the mouse; the guess is
+  // still the pre-emphasised default for a plain click.
+  function onKindKey(e: KeyboardEvent) {
+    if (e.key === 'p') doClassify('planning')
+    else if (e.key === 'i') doClassify('implementation')
+  }
 </script>
 
 <!-- The star-map card. Docked, it is a flex item in the panes row, taking the
@@ -202,6 +224,41 @@
       {#key map.slug}
         <StarMap {map} {insets} bind:selected />
       {/key}
+
+      {#if map.kind === ''}
+        <!-- The classify confirm, surfaced only here and only when the opened map
+             is unclassified (ADR 0007) — the "deeper in the UI, when it's really
+             needed" home, not the sidebar. Pre-emphasise the convention guess;
+             either key/button declares the kind, and the map goes live. -->
+        <!-- The p/i keys are an enhancement over the two focusable buttons, not the
+             only path — the group is a convenience listener, not an interactive
+             control. -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center gap-2 rounded-md border border-border bg-card/95 px-3 py-2 text-xs shadow-md backdrop-blur"
+          role="group"
+          aria-label="Classify {map.name}"
+          onkeydown={onKindKey}
+          style={paneOpen && paneDock === 'right' ? `right:${paneSize.w + 12}px` : ''}
+        >
+          <span class="min-w-0 flex-1 text-muted-foreground">
+            <span class="font-medium text-foreground">Unclassified.</span>
+            No sessions run until you set this map’s kind.
+          </span>
+          <Button
+            size="xs"
+            variant={map.kindGuess === 'planning' ? 'default' : 'outline'}
+            title="Planning map — tickets resolve live, no review gate (p)"
+            onclick={() => doClassify('planning')}>plan</Button
+          >
+          <Button
+            size="xs"
+            variant={map.kindGuess === 'implementation' ? 'default' : 'outline'}
+            title="Implementation map — tickets pass through review before resolving (i)"
+            onclick={() => doClassify('implementation')}>impl</Button
+          >
+        </div>
+      {/if}
 
       {#if paneOpen}
         <!-- The detail pane overlays one edge of the island: full-height on the
