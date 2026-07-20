@@ -2,13 +2,33 @@
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
   import type { Space, Terminal } from './lib/model'
-  import { deregisterSpace, openTerminal, closeTerminal } from './lib/actions'
+  import {
+    deregisterSpace,
+    openTerminal,
+    closeTerminal,
+    resumeSession,
+    respawnSession,
+    releaseSession,
+  } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
-  import { Plus, X, Check, XCircle, CircleNotch, Compass, GitBranch, Rocket } from 'phosphor-svelte'
+  import {
+    Plus,
+    X,
+    Check,
+    XCircle,
+    CircleNotch,
+    Compass,
+    GitBranch,
+    GitDiff,
+    Rocket,
+    Play,
+    ArrowClockwise,
+    ArrowUUpLeft,
+  } from 'phosphor-svelte'
 
   // Zero-pad a ticket number for a session row's label (#01), matching the detail
   // pane's ticket ids.
@@ -119,6 +139,25 @@
       alert(`Couldn’t end “${t.title}”: ${(e as Error).message}`)
     }
   }
+
+  // The death halt: a dead session offers exactly three choices, and the harness
+  // takes none on its own. Resume relaunches it on its own ticket (crash recovery);
+  // respawn starts a fresh session on the same ticket; release clears the claim back
+  // to the frontier. The resulting state arrives over the control socket.
+  async function haltAction(
+    space: Space,
+    t: Terminal,
+    verb: string,
+    run: (spaceId: string, sessionId: string) => Promise<unknown>,
+  ) {
+    selectedId = space.id
+    activeTermId = t.id
+    try {
+      await run(space.id, t.id)
+    } catch (e) {
+      alert(`Couldn’t ${verb} this session: ${(e as Error).message}`)
+    }
+  }
 </script>
 
 <div class="grid h-full grid-cols-[16rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
@@ -217,10 +256,19 @@
                       class="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5 text-left"
                       onclick={() => selectSession(space, t)}
                     >
-                      <!-- Status indicator: a spinner while working, a tick when
-                           idle at the prompt, an error mark once the shell exits. -->
+                      <!-- Status indicator. A shell: a spinner while working, a tick
+                           idle, an error mark once it exits. A session on the session
+                           grammar: a spinner working, a slow dimmed crawl when quiet
+                           (a hint, not an alarm), a frozen grey mark once dead. -->
                       {#if t.status === 'working'}
                         <CircleNotch class="size-3.5 shrink-0 animate-spin text-primary" aria-label="working" />
+                      {:else if t.status === 'quiet'}
+                        <CircleNotch
+                          class="size-3.5 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
+                          aria-label="quiet"
+                        />
+                      {:else if t.status === 'dead'}
+                        <XCircle class="size-3.5 shrink-0 text-muted-foreground" aria-label="dead" />
                       {:else if t.status === 'exited'}
                         <XCircle class="size-3.5 shrink-0 text-destructive" aria-label="exited" />
                       {:else}
@@ -245,16 +293,55 @@
                         {/if}
                       </span>
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      class="opacity-0 hover:text-destructive group-hover/session:opacity-100 focus-visible:opacity-100"
-                      aria-label="End {t.proc}"
-                      title="End this shell"
-                      onclick={() => endShell(space, t)}
-                    >
-                      <X />
-                    </Button>
+                    {#if t.session && !t.alive}
+                      <!-- The death halt: a dead session is pinned to its ticket and
+                           offers exactly three choices — resume it (crash recovery),
+                           respawn a fresh session, or release the claim. The harness
+                           takes none itself. -->
+                      <span class="flex shrink-0 items-center pr-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          class="hover:text-primary"
+                          aria-label="Resume this session"
+                          title="Resume — same-ticket crash recovery"
+                          onclick={() => haltAction(space, t, 'resume', resumeSession)}
+                        >
+                          <Play />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          class="hover:text-primary"
+                          aria-label="Respawn a fresh session"
+                          title="Respawn — a fresh session on the same ticket"
+                          onclick={() => haltAction(space, t, 'respawn', respawnSession)}
+                        >
+                          <ArrowClockwise />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          class="hover:text-destructive"
+                          aria-label="Release the claim"
+                          title="Release — clear the claim back to the frontier"
+                          onclick={() => haltAction(space, t, 'release', releaseSession)}
+                        >
+                          <ArrowUUpLeft />
+                        </Button>
+                      </span>
+                    {:else}
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        class="opacity-0 hover:text-destructive group-hover/session:opacity-100 focus-visible:opacity-100"
+                        aria-label="End {t.proc}"
+                        title={t.session ? 'End this session' : 'End this shell'}
+                        onclick={() => endShell(space, t)}
+                      >
+                        <X />
+                      </Button>
+                    {/if}
                   </li>
                 {/each}
               </ul>
@@ -268,6 +355,15 @@
                 {#if space.branch}
                   <GitBranch class="size-3.5 shrink-0" />
                   <span class="truncate font-mono" title={space.branch}>{space.branch}</span>
+                {/if}
+                {#if space.dirty}
+                  <!-- A dirty working tree is a badge, never a spawn gate (story 68). -->
+                  <span
+                    class="flex shrink-0 items-center"
+                    title="Uncommitted changes in the working tree"
+                  >
+                    <GitDiff class="size-3.5" aria-label="uncommitted changes" />
+                  </span>
                 {/if}
               </span>
               <Button

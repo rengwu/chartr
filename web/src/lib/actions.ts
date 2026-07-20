@@ -109,6 +109,26 @@ export function spawnSession(
   ) as Promise<SpawnResult>
 }
 
+// The death halt (ticket 10): a session whose process exited stays pinned to its
+// ticket, and the operator resolves it exactly one of three ways — each a plain
+// HTTP action, so the harness itself never acts. resumeSession relaunches the same
+// session on its own ticket (same-ticket crash recovery, its claim standing);
+// respawnSession starts a fresh session on the same ticket (a new claim supersedes
+// the stale one); releaseSession clears the claim back to the frontier. The
+// resulting state — a live tab again, or the ticket back on the frontier — arrives
+// over the control socket; a refusal surfaces as a thrown ActionError.
+export function resumeSession(spaceId: string, sessionId: string): Promise<unknown> {
+  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/resume`)
+}
+
+export function respawnSession(spaceId: string, sessionId: string): Promise<unknown> {
+  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/respawn`)
+}
+
+export function releaseSession(spaceId: string, sessionId: string): Promise<unknown> {
+  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/release`)
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.

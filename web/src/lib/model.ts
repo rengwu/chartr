@@ -63,10 +63,14 @@ export interface Map {
   malformations?: string[]
 }
 
-// A terminal's live activity — idle at the prompt (a tick), working while a
-// foreground command runs (a spinner), exited once the shell is gone (mirrors
-// the Go model.Terminal* states).
-export type TerminalStatus = 'idle' | 'working' | 'exited'
+// A terminal's live activity (mirrors the Go model.Terminal* states). An ad-hoc
+// shell reads idle at the prompt (a tick), working while a foreground command runs
+// (a spinner), or exited once the shell is gone. A session tab reads the session
+// grammar instead (ticket 10): working while live and producing, quiet when an AFK
+// session has fallen silent past the threshold with no proposed answer yet (a hint,
+// never an alarm), and dead once its process exits — a dead session freezes pinned
+// to its ticket rather than vanishing, awaiting the operator's halt choice.
+export type TerminalStatus = 'idle' | 'working' | 'exited' | 'quiet' | 'dead'
 
 // Session is a tab's ticket binding when it is a session — a PTY running an agent
 // against exactly one ticket (ticket 09) — rather than an ad-hoc shell. It names
@@ -106,6 +110,10 @@ export interface Space {
   // live. Absent when it can't be determined — the sidebar omits it then.
   branch?: string
   pinned: boolean
+  // True when the working tree carries uncommitted changes — a session's or a
+  // shell's debris. A badge, never a spawn gate (story 68): the operator decides
+  // whether the debris is harmless; the harness spawns into it all the same.
+  dirty: boolean
   bindings: RoleBinding[]
   maps: Map[]
   terminals: Terminal[]
