@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath, URL } from 'node:url'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // The star-map island's seam is the one frontend test point (spec, Testing
@@ -8,6 +9,11 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 // the canvas.
 export default defineConfig({
   plugins: [svelte()],
+  resolve: {
+    alias: {
+      $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+    },
+  },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],

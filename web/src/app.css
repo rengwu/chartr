@@ -1,1505 +1,194 @@
+/* ============================================================================
+   Cockpit design system — shadcn-svelte + Tailwind v4, olive/warm-neutral theme.
+   ----------------------------------------------------------------------------
+   The bespoke pre-reskin chrome has been removed (reskin ticket 01, operator
+   call: do not preserve the legacy skin). Tailwind's full base (Preflight) is
+   live, the olive tokens are canonical, and IBM Plex + the radius scale drive
+   the utilities. Surfaces are rebuilt on shadcn-svelte primitives + tokens in
+   tickets 02–04 — until then the cockpit renders on Preflight defaults, by
+   design. The document boots dark (index.html <html class="dark">).
+   ============================================================================ */
+
+@import 'tailwindcss';
+
+/* Self-hosted IBM Plex woff2 subsets (latin) — bundled into the go:embed dist,
+   no CDN or runtime fetch (offline binary, ADR 0010 / map constraint). */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+}
+
+/* Map the semantic tokens onto Tailwind's --color-* / --font-* / --radius-*
+   namespaces so utilities (bg-background, text-muted-foreground, rounded-md,
+   font-sans, …) resolve. `inline` keeps the mapping referencing the runtime
+   custom properties so .dark overrides flow through. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Olive / warm-neutral token values (assets/theme.css). Light in :root, dark in
+   .dark; the document boots dark. */
 :root {
-  --bg: #0b0e14;
-  --panel: #11151f;
-  --border: #1e2530;
-  --text: #d6dbe4;
-  --muted: #7d8798;
-  --accent: #d9a441; /* the amber the star-map session moons will use */
-  --ok: #4ec9a3;
-  --warn: #d9a441;
-  --danger: #e06c75;
-  --down: #6b7280;
-
-  /* One height for every chrome bar (space header, ticket-pane header, map-pane
-     header) so the three read as one tier. */
-  --bar-h: 40px;
-
-  color-scheme: dark;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#app {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  background: var(--bg);
-  color: var(--text);
-}
-
-.cockpit {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  grid-template-rows: 1fr auto;
-  grid-template-areas:
-    "sidebar stage"
-    "statusbar statusbar";
-  height: 100%;
-}
-
-.sidebar {
-  grid-area: sidebar;
-  border-right: 1px solid var(--border);
-  background: var(--panel);
-  padding: 14px 12px;
-  overflow-y: auto;
-}
-
-.sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 10px;
-}
-
-.hint {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.space-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.space-list li {
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.space-list li:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-/* The stage is the terminal column, not a scrolling document: it fills its grid
-   cell and lets the terminal column own the height (tabs flush at top, terminal
-   filling the rest), matching ticket 11's prototype. First-run/empty states
-   center inside it instead. */
-.stage {
-  grid-area: stage;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.stage-center {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-
-.stage-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  max-width: 460px;
-}
-
-.stage-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.stage-sub {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
-.statusbar {
-  grid-area: statusbar;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-  padding: 6px 14px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.statusbar .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--down);
-}
-
-.statusbar[data-status="open"] .dot {
-  background: var(--ok);
-}
-.statusbar[data-status="connecting"] .dot {
-  background: var(--warn);
-}
-.statusbar[data-status="closed"] .dot {
-  background: var(--down);
-}
-
-/* --- Buttons -------------------------------------------------------------- */
-
-.btn {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #1a1204;
-  font-weight: 600;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.icon-btn {
-  font: inherit;
-  line-height: 1;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 5px;
-  opacity: 0.55;
-}
-
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  opacity: 1;
-}
-
-.row-pin.pinned {
-  opacity: 1;
-  filter: none;
-}
-
-.row-pin:not(.pinned) {
-  filter: grayscale(1);
-}
-
-.row-forget:hover {
-  color: var(--danger);
-}
-
-/* --- Sidebar: filter and space rows -------------------------------------- */
-
-.filter {
-  width: 100%;
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 9px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-}
-
-.filter::placeholder {
-  color: var(--muted);
-}
-
-/* --- Modal dialog --------------------------------------------------------- */
-
-.modal {
-  border: none;
-  padding: 0;
-  background: transparent;
-  color: var(--text);
-  max-width: 90vw;
-}
-
-.modal::backdrop {
-  background: rgba(4, 6, 10, 0.6);
-}
-
-.modal-card {
-  width: 460px;
-  max-width: 90vw;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-}
-
-/* A wider card for content-heavy modals (the payload preview), with the body
-   scrolling inside a viewport-bounded height so a long payload never runs off
-   the card or the screen. */
-.modal-card.wide {
-  width: 760px;
-}
-.modal-card.wide .modal-body {
-  max-height: min(78vh, 760px);
-  overflow-y: auto;
-}
-
-.modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.modal-body {
-  padding: 16px;
-}
-
-.modal-hint {
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--muted);
-  margin: 0 0 12px;
-}
-
-.space-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.space-row {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  border-radius: 6px;
-}
-
-.row-head {
-  display: flex;
-  align-items: center;
-}
-
-.space-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.space-row.active {
-  background: rgba(217, 164, 65, 0.12);
-}
-
-.space-row .icon-btn {
-  opacity: 0;
-}
-
-.space-row:hover .icon-btn,
-.space-row .row-pin.pinned {
-  opacity: 0.55;
-}
-
-.space-row:hover .row-pin.pinned {
-  opacity: 1;
-}
-
-.row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 8px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.row-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: var(--text);
-}
-
-.row-path {
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  direction: rtl; /* keep the meaningful tail of a long path visible */
-  text-align: left;
-}
-
-.row-badge {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--danger);
-  border: 1px solid rgba(224, 108, 117, 0.4);
-  border-radius: 4px;
-  padding: 0 4px;
-  white-space: nowrap;
-}
-
-.space-empty {
-  font-size: 12px;
-  color: var(--muted);
-  padding: 6px 8px;
-}
-
-/* --- Maps nested under a space -------------------------------------------- */
-
-.map-list {
-  list-style: none;
-  margin: 0 0 4px;
-  padding: 0 6px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.map-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  /* indent under the space name, past the row-main padding */
-  padding: 3px 8px 3px 20px;
-  font-size: 12.5px;
-  color: var(--text);
-  border-radius: 5px;
-}
-
-.map-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.map-name {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.map-row.finished .map-name {
-  color: var(--muted);
-}
-
-.map-count {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--accent, #d9a441);
-  border: 1px solid rgba(217, 164, 65, 0.4);
-  border-radius: 4px;
-  padding: 0 5px;
-  white-space: nowrap;
-}
-
-.map-done {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.map-warn {
-  font-size: 11px;
-  color: var(--danger);
-  cursor: help;
-}
-
-/* An undeclared map is inert until classified: its name reads dimmed and the
-   inline confirm takes the place of the frontier count. */
-.map-row.inert .map-name {
-  color: var(--muted);
-  font-style: italic;
-}
-
-.map-classify {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.classify-label {
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.kind-btn {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 4px;
-  padding: 1px 5px;
-  cursor: pointer;
-}
-
-.kind-btn:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-/* The convention guess is pre-emphasised so confirming it is a single click. */
-.kind-btn.guess {
-  color: var(--accent, #d9a441);
-  border-color: rgba(217, 164, 65, 0.55);
-}
-
-/* --- Register form -------------------------------------------------------- */
-
-.register.first-run {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 480px;
-  text-align: center;
-}
-
-.register-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.register-sub {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-  margin: 0 0 4px;
-}
-
-.register-row {
-  display: flex;
-  gap: 8px;
-}
-
-.register-input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-}
-
-.register.inline .register-input {
-  font-size: 12px;
-  padding: 6px 8px;
-}
-
-.register-error {
-  font-size: 12px;
-  color: var(--danger);
-  margin: 0;
-  text-align: left;
-}
-
-.register-notice {
-  font-size: 12px;
-  color: var(--ok);
-  margin: 0;
-  text-align: left;
-}
-
-/* --- Detail pane: effective bindings -------------------------------------- */
-
-.pane {
-  max-width: 720px;
-}
-
-.pane-head {
-  margin-bottom: 16px;
-}
-
-.pane-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 2px;
-}
-
-.pane-path {
-  font-size: 12px;
-  color: var(--muted);
-  word-break: break-all;
-}
-
-.pane-sub {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 4px;
-}
-
-.pane-note {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin: 0 0 12px;
-}
-
-.warnings {
-  list-style: none;
-  margin: 0 0 16px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.warning {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--warn);
-  background: rgba(217, 164, 65, 0.08);
-  border: 1px solid rgba(217, 164, 65, 0.25);
-  border-radius: 6px;
-  padding: 7px 10px;
-}
-
-.bindings {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.binding {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border);
-}
-
-.binding:first-child {
-  border-top: none;
-}
-
-.binding-role {
-  flex: 0 0 92px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.binding-fields {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  min-width: 0;
-}
-
-.field {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.field-val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.field-src {
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 4px;
-}
-
-.field-src[data-layer="user"] {
-  color: var(--accent);
-  border-color: rgba(217, 164, 65, 0.4);
-}
-
-.field-src[data-layer="workspace"] {
-  color: var(--ok);
-  border-color: rgba(78, 201, 163, 0.35);
-}
-
-.binding-status {
-  flex: 0 0 auto;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.binding-status.ok {
-  color: var(--ok);
-}
-
-.binding-status.missing {
-  color: var(--danger);
-}
-
-.binding.absent {
-  background: rgba(224, 108, 117, 0.05);
-}
-
-.binding-missing {
-  list-style: none;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--danger);
-  padding: 0 14px 10px;
-  margin: -2px 0 0;
-}
-
-/* --- Terminal column (the ticket pane) ------------------------------------ */
-/* The ticket pane's whole content: its own header — the shell tabs with a "+"
-   and a bindings toggle — flush at the top, and the active xterm.js island
-   filling the rest (ticket 11's prototype term-col). Space identity is no longer
-   here; it lives in the space header a level up. The island is imperative: the
-   chrome styles its frame but never its contents (ADR 0010). */
-
-.term-col {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-}
-
-.term-bar {
-  flex: none;
-  min-height: var(--bar-h);
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 0 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
-.term-tabs {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  overflow-x: auto;
-}
-
-.term-actions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  align-self: center;
-}
-
-.term-warn-pip {
-  font-size: 11px;
-  color: var(--warn);
-  white-space: nowrap;
-  cursor: default;
-}
-
-.term-config {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.term-config[aria-pressed='true'],
-.term-config:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.term-tab {
-  display: flex;
-  align-items: center;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  background: transparent;
-}
-
-.term-tab.active {
-  background: var(--bg);
-  border-color: var(--border);
-}
-
-.term-tab-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 6px 6px 10px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.term-tab.active .term-tab-main {
-  color: var(--text);
-}
-
-.term-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ok);
-  flex: 0 0 auto;
-}
-
-.term-tab.dead .term-dot {
-  background: var(--down);
-}
-
-.term-ended,
-.term-tab.dead .term-tab-main {
-  color: var(--muted);
-}
-
-.term-close {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1;
-  padding: 4px 8px 6px 4px;
-  cursor: pointer;
-}
-
-.term-close:hover {
-  color: var(--danger);
-}
-
-.term-add {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.term-add:hover:not(:disabled) {
-  color: var(--accent);
-}
-
-.term-add:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.term-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  position: relative;
-}
-
-.terminal-island {
-  position: absolute;
-  inset: 0;
-  padding: 6px 8px;
-}
-
-.terminal-island .xterm {
-  height: 100%;
-}
-
-.term-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 28px;
-  color: var(--muted);
-}
-
-.term-empty-open {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.term-empty-open:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.term-empty-note {
-  font-size: 12px;
-  max-width: 40ch;
-  line-height: 1.5;
-}
-
-/* Role bindings are a secondary surface: a right-docked drawer summoned from the
-   bar (the prototype's detail-docks-right pattern), so they never shrink the
-   terminal. */
-.bindings-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(360px, 90%);
-  z-index: 5;
-  overflow-y: auto;
-  background: var(--panel);
-  border-left: 1px solid var(--border);
-  padding: 14px 16px 18px;
-}
-
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.drawer-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.drawer-close {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.drawer-close:hover {
-  color: var(--text);
-}
-
-/* --- The space stage: header over the panes ------------------------------- */
-/* The stage is a flex column: a full-width title bar carrying the space's
-   identity, then the panes row filling the rest. The identity sits a level above
-   the panes so the hierarchy reads "space › {terminals, map}". */
-
-.space-stage {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* The title bar: the space's name and path on the left, the map show/hide toggle
-   on the right, spanning the whole stage above both panes. A floating map
-   (positioned within the panes row below) never reaches it, so the space's
-   identity and the toggle always stay put. */
-.space-header {
-  flex: none;
-  min-height: var(--bar-h);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
-.space-id {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  overflow: hidden;
-}
-
-/* The stage's one map show/hide control, pushed to the right edge of the header.
-   A toggle: outlined at rest, lit amber (the star-map's accent) when pressed. */
-.map-toggle {
-  flex: none;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.map-toggle:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.map-toggle[aria-pressed='true'] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: rgba(217, 164, 65, 0.12);
-}
-
-.map-toggle-glyph {
-  font-size: 12px;
-  line-height: 1;
-}
-
-.space-id-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.space-id-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* --- The star-map card over the terminal ---------------------------------- */
-/* The panes row: the terminal (ticket) column and the star-map card, summoned by
-   the header's map toggle. Floating, the card overlays the terminal and never
-   reflows it (story 20) — and, being positioned within this row, never overlays
-   the space header above it; docked, the terminal takes a frozen pixel width and
-   the map absorbs every later resize slack (planning ticket 08's amendment), so
-   a window resize never reflows the shell. */
-
-.space-panes {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: row;
-  position: relative;
-}
-
-.map-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: #05070d;
-}
-
-/* The left-border resize grip: a thin hit target over the card's leading edge,
-   the split divider when docked. It highlights on hover so the affordance reads. */
-.map-resizer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 7px;
-  z-index: 8;
-  cursor: ew-resize;
-  background: transparent;
-}
-
-.map-resizer::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: transparent;
-  transition: background 0.12s;
-}
-
-.map-resizer:hover::after,
-.map-resizer:active::after {
-  background: var(--accent);
-}
-
-/* Floating: an overlay pinned to the right of the terminal, casting a shadow so
-   it reads as lifted above the shell rather than beside it. The width is a fixed
-   size (no proportional scaling with the window) and is freely draggable wider;
-   max-width only keeps the card within the row so its inline drag width (a fixed
-   pixel value) can't overflow left past the row into the sidebar when the window
-   shrinks. The `calc` keeps a terminal sliver visible even at the bound. */
-.map-floating .map-card {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  bottom: 10px;
-  width: 560px;
-  max-width: calc(100% - 40px);
-  z-index: 7;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
-}
-
-/* Docked: an in-flow split beside the terminal. The terminal's inline flex-basis
-   (set on dock) holds its width and the card takes the rest — but the card keeps
-   a min-width floor, and the terminal is shrinkable (inline flex 0 1 … / min 240),
-   so on a window too narrow to seat both at full size the terminal yields and the
-   map stays visible rather than collapsing to nothing. */
-.map-docked .map-card {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 300px;
-  border-left: 1px solid var(--border);
-}
-
-.map-card-bar {
-  flex: none;
-  min-height: var(--bar-h);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
-/* The map name is a button: clicking it opens the map-material pane (ticket 07). */
-.map-card-name {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  border: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.map-card-name:hover,
-.map-card-name.on {
-  color: var(--accent);
-}
-
-.map-card-note {
-  flex: none;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.map-card-note:hover,
-.map-card-note.on {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.map-switch {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 12px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-}
-
-.map-card-actions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.map-card-btn {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.map-card-btn:hover,
-.map-card-btn[aria-pressed='true'] {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.map-card-close {
-  font-size: 15px;
-  padding: 2px 7px;
-}
-
-.map-card-close:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.map-card-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  position: relative;
-}
-
-.map-card-empty {
-  padding: 24px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* The island fills the card body; the chrome styles its frame but never reaches
-   inside (ADR 0010). */
-.starmap-island {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-.starmap-canvas {
-  display: block;
-  cursor: grab;
-}
-
-.starmap-canvas.drag {
-  cursor: grabbing;
-}
-
-/* --- The detail pane (ticket 07) ------------------------------------------ */
-/* From looking at a star to reading it in one click: the pane docks right over
-   the island, re-docking to the bottom (capped at half the card) when the card
-   is narrow. The island's camera insets around it, so the selected star seats in
-   the free space rather than under the pane. */
-
-.dp-holder {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  bottom: 8px;
-  width: min(400px, 58%);
-  z-index: 4;
-  display: flex;
-}
-
-.dp-holder.bottom {
-  top: auto;
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
-  width: auto;
-  max-height: 50%; /* capped at half the map panel (spec) */
-}
-
-.detail-pane {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-.dp-bar {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  position: relative;
-  padding: 10px 34px 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.dp-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
-  color: var(--muted);
-}
-
-.dp-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.35;
-}
-
-.dp-status {
-  font-size: 9.5px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0 4px;
-  color: var(--muted);
-}
-.dp-status[data-status='resolved'] {
-  color: var(--ok);
-  border-color: rgba(78, 201, 163, 0.4);
-}
-.dp-status[data-status='claimed'] {
-  color: var(--accent);
-  border-color: rgba(217, 164, 65, 0.4);
-}
-.dp-status[data-status='proposed'] {
-  color: var(--warn);
-  border-color: rgba(217, 164, 65, 0.4);
-}
-.dp-status[data-status='out_of_scope'] {
-  color: var(--muted);
-}
-.dp-status.frontier {
-  color: #8ad8ff;
-  border-color: rgba(138, 216, 255, 0.4);
-}
-
-.dp-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  cursor: pointer;
-  border-radius: 5px;
-}
-.dp-close:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.dp-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px 14px 18px;
-}
-
-.dp-section + .dp-section {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-
-.dp-h {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 8px;
-}
-
-.dp-empty {
-  font-size: 12px;
-  color: var(--muted);
-  font-style: italic;
-}
-
-.dp-blockers {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dp-blocker {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 8px 10px;
-}
-
-.dp-blocker-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 4px;
-}
-
-.dp-blocker-num {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.dp-blocker-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.dp-blocker-answer {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* --- Rendered markdown inside the pane ------------------------------------ */
-.dp-md {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text);
-  word-wrap: break-word;
-  overflow-wrap: anywhere;
-}
-
-.dp-md h3,
-.dp-md h4,
-.dp-md h5,
-.dp-md h6 {
-  color: var(--text);
-  margin: 16px 0 6px;
-  line-height: 1.3;
-}
-.dp-md h3 {
-  font-size: 14px;
-}
-.dp-md h4 {
-  font-size: 13px;
-}
-.dp-md h5,
-.dp-md h6 {
-  font-size: 12px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.dp-md > :first-child {
-  margin-top: 0;
-}
-
-.dp-md p {
-  margin: 0 0 10px;
-}
-
-.dp-md ul {
-  margin: 0 0 10px;
-  padding-left: 20px;
-}
-.dp-md li {
-  margin: 2px 0;
-}
-
-.dp-md a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.dp-md a:hover {
-  text-decoration: underline;
-}
-
-.dp-md code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  padding: 1px 4px;
-}
-
-.dp-md pre {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  margin: 0 0 10px;
-}
-.dp-md pre code {
-  background: none;
-  padding: 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.dp-md blockquote {
-  margin: 0 0 10px;
-  padding-left: 12px;
-  border-left: 2px solid var(--border);
-  color: var(--muted);
-}
-
-.dp-md hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 14px 0;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.153 0.006 107.1);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.153 0.006 107.1);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.153 0.006 107.1);
+  --primary: oklch(0.228 0.013 107.4);
+  --primary-foreground: oklch(0.988 0.003 106.5);
+  --secondary: oklch(0.966 0.005 106.5);
+  --secondary-foreground: oklch(0.228 0.013 107.4);
+  --muted: oklch(0.966 0.005 106.5);
+  --muted-foreground: oklch(0.58 0.031 107.3);
+  --accent: oklch(0.966 0.005 106.5);
+  --accent-foreground: oklch(0.228 0.013 107.4);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.93 0.007 106.5);
+  --input: oklch(0.93 0.007 106.5);
+  --ring: oklch(0.737 0.021 106.9);
+  --chart-1: oklch(0.88 0.011 106.6);
+  --chart-2: oklch(0.58 0.031 107.3);
+  --chart-3: oklch(0.466 0.025 107.3);
+  --chart-4: oklch(0.394 0.023 107.4);
+  --chart-5: oklch(0.286 0.016 107.4);
+  --radius: 0.45rem;
+  --sidebar: oklch(0.988 0.003 106.5);
+  --sidebar-foreground: oklch(0.153 0.006 107.1);
+  --sidebar-primary: oklch(0.228 0.013 107.4);
+  --sidebar-primary-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-accent: oklch(0.966 0.005 106.5);
+  --sidebar-accent-foreground: oklch(0.228 0.013 107.4);
+  --sidebar-border: oklch(0.93 0.007 106.5);
+  --sidebar-ring: oklch(0.737 0.021 106.9);
+}
+
+.dark {
+  --background: oklch(0.153 0.006 107.1);
+  --foreground: oklch(0.988 0.003 106.5);
+  --card: oklch(0.228 0.013 107.4);
+  --card-foreground: oklch(0.988 0.003 106.5);
+  --popover: oklch(0.228 0.013 107.4);
+  --popover-foreground: oklch(0.988 0.003 106.5);
+  --primary: oklch(0.93 0.007 106.5);
+  --primary-foreground: oklch(0.228 0.013 107.4);
+  --secondary: oklch(0.286 0.016 107.4);
+  --secondary-foreground: oklch(0.988 0.003 106.5);
+  --muted: oklch(0.286 0.016 107.4);
+  --muted-foreground: oklch(0.737 0.021 106.9);
+  --accent: oklch(0.286 0.016 107.4);
+  --accent-foreground: oklch(0.988 0.003 106.5);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.58 0.031 107.3);
+  --chart-1: oklch(0.88 0.011 106.6);
+  --chart-2: oklch(0.58 0.031 107.3);
+  --chart-3: oklch(0.466 0.025 107.3);
+  --chart-4: oklch(0.394 0.023 107.4);
+  --chart-5: oklch(0.286 0.016 107.4);
+  --sidebar: oklch(0.228 0.013 107.4);
+  --sidebar-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-accent: oklch(0.286 0.016 107.4);
+  --sidebar-accent-foreground: oklch(0.988 0.003 106.5);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.58 0.031 107.3);
+}
+
+/* Base seam: the default border colour follows the token (Tailwind v4 Preflight
+   otherwise defaults borders to currentColor), the app fills the viewport, and
+   the document surface + type come from the tokens so bare elements read on the
+   theme even before a surface is rebuilt on primitives. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+  }
 }

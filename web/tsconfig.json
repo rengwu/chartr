@@ -11,7 +11,12 @@
     "strict": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "types": ["svelte", "vite/client"]
+    "types": ["svelte", "vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"]
 }
