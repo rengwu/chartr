@@ -285,6 +285,25 @@
     width: 100%;
   }
 
+  /* xterm sets .xterm-viewport's background inline from the ITheme (ticket 04),
+     so it already tracks --background; only the browser's own scrollbar chrome
+     needs a nudge so its track doesn't paint a mismatched default over that
+     surface. Track transparent (the token background shows through), thumb on
+     the same subtle --border tone the rest of the chrome uses. */
+  .terminal-island .xterm-viewport {
+    scrollbar-color: var(--border) transparent;
+  }
+  .terminal-island .xterm-viewport::-webkit-scrollbar {
+    width: 10px;
+  }
+  .terminal-island .xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .terminal-island .xterm-viewport::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: var(--radius-sm);
+  }
+
   body {
     margin: 0;
     background-color: var(--background);
