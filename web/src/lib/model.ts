@@ -63,13 +63,23 @@ export interface Map {
   malformations?: string[]
 }
 
-// Terminal is one open ad-hoc shell — a tab in the space's terminal column. It
-// is deliberately not a session (no ticket, no lifecycle, ended by the human):
-// its raw bytes travel on the separate terminal socket keyed by `id`, never in
-// this snapshot. `alive` goes false the instant the shell exits.
+// A terminal's live activity — idle at the prompt (a tick), working while a
+// foreground command runs (a spinner), exited once the shell is gone (mirrors
+// the Go model.Terminal* states).
+export type TerminalStatus = 'idle' | 'working' | 'exited'
+
+// Terminal is one open ad-hoc shell — a session row under its space in the
+// sidebar. It is deliberately not a session in the lifecycle sense (no ticket,
+// no review, ended by the human): its raw bytes travel on the separate terminal
+// socket keyed by `id`, never in this snapshot. `alive` goes false the instant
+// the shell exits.
 export interface Terminal {
   id: string
   title: string
+  // The process currently in the shell's foreground — the shell itself while at
+  // the prompt, or the command it is running. Falls back to the shell title.
+  proc: string
+  status: TerminalStatus
   alive: boolean
 }
 
@@ -77,6 +87,9 @@ export interface Space {
   id: string
   name: string
   path: string
+  // The working tree's current git branch (or a short detached-HEAD sha), read
+  // live. Absent when it can't be determined — the sidebar omits it then.
+  branch?: string
   pinned: boolean
   bindings: RoleBinding[]
   maps: Map[]

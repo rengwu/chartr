@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/rengwu/wayfinder-harness/internal/model"
 )
 
 // ErrNoTerminal is returned when an id names no live terminal — it never
@@ -22,13 +25,68 @@ type Manager struct {
 	order    []string
 	seq      int
 	onChange func()
+
+	stop     chan struct{}
+	stopOnce sync.Once
 }
 
+// sampleInterval is how often the manager re-reads each live shell's foreground
+// process and activity. Fast enough that a shell going busy or idle refreshes
+// the sidebar promptly, slow enough that the poll — one ioctl per shell, and a
+// `ps` only when a new command takes the foreground — costs nothing noticeable.
+const sampleInterval = 900 * time.Millisecond
+
 // NewManager builds an empty Manager. onChange is called after a terminal is
-// opened or ends; a nil onChange is tolerated (the manager is usable without a
-// push, as in a focused unit test).
+// opened or ends, and whenever a live shell's activity changes; a nil onChange
+// is tolerated (the manager is usable without a push, as in a focused unit
+// test) and, with no one to notify, the background sampler is not started.
 func NewManager(onChange func()) *Manager {
-	return &Manager{terms: make(map[string]*Terminal), onChange: onChange}
+	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange}
+	if onChange != nil {
+		m.stop = make(chan struct{})
+		go m.sampleLoop()
+	}
+	return m
+}
+
+// sampleLoop re-samples every live shell on a fixed cadence and pushes a fresh
+// model only when something changed, so a shell going busy or idle drives the
+// sidebar with no filesystem or socket event behind it. It runs until Shutdown.
+func (m *Manager) sampleLoop() {
+	tick := time.NewTicker(sampleInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-m.stop:
+			return
+		case <-tick.C:
+			m.sampleOnce()
+		}
+	}
+}
+
+// sampleOnce samples every current terminal off the manager lock (sampling may
+// exec to resolve a process name, which must not block Open/Close/ForSpace) and
+// pushes once if any shell's activity changed.
+func (m *Manager) sampleOnce() {
+	m.mu.Lock()
+	terms := make([]*Terminal, 0, len(m.terms))
+	for _, id := range m.order {
+		if t := m.terms[id]; t != nil {
+			terms = append(terms, t)
+		}
+	}
+	m.mu.Unlock()
+
+	changed := false
+	for _, t := range terms {
+		if t.sample() {
+			changed = true
+		}
+	}
+	if changed {
+		m.notify()
+	}
 }
 
 // Open spawns a shell in cwd, tags it to spaceID, and returns the live terminal.
@@ -78,16 +136,20 @@ func (m *Manager) Close(id string) error {
 	return nil
 }
 
-// Info is one terminal's public shape on the pushed model: enough for a tab and
-// its liveness, never the PTY itself.
+// Info is one terminal's public shape on the pushed model: enough for a session
+// row — its tab title, the process in its foreground, its activity, and its
+// liveness — never the PTY itself.
 type Info struct {
-	ID    string
-	Title string
-	Alive bool
+	ID     string
+	Title  string
+	Proc   string
+	Status string
+	Alive  bool
 }
 
-// ForSpace returns the space's terminals in creation order, so tabs seat left to
-// right in the order the operator opened them.
+// ForSpace returns the space's terminals in creation order, so sessions seat top
+// to bottom in the order the operator opened them, each carrying its last
+// sampled foreground process and activity.
 func (m *Manager) ForSpace(spaceID string) []Info {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -98,15 +160,25 @@ func (m *Manager) ForSpace(spaceID string) []Info {
 			continue
 		}
 		t.mu.Lock()
-		alive := t.alive
+		alive, proc, state := t.alive, t.proc, t.state
 		t.mu.Unlock()
-		out = append(out, Info{ID: t.ID, Title: t.Title, Alive: alive})
+		if proc == "" {
+			proc = t.Title
+		}
+		if state == "" {
+			state = model.TerminalIdle
+		}
+		out = append(out, Info{ID: t.ID, Title: t.Title, Proc: proc, Status: state, Alive: alive})
 	}
 	return out
 }
 
-// Shutdown ends every terminal — used when the server drains on exit.
+// Shutdown stops the sampler and ends every terminal — used when the server
+// drains on exit.
 func (m *Manager) Shutdown() {
+	if m.stop != nil {
+		m.stopOnce.Do(func() { close(m.stop) })
+	}
 	m.mu.Lock()
 	terms := make([]*Terminal, 0, len(m.terms))
 	for _, t := range m.terms {

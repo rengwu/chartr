@@ -203,9 +203,11 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 	terminals := make([]model.Terminal, 0)
 	for _, info := range s.terms.ForSpace(e.ID) {
 		terminals = append(terminals, model.Terminal{
-			ID:    info.ID,
-			Title: info.Title,
-			Alive: info.Alive,
+			ID:     info.ID,
+			Title:  info.Title,
+			Proc:   info.Proc,
+			Status: info.Status,
+			Alive:  info.Alive,
 		})
 	}
 
@@ -219,6 +221,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		ID:        e.ID,
 		Name:      filepath.Base(e.Path),
 		Path:      e.Path,
+		Branch:    gitBranch(e.Path),
 		Pinned:    e.Pinned,
 		Bindings:  bindings,
 		Maps:      maps,

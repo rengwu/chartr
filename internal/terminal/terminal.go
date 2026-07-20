@@ -20,6 +20,8 @@ import (
 	"sync"
 
 	"github.com/aymanbagabas/go-pty"
+
+	"github.com/rengwu/wayfinder-harness/internal/model"
 )
 
 // scrollbackCap bounds the server-side replay buffer per terminal. Raw PTY bytes
@@ -47,6 +49,12 @@ type Terminal struct {
 	SpaceID string
 	Title   string
 
+	// shellPID is the shell process's pid, which (being a session leader on a new
+	// PTY) is also its process-group id. The foreground group equals it exactly
+	// when the shell sits at its prompt, which is how sample tells idle from
+	// working. Immutable after start.
+	shellPID int
+
 	pty pty.Pty
 	cmd *pty.Cmd
 
@@ -55,6 +63,12 @@ type Terminal struct {
 	subs       map[*subscriber]struct{}
 	alive      bool
 	done       chan struct{}
+	// proc/state are the last sampled foreground process and activity (one of the
+	// model.Terminal* states); lastPgrp caches the foreground group so a name is
+	// only re-resolved when the foreground actually changes.
+	proc     string
+	state    string
+	lastPgrp int
 }
 
 // subscriber is one attached terminal socket. Down-frames are delivered through
@@ -246,17 +260,71 @@ func newTerminal(id, spaceID, cwd string) (*Terminal, error) {
 		return nil, fmt.Errorf("starting %s: %w", name, err)
 	}
 
+	title := shellTitle(name)
 	return &Terminal{
-		ID:      id,
-		SpaceID: spaceID,
-		Title:   shellTitle(name),
-		pty:     p,
-		cmd:     c,
-		subs:    make(map[*subscriber]struct{}),
-		alive:   true,
-		done:    make(chan struct{}),
+		ID:       id,
+		SpaceID:  spaceID,
+		Title:    title,
+		shellPID: c.Process.Pid,
+		pty:      p,
+		cmd:      c,
+		subs:     make(map[*subscriber]struct{}),
+		alive:    true,
+		done:     make(chan struct{}),
+		// Seat the initial view at the prompt so a just-opened shell reads idle
+		// under its own shell name before the first sample lands.
+		proc:  title,
+		state: model.TerminalIdle,
 	}, nil
 }
 
 // start begins the read loop; cleanup runs once the shell exits.
 func (t *Terminal) start(cleanup func()) { go t.pump(cleanup) }
+
+// sample recomputes the shell's foreground process and activity, returning
+// whether either changed since the last sample. The manager's sampler loop calls
+// it off the manager lock, and a change is what triggers a fresh model push — so
+// a shell going busy or returning to its prompt updates the sidebar on its own,
+// with no filesystem or socket event behind it. The exec that resolves a
+// process name happens outside the terminal lock, and only when the foreground
+// group actually changes, so a busy shell doesn't pay for it every tick.
+func (t *Terminal) sample() bool {
+	t.mu.Lock()
+	alive := t.alive
+	prevPgrp := t.lastPgrp
+	prevProc := t.proc
+	t.mu.Unlock()
+
+	if !alive {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.state == model.TerminalExited {
+			return false
+		}
+		t.state, t.proc = model.TerminalExited, t.Title
+		return true
+	}
+
+	pgrp := foreground(t.pty)
+	state, proc := model.TerminalIdle, t.Title
+	if pgrp > 0 && pgrp != t.shellPID {
+		state = model.TerminalWorking
+		switch {
+		case pgrp == prevPgrp && prevProc != "":
+			proc = prevProc // same foreground group — reuse the resolved name
+		default:
+			if n := procName(pgrp); n != "" {
+				proc = n
+			}
+		}
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lastPgrp = pgrp
+	if state == t.state && proc == t.proc {
+		return false
+	}
+	t.state, t.proc = state, proc
+	return true
+}

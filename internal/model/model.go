@@ -28,6 +28,11 @@ type Space struct {
 	// Path is the absolute working-tree root, shown in the UI and the stable
 	// thing a local binding override is keyed by.
 	Path string `json:"path"`
+	// Branch is the working tree's current git branch — the checked-out ref's
+	// short name, or a short sha for a detached HEAD — read live on each rebuild.
+	// Empty when it can't be determined; the sidebar simply omits it then. A
+	// label, never a guarantee.
+	Branch string `json:"branch,omitempty"`
 	// Pinned spaces sort first; the flag is local, per-machine registry state.
 	Pinned bool `json:"pinned"`
 	// Bindings are the space's effective, fully-resolved role bindings in role
@@ -131,17 +136,35 @@ type Ticket struct {
 	Body string `json:"body,omitempty"`
 }
 
-// Terminal is one open ad-hoc shell on the wire: its identity, a tab label, and
-// whether its process is still alive. It is not a session — it carries no ticket
-// and no lifecycle. Its raw bytes travel on the separate terminal socket keyed
-// by ID, never in this snapshot (ADR 0010).
+// Terminal is one open ad-hoc shell on the wire: its identity, a tab label, the
+// process currently in its foreground and that shell's activity, and whether its
+// process is still alive. It is not a session — it carries no ticket and no
+// lifecycle. Its raw bytes travel on the separate terminal socket keyed by ID,
+// never in this snapshot (ADR 0010).
 type Terminal struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	// Proc is the process currently in the foreground of the shell's PTY — the
+	// shell itself while it sits at its prompt, or the command it is running (an
+	// agent, an editor). Falls back to Title where the platform can't report it.
+	Proc string `json:"proc"`
+	// Status is the shell's live activity: TerminalIdle at the prompt,
+	// TerminalWorking while a foreground command runs, TerminalExited once the
+	// process is gone. It drives the sidebar's per-session status indicator.
+	Status string `json:"status"`
 	// Alive is false the instant the shell exits; the chrome greys a dead tab
 	// until the operator dismisses it.
 	Alive bool `json:"alive"`
 }
+
+// A terminal's activity states, uniform across the wire and the sidebar's status
+// indicator: idle at the prompt (a tick), working while a foreground command
+// runs (a spinner), exited once the shell is gone.
+const (
+	TerminalIdle    = "idle"
+	TerminalWorking = "working"
+	TerminalExited  = "exited"
+)
 
 // RoleBinding is one role's effective binding on the wire: which adapter runs on
 // which model with which args, where each field was inherited from, and whether

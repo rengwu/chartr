@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
-  import { needsAgents, type Map, type Space } from './lib/model'
-  import { deregisterSpace, setPin } from './lib/actions'
+  import { needsAgents, type Space, type Terminal } from './lib/model'
+  import { deregisterSpace, openTerminal, closeTerminal } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
   import { Badge } from './lib/components/ui/badge'
-  import { Plus, PushPin, X, Warning, WarningDiamond, Check, CircleDashed } from 'phosphor-svelte'
+  import { Plus, X, Warning, Check, XCircle, CircleNotch, Compass, GitBranch } from 'phosphor-svelte'
 
   // The control-socket status drives the status-bar dot: on is the neutral "up"
   // primary, connecting a pulsing muted, closed the one true problem (destructive).
@@ -38,8 +38,12 @@
   const spaces = $derived<Space[]>(control.model?.spaces ?? [])
 
   let selectedId = $state<string | null>(null)
+  // The active shell, lifted here from the pane: the sidebar's session rows are
+  // now what selects a terminal, so the pane just renders whichever one is active.
+  let activeTermId = $state<string | null>(null)
   let filter = $state('')
   let showAdd = $state(false)
+  let opening = $state(false)
 
   // The effective selection falls back to the first space when the id is stale
   // (e.g. the selected space was just forgotten), so the pane never blanks while
@@ -48,13 +52,28 @@
     return spaces.find((s) => s.id === selectedId) ?? spaces[0] ?? null
   })
 
-  // The always-present filter is a pure view over the ordered list; it scales
-  // the sidebar past what a flat list carries without changing order (story 7).
+  // The shell the pane shows: the active id within the selected space, falling
+  // back to that space's first shell so the pane never shows a blank island while
+  // terminals remain (the same stale-id tolerance selection has).
+  const activeTerm = $derived.by<Terminal | null>(() => {
+    const ts = selected?.terminals ?? []
+    return ts.find((t) => t.id === activeTermId) ?? ts[0] ?? null
+  })
+
+  // The filter is a pure view over the ordered list — it now reaches into
+  // sessions too (a space shows if its own fields or any of its shells match), so
+  // the sidebar scales past what a flat list carries without changing order.
   const filtered = $derived.by(() => {
     const q = filter.trim().toLowerCase()
     if (q === '') return spaces
     return spaces.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.path.toLowerCase().includes(q),
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.path.toLowerCase().includes(q) ||
+        (s.branch ?? '').toLowerCase().includes(q) ||
+        s.terminals.some(
+          (t) => t.proc.toLowerCase().includes(q) || t.title.toLowerCase().includes(q),
+        ),
     )
   })
 
@@ -67,21 +86,51 @@
     await deregisterSpace(space.id)
   }
 
-  async function togglePin(space: Space) {
-    await setPin(space.id, !space.pinned)
+  // Selecting a session selects its space and makes that shell active, so one
+  // click drives both the sidebar highlight and what the pane renders.
+  function selectSession(space: Space, t: Terminal) {
+    selectedId = space.id
+    activeTermId = t.id
   }
 
-  // How many of a map's tickets sit on the stricter frontier — the takeable
-  // edge. Shown as a small count so the most spawnable maps read at a glance.
-  function frontierCount(m: Map): number {
-    return m.tickets.filter((t) => t.frontier).length
+  async function openShell(space: Space) {
+    selectedId = space.id
+    opening = true
+    try {
+      const { id } = await openTerminal(space.id)
+      activeTermId = id
+    } catch (e) {
+      alert(`Couldn’t open a shell: ${(e as Error).message}`)
+    } finally {
+      opening = false
+    }
   }
 
+  async function endShell(space: Space, t: Terminal) {
+    if (activeTermId === t.id) activeTermId = null
+    try {
+      await closeTerminal(space.id, t.id)
+    } catch (e) {
+      alert(`Couldn’t end “${t.title}”: ${(e as Error).message}`)
+    }
+  }
 </script>
 
-<div class="grid h-full grid-cols-[15rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
-  <aside class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-    <div class="cockpit-bar justify-between bg-transparent">
+<div class="grid h-full grid-cols-[16rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
+  <aside
+    class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+  >
+    <!-- Branding: a marked home for the cockpit, above the spaces list. -->
+    <div class="cockpit-bar gap-2 bg-transparent">
+      <span
+        class="grid size-5 place-items-center rounded-full border border-sidebar-border text-sidebar-foreground"
+      >
+        <Compass class="size-3.5" />
+      </span>
+      <span class="text-sm font-semibold tracking-tight">Wayfinder</span>
+    </div>
+
+    <div class="cockpit-bar justify-between border-t border-sidebar-border bg-transparent">
       <span class="text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
         <Button
@@ -105,30 +154,36 @@
         <Input
           type="text"
           class="h-7"
-          placeholder="Filter spaces…"
+          placeholder="Filter spaces and sessions…"
           bind:value={filter}
           spellcheck="false"
           autocapitalize="off"
           autocomplete="off"
-          aria-label="Filter spaces"
+          aria-label="Filter spaces and sessions"
         />
       </div>
 
-      <ul class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
         {#each filtered as space (space.id)}
-          <li class="group/row">
-            <div
-              class={[
-                'flex items-center gap-0.5 rounded-md pr-0.5',
-                selected?.id === space.id ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/60',
-              ]}
-            >
+          {@const isSelected = selected?.id === space.id}
+          <!-- One space, a bordered container on the sidebar surface (its own
+               token family — not the bg-card content surface). Selected emphasis
+               rides --primary, the one emphasis token; the chrome is monochrome. -->
+          <div
+            class={[
+              'overflow-hidden rounded-lg border',
+              isSelected ? 'border-primary/60' : 'border-sidebar-border',
+            ]}
+          >
+            <!-- Header: the space's identity and its forget action. -->
+            <div class="flex items-center gap-0.5 border-b border-sidebar-border pr-0.5">
               <button
-                class="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-1.5 pl-2 text-left"
+                class="min-w-0 flex-1 truncate px-2.5 py-2 text-left text-xs font-semibold"
+                title={space.path}
                 onclick={() => (selectedId = space.id)}
               >
-                <span class="flex max-w-full items-center gap-1.5 truncate text-xs font-medium">
-                  {space.name}
+                <span class="flex items-center gap-1.5">
+                  <span class="truncate">{space.name}</span>
                   {#if needsAgents(space)}
                     <Badge
                       variant="outline"
@@ -139,27 +194,11 @@
                     </Badge>
                   {/if}
                 </span>
-                <span class="max-w-full truncate font-mono text-[0.65rem] text-muted-foreground">{space.path}</span>
               </button>
               <Button
                 variant="ghost"
                 size="icon-xs"
-                class={[
-                  space.pinned
-                    ? 'text-primary'
-                    : 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100',
-                ]}
-                aria-pressed={space.pinned}
-                aria-label={space.pinned ? 'Unpin space' : 'Pin space'}
-                title={space.pinned ? 'Unpin' : 'Pin to top'}
-                onclick={() => togglePin(space)}
-              >
-                <PushPin weight={space.pinned ? 'fill' : 'regular'} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                class="opacity-0 hover:text-destructive group-hover/row:opacity-100 focus-visible:opacity-100"
+                class="hover:text-destructive"
                 aria-label="Forget space"
                 title="Forget (repository untouched)"
                 onclick={() => forget(space)}
@@ -168,63 +207,71 @@
               </Button>
             </div>
 
-            <!-- Maps nest under their space; they arrive already ordered
-                 (finished last) so we render in slice order. -->
-            {#if space.maps.length}
-              <ul class="mt-0.5 mb-1 ml-3 flex flex-col gap-px border-l border-sidebar-border pl-2">
-                {#each space.maps as m (m.slug)}
-                  <li
-                    class={[
-                      'flex items-center gap-1.5 py-0.5 pr-1 text-[0.7rem]',
-                      m.finished && 'text-muted-foreground',
-                      m.kind === '' && 'text-muted-foreground italic',
-                    ]}
-                  >
-                    <span class="min-w-0 flex-1 truncate" title={m.name}>{m.name}</span>
-                    {#if m.kind === ''}
-                      <!-- Undeclared: inert until classified (ADR 0007). The
-                           declaration is meant to be recorded on creation (the
-                           wayfinder adapter, docs/wayfinder-adapter.md); this quiet
-                           marker is the fallback for a map that arrived without one.
-                           The confirm itself lives in the star-map panel — never
-                           hoisted into the nav as a pair of buttons per row. -->
-                      <span
-                        class="text-muted-foreground"
-                        title="Unclassified — open the map to set its kind"
-                        aria-label="unclassified"
-                      >
-                        <CircleDashed class="size-3.5" />
-                      </span>
-                    {:else}
-                      {#if frontierCount(m) > 0}
-                        <Badge variant="secondary" title="{frontierCount(m)} ticket(s) at the frontier">
-                          {frontierCount(m)}
-                        </Badge>
+            <!-- Sessions: the space's open shells, each a selectable row carrying
+                 its foreground process, live status, and a close action. -->
+            {#if space.terminals.length}
+              <ul class="flex flex-col p-1">
+                {#each space.terminals as t (t.id)}
+                  {@const isActive = isSelected && activeTerm?.id === t.id}
+                  <li class="group/session flex items-center gap-1 rounded-md pr-0.5
+                    {isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/60'}">
+                    <button
+                      class="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5 text-left"
+                      onclick={() => selectSession(space, t)}
+                    >
+                      <!-- Status indicator: a spinner while working, a tick when
+                           idle at the prompt, an error mark once the shell exits. -->
+                      {#if t.status === 'working'}
+                        <CircleNotch class="size-3.5 shrink-0 animate-spin text-primary" aria-label="working" />
+                      {:else if t.status === 'exited'}
+                        <XCircle class="size-3.5 shrink-0 text-destructive" aria-label="exited" />
+                      {:else}
+                        <Check class="size-3.5 shrink-0 text-muted-foreground" aria-label="idle" />
                       {/if}
-                      {#if m.finished}
-                        <span class="text-muted-foreground" title="every ticket resolved" aria-label="finished">
-                          <Check class="size-3.5" />
-                        </span>
-                      {/if}
-                    {/if}
-                    {#if m.malformations?.length}
-                      <span
-                        class="text-muted-foreground"
-                        title={m.malformations.join('\n')}
-                        aria-label="{m.malformations.length} malformation(s) surfaced"
-                      >
-                        <WarningDiamond class="size-3.5" />
+                      <span class="flex min-w-0 flex-col">
+                        <span class="truncate font-mono text-xs">{t.proc}</span>
+                        <span class="truncate text-[0.65rem] text-muted-foreground">{t.status}</span>
                       </span>
-                    {/if}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      class="opacity-0 hover:text-destructive group-hover/session:opacity-100 focus-visible:opacity-100"
+                      aria-label="End {t.proc}"
+                      title="End this shell"
+                      onclick={() => endShell(space, t)}
+                    >
+                      <X />
+                    </Button>
                   </li>
                 {/each}
               </ul>
             {/if}
-          </li>
+
+            <!-- Footer: the working tree's branch and a new-shell action. -->
+            <div class="flex items-center gap-1.5 border-t border-sidebar-border px-2.5 py-1.5">
+              <span class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.7rem] text-muted-foreground">
+                {#if space.branch}
+                  <GitBranch class="size-3.5 shrink-0" />
+                  <span class="truncate font-mono" title={space.branch}>{space.branch}</span>
+                {/if}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Open a shell in {space.name}"
+                title="Open a shell in {space.name}"
+                disabled={opening}
+                onclick={() => openShell(space)}
+              >
+                <Plus />
+              </Button>
+            </div>
+          </div>
         {:else}
-          <li class="px-2 py-1.5 text-xs text-muted-foreground">No spaces match “{filter}”.</li>
+          <p class="px-2 py-1.5 text-xs text-muted-foreground">No spaces match “{filter}”.</p>
         {/each}
-      </ul>
+      </div>
     {/if}
   </aside>
 
@@ -234,11 +281,13 @@
         <RegisterForm variant="first-run" onRegistered={(id) => (selectedId = id)} />
       </div>
     {:else if selected}
-      <SpacePane space={selected} />
+      <SpacePane space={selected} {activeTerm} onOpenShell={() => openShell(selected)} />
     {/if}
   </main>
 
-  <footer class="col-span-2 row-start-2 flex items-center gap-2 border-t border-border bg-card px-3 py-1.5 text-[0.7rem] text-muted-foreground">
+  <footer
+    class="col-span-2 row-start-2 flex items-center gap-2 border-t border-border bg-card px-3 py-1.5 text-[0.7rem] text-muted-foreground"
+  >
     <span class={['size-2 rounded-full', statusDot[control.status] ?? 'bg-muted-foreground']} aria-hidden="true"></span>
     <span>control socket: {control.status}</span>
   </footer>
