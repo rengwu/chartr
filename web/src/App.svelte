@@ -1,15 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { ControlSocket } from './lib/control.svelte'
-  import { needsAgents, type Space, type Terminal } from './lib/model'
+  import type { Space, Terminal } from './lib/model'
   import { deregisterSpace, openTerminal, closeTerminal } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
-  import { Badge } from './lib/components/ui/badge'
-  import { Plus, X, Warning, Check, XCircle, CircleNotch, Compass, GitBranch } from 'phosphor-svelte'
+  import { Plus, X, Check, XCircle, CircleNotch, Compass, GitBranch } from 'phosphor-svelte'
 
   // The control-socket status drives the status-bar dot: on is the neutral "up"
   // primary, connecting a pulsing muted, closed the one true problem (destructive).
@@ -130,7 +129,7 @@
       <span class="text-sm font-semibold tracking-tight">Wayfinder</span>
     </div>
 
-    <div class="cockpit-bar justify-between border-t border-sidebar-border bg-transparent">
+    <div class="cockpit-bar justify-between bg-transparent">
       <span class="text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
         <Button
@@ -184,15 +183,6 @@
               >
                 <span class="flex items-center gap-1.5">
                   <span class="truncate">{space.name}</span>
-                  {#if needsAgents(space)}
-                    <Badge
-                      variant="outline"
-                      class="gap-1 border-border text-muted-foreground"
-                      title="An agent for one or more roles isn’t on your PATH"
-                    >
-                      <Warning /> agent
-                    </Badge>
-                  {/if}
                 </span>
               </button>
               <Button
@@ -208,7 +198,9 @@
             </div>
 
             <!-- Sessions: the space's open shells, each a selectable row carrying
-                 its foreground process, live status, and a close action. -->
+                 its foreground process, live status, and a close action. A space
+                 with none open still gets a row here, so the header never runs
+                 straight into the branch footer with no indication why. -->
             {#if space.terminals.length}
               <ul class="flex flex-col p-1">
                 {#each space.terminals as t (t.id)}
@@ -246,6 +238,8 @@
                   </li>
                 {/each}
               </ul>
+            {:else}
+              <p class="px-2.5 py-1.5 text-xs text-muted-foreground">No sessions open.</p>
             {/if}
 
             <!-- Footer: the working tree's branch and a new-shell action. -->

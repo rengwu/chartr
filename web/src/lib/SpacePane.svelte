@@ -58,7 +58,7 @@
   // Star-map card state (persists across space switches by design). `openSlug`
   // names the open map, or is null for the picker screen.
   let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat))
-  let dock = $state(false)
+  let dock = $state(true)
   let openSlug = $state<string | null>(bootApplies ? boot.m : null)
   let selectedTicket = $state<number | null>(bootApplies && boot.t ? Number(boot.t) : null)
   let showMaterial = $state(bootApplies && !!boot.mat)
