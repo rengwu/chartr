@@ -29,6 +29,10 @@ Done looks like: the cockpit runs on Tailwind + the theme tokens with the bespok
 - **Type is IBM Plex Sans (chrome) + IBM Plex Mono (paths/code/eyebrows)**, self-hosted woff2. **Icons are Phosphor** (`phosphor-svelte`), replacing every emoji/unicode glyph in the chrome.
 - **The standard is written down and enforced** — `docs/design-system.md`, a new ADR, a root `CLAUDE.md` rules block, and a `prompts/implement.append.md` pointer so harness-spawned UI sessions inherit it too.
 
+<!-- Resolved-ticket outcomes, logged as each lands (below the pre-cut decisions above). -->
+
+- **01 — foundation (Tailwind v4 + shadcn-svelte, tokens, type, icons)**: the design-system toolchain is live — `@tailwindcss/vite` (CSS-first, no config file), `components.json` (Mira/Olive, `$lib` aliases), the `cn()` util, `phosphor-svelte`, and self-hosted IBM Plex Sans/Mono woff2 subsets bundled into the `go:embed` dist. `web/src/app.css` was rewritten onto full Tailwind (Preflight) with the olive `:root`/`.dark` tokens, the `@theme inline` mapping, and a small base seam; `web/src/lib/tokens.ts` scaffolds the island token bridge (resolves the oklch tokens to rgb at the seam for ticket 04) with jsdom tests; a `#probe` surface proves the utilities/font/icon render in dark mode (screenshot-verified). **Operator call mid-ticket:** the bespoke pre-reskin chrome was *ripped out* rather than preserved — so the map's "no visual regression / old `app.css` still applies" clause is **waived**, and tickets 02–04 recast from "delete the legacy block" to pure build-up on the Preflight baseline; the cockpit renders unstyled-by-design until those land. [ticket](tickets/01-foundation-tokens-and-toolchain.md)
+
 ## Not yet specified
 
 <!-- Empty. The decisions above settle the effort; a ticket that surfaces a genuinely new design question flags it for the operator rather than deciding it here. -->
