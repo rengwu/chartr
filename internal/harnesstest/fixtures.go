@@ -1,11 +1,14 @@
 package harnesstest
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // NewSpaceRepo creates a temporary git repository to stand in for a space, with
@@ -50,6 +53,59 @@ func WriteMap(t testing.TB, repo, slug, body string) string {
 func WriteTicket(t testing.TB, repo, slug, filename, body string) string {
 	t.Helper()
 	return WriteFile(t, repo, filepath.Join(".plan", slug, "tickets", filename), body)
+}
+
+// StubAgent installs a fake agent CLI named `name` on PATH for the rest of the
+// test — the "stub agent CLI on PATH" the spawn tests drive against (spec, Testing
+// Decisions). The stub is a real executable the harness launches in a PTY: it
+// ignores its argv (the adapter's --model flag and any bound args) and appends
+// every line it reads on stdin to a record file, then blocks reading more so the
+// session stays live. The returned path is that record file, so a test asserts the
+// opener arrived at the agent's stdin by reading it back.
+//
+// It prepends a fresh bin directory to PATH (so the stub shadows any real CLI of
+// the same name) via t.Setenv, which forbids parallel tests — the spawn tests are
+// sequential. It skips on Windows, where the shell-script stub would not run;
+// the process-boundary spawn tests run on the unix CI paths.
+func StubAgent(t testing.TB, name string) (recordPath string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent CLI uses a POSIX shell script; not supported on Windows")
+	}
+	binDir := t.TempDir()
+	recordPath = filepath.Join(t.TempDir(), name+"-stdin.log")
+
+	// A line-buffered recorder: read a line, append it (reopening the file each
+	// iteration flushes it to disk), loop. The read blocks on an open PTY, so the
+	// stub stays alive as a live TUI would — exactly what the "lands on a live tab"
+	// assertion needs.
+	script := fmt.Sprintf("#!/bin/sh\nwhile IFS= read -r line; do printf '%%s\\n' \"$line\" >> %q; done\n", recordPath)
+	stub := filepath.Join(binDir, name)
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("harnesstest: writing stub agent %q: %v", name, err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return recordPath
+}
+
+// WaitForFileContains polls path until it contains want or the deadline passes,
+// returning its contents. It fails the test on timeout — a test asserting the
+// opener reached the stub's stdin names the marker it expects rather than guessing
+// how fast the PTY delivers the line.
+func WaitForFileContains(t testing.TB, path, want string, within time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		b, _ := os.ReadFile(path)
+		if strings.Contains(string(b), want) {
+			return string(b)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("harnesstest: %s never contained %q within %s; got %q", path, want, within, b)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // WriteFile writes body to relPath under repo, creating parent directories. It

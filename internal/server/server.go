@@ -96,6 +96,12 @@ func New(opts Options) (*Server, error) {
 	// session would be told, with per-part layer provenance. Read-only, so a GET;
 	// the composition reads the library and the map fresh off disk each time.
 	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
+	// Spawn a session (ticket 09): the tracer bullet. From a frontier ticket, the
+	// harness writes the claim commit, composes and archives the payload, resolves
+	// the role binding, and launches the agent's own TUI with the opener typed in —
+	// or hard-blocks the one spawn when the bound agent is absent. A plain HTTP
+	// action so a refusal (missing agent, unclassified map) surfaces as a response.
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/spawn", s.handleSpawn)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

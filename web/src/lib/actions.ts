@@ -79,6 +79,36 @@ export function previewPayload(
   ) as Promise<import('./model').Payload>
 }
 
+// SpawnResult is the spawn action's own response — the session it started, the
+// resolved agent and model, and the payload hash the claim commit recorded. The
+// live session tab arrives separately over the control socket.
+export interface SpawnResult {
+  sessionId: string
+  ticketNum: number
+  role: string
+  agent: string
+  model: string
+  payloadSha: string
+}
+
+// spawnSession spawns a session on a frontier ticket (ticket 09): the harness
+// writes the claim commit, composes and archives the payload, and launches the
+// bound agent's TUI with the read-this-file opener typed in. A blocked spawn — an
+// absent agent, an unclassified map, a held ticket — surfaces as a thrown
+// ActionError carrying the harness's specific message.
+export function spawnSession(
+  id: string,
+  slug: string,
+  num: number,
+  role: string,
+): Promise<SpawnResult> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/tickets/${num}/spawn`,
+    { role },
+  ) as Promise<SpawnResult>
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.

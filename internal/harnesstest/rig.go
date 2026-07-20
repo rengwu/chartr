@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -156,6 +157,16 @@ func (h *Harness) OpenTerminal(spaceID string) string {
 		h.t.Fatalf("harnesstest: open-terminal response not JSON: %v (%q)", err, body)
 	}
 	return r.ID
+}
+
+// Spawn posts a spawn action for a ticket and role and returns the status code
+// and body — the operator's one-click "start work here" (ticket 09). A test drives
+// it directly so it can assert the whole chain the response kicks off: the claim
+// commit, the payload, and the live session tab.
+func (h *Harness) Spawn(spaceID, slug string, num int, role string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/spawn", spaceID, slug, num),
+		map[string]string{"role": role})
 }
 
 // Snapshot connects a control socket, reads exactly one whole snapshot, and

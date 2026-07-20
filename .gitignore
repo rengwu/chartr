@@ -17,6 +17,11 @@
 # lives under .wayfinder-harness/prompts/, which is a different, intentional path.)
 /prompts/
 
+# Per-session payload archives (ticket 09) are harness-owned state under the data
+# root — the repo root when run with cwd here. Each session's exact payload is kept
+# here for the audit trail, never committed.
+/sessions/
+
 # Embedded frontend build output. The committed .gitkeep keeps the directory so
 # `go:embed all:dist` compiles on a fresh checkout; `make web` fills in the real
 # index.html and assets, which are not committed.

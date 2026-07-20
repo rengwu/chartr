@@ -37,7 +37,15 @@
     space,
     activeTerm,
     onOpenShell,
-  }: { space: Space; activeTerm: Term | null; onOpenShell: () => void } = $props()
+    onspawned,
+  }: {
+    space: Space
+    activeTerm: Term | null
+    onOpenShell: () => void
+    // Bubbled from the star-map's detail pane when a session is spawned (ticket
+    // 09), so the enclosing App can make the new session's tab active.
+    onspawned?: (sessionId: string) => void
+  } = $props()
 
   let showBindings = $state(false)
 
@@ -397,6 +405,7 @@
         {floatWidth}
         onclose={dismiss}
         onresizestart={startResize}
+        {onspawned}
       />
     {/if}
   </div>

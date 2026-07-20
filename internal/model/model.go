@@ -155,6 +155,24 @@ type Terminal struct {
 	// Alive is false the instant the shell exits; the chrome greys a dead tab
 	// until the operator dismisses it.
 	Alive bool `json:"alive"`
+	// Session is set only when this tab is a session — a PTY running an agent
+	// against exactly one ticket (ticket 09). It carries the binding the tab
+	// renders: the map and ticket it is claimed on, the role it was spawned as,
+	// and the resolved agent and model. Absent on an ad-hoc shell, which is
+	// deliberately not a session; the chrome tells the two apart by its presence.
+	Session *Session `json:"session,omitempty"`
+}
+
+// Session is a session tab's ticket binding on the wire — enough for the sidebar
+// to render a session row as bound to its ticket and driven by its agent, without
+// the PTY. The session↔ticket invariant lives here: exactly one ticket per
+// session, named by its map slug and number.
+type Session struct {
+	MapSlug   string `json:"mapSlug"`
+	TicketNum int    `json:"ticketNum"`
+	Role      string `json:"role"`
+	Agent     string `json:"agent"`
+	Model     string `json:"model"`
 }
 
 // A terminal's activity states, uniform across the wire and the sidebar's status

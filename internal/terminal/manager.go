@@ -13,6 +13,13 @@ import (
 // existed, or it has already ended.
 var ErrNoTerminal = errors.New("terminal: no such terminal")
 
+// ErrSessionExists is returned when a space already has a live session and one
+// more is asked for. One session per space at a time is the invariant (spec,
+// State model): parallelism is many spaces, never many sessions in one working
+// tree. Ad-hoc shells do not count — a space may carry any number of those
+// alongside its one session.
+var ErrSessionExists = errors.New("terminal: the space already has a live session")
+
 // Manager owns every ad-hoc terminal in the harness process, keyed by id and
 // grouped by space. It is the one seam the server reaches: opening a shell,
 // finding one to attach a socket to, ending one, and listing a space's terminals
@@ -116,6 +123,60 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 	return t, nil
 }
 
+// OpenSession launches an agent in a PTY in cwd, bound to exactly one ticket, and
+// seats it as a tab under spaceID. It is the session sibling of Open: same PTY and
+// tab plumbing, but the tab carries a Session, runs the adapter's command instead
+// of a shell, and has the one-line opener typed into it once it is up — the
+// intervention channel is a live TUI, so the opener arrives as the session's first
+// keystrokes, not an argv flag (spec, Sessions and adapters). id is chosen by the
+// caller (the same id the claim commit and payload archive are keyed by), so the
+// whole spawn refers to one session everywhere.
+//
+// It refuses with ErrSessionExists if the space already has a live session — one
+// session per space at a time. A launch failure leaves nothing seated; the caller,
+// having already written the claim, surfaces it (the stale claim stands until the
+// human acts, ADR 0008).
+func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, opener string, s Session) (*Terminal, error) {
+	m.mu.Lock()
+	for _, tid := range m.order {
+		if t := m.terms[tid]; t != nil && t.SpaceID == spaceID && t.isLiveSession() {
+			m.mu.Unlock()
+			return nil, ErrSessionExists
+		}
+	}
+	m.mu.Unlock()
+
+	sess := s
+	t, err := newProc(id, spaceID, cwd, launchSpec{
+		name:    name,
+		args:    args,
+		title:   sessionTitle(s),
+		session: &sess,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Record the tab before the read loop starts, so an agent that exits instantly
+	// cannot remove itself before it has been listed (as Open does).
+	m.mu.Lock()
+	m.terms[id] = t
+	m.order = append(m.order, id)
+	m.mu.Unlock()
+
+	t.start(func() { m.remove(id) })
+
+	// Type the opener into the live TUI. The PTY's input buffer holds it until the
+	// agent reads, so no readiness handshake is needed; a write error only means the
+	// agent already exited, which the read loop is reaping in parallel.
+	if opener != "" {
+		_, _ = t.Write([]byte(opener))
+	}
+
+	m.notify()
+	return t, nil
+}
+
 // Get returns the live terminal with id, or false if none.
 func (m *Manager) Get(id string) (*Terminal, bool) {
 	m.mu.Lock()
@@ -138,13 +199,15 @@ func (m *Manager) Close(id string) error {
 
 // Info is one terminal's public shape on the pushed model: enough for a session
 // row — its tab title, the process in its foreground, its activity, and its
-// liveness — never the PTY itself.
+// liveness — never the PTY itself. Session is set when the tab is a session (a
+// PTY bound to a ticket), nil for an ad-hoc shell.
 type Info struct {
-	ID     string
-	Title  string
-	Proc   string
-	Status string
-	Alive  bool
+	ID      string
+	Title   string
+	Proc    string
+	Status  string
+	Alive   bool
+	Session *Session
 }
 
 // ForSpace returns the space's terminals in creation order, so sessions seat top
@@ -168,9 +231,38 @@ func (m *Manager) ForSpace(spaceID string) []Info {
 		if state == "" {
 			state = model.TerminalIdle
 		}
-		out = append(out, Info{ID: t.ID, Title: t.Title, Proc: proc, Status: state, Alive: alive})
+		out = append(out, Info{ID: t.ID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Session: t.session})
 	}
 	return out
+}
+
+// isLiveSession reports whether this tab is a session (bound to a ticket) whose
+// process is still alive — the thing the one-session-per-space guard counts.
+func (t *Terminal) isLiveSession() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.session != nil && t.alive
+}
+
+// sessionTitle labels a session tab by the ticket it is bound to and the role it
+// runs as — the tab's identity is its ticket, not the agent binary in it (the
+// foreground process name is sampled separately into Proc).
+func sessionTitle(s Session) string {
+	return fmt.Sprintf("%s #%02d", s.Role, s.TicketNum)
+}
+
+// HasLiveSession reports whether spaceID already has a live session — the
+// one-session-per-space precondition the spawn path checks before it writes a
+// claim, so it never claims a ticket it cannot then seat.
+func (m *Manager) HasLiveSession(spaceID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, id := range m.order {
+		if t := m.terms[id]; t != nil && t.SpaceID == spaceID && t.isLiveSession() {
+			return true
+		}
+	}
+	return false
 }
 
 // Shutdown stops the sampler and ends every terminal — used when the server

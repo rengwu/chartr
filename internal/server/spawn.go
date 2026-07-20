@@ -1,0 +1,290 @@
+package server
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
+	"github.com/rengwu/wayfinder-harness/internal/adapter"
+	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/wayfinder-harness/internal/mapscan"
+	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/wayfinder-harness/internal/registry"
+	"github.com/rengwu/wayfinder-harness/internal/terminal"
+)
+
+// sessionRunDir is the gitignored directory, inside each space, that holds live
+// sessions' composed payloads (ADR 0005 — one inspectable file per session). It
+// sits under the harness's committed `.wayfinder-harness/` directory but is itself
+// never committed: the harness drops a `.gitignore` of `*` beside it so an agent's
+// `git commit -a` can never sweep a payload into the audit trail (ADR 0008).
+const sessionRunDir = ".wayfinder-harness/run"
+
+// handleSpawn is the product's tracer bullet (ticket 09): from a frontier ticket
+// it wires the whole chain — resolve the role's binding, hard-block a missing
+// agent, compose the payload, write the claim commit, drop the gitignored payload
+// and its archived copy, and launch the agent's own TUI with the read-this-file
+// opener typed in. The session seats as a tab bound to exactly one ticket.
+//
+// Every step that can fail does so *before* anything launches, so a refused spawn
+// leaves the space exactly as it was — except the claim, which by ADR 0008 stands
+// once written (a launch failure after a good claim is a dead session the human
+// resolves, never an automatic rollback).
+func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+	num, err := strconv.Atoi(r.PathValue("num"))
+	if err != nil {
+		httpError(w, http.StatusBadRequest, "ticket number must be an integer")
+		return
+	}
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	role := body.Role
+	if role == "" {
+		httpError(w, http.StatusBadRequest, "role is required")
+		return
+	}
+
+	// Discover fresh (as the preview does) so the spawn acts on the truth on disk,
+	// not a cached snapshot — the ticket may have been resolved or claimed since the
+	// last push.
+	slug := r.PathValue("slug")
+	m, found := findMap(mapscan.Discover(e.Path), slug)
+	if !found {
+		httpError(w, http.StatusNotFound, "no such map")
+		return
+	}
+	tk, found := findTicket(m, num)
+	if !found {
+		httpError(w, http.StatusNotFound, "no such ticket")
+		return
+	}
+
+	// Resolve the space's config once — kinds and bindings both come from it. The
+	// committed kind declaration overlays the discovered map (Discover only carries
+	// the convention guess), so the map reads classified exactly as the pushed model
+	// shows it.
+	res := s.resolve(e)
+	if kind, ok := res.Kinds[slug]; ok {
+		m.Kind = kind
+	}
+
+	// Which roles are offered follows the map's kind; an unclassified map offers
+	// none (ADR 0007). Both refusals are the operator's to resolve — classify the
+	// map, or pick a role that belongs to its lifecycle.
+	if m.Kind == model.KindUnclassified {
+		httpError(w, http.StatusConflict, "this map is unclassified and offers no sessions — classify it first")
+		return
+	}
+	if !config.KindOffersRole(m.Kind, role) {
+		httpError(w, http.StatusBadRequest, "role "+role+" is not offered by a "+m.Kind+" map")
+		return
+	}
+
+	// A session claims the takeable edge: the ticket must be on the stricter
+	// frontier (open, unclaimed, every blocker blessed). Anything else — already
+	// claimed, proposed, closed, or held behind an ungated blocker — is not a fresh
+	// spawn's to take.
+	if !tk.Frontier {
+		httpError(w, http.StatusConflict, "ticket is not on the frontier — it is not a takeable ticket")
+		return
+	}
+
+	// Resolve the binding and hard-block an absent agent *here*, before any write:
+	// the ordinary missing-CLI case is a doorstep diagnosis naming the binding, its
+	// source layer, and the local-override fix — and it blocks nothing else (story
+	// 40).
+	binding, ok := bindingFor(res, role)
+	if !ok {
+		httpError(w, http.StatusInternalServerError, "no binding for role "+role)
+		return
+	}
+	if !binding.Present {
+		httpError(w, http.StatusConflict, binding.Missing)
+		return
+	}
+
+	// One session per space at a time (spec, State model). Check before writing the
+	// claim so we never claim a ticket we cannot then seat; OpenSession re-checks
+	// under its own lock to close the race.
+	if s.terms.HasLiveSession(e.ID) {
+		httpError(w, http.StatusConflict, "this space already has a live session — end it before spawning another")
+		return
+	}
+
+	// Compose the payload fresh off disk — the same assembly the preview shows, so
+	// what a session is told is exactly what the operator inspected (ADR 0005).
+	bundle := prompt.Bundle{
+		MapName:     m.Name,
+		MapBody:     m.Body,
+		MapDir:      m.Dir,
+		TicketNum:   tk.Num,
+		TicketTitle: tk.Title,
+		TicketBody:  tk.Body,
+		Blockers:    blockersOf(m, tk),
+	}
+	payload, err := prompt.Compose(prompt.ComposeInput{
+		Role:    role,
+		DataDir: s.opts.DataDir,
+		RepoDir: e.Path,
+		Bundle:  bundle,
+	})
+	if err != nil {
+		httpError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	sessionID := newSessionID()
+	sum := sha256.Sum256([]byte(payload.Markdown))
+	payloadSHA := hex.EncodeToString(sum[:])
+	claimedAt := time.Now().UTC().Format(time.RFC3339)
+
+	ticketPath, err := ticketFilePath(m.Dir, num)
+	if err != nil {
+		httpError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	// The claim commit — the harness's one write here (ADR 0008), pathspec-limited
+	// to the ticket file and carrying the binding and payload-hash trailers.
+	if err := writeClaimCommit(e.Path, ticketPath, sessionID, claimedAt, claim{
+		SessionID:   sessionID,
+		Role:        role,
+		Agent:       binding.Adapter,
+		Model:       binding.Model,
+		PayloadSHA:  payloadSHA,
+		AdapterFrom: binding.AdapterFrom,
+		ModelFrom:   binding.ModelFrom,
+		ArgsFrom:    binding.ArgsFrom,
+	}); err != nil {
+		httpError(w, http.StatusInternalServerError, "writing the claim commit: "+err.Error())
+		return
+	}
+
+	// The composed payload, written to a gitignored path inside the space (the
+	// agent reads it there) and archived per session in harness state outside git
+	// (so "what was this session told" is answerable word for word — story 49).
+	payloadPath, err := s.writeSessionPayload(e.Path, sessionID, payload.Markdown)
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "writing the session payload: "+err.Error())
+		return
+	}
+	if err := s.archivePayload(sessionID, payload.Markdown); err != nil {
+		httpError(w, http.StatusInternalServerError, "archiving the session payload: "+err.Error())
+		return
+	}
+
+	// Resolve the binding onto this agent's command line (ADR 0002) and launch its
+	// TUI in a PTY, with the read-this-file opener typed in.
+	launch := adapter.For(binding.Adapter).Command(binding.Model, binding.Args)
+	_, err = s.terms.OpenSession(e.ID, e.Path, sessionID, launch.Name, launch.Args,
+		adapter.Opener(payloadPath), terminal.Session{
+			MapSlug:   slug,
+			TicketNum: num,
+			Role:      role,
+			Agent:     binding.Adapter,
+			Model:     binding.Model,
+		})
+	if err != nil {
+		// The claim already stands (ADR 0008: it is not rolled back). A live-session
+		// race is a conflict; a launch failure after a present-on-PATH check is an
+		// environment fault the operator sees and the dead-session halt (ticket 10)
+		// will pick up.
+		if errors.Is(err, terminal.ErrSessionExists) {
+			httpError(w, http.StatusConflict, "this space already has a live session")
+			return
+		}
+		httpError(w, http.StatusInternalServerError, "launching the session: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"sessionId":  sessionID,
+		"ticketNum":  num,
+		"role":       role,
+		"agent":      binding.Adapter,
+		"model":      binding.Model,
+		"payloadSha": payloadSHA,
+	})
+}
+
+// resolve resolves a space's whole config — bindings and committed map kinds —
+// across the three layers, exactly as the pushed model renders it, so the spawn
+// path reads kinds and a binding's PATH presence from what the operator sees.
+func (s *Server) resolve(e registry.Entry) config.Resolution {
+	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
+	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, config.WorkspaceConfigName))
+	return config.Resolve(config.Input{
+		WorkspaceTOML: workspaceTOML,
+		UserTOML:      userTOML,
+		SpacePath:     e.Path,
+	})
+}
+
+// bindingFor picks one role's resolved binding out of a resolution.
+func bindingFor(res config.Resolution, role string) (config.Resolved, bool) {
+	for _, b := range res.Bindings {
+		if string(b.Role) == role {
+			return b, true
+		}
+	}
+	return config.Resolved{}, false
+}
+
+// writeSessionPayload writes the composed payload to the gitignored run directory
+// inside the space and returns its absolute path (what the opener points the agent
+// at). It (re)writes a `.gitignore` of `*` beside the payloads on every spawn, so
+// the ignore holds even on a fresh clone that never had the run directory.
+func (s *Server) writeSessionPayload(repo, sessionID, markdown string) (string, error) {
+	runDir := filepath.Join(repo, sessionRunDir)
+	if err := os.MkdirAll(filepath.Join(runDir, sessionID), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(runDir, ".gitignore"), []byte("*\n"), 0o644); err != nil {
+		return "", err
+	}
+	path := filepath.Join(runDir, sessionID, "payload.md")
+	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// archivePayload keeps the exact payload a session received in harness-owned state
+// outside the repository (under the data root), so the record survives the space's
+// gitignored copy being cleaned and answers "what was this session told" word for
+// word (story 49).
+func (s *Server) archivePayload(sessionID, markdown string) error {
+	dir := filepath.Join(s.opts.DataDir, "sessions", sessionID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "payload.md"), []byte(markdown), 0o644)
+}
+
+// newSessionID mints a session's stable identity — the id its tab, its claim
+// trailer (claimed_by), its gitignored payload path, and its archive are all keyed
+// by, so the whole spawn refers to one session everywhere. Random rather than
+// sequential so two spaces' ids never collide and an id leaks no ordering.
+func newSessionID() string {
+	var b [6]byte
+	_, _ = rand.Read(b[:])
+	return "s" + hex.EncodeToString(b[:])
+}

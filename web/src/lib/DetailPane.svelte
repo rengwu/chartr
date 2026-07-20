@@ -1,12 +1,13 @@
 <script lang="ts">
-  import type { Map as WMap, Ticket } from './model'
+  import { rolesForKind, type Map as WMap, type Role, type Ticket } from './model'
   import { renderMarkdown, sectionOf } from './markdown'
+  import { spawnSession, ActionError } from './actions'
   import PayloadPreview from './PayloadPreview.svelte'
   import * as Card from '$lib/components/ui/card'
   import * as ScrollArea from '$lib/components/ui/scroll-area'
   import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import { Eye, X } from 'phosphor-svelte'
+  import { Eye, X, Rocket, Warning } from 'phosphor-svelte'
   import { cn } from '$lib/utils'
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -21,6 +22,7 @@
     dock = 'right',
     spaceId,
     onclose,
+    onspawned,
   }: {
     map: WMap
     ticket?: Ticket | null
@@ -28,6 +30,9 @@
     // The space the ticket belongs to — the key the payload preview fetches by.
     spaceId?: string
     onclose: () => void
+    // Called with the new session id after a successful spawn, so the enclosing
+    // chrome can make that session's tab active.
+    onspawned?: (sessionId: string) => void
   } = $props()
 
   const isMap = $derived(ticket === null)
@@ -35,6 +40,69 @@
   // The payload preview (ticket 08): from reading a ticket to seeing exactly what
   // a session on it would be told. Available only with a spaceId in hand.
   let showPreview = $state(false)
+
+  // Spawn (ticket 09): a frontier ticket on a classified map offers a session. The
+  // roles offered follow the map's kind (an unclassified map offers none), so the
+  // affordance appears only where a spawn is actually takeable. The default role is
+  // the one the ticket's type points at, clamped to what the kind offers.
+  const spawnRoles = $derived<Role[]>(rolesForKind(map.kind))
+  const canSpawn = $derived(!!spaceId && !!ticket?.frontier && spawnRoles.length > 0)
+
+  function defaultRole(type: string, offered: Role[]): Role {
+    const guess: Role =
+      type === 'research'
+        ? 'research'
+        : type === 'prototype'
+          ? 'prototype'
+          : type === 'grilling'
+            ? 'grill'
+            : 'implement'
+    return offered.includes(guess) ? guess : offered[0]
+  }
+
+  let spawnRole = $state<Role | null>(null)
+  let spawning = $state(false)
+  let spawnError = $state<string | null>(null)
+
+  // A single DetailPane instance is reused as the selection changes ticket, so a
+  // role the operator picked (or a block message they saw) on one ticket must not
+  // linger onto the next: reset both when the ticket number changes.
+  let lastNum: number | undefined = undefined
+  $effect(() => {
+    const n = ticket?.num
+    if (n !== lastNum) {
+      lastNum = n
+      spawnRole = null
+      spawnError = null
+    }
+  })
+
+  // The effective role: the operator's pick if it is still one the kind offers,
+  // else the default the ticket's type points at. Only meaningful when canSpawn,
+  // so spawnRoles is non-empty wherever this resolves to a role.
+  const activeRole = $derived<Role | null>(
+    !canSpawn || !ticket
+      ? null
+      : spawnRole && spawnRoles.includes(spawnRole)
+        ? spawnRole
+        : defaultRole(ticket.type, spawnRoles),
+  )
+
+  async function spawn() {
+    if (!spaceId || !ticket || !activeRole) return
+    spawning = true
+    spawnError = null
+    try {
+      const res = await spawnSession(spaceId, map.slug, ticket.num, activeRole)
+      onspawned?.(res.sessionId)
+    } catch (e) {
+      // A blocked spawn (absent agent, held ticket) carries the harness's specific
+      // message — surface it inline rather than as a silent no-op.
+      spawnError = e instanceof ActionError ? e.message : (e as Error).message
+    } finally {
+      spawning = false
+    }
+  }
 
   // The closing-answer section names, in the order a resolved/proposed/ruled-out
   // ticket carries them — used to show a blocker's answer inline.
@@ -186,6 +254,31 @@
             </ul>
           {/if}
         </section>
+
+        {#if canSpawn}
+          <section class="flex flex-col gap-2 rounded-md border border-border p-2.5">
+            <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Spawn a session</h3>
+            <div class="flex flex-wrap gap-1.5" role="group" aria-label="Session role">
+              {#each spawnRoles as r (r)}
+                <Button
+                  variant={activeRole === r ? 'default' : 'outline'}
+                  size="xs"
+                  aria-pressed={activeRole === r}
+                  onclick={() => (spawnRole = r)}>{r}</Button
+                >
+              {/each}
+            </div>
+            <Button size="sm" disabled={spawning || !activeRole} onclick={spawn}>
+              <Rocket />
+              {spawning ? 'Spawning…' : `Spawn ${activeRole ?? ''}`}
+            </Button>
+            {#if spawnError}
+              <p class="flex items-start gap-1.5 text-[0.7rem] text-destructive">
+                <Warning class="mt-0.5 size-3.5 shrink-0" /> <span>{spawnError}</span>
+              </p>
+            {/if}
+          </section>
+        {/if}
 
         <section class="flex flex-col gap-1.5">
           <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Session history</h3>

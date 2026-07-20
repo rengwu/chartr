@@ -38,16 +38,36 @@ const scrollbackCap = 256 << 10 // 256 KiB
 // a connection.
 const subCapacity = 256
 
-// Terminal is one ad-hoc shell: a running process attached to a PTY, its bounded
+// Session is the ticket binding a tab carries when it is a session rather than an
+// ad-hoc shell — a PTY running an agent against exactly one ticket (the
+// session↔ticket invariant, spec State model). It records what the tab renders:
+// the map and ticket the session is claimed on, the role it was spawned as, and
+// the resolved agent and model driving it. Nil on an ad-hoc shell, which carries
+// no ticket and no lifecycle. Immutable after the tab is created.
+type Session struct {
+	MapSlug   string
+	TicketNum int
+	Role      string
+	Agent     string
+	Model     string
+}
+
+// Terminal is one tab: a running process attached to a PTY, its bounded
 // server-side scrollback, and the set of browser sockets currently watching it.
 // It is created and owned by a Manager; callers reach it only through Attach,
-// Write, and Resize.
+// Write, and Resize. A tab is an ad-hoc shell by default; one opened through
+// OpenSession additionally carries a Session, which is the only thing that makes
+// it a session rather than a plain multiplexer terminal.
 type Terminal struct {
 	// ID is the terminal's stable identity within the harness process. SpaceID
 	// ties it to the space whose working tree it runs in; Title labels its tab.
 	ID      string
 	SpaceID string
 	Title   string
+
+	// session is the ticket binding when this tab is a session, nil for an ad-hoc
+	// shell. Immutable after start.
+	session *Session
 
 	// shellPID is the shell process's pid, which (being a session leader on a new
 	// PTY) is also its process-group id. The foreground group equals it exactly
@@ -242,40 +262,62 @@ func shellTitle(name string) string {
 	return base
 }
 
-// newTerminal opens a PTY and starts the shell in cwd, returning a live Terminal
+// launchSpec is the command a tab runs and the identity it seats with. An ad-hoc
+// shell fills name/args from the operator's shell; a session fills them from its
+// adapter and carries a Session plus an explicit title (the agent name is not the
+// tab's identity — the ticket it is bound to is).
+type launchSpec struct {
+	name    string
+	args    []string
+	title   string
+	session *Session
+}
+
+// newProc opens a PTY and starts spec's command in cwd, returning a live Terminal
 // whose read loop is *not* yet running. The caller registers it before starting
-// the loop (via start), so a shell that exits instantly cannot run its cleanup —
-// which drops the terminal from its Manager — before it has been recorded.
-func newTerminal(id, spaceID, cwd string) (*Terminal, error) {
+// the loop (via start), so a process that exits instantly cannot run its cleanup —
+// which drops the terminal from its Manager — before it has been recorded. It is
+// the one launch path both ad-hoc shells and sessions share (spec: the adapter's
+// spawn primitive is all a session and a shell have in common).
+func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	p, err := pty.New()
 	if err != nil {
 		return nil, fmt.Errorf("opening pty: %w", err)
 	}
-	name, args := shellCommand()
-	c := p.Command(name, args...)
+	c := p.Command(spec.name, spec.args...)
 	c.Dir = cwd
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
 	if err := c.Start(); err != nil {
 		_ = p.Close()
-		return nil, fmt.Errorf("starting %s: %w", name, err)
+		return nil, fmt.Errorf("starting %s: %w", spec.name, err)
 	}
 
-	title := shellTitle(name)
+	title := spec.title
+	if title == "" {
+		title = shellTitle(spec.name)
+	}
 	return &Terminal{
 		ID:       id,
 		SpaceID:  spaceID,
 		Title:    title,
+		session:  spec.session,
 		shellPID: c.Process.Pid,
 		pty:      p,
 		cmd:      c,
 		subs:     make(map[*subscriber]struct{}),
 		alive:    true,
 		done:     make(chan struct{}),
-		// Seat the initial view at the prompt so a just-opened shell reads idle
-		// under its own shell name before the first sample lands.
+		// Seat the initial view at the prompt so a just-opened tab reads idle under
+		// its own process name before the first sample lands.
 		proc:  title,
 		state: model.TerminalIdle,
 	}, nil
+}
+
+// newTerminal opens an ad-hoc shell in cwd (see newProc).
+func newTerminal(id, spaceID, cwd string) (*Terminal, error) {
+	name, args := shellCommand()
+	return newProc(id, spaceID, cwd, launchSpec{name: name, args: args})
 }
 
 // start begins the read loop; cleanup runs once the shell exits.

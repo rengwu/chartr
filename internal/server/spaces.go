@@ -202,13 +202,23 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 	// reconnecting browser rediscovers the open shells (story 29).
 	terminals := make([]model.Terminal, 0)
 	for _, info := range s.terms.ForSpace(e.ID) {
-		terminals = append(terminals, model.Terminal{
+		term := model.Terminal{
 			ID:     info.ID,
 			Title:  info.Title,
 			Proc:   info.Proc,
 			Status: info.Status,
 			Alive:  info.Alive,
-		})
+		}
+		if info.Session != nil {
+			term.Session = &model.Session{
+				MapSlug:   info.Session.MapSlug,
+				TicketNum: info.Session.TicketNum,
+				Role:      info.Session.Role,
+				Agent:     info.Session.Agent,
+				Model:     info.Session.Model,
+			}
+		}
+		terminals = append(terminals, term)
 	}
 
 	// Fold in the prompt library's own notices — a replacement forked from an

@@ -47,6 +47,34 @@ const (
 // Roles is the closed role set in a stable display order.
 var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement, RoleReview}
 
+// RolesForKind returns the roles a map of the given kind offers a session for
+// (spec, Sessions and roles): a planning map grills, prototypes, and researches;
+// an implementation map implements and reviews. An unclassified map (any other
+// value, including the empty string) offers none, so it stays inert until a human
+// declares its kind (ADR 0007) — the harness never spawns on a heuristic.
+func RolesForKind(kind string) []Role {
+	switch kind {
+	case model.KindPlanning:
+		return []Role{RoleGrill, RolePrototype, RoleResearch}
+	case model.KindImplementation:
+		return []Role{RoleImplement, RoleReview}
+	default:
+		return nil
+	}
+}
+
+// KindOffersRole reports whether a map of this kind offers the named role — the
+// gate the spawn path checks so an unclassified map (which offers nothing) and a
+// role that belongs to the other lifecycle are both refused.
+func KindOffersRole(kind, role string) bool {
+	for _, r := range RolesForKind(kind) {
+		if string(r) == role {
+			return true
+		}
+	}
+	return false
+}
+
 func isRole(name string) bool {
 	for _, r := range Roles {
 		if string(r) == name {

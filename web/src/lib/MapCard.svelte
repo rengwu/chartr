@@ -33,6 +33,7 @@
     floatWidth = 0,
     onclose,
     onresizestart,
+    onspawned,
   }: {
     maps: WMap[]
     // The space these maps belong to — threaded to the detail pane so its payload
@@ -45,6 +46,9 @@
     floatWidth?: number
     onclose: () => void
     onresizestart: (e: MouseEvent) => void
+    // Bubbled up from the detail pane's Spawn control (ticket 09) so the chrome can
+    // make the new session's tab active.
+    onspawned?: (sessionId: string) => void
   } = $props()
 
   // The open map, or null for the picker. A stale slug (a map that vanished)
@@ -236,7 +240,7 @@
           ]}
           bind:this={paneEl}
         >
-          <DetailPane {map} ticket={paneTicket} dock={paneDock} {spaceId} onclose={closePane} />
+          <DetailPane {map} ticket={paneTicket} dock={paneDock} {spaceId} onclose={closePane} {onspawned} />
         </div>
       {/if}
     </div>

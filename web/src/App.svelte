@@ -8,7 +8,13 @@
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
-  import { Plus, X, Check, XCircle, CircleNotch, Compass, GitBranch } from 'phosphor-svelte'
+  import { Plus, X, Check, XCircle, CircleNotch, Compass, GitBranch, Rocket } from 'phosphor-svelte'
+
+  // Zero-pad a ticket number for a session row's label (#01), matching the detail
+  // pane's ticket ids.
+  function pad(n: number): string {
+    return n < 10 ? '0' + n : String(n)
+  }
 
   // The control-socket status drives the status-bar dot: on is the neutral "up"
   // primary, connecting a pulsing muted, closed the one true problem (destructive).
@@ -221,8 +227,22 @@
                         <Check class="size-3.5 shrink-0 text-muted-foreground" aria-label="idle" />
                       {/if}
                       <span class="flex min-w-0 flex-col">
-                        <span class="truncate font-mono text-xs">{t.proc}</span>
-                        <span class="truncate text-[0.65rem] text-muted-foreground">{t.status}</span>
+                        {#if t.session}
+                          <!-- A session tab: its identity is the ticket it is bound
+                               to (role · #num), with the agent and status beneath —
+                               told apart from an ad-hoc shell, which shows its
+                               foreground process. -->
+                          <span class="flex min-w-0 items-center gap-1 text-xs font-medium">
+                            <Rocket class="size-3 shrink-0 text-primary" aria-hidden="true" />
+                            <span class="truncate">{t.session.role} #{pad(t.session.ticketNum)}</span>
+                          </span>
+                          <span class="truncate text-[0.65rem] text-muted-foreground">
+                            {t.session.agent} · {t.status}
+                          </span>
+                        {:else}
+                          <span class="truncate font-mono text-xs">{t.proc}</span>
+                          <span class="truncate text-[0.65rem] text-muted-foreground">{t.status}</span>
+                        {/if}
                       </span>
                     </button>
                     <Button
@@ -275,7 +295,12 @@
         <RegisterForm variant="first-run" onRegistered={(id) => (selectedId = id)} />
       </div>
     {:else if selected}
-      <SpacePane space={selected} {activeTerm} onOpenShell={() => openShell(selected)} />
+      <SpacePane
+        space={selected}
+        {activeTerm}
+        onOpenShell={() => openShell(selected)}
+        onspawned={(id) => (activeTermId = id)}
+      />
     {/if}
   </main>
 

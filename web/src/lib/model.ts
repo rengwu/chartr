@@ -68,19 +68,34 @@ export interface Map {
 // the Go model.Terminal* states).
 export type TerminalStatus = 'idle' | 'working' | 'exited'
 
-// Terminal is one open ad-hoc shell — a session row under its space in the
-// sidebar. It is deliberately not a session in the lifecycle sense (no ticket,
-// no review, ended by the human): its raw bytes travel on the separate terminal
-// socket keyed by `id`, never in this snapshot. `alive` goes false the instant
-// the shell exits.
+// Session is a tab's ticket binding when it is a session — a PTY running an agent
+// against exactly one ticket (ticket 09) — rather than an ad-hoc shell. It names
+// the map and ticket the session is claimed on, the role it was spawned as, and
+// the resolved agent and model. Its presence is what tells a session tab apart
+// from a plain shell in the sidebar.
+export interface Session {
+  mapSlug: string
+  ticketNum: number
+  role: string
+  agent: string
+  model: string
+}
+
+// Terminal is one tab under its space in the sidebar. Without a `session` it is an
+// ad-hoc shell — deliberately not a session (no ticket, no review, ended by the
+// human); with one it is a session bound to a ticket. Its raw bytes travel on the
+// separate terminal socket keyed by `id`, never in this snapshot. `alive` goes
+// false the instant the process exits.
 export interface Terminal {
   id: string
   title: string
-  // The process currently in the shell's foreground — the shell itself while at
-  // the prompt, or the command it is running. Falls back to the shell title.
+  // The process currently in the tab's foreground — the shell (or agent) itself
+  // while at its prompt, or a command it is running. Falls back to the title.
   proc: string
   status: TerminalStatus
   alive: boolean
+  // Set only when this tab is a session; absent on an ad-hoc shell.
+  session?: Session
 }
 
 export interface Space {
@@ -138,3 +153,13 @@ export interface Payload {
 // order — what the preview lets the operator choose between.
 export const ROLES = ['grill', 'prototype', 'research', 'implement', 'review'] as const
 export type Role = (typeof ROLES)[number]
+
+// rolesForKind mirrors the backend (config.RolesForKind): which roles a map of a
+// given kind offers to spawn. A planning map grills, prototypes, and researches;
+// an implementation map implements and reviews; an unclassified map offers none,
+// so its tickets show no spawn affordance until a human declares its kind.
+export function rolesForKind(kind: Kind): Role[] {
+  if (kind === 'planning') return ['grill', 'prototype', 'research']
+  if (kind === 'implementation') return ['implement', 'review']
+  return []
+}
