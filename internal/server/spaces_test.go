@@ -128,7 +128,7 @@ func TestForgetNotDestroy(t *testing.T) {
 	if got := worktreeFiles(t, repo); !equalStrings(got, files) {
 		t.Errorf("register changed the repo tree:\n before %v\n after  %v", files, got)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness/config.toml")); !os.IsNotExist(err) {
 		t.Error("register wrote a committed config file into the repo; it must not")
 	}
 
@@ -160,7 +160,7 @@ func TestForgetNotDestroy(t *testing.T) {
 }
 
 // The registry is a rebuildable index: deleting it costs re-adding folders,
-// never work. A harness started against a data dir whose registry.toml is gone
+// never work. A harness started against a data dir whose spaces.toml is gone
 // shows no spaces, and re-registering the untouched repo restores it.
 func TestRegistryLossIsRebuildable(t *testing.T) {
 	dataDir := t.TempDir()
@@ -177,7 +177,7 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 	}
 
 	// Lose the registry, then bring a fresh harness up on the same data dir.
-	if err := os.Remove(filepath.Join(dataDir, "registry.toml")); err != nil {
+	if err := os.Remove(filepath.Join(dataDir, "spaces.toml")); err != nil {
 		t.Fatalf("removing registry: %v", err)
 	}
 	second := harnesstest.Start(t, harnesstest.WithDataDir(dataDir))
@@ -207,7 +207,7 @@ func TestBindingMergeMatrix(t *testing.T) {
 	repo := harnesstest.NewSpaceRepo(t)
 
 	// Committed workspace config: full bindings for two roles.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness.toml", `
+	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
 [roles.implement]
 adapter = "claude"
 model = "sonnet-ws"
@@ -256,7 +256,7 @@ adapter = "opencode"
 func TestCommittedAutopilotIgnoredWithWarning(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness.toml", "autopilot = true\n")
+	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", "autopilot = true\n")
 
 	resp := register(t, h, repo)
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
@@ -280,7 +280,7 @@ func TestAdapterPresenceBadge(t *testing.T) {
 
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness.toml", `
+	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
 [roles.implement]
 adapter = "fake-agent"
 

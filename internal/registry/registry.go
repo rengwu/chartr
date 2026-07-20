@@ -4,7 +4,7 @@
 // authoritative — maps, committed workspace config, git history — lives in the
 // repositories; the registry holds only registered paths and each space's local
 // pin and recency. Losing it costs re-adding folders, never work, so a
-// deleted registry.toml is not an error: the operator re-registers and each
+// deleted spaces.toml is not an error: the operator re-registers and each
 // repo picks up exactly as it sits.
 //
 // Registering a folder that is not yet a git repository runs `git init`,
@@ -36,22 +36,22 @@ type Entry struct {
 	LastActive time.Time `toml:"last_active"`
 }
 
-// Registry is the in-memory registry backed by <dataDir>/registry.toml. It is
+// Registry is the in-memory registry backed by <dataDir>/spaces.toml. It is
 // safe for concurrent use: the HTTP action handlers mutate it from many
 // goroutines, and every mutation persists the whole file atomically.
 type Registry struct {
-	path string // the registry.toml file
+	path string // the spaces.toml file
 
 	mu      sync.Mutex
 	entries map[string]Entry // keyed by ID
 }
 
-// Load opens the registry under dataDir, reading registry.toml if it exists. A
+// Load opens the registry under dataDir, reading spaces.toml if it exists. A
 // missing file yields an empty registry — that is the first-run state, not an
 // error, and the same state a lost registry recovers from.
 func Load(dataDir string) (*Registry, error) {
 	r := &Registry{
-		path:    filepath.Join(dataDir, "registry.toml"),
+		path:    filepath.Join(dataDir, "spaces.toml"),
 		entries: map[string]Entry{},
 	}
 	data, err := os.ReadFile(r.path)

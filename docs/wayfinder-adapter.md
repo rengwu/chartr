@@ -22,7 +22,8 @@ already knows the answer to: charting with `wayfinder` produces a planning map;
 ever asked to.
 
 **When you create a map, append its kind to the space's committed harness
-config, `.wayfinder-harness.toml` at the repo root:**
+config, `.wayfinder-harness/config.toml` (create the `.wayfinder-harness/`
+directory if the space has none yet):**
 
 ```toml
 [maps."<slug>"]

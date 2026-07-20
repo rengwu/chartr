@@ -9,7 +9,7 @@
 
 # The space registry is user-config runtime state (ticket 02); a copy lands at
 # the repo root when the harness runs with cwd here — never committed.
-/registry.toml
+/spaces.toml
 
 # The materialized prompt library (ticket 08) is user-config runtime state too: a
 # copy lands under the data root — the repo root when run with cwd here — as the

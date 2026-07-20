@@ -228,9 +228,13 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 }
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash
-// mid-write cannot leave the operator's committed config truncated. The parent
-// directory is the space repo, which already exists.
+// mid-write cannot leave the operator's committed config truncated. The committed
+// config sits under `.wayfinder-harness/`, which a space may not have yet, so the
+// parent directory is created first.
 func writeFileAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err

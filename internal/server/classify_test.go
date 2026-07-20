@@ -39,7 +39,7 @@ func TestClassifyDeclaresKindAndPreservesConfig(t *testing.T) {
 	repo := harnesstest.NewSpaceRepo(t)
 
 	// A pre-existing committed config with a role binding the append must keep.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness.toml", `
+	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
 [roles.implement]
 model = "sonnet-ws"
 `)
@@ -71,7 +71,7 @@ model = "sonnet-ws"
 	}
 
 	// The declaration landed in the committed layer, keyed by slug.
-	cfg := readFile(t, filepath.Join(repo, ".wayfinder-harness.toml"))
+	cfg := readFile(t, filepath.Join(repo, ".wayfinder-harness/config.toml"))
 	if !strings.Contains(cfg, "widget") || !strings.Contains(cfg, "implementation") {
 		t.Errorf("committed config does not declare the kind:\n%s", cfg)
 	}
@@ -203,7 +203,7 @@ func TestClassifyRejectsBadInput(t *testing.T) {
 func TestUnrecognisedCommittedKindStaysInert(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness.toml", `
+	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
 [maps."widget"]
 kind = "planing"
 `)

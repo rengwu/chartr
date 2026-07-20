@@ -8,8 +8,8 @@ This repo plans with wayfinder maps under `.plan/`, and it is a space the harnes
 watches. When you chart a map with `/wayfinder` or graduate one with
 `/to-tickets`, follow **`docs/wayfinder-adapter.md`** on top of the vendored
 local-markdown adapter: it adds one step — **record the new map's kind**
-(`planning` / `implementation`) in the committed `.wayfinder-harness.toml` at
-creation, keyed by map slug, and commit it with the map. Recording kind on
+(`planning` / `implementation`) in the committed `.wayfinder-harness/config.toml`
+at creation, keyed by map slug, and commit it with the map. Recording kind on
 creation is how the harness avoids ever guessing or gating a map on a heuristic
 (ADR 0007); a map that arrives without it stays inert until a human confirms its
 kind in the star-map panel.

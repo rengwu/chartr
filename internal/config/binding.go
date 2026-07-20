@@ -24,9 +24,12 @@ import (
 
 // WorkspaceConfigName is the committed workspace config file in a space's repo
 // (ADR 0009): the shared, versioned, portable layer holding role bindings and
-// map kinds. Config owns the filename because it owns the file's shape — the
-// server reads and writes it through this package.
-const WorkspaceConfigName = ".wayfinder-harness.toml"
+// map kinds. It lives under `.wayfinder-harness/` alongside the space's committed
+// prompt overlays, so everything the harness commits into a space sits in one
+// directory rather than a loose file one keystroke away from that directory's
+// name. Config owns the filename because it owns the file's shape — the server
+// reads and writes it through this package.
+const WorkspaceConfigName = ".wayfinder-harness/config.toml"
 
 // Role is one of the closed set of things a session is spawned to do (ADR
 // 0002). The set is fixed here; config that names anything outside it is
