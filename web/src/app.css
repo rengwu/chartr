@@ -166,6 +166,75 @@
   --sidebar-ring: oklch(0.58 0.031 107.3);
 }
 
+/* A small, token-driven prose scale for the rendered-markdown surfaces (ticket
+   operator bodies, blocker answers, payload segments) — a lightweight stand-in
+   for a typography plugin, styled entirely off the shared tokens so it tracks
+   the theme instead of hard-coded colour. Shared by DetailPane and
+   PayloadPreview rather than duplicated per surface. */
+@layer components {
+  .prose-sm {
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+  .prose-sm :where(h3, h4, h5, h6) {
+    margin: 0.75em 0 0.3em;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .prose-sm :where(h3, h4, h5, h6):first-child {
+    margin-top: 0;
+  }
+  .prose-sm :where(p) {
+    margin: 0.4em 0;
+  }
+  .prose-sm :where(ul) {
+    margin: 0.4em 0;
+    padding-left: 1.25em;
+    list-style: disc;
+  }
+  .prose-sm :where(li) {
+    margin: 0.15em 0;
+  }
+  .prose-sm :where(a) {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-sm :where(strong) {
+    font-weight: 600;
+  }
+  .prose-sm :where(code) {
+    background: var(--muted);
+    color: var(--foreground);
+    border-radius: var(--radius-sm);
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  .prose-sm :where(pre) {
+    background: var(--muted);
+    border-radius: var(--radius-md);
+    padding: 0.6em 0.75em;
+    overflow-x: auto;
+  }
+  .prose-sm :where(pre code) {
+    background: transparent;
+    padding: 0;
+  }
+  .prose-sm :where(blockquote) {
+    border-left: 2px solid var(--border);
+    padding-left: 0.75em;
+    color: var(--muted-foreground);
+    margin: 0.5em 0;
+  }
+  .prose-sm :where(hr) {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0.75em 0;
+  }
+}
+
 /* Base seam: the default border colour follows the token (Tailwind v4 Preflight
    otherwise defaults borders to currentColor), the app fills the viewport, and
    the document surface + type come from the tokens so bare elements read on the

@@ -3,6 +3,11 @@
   import { ROLES, type Payload, type PayloadPart, type Role } from './model'
   import { previewPayload } from './actions'
   import { renderMarkdown } from './markdown'
+  import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import * as ScrollArea from '$lib/components/ui/scroll-area'
+  import { Warning } from 'phosphor-svelte'
+  import { cn } from '$lib/utils'
 
   // The payload preview (ticket 08, stories 45–49): for a chosen ticket and role,
   // exactly what a session would be told, assembled from the resolved prompt
@@ -89,244 +94,91 @@
     context: 'context',
   }
 
+  // The palette has one chromatic token (--destructive); four layers are told
+  // apart by weight instead of hue: built-in (the shipped baseline) is the
+  // lightest touch, workspace and user step up in emphasis for what a human
+  // committed or configured locally, and context (assembled fresh per session)
+  // is set apart as the odd one out.
+  const layerVariant: Record<string, BadgeVariant> = {
+    'built-in': 'outline',
+    workspace: 'secondary',
+    user: 'default',
+    context: 'ghost',
+  }
+
   function partKindLabel(p: PayloadPart): string {
     return p.kind === 'prompt' ? 'prompt' : 'context'
   }
 </script>
 
 <Modal {open} title="Payload preview" wide {onClose}>
-  <div class="pp">
-    <p class="pp-lede">
-      What a <strong>session</strong> on <code>#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code>
-      would be told — the resolved prompt library and the context bundle, assembled fresh. Each
-      block is tagged with the layer it came from.
+  <div class="flex h-[65vh] flex-col gap-3">
+    <p class="text-xs leading-relaxed text-muted-foreground">
+      What a <strong class="font-medium text-foreground">session</strong> on
+      <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground break-words"
+        >#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code
+      >
+      would be told — the resolved prompt library and the context bundle, assembled fresh. Each block is
+      tagged with the layer it came from.
     </p>
 
-    <div class="pp-roles" role="group" aria-label="Preview role">
+    <div class="flex flex-wrap gap-1.5" role="group" aria-label="Preview role">
       {#each ROLES as r (r)}
-        <button
-          class="pp-role"
-          class:active={role === r}
+        <Button
+          variant={role === r ? 'default' : 'outline'}
+          size="sm"
+          class="capitalize"
           aria-pressed={role === r}
-          onclick={() => (role = r)}>{r}</button
+          onclick={() => (role = r)}>{r}</Button
         >
       {/each}
     </div>
 
     {#if loading}
-      <p class="pp-hint">Composing…</p>
+      <p class="text-sm text-muted-foreground">Composing…</p>
     {:else if error}
-      <p class="pp-error">Couldn’t compose the payload: {error}</p>
+      <p class="text-sm text-destructive">Couldn’t compose the payload: {error}</p>
     {:else if payload}
-      {#if payload.warnings?.length}
-        <ul class="pp-warnings">
-          {#each payload.warnings as w}
-            <li class="pp-warning"><span aria-hidden="true">⚠</span> {w}</li>
-          {/each}
-        </ul>
-      {/if}
+      <ScrollArea.Root class="min-h-0 flex-1">
+        <div class="flex flex-col gap-3 pr-3">
+          {#if payload.warnings?.length}
+            <ul class="flex flex-col gap-1.5">
+              {#each payload.warnings as w}
+                <li class="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs leading-relaxed">
+                  <Warning class="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span>{w}</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
 
-      <ol class="pp-parts">
-        {#each payload.parts as part (part.name)}
-          <li class="pp-part" class:context={part.kind === 'context'}>
-            <div class="pp-part-head">
-              <span class="pp-part-name">{part.name}</span>
-              <span class="pp-part-kind">{partKindLabel(part)}</span>
-            </div>
-            {#each part.segments as seg}
-              <div class="pp-seg">
-                <span class="pp-seg-prov">
-                  <span class="pp-chip" data-layer={seg.layer}>{layerLabel[seg.layer] ?? seg.layer}</span>
-                  {#if seg.label}<span class="pp-seg-label">{seg.label}</span>{/if}
-                </span>
-                <div class="pp-md">{@html renderMarkdown(seg.text)}</div>
-              </div>
+          <ol class="flex flex-col gap-2.5">
+            {#each payload.parts as part (part.name)}
+              <li class={cn('rounded-md border border-border p-2.5', part.kind === 'context' && 'bg-muted/30')}>
+                <div class="mb-1 flex items-baseline justify-between gap-2">
+                  <span class="text-sm font-medium">{part.name}</span>
+                  <span class="text-[0.65rem] tracking-wide text-muted-foreground uppercase">{partKindLabel(part)}</span>
+                </div>
+                {#each part.segments as seg, i}
+                  <div class={cn(i > 0 && 'mt-1.5 border-t border-dashed border-border pt-1.5')}>
+                    <div class="mb-1 flex items-center gap-1.5">
+                      <Badge variant={layerVariant[seg.layer] ?? 'outline'}>{layerLabel[seg.layer] ?? seg.layer}</Badge>
+                      {#if seg.label}<span class="text-[0.7rem] text-muted-foreground">{seg.label}</span>{/if}
+                    </div>
+                    <div class="prose-sm">{@html renderMarkdown(seg.text)}</div>
+                  </div>
+                {/each}
+              </li>
             {/each}
-          </li>
-        {/each}
-      </ol>
+          </ol>
 
-      <details class="pp-raw">
-        <summary>Composed document (what gets written to the payload file)</summary>
-        <pre class="pp-pre">{payload.markdown}</pre>
-      </details>
+          <details class="text-xs">
+            <summary class="cursor-pointer text-muted-foreground">Composed document (what gets written to the payload file)</summary>
+            <pre
+              class="mt-1.5 overflow-x-auto rounded-md bg-muted p-2.5 font-mono text-[0.7rem] leading-relaxed break-words whitespace-pre-wrap">{payload.markdown}</pre>
+          </details>
+        </div>
+      </ScrollArea.Root>
     {/if}
   </div>
 </Modal>
-
-<style>
-  .pp {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    width: 100%;
-    /* Long words, paths, and code spans wrap rather than force the card wider. */
-    overflow-wrap: anywhere;
-  }
-  .pp-lede {
-    margin: 0;
-    color: var(--muted, #8a94a6);
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
-  .pp-lede code {
-    color: var(--text, inherit);
-    overflow-wrap: anywhere;
-  }
-  .pp-roles {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-  }
-  .pp-role {
-    border: 1px solid var(--border, #2b3242);
-    background: transparent;
-    color: var(--fg, inherit);
-    border-radius: 999px;
-    padding: 0.2rem 0.7rem;
-    font-size: 0.82rem;
-    cursor: pointer;
-    text-transform: capitalize;
-  }
-  .pp-role:hover {
-    border-color: var(--accent, #6ea8fe);
-  }
-  .pp-role.active {
-    background: var(--accent, #6ea8fe);
-    border-color: var(--accent, #6ea8fe);
-    color: #0b0e14;
-    font-weight: 600;
-  }
-  .pp-hint,
-  .pp-error {
-    margin: 0;
-    font-size: 0.9rem;
-  }
-  .pp-error {
-    color: var(--danger, #f0728a);
-  }
-  .pp-warnings {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .pp-warning {
-    background: color-mix(in srgb, #d9a441 16%, transparent);
-    border: 1px solid color-mix(in srgb, #d9a441 45%, transparent);
-    border-radius: 6px;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.83rem;
-    line-height: 1.4;
-  }
-  .pp-parts {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  .pp-part {
-    border: 1px solid var(--border, #2b3242);
-    border-radius: 8px;
-    padding: 0.55rem 0.7rem;
-    background: var(--panel, #141824);
-  }
-  .pp-part.context {
-    background: color-mix(in srgb, var(--panel, #141824) 88%, #6ea8fe 12%);
-  }
-  .pp-part-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.3rem;
-  }
-  .pp-part-name {
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-  .pp-part-kind {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted, #8a94a6);
-  }
-  .pp-seg + .pp-seg {
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px dashed var(--border, #2b3242);
-  }
-  .pp-seg-prov {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-bottom: 0.25rem;
-  }
-  .pp-chip {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-radius: 4px;
-    padding: 0.05rem 0.4rem;
-    border: 1px solid var(--border, #2b3242);
-    color: var(--muted, #8a94a6);
-  }
-  .pp-chip[data-layer='built-in'] {
-    border-color: #4a5568;
-  }
-  .pp-chip[data-layer='user'] {
-    border-color: #6ea8fe;
-    color: #6ea8fe;
-  }
-  .pp-chip[data-layer='workspace'] {
-    border-color: #57c98a;
-    color: #57c98a;
-  }
-  .pp-chip[data-layer='context'] {
-    border-color: #b48ce8;
-    color: #b48ce8;
-  }
-  .pp-seg-label {
-    font-size: 0.72rem;
-    color: var(--muted, #8a94a6);
-  }
-  .pp-md {
-    font-size: 0.86rem;
-    line-height: 1.5;
-  }
-  .pp-md :global(h3),
-  .pp-md :global(h4),
-  .pp-md :global(h5) {
-    font-size: 0.9rem;
-    margin: 0.4rem 0 0.2rem;
-  }
-  .pp-md :global(p) {
-    margin: 0.3rem 0;
-  }
-  .pp-md :global(pre) {
-    overflow-x: auto;
-    background: color-mix(in srgb, #000 25%, transparent);
-    padding: 0.5rem;
-    border-radius: 6px;
-  }
-  .pp-raw summary {
-    cursor: pointer;
-    font-size: 0.82rem;
-    color: var(--muted, #8a94a6);
-  }
-  .pp-pre {
-    margin: 0.4rem 0 0;
-    background: color-mix(in srgb, #000 25%, transparent);
-    padding: 0.6rem;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-</style>

@@ -2,6 +2,12 @@
   import type { Map as WMap, Ticket } from './model'
   import { renderMarkdown, sectionOf } from './markdown'
   import PayloadPreview from './PayloadPreview.svelte'
+  import * as Card from '$lib/components/ui/card'
+  import * as ScrollArea from '$lib/components/ui/scroll-area'
+  import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
+  import { Button } from '$lib/components/ui/button'
+  import { Eye, X } from 'phosphor-svelte'
+  import { cn } from '$lib/utils'
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
   // click. It renders one ticket — question, Done-when, its blockers with their
@@ -59,6 +65,20 @@
     unknown: 'missing',
   }
 
+  // resolved reads as the bold/solid "done" state (the palette's only accent
+  // besides destructive is the neutral --primary — there is no green to key a
+  // literal success tint off); proposed/claimed share the lighter --primary-
+  // adjacent secondary emphasis the ticket calls for; out_of_scope stays muted;
+  // an unresolved blocker reference is the one true "problem" and gets destructive.
+  const statusVariant: Record<string, BadgeVariant> = {
+    open: 'outline',
+    claimed: 'secondary',
+    proposed: 'secondary',
+    resolved: 'default',
+    out_of_scope: 'outline',
+    unknown: 'destructive',
+  }
+
   function pad(n: number): string {
     return n < 10 ? '0' + n : String(n)
   }
@@ -86,95 +106,95 @@
   }
 </script>
 
-<aside class="detail-pane" class:bottom={dock === 'bottom'} aria-label={isMap ? 'Map material' : 'Ticket detail'}>
-  <header class="dp-bar">
-    {#if isMap}
-      <span class="dp-eyebrow">Map material</span>
-      <span class="dp-title">{map.name}</span>
-    {:else if ticket}
-      <span class="dp-eyebrow">
-        #{pad(ticket.num)} · {ticket.type}
-        <span class="dp-status" data-status={ticket.status}>{statusLabel[ticket.status] ?? ticket.status}</span>
-        {#if ticket.frontier}<span class="dp-status frontier">frontier</span>{/if}
-        {#if spaceId}
-          <button
-            class="dp-preview"
-            title="Preview the payload a session on this ticket would be told"
-            onclick={() => (showPreview = true)}>⧉ payload</button
-          >
-        {/if}
-      </span>
-      <span class="dp-title">{ticket.title}</span>
-    {/if}
-    <button class="dp-close" aria-label="Close pane (Esc)" title="Close (Esc)" onclick={onclose}>×</button>
-  </header>
+<Card.Root
+  role="complementary"
+  aria-label={isMap ? 'Map material' : 'Ticket detail'}
+  class={cn('detail-pane h-full min-h-0 flex-col gap-0 overflow-hidden py-0', dock === 'bottom' && 'bottom')}
+>
+  <Card.Header class="flex flex-row items-start justify-between gap-2 border-b border-border px-3 py-2.5">
+    <div class="flex min-w-0 flex-col gap-1">
+      {#if isMap}
+        <span class="text-[0.7rem] font-medium tracking-wide text-muted-foreground uppercase">Map material</span>
+        <span class="truncate text-sm font-medium">{map.name}</span>
+      {:else if ticket}
+        <span class="flex flex-wrap items-center gap-1.5 text-[0.7rem] text-muted-foreground">
+          <span class="font-mono">#{pad(ticket.num)}</span>
+          <span aria-hidden="true">·</span>
+          <span>{ticket.type}</span>
+          <Badge variant={statusVariant[ticket.status] ?? 'outline'} class={ticket.status === 'out_of_scope' ? 'text-muted-foreground' : ''}>
+            {statusLabel[ticket.status] ?? ticket.status}
+          </Badge>
+          {#if ticket.frontier}
+            <Badge variant="outline" class="border-primary/50 text-primary">frontier</Badge>
+          {/if}
+          {#if spaceId}
+            <Button
+              variant="ghost"
+              size="xs"
+              title="Preview the payload a session on this ticket would be told"
+              onclick={() => (showPreview = true)}
+            >
+              <Eye /> payload
+            </Button>
+          {/if}
+        </span>
+        <span class="truncate text-sm font-medium">{ticket.title}</span>
+      {/if}
+    </div>
+    <Button variant="ghost" size="icon-sm" aria-label="Close pane (Esc)" title="Close (Esc)" onclick={onclose}>
+      <X />
+    </Button>
+  </Card.Header>
 
-  <div class="dp-body">
-    {#if isMap}
-      {#if map.destination}
-        <section class="dp-section">
-          <h3 class="dp-h">Destination</h3>
-          <div class="dp-md">{@html renderMarkdown(map.destination)}</div>
+  <ScrollArea.Root class="min-h-0 flex-1">
+    <Card.Content class="flex flex-col gap-4 p-3">
+      {#if isMap}
+        {#if map.destination}
+          <section class="flex flex-col gap-1.5">
+            <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Destination</h3>
+            <div class="prose-sm">{@html renderMarkdown(map.destination)}</div>
+          </section>
+        {/if}
+        <section>
+          <div class="prose-sm">{@html renderMarkdown(stripDestination(map.body ?? ''))}</div>
+        </section>
+      {:else if ticket}
+        <section>
+          <div class="prose-sm">{@html renderMarkdown(ticket.body ?? '')}</div>
+        </section>
+
+        <section class="flex flex-col gap-1.5">
+          <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Blockers</h3>
+          {#if blockers.length === 0}
+            <p class="text-xs text-muted-foreground">None — this ticket depends on nothing.</p>
+          {:else}
+            <ul class="flex flex-col gap-2">
+              {#each blockers as b (b.num)}
+                <li class="rounded-md border border-border p-2.5">
+                  <div class="mb-1 flex items-center gap-1.5 text-xs">
+                    <span class="font-mono text-muted-foreground">#{pad(b.num)}</span>
+                    <span class="flex-1 truncate font-medium">{b.title}</span>
+                    <Badge variant={statusVariant[b.status] ?? 'outline'}>{statusLabel[b.status] ?? b.status}</Badge>
+                  </div>
+                  {#if b.answer}
+                    <div class="prose-sm">{@html renderMarkdown(b.answer)}</div>
+                  {:else}
+                    <p class="text-xs text-muted-foreground">Not yet answered.</p>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+
+        <section class="flex flex-col gap-1.5">
+          <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Session history</h3>
+          <p class="text-xs text-muted-foreground">No sessions on this ticket yet.</p>
         </section>
       {/if}
-      <section class="dp-section">
-        <div class="dp-md">{@html renderMarkdown(stripDestination(map.body ?? ''))}</div>
-      </section>
-    {:else if ticket}
-      <section class="dp-section">
-        <div class="dp-md">{@html renderMarkdown(ticket.body ?? '')}</div>
-      </section>
-
-      <section class="dp-section">
-        <h3 class="dp-h">Blockers</h3>
-        {#if blockers.length === 0}
-          <p class="dp-empty">None — this ticket depends on nothing.</p>
-        {:else}
-          <ul class="dp-blockers">
-            {#each blockers as b (b.num)}
-              <li class="dp-blocker">
-                <div class="dp-blocker-head">
-                  <span class="dp-blocker-num">#{pad(b.num)}</span>
-                  <span class="dp-blocker-title">{b.title}</span>
-                  <span class="dp-status" data-status={b.status}>{statusLabel[b.status] ?? b.status}</span>
-                </div>
-                {#if b.answer}
-                  <div class="dp-md dp-blocker-answer">{@html renderMarkdown(b.answer)}</div>
-                {:else}
-                  <p class="dp-empty">Not yet answered.</p>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </section>
-
-      <section class="dp-section">
-        <h3 class="dp-h">Session history</h3>
-        <p class="dp-empty">No sessions on this ticket yet.</p>
-      </section>
-    {/if}
-  </div>
-</aside>
-
-<style>
-  .dp-preview {
-    border: 1px solid var(--border, #2b3242);
-    background: transparent;
-    color: var(--muted, #8a94a6);
-    border-radius: 4px;
-    padding: 0 5px;
-    font-size: 10px;
-    line-height: 1.5;
-    cursor: pointer;
-    white-space: nowrap;
-    font-family: inherit;
-  }
-  .dp-preview:hover {
-    border-color: var(--accent, #6ea8fe);
-    color: var(--text, inherit);
-  }
-</style>
+    </Card.Content>
+  </ScrollArea.Root>
+</Card.Root>
 
 {#if !isMap && ticket && spaceId}
   <PayloadPreview

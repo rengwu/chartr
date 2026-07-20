@@ -1,5 +1,8 @@
 <script lang="ts">
   import { registerSpace, ActionError } from './actions'
+  import { Input } from '$lib/components/ui/input'
+  import { Button } from '$lib/components/ui/button'
+  import { cn } from '$lib/utils'
 
   // The register affordance, used two ways: as the first-run screen's headline
   // action, and inline in the sidebar for adding a further space.
@@ -40,18 +43,18 @@
   }
 </script>
 
-<form class="register {variant}" onsubmit={submit}>
+<form class={cn('flex flex-col gap-3', variant === 'first-run' && 'w-full max-w-sm')} onsubmit={submit}>
   {#if variant === 'first-run'}
-    <h1 class="register-title">Register your first space</h1>
-    <p class="register-sub">
+    <h1 class="text-lg font-semibold">Register your first space</h1>
+    <p class="text-sm text-muted-foreground">
       Point the harness at a project folder. If it isn’t a git repository yet, one is
       initialized there — announced, never silent.
     </p>
   {/if}
 
-  <div class="register-row">
-    <input
-      class="register-input"
+  <div class="flex gap-2">
+    <Input
+      class="flex-1"
       type="text"
       placeholder="/path/to/your/project"
       bind:value={path}
@@ -60,11 +63,11 @@
       autocomplete="off"
       aria-label="Project folder to register"
     />
-    <button class="btn primary" type="submit" disabled={busy || path.trim() === ''}>
+    <Button type="submit" disabled={busy || path.trim() === ''}>
       {busy ? 'Registering…' : 'Register'}
-    </button>
+    </Button>
   </div>
 
-  {#if error}<p class="register-error" role="alert">{error}</p>{/if}
-  {#if notice}<p class="register-notice">{notice}</p>{/if}
+  {#if error}<p class="text-xs text-destructive" role="alert">{error}</p>{/if}
+  {#if notice}<p class="text-xs text-muted-foreground">{notice}</p>{/if}
 </form>
