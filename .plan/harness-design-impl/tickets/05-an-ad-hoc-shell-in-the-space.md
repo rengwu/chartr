@@ -11,7 +11,7 @@ The multiplexer baseline: a "+" by the session tabs opens a real shell in the sp
 
 Done when: in the browser, a shell opens in the working tree, echoes keystrokes, and survives detach/reattach with scrollback replayed; process-boundary tests drive the terminal socket directly (spawn, write, read back, reattach and assert replay); a mapless space is fully usable this way.
 
-## Proposed Answer
+## Answer
 
 An ad-hoc shell now opens in a space's working tree and streams over its own binary terminal socket, and a mapless space is fully usable as a plain multiplexer. Ad-hoc shells are deliberately outside the session model (spec, State model): no ticket, no lifecycle, ended only by the human — they share nothing with a real session but the PTY primitive. Layout:
 
