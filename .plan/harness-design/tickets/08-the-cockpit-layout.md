@@ -45,3 +45,11 @@ Two calls above were revisited while making [ticket 11's asset](../assets/11-spa
 - **Ticket detail is a responsive pane, not a fixed bottom sheet.** The "bottom sheet on the map card, capped at half its height" becomes a pane that **docks to the right**, and **re-docks to the bottom (capped at 50% of the map panel) when the map panel is narrow** (< ~780px). The camera-eases-the-star-into-free-space behaviour is kept and generalised: it measures the pane's actual size (its bottom height is content-dependent up to the cap) and seats the star in whatever space the pane leaves.
 
 Everything else in this Answer stands. The successors' inheritances are unchanged; ticket 10's hub still leads with the brief, and where it reused the bottom-sheet framing it may adopt the same responsive pane. Prototype still throwaway; this amendment is the decision.
+
+## Amendment (2026-07-20 — operator-approved, via ticket 06/07 implementation)
+
+Building the docked split (tickets 06–07) refined one call from the 2026-07-19 amendment above.
+
+- **The terminal-priority split yields at the small end.** Above, docked, "the terminal holds its pixel width while the map (flex) absorbs window-resize slack." That holds while both panes fit — but on a window too narrow to seat the terminal's frozen width *and* the map, the earlier rule left the map to collapse to nothing. Corrected to prioritise the new behaviour: the docked map keeps a min-width floor (300px) and the terminal becomes shrinkable to its own floor (240px), so a shrinking window makes the **terminal** yield rather than the map vanish. The frozen-width feel is unchanged wherever both panes fit; the yield is confined to the narrow tail, and neither pane ever disappears.
+
+Everything else in the prior amendment stands. (Not recorded here as a decision but noted for the badge's later home: the summon affordance moved from the map's edge handle to a toggle in the space header, so ticket 08's "handle carries the Next up badge" needs a new anchor when the action station lands.)
