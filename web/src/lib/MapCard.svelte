@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import type { Map as WMap, Ticket } from './model'
   import StarMap from './StarMap.svelte'
   import DetailPane from './DetailPane.svelte'
+  import { decideDock, type Dock } from './starmap/dock'
 
   // The star-map presented as a card over the terminal (spec, The interface):
   // summoned, never toggled by switching spaces or maps. It hosts the island and,
@@ -34,6 +36,7 @@
   let bodyEl: HTMLDivElement
   let paneEl = $state<HTMLDivElement | null>(null)
   let bodyWidth = $state(0)
+  let bodyHeight = $state(0)
   let paneSize = $state({ w: 0, h: 0 })
 
   // Selecting a star wins over the map-material pane; opening material clears any
@@ -47,9 +50,17 @@
   )
   const paneOpen = $derived(showMaterial || paneTicket !== null)
 
-  // Responsive docking: right by default, bottom when the card is too narrow to
-  // hold a side pane (spec: right dock, re-docking to bottom when narrow).
-  const paneDock = $derived<'right' | 'bottom'>(bodyWidth > 0 && bodyWidth < 520 ? 'bottom' : 'right')
+  // Responsive docking: right by default, re-docking to bottom when the card is
+  // either too narrow to hold a side pane or tall enough that a right pane would
+  // ribbon the map — the hybrid signal (spec: right dock, re-docking to bottom
+  // when narrow). A dead-band makes the switch sticky: `prev` feeds the next
+  // decision, so dragging the card through the boundary holds the current side
+  // rather than flip-flopping.
+  let paneDock = $state<Dock>('right')
+  $effect(() => {
+    const next = decideDock('hybrid', bodyWidth, bodyHeight, untrack(() => paneDock), true)
+    if (next !== untrack(() => paneDock)) paneDock = next
+  })
 
   // The camera measures the pane's actual footprint and eases the star into the
   // rest (planning ticket 08 as amended): a right pane insets the right edge, a
@@ -64,7 +75,12 @@
 
   $effect(() => {
     if (!bodyEl) return
-    const ro = new ResizeObserver(() => (bodyWidth = bodyEl.clientWidth))
+    const measure = () => {
+      bodyWidth = bodyEl.clientWidth
+      bodyHeight = bodyEl.clientHeight
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
     ro.observe(bodyEl)
     return () => ro.disconnect()
   })

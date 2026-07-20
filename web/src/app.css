@@ -10,6 +10,10 @@
   --danger: #e06c75;
   --down: #6b7280;
 
+  /* One height for every chrome bar (space header, ticket-pane header, map-pane
+     header) so the three read as one tier. */
+  --bar-h: 40px;
+
   color-scheme: dark;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -683,11 +687,12 @@ body {
   margin: -2px 0 0;
 }
 
-/* --- Terminal column (the stage) ------------------------------------------ */
-/* The stage's whole content: a slim bar (space identity, the shell tabs with a
-   "+", and a bindings toggle) flush at the top, and the active xterm.js island
-   filling the rest — ticket 11's prototype term-col. The island is imperative:
-   the chrome styles its frame but never its contents (ADR 0010). */
+/* --- Terminal column (the ticket pane) ------------------------------------ */
+/* The ticket pane's whole content: its own header — the shell tabs with a "+"
+   and a bindings toggle — flush at the top, and the active xterm.js island
+   filling the rest (ticket 11's prototype term-col). Space identity is no longer
+   here; it lives in the space header a level up. The island is imperative: the
+   chrome styles its frame but never its contents (ADR 0010). */
 
 .term-col {
   flex: 1;
@@ -700,39 +705,13 @@ body {
 
 .term-bar {
   flex: none;
+  min-height: var(--bar-h);
   display: flex;
-  align-items: stretch;
-  gap: 12px;
-  padding: 6px 10px 0;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-}
-
-.term-id {
-  flex: 0 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  align-self: center;
-  padding-bottom: 6px;
-  overflow: hidden;
-}
-
-.term-id-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.term-id-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .term-tabs {
@@ -750,7 +729,6 @@ body {
   align-items: center;
   gap: 8px;
   align-self: center;
-  padding-bottom: 6px;
 }
 
 .term-warn-pip {
@@ -765,8 +743,9 @@ body {
   background: transparent;
   color: var(--muted);
   border-radius: 6px;
-  padding: 3px 10px;
+  padding: 4px 10px;
   font-size: 12px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -843,7 +822,8 @@ body {
   background: transparent;
   color: var(--muted);
   font-size: 15px;
-  padding: 4px 12px 8px;
+  line-height: 1;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
@@ -944,57 +924,107 @@ body {
   color: var(--text);
 }
 
-/* --- The star-map card over the terminal ---------------------------------- */
-/* The space body is a flex row: the terminal column, an edge handle to summon
-   the map, and the star-map card. Floating, the card overlays the terminal and
-   never reflows it (story 20); docked, the terminal takes a frozen pixel width
-   and the map absorbs every later resize slack (planning ticket 08's amendment),
-   so a window resize never reflows the shell. */
+/* --- The space stage: header over the panes ------------------------------- */
+/* The stage is a flex column: a full-width title bar carrying the space's
+   identity, then the panes row filling the rest. The identity sits a level above
+   the panes so the hierarchy reads "space › {terminals, map}". */
 
-.space-body {
+.space-stage {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The title bar: the space's name and path on the left, the map show/hide toggle
+   on the right, spanning the whole stage above both panes. A floating map
+   (positioned within the panes row below) never reaches it, so the space's
+   identity and the toggle always stay put. */
+.space-header {
+  flex: none;
+  min-height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.space-id {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* The stage's one map show/hide control, pushed to the right edge of the header.
+   A toggle: outlined at rest, lit amber (the star-map's accent) when pressed. */
+.map-toggle {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.map-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(217, 164, 65, 0.12);
+}
+
+.map-toggle-glyph {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.space-id-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.space-id-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- The star-map card over the terminal ---------------------------------- */
+/* The panes row: the terminal (ticket) column and the star-map card, summoned by
+   the header's map toggle. Floating, the card overlays the terminal and never
+   reflows it (story 20) — and, being positioned within this row, never overlays
+   the space header above it; docked, the terminal takes a frozen pixel width and
+   the map absorbs every later resize slack (planning ticket 08's amendment), so
+   a window resize never reflows the shell. */
+
+.space-panes {
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: row;
   position: relative;
-}
-
-/* The always-available summon: a slim handle on the terminal's right edge, live
-   even while the shell owns the keyboard. */
-.map-handle {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 5px;
-  border: 1px solid var(--border);
-  border-right: none;
-  border-radius: 8px 0 0 8px;
-  background: var(--panel);
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.map-handle:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.map-handle-glyph {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.map-handle-label {
-  writing-mode: vertical-rl;
-  font-size: 10px;
-  letter-spacing: 0.14em;
 }
 
 .map-card {
@@ -1035,13 +1065,18 @@ body {
 }
 
 /* Floating: an overlay pinned to the right of the terminal, casting a shadow so
-   it reads as lifted above the shell rather than beside it. */
+   it reads as lifted above the shell rather than beside it. The width is a fixed
+   size (no proportional scaling with the window) and is freely draggable wider;
+   max-width only keeps the card within the row so its inline drag width (a fixed
+   pixel value) can't overflow left past the row into the sidebar when the window
+   shrinks. The `calc` keeps a terminal sliver visible even at the bound. */
 .map-floating .map-card {
   position: absolute;
   top: 10px;
   right: 10px;
   bottom: 10px;
-  width: min(560px, 62%);
+  width: 560px;
+  max-width: calc(100% - 40px);
   z-index: 7;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1049,20 +1084,24 @@ body {
 }
 
 /* Docked: an in-flow split beside the terminal. The terminal's inline flex-basis
-   (set on dock) holds its width; the card takes the rest. */
+   (set on dock) holds its width and the card takes the rest — but the card keeps
+   a min-width floor, and the terminal is shrinkable (inline flex 0 1 … / min 240),
+   so on a window too narrow to seat both at full size the terminal yields and the
+   map stays visible rather than collapsing to nothing. */
 .map-docked .map-card {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 300px;
   border-left: 1px solid var(--border);
 }
 
 .map-card-bar {
   flex: none;
+  min-height: var(--bar-h);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px 6px 12px;
+  padding: 0 12px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
@@ -1096,8 +1135,9 @@ body {
   background: transparent;
   color: var(--muted);
   border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -1131,8 +1171,8 @@ body {
   background: transparent;
   color: var(--muted);
   border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: 4px 10px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
 }
@@ -1145,7 +1185,7 @@ body {
 
 .map-card-close {
   font-size: 15px;
-  padding: 2px 8px;
+  padding: 2px 7px;
 }
 
 .map-card-close:hover {

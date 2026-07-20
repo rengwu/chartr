@@ -5,13 +5,15 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
 
-  // The stage for the selected space, built as the terminal column of ticket
-  // 11's prototype: a tab strip flush at the top (the space's ad-hoc shells plus
-  // a "+"), and the active terminal filling the rest of the height. A mapless
-  // space is fully usable this way (story 29). Space identity is a slim leading
-  // label, not a heading that pushes the terminal down; the effective role
-  // bindings (stories 39, 40) live in a right-docked drawer summoned from the
-  // bar, so they never occupy the terminal's real estate.
+  // The stage for the selected space: a full-width title bar carrying the space's
+  // identity (name and path), over a row of the space's subpanes. The identity
+  // sits one level above the panes so the hierarchy reads "space › {terminals,
+  // map}" — each pane owns only its own chrome. The ticket pane keeps ticket
+  // 11's prototype: a shell tab strip flush at the top (the space's ad-hoc shells
+  // plus a "+"), the active terminal filling the rest. A mapless space is fully
+  // usable this way (story 29). The effective role bindings (stories 39, 40) live
+  // in a right-docked drawer summoned from the ticket pane's bar, so they never
+  // occupy the terminal's real estate.
   //
   // Over the terminal, the star-map is summoned as a floating card — edge handle,
   // M, Esc — or docked as the terminal-priority split (spec, The interface).
@@ -115,7 +117,11 @@
 
   // Freeze the terminal's pixel width at the moment of docking, then let the map
   // absorb every later resize slack — the terminal-priority split holds its width
-  // so a window resize never reflows it (planning ticket 08's amendment).
+  // so a window resize never reflows it (planning ticket 08's amendment). The one
+  // exception is the small end: once the window is too narrow to also grant the
+  // map its floor (min-width 300), the terminal yields the rest so the map never
+  // collapses out of view. Both floors are enforced in CSS (the docked term-col
+  // is shrinkable to 240; the map card holds 300), so window resizes need no JS.
   function summon() {
     mapShown = true
   }
@@ -141,6 +147,10 @@
   // pinned. Clamped so neither pane collapses.
   const MIN_MAP = 300
   const FLOAT_INSET = 10 // matches .map-floating .map-card right offset
+  // A floating card is freely draggable wider; its right edge stays pinned and
+  // it's only kept within the row so it can't overflow left into the sidebar. CSS
+  // max-width holds that same within-the-row bound on resize.
+  const FLOAT_MIN_TERM = 30 // sliver of terminal kept visible; matches the CSS 40px bound (FLOAT_INSET + this)
   function startResize(e: MouseEvent) {
     e.preventDefault()
     const rect = bodyEl.getBoundingClientRect()
@@ -151,7 +161,7 @@
           Math.min(Math.max(ev.clientX - rect.left, minTerm), Math.max(minTerm, rect.width - MIN_MAP)),
         )
       } else {
-        const maxMap = Math.max(MIN_MAP, rect.width - 120)
+        const maxMap = Math.max(MIN_MAP, rect.width - FLOAT_INSET - FLOAT_MIN_TERM)
         floatWidth = Math.round(
           Math.min(Math.max(rect.right - FLOAT_INSET - ev.clientX, MIN_MAP), maxMap),
         )
@@ -229,23 +239,47 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div
-  class="space-body"
-  class:map-docked={mapShown && dock}
-  class:map-floating={mapShown && !dock}
-  bind:this={bodyEl}
->
+<!-- The space's stage: a full-width title bar (the space's identity — name and
+     path) over a row of its subpanes. The identity lives here, one level above
+     the panes, so the hierarchy reads "space › {terminals, map}": each pane
+     carries only its own chrome. A floating map overlays the panes row but never
+     this header — the panes row is its positioning context, and it sits below. -->
+<div class="space-stage">
+  <header class="space-header">
+    <div class="space-id" title={space.path}>
+      <span class="space-id-name">{space.name}</span>
+      <code class="space-id-path">{space.path}</code>
+    </div>
+
+    {#if maps.length}
+      <!-- The one map show/hide control for the whole stage: a toggle in the space
+           header, right-aligned, reflecting mapShown via aria-pressed. -->
+      <button
+        class="map-toggle"
+        aria-pressed={mapShown}
+        title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
+        onclick={toggleMap}
+      >
+        <span class="map-toggle-glyph" aria-hidden="true">✦</span>
+        <span class="map-toggle-label">Map</span>
+      </button>
+    {/if}
+  </header>
+
+  <div
+    class="space-panes"
+    class:map-docked={mapShown && dock}
+    class:map-floating={mapShown && !dock}
+    bind:this={bodyEl}
+  >
+  <!-- The ticket pane: its own header is the shell tab strip (the space's ad-hoc
+       shells plus a "+") and the pane's actions; below it the active terminal. -->
   <section
     class="term-col"
     bind:this={termColEl}
-    style={mapShown && dock ? `flex: 0 0 ${dockTermWidth}px` : ''}
+    style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
   >
   <div class="term-bar">
-    <div class="term-id" title={space.path}>
-      <span class="term-id-name">{space.name}</span>
-      <code class="term-id-path">{space.path}</code>
-    </div>
-
     <div class="term-tabs" role="tablist">
       {#each terminals as t (t.id)}
         <div class="term-tab" class:active={active?.id === t.id} class:dead={!t.alive}>
@@ -362,20 +396,6 @@
   </div>
   </section>
 
-  {#if maps.length && !mapShown}
-    <!-- The always-available summon: the edge handle, live even while the shell
-         owns the keyboard. A later ticket hangs the action-station badge here. -->
-    <button
-      class="map-handle"
-      aria-label="Summon the star-map (M)"
-      title="Star-map (M)"
-      onclick={summon}
-    >
-      <span class="map-handle-glyph" aria-hidden="true">✦</span>
-      <span class="map-handle-label">MAP</span>
-    </button>
-  {/if}
-
   {#if focusedMap && mapShown}
     <MapCard
       {maps}
@@ -388,4 +408,5 @@
       onresizestart={startResize}
     />
   {/if}
+  </div>
 </div>
