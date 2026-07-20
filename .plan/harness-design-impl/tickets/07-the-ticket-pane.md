@@ -11,7 +11,7 @@ From looking at a star to reading in one click: selection opens the full ticket 
 
 Done when: clicking a star opens the pane with the full ticket content assembled from the derived model; the pane re-docks responsively and the camera seats the star in the free space in both dockings; the map-material pane opens from the title; a deep link selects and seats its star.
 
-## Proposed Answer
+## Answer
 
 Selection opens a responsive detail pane over the star-map island, assembled entirely from the derived model — no second fetch. Layout:
 
