@@ -9,11 +9,15 @@
     open,
     title,
     onClose,
+    wide = false,
     children,
   }: {
     open: boolean
     title: string
     onClose: () => void
+    // A wider card with a scrollable body, for content-heavy modals like the
+    // payload preview; the default stays the compact form the forms use.
+    wide?: boolean
     children: Snippet
   } = $props()
 
@@ -48,7 +52,7 @@
   onclose={onDialogClose}
   onclick={onDialogClick}
 >
-  <div class="modal-card">
+  <div class="modal-card" class:wide>
     <header class="modal-head">
       <h2 class="modal-title" id="modal-title">{title}</h2>
       <button class="icon-btn" type="button" aria-label="Close" onclick={onClose}>×</button>

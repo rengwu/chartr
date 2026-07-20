@@ -261,6 +261,17 @@ body {
   overflow: hidden;
 }
 
+/* A wider card for content-heavy modals (the payload preview), with the body
+   scrolling inside a viewport-bounded height so a long payload never runs off
+   the card or the screen. */
+.modal-card.wide {
+  width: 760px;
+}
+.modal-card.wide .modal-body {
+  max-height: min(78vh, 760px);
+  overflow-y: auto;
+}
+
 .modal-head {
   display: flex;
   align-items: center;

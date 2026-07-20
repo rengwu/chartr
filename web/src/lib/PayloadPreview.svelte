@@ -94,7 +94,7 @@
   }
 </script>
 
-<Modal {open} title="Payload preview" {onClose}>
+<Modal {open} title="Payload preview" wide {onClose}>
   <div class="pp">
     <p class="pp-lede">
       What a <strong>session</strong> on <code>#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code>
@@ -159,8 +159,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
-    min-width: min(72ch, 82vw);
-    max-width: 82vw;
+    width: 100%;
+    /* Long words, paths, and code spans wrap rather than force the card wider. */
+    overflow-wrap: anywhere;
   }
   .pp-lede {
     margin: 0;
@@ -169,7 +170,8 @@
     line-height: 1.5;
   }
   .pp-lede code {
-    color: var(--fg, inherit);
+    color: var(--text, inherit);
+    overflow-wrap: anywhere;
   }
   .pp-roles {
     display: flex;
@@ -226,8 +228,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    max-height: 58vh;
-    overflow-y: auto;
   }
   .pp-part {
     border: 1px solid var(--border, #2b3242);
@@ -319,8 +319,7 @@
     color: var(--muted, #8a94a6);
   }
   .pp-pre {
-    max-height: 40vh;
-    overflow: auto;
+    margin: 0.4rem 0 0;
     background: color-mix(in srgb, #000 25%, transparent);
     padding: 0.6rem;
     border-radius: 6px;
@@ -328,5 +327,6 @@
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
+    overflow-wrap: anywhere;
   }
 </style>
