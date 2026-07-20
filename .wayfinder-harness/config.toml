@@ -1,0 +1,5 @@
+[maps."harness-design-impl"]
+kind = "implementation"
+
+[maps."harness-design"]
+kind = "planning"
