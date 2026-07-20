@@ -11,7 +11,7 @@ Kind is declared, never inferred (ADR 0007). A discovered map with no declaratio
 
 Done when: process-boundary tests assert an undeclared map's snapshot offers no session actions; classifying writes the committed config and the actions appear; the pre-filled guess matches the conventions on fixtures for both kinds; renaming a classified map's directory returns it to unclassified-and-inert; the inline confirm renders in the sidebar.
 
-## Proposed Answer
+## Answer
 
 A discovered map is now inert until a human declares its kind, and classification is one HTTP action that writes the declaration into committed workspace config. The lifecycle is declared, never inferred (ADR 0007): the conventions survive only as a pre-filled guess. Layout:
 
