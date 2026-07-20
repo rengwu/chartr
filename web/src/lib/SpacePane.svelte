@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { Space, Terminal as Term } from './model'
+  import type { Space, Terminal as Term, Map as WMap } from './model'
   import { closeTerminal, openTerminal } from './actions'
   import Terminal from './Terminal.svelte'
+  import MapCard from './MapCard.svelte'
 
   // The stage for the selected space, built as the terminal column of ticket
   // 11's prototype: a tab strip flush at the top (the space's ad-hoc shells plus
@@ -9,16 +10,126 @@
   // space is fully usable this way (story 29). Space identity is a slim leading
   // label, not a heading that pushes the terminal down; the effective role
   // bindings (stories 39, 40) live in a right-docked drawer summoned from the
-  // bar, so they never occupy the terminal's real estate. The star-map card and
-  // session tabs are later tickets.
+  // bar, so they never occupy the terminal's real estate.
+  //
+  // Over the terminal, the star-map is summoned as a floating card — edge handle,
+  // M, Esc — or docked as the terminal-priority split (spec, The interface).
+  // Visibility changes only on those explicit acts: switching spaces or focusing
+  // a different map never opens or closes it, which is why this state lives on
+  // the pane (persisting across space switches) and not per-map.
   let { space }: { space: Space } = $props()
 
   let activeId = $state<string | null>(null)
   let opening = $state(false)
   let showBindings = $state(false)
 
+  // Star-map card state (persists across space switches by design).
+  let mapShown = $state(false)
+  let dock = $state(false)
+  let mapSlug = $state<string | null>(null)
+  let selectedTicket = $state<number | null>(null)
+  let dockTermWidth = $state(0)
+  let floatWidth = $state(0)
+  let bodyEl: HTMLDivElement
+  let termColEl: HTMLElement
+
   const terminals = $derived<Term[]>(space.terminals ?? [])
   const warnings = $derived<string[]>(space.warnings ?? [])
+  const maps = $derived<WMap[]>(space.maps ?? [])
+
+  // A stale slug (a map that vanished, or a switch to a space without it) falls
+  // back to the first map, so the card always has something to render.
+  const focusedMap = $derived<WMap | null>(
+    maps.find((m) => m.slug === mapSlug) ?? maps[0] ?? null,
+  )
+
+  // A selection belongs to one map: when the focused map changes, drop it so the
+  // island never carries a ticket number from a different graph.
+  let lastSlug = ''
+  $effect(() => {
+    const slug = focusedMap?.slug ?? ''
+    if (slug !== lastSlug) {
+      lastSlug = slug
+      selectedTicket = null
+    }
+  })
+
+  // Freeze the terminal's pixel width at the moment of docking, then let the map
+  // absorb every later resize slack — the terminal-priority split holds its width
+  // so a window resize never reflows it (planning ticket 08's amendment).
+  function summon() {
+    mapShown = true
+  }
+  function dismiss() {
+    mapShown = false
+  }
+  function toggleMap() {
+    if (mapShown) dismiss()
+    else summon()
+  }
+  $effect(() => {
+    if (mapShown && dock && bodyEl && !dockTermWidth) {
+      const w = bodyEl.clientWidth
+      // First dock: terminal keeps ~60%, always leaving room for the map; clamped
+      // so neither pane collapses on a narrow window. A resize below overrides it.
+      dockTermWidth = Math.round(Math.min(Math.max(w * 0.6, 320), Math.max(360, w - 360)))
+    }
+  })
+
+  // Drag the card's left border to resize it — in either mode. Docked, the
+  // border is the split: the map's edge moves and the terminal's frozen width
+  // follows it. Floating, the card grows leftward while its right edge stays
+  // pinned. Clamped so neither pane collapses.
+  const MIN_MAP = 300
+  const FLOAT_INSET = 10 // matches .map-floating .map-card right offset
+  function startResize(e: MouseEvent) {
+    e.preventDefault()
+    const rect = bodyEl.getBoundingClientRect()
+    const move = (ev: MouseEvent) => {
+      if (dock) {
+        const minTerm = 240
+        dockTermWidth = Math.round(
+          Math.min(Math.max(ev.clientX - rect.left, minTerm), Math.max(minTerm, rect.width - MIN_MAP)),
+        )
+      } else {
+        const maxMap = Math.max(MIN_MAP, rect.width - 120)
+        floatWidth = Math.round(
+          Math.min(Math.max(rect.right - FLOAT_INSET - ev.clientX, MIN_MAP), maxMap),
+        )
+      }
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
+  // M summons/dismisses, Esc dismisses — but only when focus is on the chrome,
+  // not inside the terminal (whose PTY owns every raw keystroke) or a text field.
+  // The edge handle is the always-available path when the shell has the keyboard.
+  function onKey(e: KeyboardEvent) {
+    const el = document.activeElement as HTMLElement | null
+    const editing =
+      !!el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.isContentEditable ||
+        el.closest('.terminal-island') !== null)
+    if (e.key === 'Escape' && mapShown && !editing) {
+      dismiss()
+      return
+    }
+    if ((e.key === 'm' || e.key === 'M') && !editing && maps.length && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault()
+      toggleMap()
+    }
+  }
 
   // The active tab falls back to the first terminal when the id is stale — a
   // just-closed shell, or a switch to a different space — so the column never
@@ -49,7 +160,19 @@
   }
 </script>
 
-<section class="term-col">
+<svelte:window onkeydown={onKey} />
+
+<div
+  class="space-body"
+  class:map-docked={mapShown && dock}
+  class:map-floating={mapShown && !dock}
+  bind:this={bodyEl}
+>
+  <section
+    class="term-col"
+    bind:this={termColEl}
+    style={mapShown && dock ? `flex: 0 0 ${dockTermWidth}px` : ''}
+  >
   <div class="term-bar">
     <div class="term-id" title={space.path}>
       <span class="term-id-name">{space.name}</span>
@@ -170,4 +293,31 @@
       </aside>
     {/if}
   </div>
-</section>
+  </section>
+
+  {#if maps.length && !mapShown}
+    <!-- The always-available summon: the edge handle, live even while the shell
+         owns the keyboard. A later ticket hangs the action-station badge here. -->
+    <button
+      class="map-handle"
+      aria-label="Summon the star-map (M)"
+      title="Star-map (M)"
+      onclick={summon}
+    >
+      <span class="map-handle-glyph" aria-hidden="true">✦</span>
+      <span class="map-handle-label">MAP</span>
+    </button>
+  {/if}
+
+  {#if focusedMap && mapShown}
+    <MapCard
+      {maps}
+      bind:slug={mapSlug}
+      bind:dock
+      bind:selected={selectedTicket}
+      {floatWidth}
+      onclose={dismiss}
+      onresizestart={startResize}
+    />
+  {/if}
+</div>

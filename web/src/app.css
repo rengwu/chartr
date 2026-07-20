@@ -943,3 +943,212 @@ body {
 .drawer-close:hover {
   color: var(--text);
 }
+
+/* --- The star-map card over the terminal ---------------------------------- */
+/* The space body is a flex row: the terminal column, an edge handle to summon
+   the map, and the star-map card. Floating, the card overlays the terminal and
+   never reflows it (story 20); docked, the terminal takes a frozen pixel width
+   and the map absorbs every later resize slack (planning ticket 08's amendment),
+   so a window resize never reflows the shell. */
+
+.space-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+}
+
+/* The always-available summon: a slim handle on the terminal's right edge, live
+   even while the shell owns the keyboard. */
+.map-handle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 5px;
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.map-handle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.map-handle-glyph {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.map-handle-label {
+  writing-mode: vertical-rl;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.map-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #05070d;
+}
+
+/* The left-border resize grip: a thin hit target over the card's leading edge,
+   the split divider when docked. It highlights on hover so the affordance reads. */
+.map-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  z-index: 8;
+  cursor: ew-resize;
+  background: transparent;
+}
+
+.map-resizer::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.map-resizer:hover::after,
+.map-resizer:active::after {
+  background: var(--accent);
+}
+
+/* Floating: an overlay pinned to the right of the terminal, casting a shadow so
+   it reads as lifted above the shell rather than beside it. */
+.map-floating .map-card {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  width: min(560px, 62%);
+  z-index: 7;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* Docked: an in-flow split beside the terminal. The terminal's inline flex-basis
+   (set on dock) holds its width; the card takes the rest. */
+.map-docked .map-card {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+}
+
+.map-card-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.map-card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-switch {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.map-card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.map-card-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-card-btn:hover,
+.map-card-btn[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.map-card-close {
+  font-size: 15px;
+  padding: 2px 8px;
+}
+
+.map-card-close:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.map-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.map-card-empty {
+  padding: 24px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The island fills the card body; the chrome styles its frame but never reaches
+   inside (ADR 0010). */
+.starmap-island {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.starmap-canvas {
+  display: block;
+  cursor: grab;
+}
+
+.starmap-canvas.drag {
+  cursor: grabbing;
+}

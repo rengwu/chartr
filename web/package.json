@@ -8,15 +8,18 @@
     "build": "vite build",
     "postbuild": "node -e \"require('fs').writeFileSync('dist/.gitkeep','')\"",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tsconfig/svelte": "^5.0.8",
+    "jsdom": "^29.1.1",
     "svelte": "^5.56.6",
     "svelte-check": "^4.7.3",
     "typescript": "^5.9.3",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
