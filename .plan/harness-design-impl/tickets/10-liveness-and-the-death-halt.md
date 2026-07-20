@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [09]
+claimed_by: s3dd4be650d54
+claimed_at: 2026-07-20T18:59:43Z
 ---
 
 # Liveness and the death halt
