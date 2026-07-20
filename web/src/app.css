@@ -1067,15 +1067,44 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* The map name is a button: clicking it opens the map-material pane (ticket 07). */
 .map-card-name {
   flex: 1;
   min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.map-card-name:hover,
+.map-card-name.on {
+  color: var(--accent);
+}
+
+.map-card-note {
+  flex: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.map-card-note:hover,
+.map-card-note.on {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .map-switch {
@@ -1151,4 +1180,275 @@ body {
 
 .starmap-canvas.drag {
   cursor: grabbing;
+}
+
+/* --- The detail pane (ticket 07) ------------------------------------------ */
+/* From looking at a star to reading it in one click: the pane docks right over
+   the island, re-docking to the bottom (capped at half the card) when the card
+   is narrow. The island's camera insets around it, so the selected star seats in
+   the free space rather than under the pane. */
+
+.dp-holder {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: min(400px, 58%);
+  z-index: 4;
+  display: flex;
+}
+
+.dp-holder.bottom {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  max-height: 50%; /* capped at half the map panel (spec) */
+}
+
+.detail-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.dp-bar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+  padding: 10px 34px 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.dp-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.dp-status {
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+}
+.dp-status[data-status='resolved'] {
+  color: var(--ok);
+  border-color: rgba(78, 201, 163, 0.4);
+}
+.dp-status[data-status='claimed'] {
+  color: var(--accent);
+  border-color: rgba(217, 164, 65, 0.4);
+}
+.dp-status[data-status='proposed'] {
+  color: var(--warn);
+  border-color: rgba(217, 164, 65, 0.4);
+}
+.dp-status[data-status='out_of_scope'] {
+  color: var(--muted);
+}
+.dp-status.frontier {
+  color: #8ad8ff;
+  border-color: rgba(138, 216, 255, 0.4);
+}
+
+.dp-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.dp-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 18px;
+}
+
+.dp-section + .dp-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.dp-h {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.dp-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.dp-blockers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dp-blocker {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+}
+
+.dp-blocker-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+
+.dp-blocker-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dp-blocker-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dp-blocker-answer {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* --- Rendered markdown inside the pane ------------------------------------ */
+.dp-md {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.dp-md h3,
+.dp-md h4,
+.dp-md h5,
+.dp-md h6 {
+  color: var(--text);
+  margin: 16px 0 6px;
+  line-height: 1.3;
+}
+.dp-md h3 {
+  font-size: 14px;
+}
+.dp-md h4 {
+  font-size: 13px;
+}
+.dp-md h5,
+.dp-md h6 {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dp-md > :first-child {
+  margin-top: 0;
+}
+
+.dp-md p {
+  margin: 0 0 10px;
+}
+
+.dp-md ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.dp-md li {
+  margin: 2px 0;
+}
+
+.dp-md a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.dp-md a:hover {
+  text-decoration: underline;
+}
+
+.dp-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.dp-md pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 10px;
+}
+.dp-md pre code {
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dp-md blockquote {
+  margin: 0 0 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.dp-md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
 }

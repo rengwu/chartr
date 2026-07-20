@@ -33,6 +33,10 @@ export interface Ticket {
   status: TicketStatus
   blockedBy?: number[]
   frontier: boolean
+  // The ticket's markdown below its H1 title — Question, Done-when, and any
+  // closing answer. Inlined so the detail pane (ticket 07) reads the full ticket,
+  // and a blocker's answer, from the snapshot with no second fetch.
+  body?: string
 }
 
 // A map's declared lifecycle (ADR 0007). The empty string is the third state:
@@ -49,6 +53,9 @@ export interface Map {
   name: string
   dir: string
   destination: string
+  // The map's markdown below its H1 title — Destination, Notes, Decisions, fog.
+  // Inlined so the map-material pane (ticket 07) opens from the title.
+  body?: string
   tickets: Ticket[]
   finished: boolean
   kind: Kind

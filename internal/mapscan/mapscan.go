@@ -100,6 +100,7 @@ func deriveMap(dir string) model.Map {
 		m.Name = wmap.Name
 	}
 	m.Destination = wmap.Destination
+	m.Body = wmap.Body
 
 	tickets, malformations := loadTickets(dir)
 	m.Malformations = append(m.Malformations, malformations...)
@@ -135,6 +136,7 @@ func deriveMap(dir string) model.Map {
 			Status:    string(t.Status),
 			BlockedBy: t.BlockedBy,
 			Frontier:  frontier[t.Num],
+			Body:      t.Body,
 		})
 	}
 	m.Finished = allClosed

@@ -130,6 +130,33 @@ describe('the island seam', () => {
     expect(emitted.at(-1)).toBe(null)
   })
 
+  it('seats a selected star in the free rect the pane leaves, in either docking', () => {
+    // Viewport is 1000×700 (see mounted()). A star must never sit under the pane.
+    sm.setModel(fixture())
+
+    // Right dock: a 400px pane on the right. The star seats left of it.
+    sm.setInsets({ top: 16, right: 400, bottom: 16, left: 16 })
+    sm.select(3)
+    const right = sm.screenOf(3)!
+    expect(right.x).toBeLessThan(1000 - 400)
+
+    // Re-dock to the bottom: the same star re-seats above the pane.
+    sm.setInsets({ top: 16, right: 16, bottom: 300, left: 16 })
+    const bottom = sm.screenOf(3)!
+    expect(bottom.y).toBeLessThan(700 - 300)
+    expect(bottom.x).toBeGreaterThan(400) // no longer squeezed left — full width free
+  })
+
+  it('never moves a star in world space when the pane insets change', () => {
+    // Insets ease the *camera*, not the layout: world positions stay put.
+    sm.setModel(fixture())
+    const before = sm.positions()
+    sm.select(2)
+    sm.setInsets({ right: 380 })
+    sm.setInsets({ bottom: 260, right: 16 })
+    expect(sm.positions()).toEqual(before)
+  })
+
   it('drops a stale selection when its ticket leaves the map', () => {
     sm.setModel(fixture())
     sm.select(5)

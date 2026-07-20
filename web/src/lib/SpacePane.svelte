@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte'
   import type { Space, Terminal as Term, Map as WMap } from './model'
   import { closeTerminal, openTerminal } from './actions'
   import Terminal from './Terminal.svelte'
@@ -23,11 +24,26 @@
   let opening = $state(false)
   let showBindings = $state(false)
 
+  // A deep link names a star (spec): #s=<spaceId>&m=<mapSlug>&t=<ticketNum>, or
+  // &mat=1 for the map material. Parsed once at init — the enclosing App has
+  // already selected the space from the same `s` — so the linked star opens and
+  // seats on load; manual edits are picked up by a hashchange listener below.
+  function parseHash() {
+    const p = new URLSearchParams(location.hash.replace(/^#/, ''))
+    return { s: p.get('s'), m: p.get('m'), t: p.get('t'), mat: p.get('mat') }
+  }
+  const boot = parseHash()
+  // A one-time read at construction: the enclosing App has already selected this
+  // space from the same `s`, so the boot link applies here. untrack marks the
+  // read deliberate (this must not react to later space switches).
+  const bootApplies = !boot.s || boot.s === untrack(() => space.id)
+
   // Star-map card state (persists across space switches by design).
-  let mapShown = $state(false)
+  let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat))
   let dock = $state(false)
-  let mapSlug = $state<string | null>(null)
-  let selectedTicket = $state<number | null>(null)
+  let mapSlug = $state<string | null>(bootApplies ? boot.m : null)
+  let selectedTicket = $state<number | null>(bootApplies && boot.t ? Number(boot.t) : null)
+  let showMaterial = $state(bootApplies && !!boot.mat)
   let dockTermWidth = $state(0)
   let floatWidth = $state(0)
   let bodyEl: HTMLDivElement
@@ -43,15 +59,58 @@
     maps.find((m) => m.slug === mapSlug) ?? maps[0] ?? null,
   )
 
-  // A selection belongs to one map: when the focused map changes, drop it so the
-  // island never carries a ticket number from a different graph.
-  let lastSlug = ''
+  // A selection belongs to one map: when the focused map *changes*, drop it (and
+  // any open material) so the island never carries a ticket number from a
+  // different graph. The first run only records the slug — it must not clear a
+  // selection the deep link just seeded.
+  let lastSlug: string | null = null
   $effect(() => {
     const slug = focusedMap?.slug ?? ''
+    if (lastSlug === null) {
+      lastSlug = slug
+      return
+    }
     if (slug !== lastSlug) {
       lastSlug = slug
       selectedTicket = null
+      showMaterial = false
     }
+  })
+
+  // Reflect the current selection into the URL so a star (or the map material) is
+  // a shareable deep link. replaceState never fires hashchange, so this and the
+  // listener below do not loop.
+  $effect(() => {
+    const p = new URLSearchParams()
+    p.set('s', space.id)
+    if (mapSlug) p.set('m', mapSlug)
+    if (selectedTicket !== null) p.set('t', String(selectedTicket))
+    else if (showMaterial) p.set('mat', '1')
+    const want = mapShown && (selectedTicket !== null || showMaterial) ? '#' + p.toString() : ''
+    if (location.hash !== want) {
+      history.replaceState(null, '', want || location.pathname + location.search)
+    }
+  })
+
+  // Manual URL edits and back/forward re-apply, but only when the hash targets
+  // this space (App owns switching to another space's link).
+  onMount(() => {
+    const apply = () => {
+      const h = parseHash()
+      if (h.s && h.s !== space.id) return
+      if (h.m) mapSlug = h.m
+      if (h.t) {
+        selectedTicket = Number(h.t)
+        showMaterial = false
+        mapShown = true
+      } else if (h.mat) {
+        showMaterial = true
+        selectedTicket = null
+        mapShown = true
+      }
+    }
+    window.addEventListener('hashchange', apply)
+    return () => window.removeEventListener('hashchange', apply)
   })
 
   // Freeze the terminal's pixel width at the moment of docking, then let the map
@@ -121,9 +180,17 @@
         el.tagName === 'TEXTAREA' ||
         el.isContentEditable ||
         el.closest('.terminal-island') !== null)
-    if (e.key === 'Escape' && mapShown && !editing) {
-      dismiss()
-      return
+    if (e.key === 'Escape' && !editing) {
+      // Esc peels back one layer: an open detail pane first, then the card.
+      if (selectedTicket !== null || showMaterial) {
+        selectedTicket = null
+        showMaterial = false
+        return
+      }
+      if (mapShown) {
+        dismiss()
+        return
+      }
     }
     if ((e.key === 'm' || e.key === 'M') && !editing && maps.length && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
@@ -315,6 +382,7 @@
       bind:slug={mapSlug}
       bind:dock
       bind:selected={selectedTicket}
+      bind:showMaterial
       {floatWidth}
       onclose={dismiss}
       onresizestart={startResize}

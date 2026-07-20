@@ -13,6 +13,11 @@
 
   onMount(() => {
     control.connect()
+    // A deep link names its space (#s=<id>&…); select it up front so the linked
+    // star seats as soon as the space arrives over the socket (ticket 07). The
+    // rest of the link — map and star — is applied inside the space's pane.
+    const s = new URLSearchParams(location.hash.replace(/^#/, '')).get('s')
+    if (s) selectedId = s
     return () => control.close()
   })
 

@@ -203,6 +203,38 @@ func TestFinishedMapsSortLast(t *testing.T) {
 	}
 }
 
+// The detail pane (ticket 07) reads the full ticket — and the map's own material
+// — from the snapshot with no second fetch, so each ticket carries its markdown
+// body (Question, Done-when, any closing answer) and the map carries its body
+// (Destination, Notes, Decisions, fog). Asserted at the seam: the body crosses
+// onto the wire, below the H1 title, with the closing answer that lets a blocker
+// show its answer inline.
+func TestTicketAndMapBodiesInlined(t *testing.T) {
+	h := harnesstest.Start(t)
+	repo := harnesstest.NewSpaceRepo(t)
+
+	harnesstest.WriteMap(t, repo, "bodies", mapBody)
+	harnesstest.WriteTicket(t, repo, "bodies", "01-blessed.md",
+		ticket(1, "Blessed", "[]", "task", "## Answer\nThe blocker's blessed answer."))
+
+	resp := register(t, h, repo)
+	m := findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "bodies")
+
+	tk := findTicket(t, m, 1)
+	if !strings.Contains(tk.Body, "## Question") || !strings.Contains(tk.Body, "Q.") {
+		t.Errorf("ticket body missing Question material: %q", tk.Body)
+	}
+	if !strings.Contains(tk.Body, "The blocker's blessed answer.") {
+		t.Errorf("ticket body missing its closing answer: %q", tk.Body)
+	}
+	if strings.Contains(tk.Body, "# Blessed") {
+		t.Errorf("ticket body should start below the H1 title, got: %q", tk.Body)
+	}
+	if !strings.Contains(m.Body, "## Destination") || !strings.Contains(m.Body, "A map to derive.") {
+		t.Errorf("map body missing its material: %q", m.Body)
+	}
+}
+
 func mapSlugs(s model.Space) []string {
 	out := make([]string, 0, len(s.Maps))
 	for _, m := range s.Maps {

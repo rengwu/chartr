@@ -71,6 +71,12 @@ type Ticket struct {
 
 	Legacy       bool   // loose "Type:" header rather than YAML frontmatter
 	StoredStatus Status // a deprecated `status:` field, if the file still carries one
+
+	// Body is the ticket's markdown below its H1 title — Question and Done-when,
+	// and any closing section (Answer / Proposed Answer / Ruled out). The harness
+	// inlines it into the pushed model so the detail pane reads the full ticket
+	// from one snapshot with no second fetch (ticket 07; starmap-design.md).
+	Body string
 }
 
 // EmptyClosing reports a closing heading with nothing written under it.
@@ -117,6 +123,11 @@ type Map struct {
 	Fog         []FogPatch
 	Decisions   []Decision
 	OutOfScope  []Decision
+
+	// Body is the map's markdown below its H1 title — its Destination, Notes,
+	// Decisions, Out of scope, and Not-yet-specified material. The harness inlines
+	// it into the pushed model so the map-material pane (ticket 07) reads it whole.
+	Body string
 }
 
 type Effort struct {
@@ -269,6 +280,19 @@ func firstH1(raw, scan []string, from int) string {
 	return ""
 }
 
+// bodyAfterH1 returns the raw markdown after the first `# ` heading from `from`,
+// trimmed — the material the detail pane renders. Fences are respected via scan,
+// so a `# ` inside a code block is not mistaken for the title. When there is no
+// H1, the whole region from `from` is the body.
+func bodyAfterH1(raw, scan []string, from int) string {
+	for i := from; i < len(scan); i++ {
+		if strings.HasPrefix(scan[i], "# ") {
+			return strings.TrimSpace(strings.Join(raw[i+1:], "\n"))
+		}
+	}
+	return strings.TrimSpace(strings.Join(raw[from:], "\n"))
+}
+
 // parseFrontmatter splits a leading `---` delimited block into key/value pairs.
 // Values are raw strings; list values keep their brackets for splitList. The
 // second return is the line index at which the body begins.
@@ -361,6 +385,7 @@ func ParseTicket(path, filename, src string) (*Ticket, error) {
 	}
 
 	t.Title = firstH1(raw, scan, bodyAt)
+	t.Body = bodyAfterH1(raw, scan, bodyAt)
 
 	t.Type = Type(strings.ToLower(kv["type"]))
 	t.ClaimedBy = kv["claimed_by"]
@@ -432,6 +457,7 @@ func ParseMap(path, src string) *Map {
 	raw, scan := splitScan(src)
 	m := &Map{Path: path}
 	m.Name = firstH1(raw, scan, 0)
+	m.Body = bodyAfterH1(raw, scan, 0)
 	m.Destination = strings.TrimSpace(sectionOf(raw, scan, "Destination"))
 
 	m.Decisions = decisionsIn(raw, scan, "Decisions so far")

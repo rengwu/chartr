@@ -90,6 +90,12 @@ export class StarMap {
 
   #cam: Cam = { x: 0, y: 0, s: 1 }
   #goal: Cam = { x: 0, y: 0, s: 1 }
+  // The detail pane's footprint. The camera fits the constellation into — and
+  // seats a selected star at the centre of — the viewport *minus* these insets,
+  // so a right- or bottom-docked pane never covers the star being read (ticket
+  // 07). The pane reports its measured size, so the camera eases to the space it
+  // actually leaves free, in either docking.
+  #insets = { top: 16, right: 16, bottom: 16, left: 16 }
   #clock = 0
   #last = 0
   #raf = 0
@@ -183,10 +189,24 @@ export class StarMap {
   }
 
   // Programmatic selection (a deep-link naming a star, or ticket 07's pane): the
-  // camera eases the star into view, leaving room on the right for the pane.
+  // camera eases the star into the space the pane leaves free.
   select(num: number | null): void {
     if (num !== null && !this.#byNum.has(num)) return
     this.#applySelection(num)
+  }
+
+  // The detail pane's measured footprint. Updating it re-eases the camera: a
+  // selected star re-seats into the new free rect (so a responsive right→bottom
+  // re-dock re-seats it), and with nothing selected the whole map eases to fit
+  // the free area — which is how the map-material pane clears room for itself.
+  setInsets(insets: Partial<{ top: number; right: number; bottom: number; left: number }>): void {
+    this.#insets = { ...this.#insets, ...insets }
+    if (this.#selected !== null && this.#byNum.has(this.#selected)) {
+      this.#seat(this.#selected)
+    } else {
+      this.#refit(false)
+      this.#settleIfHeadless()
+    }
   }
 
   destroy(): void {
@@ -237,13 +257,42 @@ export class StarMap {
 
   #applySelection(num: number | null): void {
     this.#selected = num
-    if (num !== null) {
-      const n = this.#byNum.get(num)!
-      // Ease the star toward the left of centre, leaving room for a right pane.
-      this.#goal.x = this.#w / 2 - 120 - n.x * this.#cam.s
-      this.#goal.y = this.#h / 2 - n.y * this.#cam.s
-    }
+    if (num !== null) this.#seat(num)
     this.#onSelect(num)
+  }
+
+  // The viewport minus the pane's insets — the free area the camera works in.
+  #freeRect(): { cx: number; cy: number; availW: number; availH: number } {
+    const left = this.#insets.left,
+      right = this.#w - this.#insets.right,
+      top = this.#insets.top,
+      bottom = this.#h - this.#insets.bottom
+    return {
+      cx: (left + right) / 2,
+      cy: (top + bottom) / 2,
+      availW: Math.max(80, right - left),
+      availH: Math.max(80, bottom - top),
+    }
+  }
+
+  // Ease a star to the centre of the free rect at the current zoom.
+  #seat(num: number): void {
+    const n = this.#byNum.get(num)
+    if (!n) return
+    const { cx, cy } = this.#freeRect()
+    this.#goal.x = cx - n.x * this.#cam.s
+    this.#goal.y = cy - n.y * this.#cam.s
+    this.#settleIfHeadless()
+  }
+
+  // With a live 2D context the render loop eases the camera toward its goal; with
+  // none (a headless test) there is no loop, so the camera settles immediately —
+  // which also makes screenOf meaningful for the seam tests.
+  #settleIfHeadless(): void {
+    if (this.#ctx) return
+    this.#cam.x = this.#goal.x
+    this.#cam.y = this.#goal.y
+    this.#cam.s = this.#goal.s
   }
 
   // --- sizing + camera ------------------------------------------------------
@@ -285,19 +334,17 @@ export class StarMap {
     miny -= pad
     maxx += pad
     maxy += pad
-    const topInset = 44,
-      botInset = 40
-    const availH = Math.max(120, this.#h - topInset - botInset)
+    const { cx: fcx, cy: fcy, availW, availH } = this.#freeRect()
     const s = clamp(
-      Math.min(this.#w / (maxx - minx || 1), availH / (maxy - miny || 1)),
+      Math.min(availW / (maxx - minx || 1), availH / (maxy - miny || 1)),
       0.15,
       1.4,
     )
     const cx = (minx + maxx) / 2,
       cy = (miny + maxy) / 2
     this.#goal.s = s
-    this.#goal.x = this.#w / 2 - cx * s
-    this.#goal.y = topInset + availH / 2 - cy * s
+    this.#goal.x = fcx - cx * s
+    this.#goal.y = fcy - cy * s
     if (snap) {
       this.#cam.s = this.#goal.s
       this.#cam.x = this.#goal.x

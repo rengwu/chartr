@@ -85,6 +85,10 @@ type Map struct {
 	// Destination is the map's stated destination, shown when the map material
 	// pane opens (ticket 07). Empty on a map that omits it — surfaced, not refused.
 	Destination string `json:"destination"`
+	// Body is the map's markdown below its H1 title — Destination, Notes,
+	// Decisions, Out of scope, and fog. Inlined so the map-material pane (ticket
+	// 07) opens from the title with no second fetch. Empty on a bodyless map.
+	Body string `json:"body,omitempty"`
 	// Tickets are the map's tickets in number order, each with its derived
 	// status and stricter-frontier membership.
 	Tickets []Ticket `json:"tickets"`
@@ -121,6 +125,10 @@ type Ticket struct {
 	// Frontier is membership in the stricter frontier — the takeable edge. A
 	// ticket blocked by merely-proposed (ungated) work is never on it.
 	Frontier bool `json:"frontier"`
+	// Body is the ticket's markdown below its H1 title — Question and Done-when,
+	// and any closing answer. Inlined so the detail pane (ticket 07) reads the
+	// full ticket, and a blocker's answer, straight from the snapshot.
+	Body string `json:"body,omitempty"`
 }
 
 // Terminal is one open ad-hoc shell on the wire: its identity, a tab label, and
