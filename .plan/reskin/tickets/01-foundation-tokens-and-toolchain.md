@@ -17,7 +17,7 @@ Build the **token bridge scaffold** — `web/src/lib/tokens.ts` — a tiny helpe
 
 Done when: `npm run dev`, `npm run build`, and `npm run check` all succeed with Tailwind + the theme tokens live; a throwaway probe element proves `bg-background` / `text-foreground` / `rounded-md` / IBM Plex Sans / one Phosphor icon all render in dark mode; `tokens.ts` returns correct values for a known token under a jsdom/vitest test; `go vet ./...` and `go test ./...` (the embed test against `dist/`) stay green; and no existing surface has visually regressed (the old `app.css` rules still apply until their tickets migrate them).
 
-## Proposed Answer
+## Answer
 
 The design-system toolchain goes live and, per an **operator call mid-ticket, the bespoke pre-reskin chrome was ripped out rather than preserved** — Tailwind's full base (Preflight) is on, the olive tokens are canonical, and the legacy `app.css` chrome is gone. The cockpit now renders on Preflight defaults until tickets 02–04 rebuild each surface on primitives; that transient unstyled state is intended, not a regression.
 
