@@ -106,22 +106,31 @@ jobs:
       # Linux's WebKitGTK shell needs system dev headers; macOS links the system
       # WebKit; Windows uses cgo-free go-webview2 (WebView2 runtime ships with the
       # OS). Any of these steps failing is tolerated by continue-on-error.
+      # webview_go pkg-configs webkit2gtk-4.0, which recent Ubuntu images no
+      # longer carry; 4.1 is installed as the fallback so the lane at least
+      # attempts a build there. A distro whose headers do not match is exactly
+      # the best-effort failure this job exists to absorb.
       - name: Install Linux webview toolchain
         if: matrix.goos == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libwebkit2gtk-4.0-dev \
+            || sudo apt-get install -y libwebkit2gtk-4.1-dev
 
       - name: Build embedded frontend
         run: make web
 
+      # The stamp is the released tag, matching the supported binary exactly
+      # (ADR 0013). `make webview` also writes the per-asset .sha256 sidecar —
+      # the supported release owns checksums.txt and is never mutated here.
       - name: Build native webview shell
         id: build_shell
-        run: make webview GOOS=${{ matrix.goos }}
+        run: make webview GOOS=${{ matrix.goos }} WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
+        shell: bash
 
       # Upload only if the target actually produced a shell binary. `make webview`
-      # exits 0 with no output when the shell source is not yet present (the tier
-      # is genuinely optional), so a missing artifact is not an error here.
+      # exits 0 with no output when the host cannot build the shell (the tier is
+      # genuinely optional), so a missing artifact is not an error here.
       - name: Attach shell to the release
         if: steps.build_shell.outcome == 'success'
         env:

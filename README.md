@@ -36,11 +36,21 @@ harness, this is what you download.
 
 Each platform can also have a **native webview shell** — a desktop window around
 the same cockpit instead of a browser tab (cgo + WebKitGTK on Linux, cgo on
-macOS, cgo-free `go-webview2` on Windows). These are **best-effort**: they are
-built in a separate, non-blocking CI lane and **attached to a release only for
-the platforms whose toolchains built them**. A missing shell asset for your
-platform means its toolchain did not build that release — the supported binary
-for that platform is unaffected. A shell build failure never fails a release.
+macOS, cgo-free `go-webview2` on Windows). It is a second binary,
+`wayfinder-harness-shell_<version>_<os>_<arch>`, that runs the same server
+in-process on a random loopback port and points a real window at it: a dock icon,
+a minimal native menu (Quit, Reload, the edit items), and one window per
+`--data-dir` — a second launch raises the running one. If the native runtime is
+missing it says so and points you back at `harness`; it never silently opens a
+browser. Build it yourself with `make webview`
+([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
+
+These are **best-effort**: they are built in a separate, non-blocking CI lane and
+**attached to a release only for the platforms whose toolchains built them**,
+each with its own `.sha256` sidecar rather than an entry in the supported
+`checksums.txt`. A missing shell asset for your platform means its toolchain did
+not build that release — the supported binary for that platform is unaffected. A
+shell build failure never fails a release.
 
 ### Windows: native is best-effort, WSL2 is the sure path
 

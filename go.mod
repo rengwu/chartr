@@ -8,6 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	golang.org/x/sys v0.44.0
 )
 

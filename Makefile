@@ -51,20 +51,42 @@ snapshot:
 release:
 	go run github.com/goreleaser/goreleaser/v2@latest release --clean
 
-## webview: build the best-effort native webview shell for GOOS into build/shell.
+# The shell rides the same tag as the supported binary and must report the same
+# stamp (ADR 0013), but it is built outside goreleaser, so the stamp is derived
+# here. Overridable so CI can pass the exact tag it released.
+WEBVIEW_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+WEBVIEW_COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo none)
+WEBVIEW_DATE    ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || echo unknown)
+
+## webview: build the best-effort native webview shell for the host into
+## build/shell, with a per-asset .sha256 sidecar.
+##
 ## This is a best-effort tier (ADR 0011): it needs cgo + a system webview library
-## and MAY fail without blocking the supported release. The shell source is a
-## separate future artifact; until cmd/webview exists this target is a no-op that
-## exits 0, so the release job's shell lane stays green and simply attaches
-## nothing for the platform. When the source lands, this is where it builds.
+## and MAY fail without blocking the supported release. It builds natively — cgo
+## does not cross-compile — so the release workflow runs this once per runner.
+## The sidecar is deliberately per-asset: the supported release owns
+## checksums.txt, and a best-effort artifact must never mutate that manifest.
 webview:
-	@if [ -d ./cmd/webview ]; then \
-		mkdir -p build/shell; \
-		echo "building native webview shell for $${GOOS:-$$(go env GOOS)}"; \
-		CGO_ENABLED=1 go build -tags webview -o build/shell/ ./cmd/webview; \
+	@set -e; \
+	goos=$$(go env GOOS); goarch=$$(go env GOARCH); \
+	if [ -n "$$GOOS" ] && [ "$$GOOS" != "$$goos" ]; then \
+		echo "webview shell cannot cross-compile to $$GOOS from $$goos (cgo); nothing to attach"; \
+		exit 0; \
+	fi; \
+	mkdir -p build/shell; \
+	ext=""; [ "$$goos" = "windows" ] && ext=".exe"; \
+	name="wayfinder-harness-shell_$(WEBVIEW_VERSION)_$${goos}_$${goarch}$$ext"; \
+	echo "building native webview shell for $${goos}/$${goarch}"; \
+	CGO_ENABLED=1 go build -tags webview -trimpath \
+		-ldflags "-s -w -X main.version=$(WEBVIEW_VERSION) -X main.commit=$(WEBVIEW_COMMIT) -X main.date=$(WEBVIEW_DATE)" \
+		-o "build/shell/$$name" ./cmd/webview; \
+	cd build/shell; \
+	if command -v sha256sum >/dev/null 2>&1; then \
+		sha256sum "$$name" > "$$name.sha256"; \
 	else \
-		echo "cmd/webview not present — best-effort webview shell tier not built (ADR 0011); nothing to attach"; \
-	fi
+		shasum -a 256 "$$name" > "$$name.sha256"; \
+	fi; \
+	echo "built build/shell/$$name"
 
 clean:
 	rm -rf $(BIN) build/

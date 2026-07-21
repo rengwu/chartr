@@ -39,5 +39,10 @@
 /web/dist/*
 !/web/dist/.gitkeep
 
+# The native shell's single-instance lock (ADR 0013): live runtime state under
+# the data root — the repo root when the shell runs with cwd here. It records a
+# pid and a loopback port, both meaningless to anyone else.
+/.wayfinder-harness/shell.lock
+
 # macOS
 .DS_Store

@@ -67,7 +67,16 @@ alongside these files (see `docs/wayfinder-adapter.md`).
 
 ## Decisions so far
 
-<!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
+<!-- one line per resolved ticket: gist + link. -->
+
+- **The cockpit launches as a real native window.** A second cgo binary,
+  [`cmd/webview`](tickets/01-the-webview-shell.md), runs the same server
+  in-process on `127.0.0.1:0` and points a `webview/webview` window at it; the
+  cgo hides behind `//go:build webview` so the default build stays green and
+  goreleaser never sees it. Single-instance is a data-dir lock file keyed by pid
+  (not `webview.Window()` — a window handle does not cross a process boundary);
+  a missing runtime is a hard error pointing at `harness`, never a silent browser.
+  Writes **ADR 0013**, confirms **ADR 0011** unamended.
 
 ## Not yet specified
 
