@@ -37,22 +37,6 @@ export interface Ticket {
   // closing answer. Inlined so the detail pane (ticket 07) reads the full ticket,
   // and a blocker's answer, from the snapshot with no second fetch.
   body?: string
-  // Set when a review brief for this ticket is assembled and waiting on disk —
-  // the explicit "a human is being waited on" signal (ticket 12). Its presence is
-  // what the star-map's `human-review` state and the hub's entry point read; the
-  // brief itself is fetched when the hub opens.
-  review?: Review
-}
-
-// The human gate's state on a `proposed` ticket (ticket 12). The counts and the
-// recommendation are derived mechanically from the verdict — a finding blocks
-// only by citing the Done-when clause it breaks — so nothing here is the agent's
-// own word about whether to ship.
-export interface Review {
-  sessionId: string
-  recommendation: 'Approve' | 'Send back'
-  blocking: number
-  advisories: number
 }
 
 // A map's declared lifecycle (ADR 0007). The empty string is the third state:
@@ -83,7 +67,7 @@ export interface Map {
 // shell reads idle at the prompt (a tick), working while a foreground command runs
 // (a spinner), or exited once the shell is gone. A session tab reads the session
 // grammar instead (ticket 10): working while live and producing, quiet when an AFK
-// session has fallen silent past the threshold with no proposed answer yet (a hint,
+// session has fallen silent past the threshold with no answer written yet (a hint,
 // never an alarm), and dead once its process exits — a dead session freezes pinned
 // to its ticket rather than vanishing, awaiting the operator's halt choice.
 export type TerminalStatus = 'idle' | 'working' | 'exited' | 'quiet' | 'dead'
@@ -102,7 +86,7 @@ export interface Session {
 }
 
 // Terminal is one tab under its space in the sidebar. Without a `session` it is an
-// ad-hoc shell — deliberately not a session (no ticket, no review, ended by the
+// ad-hoc shell — deliberately not a session (no ticket, no claim, ended by the
 // human); with one it is a session bound to a ticket. Its raw bytes travel on the
 // separate terminal socket keyed by `id`, never in this snapshot. `alive` goes
 // false the instant the process exits.
@@ -158,7 +142,7 @@ export interface PayloadSegment {
 
 // A labelled block of the payload — a resolved prompt (`kind: 'prompt'`, e.g.
 // core or a role) or an assembled context artifact (`kind: 'context'`, e.g. the
-// glossary, map body, ticket, a blocker's answer, or the review guarantees).
+// glossary, map body, ticket, or a blocker's answer).
 export interface PayloadPart {
   name: string
   kind: 'prompt' | 'context'
@@ -175,16 +159,16 @@ export interface Payload {
 
 // The closed role set a session can be spawned as (config.Roles), in display
 // order — what the preview lets the operator choose between.
-export const ROLES = ['grill', 'prototype', 'research', 'implement', 'review'] as const
+export const ROLES = ['grill', 'prototype', 'research', 'implement'] as const
 export type Role = (typeof ROLES)[number]
 
 // rolesForKind mirrors the backend (config.RolesForKind): which roles a map of a
 // given kind offers to spawn. A planning map grills, prototypes, and researches;
-// an implementation map implements and reviews; an unclassified map offers none,
-// so its tickets show no spawn affordance until a human declares its kind.
+// an implementation map implements; an unclassified map offers none, so its
+// tickets show no spawn affordance until a human declares its kind.
 export function rolesForKind(kind: Kind): Role[] {
   if (kind === 'planning') return ['grill', 'prototype', 'research']
-  if (kind === 'implementation') return ['implement', 'review']
+  if (kind === 'implementation') return ['implement']
   return []
 }
 

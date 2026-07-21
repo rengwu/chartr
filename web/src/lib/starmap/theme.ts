@@ -8,9 +8,8 @@
 // open, claimed, proposed, resolved, or out_of_scope, with a `frontier` flag
 // splitting open into the takeable edge and the still-blocked interior. That is
 // exactly six visual states, and this module maps the derived status onto them.
-// Session liveness (working / quiet / dead) and the review grammar (moons,
-// beacon) are a strictly-additive overlay a later ticket layers on top — this
-// palette is only the base star.
+// Session liveness (working / quiet / dead) is a strictly-additive overlay a
+// later ticket layers on top — this palette is only the base star.
 
 import type { Ticket } from '../model'
 
@@ -82,19 +81,13 @@ export function visualState(t: Pick<Ticket, 'status' | 'frontier'>): VisualState
 // states because the star-map's palette is the island's own exempt data-viz
 // colour (docs/design-system.md) — the chrome around it stays monochrome. The
 // grammar these serve, and the non-colour channel each state also carries, is
-// session.ts; the amber is the spec's session moon (story 25) and the violet its
-// one new hue (story 26), so the set is closed here, not open to growth.
+// session.ts; the amber is the spec's session moon (story 25), so the set is
+// closed here, not open to growth.
 export const SESSION_HUE = {
   // The session itself: the same amber as a live claim, because the moon *is*
   // the claim's body.
   session: '#ffd873',
-  // Agent review's counter-orbiter — the only hue the harness adds.
-  violet: '#c792ea',
-  // A docked proposal: the warm, sealed light of work that has landed.
-  human: '#ffedbe',
-  // Human review's deliberate break — the docked moon whitens and the star warms
-  // toward gold while it pings.
-  beacon: '#ffffff',
+  // The island's own chrome: the ticker line naming what just changed.
   gold: '#ffe6a0',
   // A dead session greys its whole orbital apparatus, not just the moon.
   dead: '#6b7280',

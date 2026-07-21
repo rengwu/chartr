@@ -11,12 +11,6 @@ function ticket(num: number, status: Ticket['status']): Ticket {
   return { num, slug: `${num}`, title: `t${num}`, type: 'task', status, blockedBy: [], frontier: false }
 }
 
-// A ticket carrying the gate signal — a review brief assembled and waiting on a
-// human (ticket 12).
-function atTheGate(t: Ticket): Ticket {
-  return { ...t, review: { sessionId: 's1', recommendation: 'Send back', blocking: 1, advisories: 0 } }
-}
-
 function map(...tickets: Ticket[]): WMap {
   return { slug: 'm', name: 'M', dir: '/m', destination: '', tickets, finished: false, kind: 'implementation' }
 }
@@ -50,21 +44,11 @@ describe('deriving the session overlay from a pushed snapshot', () => {
     expect(sessionStates(m, [])).toEqual({})
   })
 
-  it('walks a proposal through the review pipeline', () => {
-    const m = map(ticket(1, 'proposed'))
-    // The implementer proposed and died: work landed, nobody circling.
-    expect(sessionStates(m, [tab(1, 'implement', 'dead', false)])).toEqual({ 1: 'proposed' })
-    // A live reviewer circles it.
-    const reviewing = [tab(1, 'implement', 'dead', false), tab(1, 'review', 'working', true)]
-    expect(sessionStates(m, reviewing)).toEqual({ 1: 'agent-review' })
-    // The reviewer exits with no brief assembled yet: still just a proposal.
-    // Human review is the gate signal on the snapshot, not an inference from a
-    // dead tab (ticket 12 gave ticket 13's flagged derivation something explicit).
-    const reviewed = [tab(1, 'implement', 'dead', false), tab(1, 'review', 'dead', false)]
-    expect(sessionStates(m, reviewed)).toEqual({ 1: 'proposed' })
-    // The brief lands: the star is now the one that wants you.
-    const gated = map(atTheGate(ticket(1, 'proposed')))
-    expect(sessionStates(gated, reviewed)).toEqual({ 1: 'human-review' })
+  it('reads the same liveness on a resolved ticket its session still holds', () => {
+    // The overlay is about sessions, not the lifecycle: a session that wrote its
+    // answer and died still halts to you on the star it holds.
+    const m = map(ticket(1, 'resolved'))
+    expect(sessionStates(m, [tab(1, 'implement', 'dead', false)])).toEqual({ 1: 'dead' })
   })
 
   it('ignores tabs belonging to another map or to no ticket at all', () => {
@@ -77,14 +61,7 @@ describe('deriving the session overlay from a pushed snapshot', () => {
 })
 
 describe('the grammar', () => {
-  const ALL: SessionState[] = [
-    'implementing',
-    'quiet',
-    'dead',
-    'proposed',
-    'agent-review',
-    'human-review',
-  ]
+  const ALL: SessionState[] = ['implementing', 'quiet', 'dead']
 
   it('carries a non-colour channel for every state', () => {
     // Motion or shape, never colour alone: each state names at least one, and no
@@ -98,11 +75,10 @@ describe('the grammar', () => {
     expect(new Set(sigs).size).toBe(ALL.length)
   })
 
-  it('spends exactly one new hue', () => {
-    // The base six statuses own the palette; the session axis adds violet for
-    // agent review and otherwise re-uses the claim's amber and its warm light.
+  it('spends no new hue', () => {
+    // The base six statuses own the palette; the session axis re-uses the claim's
+    // amber and greys a dead session, adding nothing of its own.
     const hues = new Set(ALL.map((s) => GRAMMAR[s].hue))
-    expect(hues.size).toBeLessThanOrEqual(5)
-    expect(GRAMMAR['agent-review'].hue).not.toBe(GRAMMAR.implementing.hue)
+    expect(hues.size).toBeLessThanOrEqual(2)
   })
 })

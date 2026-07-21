@@ -3,12 +3,12 @@
   import { padTicket } from './model'
   import { needsYouQueue, type QueueEntry } from './attention'
   import * as Sheet from './components/ui/sheet'
-  import { ArrowRight, Bell, Eye, Warning } from 'phosphor-svelte'
+  import { ArrowRight, Bell, Warning } from 'phosphor-svelte'
 
-  // The cross-space "Needs you" queue (spec story 63): gate-level signals only
-  // — a review waiting, a session halted — across every registered space,
-  // reviews-first. Strictly pull: it renders only while summoned (the Sheet's
-  // own open state), never surfaced on its own. One click jumps to that
+  // The cross-space "Needs you" queue (spec story 63): decision-level signals
+  // only — a session halted — across every registered space. Strictly pull: it
+  // renders only while summoned (the Sheet's own open state), never surfaced
+  // on its own. One click jumps to that
   // space, its map summoned, the ticket in focus (the parent owns the jump —
   // this component only reports which entry was picked).
   let {
@@ -31,7 +31,7 @@
         <Bell class="size-4" /> Needs you
       </Sheet.Title>
       <Sheet.Description class="text-xs text-muted-foreground">
-        Gate-level signals across every space — a review waiting, a session halted.
+        Decision-level signals across every space — a session halted.
       </Sheet.Description>
     </Sheet.Header>
 
@@ -44,17 +44,11 @@
           class="flex items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-left hover:border-border hover:bg-accent"
           onclick={() => onjump(entry)}
         >
-          {#if entry.kind === 'review'}
-            <Eye class="size-4 shrink-0 text-primary" aria-hidden="true" />
-          {:else}
-            <Warning class="size-4 shrink-0 text-destructive" aria-hidden="true" />
-          {/if}
+          <Warning class="size-4 shrink-0 text-destructive" aria-hidden="true" />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-xs font-medium">{entry.spaceName} · {entry.mapName}</span>
             <span class="block truncate text-[0.65rem] text-muted-foreground">
-              #{padTicket(entry.ticketNum)} {entry.ticketTitle} — {entry.kind === 'review'
-                ? 'review waiting'
-                : 'session halted'}
+              #{padTicket(entry.ticketNum)} {entry.ticketTitle} — session halted
             </span>
           </span>
           <ArrowRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />

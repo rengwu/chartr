@@ -34,7 +34,6 @@
     ArrowClockwise,
     ArrowUUpLeft,
     Bell,
-    Eye,
     Warning,
   } from 'phosphor-svelte'
 
@@ -250,7 +249,7 @@
               variant="ghost"
               size="icon-sm"
               aria-label="Needs you — {queueCount} across every space"
-              title="Needs you — gate-level signals across every space (Q)"
+              title="Needs you — decision-level signals across every space (Q)"
               onclick={() => (queueOpen = !queueOpen)}
             >
               <Bell />
@@ -309,7 +308,7 @@
           >
             <!-- Header: the space's identity and its forget action. Ambient
                  cross-space attention (ticket 14, story 8) rides here — a
-                 wants-you flag (a review waiting, or a session halted) and a
+                 wants-you flag (a session halted) and a
                  liveness dot, both echoing the same signals the queue pulls
                  and the sidebar's own session rows already carry in detail.
                  Neither ever re-sorts the row; muscle memory over this list
@@ -321,9 +320,7 @@
                 onclick={() => (selectedId = space.id)}
               >
                 <span class="flex items-center gap-1.5">
-                  {#if attention === 'review'}
-                    <Eye class="size-3.5 shrink-0 text-primary" aria-label="a review is waiting" />
-                  {:else if attention === 'halt'}
+                  {#if attention === 'halt'}
                     <Warning class="size-3.5 shrink-0 text-destructive" aria-label="a session halted, needs a decision" />
                   {/if}
                   {#if liveness === 'working'}

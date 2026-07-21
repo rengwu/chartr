@@ -1,5 +1,5 @@
 // Attention (ticket 14): the action station's ranking, the cross-space queue's
-// gate-level filter, and the sidebar's ambient echo — all pure derivations
+// decision-level filter, and the sidebar's ambient echo — all pure derivations
 // over a snapshot, tested the same way ticket 13's session.test.ts tests
 // `sessionStates`: tiny fixture builders, no DOM.
 
@@ -25,10 +25,6 @@ function ticket(num: number, extra: Partial<Ticket> = {}): Ticket {
     frontier: false,
     ...extra,
   }
-}
-
-function atTheGate(t: Ticket): Ticket {
-  return { ...t, review: { sessionId: 's1', recommendation: 'Send back', blocking: 1, advisories: 0 } }
 }
 
 function map(slug: string, kind: WMap['kind'], ...tickets: Ticket[]): WMap {
@@ -72,9 +68,9 @@ function workingTerminal(mapSlug: string, ticketNum: number, status: Terminal['s
 }
 
 describe('mapActionItems', () => {
-  it('ranks reviews first, then the frontier by unblock count, ties by ticket number', () => {
+  it('ranks the frontier by unblock count, ties by ticket number', () => {
     // 1 blocks 2 and 3 (unblocks 2); 4 blocks nothing (unblocks 0); both are
-    // frontier. 5 is proposed with a review waiting.
+    // frontier. 2 and 3 are blocked, so neither is actionable.
     const m = map(
       'impl',
       'implementation',
@@ -82,13 +78,11 @@ describe('mapActionItems', () => {
       ticket(2, { blockedBy: [1] }),
       ticket(3, { blockedBy: [1] }),
       ticket(4, { frontier: true }),
-      atTheGate(ticket(5, { status: 'proposed' })),
     )
     const items = mapActionItems(m)
-    expect(items.map((i) => [i.kind, i.ticket.num, i.unblockCount])).toEqual([
-      ['review', 5, 0],
-      ['frontier', 1, 2],
-      ['frontier', 4, 0],
+    expect(items.map((i) => [i.ticket.num, i.unblockCount])).toEqual([
+      [1, 2],
+      [4, 0],
     ])
   })
 
@@ -118,10 +112,7 @@ describe('mapActionItems', () => {
 })
 
 describe('needsYouQueue', () => {
-  it('pulls exactly the gate-level signals — a review, a halted session', () => {
-    const reviewed = map('impl', 'implementation', atTheGate(ticket(1, { status: 'proposed' })))
-    const s1 = space('s1', { maps: [reviewed] })
-
+  it('pulls exactly the decision-level signal — a halted session', () => {
     const withHalt = map('impl2', 'implementation', ticket(2))
     const s2 = space('s2', { maps: [withHalt], terminals: [haltedTerminal('impl2', 2)] })
 
@@ -129,17 +120,8 @@ describe('needsYouQueue', () => {
     const withLiveSession = map('impl3', 'implementation', ticket(3))
     const s3 = space('s3', { maps: [withLiveSession], terminals: [workingTerminal('impl3', 3)] })
 
-    const entries = needsYouQueue([s1, s2, s3])
+    const entries = needsYouQueue([s2, s3])
     expect(entries).toEqual([
-      {
-        spaceId: 's1',
-        spaceName: 's1',
-        mapSlug: 'impl',
-        mapName: 'impl',
-        ticketNum: 1,
-        ticketTitle: 'Ticket 1',
-        kind: 'review',
-      },
       {
         spaceId: 's2',
         spaceName: 's2',
@@ -159,32 +141,22 @@ describe('needsYouQueue', () => {
 })
 
 describe('the sidebar echo', () => {
-  it('flags a space wanting a review over one merely halted', () => {
-    const reviewed = map('m', 'implementation', atTheGate(ticket(1, { status: 'proposed' })))
-    const both = space('s', {
-      maps: [reviewed],
-      terminals: [haltedTerminal('m', 2)],
-    })
-    expect(spaceAttention(both)).toBe('review')
-  })
-
-  it('flags halt when there is no review waiting', () => {
+  it('flags a space with a halted session', () => {
     const s = space('s', { maps: [map('m', 'implementation', ticket(1))], terminals: [haltedTerminal('m', 1)] })
     expect(spaceAttention(s)).toBe('halt')
   })
 
-  it('flags nothing for a space with no gate-level signal', () => {
+  it('flags nothing for a space with no decision-level signal', () => {
     const s = space('s', { maps: [map('m', 'implementation', ticket(1, { frontier: true }))] })
     expect(spaceAttention(s)).toBe(null)
   })
 
   it('reads liveness independently of attention — both can hold at once', () => {
-    const reviewed = map('m', 'implementation', atTheGate(ticket(1, { status: 'proposed' })))
     const s = space('s', {
-      maps: [reviewed],
-      terminals: [workingTerminal('m', 9)],
+      maps: [map('m', 'implementation', ticket(1, { frontier: true }))],
+      terminals: [workingTerminal('m', 9), haltedTerminal('m', 1)],
     })
-    expect(spaceAttention(s)).toBe('review')
+    expect(spaceAttention(s)).toBe('halt')
     expect(spaceLiveness(s)).toBe('working')
   })
 

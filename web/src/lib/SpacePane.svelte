@@ -406,7 +406,7 @@
           </div>
           <p class="max-w-xs text-xs text-muted-foreground">
             A plain shell in <code class="font-mono">{space.name}</code>’s working tree, or ideate — a
-            live chat to think an idea through. Both are ticketless, no review, ended when you close
+            live chat to think an idea through. Both are ticketless, no claim, ended when you close
             them.
           </p>
         </div>

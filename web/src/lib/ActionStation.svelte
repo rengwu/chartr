@@ -3,20 +3,18 @@
   import { mapActionItems, type ActionItem } from './attention'
   import { spawnSession, ActionError } from './actions'
   import * as Sheet from './components/ui/sheet'
-  import { Eye, ListChecks, Rocket } from 'phosphor-svelte'
+  import { ListChecks, Rocket } from 'phosphor-svelte'
 
   // The per-map "Next up" action station (spec story 23): a drawer over
-  // everything actionable on this map — reviews waiting first, then the
-  // frontier ranked by how much each unblocks. Hovering a row highlights its
-  // star (via `onhover`, threaded to the island's hover seam); clicking acts —
-  // a review opens the hub directly, a frontier ticket spawns straight away in
-  // its kind's default role (the same one-click ethos story 32 established),
-  // then selects it so the operator lands on the fresh session.
+  // everything actionable on this map — the frontier ranked by how much each
+  // unblocks. Hovering a row highlights its star (via `onhover`, threaded to
+  // the island's hover seam); clicking spawns the ticket straight away in its
+  // kind's default role (the same one-click ethos story 32 established), then
+  // selects it so the operator lands on the fresh session.
   let {
     open = $bindable(false),
     map,
     spaceId,
-    onopenreview,
     onselect,
     onspawned,
     onhover,
@@ -24,7 +22,6 @@
     open?: boolean
     map: WMap
     spaceId: string
-    onopenreview: (ticketNum: number) => void
     onselect: (ticketNum: number) => void
     onspawned?: (sessionId: string) => void
     onhover?: (ticketNum: number | null) => void
@@ -36,11 +33,6 @@
   let spawnError = $state<string | null>(null)
 
   async function act(item: ActionItem) {
-    if (item.kind === 'review') {
-      onopenreview(item.ticket.num)
-      open = false
-      return
-    }
     const role = defaultRole(item.ticket.type, rolesForKind(map.kind))
     spawningNum = item.ticket.num
     spawnError = null
@@ -64,7 +56,7 @@
         <ListChecks class="size-4" /> Next up
       </Sheet.Title>
       <Sheet.Description class="text-xs text-muted-foreground">
-        Reviews waiting, then the frontier ranked by how much each unblocks.
+        The frontier, ranked by how much each ticket unblocks.
       </Sheet.Description>
     </Sheet.Header>
 
@@ -82,15 +74,11 @@
           onblur={() => onhover?.(null)}
           onclick={() => act(item)}
         >
-          {#if item.kind === 'review'}
-            <Eye class="size-4 shrink-0 text-primary" aria-hidden="true" />
-          {:else}
-            <Rocket class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          {/if}
+          <Rocket class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-xs font-medium">#{padTicket(item.ticket.num)} {item.ticket.title}</span>
             <span class="block text-[0.65rem] text-muted-foreground">
-              {item.kind === 'review' ? 'review waiting' : `unblocks ${item.unblockCount}`}
+              unblocks {item.unblockCount}
             </span>
           </span>
           {#if spawningNum === item.ticket.num}

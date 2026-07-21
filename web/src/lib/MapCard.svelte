@@ -4,7 +4,6 @@
   import StarMap from './StarMap.svelte'
   import DetailPane from './DetailPane.svelte'
   import MapPickerCard from './MapPickerCard.svelte'
-  import ReviewHub from './ReviewHub.svelte'
   import ActionStation from './ActionStation.svelte'
   import { mapActionCount } from './attention'
   import { decideDock, type Dock } from './starmap/dock'
@@ -140,36 +139,6 @@
     return () => ro.disconnect()
   })
 
-  // The review hub (ticket 12) takes over the whole map card rather than docking
-  // beside the island: at the gate the map is context and the brief is the work.
-  // It is opened from the detail pane's "Open review" and closes back to it.
-  let hubTicket = $state<number | null>(null)
-  // Lifted out of the hub itself (ticket 17): approve's own rebuild pushes a
-  // resolved snapshot before the hub's HTTP response even lands, so the hub's
-  // local state cannot outlive that push on its own — this can, because the
-  // closing effect below reads it before it ever tears the hub down.
-  let hubApproved = $state<import('./actions').ApproveResult | null>(null)
-  const hubOn = $derived<Ticket | null>(
-    hubTicket === null ? null : (map?.tickets.find((t) => t.num === hubTicket) ?? null),
-  )
-  // A ticket that leaves `proposed` while the hub is open (approved, abandoned, or
-  // moved by someone else) has no gate left to hold — close rather than render a
-  // hub over a ticket the gate has passed. Exempt the ticket this hub just
-  // approved itself: that is exactly the transition the post-approve strip is
-  // for, and it must survive the very push that makes it true (ticket 17).
-  $effect(() => {
-    if (hubTicket !== null && !hubApproved && hubOn?.status !== 'proposed') hubTicket = null
-  })
-
-  function openHub(num: number) {
-    hubTicket = num
-    hubApproved = null
-  }
-  function closeHub() {
-    hubTicket = null
-    hubApproved = null
-  }
-
   // The action station (ticket 14): a numbered badge toggling a drawer of
   // everything actionable on the open map. Hovering a row highlights its star
   // (hoverNum, fed to the island); the badge count is echoed onto the map's
@@ -201,7 +170,6 @@
   function back() {
     selected = null
     showMaterial = false
-    closeHub()
     slug = null
   }
   function openMaterial() {
@@ -293,7 +261,7 @@
             variant="outline"
             size="sm"
             class="gap-1.5"
-            title="Next up — reviews first, then the frontier by unblock count"
+            title="Next up — the frontier ranked by unblock count"
             onclick={() => (stationOpen = true)}
           >
             <ListChecks />
@@ -328,28 +296,14 @@
             {spaceId}
             onclose={closePane}
             {onspawned}
-            onopenreview={openHub}
           />
         </div>
-      {/if}
-
-      {#if hubOn}
-        <ReviewHub
-          {spaceId}
-          {map}
-          ticket={hubOn}
-          onclose={closeHub}
-          {onspawned}
-          onselect={(num) => (selected = num)}
-          bind:approved={hubApproved}
-        />
       {/if}
 
       <ActionStation
         bind:open={stationOpen}
         {map}
         {spaceId}
-        onopenreview={openHub}
         onselect={(num) => (selected = num)}
         {onspawned}
         onhover={(num) => (hoverNum = num)}

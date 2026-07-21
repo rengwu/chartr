@@ -300,22 +300,6 @@ export class StarMap {
     return this.#tickerAlpha() > 0 ? this.#tickerText : null
   }
 
-  // The ticket numbers currently calling from offscreen: a human-review star
-  // outside the free rect leaves a gold chevron at that edge, because a call to
-  // action may not depend on where the camera happens to be. Exactly the set the
-  // renderer draws chevrons for.
-  beckoning(): number[] {
-    const r = this.#beckonRect()
-    const out: number[] = []
-    for (const n of this.#nodes) {
-      if (n.sstate !== 'human-review') continue
-      const sx = n._x * this.#cam.s + this.#cam.x
-      const sy = n._y * this.#cam.s + this.#cam.y
-      if (sx < r.x0 || sx > r.x1 || sy < r.y0 || sy > r.y1) out.push(n.num)
-    }
-    return out
-  }
-
   // Current screen position of a star under the live camera.
   screenOf(num: number): { x: number; y: number } | null {
     const n = this.#byNum.get(num)
@@ -358,19 +342,6 @@ export class StarMap {
       availW: Math.max(80, right - left),
       availH: Math.max(80, bottom - top),
     }
-  }
-
-  // The rect a beckoning star counts as visible inside: the free area the pane
-  // leaves, less a margin wide enough to seat a chevron and its caption. A star
-  // hidden behind the detail pane is offscreen for this purpose — the chevron is
-  // a call to action, so it errs toward calling.
-  #beckonRect(): { x0: number; x1: number; y0: number; y1: number } {
-    const M = 48
-    const left = this.#insets.left + M,
-      right = this.#w - this.#insets.right - M,
-      top = this.#insets.top + M,
-      bottom = this.#h - this.#insets.bottom - M
-    return { x0: Math.min(left, right), x1: Math.max(left, right), y0: Math.min(top, bottom), y1: Math.max(top, bottom) }
   }
 
   #tick(msg: string): void {
@@ -548,7 +519,6 @@ export class StarMap {
     for (const n of this.#nodes) this.#drawStar(g, n, this.#clock)
     g.restore()
     this.#drawLabels(g)
-    this.#drawChevrons(g)
     this.#drawTicker(g)
   }
 
@@ -640,8 +610,7 @@ export class StarMap {
       y = n._y,
       fl = n.flare || 0
     const isF = n.vstate === 'frontier',
-      isC = n.vstate === 'claimed',
-      isP = n.vstate === 'proposed'
+      isC = n.vstate === 'claimed'
     const beat = 0.5 + 0.5 * Math.sin(t * 2.8)
     const pulse = isF ? 0.8 + 0.2 * beat : 1
     const gr = (isF ? c.gr * (0.92 + 0.16 * beat) : c.gr) * (1 + fl * 0.5)
@@ -673,8 +642,7 @@ export class StarMap {
       g.arc(x, y, c.r + (1 - fl) * 40, 0, TAU)
       g.stroke()
     }
-    // A live claim breathes with two soft rings; a proposed star seals to one
-    // steady ring — work landed, nothing circling. A session overlay speaks for
+    // A live claim breathes with two soft rings. A session overlay speaks for
     // the claim when there is one, so the vanilla claimed rings stand down rather
     // than competing with the moon's orbit.
     if (isC && !n.sstate) {
@@ -688,14 +656,8 @@ export class StarMap {
       g.beginPath()
       g.arc(x, y, c.r + 11 + 1.8 * beat, 0, TAU)
       g.stroke()
-    } else if (isP) {
-      g.strokeStyle = hexA(c.core, 0.7)
-      g.lineWidth = 1.6
-      g.beginPath()
-      g.arc(x, y, c.r + 6, 0, TAU)
-      g.stroke()
     }
-    if (n.sstate) this.#drawSession(g, n, x, y, c.r, c.gr, t)
+    if (n.sstate) this.#drawSession(g, n, x, y, c.r, t)
     if (this.#selected === n.num) {
       g.strokeStyle = 'rgba(255,255,255,0.85)'
       g.lineWidth = 1.5
@@ -718,9 +680,9 @@ export class StarMap {
 
   // The session overlay (ticket 13), drawn straight from the grammar in
   // session.ts: a session is a body — an amber moon orbiting the star it holds.
-  // `motion` is the liveness (orbits / crawls / frozen), `moon` is the pipeline
-  // stage (circling / docked at the rim / frozen mid-orbit), and `marks` are the
-  // shapes that ride along. Because motion and shape carry every state, the
+  // `motion` is the liveness (orbits / crawls / frozen), `moon` is where the moon
+  // sits (circling, or frozen mid-orbit), and `marks` are the shapes that ride
+  // along. Because motion and shape carry every state, the
   // overlay still reads with the colour taken away.
   #drawSession(
     g: CanvasRenderingContext2D,
@@ -728,27 +690,13 @@ export class StarMap {
     x: number,
     y: number,
     r: number,
-    gr: number,
     t: number,
   ): void {
     const s = n.sstate
     if (!s) return
     const gm = GRAMMAR[s]
     const orbR = r + 10
-    const docked = gm.moon === 'docked'
     const frozen = gm.moon === 'frozen'
-
-    // Human review warms the star itself toward gold before anything orbital —
-    // the deliberate break: this one is a call to action, not a status.
-    if (gm.marks.includes('ping-rings')) {
-      const wash = g.createRadialGradient(x, y, 0, x, y, gr * 1.2)
-      wash.addColorStop(0, hexA(SESSION_HUE.gold, 0.36))
-      wash.addColorStop(1, hexA(SESSION_HUE.gold, 0))
-      g.fillStyle = wash
-      g.beginPath()
-      g.arc(x, y, gr * 1.2, 0, TAU)
-      g.fill()
-    }
 
     // The orbital apparatus. A dead session greys the whole thing, not just the
     // moon — the orbit itself is defunct — and breaks it into a dashed line.
@@ -756,7 +704,7 @@ export class StarMap {
       g.strokeStyle = hexA(SESSION_HUE.dead, 0.3)
       g.setLineDash([3, 5])
     } else {
-      g.strokeStyle = hexA(SESSION_HUE.session, docked ? 0.12 : 0.16)
+      g.strokeStyle = hexA(SESSION_HUE.session, 0.16)
     }
     g.lineWidth = 1
     g.beginPath()
@@ -764,10 +712,10 @@ export class StarMap {
     g.stroke()
     g.setLineDash([])
 
-    // Where the moon sits: docked at the rim once the work has landed, otherwise
-    // somewhere on its orbit — sweeping, crawling, or stopped where it died.
+    // Where the moon sits on its orbit — sweeping, crawling, or stopped where it
+    // died.
     const speed = gm.motion === 'orbit' ? 1.5 : gm.motion === 'crawl' ? 0.18 : 0
-    const ang = docked ? -TAU / 4 : frozen ? n.num * 1.3 : t * speed + n.num
+    const ang = frozen ? n.num * 1.3 : t * speed + n.num
     const mx = x + Math.cos(ang) * orbR,
       my = y + Math.sin(ang) * orbR
 
@@ -781,19 +729,13 @@ export class StarMap {
       }
     }
 
-    const moonCol = frozen
-      ? SESSION_HUE.dead
-      : docked
-        ? s === 'human-review'
-          ? SESSION_HUE.beacon
-          : SESSION_HUE.human
-        : SESSION_HUE.session
+    const moonCol = frozen ? SESSION_HUE.dead : SESSION_HUE.session
     // Quiet blinks: the moon fades in and out as it crawls, so the hint reads
     // even where the crawl is too slow to see.
     const moonA = gm.marks.includes('blink') ? 0.35 + 0.3 * Math.sin(t * 1.2) : frozen ? 0.9 : 0.95
     g.fillStyle = hexA(moonCol, moonA)
     g.beginPath()
-    g.arc(mx, my, docked ? 3.1 : frozen ? 2.4 : 2.7, 0, TAU)
+    g.arc(mx, my, frozen ? 2.4 : 2.7, 0, TAU)
     g.fill()
 
     // A dead moon wears a grey halo — a body stopped, ringed like a marker.
@@ -803,70 +745,6 @@ export class StarMap {
       g.beginPath()
       g.arc(mx, my, 4.6, 0, TAU)
       g.stroke()
-    }
-
-    // Agent review: a smaller violet body counter-orbiting the docked proposal —
-    // an adversary circling the work, going the other way.
-    if (gm.marks.includes('counter-orbit')) {
-      const ra = -t * 2.8 + n.num,
-        rr = orbR + 5
-      for (let k = 1; k <= 3; k++) {
-        const tb = ra + k * 0.3
-        g.fillStyle = hexA(SESSION_HUE.violet, 0.32 - k * 0.09)
-        g.beginPath()
-        g.arc(x + Math.cos(tb) * rr, y + Math.sin(tb) * rr, 1.5, 0, TAU)
-        g.fill()
-      }
-      g.fillStyle = hexA(SESSION_HUE.violet, 0.95)
-      g.beginPath()
-      g.arc(x + Math.cos(ra) * rr, y + Math.sin(ra) * rr, 2.3, 0, TAU)
-      g.fill()
-    }
-
-    // …and the pings that emanate from a star that wants you.
-    if (gm.marks.includes('ping-rings')) {
-      for (let k = 0; k < 2; k++) {
-        const u = mod(t / 1.7 + k * 0.5, 1)
-        g.strokeStyle = hexA(SESSION_HUE.beacon, (1 - u) * 0.55)
-        g.lineWidth = 1.6 * (1 - u) + 0.4
-        g.beginPath()
-        g.arc(x, y, r + 7 + u * 30, 0, TAU)
-        g.stroke()
-      }
-    }
-  }
-
-  // A human-review star that has scrolled out of the free rect keeps calling
-  // through a gold chevron pinned at the edge it left by, captioned with its
-  // number — the call to action must not depend on where the camera is.
-  #drawChevrons(g: CanvasRenderingContext2D): void {
-    const r = this.#beckonRect()
-    const pulse = 0.6 + 0.4 * Math.sin(this.#clock * 4)
-    for (const num of this.beckoning()) {
-      const n = this.#byNum.get(num)
-      if (!n) continue
-      const sx = n._x * this.#cam.s + this.#cam.x
-      const sy = n._y * this.#cam.s + this.#cam.y
-      const bx = clamp(sx, r.x0, r.x1),
-        by = clamp(sy, r.y0, r.y1)
-      const dx = sx - bx,
-        dy = sy - by,
-        d = Math.hypot(dx, dy) || 1
-      g.save()
-      g.translate(bx, by)
-      g.rotate(Math.atan2(dy / d, dx / d))
-      g.fillStyle = hexA(SESSION_HUE.gold, pulse)
-      g.beginPath()
-      g.moveTo(10, 0)
-      g.lineTo(-4, -7)
-      g.lineTo(-4, 7)
-      g.closePath()
-      g.fill()
-      g.restore()
-      g.font = '10px ui-monospace,SFMono-Regular,Menlo,monospace'
-      g.textAlign = 'center'
-      g.fillStyle = hexA(SESSION_HUE.gold, 0.9)
-      g.fillText(`#${num < 10 ? '0' : ''}${num} wants you`, bx, by + (dy < 0 ? 22 : -14))
     }
   }
 

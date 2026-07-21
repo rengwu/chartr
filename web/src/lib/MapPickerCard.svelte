@@ -121,13 +121,13 @@
         <Button
           size="xs"
           variant={map.kindGuess === "planning" ? "default" : "outline"}
-          title="Planning map — tickets resolve live, no review gate (p)"
+          title="Planning map — tickets resolve decisions (p)"
           onclick={() => doClassify("planning")}>plan</Button
         >
         <Button
           size="xs"
           variant={map.kindGuess === "implementation" ? "default" : "outline"}
-          title="Implementation map — tickets pass through review before resolving (i)"
+          title="Implementation map — tickets deliver code (i)"
           onclick={() => doClassify("implementation")}>impl</Button
         >
       </div>
