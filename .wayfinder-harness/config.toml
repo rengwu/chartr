@@ -3,3 +3,9 @@ kind = "implementation"
 
 [maps."harness-design"]
 kind = "planning"
+
+[maps."reskin"]
+kind = "implementation"
+
+[maps."simplify"]
+kind = "planning"
