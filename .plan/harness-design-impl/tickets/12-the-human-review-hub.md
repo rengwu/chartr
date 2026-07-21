@@ -1,8 +1,6 @@
 ---
 type: task
 blocked_by: [11]
-claimed_by: s1433d0d2444e
-claimed_at: 2026-07-21T07:17:57Z
 ---
 
 # The human review hub
@@ -13,7 +11,7 @@ The gate, whole: the brief-first hub plus all four exits. The hub takes over the
 
 Done when: process-boundary tests cover approve (promotion commit shape, trailers, concurrent live session, smear detection, dependents unblocking), the rejection tick gating approve, send-back's note landing in the payload and nowhere else, take-it-further rewriting the proposed answer with commits stacking, and abandon's demotion returning the ticket to the frontier with levers untouched by default; in the browser every exit is drivable and the hub renders the on-disk brief with buttons and nothing else.
 
-## Proposed Answer
+## Answer
 
 The gate is four plain HTTP actions and one Svelte component that renders the
 markdown ticket 11 already wrote to disk. Nothing about the review moved into a
