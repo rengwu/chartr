@@ -13,7 +13,7 @@ The one opinionated nudge toward charting (planning ticket 07). An "ideate" affo
 
 Done when: the button spawns a live TUI session opened with the starter prompt's payload; process-boundary tests assert no claim commit is written, no ticket is bound, no lifecycle state ever derives for it, and editing the on-disk starter prompt changes what the next ideate session is told.
 
-## Proposed Answer
+## Answer
 
 **What I built:**
 
