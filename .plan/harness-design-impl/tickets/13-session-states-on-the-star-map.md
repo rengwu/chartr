@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [06, 10, 11]
+claimed_by: sd88d7d931ae8
+claimed_at: 2026-07-21T05:50:35Z
 ---
 
 # Session states on the star-map
