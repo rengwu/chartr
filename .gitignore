@@ -15,6 +15,13 @@
 # the repo root when the harness runs with cwd here — never committed.
 /spaces.toml
 
+# The local user config layer (ticket 02, ADR 0009): per-machine binding
+# overrides and the local-only autopilot flag, keyed by space path. It lands at
+# the data root — the repo root when run with cwd here. Local by definition:
+# execution choices the operator makes are theirs, never committed for everyone
+# who clones.
+/user.toml
+
 # The materialized prompt library (ticket 08) is user-config runtime state too: a
 # copy lands under the data root — the repo root when run with cwd here — as the
 # operator's editable copy. Never committed. (A space's *committed* prompt overlay
