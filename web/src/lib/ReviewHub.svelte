@@ -1,11 +1,13 @@
 <script lang="ts">
-  import type { Map as WMap, Ticket } from './model'
+  import type { Map as WMap, Role, Ticket } from './model'
+  import { rolesForKind } from './model'
   import {
     ActionError,
     abandonTicket,
     approveTicket,
     followUp,
     readReview,
+    spawnSession,
     ticketDiff,
     type ApproveResult,
     type DiffScope,
@@ -37,6 +39,8 @@
     ticket,
     onclose,
     onspawned,
+    onselect,
+    approved = $bindable(null),
   }: {
     spaceId: string
     map: WMap
@@ -44,6 +48,14 @@
     onclose: () => void
     // Bubbled up so the chrome can make a follow-up session's tab active.
     onspawned?: (sessionId: string) => void
+    // The post-approve strip's Next button falls back to this when the suggested
+    // ticket cannot be spawned straight from here — the chrome selects it instead
+    // (ticket 17), so the click is never a no-op.
+    onselect?: (ticketNum: number) => void
+    // Lifted into the parent (ticket 17) so the post-approve strip survives the
+    // approve transition: MapCard's own effect, which closes the hub once the
+    // ticket leaves `proposed`, exempts whichever ticket this holds a result for.
+    approved?: ApproveResult | null
   } = $props()
 
   let review = $state<ReviewRead | null>(null)
@@ -54,12 +66,20 @@
   let actionError = $state<string | null>(null)
 
   // The hub is opened per ticket; a fresh open is a fresh read of the brief off
-  // disk, and never inherits the previous ticket's acknowledgement.
+  // disk, and never inherits the previous ticket's acknowledgement. Guarded by a
+  // value key, not merely re-run on every prop identity change: `map`/`ticket`
+  // get a fresh object reference on *every* pushed snapshot, including the one
+  // approve's own rebuild triggers, and reloading then would wipe `approved` out
+  // from under the strip it is about to render (ticket 17).
   let token = 0
+  let lastKey: string | null = null
   $effect(() => {
     const num = ticket.num
     const slug = map.slug
     const id = spaceId
+    const key = `${id} ${slug} ${num}`
+    if (key === lastKey) return
+    lastKey = key
     const mine = ++token
     review = null
     loadError = null
@@ -196,10 +216,12 @@
   let furtherRole = $state('implement')
   let reason = $state('')
   let revert = $state(false)
+  let reset = $state(false)
 
   // The post-approve strip replaces the hub once the gate is passed (story 61).
-  let approved = $state<ApproveResult | null>(null)
+  // `approved` itself is the bindable prop above, lifted into MapCard.
   let nextEnabled = $state(false)
+  let spawningNext = $state(false)
   $effect(() => {
     if (!approved) return
     nextEnabled = false
@@ -225,6 +247,45 @@
   async function approve() {
     const res = await run(() => approveTicket(spaceId, map.slug, ticket.num, acknowledged))
     if (res) approved = res
+  }
+
+  function defaultRoleFor(type: string, offered: Role[]): Role {
+    const guess: Role =
+      type === 'research'
+        ? 'research'
+        : type === 'prototype'
+          ? 'prototype'
+          : type === 'grilling'
+            ? 'grill'
+            : 'implement'
+    return offered.includes(guess) ? guess : offered[0]
+  }
+
+  // The strip's Next button (story 61): spawn the suggestion straight from here
+  // when it is takeable, or fall back to selecting it so the click is never a
+  // no-op — a blocked spawn (a live session already running, a missing binding,
+  // the ticket having moved on) is exactly when the operator needs to land on the
+  // ticket to see why, not watch the button do nothing (ticket 17).
+  async function spawnNext() {
+    if (!approved?.next || spawningNext) return
+    const num = approved.next.num
+    const target = map.tickets.find((t) => t.num === num)
+    const roles = target?.frontier ? rolesForKind(map.kind) : []
+    if (target && roles.length) {
+      spawningNext = true
+      try {
+        const res = await spawnSession(spaceId, map.slug, num, defaultRoleFor(target.type, roles))
+        onspawned?.(res.sessionId)
+        onclose()
+        return
+      } catch {
+        // Blocked — fall through to navigating there instead.
+      } finally {
+        spawningNext = false
+      }
+    }
+    onselect?.(num)
+    onclose()
   }
 
   async function sendBack() {
@@ -261,11 +322,23 @@
   }
 
   async function abandon() {
-    const res = await run(() => abandonTicket(spaceId, map.slug, ticket.num, { reason, revert }))
+    const res = await run(() => abandonTicket(spaceId, map.slug, ticket.num, { reason, revert, reset }))
     if (res) {
       dialog = null
       onclose()
     }
+  }
+
+  // revert and reset are alternatives, never both (the backend refuses the
+  // combination) — ticking one clears the other rather than offering a radio
+  // group the vendored primitives don't have.
+  function pickRevert(v: boolean) {
+    revert = v
+    if (v) reset = false
+  }
+  function pickReset(v: boolean) {
+    reset = v
+    if (v) revert = false
   }
 
   function toggleAdvisory(i: number) {
@@ -347,9 +420,9 @@
             {#if approved.next}
               <Button
                 size="sm"
-                disabled={!nextEnabled}
+                disabled={!nextEnabled || spawningNext}
                 title={nextEnabled ? '' : 'Offered, never shoved — a moment so this cannot inherit the approve click'}
-                onclick={onclose}
+                onclick={spawnNext}
               >
                 <Rocket /> Next: #{pad(approved.next.num)}
                 {approved.next.title}
@@ -652,11 +725,23 @@
       >
     </div>
     <label class="flex items-start gap-2">
-      <Checkbox bind:checked={revert} aria-label="Also revert the work commits" />
+      <Checkbox checked={revert} onCheckedChange={(v) => pickRevert(!!v)} aria-label="Also revert the work commits" />
       <span class="text-muted-foreground">
         Also revert the work commits now — <em>a rejected attempt left in history is a truthful history</em>.
       </span>
     </label>
+    {#if review?.resetAvailable}
+      <!-- Offered only while the work is verifiably the tip of a clean tree — the
+           same guarantee the backend enforces (ticket 17), so this never promises
+           what abandon would then refuse. Revert and reset are alternatives. -->
+      <label class="flex items-start gap-2">
+        <Checkbox checked={reset} onCheckedChange={(v) => pickReset(!!v)} aria-label="Reset to before the work" />
+        <span class="text-muted-foreground">
+          Reset to before the work instead — <em>discards the commits outright</em> rather than reverting them;
+          only offered while nothing else has landed on top.
+        </span>
+      </label>
+    {/if}
     {#if actionError}
       <p class="flex items-start gap-1.5 text-[0.7rem] text-destructive">
         <Warning class="mt-0.5 size-3.5 shrink-0" /><span>{actionError}</span>

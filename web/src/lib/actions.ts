@@ -154,6 +154,9 @@ export interface ReviewRead {
   blocking: ReviewFinding[]
   advisories: ReviewFinding[]
   proposedAnswer: string
+  // Mirrors abandon's own tip-of-a-clean-tree check (ticket 17): the reset lever
+  // is worth offering only where the backend would actually accept it.
+  resetAvailable: boolean
 }
 
 export function readReview(id: string, slug: string, num: number): Promise<ReviewRead> {

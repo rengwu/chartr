@@ -157,7 +157,7 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 	if out, err := git(repo, "add", "--", rel); err != nil {
 		return fmt.Errorf("staging the release: %w\n%s", err, out)
 	}
-	msg := fmt.Sprintf("Release %s back to the frontier\n\nSession: %s\n", rel, sessionID)
+	msg := fmt.Sprintf("Release %s back to the frontier\n\nSession: %s\nHarness-Write: true", rel, sessionID)
 	if out, err := git(repo, "commit", "--only", "-m", msg, "--", rel); err != nil {
 		return fmt.Errorf("committing the release: %w\n%s", err, out)
 	}
@@ -179,7 +179,8 @@ func claimMessage(rel string, c claim) string {
 	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
 	fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
 	fmt.Fprintf(&b, "Model-From: %s\n", c.ModelFrom)
-	fmt.Fprintf(&b, "Args-From: %s", c.ArgsFrom)
+	fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)
+	fmt.Fprintf(&b, "Harness-Write: true")
 	return b.String()
 }
 

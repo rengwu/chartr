@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/rengwu/wayfinder-harness/internal/config"
@@ -142,7 +143,62 @@ func (s *Server) assembleReviewBrief(e registry.Entry, info terminal.Info) (stri
 	// Re-assert the run directory's ignore, so the brief can never be swept into a
 	// commit (ADR 0008) — the same guard the payload writer holds.
 	_ = os.WriteFile(filepath.Join(e.Path, sessionRunDir, ".gitignore"), []byte("*\n"), 0o644)
+
+	// Point the ticket at this session as the current review (ticket 17). Every
+	// call here is a genuinely new verdict — ensureBrief never re-assembles a
+	// session that already has a brief.md — so overwriting the pointer on every
+	// call is exactly "the newest verdict wins": a send-back's stale brief can
+	// never mask the fix-up's fresh one, because reading the gate's review never
+	// again scans live sessions for it, only this pointer.
+	if err := writeReviewPointer(e.Path, info.Session.MapSlug, info.Session.TicketNum, info.ID); err != nil {
+		return "", verdict{}, http.StatusInternalServerError, errors.New("pointing the ticket at its review: " + err.Error())
+	}
 	return brief, v, http.StatusOK, nil
+}
+
+// The per-ticket review pointer (ticket 17). `reviewFor` used to find a ticket's
+// current review by scanning `s.terms.ForSpace` for a live review session's tab —
+// which broke two ways: iterating in creation order could surface a *stale*
+// session's already-assembled brief ahead of a fresher one (the re-review shadow,
+// after send-back → fix-up → a new review), and a tab that was later discarded, or
+// that a restart dropped from memory entirely, orphaned the brief even though it
+// was still sitting on disk. The pointer is written once, right here, whenever a
+// brief is assembled — the one place both the explicit action and the gate's lazy
+// ensureBrief funnel through — so reading it back never depends on `s.terms` at
+// all: it survives the tab, and survives the process.
+const reviewPointerFile = "review-session"
+
+func reviewPointerDir(repo, slug string) string {
+	return filepath.Join(repo, sessionRunDir, "reviews", slug)
+}
+
+// writeReviewPointer records sessionID as ticket num's current review. Called only
+// after that session's brief is already on disk, so a reader following the
+// pointer never finds it dangling.
+func writeReviewPointer(repo, slug string, num int, sessionID string) error {
+	dir := reviewPointerDir(repo, slug)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, strconv.Itoa(num))
+	if err := os.WriteFile(path, []byte(sessionID), 0o644); err != nil {
+		return err
+	}
+	// The run directory's own .gitignore (`*`) already covers this nested path, but
+	// review.go's other writer re-asserts it defensively at the point of writing
+	// rather than trusting an ignore laid down elsewhere to still be there.
+	_ = os.WriteFile(filepath.Join(repo, sessionRunDir, ".gitignore"), []byte("*\n"), 0o644)
+	return nil
+}
+
+// readReviewPointer reads the session id currently pointed to for a ticket, or ""
+// when no review has ever been assembled for it.
+func readReviewPointer(repo, slug string, num int) string {
+	raw, err := os.ReadFile(filepath.Join(reviewPointerDir(repo, slug), strconv.Itoa(num)))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 // finding is one line of a verdict's Findings section: its prose and the Done-when

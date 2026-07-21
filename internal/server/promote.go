@@ -44,41 +44,80 @@ func promoteAnswer(src string) (string, bool) {
 // vanishing — and because the closing heading is gone the ticket derives `open`
 // again and returns to the frontier.
 //
-// The demoted section is filed under a `## Rejected attempts` heading so a second
-// abandonment stacks beneath the same parent rather than scattering loose `###`s
-// through the ticket. Neither heading matches wayfinder's closure scan
-// (`^## (Answer|Ruled out)`), so a vanilla tool reads the ticket as open too.
+// The demoted section is filed under a `## Rejected attempts` heading, and every
+// abandonment's section is relocated there — appended after whatever the parent
+// heading already holds — rather than left wherever this attempt's `## Proposed
+// Answer` happened to sit (ticket 17: a fresh attempt's proposal does not
+// necessarily land back at the same position the first one did, so inserting
+// in place scattered the second rejection away from the first). Neither heading
+// matches wayfinder's closure scan (`^## (Answer|Ruled out)`), so a vanilla tool
+// reads the ticket as open too.
 func demoteProposal(src, reason, date string) (string, bool) {
 	lines := strings.Split(src, "\n")
 	at := -1
-	hasParent := false
 	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if strings.EqualFold(t, rejectedAttemptsHeading) {
-			hasParent = true
-		}
-		if at < 0 && strings.EqualFold(t, "## Proposed Answer") {
+		if at < 0 && strings.EqualFold(strings.TrimSpace(l), "## Proposed Answer") {
 			at = i
 		}
 	}
 	if at < 0 {
 		return src, false
 	}
-
-	head := []string{fmt.Sprintf("### Rejected — %s", date)}
-	if !hasParent {
-		head = append([]string{rejectedAttemptsHeading, ""}, head...)
+	bodyEnd := at + 1
+	for bodyEnd < len(lines) && !isH2OrHigher(lines[bodyEnd]) {
+		bodyEnd++
 	}
 
 	// The reason leads the demoted section: the next attempt reads why this one
 	// failed before it reads what it tried.
-	head = append(head, "", "**Why this was rejected:** "+strings.TrimSpace(reason), "",
-		"The rejected proposal, kept verbatim:")
+	section := []string{fmt.Sprintf("### Rejected — %s", date), "",
+		"**Why this was rejected:** " + strings.TrimSpace(reason), "",
+		"The rejected proposal, kept verbatim:"}
+	section = append(section, lines[at+1:bodyEnd]...)
 
-	out := append([]string{}, lines[:at]...)
-	out = append(out, head...)
-	out = append(out, lines[at+1:]...)
+	// Excise the proposal — heading and body — from its old position first, so the
+	// parent search below, and the splice point it finds, work against the tree
+	// with this attempt already lifted out.
+	without := append(append([]string{}, lines[:at]...), lines[bodyEnd:]...)
+
+	parentAt := -1
+	for i, l := range without {
+		if strings.EqualFold(strings.TrimSpace(l), rejectedAttemptsHeading) {
+			parentAt = i
+			break
+		}
+	}
+	if parentAt < 0 {
+		// The first abandonment: file the section where the proposal sat, with a
+		// fresh parent heading — the only position that makes sense yet.
+		out := append([]string{}, without[:at]...)
+		out = append(out, rejectedAttemptsHeading, "")
+		out = append(out, section...)
+		out = append(out, without[at:]...)
+		return strings.Join(out, "\n"), true
+	}
+	// A later abandonment: append to the end of the existing section — right
+	// before the next `##`-or-higher heading after the parent, or end of file —
+	// so every rejected attempt stays grouped under the one heading.
+	insertAt := parentAt + 1
+	for insertAt < len(without) && !isH2OrHigher(without[insertAt]) {
+		insertAt++
+	}
+	out := append([]string{}, without[:insertAt]...)
+	if insertAt > parentAt+1 && strings.TrimSpace(without[insertAt-1]) != "" {
+		out = append(out, "")
+	}
+	out = append(out, section...)
+	out = append(out, without[insertAt:]...)
 	return strings.Join(out, "\n"), true
+}
+
+// isH2OrHigher reports whether a line opens a new `##` or `#` section — the
+// boundary demoteProposal reads a demoted section's own body up to, and the point
+// it splices a later demotion in before.
+func isH2OrHigher(l string) bool {
+	t := strings.TrimSpace(l)
+	return strings.HasPrefix(t, "## ") || strings.HasPrefix(t, "# ")
 }
 
 const rejectedAttemptsHeading = "## Rejected attempts"
@@ -96,7 +135,11 @@ func (g gateCommit) message() string {
 	var b strings.Builder
 	b.WriteString(g.Subject)
 	b.WriteString("\n\n")
-	for i, t := range g.Trailers {
+	// Every gate write carries this, unconditionally — it is what lets
+	// isHarnessCommit tell a lifecycle write from an agent's own commit by trailer
+	// rather than by guessing from the subject line (ticket 17).
+	trailers := append(append([]trailer{}, g.Trailers...), trailer{"Harness-Write", "true"})
+	for i, t := range trailers {
 		if i > 0 {
 			b.WriteString("\n")
 		}

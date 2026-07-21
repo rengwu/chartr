@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -112,6 +113,17 @@ func (s *Server) handleReviewRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// resetAvailable mirrors abandon's own tip check (a clean tree is not asserted
+	// here — the actual abandon call re-checks it, since the tree can go dirty
+	// between this read and that write) so the abandon dialog can offer the reset
+	// lever only where it would actually be accepted, rather than always showing it
+	// and letting the operator discover the refusal after already writing a reason
+	// (ticket 17: the dialog only ever offered revert).
+	resetAvailable := false
+	if ticketPath, err := ticketFilePath(m.Dir, tk.Num); err == nil {
+		resetAvailable = tipOf(e.Path, workCommits(e.Path, repoRel(e.Path, ticketPath)))
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"sessionId":      sid,
 		"ticketNum":      tk.Num,
@@ -121,6 +133,7 @@ func (s *Server) handleReviewRead(w http.ResponseWriter, r *http.Request) {
 		"blocking":       findingsJSON(rv.blocking()),
 		"advisories":     findingsJSON(rv.advisories()),
 		"proposedAnswer": prompt.ProposedAnswerSection(tk.Body),
+		"resetAvailable": resetAvailable,
 	})
 }
 
@@ -553,8 +566,16 @@ func (s *Server) handleTicketDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	head = strings.TrimSpace(head)
 	// The ticket file itself is excluded: the hub already shows the proposal and the
-	// verdict, and the claim churn on the ticket is noise against the work.
-	patch, _ := git(e.Path, "--no-optional-locks", "diff", base+".."+head, "--", ".", ":(exclude)"+rel)
+	// verdict, and the claim churn on the ticket is noise against the work. A stale
+	// or unknown `since` sha (scope=read, an sha the client remembered from a since-
+	// discarded branch or a garbage-collected commit) makes this call fail — that
+	// must surface as the anchored error it is, never read as "nothing changed"
+	// (ticket 17: the discarded error used to render an honest-looking empty diff).
+	patch, err := git(e.Path, "--no-optional-locks", "diff", base+".."+head, "--", ".", ":(exclude)"+rel)
+	if err != nil {
+		httpError(w, http.StatusConflict, "the diff's anchor ("+shortSHA(base)+") does not resolve in this repository — it may be stale or unknown: "+patch)
+		return
+	}
 	stat, _ := git(e.Path, "--no-optional-locks", "diff", "--stat", base+".."+head, "--", ".", ":(exclude)"+rel)
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -567,29 +588,24 @@ func (s *Server) handleTicketDiff(w http.ResponseWriter, r *http.Request) {
 }
 
 // reviewFor finds the assembled review brief for a ticket and parses the verdict
-// behind it. The review session's tab is the index: a review session pinned to
-// this ticket whose run directory holds a brief. It reads the verdict rather than
-// the brief so the mechanical rules (anchoring, the recommendation) are applied
-// from the source, exactly as ticket 11 applied them when it wrote the brief.
+// behind it. The per-ticket pointer (ticket 17) is the index — never a scan of
+// live session tabs — so the sid it returns is always whichever review was
+// assembled *last*, and reading it never depends on that session's tab still
+// being open or the process that ran it still being up. It reads the verdict
+// rather than the brief so the mechanical rules (anchoring, the recommendation)
+// are applied from the source, exactly as ticket 11 applied them when it wrote
+// the brief.
 func (s *Server) reviewFor(e registry.Entry, slug string, num int) (verdict, string, bool) {
-	for _, info := range s.terms.ForSpace(e.ID) {
-		if info.Session == nil || info.Session.Role != string(config.RoleReview) {
-			continue
-		}
-		if info.Session.MapSlug != slug || info.Session.TicketNum != num {
-			continue
-		}
-		dir := filepath.Join(e.Path, sessionRunDir, info.ID)
-		if _, err := os.Stat(filepath.Join(dir, reviewBriefName)); err != nil {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, reviewVerdictName))
-		if err != nil {
-			continue
-		}
-		return parseVerdict(string(raw)), info.ID, true
+	sid := readReviewPointer(e.Path, slug, num)
+	if sid == "" {
+		return verdict{}, "", false
 	}
-	return verdict{}, "", false
+	dir := filepath.Join(e.Path, sessionRunDir, sid)
+	raw, err := os.ReadFile(filepath.Join(dir, reviewVerdictName))
+	if err != nil {
+		return verdict{}, "", false
+	}
+	return parseVerdict(string(raw)), sid, true
 }
 
 // ensureBrief builds the review brief for a ticket whose reviewer has written a
@@ -702,23 +718,27 @@ func contains(xs []int, x int) bool {
 // workCommits lists the commits an attempt produced, newest first: everything
 // since the ticket was first claimed, minus the harness's own lifecycle commits
 // (claim, release, gate), which are the record of the attempt rather than the
-// attempt. These are what abandon's revert and reset levers act on.
+// attempt. These are what abandon's revert and reset levers act on. A commit is
+// read whole (%B, not just its subject) so isHarnessCommit can match the
+// Harness-Write trailer every lifecycle write carries — an agent commit whose
+// subject happens to start with "Claim " or "Resolve " is work, not the harness's,
+// and trailer-matching is what tells the two apart (ticket 17).
 func workCommits(repo, ticketRel string) []string {
 	base := oldestClaimSHA(repo, ticketRel, string(config.RoleImplement))
 	if base == "" {
 		return nil
 	}
-	out, err := git(repo, "log", "--format=%H%x1f%s", base+"..HEAD")
+	out, err := git(repo, "log", "--format=%H%x1f%B%x00", base+"..HEAD")
 	if err != nil {
 		return nil
 	}
 	var shas []string
-	for _, line := range strings.Split(out, "\n") {
-		sha, subject, found := strings.Cut(strings.TrimSpace(line), "\x1f")
+	for _, rec := range strings.Split(out, "\x00") {
+		sha, msg, found := strings.Cut(strings.TrimSpace(rec), "\x1f")
 		if !found || sha == "" {
 			continue
 		}
-		if isHarnessSubject(subject) {
+		if isHarnessCommit(msg) {
 			continue
 		}
 		shas = append(shas, sha)
@@ -726,16 +746,17 @@ func workCommits(repo, ticketRel string) []string {
 	return shas
 }
 
-// isHarnessSubject reports whether a commit is one of the harness's own
-// enumerated lifecycle writes (ADR 0008) rather than an agent's work.
-func isHarnessSubject(subject string) bool {
-	for _, p := range []string{"Claim ", "Release ", "Resolve ", "Abandon the proposal on "} {
-		if strings.HasPrefix(subject, p) {
-			return true
-		}
-	}
-	return false
+// isHarnessCommit reports whether a commit is one of the harness's own
+// enumerated lifecycle writes (ADR 0008) rather than an agent's work — matched by
+// the `Harness-Write: true` trailer every claim, release, and gate commit carries,
+// never by guessing from the subject line (ticket 17: a subject-prefix match
+// silently excluded any agent commit whose own message happened to start with
+// "Claim ", "Release ", "Resolve ", or "Abandon the proposal on ").
+func isHarnessCommit(msg string) bool {
+	return reHarnessWriteTrailer.MatchString(msg)
 }
+
+var reHarnessWriteTrailer = regexp.MustCompile(`(?m)^Harness-Write:\s*true\s*$`)
 
 // tipOf reports whether the given commits (newest first) are verifiably the tip
 // of the current branch — an unbroken run ending at HEAD. Only then is reset

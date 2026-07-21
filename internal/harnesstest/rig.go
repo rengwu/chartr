@@ -230,6 +230,18 @@ func (h *Harness) ReviewRead(spaceID, slug string, num int) (int, string) {
 	return h.Get(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/review", spaceID, slug, num))
 }
 
+// TicketDiff serves the work under a proposal at one of three scopes (ticket 12,
+// story 58) — a test drives it exactly as the hub's diff expander does. since is
+// only meaningful for scope "read"; pass "" to omit it.
+func (h *Harness) TicketDiff(spaceID, slug string, num int, scope, since string) (int, string) {
+	h.t.Helper()
+	path := fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/diff?scope=%s", spaceID, slug, num, scope)
+	if since != "" {
+		path += "&since=" + since
+	}
+	return h.Get(path)
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.

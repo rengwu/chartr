@@ -142,20 +142,36 @@
   // beside the island: at the gate the map is context and the brief is the work.
   // It is opened from the detail pane's "Open review" and closes back to it.
   let hubTicket = $state<number | null>(null)
+  // Lifted out of the hub itself (ticket 17): approve's own rebuild pushes a
+  // resolved snapshot before the hub's HTTP response even lands, so the hub's
+  // local state cannot outlive that push on its own — this can, because the
+  // closing effect below reads it before it ever tears the hub down.
+  let hubApproved = $state<import('./actions').ApproveResult | null>(null)
   const hubOn = $derived<Ticket | null>(
     hubTicket === null ? null : (map?.tickets.find((t) => t.num === hubTicket) ?? null),
   )
   // A ticket that leaves `proposed` while the hub is open (approved, abandoned, or
   // moved by someone else) has no gate left to hold — close rather than render a
-  // hub over a ticket the gate has passed.
+  // hub over a ticket the gate has passed. Exempt the ticket this hub just
+  // approved itself: that is exactly the transition the post-approve strip is
+  // for, and it must survive the very push that makes it true (ticket 17).
   $effect(() => {
-    if (hubTicket !== null && hubOn?.status !== 'proposed') hubTicket = null
+    if (hubTicket !== null && !hubApproved && hubOn?.status !== 'proposed') hubTicket = null
   })
+
+  function openHub(num: number) {
+    hubTicket = num
+    hubApproved = null
+  }
+  function closeHub() {
+    hubTicket = null
+    hubApproved = null
+  }
 
   function back() {
     selected = null
     showMaterial = false
-    hubTicket = null
+    closeHub()
     slug = null
   }
   function openMaterial() {
@@ -267,7 +283,7 @@
             {spaceId}
             onclose={closePane}
             {onspawned}
-            onopenreview={(num) => (hubTicket = num)}
+            onopenreview={openHub}
           />
         </div>
       {/if}
@@ -277,8 +293,10 @@
           {spaceId}
           {map}
           ticket={hubOn}
-          onclose={() => (hubTicket = null)}
+          onclose={closeHub}
           {onspawned}
+          onselect={(num) => (selected = num)}
+          bind:approved={hubApproved}
         />
       {/if}
     </div>
