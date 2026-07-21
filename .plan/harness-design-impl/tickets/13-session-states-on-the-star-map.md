@@ -13,7 +13,7 @@ The moons grammar, inside the renderer's idiom (never Svelte components — ADR 
 
 Done when: island-seam tests script the full lifecycle — implementing, quiet, dead, proposed, agent review, human review, approval igniting a dependent — from pushed models and assert zero star movement throughout; each state renders per the grammar on the fixture maps; the chevron appears exactly when the beckoning star is offscreen; the no-color-only property holds for every session state.
 
-## Proposed Answer
+## Answer
 
 The moons grammar lands as a strictly-additive overlay inside the renderer — no
 new Svelte component, no touch to layout, and nothing new stored anywhere. The
