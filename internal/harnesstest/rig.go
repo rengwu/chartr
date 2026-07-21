@@ -195,6 +195,15 @@ func (h *Harness) Release(spaceID, sessionID string) (int, string) {
 	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/release", spaceID, sessionID), nil)
 }
 
+// ReviewBrief posts the assemble-brief action for a review session and returns the
+// status code and body (ticket 11). A test drives it after a review session has
+// written its verdict, then asserts on the brief the harness assembled from it —
+// the file on disk and the mechanical recommendation in the response.
+func (h *Harness) ReviewBrief(spaceID, sessionID string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/review-brief", spaceID, sessionID), nil)
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.

@@ -119,6 +119,37 @@ func StubDyingAgent(t testing.TB, name string) (marker string) {
 	return marker
 }
 
+// StubProposingAgent installs a fake implement agent that walks a ticket to
+// `proposed`: it appends a `## Proposed Answer` (with the given prose under it) to
+// the ticket file, commits that one file under the operator's git identity, and
+// exits — the "reads its payload, writes a `## Proposed Answer`, commits, then
+// dies" stub the spec's Testing Decisions describe. The harness detects the death,
+// pins the dead session, and derives `proposed` from the committed file, so a
+// review can then seat on it (ticket 11). ticketRel is the ticket's path relative
+// to the space root; the stub runs with the space as its working directory.
+//
+// Like the other stubs it prepends a fresh bin dir to PATH via t.Setenv (so it
+// shadows any real CLI of the name and parallel tests are forbidden) and skips on
+// Windows, where the POSIX-shell stub would not run.
+func StubProposingAgent(t testing.TB, name, ticketRel, proposed string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent CLI uses a POSIX shell script; not supported on Windows")
+	}
+	binDir := t.TempDir()
+
+	// Append the proposed answer to the ticket and commit only that file, then exit.
+	// The heredoc is quoted so the prose is written verbatim, never shell-expanded.
+	script := fmt.Sprintf("#!/bin/sh\ncat >> %q <<'WFPROPOSED'\n\n## Proposed Answer\n\n%s\nWFPROPOSED\ngit add -- %q\ngit commit -q -m 'Propose answer' -- %q\nexit 0\n",
+		ticketRel, proposed, ticketRel, ticketRel)
+	stub := filepath.Join(binDir, name)
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("harnesstest: writing proposing stub agent %q: %v", name, err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // WaitForFileContains polls path until it contains want or the deadline passes,
 // returning its contents. It fails the test on timeout — a test asserting the
 // opener reached the stub's stdin names the marker it expects rather than guessing

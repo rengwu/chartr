@@ -114,6 +114,12 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/release", s.handleRelease)
+	// Review brief (ticket 11): from the verdict a review session wrote, the harness
+	// assembles the brief a human reads at the gate — the proposed answer verbatim,
+	// the one-line verdict, a mechanically derived recommendation, and the observed
+	// models — as plain markdown on disk. A plain HTTP action so a missing verdict
+	// surfaces as a response; the GUI's "assemble brief" button maps to it.
+	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/review-brief", s.handleReviewBrief)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

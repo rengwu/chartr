@@ -99,11 +99,17 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A session claims the takeable edge: the ticket must be on the stricter
-	// frontier (open, unclaimed, every blocker blessed). Anything else — already
-	// claimed, proposed, closed, or held behind an ungated blocker — is not a fresh
-	// spawn's to take.
-	if !tk.Frontier {
+	// Which tickets a role may seat on splits by role. A review hangs on a
+	// `proposed` ticket — work landed, awaiting the gate (ticket 11) — so it takes
+	// exactly that state and nothing else. Every other role is a fresh spawn onto
+	// the stricter frontier (open, unclaimed, every blocker blessed): anything
+	// already claimed, closed, or held behind an ungated blocker is not its to take.
+	if role == string(config.RoleReview) {
+		if tk.Status != "proposed" {
+			httpError(w, http.StatusConflict, "review runs on a proposed ticket — this ticket is "+tk.Status+", not proposed")
+			return
+		}
+	} else if !tk.Frontier {
 		httpError(w, http.StatusConflict, "ticket is not on the frontier — it is not a takeable ticket")
 		return
 	}

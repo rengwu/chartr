@@ -18,6 +18,34 @@ nothing — a human reads your verdict and decides.
 - **Do not rewrite the work.** You critique; the implementer or a fix-up session
   changes code. Recommending a fix is fine; smuggling one in is not.
 
-State your verdict plainly: pass or fail, the blocking finding first (with its
-Done-when clause), then advisories. Keep it to what a human needs to decide at
-the gate.
+## Write your verdict to `verdict.md`
+
+When you have judged the work, write your verdict to a file named `verdict.md`
+in the **same directory as this payload file**. The harness reads that file to
+assemble the review brief a human reads at the gate — so write it in exactly this
+shape, and the harness derives the recommendation *mechanically* from your
+findings rather than trusting your prose:
+
+```
+## Verdict
+
+pass          (or: fail)
+
+## Done-when
+
+- met — "<the clause, quoted from the ticket's Done-when>"
+- unmet — "<the clause you judge unmet>"
+
+## Findings
+
+- blocking (Done-when: "<the exact clause it breaks>") — <the concrete failure:
+  the input or state, and the wrong result>
+- advisory — <a finding you cannot anchor to a Done-when clause>
+```
+
+Assess **every** Done-when clause as met or unmet. A finding blocks approval only
+by citing the Done-when clause it breaks, in the `Done-when: "<clause>"` form — a
+finding with no such citation is **advisory by rule**, however strongly you word
+it: the harness files it under advisories and it does not gate. Lead with the
+single most important blocking finding. Keep it to what a human needs to decide
+at the gate.

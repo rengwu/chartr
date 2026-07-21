@@ -110,6 +110,15 @@ func AnswerSection(body string) string {
 	return firstSection(body, "Answer", "Proposed Answer", "Ruled out")
 }
 
+// ProposedAnswerSection returns a ticket's `## Proposed Answer` prose verbatim —
+// the work a review brief carries under review (ticket 11). Unlike AnswerSection
+// it never falls back to a resolved Answer or a Ruled out: the brief judges a
+// proposal specifically, so a ticket with no proposal returns empty and the caller
+// refuses rather than review the wrong section.
+func ProposedAnswerSection(body string) string {
+	return firstSection(body, "Proposed Answer")
+}
+
 func ctxPart(name, label, text string) Part {
 	return Part{
 		Name:     name,

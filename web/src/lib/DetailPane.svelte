@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rolesForKind, type Map as WMap, type Role, type Ticket } from './model'
+  import { rolesForKind, type Kind, type Map as WMap, type Role, type Ticket } from './model'
   import { renderMarkdown, sectionOf } from './markdown'
   import { spawnSession, ActionError } from './actions'
   import PayloadPreview from './PayloadPreview.svelte'
@@ -41,12 +41,21 @@
   // a session on it would be told. Available only with a spaceId in hand.
   let showPreview = $state(false)
 
-  // Spawn (ticket 09): a frontier ticket on a classified map offers a session. The
-  // roles offered follow the map's kind (an unclassified map offers none), so the
-  // affordance appears only where a spawn is actually takeable. The default role is
-  // the one the ticket's type points at, clamped to what the kind offers.
-  const spawnRoles = $derived<Role[]>(rolesForKind(map.kind))
-  const canSpawn = $derived(!!spaceId && !!ticket?.frontier && spawnRoles.length > 0)
+  // Spawn (tickets 09, 11): a frontier ticket on a classified map offers a fresh
+  // session in any of the kind's roles; a `proposed` ticket offers exactly a review
+  // — the state a review hangs on (its dependents stay blocked until a human
+  // approves). An unclassified map offers none. So the affordance appears only where
+  // a spawn is actually takeable, and the default role is the one the ticket's type
+  // points at, clamped to what is offered (which resolves to review on a proposal).
+  function offeredRoles(kind: Kind, tk: Ticket | null): Role[] {
+    if (!tk) return []
+    const roles = rolesForKind(kind)
+    if (tk.frontier) return roles
+    if (tk.status === 'proposed' && roles.includes('review')) return ['review']
+    return []
+  }
+  const spawnRoles = $derived<Role[]>(offeredRoles(map.kind, ticket))
+  const canSpawn = $derived(!!spaceId && spawnRoles.length > 0)
 
   function defaultRole(type: string, offered: Role[]): Role {
     const guess: Role =
