@@ -78,6 +78,15 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   a missing runtime is a hard error pointing at `harness`, never a silent browser.
   Writes **ADR 0013**, confirms **ADR 0011** unamended.
 
+- **The review feature is gone; the lifecycle is already livable.**
+  [Ticket 02](tickets/02-delete-the-review-feature.md) cut the gate, its server
+  mechanics, its UI and its role in two independently-green commits (frontend,
+  then backend), shrinking the harness's lifecycle writes to **claim + release**
+  and retargeting `implement.md` — and `core.md` with it — to `## Answer`, so a
+  session resolves and its dependents unblock with no gate in the path. The
+  parser's `proposed` is left **dormant** for ticket 03; **no ADR is touched
+  here**.
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the planning map — it does not open fog here. -->
