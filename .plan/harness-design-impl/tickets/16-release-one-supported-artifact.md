@@ -1,6 +1,6 @@
 ---
 type: task
-blocked_by: [14, 15]
+blocked_by: [14, 15, 17]
 ---
 
 # Release: one supported artifact
