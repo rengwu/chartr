@@ -6,6 +6,10 @@ import (
 	"net/http"
 
 	"github.com/coder/websocket"
+
+	"github.com/rengwu/wayfinder-harness/internal/adapter"
+	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
 )
 
 // handleOpenTerminal opens an ad-hoc shell in the space's working tree (story
@@ -23,6 +27,49 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// A shell that will not start is the operator's environment to fix.
 		httpError(w, http.StatusInternalServerError, "opening shell: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})
+}
+
+// handleIdeate spawns the ideate on-ramp (ticket 15): a live, ticketless agent
+// tab opened with the on-disk starter prompt typed in. It is the one opinionated
+// nudge toward charting (planning ticket 07) — an operator affordance, not a
+// sixth role — so it shares only the adapter's spawn primitive with a real
+// session: no map or ticket is looked up, no claim is written, and the tab it
+// seats carries no Session, so it reads and ends exactly like an ad-hoc shell
+// (never the session grammar, never the death halt). It borrows the `grill`
+// binding to pick an agent and model — the closest existing analogue, a live
+// human-in-the-loop conversation — rather than opening a sixth entry in the
+// closed role set.
+func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+
+	binding, ok := bindingFor(s.resolve(e), string(config.RoleGrill))
+	if !ok {
+		httpError(w, http.StatusInternalServerError, "no binding to ideate with")
+		return
+	}
+	if !binding.Present {
+		httpError(w, http.StatusConflict, binding.Missing)
+		return
+	}
+
+	id := newSessionID()
+	promptPath, err := s.writeSessionPayload(e.Path, id, prompt.Ideate(s.opts.DataDir))
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "writing the ideate prompt: "+err.Error())
+		return
+	}
+
+	launch := adapter.For(binding.Adapter).Command(binding.Model, binding.Args)
+	t, err := s.terms.OpenIdeate(e.ID, e.Path, id, launch.Name, launch.Args, adapter.Opener(promptPath))
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "opening ideate: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})

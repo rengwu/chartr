@@ -23,9 +23,11 @@ import (
 )
 
 // sessionRunDir is the gitignored directory, inside each space, that holds live
-// sessions' composed payloads (ADR 0005 — one inspectable file per session). It
-// sits under the harness's committed `.wayfinder-harness/` directory but is itself
-// never committed: the harness drops a `.gitignore` of `*` beside it so an agent's
+// sessions' composed payloads (ADR 0005 — one inspectable file per session), and
+// the ideate on-ramp's starter prompt (ticket 15), which reuses the same
+// writeSessionPayload path though it is deliberately not a session. It sits under
+// the harness's committed `.wayfinder-harness/` directory but is itself never
+// committed: the harness drops a `.gitignore` of `*` beside it so an agent's
 // `git commit -a` can never sweep a payload into the audit trail (ADR 0008).
 const sessionRunDir = ".wayfinder-harness/run"
 

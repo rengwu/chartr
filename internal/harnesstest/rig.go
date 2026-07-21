@@ -167,6 +167,23 @@ func (h *Harness) OpenTerminal(spaceID string) string {
 	return r.ID
 }
 
+// Ideate opens the ideate on-ramp in the space and returns its tab id (ticket
+// 15). It fails the test on a non-200 response.
+func (h *Harness) Ideate(spaceID string) string {
+	h.t.Helper()
+	code, body := h.Post("/api/spaces/"+spaceID+"/ideate", nil)
+	if code != 200 {
+		h.t.Fatalf("harnesstest: ideate in %s = %d, body %s", spaceID, code, body)
+	}
+	var r struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &r); err != nil {
+		h.t.Fatalf("harnesstest: ideate response not JSON: %v (%q)", err, body)
+	}
+	return r.ID
+}
+
 // Spawn posts a spawn action for a ticket and role and returns the status code
 // and body — the operator's one-click "start work here" (ticket 09). A test drives
 // it directly so it can assert the whole chain the response kicks off: the claim

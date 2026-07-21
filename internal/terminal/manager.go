@@ -193,6 +193,38 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 	return t, nil
 }
 
+// OpenIdeate launches an agent in a PTY in cwd with a starter prompt typed in,
+// seated as a plain tab under spaceID — the ideate on-ramp (ticket 15). It shares
+// OpenSession's launch and opener mechanics but carries no Session: the ideate
+// on-ramp is deliberately not a session (spec, State model — "ticketless, live,
+// un-reviewed, sharing only the adapter's spawn primitive"), so this tab reads
+// exactly like an ad-hoc shell — idle/working/exited, never the session grammar's
+// quiet hint — and never counts toward the one-live-session-per-space limit
+// OpenSession enforces. id is chosen by the caller, matching OpenSession's style,
+// so the tab and the gitignored prompt file it points at share one identity.
+func (m *Manager) OpenIdeate(spaceID, cwd, id, name string, args []string, opener string) (*Terminal, error) {
+	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, title: "ideate"})
+	if err != nil {
+		return nil, err
+	}
+
+	// Record the tab before the read loop starts, so an agent that exits instantly
+	// cannot remove itself before it has been listed (as Open and OpenSession do).
+	m.mu.Lock()
+	m.terms[id] = t
+	m.order = append(m.order, id)
+	m.mu.Unlock()
+
+	t.start(func() { m.onExit(id) })
+
+	if opener != "" {
+		_, _ = t.Write([]byte(opener))
+	}
+
+	m.notify()
+	return t, nil
+}
+
 // Get returns the live terminal with id, or false if none.
 func (m *Manager) Get(id string) (*Terminal, bool) {
 	m.mu.Lock()

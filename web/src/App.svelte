@@ -9,6 +9,7 @@
     resumeSession,
     respawnSession,
     releaseSession,
+    ideate,
   } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
@@ -25,6 +26,7 @@
     GitBranch,
     GitDiff,
     Rocket,
+    Lightbulb,
     Play,
     ArrowClockwise,
     ArrowUUpLeft,
@@ -126,6 +128,23 @@
       activeTermId = id
     } catch (e) {
       alert(`Couldn’t open a shell: ${(e as Error).message}`)
+    } finally {
+      opening = false
+    }
+  }
+
+  // The ideate on-ramp (ticket 15): the one opinionated nudge toward charting. A
+  // live, ticketless agent tab typed the starter prompt on open — shares only the
+  // spawn primitive with a real session, so it opens exactly like a shell (no
+  // role picker, no ticket, nothing to gate on).
+  async function ideateSpace(space: Space) {
+    selectedId = space.id
+    opening = true
+    try {
+      const { id } = await ideate(space.id)
+      activeTermId = id
+    } catch (e) {
+      alert(`Couldn’t start ideating: ${(e as Error).message}`)
     } finally {
       opening = false
     }
@@ -369,6 +388,16 @@
               <Button
                 variant="ghost"
                 size="icon-xs"
+                aria-label="Ideate in {space.name}"
+                title="Ideate — a live, ticketless chat to think an idea through"
+                disabled={opening}
+                onclick={() => ideateSpace(space)}
+              >
+                <Lightbulb />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 aria-label="Open a shell in {space.name}"
                 title="Open a shell in {space.name}"
                 disabled={opening}
@@ -395,6 +424,7 @@
         space={selected}
         {activeTerm}
         onOpenShell={() => openShell(selected)}
+        onIdeate={() => ideateSpace(selected)}
         onspawned={(id) => (activeTermId = id)}
       />
     {/if}

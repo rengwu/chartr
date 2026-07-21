@@ -63,6 +63,16 @@ export function closeTerminal(spaceId: string, termId: string): Promise<void> {
   ) as Promise<void>
 }
 
+// ideate opens the ideate on-ramp (ticket 15): a live, ticketless agent tab typed
+// the on-disk starter prompt on open. It shares only the adapter's spawn
+// primitive with a real session — no map or ticket, no claim, no lifecycle, ended
+// only by the human, exactly like an ad-hoc shell — and returns the new tab's id.
+export function ideate(id: string): Promise<{ id: string }> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/ideate`) as Promise<{
+    id: string
+  }>
+}
+
 // previewPayload composes what a session for one ticket and role would be told
 // (ticket 08) — the resolved prompts, the context bundle, and the review
 // guarantees — with per-part provenance. Read-only inspection, so a GET; the

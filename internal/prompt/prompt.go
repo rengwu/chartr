@@ -40,10 +40,15 @@ const (
 )
 
 // CorePart is the common core, injected first before any role prompt.
-// GlossaryPart is the method glossary carried in the context bundle.
+// GlossaryPart is the method glossary carried in the context bundle. IdeatePart
+// is the ideate on-ramp's starter prompt (ticket 15) — filed as a non-role part
+// so the five-role set stays closed: it is materialized and editable like a role
+// prompt, but composed alone, with no core, no role, and no context bundle,
+// since an ideate session is ticketless and mapless by design.
 const (
 	CorePart     = "core"
 	GlossaryPart = "glossary"
+	IdeatePart   = "ideate"
 )
 
 // Segment layer tags. The three prompt layers reuse config's names so provenance
@@ -143,7 +148,7 @@ func Materialize(dataDir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	for _, part := range append(promptParts(), GlossaryPart) {
+	for _, part := range append(promptParts(), GlossaryPart, IdeatePart) {
 		e, ok := embedded(part)
 		if !ok {
 			continue
@@ -235,6 +240,18 @@ func resolvePart(part, dataDir, repoDir string, warnings *[]string) []Segment {
 		}
 	}
 	return segs
+}
+
+// Ideate returns the ideate on-ramp's starter prompt: the materialized editable
+// copy if the operator has one, else the shipped default (ticket 15). Unlike
+// Compose it resolves a single part with no core, no role, and no context
+// bundle — the ideate session is ticketless and mapless, so there is no ticket or
+// map to inject, and it is a non-role part, deliberately outside the workspace
+// replace/append overlay that role prompts and the payload preview use. Editing
+// `<dataDir>/prompts/ideate.md` changes what the very next ideate session reads.
+func Ideate(dataDir string) string {
+	text, _ := baseText(dataDir, IdeatePart)
+	return text
 }
 
 // LibraryWarnings resolves every prompt part for a space just to collect the

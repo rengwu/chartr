@@ -8,7 +8,7 @@
   import * as Sheet from './components/ui/sheet'
   import * as ScrollArea from './components/ui/scroll-area'
   import type { Layer } from './model'
-  import { Warning, CheckCircle, Sparkle, SlidersHorizontal } from 'phosphor-svelte'
+  import { Warning, CheckCircle, Sparkle, SlidersHorizontal, Lightbulb } from 'phosphor-svelte'
 
   // Which layer a field was inherited from, told apart by badge weight rather than
   // hue (the palette is monochrome + destructive): built-in is the lightest touch
@@ -37,11 +37,15 @@
     space,
     activeTerm,
     onOpenShell,
+    onIdeate,
     onspawned,
   }: {
     space: Space
     activeTerm: Term | null
     onOpenShell: () => void
+    // The ideate on-ramp (ticket 15): a live, ticketless chat, the one
+    // opinionated nudge toward charting for a space with no map to spawn onto.
+    onIdeate: () => void
     // Bubbled from the star-map's detail pane when a session is spawned (ticket
     // 09), so the enclosing App can make the new session's tab active.
     onspawned?: (sessionId: string) => void
@@ -385,10 +389,17 @@
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
-          <Button variant="outline" size="sm" onclick={onOpenShell}>Open a shell</Button>
+          <div class="flex items-center gap-2">
+            <Button variant="outline" size="sm" onclick={onOpenShell}>Open a shell</Button>
+            <Button variant="outline" size="sm" onclick={onIdeate}>
+              <Lightbulb />
+              Ideate
+            </Button>
+          </div>
           <p class="max-w-xs text-xs text-muted-foreground">
-            A plain shell in <code class="font-mono">{space.name}</code>’s working tree — no ticket, no
-            review, ended when you close it.
+            A plain shell in <code class="font-mono">{space.name}</code>’s working tree, or ideate — a
+            live chat to think an idea through. Both are ticketless, no review, ended when you close
+            them.
           </p>
         </div>
       {/if}
