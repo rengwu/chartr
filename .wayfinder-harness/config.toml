@@ -9,3 +9,6 @@ kind = "implementation"
 
 [maps."simplify"]
 kind = "planning"
+
+[maps."simplify-impl"]
+kind = "implementation"
