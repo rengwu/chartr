@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [09]
+claimed_by: s75c291ca53ca
+claimed_at: 2026-07-21T09:29:12Z
 ---
 
 # The ideate on-ramp
