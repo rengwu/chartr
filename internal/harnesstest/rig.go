@@ -212,53 +212,6 @@ func (h *Harness) Release(spaceID, sessionID string) (int, string) {
 	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/release", spaceID, sessionID), nil)
 }
 
-// ReviewBrief posts the assemble-brief action for a review session and returns the
-// status code and body (ticket 11). A test drives it after a review session has
-// written its verdict, then asserts on the brief the harness assembled from it —
-// the file on disk and the mechanical recommendation in the response.
-func (h *Harness) ReviewBrief(spaceID, sessionID string) (int, string) {
-	h.t.Helper()
-	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/review-brief", spaceID, sessionID), nil)
-}
-
-// The human review hub's four exits (ticket 12), each a plain HTTP action a test
-// drives exactly as the hub's buttons do. Approve promotes the proposed answer;
-// FollowUp stacks a session on the still-proposed ticket (send back is this with
-// the blocking finding attached); Abandon demotes it back to the frontier.
-// ReviewRead serves the brief the hub renders, straight off disk.
-func (h *Harness) Approve(spaceID, slug string, num int, acknowledged bool) (int, string) {
-	h.t.Helper()
-	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/approve", spaceID, slug, num),
-		map[string]bool{"acknowledged": acknowledged})
-}
-
-func (h *Harness) FollowUp(spaceID, slug string, num int, body any) (int, string) {
-	h.t.Helper()
-	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/follow-up", spaceID, slug, num), body)
-}
-
-func (h *Harness) Abandon(spaceID, slug string, num int, body any) (int, string) {
-	h.t.Helper()
-	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/abandon", spaceID, slug, num), body)
-}
-
-func (h *Harness) ReviewRead(spaceID, slug string, num int) (int, string) {
-	h.t.Helper()
-	return h.Get(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/review", spaceID, slug, num))
-}
-
-// TicketDiff serves the work under a proposal at one of three scopes (ticket 12,
-// story 58) — a test drives it exactly as the hub's diff expander does. since is
-// only meaningful for scope "read"; pass "" to omit it.
-func (h *Harness) TicketDiff(spaceID, slug string, num int, scope, since string) (int, string) {
-	h.t.Helper()
-	path := fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/diff?scope=%s", spaceID, slug, num, scope)
-	if since != "" {
-		path += "&since=" + since
-	}
-	return h.Get(path)
-}
-
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.

@@ -329,7 +329,7 @@ func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
 	afk := harnesstest.NewSpaceRepo(t)
 	harnesstest.WriteMap(t, afk, "widget", mapBody)
 	harnesstest.WriteFile(t, afk, ".wayfinder-harness/config.toml", implConfig("widget"))
-	ticketPath := harnesstest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	harnesstest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	afkID := register(t, h, afk).ID
 
 	// HITL space: a planning map, spawn grill.
@@ -356,13 +356,6 @@ func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
 		t.Errorf("idle grilling (HITL) session wrongly reads quiet: %+v", tab)
 	}
 
-	// Once the AFK ticket carries a proposed answer, its silence is expected and
-	// the hint is withdrawn — the session reads working again though still silent.
-	appendToFile(t, ticketPath, "\n## Proposed Answer\n\nDone.\n")
-	h.SnapshotUntil(c, func(m model.Model) bool {
-		tab := sessionTab(findSpace(t, m, afkID))
-		return tab != nil && tab.Status != model.TerminalQuiet
-	})
 }
 
 // A dirtied working tree — debris a session or an ad-hoc shell left behind — is a
@@ -399,17 +392,5 @@ func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
 	}
 	if findSpace(t, h.Snapshot(ctx(t)), resp.ID).Dirty != true {
 		t.Errorf("tree should still read dirty after the spawn (the debris remains)")
-	}
-}
-
-func appendToFile(t *testing.T, path, s string) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatalf("opening %s to append: %v", path, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(s); err != nil {
-		t.Fatalf("appending to %s: %v", path, err)
 	}
 }

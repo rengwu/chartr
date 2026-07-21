@@ -1,5 +1,5 @@
 // Package prompt owns the harness's hackable prompt library and the payload a
-// session would be told (ticket 08). Five role prompts plus a common core are
+// session would be told (ticket 08). Four role prompts plus a common core are
 // vendored from the wayfinder skills, embedded in the binary, and materialized
 // to disk as plain markdown so the operator can read and edit exactly what a
 // session receives (stories 45–47).
@@ -14,9 +14,7 @@
 //
 // Payload composition (ADR 0005) assembles core + role prompt + a context bundle
 // (glossary, map body, ticket, blockers' answers) into one markdown document,
-// built fresh every time and never accumulated. The review payload additionally
-// carries the ticket's Done-when and the spec by assembly (story 53), so a
-// reviewer can never be handed only a diff.
+// built fresh every time and never accumulated.
 package prompt
 
 import (
@@ -93,8 +91,8 @@ type Segment struct {
 }
 
 // Part is one labelled block of the payload — a resolved prompt (core, a role) or
-// a context artifact (glossary, map, ticket, a blocker's answer, and the review
-// guarantees). Kind is "prompt" or "context".
+// a context artifact (glossary, map, ticket, a blocker's answer). Kind is
+// "prompt" or "context".
 type Part struct {
 	Name     string    `json:"name"`
 	Kind     string    `json:"kind"`
@@ -284,7 +282,7 @@ yours to read and edit. Vendored from %s (%s).
 ## The parts
 
 - `+"`core.md`"+` — the common core, injected first for every role.
-- `+"`grill.md`, `prototype.md`, `research.md`, `implement.md`, `review.md`"+` — one per role.
+- `+"`grill.md`, `prototype.md`, `research.md`, `implement.md`"+` — one per role.
 - `+"`glossary.md`"+` — the method glossary carried in each session's context.
 
 Editing any of these files changes what the next session is told. To read exactly

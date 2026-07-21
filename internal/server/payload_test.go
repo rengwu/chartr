@@ -16,9 +16,9 @@ import (
 // harness materializes a hackable prompt library, resolves each part across
 // built-in ‹ user ‹ workspace with replace/append semantics, surfaces a
 // replacement forked from an older shipped default, and composes core + role +
-// context bundle into one payload — with the review role's Done-when and spec
-// guaranteed by assembly. Every assertion is on the public payload the preview
-// endpoint returns and on the files on disk; no test reaches into the package.
+// context bundle into one payload. Every assertion is on the public payload the
+// preview endpoint returns and on the files on disk; no test reaches into the
+// package.
 
 func getPayload(t *testing.T, h *harnesstest.Harness, id, slug string, num int, role string) (int, prompt.Payload, string) {
 	t.Helper()
@@ -263,52 +263,6 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "implement")
 	if hasSubstring(p.Warnings, "forked from an older shipped default") {
 		t.Errorf("a fork on the current default should not warn: %v", p.Warnings)
-	}
-}
-
-// The review payload always carries the ticket's Done-when and the spec by
-// assembly (story 53), so a reviewer can never be handed only a diff. The spec is
-// discovered from the map's own link to a spec.md, not a hard-coded path. Neither
-// part is added for a non-review role.
-func TestReviewPayloadCarriesDoneWhenAndSpec(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-
-	// The map names its spec in its own body — the harness follows the link.
-	reviewMap := "# Impl Map\n\n## Destination\nBuild it. The [spec](../shared/spec.md) is the source of truth.\n\n## Decisions so far\n"
-	harnesstest.WriteMap(t, repo, "builder", reviewMap)
-	harnesstest.WriteFile(t, repo, filepath.Join(".plan", "shared", "spec.md"),
-		"# Spec\n\nThe one true SPEC-CONTENT-MARKER.\n")
-
-	ticketBody := "---\ntype: task\nblocked_by: []\n---\n\n# Gate me\n\n" +
-		"## Question\nDo the thing.\n\nDone when: THE-DONE-WHEN-MARKER holds and tests pass.\n"
-	harnesstest.WriteTicket(t, repo, "builder", "01-gate-me.md", ticketBody)
-
-	resp := register(t, h, repo)
-
-	// Review: Done-when and spec both present, by assembly.
-	_, rp, body := getPayload(t, h, resp.ID, "builder", 1, "review")
-	if !hasPart(rp, "done-when") {
-		t.Fatalf("review payload has no Done-when part; parts: %v\n%s", partNames(rp), body)
-	}
-	if !strings.Contains(segText(findPart(t, rp, "done-when")), "THE-DONE-WHEN-MARKER") {
-		t.Errorf("Done-when part missing its content:\n%s", segText(findPart(t, rp, "done-when")))
-	}
-	if !hasPart(rp, "spec") {
-		t.Fatalf("review payload has no spec part; parts: %v", partNames(rp))
-	}
-	if !strings.Contains(segText(findPart(t, rp, "spec")), "SPEC-CONTENT-MARKER") {
-		t.Errorf("spec part did not resolve the linked spec.md:\n%s", segText(findPart(t, rp, "spec")))
-	}
-	// The guarantee is provable in the single composed document too.
-	if !strings.Contains(rp.Markdown, "THE-DONE-WHEN-MARKER") || !strings.Contains(rp.Markdown, "SPEC-CONTENT-MARKER") {
-		t.Errorf("composed review markdown missing Done-when or spec")
-	}
-
-	// The guarantee is review-specific: an implement payload adds neither part.
-	_, ip, _ := getPayload(t, h, resp.ID, "builder", 1, "implement")
-	if hasPart(ip, "done-when") || hasPart(ip, "spec") {
-		t.Errorf("non-review payload should not carry the review guarantees; parts: %v", partNames(ip))
 	}
 }
 

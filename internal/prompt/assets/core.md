@@ -16,7 +16,7 @@ answer to it.
   to reopen it.
 - **Stay inside your ticket.** One session, one unit of work. Do not wander into
   a neighbouring ticket's scope, even if it looks quick; it is a different
-  session's job and a different review.
+  session's job.
 - **Commit your own work** under the repository's conventions: focused commits,
   clear messages, and never a `git push` — the remote is the operator's alone.
   The harness commits only the ticket's lifecycle writes, never your code.
@@ -29,7 +29,6 @@ answer to it.
 
 ## How work is recorded
 
-You resolve nothing by fiat. On a planning map you write a `## Answer`; on an
-implementation map you write a `## Proposed Answer` and stop — a reviewer and a
-human decide whether it is blessed. Write the answer for the next reader: what
-you did, why, and what you deliberately did not do.
+You record a ticket's outcome by writing its `## Answer` and committing — the
+same on a planning map and an implementation map. Write the answer for the next
+reader: what you did, why, and what you deliberately did not do.

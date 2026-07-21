@@ -212,18 +212,18 @@ func TestBindingMergeMatrix(t *testing.T) {
 adapter = "claude"
 model = "sonnet-ws"
 
-[roles.review]
+[roles.research]
 adapter = "codex"
 model = "gpt-ws"
 `)
 
 	// Local user config, keyed by space path: override just implement.model and
-	// just review.adapter — each inheriting the other field from workspace.
+	// just research.adapter — each inheriting the other field from workspace.
 	harnesstest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
 [spaces.%q.roles.implement]
 model = "sonnet-user"
 
-[spaces.%q.roles.review]
+[spaces.%q.roles.research]
 adapter = "opencode"
 `, repo, repo))
 
@@ -235,10 +235,10 @@ adapter = "opencode"
 	assertField(t, "implement.adapter", impl.Adapter, "claude", impl.AdapterFrom, "workspace")
 	assertField(t, "implement.model", impl.Model, "sonnet-user", impl.ModelFrom, "user")
 
-	// review: model inherited from workspace, adapter won by the user layer.
-	rev := binding(t, s, "review")
-	assertField(t, "review.adapter", rev.Adapter, "opencode", rev.AdapterFrom, "user")
-	assertField(t, "review.model", rev.Model, "gpt-ws", rev.ModelFrom, "workspace")
+	// research: model inherited from workspace, adapter won by the user layer.
+	res := binding(t, s, "research")
+	assertField(t, "research.adapter", res.Adapter, "opencode", res.AdapterFrom, "user")
+	assertField(t, "research.model", res.Model, "gpt-ws", res.ModelFrom, "workspace")
 
 	// An untouched role falls through to the shipped built-in default.
 	grill := binding(t, s, "grill")
@@ -284,7 +284,7 @@ func TestAdapterPresenceBadge(t *testing.T) {
 [roles.implement]
 adapter = "fake-agent"
 
-[roles.review]
+[roles.research]
 adapter = "no-such-agent-xyz"
 `)
 
@@ -295,12 +295,12 @@ adapter = "no-such-agent-xyz"
 		t.Errorf("implement present=%v missing=%q, want present with no badge", impl.Present, impl.Missing)
 	}
 
-	rev := binding(t, s, "review")
-	if rev.Present {
-		t.Error("review bound to a missing adapter reports present")
+	res := binding(t, s, "research")
+	if res.Present {
+		t.Error("research bound to a missing adapter reports present")
 	}
-	if !strings.Contains(rev.Missing, "no-such-agent-xyz") || !strings.Contains(rev.Missing, "PATH") {
-		t.Errorf("absence badge = %q, want it to name the adapter and PATH", rev.Missing)
+	if !strings.Contains(res.Missing, "no-such-agent-xyz") || !strings.Contains(res.Missing, "PATH") {
+		t.Errorf("absence badge = %q, want it to name the adapter and PATH", res.Missing)
 	}
 }
 

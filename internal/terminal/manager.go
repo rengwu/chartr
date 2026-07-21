@@ -197,7 +197,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 // seated as a plain tab under spaceID — the ideate on-ramp (ticket 15). It shares
 // OpenSession's launch and opener mechanics but carries no Session: the ideate
 // on-ramp is deliberately not a session (spec, State model — "ticketless, live,
-// un-reviewed, sharing only the adapter's spawn primitive"), so this tab reads
+// sharing only the adapter's spawn primitive"), so this tab reads
 // exactly like an ad-hoc shell — idle/working/exited, never the session grammar's
 // quiet hint — and never counts toward the one-live-session-per-space limit
 // OpenSession enforces. id is chosen by the caller, matching OpenSession's style,

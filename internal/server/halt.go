@@ -169,8 +169,8 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 // handleRelease clears a dead session's claim back to the frontier: the ticket
 // derives open and takeable again, recorded as its own pathspec-limited commit
 // (never an amend, never a push — ADR 0008). The pinned dead tab is then dropped.
-// This is the "abandon the attempt" answer — it retries nothing and demotes no
-// proposed answer (that is the review hub's abandon, a later ticket).
+// This is the "abandon the attempt" answer — it retries nothing and touches no
+// prose the session wrote; the ticket file is the agent's record alone.
 func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request) {
 	e, info, ok := s.haltTarget(w, r)
 	if !ok {

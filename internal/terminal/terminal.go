@@ -1,6 +1,6 @@
 // Package terminal owns the harness's PTYs and the ad-hoc shells that run in
 // them. An ad-hoc shell is deliberately not a session (spec, State model): it
-// carries no ticket, no lifecycle, and no review — it is a plain multiplexer
+// carries no ticket and no lifecycle — it is a plain multiplexer
 // terminal in a space's working tree, opened by the operator and ended by the
 // operator. The one thing it shares with a real session is the PTY primitive
 // this package provides, built from day one on a cross-platform, ConPTY-capable

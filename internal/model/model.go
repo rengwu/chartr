@@ -4,7 +4,7 @@
 // every change (ADR 0010): it is server-authoritative, small enough that
 // diffing buys nothing, and re-sent wholesale on reconnect. The walking
 // skeleton ships it near-empty — the point of this slice is the transport, and
-// every later ticket hangs its state (spaces, maps, tickets, sessions, review)
+// every later ticket hangs its state (spaces, maps, tickets, sessions)
 // off these fields.
 package model
 
@@ -61,8 +61,9 @@ type Space struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// Kind is a map's declared lifecycle — planning tickets resolve live, an
-// implementation map's tickets pass through review (ADR 0007). It is a property
+// Kind is a map's declared character — planning tickets resolve decisions, an
+// implementation map's deliver code against a settled spec, and the kind selects
+// which roles a session may be spawned as (ADR 0007). It is a property
 // of the map, uniform across its tickets, declared in committed workspace config
 // and never inferred at read time. The empty string is the third state: an
 // undeclared map, inert until a human classifies it.
@@ -140,33 +141,6 @@ type Ticket struct {
 	// and any closing answer. Inlined so the detail pane (ticket 07) reads the
 	// full ticket, and a blocker's answer, straight from the snapshot.
 	Body string `json:"body,omitempty"`
-	// Review is set when a review brief for this ticket is assembled and waiting
-	// on disk — the explicit "a human is being waited on" signal (ticket 12).
-	// Nil on every other ticket, including a `proposed` one whose reviewer has not
-	// finished. It carries only the gate-level facts: which session produced the
-	// brief and the mechanical shape of its verdict.
-	Review *Review `json:"review,omitempty"`
-}
-
-// Review is the human gate's state on a `proposed` ticket (ticket 12): the brief
-// the harness assembled from the reviewer's verdict, sitting in that session's
-// run directory. The counts and the recommendation are derived mechanically from
-// the verdict — a finding blocks only by citing the Done-when clause it breaks
-// (story 55) — so nothing here is the agent's own word about whether to ship.
-//
-// Its presence is the signal ticket 13 asked for: the star-map's `human-review`
-// state was inferred there ("a proposed ticket whose review session has exited")
-// and now reads this instead.
-type Review struct {
-	// SessionID is the review session whose run directory holds brief.md.
-	SessionID string `json:"sessionId"`
-	// Recommendation is the mechanical verdict-to-action mapping: "Approve" when
-	// no finding is anchored-blocking, "Send back" when one is.
-	Recommendation string `json:"recommendation"`
-	// Blocking and Advisories count the findings after the anchoring rule is
-	// applied, so a "blocking"-marked finding citing no clause counts advisory.
-	Blocking   int `json:"blocking"`
-	Advisories int `json:"advisories"`
 }
 
 // Terminal is one open ad-hoc shell on the wire: its identity, a tab label, the

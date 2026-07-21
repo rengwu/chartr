@@ -195,17 +195,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 			maps[i].Kind = kind
 			maps[i].KindGuess = ""
 		}
-		// A proposed ticket whose review brief is assembled is at the human gate
-		// (ticket 12). This is the explicit signal — the star-map's human-review state
-		// and the "Needs you" queue read it rather than inferring it from a dead
-		// review session. Only proposed tickets are looked at, so the per-rebuild cost
-		// is one stat per waiting gate.
-		for j := range maps[i].Tickets {
-			if maps[i].Tickets[j].Status != "proposed" {
-				continue
-			}
-			maps[i].Tickets[j].Review = s.reviewState(e, maps[i].Slug, maps[i].Tickets[j].Num)
-		}
 	}
 
 	// Ad-hoc shells and sessions are runtime state the manager owns, not derived
@@ -229,12 +218,10 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 				Model:     info.Session.Model,
 			}
 			// The quiet hint is the server's call, not the terminal's: the sampler
-			// reports raw silence, and here — where the role and the ticket's derived
-			// status are both in hand — that silence becomes "quiet" only for an AFK
-			// role whose ticket carries no `## Proposed Answer` yet. An idle grilling
-			// session, or a session that has already landed its answer, shows nothing
-			// (spec, Sessions and adapters; stories 34–35).
-			if info.Silent && config.RoleIsAFK(info.Session.Role) && !ticketProposed(maps, info.Session.MapSlug, info.Session.TicketNum) {
+			// reports raw silence, and here — where the role is in hand — that silence
+			// becomes "quiet" only for an AFK role. An idle grilling session shows
+			// nothing (spec, Sessions and adapters; stories 34–35).
+			if info.Silent && config.RoleIsAFK(info.Session.Role) {
 				term.Status = model.TerminalQuiet
 			}
 		}
@@ -259,24 +246,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Terminals: terminals,
 		Warnings:  warnings,
 	}
-}
-
-// ticketProposed reports whether the ticket a session is bound to already derives
-// `proposed` — its `## Proposed Answer` is on disk. Once it has, the session's
-// silence is expected (its work has landed, the gate is next), so the quiet hint is
-// suppressed. A binding naming a map or ticket that no longer exists reads as
-// not-proposed, so a dangling session still surfaces its silence rather than
-// swallowing it.
-func ticketProposed(maps []model.Map, slug string, num int) bool {
-	m, ok := findMap(maps, slug)
-	if !ok {
-		return false
-	}
-	tk, ok := findTicket(m, num)
-	if !ok {
-		return false
-	}
-	return tk.Status == "proposed"
 }
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash

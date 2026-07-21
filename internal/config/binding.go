@@ -41,15 +41,14 @@ const (
 	RolePrototype Role = "prototype"
 	RoleResearch  Role = "research"
 	RoleImplement Role = "implement"
-	RoleReview    Role = "review"
 )
 
 // Roles is the closed role set in a stable display order.
-var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement, RoleReview}
+var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 
 // RolesForKind returns the roles a map of the given kind offers a session for
 // (spec, Sessions and roles): a planning map grills, prototypes, and researches;
-// an implementation map implements and reviews. An unclassified map (any other
+// an implementation map implements. An unclassified map (any other
 // value, including the empty string) offers none, so it stays inert until a human
 // declares its kind (ADR 0007) — the harness never spawns on a heuristic.
 func RolesForKind(kind string) []Role {
@@ -57,7 +56,7 @@ func RolesForKind(kind string) []Role {
 	case model.KindPlanning:
 		return []Role{RoleGrill, RolePrototype, RoleResearch}
 	case model.KindImplementation:
-		return []Role{RoleImplement, RoleReview}
+		return []Role{RoleImplement}
 	default:
 		return nil
 	}
@@ -66,13 +65,13 @@ func RolesForKind(kind string) []Role {
 // RoleIsAFK reports whether a session in this role runs unattended — the operator
 // kicks it off and walks away — as opposed to a human-in-the-loop role that is
 // *supposed* to sit idle waiting on its human. Only this split earns a session the
-// "quiet" hint: an AFK session silent past a threshold with no `## Proposed
-// Answer` may be stuck, while an idle HITL session is simply waiting and must show
-// nothing (spec, Sessions and adapters; stories 34–35).
+// "quiet" hint: an AFK session silent past a threshold may be stuck, while an idle
+// HITL session is simply waiting and must show nothing (spec, Sessions and
+// adapters; stories 34–35).
 //
 // `grill` is the human-in-the-loop role — a grilling session is a dialogue, and
 // story 35 names it as the one that must never wear a quiet badge. Every other
-// role (prototype, research, implement, review) runs to completion on its own, so
+// role (prototype, research, implement) runs to completion on its own, so
 // silence from one is a signal worth surfacing. An unrecognised name is treated as
 // AFK: a stray session shows the hint rather than swallowing a possible stall.
 func RoleIsAFK(role string) bool {
@@ -111,15 +110,12 @@ const (
 )
 
 // builtins are the shipped default bindings — the starting point every layer
-// above may override. implement and review deliberately differ, so
-// heterogeneity at the review gate (the one real mitigation against a model
-// marking its own homework) holds by default rather than being bolted on.
+// above may override.
 var builtins = map[Role]Binding{
 	RoleGrill:     {Adapter: "claude", Model: "opus"},
 	RolePrototype: {Adapter: "claude", Model: "sonnet"},
 	RoleResearch:  {Adapter: "claude", Model: "sonnet"},
 	RoleImplement: {Adapter: "claude", Model: "sonnet"},
-	RoleReview:    {Adapter: "codex", Model: "gpt-5"},
 }
 
 // Binding is a fully-resolved role→agent binding: which adapter to launch, on

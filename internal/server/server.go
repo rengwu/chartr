@@ -2,7 +2,7 @@
 // embedded cockpit SPA, answers operator actions over plain HTTP, and pushes
 // the whole derived model to every browser over a JSON control socket (ADR
 // 0010). The walking skeleton wires the transport end to end with a near-empty
-// model; later tickets add spaces, maps, sessions, and the review gate on top
+// model; later tickets add spaces, maps, and sessions on top
 // of exactly this delivery skeleton.
 package server
 
@@ -114,23 +114,6 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/release", s.handleRelease)
-	// Review brief (ticket 11): from the verdict a review session wrote, the harness
-	// assembles the brief a human reads at the gate — the proposed answer verbatim,
-	// the one-line verdict, a mechanically derived recommendation, and the observed
-	// models — as plain markdown on disk. A plain HTTP action so a missing verdict
-	// surfaces as a response; the GUI's "assemble brief" button maps to it.
-	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/review-brief", s.handleReviewBrief)
-	// The human review hub (ticket 12): the gate, whole. The brief is read back off
-	// disk verbatim (the GUI adds buttons and nothing else), and the four exits are
-	// four plain HTTP actions — approve (the promotion commit), send back and take
-	// it further (follow-up sessions stacking on the still-proposed ticket), and
-	// abandon (the demotion commit). The diff behind the brief's expander is served
-	// at three scopes.
-	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/review", s.handleReviewRead)
-	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/diff", s.handleTicketDiff)
-	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/approve", s.handleApprove)
-	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/follow-up", s.handleFollowUp)
-	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/abandon", s.handleAbandon)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

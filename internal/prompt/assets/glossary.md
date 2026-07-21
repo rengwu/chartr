@@ -6,8 +6,7 @@ thing.
 
 - **Map** — a wayfinder effort: a `map.md` and its tickets. Always either a
   *planning map* (tickets resolve decisions, worked live with a human) or an
-  *implementation map* (tickets deliver code against a settled spec, gated by
-  review).
+  *implementation map* (tickets deliver code against a settled spec).
 - **Ticket** — one question or one unit of work, sized to a single session. Its
   status is derived from its file, never stored in it.
 - **Frontier** — the open, unblocked tickets: the edge of the known. A blocker
@@ -27,8 +26,5 @@ thing.
   this route, recorded so it is not rediscovered.
 - **Session** — an agent working one ticket. Context is assembled fresh at spawn
   and never accumulated between sessions.
-- **Role** — what a session is spawned to do: grill, prototype, research,
-  implement, or review.
-- **Review** — an adversarial pass, on a different model than the implementer,
-  judging a proposed ticket against its Done-when and spec. A human makes the
-  final call.
+- **Role** — what a session is spawned to do: grill, prototype, research, or
+  implement.

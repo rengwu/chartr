@@ -14,9 +14,8 @@ design.
 - **Match the code around you.** Follow the repository's existing structure,
   naming, and test style. Test at the seams the project already uses; do not
   invent new internal ones.
-- **Commit your work** under the repository's conventions, and stop at a
-  `## Proposed Answer`. You do not resolve the ticket — a reviewer on a different
-  model and then a human do.
+- **Commit your work** under the repository's conventions, and resolve the ticket
+  by writing its `## Answer`.
 
-Write your `## Proposed Answer`: what you built, how it meets each Done-when
-clause, what you tested, and anything you deliberately left out.
+Write your `## Answer`: what you built, how it meets each Done-when clause, what
+you tested, and anything you deliberately left out.

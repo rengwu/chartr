@@ -101,17 +101,10 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Which tickets a role may seat on splits by role. A review hangs on a
-	// `proposed` ticket — work landed, awaiting the gate (ticket 11) — so it takes
-	// exactly that state and nothing else. Every other role is a fresh spawn onto
-	// the stricter frontier (open, unclaimed, every blocker blessed): anything
-	// already claimed, closed, or held behind an ungated blocker is not its to take.
-	if role == string(config.RoleReview) {
-		if tk.Status != "proposed" {
-			httpError(w, http.StatusConflict, "review runs on a proposed ticket — this ticket is "+tk.Status+", not proposed")
-			return
-		}
-	} else if !tk.Frontier {
+	// Every role is a fresh spawn onto the frontier (open, unclaimed, every blocker
+	// resolved): anything already claimed, closed, or held behind an unresolved
+	// blocker is not its to take.
+	if !tk.Frontier {
 		httpError(w, http.StatusConflict, "ticket is not on the frontier — it is not a takeable ticket")
 		return
 	}
@@ -170,13 +163,9 @@ type sessionLaunch struct {
 	role      string
 	binding   config.Resolved
 	sessionID string
-	// steering is the review gate's follow-up briefing (ticket 12) — the blocking
-	// finding, the advisories the human ticked, their note. Empty on a fresh spawn;
-	// it reaches the agent through the payload and its archive, never the ticket.
-	steering []prompt.Steer
 }
 
-// launchSession runs the post-gate spawn mechanics: it composes the payload fresh
+// launchSession runs the spawn mechanics: it composes the payload fresh
 // off disk (the same assembly the preview shows — ADR 0005), writes the claim
 // commit (ADR 0008), drops the payload gitignored inside the space and archived in
 // harness state (story 49), and launches the agent's TUI with the read-this-file
@@ -192,12 +181,10 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		Bundle: prompt.Bundle{
 			MapName:     in.m.Name,
 			MapBody:     in.m.Body,
-			MapDir:      in.m.Dir,
 			TicketNum:   in.tk.Num,
 			TicketTitle: in.tk.Title,
 			TicketBody:  in.tk.Body,
 			Blockers:    blockersOf(in.m, in.tk),
-			Steering:    in.steering,
 		},
 	})
 	if err != nil {

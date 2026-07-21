@@ -24,8 +24,8 @@ import (
 // HTTP responses, the control-socket snapshot, the filesystem, and git history.
 
 // implConfig is a committed workspace config declaring one map as an
-// implementation map, so its `implement` and `review` roles are offered (an
-// unclassified map offers none).
+// implementation map, so its `implement` role is offered (an unclassified map
+// offers none).
 func implConfig(slug string) string {
 	return fmt.Sprintf("[maps.%q]\nkind = \"implementation\"\n", slug)
 }

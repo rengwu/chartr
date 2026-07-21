@@ -14,8 +14,7 @@ import (
 // surface story 45–49 want — so it is a GET, and it reads the prompt library and
 // the map fresh off disk so an edit to a materialized prompt shows up on the next
 // preview with no restart. The `role` query selects which role prompt resolves;
-// composition is otherwise identical, save the review role's Done-when + spec
-// guarantee (story 53), which Compose adds by assembly.
+// composition is otherwise identical.
 func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.reg.Get(r.PathValue("id"))
 	if !ok {
@@ -52,7 +51,6 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 	bundle := prompt.Bundle{
 		MapName:     m.Name,
 		MapBody:     m.Body,
-		MapDir:      m.Dir,
 		TicketNum:   tk.Num,
 		TicketTitle: tk.Title,
 		TicketBody:  tk.Body,
