@@ -169,6 +169,13 @@ nowhere else in the product.** When the card colour changes, re-check each statu
 hue for contrast against it (`out_of_scope`, the dimmest, is the first to fail)
 and re-tune in `theme.ts` — a palette re-tune, never a renderer change.
 
+The same exemption covers `SESSION_HUE` in that file: the session overlay's
+amber moon, its violet counter-orbiter, and human review's gold beacon (spec,
+stories 25–27). The set is **closed** — the moons grammar carries every state on
+motion or shape as well as colour (`starmap/session.ts`, `GRAMMAR`), so a new
+state earns a new *motion*, not a new hue. None of this leaks past the island
+seam: the chrome around the canvas stays monochrome.
+
 ## Do / Don't
 
 **Do**

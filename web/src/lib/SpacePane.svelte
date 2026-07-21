@@ -398,6 +398,7 @@
       <MapCard
         {maps}
         spaceId={space.id}
+        terminals={space.terminals ?? []}
         bind:slug={openSlug}
         bind:dock
         bind:selected={selectedTicket}

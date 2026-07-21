@@ -5,9 +5,10 @@
 // The canvas *feel* is not tested here (it can only be judged by eye); the
 // island runs headless, so no 2D context is required.
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { StarMap } from './starmap'
 import { computeLayout, structureSignature } from './layout'
+import { GRAMMAR, nonColorSignature, type SessionState } from './session'
 import type { Ticket } from '../model'
 
 // A small implementation fixture — a real-shaped graph with a fan-out and a
@@ -48,6 +49,21 @@ function mounted(): { sm: StarMap; host: HTMLDivElement } {
   const sm = new StarMap()
   sm.mount(host)
   return { sm, host }
+}
+
+// The same fixture with the frontier flag stated explicitly — approval igniting a
+// dependent moves a ticket onto the frontier, which the status alone can't say.
+function beat(overrides: Partial<Record<number, Ticket['status']>>, frontier: number[] = []): Ticket[] {
+  return fixture(overrides).map((t) => ({ ...t, frontier: frontier.includes(t.num) }))
+}
+
+// Drag the map, the way an operator does: mousedown on the canvas, a move past
+// the click threshold, mouseup. The island's own pointer path, no test seam.
+function pan(host: HTMLElement, dx: number, dy: number): void {
+  const canvas = host.querySelector('canvas')!
+  canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0, bubbles: true }))
+  window.dispatchEvent(new MouseEvent('mousemove', { clientX: dx, clientY: dy, bubbles: true }))
+  window.dispatchEvent(new MouseEvent('mouseup', { clientX: dx, clientY: dy, bubbles: true }))
 }
 
 describe('deterministic layout', () => {
@@ -168,5 +184,195 @@ describe('the island seam', () => {
     sm.select(5)
     expect(emitted).toEqual([])
     expect(sm.screenOf(5)).toBe(null)
+  })
+})
+
+// The session overlay (ticket 13): the whole lifecycle scripted as pushed models,
+// with the two guarantees of ticket 06 still holding underneath it — a session
+// state is appearance, never position.
+const SESSION_LIFECYCLE: Array<{
+  what: SessionState | 'ignition'
+  tickets: Ticket[]
+  sessions: Record<number, SessionState>
+}> = [
+  {
+    what: 'implementing',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'claimed' }),
+    sessions: { 3: 'implementing' },
+  },
+  {
+    what: 'quiet',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'claimed' }),
+    sessions: { 3: 'quiet' },
+  },
+  {
+    what: 'dead',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'claimed' }),
+    sessions: { 3: 'dead' },
+  },
+  {
+    what: 'proposed',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'proposed' }),
+    sessions: { 3: 'proposed' },
+  },
+  {
+    what: 'agent-review',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'proposed' }),
+    sessions: { 3: 'agent-review' },
+  },
+  {
+    what: 'human-review',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'proposed' }),
+    sessions: { 3: 'human-review' },
+  },
+  {
+    // Approval: the answer is blessed, the star resolves, and #04 ignites onto
+    // the frontier — the base language, with no session overlay left to speak.
+    what: 'ignition',
+    tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'resolved' }, [4]),
+    sessions: {},
+  },
+]
+
+describe('the session overlay on the seam', () => {
+  it('scripts the full lifecycle without ever moving a star', () => {
+    const { sm } = mounted()
+    sm.setModel(fixture())
+    const start = sm.positions()
+    for (const b of SESSION_LIFECYCLE) {
+      sm.setModel(b.tickets, b.sessions)
+      expect(sm.positions()).toEqual(start)
+    }
+  })
+
+  it('renders each state per the grammar, and only where a session speaks', () => {
+    const { sm } = mounted()
+    sm.setModel(fixture())
+    for (const b of SESSION_LIFECYCLE) {
+      sm.setModel(b.tickets, b.sessions)
+      expect(sm.overlays()).toEqual(b.sessions)
+      if (b.what !== 'ignition') {
+        // Every state the map paints is one the grammar defines — motion or shape
+        // carries it, so the star reads without its colour.
+        const g = GRAMMAR[b.what]
+        expect(g.motion).toBeTruthy()
+        expect(nonColorSignature(b.what)).toBeTruthy()
+      }
+    }
+    // The last beat is approval: the moons are gone and the base star speaks.
+    expect(sm.overlays()).toEqual({})
+  })
+
+  it('writes one fading ticker line per changed push, and none on the first', () => {
+    const { sm } = mounted()
+    sm.setModel(SESSION_LIFECYCLE[0].tickets, SESSION_LIFECYCLE[0].sessions)
+    expect(sm.ticker()).toBe(null) // the first ingest is not a change
+
+    sm.setModel(SESSION_LIFECYCLE[1].tickets, SESSION_LIFECYCLE[1].sessions)
+    expect(sm.ticker()).toContain('#03')
+    expect(sm.ticker()).toContain('quiet')
+
+    // A push that changes nothing says nothing — the map goes calm again.
+    const held = sm.ticker()
+    sm.setModel(SESSION_LIFECYCLE[1].tickets, SESSION_LIFECYCLE[1].sessions)
+    expect(sm.ticker()).toBe(held)
+  })
+
+  it('raises the chevron exactly when the beckoning star is offscreen', () => {
+    const { sm, host } = mounted()
+    const hr = SESSION_LIFECYCLE.find((b) => b.what === 'human-review')!
+    sm.setModel(hr.tickets, hr.sessions)
+    // Onscreen: the star itself is the call, no chevron.
+    expect(sm.beckoning()).toEqual([])
+
+    // Pan it off the right edge — the chevron takes over the calling.
+    pan(host, 4000, 0)
+    expect(sm.beckoning()).toEqual([3])
+
+    // Pan back: the chevron stands down.
+    pan(host, -4000, 0)
+    expect(sm.beckoning()).toEqual([])
+
+    // And only human review ever beckons — an offscreen working session doesn't.
+    const impl = SESSION_LIFECYCLE[0]
+    sm.setModel(impl.tickets, impl.sessions)
+    pan(host, 4000, 0)
+    expect(sm.beckoning()).toEqual([])
+  })
+})
+
+// One frame against a recording stub context. The canvas *feel* can only be
+// judged by eye (starmap-design.md, Open risk), but the draw path for every
+// session state should at least run, and the two things the overlay writes as
+// text — the edge chevron's caption and the ticker line — are assertable.
+function stubContext(): { ctx: Record<string, unknown>; texts: string[] } {
+  const texts: string[] = []
+  const ctx: Record<string, unknown> = {
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    measureText: () => ({ width: 40 }),
+    fillText: (s: string) => texts.push(s),
+  }
+  for (const m of [
+    'setTransform', 'fillRect', 'beginPath', 'arc', 'fill', 'stroke', 'moveTo', 'lineTo',
+    'closePath', 'quadraticCurveTo', 'setLineDash', 'save', 'restore', 'translate', 'scale', 'rotate',
+  ]) {
+    ctx[m] = () => {}
+  }
+  return { ctx, texts }
+}
+
+describe('painting the overlay', () => {
+  let frames: FrameRequestCallback[] = []
+  let texts: string[] = []
+  const realGetContext = HTMLCanvasElement.prototype.getContext
+  const realRaf = globalThis.requestAnimationFrame
+
+  beforeEach(() => {
+    frames = []
+    const stub = stubContext()
+    texts = stub.texts
+    HTMLCanvasElement.prototype.getContext = (() => stub.ctx) as never
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    }) as never
+    globalThis.cancelAnimationFrame = (() => {}) as never
+  })
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = realGetContext
+    globalThis.requestAnimationFrame = realRaf
+  })
+
+  function frame(): void {
+    const cb = frames.pop()
+    frames = []
+    cb?.(0)
+  }
+
+  it('draws every session state without falling over', () => {
+    const { sm } = mounted()
+    for (const b of SESSION_LIFECYCLE) {
+      sm.setModel(b.tickets, b.sessions)
+      expect(() => frame()).not.toThrow()
+    }
+    // The ticker line the last change wrote is on the canvas.
+    expect(texts.some((t) => t.startsWith('▸'))).toBe(true)
+  })
+
+  it('paints the chevron caption only while the beckoning star is offscreen', () => {
+    const { sm, host } = mounted()
+    const hr = SESSION_LIFECYCLE.find((b) => b.what === 'human-review')!
+    sm.setModel(hr.tickets, hr.sessions)
+    // With a live context the camera eases rather than snapping, so run a few
+    // frames to let it settle before judging what is on screen.
+    for (let i = 0; i < 30; i++) frame()
+    texts.length = 0
+    frame()
+    expect(texts).not.toContain('#03 wants you')
+
+    pan(host, 4000, 0)
+    texts.length = 0
+    frame()
+    expect(texts).toContain('#03 wants you')
   })
 })

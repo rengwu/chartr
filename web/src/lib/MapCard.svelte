@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import type { Map as WMap, Ticket } from './model'
+  import type { Map as WMap, Terminal, Ticket } from './model'
   import StarMap from './StarMap.svelte'
   import DetailPane from './DetailPane.svelte'
   import MapPickerCard from './MapPickerCard.svelte'
@@ -26,6 +26,7 @@
   let {
     maps,
     spaceId,
+    terminals = [],
     slug = $bindable(),
     dock = $bindable(false),
     selected = $bindable(null),
@@ -36,6 +37,9 @@
     onspawned,
   }: {
     maps: WMap[]
+    // The space's open tabs, threaded to the island so a session paints its moon
+    // on the ticket it holds (ticket 13).
+    terminals?: Terminal[]
     // The space these maps belong to — threaded to the detail pane so its payload
     // preview can fetch (ticket 08), and to the picker tiles for classify.
     spaceId: string
@@ -207,7 +211,7 @@
          leaves free. -->
     <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
       {#key map.slug}
-        <StarMap {map} {insets} bind:selected />
+        <StarMap {map} {terminals} {insets} bind:selected />
       {/key}
 
       <div class="absolute inset-x-0 top-0 z-30 flex h-[var(--bar-h)] items-center gap-1.5 px-2">

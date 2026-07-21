@@ -78,6 +78,28 @@ export function visualState(t: Pick<Ticket, 'status' | 'frontier'>): VisualState
   }
 }
 
+// The session overlay's hues (ticket 13). They live here with the six base
+// states because the star-map's palette is the island's own exempt data-viz
+// colour (docs/design-system.md) — the chrome around it stays monochrome. The
+// grammar these serve, and the non-colour channel each state also carries, is
+// session.ts; the amber is the spec's session moon (story 25) and the violet its
+// one new hue (story 26), so the set is closed here, not open to growth.
+export const SESSION_HUE = {
+  // The session itself: the same amber as a live claim, because the moon *is*
+  // the claim's body.
+  session: '#ffd873',
+  // Agent review's counter-orbiter — the only hue the harness adds.
+  violet: '#c792ea',
+  // A docked proposal: the warm, sealed light of work that has landed.
+  human: '#ffedbe',
+  // Human review's deliberate break — the docked moon whitens and the star warms
+  // toward gold while it pings.
+  beacon: '#ffffff',
+  gold: '#ffe6a0',
+  // A dead session greys its whole orbital apparatus, not just the moon.
+  dead: '#6b7280',
+} as const
+
 export function hexA(hex: string, a: number): string {
   const r = parseInt(hex.slice(1, 3), 16),
     g = parseInt(hex.slice(3, 5), 16),

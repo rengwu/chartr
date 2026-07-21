@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { Map as WMap } from './model'
+  import type { Map as WMap, Terminal } from './model'
   import { StarMap } from './starmap/starmap'
+  import { sessionStates } from './starmap/session'
   import { readColor } from './tokens'
 
   // The star-map is an imperative island: the Svelte chrome hosts it but never
@@ -9,8 +10,12 @@
   // pushed model, and lifts selection back out through the narrow seam (mount,
   // receive model, emit selection). Everything about how a star looks or moves
   // lives inside the island, not here.
-  let { map, selected = $bindable(null), insets }: {
+  let { map, terminals = [], selected = $bindable(null), insets }: {
     map: WMap
+    // The space's tabs, so the island can paint the session overlay (ticket 13):
+    // a session's liveness and its pipeline stage are derived from the same push
+    // that carries the tickets, never stored.
+    terminals?: Terminal[]
     selected?: number | null
     // The detail pane's footprint, so the island eases stars into the space the
     // pane leaves free (ticket 07). Undefined until a pane opens.
@@ -28,17 +33,19 @@
     // The card surface colour, resolved off the live tokens at the seam so the
     // field paints the same warm near-black as the reskinned chrome (ticket 04).
     sm.setBackground(readColor('--card'))
-    sm.setModel(map.tickets)
+    sm.setModel(map.tickets, sessionStates(map, terminals))
     return () => {
       island = null
       sm.destroy()
     }
   })
 
-  // Every control-socket push re-feeds the island. A structure-preserving push
-  // (only statuses changed) never moves a star; the island enforces that.
+  // Every control-socket push re-feeds the island — tickets and the session
+  // overlay together, so one push is one visual beat. A structure-preserving push
+  // (only statuses or session states changed) never moves a star; the island
+  // enforces that.
   $effect(() => {
-    island?.setModel(map.tickets)
+    island?.setModel(map.tickets, sessionStates(map, terminals))
   })
 
   // A selection set from outside (a deep-link, the queue) eases the star in.
