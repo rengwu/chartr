@@ -1,8 +1,6 @@
 ---
 type: task
 blocked_by: [09]
-claimed_by: s3dd4be650d54
-claimed_at: 2026-07-20T18:59:43Z
 ---
 
 # Liveness and the death halt
@@ -13,7 +11,7 @@ claimed_at: 2026-07-20T18:59:43Z
 
 Done when: process-boundary tests with stub agents assert dead is detected on exit, the halt offers exactly the three choices and takes none itself, scrollback survives death, quiet appears only for the AFK case past threshold, and a dirtied tree badges while spawn still proceeds; the absence of autonomous action is asserted, not assumed (no state change without an operator HTTP call).
 
-## Proposed Answer
+## Answer
 
 Liveness and the death halt land on top of ticket 09's session seam without a new subsystem: a session tab is still an ad-hoc tab that carries a `Session`, and everything here rides the multiplexer's existing liveness/scrollback/attach plumbing. Nothing is enacted — the harness surfaces `working` / `quiet` / `dead`, pins a death, and waits for an operator HTTP call.
 
