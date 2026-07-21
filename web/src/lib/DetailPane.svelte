@@ -7,7 +7,7 @@
   import * as ScrollArea from '$lib/components/ui/scroll-area'
   import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
-  import { Eye, X, Rocket, Warning } from 'phosphor-svelte'
+  import { Eye, Flag, X, Rocket, Warning } from 'phosphor-svelte'
   import { cn } from '$lib/utils'
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -23,6 +23,7 @@
     spaceId,
     onclose,
     onspawned,
+    onopenreview,
   }: {
     map: WMap
     ticket?: Ticket | null
@@ -33,6 +34,10 @@
     // Called with the new session id after a successful spawn, so the enclosing
     // chrome can make that session's tab active.
     onspawned?: (sessionId: string) => void
+    // Called with a proposed ticket's number to open the review hub over the map
+    // card (ticket 12) — the pane is where a gate is entered from, never where it
+    // is rendered.
+    onopenreview?: (ticketNum: number) => void
   } = $props()
 
   const isMap = $derived(ticket === null)
@@ -263,6 +268,32 @@
             </ul>
           {/if}
         </section>
+
+        {#if ticket.status === 'proposed' && map.kind === 'implementation' && spaceId}
+          <!-- The gate's entry point (ticket 12). The hub itself takes over the map
+               card; the pane only opens the door, and says whether a brief is
+               already waiting behind it. -->
+          <section class="flex flex-col gap-2 rounded-md border border-border p-2.5">
+            <h3 class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">Human review</h3>
+            {#if ticket.review}
+              <p class="text-xs leading-relaxed">
+                {#if ticket.review.recommendation === 'Send back'}
+                  The reviewer rejected this — it halts to you and never loops. {ticket.review.blocking}
+                  blocking finding{ticket.review.blocking === 1 ? '' : 's'}.
+                {:else}
+                  The reviewer passed this. Nothing blocks against a Done-when clause.
+                {/if}
+              </p>
+            {:else}
+              <p class="text-xs leading-relaxed text-muted-foreground">
+                No verdict yet — spawn a review below, and the brief is waiting here when it lands.
+              </p>
+            {/if}
+            <Button size="sm" variant={ticket.review ? 'default' : 'outline'} onclick={() => onopenreview?.(ticket.num)}>
+              <Flag /> Open review
+            </Button>
+          </section>
+        {/if}
 
         {#if canSpawn}
           <section class="flex flex-col gap-2 rounded-md border border-border p-2.5">

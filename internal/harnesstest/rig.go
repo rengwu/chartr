@@ -204,6 +204,32 @@ func (h *Harness) ReviewBrief(spaceID, sessionID string) (int, string) {
 	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/review-brief", spaceID, sessionID), nil)
 }
 
+// The human review hub's four exits (ticket 12), each a plain HTTP action a test
+// drives exactly as the hub's buttons do. Approve promotes the proposed answer;
+// FollowUp stacks a session on the still-proposed ticket (send back is this with
+// the blocking finding attached); Abandon demotes it back to the frontier.
+// ReviewRead serves the brief the hub renders, straight off disk.
+func (h *Harness) Approve(spaceID, slug string, num int, acknowledged bool) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/approve", spaceID, slug, num),
+		map[string]bool{"acknowledged": acknowledged})
+}
+
+func (h *Harness) FollowUp(spaceID, slug string, num int, body any) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/follow-up", spaceID, slug, num), body)
+}
+
+func (h *Harness) Abandon(spaceID, slug string, num int, body any) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/abandon", spaceID, slug, num), body)
+}
+
+func (h *Harness) ReviewRead(spaceID, slug string, num int) (int, string) {
+	h.t.Helper()
+	return h.Get(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/review", spaceID, slug, num))
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.

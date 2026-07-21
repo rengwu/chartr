@@ -37,6 +37,22 @@ export interface Ticket {
   // closing answer. Inlined so the detail pane (ticket 07) reads the full ticket,
   // and a blocker's answer, from the snapshot with no second fetch.
   body?: string
+  // Set when a review brief for this ticket is assembled and waiting on disk —
+  // the explicit "a human is being waited on" signal (ticket 12). Its presence is
+  // what the star-map's `human-review` state and the hub's entry point read; the
+  // brief itself is fetched when the hub opens.
+  review?: Review
+}
+
+// The human gate's state on a `proposed` ticket (ticket 12). The counts and the
+// recommendation are derived mechanically from the verdict — a finding blocks
+// only by citing the Done-when clause it breaks — so nothing here is the agent's
+// own word about whether to ship.
+export interface Review {
+  sessionId: string
+  recommendation: 'Approve' | 'Send back'
+  blocking: number
+  advisories: number
 }
 
 // A map's declared lifecycle (ADR 0007). The empty string is the third state:

@@ -168,6 +168,10 @@ type sessionLaunch struct {
 	role      string
 	binding   config.Resolved
 	sessionID string
+	// steering is the review gate's follow-up briefing (ticket 12) — the blocking
+	// finding, the advisories the human ticked, their note. Empty on a fresh spawn;
+	// it reaches the agent through the payload and its archive, never the ticket.
+	steering []prompt.Steer
 }
 
 // launchSession runs the post-gate spawn mechanics: it composes the payload fresh
@@ -191,6 +195,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 			TicketTitle: in.tk.Title,
 			TicketBody:  in.tk.Body,
 			Blockers:    blockersOf(in.m, in.tk),
+			Steering:    in.steering,
 		},
 	})
 	if err != nil {

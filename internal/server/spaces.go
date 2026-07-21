@@ -195,6 +195,17 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 			maps[i].Kind = kind
 			maps[i].KindGuess = ""
 		}
+		// A proposed ticket whose review brief is assembled is at the human gate
+		// (ticket 12). This is the explicit signal — the star-map's human-review state
+		// and the "Needs you" queue read it rather than inferring it from a dead
+		// review session. Only proposed tickets are looked at, so the per-rebuild cost
+		// is one stat per waiting gate.
+		for j := range maps[i].Tickets {
+			if maps[i].Tickets[j].Status != "proposed" {
+				continue
+			}
+			maps[i].Tickets[j].Review = s.reviewState(e, maps[i].Slug, maps[i].Tickets[j].Num)
+		}
 	}
 
 	// Ad-hoc shells and sessions are runtime state the manager owns, not derived

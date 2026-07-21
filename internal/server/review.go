@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/rengwu/wayfinder-harness/internal/config"
 	"github.com/rengwu/wayfinder-harness/internal/mapscan"
 	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/wayfinder-harness/internal/registry"
+	"github.com/rengwu/wayfinder-harness/internal/terminal"
 )
 
 // Ticket 11: the pipeline from work landing to a readable verdict. An implementing
@@ -63,38 +66,60 @@ func (s *Server) handleReviewBrief(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	brief, v, status, err := s.assembleReviewBrief(e, info)
+	if err != nil {
+		httpError(w, status, err.Error())
+		return
+	}
+
+	// The brief's arrival is the moment the ticket reaches the human gate (ticket
+	// 12), and nothing on the `.plan/` watch fires for a write into the gitignored
+	// run directory — so push the new state explicitly. The star-map's human-review
+	// state and the hub's entry point both read it.
+	s.rebuild()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"sessionId":      info.ID,
+		"ticketNum":      info.Session.TicketNum,
+		"brief":          brief,
+		"recommendation": recommendation(v),
+	})
+}
+
+// assembleReviewBrief is the assembly itself, shared by the explicit action above
+// and by the hub opening on a ticket whose verdict is written but whose brief has
+// not been built yet (ticket 12). It is a pure function of the verdict and the
+// ticket on disk, so building it twice builds the same file — which is why the
+// hub may build it on demand without making the pipeline any less deterministic.
+// It returns the brief, the parsed verdict, and the HTTP status a caller should
+// surface on failure.
+func (s *Server) assembleReviewBrief(e registry.Entry, info terminal.Info) (string, verdict, int, error) {
 	// The verdict the reviewer wrote, beside its payload in the run directory. Its
 	// absence is the ordinary "the reviewer hasn't finished" case, not an error in
 	// the harness.
-	verdictPath := filepath.Join(e.Path, sessionRunDir, info.ID, reviewVerdictName)
-	raw, err := os.ReadFile(verdictPath)
+	raw, err := os.ReadFile(filepath.Join(e.Path, sessionRunDir, info.ID, reviewVerdictName))
 	if err != nil {
-		httpError(w, http.StatusConflict, "no verdict yet — the reviewer has not written verdict.md")
-		return
+		return "", verdict{}, http.StatusConflict, errors.New("no verdict yet — the reviewer has not written verdict.md")
 	}
 
 	// The proposed answer the verdict judges, read verbatim off the ticket on disk
 	// (never the snapshot), so the brief carries the exact prose a human reads.
 	m, found := findMap(mapscan.Discover(e.Path), info.Session.MapSlug)
 	if !found {
-		httpError(w, http.StatusNotFound, "no such map")
-		return
+		return "", verdict{}, http.StatusNotFound, errors.New("no such map")
 	}
 	tk, found := findTicket(m, info.Session.TicketNum)
 	if !found {
-		httpError(w, http.StatusNotFound, "no such ticket")
-		return
+		return "", verdict{}, http.StatusNotFound, errors.New("no such ticket")
 	}
 	proposed := prompt.ProposedAnswerSection(tk.Body)
 	if strings.TrimSpace(proposed) == "" {
-		httpError(w, http.StatusConflict, "the ticket carries no `## Proposed Answer` to review")
-		return
+		return "", verdict{}, http.StatusConflict, errors.New("the ticket carries no `## Proposed Answer` to review")
 	}
 
 	ticketPath, err := ticketFilePath(m.Dir, tk.Num)
 	if err != nil {
-		httpError(w, http.StatusNotFound, err.Error())
-		return
+		return "", verdict{}, http.StatusNotFound, err
 	}
 
 	v := parseVerdict(string(raw))
@@ -112,19 +137,12 @@ func (s *Server) handleReviewBrief(w http.ResponseWriter, r *http.Request) {
 
 	briefPath := filepath.Join(e.Path, sessionRunDir, info.ID, reviewBriefName)
 	if err := os.WriteFile(briefPath, []byte(brief), 0o644); err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the review brief: "+err.Error())
-		return
+		return "", verdict{}, http.StatusInternalServerError, errors.New("writing the review brief: " + err.Error())
 	}
 	// Re-assert the run directory's ignore, so the brief can never be swept into a
 	// commit (ADR 0008) — the same guard the payload writer holds.
 	_ = os.WriteFile(filepath.Join(e.Path, sessionRunDir, ".gitignore"), []byte("*\n"), 0o644)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"sessionId":      info.ID,
-		"ticketNum":      tk.Num,
-		"brief":          brief,
-		"recommendation": recommendation(v),
-	})
+	return brief, v, http.StatusOK, nil
 }
 
 // finding is one line of a verdict's Findings section: its prose and the Done-when

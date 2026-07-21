@@ -70,10 +70,10 @@ export function nonColorSignature(s: SessionState): string {
 // with no proposed answer yet, so an idling HITL grilling deliberately shows
 // nothing here).
 //
-// The pipeline stages read off the ticket's status and the *review* session on
-// it: a proposal with a live reviewer is agent review; a proposal whose reviewer
-// has exited is the verdict waiting on a human. Nothing new is stored — the
-// state is a pure function of the snapshot.
+// The pipeline stages read off the ticket's status, its gate signal, and the
+// *review* session on it: a proposal with a live reviewer is agent review; a
+// proposal carrying an assembled brief is the verdict waiting on a human. Nothing
+// new is stored — the state is a pure function of the snapshot.
 export function sessionStates(map: WMap, terminals: Terminal[]): Record<number, SessionState> {
   const out: Record<number, SessionState> = {}
   const onTicket = new Map<number, Terminal[]>()
@@ -95,7 +95,11 @@ function stateOf(tk: Ticket, tabs: Terminal[]): SessionState | null {
   if (tk.status === 'proposed') {
     const review = tabs.filter((t) => t.session?.role === 'review')
     if (review.some((t) => t.alive)) return 'agent-review'
-    if (review.length) return 'human-review'
+    // The gate signal, not an inference: `review` is set on the snapshot exactly
+    // when a brief is assembled and waiting on a human (ticket 12). Ticket 13
+    // derived this from "a review session has exited" and flagged this line as the
+    // one to re-point once the hub gave it something explicit to read.
+    if (tk.review) return 'human-review'
     return 'proposed'
   }
   // Any other status: only a session tab on the ticket says anything, and what it

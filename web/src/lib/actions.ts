@@ -129,6 +129,131 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
   return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/release`)
 }
 
+// The human review hub (ticket 12). The hub renders the brief the harness wrote
+// to disk and adds buttons — these are those buttons, each a plain HTTP action so
+// a refusal (an unacknowledged blocking finding, a live session, a ticket that has
+// moved on) surfaces as a thrown ActionError carrying the harness's own message.
+
+export interface ReviewFinding {
+  text: string
+  // The Done-when clause the finding cites. Empty means it cites none, which is
+  // what makes it advisory by rule — the structural way a nitpick is told from a
+  // real bug.
+  clause: string
+}
+
+// ReviewRead is the brief a human reads at the gate, plus the mechanical shape
+// the hub's buttons key on. `brief` is the exact markdown on disk — the GUI adds
+// buttons and nothing else, so a CLI-only operator reads the same text.
+export interface ReviewRead {
+  sessionId: string
+  ticketNum: number
+  brief: string
+  recommendation: 'Approve' | 'Send back'
+  verdictLine: string
+  blocking: ReviewFinding[]
+  advisories: ReviewFinding[]
+  proposedAnswer: string
+}
+
+export function readReview(id: string, slug: string, num: number): Promise<ReviewRead> {
+  return send('GET', ticketPath(id, slug, num) + '/review') as Promise<ReviewRead>
+}
+
+// ApproveResult is what the approval bought: the promotion commit, the dependents
+// it unblocked, and the next best frontier ticket the post-approve strip offers.
+// `smearedInto` is ADR 0008's residual race, reported rather than hidden — the
+// answer is promoted, but another writer's commit carries the edit.
+export interface ApproveResult {
+  ticketNum: number
+  commit: string
+  unblocked?: number[]
+  approvedOverRejection: boolean
+  next?: { num: number; title: string }
+  smearedInto?: string
+  warning?: string
+}
+
+// approveTicket promotes the `## Proposed Answer` to `## Answer` as its own
+// pathspec-limited commit. Over a rejecting verdict it costs exactly one tick,
+// which the harness refuses the approval without.
+export function approveTicket(
+  id: string,
+  slug: string,
+  num: number,
+  acknowledged: boolean,
+): Promise<ApproveResult> {
+  return send('POST', ticketPath(id, slug, num) + '/approve', {
+    acknowledged,
+  }) as Promise<ApproveResult>
+}
+
+// followUp stacks another session on a still-proposed ticket — the mechanism
+// behind both "send back to fix" (with the blocking finding attached and any
+// advisories the operator ticked) and "take it further". The note and the findings
+// ride the injected payload and its archive, never the ticket file.
+export function followUp(
+  id: string,
+  slug: string,
+  num: number,
+  body: { role?: string; note?: string; advisories?: number[]; includeFindings?: boolean },
+): Promise<SpawnResult & { followUp: boolean }> {
+  return send('POST', ticketPath(id, slug, num) + '/follow-up', body) as Promise<
+    SpawnResult & { followUp: boolean }
+  >
+}
+
+export interface AbandonResult {
+  ticketNum: number
+  commit: string
+  workCommits?: string[]
+  reverted: boolean
+  reset: boolean
+  revertError?: string
+}
+
+// abandonTicket rejects the proposal, not the ticket: the reason is demoted into
+// the ticket as dated `### Rejected` prose and the ticket returns to the frontier.
+// It destroys nothing unless a lever is ticked.
+export function abandonTicket(
+  id: string,
+  slug: string,
+  num: number,
+  body: { reason: string; revert?: boolean; reset?: boolean },
+): Promise<AbandonResult> {
+  return send('POST', ticketPath(id, slug, num) + '/abandon', body) as Promise<AbandonResult>
+}
+
+export type DiffScope = 'all' | 'verdict' | 'read'
+
+export interface TicketDiff {
+  scope: DiffScope
+  base: string
+  head: string
+  patch: string
+  stat: string
+  note?: string
+}
+
+// ticketDiff serves the work under a proposal at one of three scopes: all the
+// commits since the ticket was claimed, everything since the verdict being read,
+// or everything since the operator's last read (they pass the sha they last saw).
+export function ticketDiff(
+  id: string,
+  slug: string,
+  num: number,
+  scope: DiffScope,
+  since?: string,
+): Promise<TicketDiff> {
+  const q = new URLSearchParams({ scope })
+  if (since) q.set('since', since)
+  return send('GET', ticketPath(id, slug, num) + '/diff?' + q.toString()) as Promise<TicketDiff>
+}
+
+function ticketPath(id: string, slug: string, num: number): string {
+  return `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/tickets/${num}`
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.

@@ -11,6 +11,12 @@ function ticket(num: number, status: Ticket['status']): Ticket {
   return { num, slug: `${num}`, title: `t${num}`, type: 'task', status, blockedBy: [], frontier: false }
 }
 
+// A ticket carrying the gate signal — a review brief assembled and waiting on a
+// human (ticket 12).
+function atTheGate(t: Ticket): Ticket {
+  return { ...t, review: { sessionId: 's1', recommendation: 'Send back', blocking: 1, advisories: 0 } }
+}
+
 function map(...tickets: Ticket[]): WMap {
   return { slug: 'm', name: 'M', dir: '/m', destination: '', tickets, finished: false, kind: 'implementation' }
 }
@@ -51,9 +57,14 @@ describe('deriving the session overlay from a pushed snapshot', () => {
     // A live reviewer circles it.
     const reviewing = [tab(1, 'implement', 'dead', false), tab(1, 'review', 'working', true)]
     expect(sessionStates(m, reviewing)).toEqual({ 1: 'agent-review' })
-    // The reviewer exits: the verdict is written and the brief awaits a human.
+    // The reviewer exits with no brief assembled yet: still just a proposal.
+    // Human review is the gate signal on the snapshot, not an inference from a
+    // dead tab (ticket 12 gave ticket 13's flagged derivation something explicit).
     const reviewed = [tab(1, 'implement', 'dead', false), tab(1, 'review', 'dead', false)]
-    expect(sessionStates(m, reviewed)).toEqual({ 1: 'human-review' })
+    expect(sessionStates(m, reviewed)).toEqual({ 1: 'proposed' })
+    // The brief lands: the star is now the one that wants you.
+    const gated = map(atTheGate(ticket(1, 'proposed')))
+    expect(sessionStates(gated, reviewed)).toEqual({ 1: 'human-review' })
   })
 
   it('ignores tabs belonging to another map or to no ticket at all', () => {

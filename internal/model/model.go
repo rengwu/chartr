@@ -140,6 +140,33 @@ type Ticket struct {
 	// and any closing answer. Inlined so the detail pane (ticket 07) reads the
 	// full ticket, and a blocker's answer, straight from the snapshot.
 	Body string `json:"body,omitempty"`
+	// Review is set when a review brief for this ticket is assembled and waiting
+	// on disk — the explicit "a human is being waited on" signal (ticket 12).
+	// Nil on every other ticket, including a `proposed` one whose reviewer has not
+	// finished. It carries only the gate-level facts: which session produced the
+	// brief and the mechanical shape of its verdict.
+	Review *Review `json:"review,omitempty"`
+}
+
+// Review is the human gate's state on a `proposed` ticket (ticket 12): the brief
+// the harness assembled from the reviewer's verdict, sitting in that session's
+// run directory. The counts and the recommendation are derived mechanically from
+// the verdict — a finding blocks only by citing the Done-when clause it breaks
+// (story 55) — so nothing here is the agent's own word about whether to ship.
+//
+// Its presence is the signal ticket 13 asked for: the star-map's `human-review`
+// state was inferred there ("a proposed ticket whose review session has exited")
+// and now reads this instead.
+type Review struct {
+	// SessionID is the review session whose run directory holds brief.md.
+	SessionID string `json:"sessionId"`
+	// Recommendation is the mechanical verdict-to-action mapping: "Approve" when
+	// no finding is anchored-blocking, "Send back" when one is.
+	Recommendation string `json:"recommendation"`
+	// Blocking and Advisories count the findings after the anchoring rule is
+	// applied, so a "blocking"-marked finding citing no clause counts advisory.
+	Blocking   int `json:"blocking"`
+	Advisories int `json:"advisories"`
 }
 
 // Terminal is one open ad-hoc shell on the wire: its identity, a tab label, the

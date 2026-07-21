@@ -19,6 +19,17 @@ type Blocker struct {
 	Answer string
 }
 
+// Steer is one block of live steering the operator attached to a session at the
+// review gate (ticket 12): a blocking finding to clear, an advisory they chose to
+// pass on, or a note in their own words. It rides the injected payload and its
+// archive and nowhere else (story 59) — the ticket file is the permanent record
+// and only abandonment writes there, so steering a live attempt and amending the
+// ticket's history stay deliberately separate acts.
+type Steer struct {
+	Label string
+	Text  string
+}
+
 // Bundle is the space- and ticket-specific material a payload is assembled from,
 // gathered fresh at compose time (ADR 0005): the map body, this ticket, and its
 // blockers' answers. MapDir anchors the review payload's spec lookup.
@@ -30,6 +41,8 @@ type Bundle struct {
 	TicketTitle string
 	TicketBody  string
 	Blockers    []Blocker
+	// Steering is the review gate's follow-up briefing, empty on a fresh spawn.
+	Steering []Steer
 }
 
 // ComposeInput is everything Compose needs: the role, the config roots the prompt
@@ -78,6 +91,12 @@ func Compose(in ComposeInput) (Payload, error) {
 		))
 	}
 
+	// The gate's steering, last in the bundle so it reads as the most recent word
+	// on an attempt the rest of the bundle already describes (ticket 12).
+	for _, st := range in.Bundle.Steering {
+		parts = append(parts, ctxPart(steerName(st.Label), st.Label, st.Text))
+	}
+
 	// The review payload always carries the Done-when and the spec by assembly.
 	if in.Role == string(config.RoleReview) {
 		dw := doneWhen(in.Bundle.TicketBody)
@@ -117,6 +136,13 @@ func AnswerSection(body string) string {
 // refuses rather than review the wrong section.
 func ProposedAnswerSection(body string) string {
 	return firstSection(body, "Proposed Answer")
+}
+
+// steerName is a steering block's short part name in the preview's provenance
+// list — the label, lowercased, so the operator recognises it there as the block
+// they attached in the send-back dialog.
+func steerName(label string) string {
+	return "steering: " + strings.ToLower(strings.TrimSpace(label))
 }
 
 func ctxPart(name, label, text string) Part {

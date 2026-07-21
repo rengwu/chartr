@@ -150,6 +150,68 @@ func StubProposingAgent(t testing.TB, name, ticketRel, proposed string) {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// StubRewritingAgent installs a fake agent that behaves like a follow-up session
+// on an already-proposed ticket (ticket 12): it rewrites the `## Proposed Answer`
+// **in place** with new prose, lands a work file beside it, commits both, and
+// exits. It is how a test drives take-it-further — the proposal is one section
+// that gets rewritten rather than a growing pile, and the prior text survives only
+// in git.
+//
+// Like the other stubs it prepends a fresh bin dir to PATH via t.Setenv, so
+// installing it after another stub of the same name shadows that one for the rest
+// of the test — which is how a test moves from "propose" to "follow up".
+func StubRewritingAgent(t testing.TB, name, ticketRel, rewritten, workRel string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent CLI uses a POSIX shell script; not supported on Windows")
+	}
+	binDir := t.TempDir()
+
+	// Keep everything up to and including the `## Proposed Answer` heading, then
+	// write the new prose under it — the same rewrite-in-place a real follow-up
+	// session performs on the section it already owns.
+	script := fmt.Sprintf("#!/bin/sh\n"+
+		"awk '1; /^## Proposed Answer$/{exit}' %q > %q.tmp\n"+
+		"cat >> %q.tmp <<'WFREWRITE'\n\n%s\nWFREWRITE\n"+
+		"mv %q.tmp %q\n"+
+		"printf 'follow-up\\n' >> %q\n"+
+		"git add -- %q %q\n"+
+		"git commit -q -m 'Follow-up: amend the proposal' -- %q %q\n"+
+		"exit 0\n",
+		ticketRel, ticketRel, ticketRel, rewritten, ticketRel, ticketRel,
+		workRel, ticketRel, workRel, ticketRel, workRel)
+	stub := filepath.Join(binDir, name)
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("harnesstest: writing rewriting stub agent %q: %v", name, err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// InstallSweepHook installs a `pre-commit` hook in the space that commits the
+// whole working tree out from under the next commit made in it — the concurrent
+// writer ADR 0008 names, an agent's `git commit -a` landing between the harness's
+// write and its commit. The harness's own commit then comes up empty, which is
+// exactly the attribution smear it must detect and report.
+//
+// It fires once (guarded by a marker inside .git) so a test drives one collision
+// rather than an unbounded cascade, and it is a plain repository hook — the
+// operator's own git, not a harness seam.
+func InstallSweepHook(t testing.TB, repo, message string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the sweep hook is a POSIX shell script; not supported on Windows")
+	}
+	hook := filepath.Join(repo, ".git", "hooks", "pre-commit")
+	script := fmt.Sprintf("#!/bin/sh\n[ -f .git/SWEPT ] && exit 0\ntouch .git/SWEPT\ngit commit --no-verify -a -m %q >/dev/null 2>&1\nexit 0\n", message)
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatalf("harnesstest: hooks dir: %v", err)
+	}
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("harnesstest: writing sweep hook: %v", err)
+	}
+}
+
 // WaitForFileContains polls path until it contains want or the deadline passes,
 // returning its contents. It fails the test on timeout — a test asserting the
 // opener reached the stub's stdin names the marker it expects rather than guessing

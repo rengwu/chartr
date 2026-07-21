@@ -120,6 +120,17 @@ func New(opts Options) (*Server, error) {
 	// models — as plain markdown on disk. A plain HTTP action so a missing verdict
 	// surfaces as a response; the GUI's "assemble brief" button maps to it.
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/review-brief", s.handleReviewBrief)
+	// The human review hub (ticket 12): the gate, whole. The brief is read back off
+	// disk verbatim (the GUI adds buttons and nothing else), and the four exits are
+	// four plain HTTP actions — approve (the promotion commit), send back and take
+	// it further (follow-up sessions stacking on the still-proposed ticket), and
+	// abandon (the demotion commit). The diff behind the brief's expander is served
+	// at three scopes.
+	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/review", s.handleReviewRead)
+	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/diff", s.handleTicketDiff)
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/approve", s.handleApprove)
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/follow-up", s.handleFollowUp)
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/abandon", s.handleAbandon)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.
