@@ -1,8 +1,6 @@
 ---
 type: task
 blocked_by: [09]
-claimed_by: s31f0ce460375
-claimed_at: 2026-07-21T04:31:01Z
 ---
 
 # Propose and agent review
@@ -13,7 +11,7 @@ The pipeline from work landing to a readable verdict. An implementing session co
 
 Done when: process-boundary tests walk a stub implementer to `proposed`, spawn a stub reviewer whose payload contains Done-when and spec, and assert the brief file exists with verbatim proposed answer, mechanical recommendation matching the verdict, clause-anchoring respected (an unanchored finding lands advisory), and observed models named; the raw brief is readable on disk exactly as the GUI will render it.
 
-## Proposed Answer
+## Answer
 
 The pipeline from work landing to a readable verdict is wired end to end, reusing the spawn/claim/payload machinery ticket 09 built and adding only the review seam on top. Nothing here re-decides the design; where ticket 09 flagged a gate as needing to widen, this widens exactly that gate and no more.
 
