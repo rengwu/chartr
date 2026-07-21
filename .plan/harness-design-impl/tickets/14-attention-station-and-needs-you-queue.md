@@ -11,7 +11,7 @@ Attention at two altitudes, plus the cockpit's keyboard story. The per-map actio
 
 Done when: the drawer ranks reviews first then by unblock count against fixtures; the badge follows the map handle when tucked; queue entries are exactly the gate-level signals and jump-to lands focused; the queue never appears without being summoned (asserted); space-switch and queue keys work; every ambient signal carries a non-color channel.
 
-## Proposed Answer
+## Answer
 
 Everything is derived, client-side, from the model tickets 12/13 already push — no backend change. `web/src/lib/attention.ts` is the one new pure module, tested the same way ticket 13's `session.ts` is (`attention.test.ts`, 11 cases, no DOM):
 
