@@ -1,0 +1,102 @@
+# goreleaser builds the one supported artifact (ADR 0011): the pure-Go binary
+# that serves the embedded Svelte SPA (ADR 0010), cross-compiled for macOS, Linux
+# and Windows from a single cgo-free CI job. Nothing here needs cgo, so all six
+# GOOS/GOARCH targets come off one runner with no cross-toolchains.
+#
+# What is deliberately NOT here: the per-platform native webview shells. They are
+# the best-effort tier — they need cgo + system webview libs and MAY fail to
+# build — so they are built outside goreleaser, in continue-on-error CI jobs, and
+# attached to the release as extra assets only where their toolchains succeed
+# (see .github/workflows/release.yml). Keeping them out of goreleaser is what
+# guarantees a shell build failure can never fail the supported release.
+#
+# Distribution is GitHub releases only (ADR 0011): no `go install`, no Homebrew
+# tap, no plugin marketplace entry.
+version: 2
+
+project_name: wayfinder-harness
+
+# Keep goreleaser's output out of ./dist so it is never confused with web/dist,
+# which is the embedded-SPA directory `make web` fills and go:embed reads.
+dist: build/goreleaser
+
+# The embedded SPA must exist before the Go build folds web/dist into the binary.
+# `make web` runs the Vite build; goreleaser then cross-compiles against it once,
+# and every target embeds the same dist.
+before:
+  hooks:
+    - make web
+
+builds:
+  - id: harness
+    main: ./cmd/harness
+    binary: harness
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: harness
+    ids:
+      - harness
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    # tar.gz everywhere except Windows, which gets a .zip operators can extract
+    # without extra tooling.
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - docs/adr/0011-one-supported-artifact-tiered-extras.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: rengwu
+    name: wayfinder-harness
+  draft: false
+  prerelease: auto
+  name_template: "wayfinder-harness {{ .Tag }}"
+  footer: |
+    ## Artifacts
+
+    **Supported** — the pure-Go, cgo-free binary that serves the cockpit in your
+    browser (`harness`), checksummed above, for macOS, Linux and Windows.
+
+    **Best-effort** — native webview shells, attached above only for the
+    platforms whose cgo/webview toolchains built in CI. A missing shell asset for
+    a platform means its toolchain did not build this release; the supported
+    binary for that platform is unaffected. See the README's support tiers.

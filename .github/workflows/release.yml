@@ -1,0 +1,137 @@
+# Release pipeline (ADR 0011). A tag `vX.Y.Z` cuts a GitHub release with:
+#
+#   * the ONE supported artifact — the pure-Go, cgo-free binary that serves the
+#     cockpit in a browser — built and checksummed by goreleaser for macOS,
+#     Linux and Windows from a single cgo-free job (the `release` job below); and
+#   * best-effort native webview shells, built in a separate matrix job that is
+#     `continue-on-error` and depends on the release already being published, so
+#     a shell toolchain failure attaches nothing and CANNOT fail the supported
+#     release (the `shells` job below).
+#
+# Distribution is GitHub releases only: no `go install`, no Homebrew, no plugin
+# marketplace (ADR 0011).
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # goreleaser and `gh release upload` create/attach release assets
+
+jobs:
+  # Gate the release on the Windows PTY smoke test: the supported artifact ships
+  # for Windows, so its ConPTY path must round-trip before we cut a tag.
+  windows-smoke:
+    name: windows PTY smoke (ConPTY round-trip)
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: ConPTY round-trip smoke test
+        run: go test -v -run TestConPTYRoundTrip ./internal/terminal
+
+  release:
+    name: supported binaries (cgo-free)
+    needs: windows-smoke
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser needs full history + tags for the changelog
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # goreleaser's `before` hook runs `make web`, but run it here too so a hook
+      # change never silently ships a stale embed.
+      - name: Build embedded frontend
+        run: make web
+
+      - name: Release supported binaries
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> 2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Best-effort tier (ADR 0011): the native webview shells. This whole job is
+  # `continue-on-error`, and it `needs: release` — so the supported release is
+  # already published and checksummed before a single shell is attempted. A
+  # failing webview toolchain on any platform attaches nothing for that platform
+  # and leaves the release untouched; where a shell builds, it is uploaded as an
+  # extra asset. This is the structural guarantee that "a shell failure does not
+  # fail the release."
+  shells:
+    name: best-effort webview shell (${{ matrix.os }})
+    needs: release
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+          - os: macos-latest
+            goos: darwin
+          - os: windows-latest
+            goos: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      # Linux's WebKitGTK shell needs system dev headers; macOS links the system
+      # WebKit; Windows uses cgo-free go-webview2 (WebView2 runtime ships with the
+      # OS). Any of these steps failing is tolerated by continue-on-error.
+      - name: Install Linux webview toolchain
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev
+
+      - name: Build embedded frontend
+        run: make web
+
+      - name: Build native webview shell
+        id: build_shell
+        run: make webview GOOS=${{ matrix.goos }}
+
+      # Upload only if the target actually produced a shell binary. `make webview`
+      # exits 0 with no output when the shell source is not yet present (the tier
+      # is genuinely optional), so a missing artifact is not an error here.
+      - name: Attach shell to the release
+        if: steps.build_shell.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          assets=(build/shell/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "no webview shell built for ${{ matrix.goos }} — best-effort tier, nothing to attach"
+            exit 0
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber

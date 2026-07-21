@@ -1,0 +1,80 @@
+# Continuous checks on every push and PR. The supported artifact is pure Go, so
+# the main lane is one cgo-free Ubuntu job. Windows gets its own job for one
+# reason: the ConPTY-backed PTY layer (ADR 0006 as amended) is real shipped code
+# on the supported Windows binary, so it is smoke-tested here on every change —
+# a PTY round-trip through go-pty's ConPTY, driven by the same Manager surface an
+# operator's shell tab uses (internal/terminal/pty_windows_test.go).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check + test (linux, cgo-free)
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Build the embedded SPA first: the embed test compiles against web/dist,
+      # and `make check`/`make test` expect a real dist, not just the .gitkeep.
+      - name: Build frontend
+        run: make web
+
+      - name: Frontend unit tests
+        run: cd web && npm test
+
+      - name: Static checks (go vet + svelte-check)
+        run: make check
+
+      - name: Go tests
+        run: make test
+
+      # The chrome is monochrome plus --destructive (ADR 0012); the only amber in
+      # the product is the star-map island's `claimed` star, which lives in the
+      # canvas renderer (bundled into JS, never the chrome CSS). So a literal
+      # `amber` in the built CSS is a Tailwind amber-* utility or a raw keyword
+      # leaking into the chrome — fail on it. The built CSS is the ground truth.
+      - name: No amber in built chrome CSS
+        run: |
+          if grep -rniE '\bamber\b' web/dist/assets/*.css; then
+            echo "::error::amber found in built chrome CSS (ADR 0012: the chrome is monochrome + --destructive)"
+            exit 1
+          fi
+
+  windows-smoke:
+    name: windows PTY smoke (ConPTY round-trip)
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      # The dist directory needs the committed .gitkeep to compile the embed
+      # package; the terminal test never touches the SPA, so no frontend build is
+      # needed here — just the ConPTY round-trip.
+      - name: ConPTY round-trip smoke test
+        run: go test -v -run TestConPTYRoundTrip ./internal/terminal

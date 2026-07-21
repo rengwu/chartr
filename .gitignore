@@ -1,6 +1,10 @@
 # Compiled binary
 /bin/
 
+# goreleaser output (release archives, checksums, snapshot builds). Its `dist:`
+# is set to build/goreleaser so it never collides with web/dist.
+/build/
+
 # Node
 /web/node_modules/
 # A stray Vite cache lands here when Vite runs with the repo root as cwd
