@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { rolesForKind, type Kind, type Map as WMap, type Role, type Ticket } from './model'
+  import { defaultRole, rolesForKind, type Kind, type Map as WMap, type Role, type Ticket } from './model'
   import { renderMarkdown, sectionOf } from './markdown'
   import { spawnSession, ActionError } from './actions'
   import PayloadPreview from './PayloadPreview.svelte'
@@ -61,18 +61,6 @@
   }
   const spawnRoles = $derived<Role[]>(offeredRoles(map.kind, ticket))
   const canSpawn = $derived(!!spaceId && spawnRoles.length > 0)
-
-  function defaultRole(type: string, offered: Role[]): Role {
-    const guess: Role =
-      type === 'research'
-        ? 'research'
-        : type === 'prototype'
-          ? 'prototype'
-          : type === 'grilling'
-            ? 'grill'
-            : 'implement'
-    return offered.includes(guess) ? guess : offered[0]
-  }
 
   let spawnRole = $state<Role | null>(null)
   let spawning = $state(false)

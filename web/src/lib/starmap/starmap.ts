@@ -116,6 +116,9 @@ export class StarMap {
   #last = 0
   #raf = 0
   #selected: number | null = null
+  // The action station's hovered row (ticket 14) — a lighter ring than
+  // selection, driven by the drawer rather than a click on the canvas itself.
+  #hovered: number | null = null
   // One fading ticker line, drawn by the island itself (never a chrome
   // component — ADR 0010): what just changed under you, then calm again.
   #tickerText = ''
@@ -228,6 +231,14 @@ export class StarMap {
   select(num: number | null): void {
     if (num !== null && !this.#byNum.has(num)) return
     this.#applySelection(num)
+  }
+
+  // The action station's hover (ticket 14): highlights a star without
+  // touching the camera or selection — a lighter, non-seating echo of
+  // `select`, driven by mouse-over on the drawer's rows rather than the
+  // canvas's own pointer handling.
+  hover(num: number | null): void {
+    this.#hovered = num !== null && this.#byNum.has(num) ? num : null
   }
 
   // The detail pane's measured footprint. Updating it re-eases the camera: a
@@ -691,6 +702,17 @@ export class StarMap {
       g.beginPath()
       g.arc(x, y, c.r + 13, 0, TAU)
       g.stroke()
+    } else if (this.#hovered === n.num) {
+      // A dashed, dimmer ring — told apart from the solid selection ring by
+      // shape as well as weight, so hover and selection never read as the
+      // same state even in greyscale.
+      g.strokeStyle = 'rgba(255,255,255,0.45)'
+      g.lineWidth = 1.2
+      g.setLineDash([3, 4])
+      g.beginPath()
+      g.arc(x, y, c.r + 9, 0, TAU)
+      g.stroke()
+      g.setLineDash([])
     }
   }
 

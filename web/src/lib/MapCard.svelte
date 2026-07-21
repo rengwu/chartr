@@ -5,10 +5,12 @@
   import DetailPane from './DetailPane.svelte'
   import MapPickerCard from './MapPickerCard.svelte'
   import ReviewHub from './ReviewHub.svelte'
+  import ActionStation from './ActionStation.svelte'
+  import { mapActionCount } from './attention'
   import { decideDock, type Dock } from './starmap/dock'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
-  import { CaretLeft, Columns, CornersOut, X } from 'phosphor-svelte'
+  import { CaretLeft, Columns, CornersOut, ListChecks, X } from 'phosphor-svelte'
 
   // The star-map panel presented as a card over the terminal (spec, The
   // interface): summoned, never toggled by switching spaces or maps. It carries
@@ -168,6 +170,34 @@
     hubApproved = null
   }
 
+  // The action station (ticket 14): a numbered badge toggling a drawer of
+  // everything actionable on the open map. Hovering a row highlights its star
+  // (hoverNum, fed to the island); the badge count is echoed onto the map's
+  // handle in the parent when the card is tucked away (SpacePane owns that,
+  // via spaceActionCount summing every map).
+  let stationOpen = $state(false)
+  let hoverNum = $state<number | null>(null)
+  const actionCount = $derived(map ? mapActionCount(map) : 0)
+  // Closing the drawer by any path (Escape, backdrop click) drops a lingering
+  // hover ring even if the row's own mouseleave/blur never fired.
+  $effect(() => {
+    if (!stationOpen) hoverNum = null
+  })
+  // A drawer left open belongs to the map it was opened on — navigating back
+  // to the picker and into a different map must not carry it along.
+  let lastStationSlug: string | null | undefined = undefined
+  $effect(() => {
+    const s = map?.slug ?? null
+    if (lastStationSlug === undefined) {
+      lastStationSlug = s
+      return
+    }
+    if (s !== lastStationSlug) {
+      lastStationSlug = s
+      stationOpen = false
+    }
+  })
+
   function back() {
     selected = null
     showMaterial = false
@@ -243,7 +273,7 @@
          leaves free. -->
     <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
       {#key map.slug}
-        <StarMap {map} {terminals} {insets} bind:selected />
+        <StarMap {map} {terminals} {insets} {hoverNum} bind:selected />
       {/key}
 
       <div class="absolute inset-x-0 top-0 z-30 flex h-[var(--bar-h)] items-center gap-1.5 px-2">
@@ -259,6 +289,21 @@
           onclick={openMaterial}>{map.name}</Button
         >
         <div class="ml-auto flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            class="gap-1.5"
+            title="Next up — reviews first, then the frontier by unblock count"
+            onclick={() => (stationOpen = true)}
+          >
+            <ListChecks />
+            {#if actionCount > 0}
+              <span
+                class="grid size-4 place-items-center rounded-full bg-primary text-[0.6rem] font-semibold text-primary-foreground"
+                >{actionCount}</span
+              >
+            {/if}
+          </Button>
           {@render chrome()}
         </div>
       </div>
@@ -299,6 +344,16 @@
           bind:approved={hubApproved}
         />
       {/if}
+
+      <ActionStation
+        bind:open={stationOpen}
+        {map}
+        {spaceId}
+        onopenreview={openHub}
+        onselect={(num) => (selected = num)}
+        {onspawned}
+        onhover={(num) => (hoverNum = num)}
+      />
     </div>
   {:else}
     <!-- The picker screen: a header bar, over the space's maps split into a

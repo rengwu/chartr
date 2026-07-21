@@ -13,9 +13,12 @@
   } from './lib/actions'
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
+  import NeedsYouQueue from './lib/NeedsYouQueue.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
+  import { needsYouQueue, spaceAttention, spaceLiveness, type QueueEntry } from './lib/attention'
+  import { isEditingTarget } from './lib/keys'
   import {
     Plus,
     X,
@@ -30,6 +33,9 @@
     Play,
     ArrowClockwise,
     ArrowUUpLeft,
+    Bell,
+    Eye,
+    Warning,
   } from 'phosphor-svelte'
 
   // Zero-pad a ticket number for a session row's label (#01), matching the detail
@@ -71,6 +77,11 @@
   let filter = $state('')
   let showAdd = $state(false)
   let opening = $state(false)
+  // The cross-space "Needs you" queue (ticket 14): summoned here, over the
+  // whole cockpit rather than any one space's pane, since its entries can
+  // point at a space other than the one currently open.
+  let queueOpen = $state(false)
+  const queueCount = $derived(needsYouQueue(spaces).length)
 
   // The effective selection falls back to the first space when the id is stale
   // (e.g. the selected space was just forgotten), so the pane never blanks while
@@ -177,7 +188,42 @@
       alert(`Couldn’t ${verb} this session: ${(e as Error).message}`)
     }
   }
+
+  // One click from the queue: select the entry's space and set the deep-link
+  // hash naming its map and ticket. The selected space's SpacePane instance
+  // persists across space switches (ticket 07) and already listens for
+  // hashchange to seat a linked star, so this reuses that exact mechanism
+  // rather than reaching into the pane's own state.
+  function jumpToQueueEntry(entry: QueueEntry) {
+    selectedId = entry.spaceId
+    location.hash = `#s=${encodeURIComponent(entry.spaceId)}&m=${encodeURIComponent(entry.mapSlug)}&t=${entry.ticketNum}`
+    queueOpen = false
+  }
+
+  // Keyboard-first navigation (story 30): space switching and queue summoning,
+  // alongside the map's own M/Esc (SpacePane.onKey). `[`/`]` cycle spaces in
+  // the same pinned-then-recency order the sidebar renders, never the
+  // filtered view — a keyboard shortcut should not depend on what's typed in
+  // the filter box. `q` toggles the queue; Esc-to-close comes from the Sheet
+  // itself, matching how the bindings drawer already behaves.
+  function onGlobalKey(e: KeyboardEvent) {
+    if (isEditingTarget() || e.metaKey || e.ctrlKey || e.altKey) return
+    if (e.key === 'q' || e.key === 'Q') {
+      e.preventDefault()
+      queueOpen = !queueOpen
+      return
+    }
+    if ((e.key === '[' || e.key === ']') && spaces.length > 1) {
+      e.preventDefault()
+      const ids = spaces.map((s) => s.id)
+      const i = selected ? ids.indexOf(selected.id) : -1
+      const next = ids[(i + (e.key === ']' ? 1 : -1) + ids.length) % ids.length]
+      selectedId = next
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onGlobalKey} />
 
 <div class="grid h-full grid-cols-[16rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]">
   <aside
@@ -196,15 +242,36 @@
     <div class="cockpit-bar justify-between bg-transparent">
       <span class="text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Add a space"
-          aria-expanded={showAdd}
-          onclick={() => (showAdd = !showAdd)}
-        >
-          <Plus />
-        </Button>
+        <span class="flex items-center gap-0.5">
+          <!-- The cross-space "Needs you" queue (ticket 14): strictly pull —
+               it renders only while this Sheet is open, never on its own. -->
+          <span class="relative">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Needs you — {queueCount} across every space"
+              title="Needs you — gate-level signals across every space (Q)"
+              onclick={() => (queueOpen = !queueOpen)}
+            >
+              <Bell />
+            </Button>
+            {#if queueCount > 0}
+              <span
+                class="pointer-events-none absolute -top-0.5 -right-0.5 grid size-3.5 place-items-center rounded-full bg-primary text-[0.55rem] font-semibold text-primary-foreground"
+                >{queueCount}</span
+              >
+            {/if}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Add a space"
+            aria-expanded={showAdd}
+            onclick={() => (showAdd = !showAdd)}
+          >
+            <Plus />
+          </Button>
+        </span>
       {/if}
     </div>
 
@@ -229,6 +296,8 @@
       <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
         {#each filtered as space (space.id)}
           {@const isSelected = selected?.id === space.id}
+          {@const attention = spaceAttention(space)}
+          {@const liveness = spaceLiveness(space)}
           <!-- One space, a bordered container on the sidebar surface (its own
                token family — not the bg-card content surface). Selected emphasis
                rides --primary, the one emphasis token; the chrome is monochrome. -->
@@ -238,7 +307,13 @@
               isSelected ? 'border-primary/60' : 'border-sidebar-border',
             ]}
           >
-            <!-- Header: the space's identity and its forget action. -->
+            <!-- Header: the space's identity and its forget action. Ambient
+                 cross-space attention (ticket 14, story 8) rides here — a
+                 wants-you flag (a review waiting, or a session halted) and a
+                 liveness dot, both echoing the same signals the queue pulls
+                 and the sidebar's own session rows already carry in detail.
+                 Neither ever re-sorts the row; muscle memory over this list
+                 holds. -->
             <div class="flex items-center gap-0.5 border-b border-sidebar-border pr-0.5">
               <button
                 class="min-w-0 flex-1 truncate px-2.5 py-2 text-left text-xs font-semibold"
@@ -246,6 +321,19 @@
                 onclick={() => (selectedId = space.id)}
               >
                 <span class="flex items-center gap-1.5">
+                  {#if attention === 'review'}
+                    <Eye class="size-3.5 shrink-0 text-primary" aria-label="a review is waiting" />
+                  {:else if attention === 'halt'}
+                    <Warning class="size-3.5 shrink-0 text-destructive" aria-label="a session halted, needs a decision" />
+                  {/if}
+                  {#if liveness === 'working'}
+                    <CircleNotch class="size-3 shrink-0 animate-spin text-primary" aria-label="a session is working" />
+                  {:else if liveness === 'quiet'}
+                    <CircleNotch
+                      class="size-3 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
+                      aria-label="a session is quiet"
+                    />
+                  {/if}
                   <span class="truncate">{space.name}</span>
                 </span>
               </button>
@@ -450,4 +538,6 @@
       }}
     />
   </Modal>
+
+  <NeedsYouQueue bind:open={queueOpen} {spaces} onjump={jumpToQueueEntry} />
 </div>

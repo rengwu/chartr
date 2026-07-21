@@ -187,3 +187,25 @@ export function rolesForKind(kind: Kind): Role[] {
   if (kind === 'implementation') return ['implement', 'review']
   return []
 }
+
+// The role a ticket's own type points at, clamped to what its kind actually
+// offers — shared by the detail pane and the action station (ticket 14) so a
+// one-click spawn always lands on the same default no matter which surface
+// triggered it.
+export function defaultRole(type: string, offered: Role[]): Role {
+  const guess: Role =
+    type === 'research'
+      ? 'research'
+      : type === 'prototype'
+        ? 'prototype'
+        : type === 'grilling'
+          ? 'grill'
+          : 'implement'
+  return offered.includes(guess) ? guess : offered[0]
+}
+
+// Zero-padded ticket number (#04, #12) — the id format used everywhere a
+// ticket is named in the chrome.
+export function padTicket(n: number): string {
+  return n < 10 ? '0' + n : String(n)
+}

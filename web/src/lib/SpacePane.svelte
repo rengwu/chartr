@@ -8,6 +8,8 @@
   import * as Sheet from './components/ui/sheet'
   import * as ScrollArea from './components/ui/scroll-area'
   import type { Layer } from './model'
+  import { spaceActionCount } from './attention'
+  import { isEditingTarget } from './keys'
   import { Warning, CheckCircle, Sparkle, SlidersHorizontal, Lightbulb } from 'phosphor-svelte'
 
   // Which layer a field was inherited from, told apart by badge weight rather than
@@ -80,6 +82,9 @@
 
   const warnings = $derived<string[]>(space.warnings ?? [])
   const maps = $derived<WMap[]>(space.maps ?? [])
+  // Summed across every map (ticket 14): what the tucked-away handle carries
+  // when the card is hidden and no one map is singled out yet.
+  const actionCount = $derived(spaceActionCount(space))
 
   // A selection belongs to one map: when the open map *changes*, drop it (and any
   // open material) so the island never carries a ticket number from a different
@@ -224,16 +229,10 @@
   // not inside the terminal (whose PTY owns every raw keystroke) or a text field.
   // The edge handle is the always-available path when the shell has the keyboard.
   function onKey(e: KeyboardEvent) {
-    const el = document.activeElement as HTMLElement | null
-    const editing =
-      !!el &&
-      (el.tagName === 'INPUT' ||
-        el.tagName === 'TEXTAREA' ||
-        el.isContentEditable ||
-        el.closest('.terminal-island') !== null ||
-        // A summoned Sheet/Dialog (the bindings drawer) owns its own Escape; the
-        // chrome's M/Esc bindings must not also fire while it holds focus.
-        el.closest('[role="dialog"]') !== null)
+    // A summoned Sheet/Dialog (the bindings drawer, the action station) owns
+    // its own Escape; the chrome's M/Esc bindings must not also fire while it
+    // holds focus.
+    const editing = isEditingTarget()
     if (e.key === 'Escape' && !editing) {
       // Esc peels back one layer: the open detail pane first, then the open map
       // (back to the picker), then the panel.
@@ -357,7 +356,10 @@
 
       {#if maps.length}
         <!-- The one star-map show/hide control for the whole stage, beside the
-             bindings; reflects mapShown via aria-pressed. -->
+             bindings; reflects mapShown via aria-pressed. Tucked away, it also
+             carries the action-station's badge (ticket 14, story 24) — hiding
+             the map costs ambience, never awareness of what is actionable
+             across its maps. -->
         <Button
           variant={mapShown ? 'secondary' : 'ghost'}
           size="sm"
@@ -366,6 +368,12 @@
           onclick={toggleMap}
         >
           <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
+          {#if !mapShown && actionCount > 0}
+            <span
+              class="grid size-4 place-items-center rounded-full bg-primary text-[0.6rem] font-semibold text-primary-foreground"
+              >{actionCount}</span
+            >
+          {/if}
         </Button>
       {/if}
     </div>
