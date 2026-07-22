@@ -113,6 +113,14 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   user layer is rendered honestly rather than papered over. Writes **ADR 0014**;
   **ADR 0009** amended with the edit boundary.
 
+- **The dead weight is swept; three of the four items were already clean.**
+  [Ticket 06](tickets/06-sweep-dead-weight.md) deleted the orphan `Probe.svelte`
+  and the `#probe` hash swap in `main.ts` that was its only consumer — the sweep's
+  one real diff. `sessions/`, the root `node_modules` and `.DS_Store` were already
+  ignored at HEAD and tracked nowhere, so they were confirmed rather than changed:
+  `sessions/` is *live* payload-audit state and stays on disk, and only the stray
+  root Vite cache was removed. `make webview` untouched; **no ADR is touched**.
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the planning map — it does not open fog here. -->
