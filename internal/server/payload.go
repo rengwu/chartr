@@ -58,10 +58,9 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload, err := prompt.Compose(prompt.ComposeInput{
-		Role:    role,
-		DataDir: s.opts.DataDir,
-		RepoDir: e.Path,
-		Bundle:  bundle,
+		Role:   role,
+		Roots:  s.skillRoots(e.Path),
+		Bundle: bundle,
 	})
 	if err != nil {
 		// An unknown role is the caller's to fix; every other input was validated.
@@ -70,6 +69,15 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, payload)
+}
+
+// skillRoots is the one place the three skill-library layers are named: the
+// materialized built-in library under the data root, the operator's local library
+// under their config root, and the space's committed library in its repo. Every
+// composition and every library read goes through it, so the layering is fixed
+// once rather than reassembled per call site.
+func (s *Server) skillRoots(repoDir string) prompt.Roots {
+	return prompt.RootsFor(s.opts.DataDir, s.opts.ConfigDir, repoDir)
 }
 
 // blockersOf gathers a ticket's blockers with their answers pulled inline from

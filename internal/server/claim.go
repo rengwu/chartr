@@ -10,18 +10,21 @@ import (
 	"strings"
 
 	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
 )
 
 // claim is everything a claim commit records: the session it claims for, the
-// resolved binding driving it, and the hash of the exact payload that session was
-// told. The layer provenance travels too, so the audit trail answers not just
-// which agent and model ran but where in the config stack that choice was made.
+// resolved binding driving it, the hash of the exact payload that session was
+// told, and the skills composed into it. The layer provenance travels too, so the
+// audit trail answers not just which agent and model ran but where in the config
+// stack that choice was made — and, for content, which layer won each skill.
 type claim struct {
 	SessionID   string
 	Role        string
 	Agent       string
 	Model       string
 	PayloadSHA  string
+	Skills      []prompt.Skill
 	AdapterFrom config.Layer
 	ModelFrom   config.Layer
 	ArgsFrom    config.Layer
@@ -166,9 +169,11 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 
 // claimMessage renders the claim commit's message: a human subject naming the
 // ticket, then the trailer block ADR 0008 makes git the audit trail with —
-// session, agent, model, role, the payload content hash, and the layer each
-// binding field resolved from. The trailers are a contiguous `Key: value` block so
-// `git interpret-trailers` and `%(trailers)` parse them.
+// session, agent, model, role, the payload content hash, one `Skill:` line per
+// composed skill (`<name>=<layer>:<hash>`, the provenance re-keyed from prompt
+// parts to skills), and the layer each binding field resolved from. The trailers
+// are a contiguous `Key: value` block so `git interpret-trailers` and
+// `%(trailers)` parse them; a repeated key is legal and reads as a list.
 func claimMessage(rel string, c claim) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Claim %s for %s (%s · %s)\n\n", rel, c.Role, c.Agent, c.Model)
@@ -177,6 +182,9 @@ func claimMessage(rel string, c claim) string {
 	fmt.Fprintf(&b, "Model: %s\n", c.Model)
 	fmt.Fprintf(&b, "Role: %s\n", c.Role)
 	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
+	for _, sk := range c.Skills {
+		fmt.Fprintf(&b, "Skill: %s=%s:%s\n", sk.Name, sk.Layer, sk.Hash)
+	}
 	fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
 	fmt.Fprintf(&b, "Model-From: %s\n", c.ModelFrom)
 	fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)

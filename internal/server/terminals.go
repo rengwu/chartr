@@ -60,7 +60,7 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := newSessionID()
-	promptPath, err := s.writeSessionPayload(e.Path, id, prompt.Ideate(s.opts.DataDir))
+	promptPath, err := s.writeSessionPayload(e.Path, id, prompt.Ideate(s.skillRoots(e.Path)))
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "writing the ideate prompt: "+err.Error())
 		return

@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rengwu/wayfinder-harness/internal/prompt"
@@ -26,6 +28,11 @@ type Options struct {
 	// archives, scrollback). The skeleton only holds it; ticket 02 onward reads
 	// and writes beneath it. Defaults to the current directory when empty.
 	DataDir string
+	// ConfigDir is the operator's local config root — `~/.config/wayfinder-harness`
+	// on most systems — whose `skills/` directory is the user layer of the skill
+	// library (ADR 0009's content half). Defaults to the OS user config dir; tests
+	// point it at a temp dir so a developer's own library never leaks into a run.
+	ConfigDir string
 	// QuietAfter is how long a session's PTY may stay silent before an AFK session
 	// reads quiet (ticket 10). Zero takes the manager's calm default; tests set it
 	// short so the threshold is crossable within a test.
@@ -50,6 +57,11 @@ func New(opts Options) (*Server, error) {
 	if opts.DataDir == "" {
 		opts.DataDir = "."
 	}
+	if opts.ConfigDir == "" {
+		if dir, err := os.UserConfigDir(); err == nil {
+			opts.ConfigDir = filepath.Join(dir, "wayfinder-harness")
+		}
+	}
 	dist, err := web.Dist()
 	if err != nil {
 		return nil, err
@@ -58,7 +70,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Materialize the prompt library to disk so the operator can read and edit
+	// Materialize the skill library to disk so the operator can read and edit
 	// exactly what a session is told (ticket 08, story 45). Existing files are
 	// preserved, so edits survive a restart and compose on the next preview.
 	if err := prompt.Materialize(opts.DataDir); err != nil {

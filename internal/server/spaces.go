@@ -227,11 +227,11 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		terminals = append(terminals, term)
 	}
 
-	// Fold in the prompt library's own notices — a replacement forked from an
-	// older shipped default (ticket 08, story 47) — so a stale fork is surfaced on
-	// the space without the operator opening every role in the preview.
+	// Fold in the skill library's own notices — a fork behind the shipped default
+	// (story 23) — so a stale fork is surfaced on the space without the operator
+	// opening every role in the preview.
 	warnings := append([]string{}, res.Warnings...)
-	warnings = append(warnings, prompt.LibraryWarnings(s.opts.DataDir, e.Path)...)
+	warnings = append(warnings, prompt.LibraryWarnings(s.skillRoots(e.Path))...)
 
 	return model.Space{
 		ID:        e.ID,

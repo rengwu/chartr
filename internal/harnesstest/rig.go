@@ -37,6 +37,11 @@ type Harness struct {
 	// DataDir is the harness-owned state root the server was given (a temp dir
 	// unless overridden).
 	DataDir string
+	// ConfigDir is the operator's local config root the server was given (a temp
+	// dir unless overridden), whose `skills/` is the user layer of the skill
+	// library. It is a temp dir by default so a run never reads — or is coloured
+	// by — the developer's own library.
+	ConfigDir string
 
 	t testing.TB
 }
@@ -47,6 +52,12 @@ type Option func(*server.Options)
 // WithDataDir overrides the harness state root (default: a fresh temp dir).
 func WithDataDir(dir string) Option {
 	return func(o *server.Options) { o.DataDir = dir }
+}
+
+// WithConfigDir overrides the operator's config root (default: a fresh temp
+// dir), whose `skills/` is the user layer of the skill library.
+func WithConfigDir(dir string) Option {
+	return func(o *server.Options) { o.ConfigDir = dir }
 }
 
 // WithQuietAfter sets the session silence threshold (ticket 10). Tests set it
@@ -62,7 +73,7 @@ func WithQuietAfter(d time.Duration) Option {
 func Start(t testing.TB, opts ...Option) *Harness {
 	t.Helper()
 
-	sopts := server.Options{DataDir: t.TempDir()}
+	sopts := server.Options{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
 	for _, opt := range opts {
 		opt(&sopts)
 	}
@@ -94,9 +105,10 @@ func Start(t testing.TB, opts ...Option) *Harness {
 	})
 
 	return &Harness{
-		BaseURL: "http://" + ln.Addr().String(),
-		DataDir: sopts.DataDir,
-		t:       t,
+		BaseURL:   "http://" + ln.Addr().String(),
+		DataDir:   sopts.DataDir,
+		ConfigDir: sopts.ConfigDir,
+		t:         t,
 	}
 }
 

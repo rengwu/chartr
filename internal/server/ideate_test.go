@@ -45,7 +45,7 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ideate prompt not written: %v", err)
 	}
-	if want := prompt.Ideate(h.DataDir); string(got) != want {
+	if want := prompt.Ideate(prompt.RootsFor(h.DataDir, h.ConfigDir, repo)); string(got) != want {
 		t.Errorf("ideate prompt on disk does not match the composed starter prompt:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
@@ -105,7 +105,7 @@ func TestIdeateHasNoDeathHalt(t *testing.T) {
 	}
 }
 
-// Editing the materialized starter prompt on disk changes what the very next
+// Editing the materialized `ideate` skill on disk changes what the very next
 // ideate session is told — the on-disk hackable markdown the Done-when calls
 // for.
 func TestIdeateStarterPromptIsEditable(t *testing.T) {
@@ -113,12 +113,12 @@ func TestIdeateStarterPromptIsEditable(t *testing.T) {
 	repo := harnesstest.NewSpaceRepo(t)
 	harnesstest.StubAgent(t, "claude")
 
-	materialized := filepath.Join(h.DataDir, "prompts", "ideate.md")
+	materialized := filepath.Join(h.DataDir, "skills", "ideate", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
-		t.Fatalf("ideate starter prompt was not materialized: %v", err)
+		t.Fatalf("ideate skill was not materialized: %v", err)
 	}
 	if err := os.WriteFile(materialized, []byte("EDITED-IDEATE-STARTER on disk."), 0o644); err != nil {
-		t.Fatalf("editing materialized ideate prompt: %v", err)
+		t.Fatalf("editing the materialized ideate skill: %v", err)
 	}
 
 	resp := register(t, h, repo)

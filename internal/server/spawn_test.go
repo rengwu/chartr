@@ -12,6 +12,7 @@ import (
 
 	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
 	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/wayfinder-harness/internal/prompt"
 )
 
 // Ticket 09 at the process boundary: the spawn tracer bullet. With a stub agent
@@ -102,6 +103,10 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		"Model: sonnet",
 		"Role: implement",
 		"Payload-SHA256: " + sp.PayloadSha,
+		// The content provenance, re-keyed from prompt parts to skills: which
+		// layer won each composed skill, and the hash of the directory it won.
+		"Skill: core=built-in:" + prompt.ShippedHash("core"),
+		"Skill: implement=built-in:" + prompt.ShippedHash("implement"),
 		"Adapter-From: built-in",
 	} {
 		if !strings.Contains(msg, want) {

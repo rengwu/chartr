@@ -2,7 +2,6 @@ package prompt
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/rengwu/wayfinder-harness/internal/config"
@@ -29,33 +28,54 @@ type Bundle struct {
 	Blockers    []Blocker
 }
 
-// ComposeInput is everything Compose needs: the role, the config roots the prompt
-// layers resolve from, and the assembled bundle.
+// ComposeInput is everything Compose needs: the role, the skill-library roots
+// resolution walks, and the assembled bundle.
 type ComposeInput struct {
-	Role    string
-	DataDir string
-	RepoDir string
-	Bundle  Bundle
+	Role   string
+	Roots  Roots
+	Bundle Bundle
 }
 
 // Compose assembles the payload a session for this ticket and role would be told:
-// the resolved core and role prompts, then the context bundle. It returns the
-// parts with provenance, any behind-default warnings, and the single markdown
-// document they render to.
+// the resolved core and role skill bodies (frontmatter stripped), then the
+// context bundle. It returns the parts with provenance, the skills that won,
+// any stale-fork warnings, and the single markdown document they render to.
 func Compose(in ComposeInput) (Payload, error) {
 	if !validRole(in.Role) {
 		return Payload{}, fmt.Errorf("unknown role %q; want one of %v", in.Role, config.Roles)
 	}
 
 	var warnings []string
-	parts := []Part{
-		{Name: CorePart, Kind: "prompt", Segments: resolvePart(CorePart, in.DataDir, in.RepoDir, &warnings)},
-		{Name: in.Role, Kind: "prompt", Segments: resolvePart(in.Role, in.DataDir, in.RepoDir, &warnings)},
+	var skills []Skill
+	var parts []Part
+	for _, name := range []string{CoreSkill, in.Role} {
+		s, ok := Resolve(name, in.Roots)
+		if !ok {
+			return Payload{}, fmt.Errorf("no %q skill in any layer", name)
+		}
+		if s.Stale {
+			warnings = append(warnings, staleWarning(s))
+		}
+		skills = append(skills, s)
+		parts = append(parts, Part{
+			Name: name, Kind: "prompt",
+			Segments: []Segment{{Layer: s.Layer, Label: "skill", Text: s.Body}},
+		})
 	}
 
-	// The context bundle, assembled fresh (ADR 0005): glossary, map body, this
-	// ticket, and each blocker's answer inline.
-	gloss, _ := baseText(in.DataDir, GlossaryPart)
+	// The context bundle, assembled fresh (ADR 0005): the glossary sourced from
+	// the resolved `tracker-convention` skill, the map body, this ticket, and each
+	// blocker's answer inline. The bundle is composed, never a skill: the ticket a
+	// session was handed must not be mistaken for durable skill content.
+	var gloss string
+	if tc, ok := Resolve(TrackerSkill, in.Roots); ok {
+		if g, ok := tc.Support(GlossaryFile); ok {
+			gloss = g
+		}
+		if tc.Stale {
+			warnings = append(warnings, staleWarning(tc))
+		}
+	}
 	parts = append(parts,
 		ctxPart("glossary", "Glossary", gloss),
 		ctxPart("map", "Map: "+orDash(in.Bundle.MapName), in.Bundle.MapBody),
@@ -77,6 +97,7 @@ func Compose(in ComposeInput) (Payload, error) {
 		Role:      in.Role,
 		TicketNum: in.Bundle.TicketNum,
 		Parts:     parts,
+		Skills:    skills,
 		Warnings:  warnings,
 		Markdown:  renderMarkdown(parts),
 	}, nil
@@ -152,19 +173,6 @@ func partText(p Part) string {
 		}
 	}
 	return strings.Join(segs, "\n\n")
-}
-
-var reForkMarker = regexp.MustCompile(`(?i)^\s*<!--\s*forked from\s+([0-9a-f]{4,64})\s*-->\s*\n?`)
-
-// splitForkMarker peels an optional `<!-- forked from <hash> -->` first line off
-// a replacement, returning the recorded fork hash (lowercased, "" if none) and
-// the body with the marker stripped so it never reaches the payload.
-func splitForkMarker(s string) (hash, body string) {
-	m := reForkMarker.FindStringSubmatch(s)
-	if m == nil {
-		return "", s
-	}
-	return strings.ToLower(m[1]), s[len(m[0]):]
 }
 
 // firstSection returns the body under the first matching `## <name>` heading, up

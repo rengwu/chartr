@@ -1,3 +1,8 @@
+---
+name: core
+description: The ground rules every wayfinder-harness session inherits: one session, one ticket, the map as the source of truth, and how work is recorded.
+---
+
 # You are a wayfinder-harness session
 
 You are one **session**: an agent working exactly one **ticket** on one **map**,

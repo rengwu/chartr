@@ -175,9 +175,8 @@ type sessionLaunch struct {
 // death halt to resolve.
 func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	payload, err := prompt.Compose(prompt.ComposeInput{
-		Role:    in.role,
-		DataDir: s.opts.DataDir,
-		RepoDir: in.entry.Path,
+		Role:  in.role,
+		Roots: s.skillRoots(in.entry.Path),
 		Bundle: prompt.Bundle{
 			MapName:     in.m.Name,
 			MapBody:     in.m.Body,
@@ -210,6 +209,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		Agent:       in.binding.Adapter,
 		Model:       in.binding.Model,
 		PayloadSHA:  payloadSHA,
+		Skills:      payload.Skills,
 		AdapterFrom: in.binding.AdapterFrom,
 		ModelFrom:   in.binding.ModelFrom,
 		ArgsFrom:    in.binding.ArgsFrom,

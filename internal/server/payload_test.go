@@ -12,13 +12,13 @@ import (
 	"github.com/rengwu/wayfinder-harness/internal/prompt"
 )
 
-// Ticket 08 at the process boundary: the prompt library and payload preview. The
-// harness materializes a hackable prompt library, resolves each part across
-// built-in ‹ user ‹ workspace with replace/append semantics, surfaces a
-// replacement forked from an older shipped default, and composes core + role +
-// context bundle into one payload. Every assertion is on the public payload the
-// preview endpoint returns and on the files on disk; no test reaches into the
-// package.
+// The skill library and payload preview at the process boundary. The harness
+// materializes a hackable `SKILL.md` library, resolves each skill across
+// built-in ‹ user ‹ workspace with whole-skill shadowing, surfaces a fork behind
+// the shipped default, and composes core + role + context bundle into one
+// payload. Every assertion is on the public payload the preview endpoint returns
+// and on the files on disk; no test reaches into the package. The focused
+// resolution/assembly unit seam lives in internal/prompt (prompt_test.go).
 
 func getPayload(t *testing.T, h *harnesstest.Harness, id, slug string, num int, role string) (int, prompt.Payload, string) {
 	t.Helper()
@@ -76,24 +76,30 @@ func segText(part prompt.Part) string {
 	return strings.Join(out, "\n")
 }
 
-// writeUserPrompt drops a file into the operator's local prompt library (the user
-// layer), under the harness data root.
-func writeUserPrompt(t *testing.T, dataDir, name, body string) {
+// skillSource renders a SKILL.md: the standard frontmatter contract over a body,
+// with any extra frontmatter lines (a `forked_from:`) folded in.
+func skillSource(name, extra, body string) string {
+	return fmt.Sprintf("---\nname: %s\ndescription: a test %s skill\n%s---\n\n%s\n", name, name, extra, body)
+}
+
+// writeUserSkill defines a skill in the operator's local library (the user layer)
+// under their config root.
+func writeUserSkill(t *testing.T, configDir, name, extra, body string) {
 	t.Helper()
-	dir := filepath.Join(dataDir, "prompts")
+	dir := filepath.Join(configDir, "skills", name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir user prompts: %v", err)
+		t.Fatalf("mkdir user skill: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-		t.Fatalf("write user prompt %s: %v", name, err)
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillSource(name, extra, body)), 0o644); err != nil {
+		t.Fatalf("write user skill %s: %v", name, err)
 	}
 }
 
-// writeWorkspacePrompt drops a file into the committed workspace prompt overlay
-// inside the space's repo.
-func writeWorkspacePrompt(t *testing.T, repo, name, body string) {
+// writeWorkspaceSkill defines a skill in the space's committed library.
+func writeWorkspaceSkill(t *testing.T, repo, name, extra, body string) {
 	t.Helper()
-	harnesstest.WriteFile(t, repo, filepath.Join(".wayfinder-harness", "prompts", name), body)
+	harnesstest.WriteFile(t, repo,
+		filepath.Join(".wayfinder-harness", "skills", name, "SKILL.md"), skillSource(name, extra, body))
 }
 
 // The preview composes a session's whole payload: the resolved core and role
@@ -190,11 +196,12 @@ func TestProposedAnswerIsNotABlockersAnswer(t *testing.T) {
 	}
 }
 
-// Resolution walks built-in ‹ user ‹ workspace with `append` stacking and
-// `replace` resetting the base — and, for a replace, the highest layer wins
-// (committed workspace over local user), the content half of ADR 0009. The whole
-// matrix is observable in the resolved core part's segments and their layer tags.
-func TestPromptResolutionMatrix(t *testing.T) {
+// Resolution walks built-in ‹ user ‹ workspace with whole-skill shadowing: the
+// most specific layer defining a skill wins its entire directory, and a committed
+// workspace skill wins over a local user one (the content half of ADR 0009). The
+// whole matrix is observable in the resolved core part's single segment and its
+// layer tag.
+func TestSkillShadowingMatrix(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
 	harnesstest.WriteMap(t, repo, "widget", mapBody)
@@ -207,59 +214,44 @@ func TestPromptResolutionMatrix(t *testing.T) {
 		t.Fatalf("baseline core layers = %v, want [built-in]", got)
 	}
 
-	// Append stacks at both overlay layers, in precedence order after the base.
-	writeUserPrompt(t, h.DataDir, "core.append.md", "USER-APPEND-LINE")
-	writeWorkspacePrompt(t, repo, "core.append.md", "WORKSPACE-APPEND-LINE")
+	// A user skill shadows the built-in whole directory — the shipped body is
+	// gone, not stacked onto.
+	writeUserSkill(t, h.ConfigDir, "core", "", "USER-CORE-SKILL")
 	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
 	core := findPart(t, p, "core")
-	if got := segLayers(core); !equalStrings(got, []string{"built-in", "user", "workspace"}) {
-		t.Errorf("append layers = %v, want [built-in user workspace]", got)
+	if got := segLayers(core); !equalStrings(got, []string{"user"}) {
+		t.Errorf("user-shadowed core layers = %v, want [user]", got)
+	}
+	if txt := segText(core); !strings.Contains(txt, "USER-CORE-SKILL") || strings.Contains(txt, "wayfinder-harness session") {
+		t.Errorf("user skill did not shadow the shipped body:\n%s", txt)
+	}
+
+	// A committed workspace skill wins over the user one.
+	writeWorkspaceSkill(t, repo, "core", "", "WORKSPACE-CORE-SKILL")
+	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
+	core = findPart(t, p, "core")
+	if got := segLayers(core); !equalStrings(got, []string{"workspace"}) {
+		t.Errorf("workspace-shadowed core layers = %v, want [workspace]", got)
 	}
 	txt := segText(core)
-	if !strings.Contains(txt, "USER-APPEND-LINE") || !strings.Contains(txt, "WORKSPACE-APPEND-LINE") {
-		t.Errorf("appends not stacked:\n%s", txt)
+	if !strings.Contains(txt, "WORKSPACE-CORE-SKILL") || strings.Contains(txt, "USER-CORE-SKILL") {
+		t.Errorf("workspace skill did not win over the user one:\n%s", txt)
 	}
-	if !strings.Contains(txt, "wayfinder-harness session") {
-		t.Errorf("append dropped the shipped base:\n%s", txt)
-	}
-
-	// A user replace resets the base — the shipped default is gone — while the
-	// appends still stack after it.
-	writeUserPrompt(t, h.DataDir, "core.replace.md", "USER-REPLACED-CORE")
-	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
-	core = findPart(t, p, "core")
-	txt = segText(core)
-	if strings.Contains(txt, "wayfinder-harness session") {
-		t.Errorf("user replace did not reset the base:\n%s", txt)
-	}
-	if !strings.Contains(txt, "USER-REPLACED-CORE") || !strings.Contains(txt, "WORKSPACE-APPEND-LINE") {
-		t.Errorf("replace/append composition wrong:\n%s", txt)
-	}
-	if got := core.Segments[0].Layer; got != "user" {
-		t.Errorf("first segment after user replace = %q, want user", got)
+	// Frontmatter is metadata for the cockpit, never payload.
+	if strings.Contains(txt, "description:") {
+		t.Errorf("frontmatter leaked into the composed body:\n%s", txt)
 	}
 
-	// A committed workspace replace wins over the user replace (content half of
-	// ADR 0009): it resets the base above the user layer.
-	writeWorkspacePrompt(t, repo, "core.replace.md", "WORKSPACE-REPLACED-CORE")
-	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
-	core = findPart(t, p, "core")
-	txt = segText(core)
-	if strings.Contains(txt, "USER-REPLACED-CORE") {
-		t.Errorf("workspace replace did not win over user replace:\n%s", txt)
-	}
-	if !strings.Contains(txt, "WORKSPACE-REPLACED-CORE") {
-		t.Errorf("workspace replace not applied:\n%s", txt)
-	}
-	if got := core.Segments[0].Layer; got != "workspace" {
-		t.Errorf("first segment after workspace replace = %q, want workspace", got)
+	// Shadowing is per skill: the role skill is untouched by any of it.
+	if got := segLayers(findPart(t, p, "grill")); !equalStrings(got, []string{"built-in"}) {
+		t.Errorf("grill layers = %v, want the untouched [built-in]", got)
 	}
 }
 
-// A replacement that records the shipped default it forked from is surfaced as
-// behind when that default has since moved on — never auto-merged (story 47). The
-// notice rides both the space snapshot and the preview; a fork recording the
-// current shipped hash draws no warning.
+// A skill that records the shipped default it forked from is surfaced as behind
+// when that default has since moved on — never auto-merged (story 23). The notice
+// rides both the space snapshot and the preview; a fork recording the current
+// shipped hash draws no warning.
 func TestBehindDefaultSurfaced(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
@@ -267,18 +259,17 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
-	// A stale fork: a replace marked with a hash that is not the shipped one.
-	writeUserPrompt(t, h.DataDir, "implement.replace.md",
-		"<!-- forked from deadbeef -->\nMY OWN IMPLEMENT PROMPT")
+	// A stale fork: a skill recording a `forked_from` that is not the shipped hash.
+	writeUserSkill(t, h.ConfigDir, "implement", "forked_from: deadbeef\n", "MY OWN IMPLEMENT SKILL")
 
 	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "implement")
-	if !hasSubstring(p.Warnings, "forked from an older shipped default") {
+	if !hasSubstring(p.Warnings, "behind the shipped default") {
 		t.Errorf("behind-default not surfaced in preview warnings: %v", p.Warnings)
 	}
-	// The marker line is stripped from the composed prompt — meta never leaks into
+	// The frontmatter is stripped from the composed body — meta never leaks into
 	// the payload.
-	if strings.Contains(segText(findPart(t, p, "implement")), "forked from") {
-		t.Errorf("fork marker leaked into the payload:\n%s", segText(findPart(t, p, "implement")))
+	if strings.Contains(segText(findPart(t, p, "implement")), "forked_from") {
+		t.Errorf("fork frontmatter leaked into the payload:\n%s", segText(findPart(t, p, "implement")))
 	}
 	// It is also surfaced on the space, so a stale fork is visible without opening
 	// the preview. The library lives under the data root, not the watched `.plan/`,
@@ -287,22 +278,21 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 		t.Fatalf("pin to force a rebuild = %d, body %s", code, body)
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
-	if !hasSubstring(s.Warnings, "forked from an older shipped default") {
+	if !hasSubstring(s.Warnings, "behind the shipped default") {
 		t.Errorf("behind-default not surfaced on the space: %v", s.Warnings)
 	}
 
 	// A fork recording the *current* shipped hash is owned, not behind.
-	writeUserPrompt(t, h.DataDir, "implement.replace.md",
-		fmt.Sprintf("<!-- forked from %s -->\nMY OWN IMPLEMENT PROMPT", prompt.DefaultHash("implement")))
+	writeUserSkill(t, h.ConfigDir, "implement", "forked_from: "+prompt.ShippedHash("implement")+"\n", "MY OWN IMPLEMENT SKILL")
 	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "implement")
-	if hasSubstring(p.Warnings, "forked from an older shipped default") {
+	if hasSubstring(p.Warnings, "behind the shipped default") {
 		t.Errorf("a fork on the current default should not warn: %v", p.Warnings)
 	}
 }
 
 // The materialized library is editable on disk, and an edit shows up in the next
-// composition with no restart (Done-when). The materialized file is the base the
-// composition starts from.
+// composition with no restart. The materialized skill directory *is* the built-in
+// layer, so an edit there composes without shadowing anything.
 func TestMaterializedLibraryEditsCompose(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
@@ -310,18 +300,18 @@ func TestMaterializedLibraryEditsCompose(t *testing.T) {
 	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
-	// The library was materialized on start; edit a role prompt in place.
-	materialized := filepath.Join(h.DataDir, "prompts", "research.md")
+	// The library was materialized on start; edit a role skill in place.
+	materialized := filepath.Join(h.DataDir, "skills", "research", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
 		t.Fatalf("library was not materialized: %v", err)
 	}
-	if err := os.WriteFile(materialized, []byte("EDITED-RESEARCH-PROMPT on disk."), 0o644); err != nil {
-		t.Fatalf("editing materialized prompt: %v", err)
+	if err := os.WriteFile(materialized, []byte(skillSource("research", "", "EDITED-RESEARCH-SKILL on disk.")), 0o644); err != nil {
+		t.Fatalf("editing materialized skill: %v", err)
 	}
 
 	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "research")
 	research := findPart(t, p, "research")
-	if !strings.Contains(segText(research), "EDITED-RESEARCH-PROMPT") {
+	if !strings.Contains(segText(research), "EDITED-RESEARCH-SKILL") {
 		t.Errorf("edit to the materialized library did not compose:\n%s", segText(research))
 	}
 	if got := research.Segments[0].Layer; got != "built-in" {

@@ -1,3 +1,8 @@
+---
+name: implement
+description: Deliver working code against a settled spec on an implementation map, building to the ticket's Done-when.
+---
+
 # Role: implement
 
 You are implementing a ticket on an **implementation map**. Every decision is

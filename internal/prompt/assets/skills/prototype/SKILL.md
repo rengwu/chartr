@@ -1,3 +1,8 @@
+---
+name: prototype
+description: Build the throwaway slice that settles one doubt on a planning map, and report the finding rather than the code.
+---
+
 # Role: prototype
 
 You are building a throwaway prototype to answer a question on a **planning
