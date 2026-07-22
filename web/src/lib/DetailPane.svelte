@@ -369,7 +369,9 @@
           onclick={() => spawn(r)}
         >
           {#if r === preferredRole}<Rocket />{/if}
-          {spawningRole === r ? "starting…" : `start ${r}`}
+          {spawningRole === r
+            ? "Starting…"
+            : `Start ${r.slice(0, 1).toUpperCase() + r.slice(1)}`}
         </Button>
       {/each}
     </div>
