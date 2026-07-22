@@ -23,12 +23,7 @@
     spaceLiveness,
   } from "./lib/attention";
   import { isEditingTarget } from "./lib/keys";
-  import {
-    mapsHash,
-    parseRoute,
-    settingsHash,
-    type SettingsScope,
-  } from "./lib/route";
+  import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
   import {
     Plus,
     X,
@@ -268,14 +263,6 @@
     navigate(
       `#s=${encodeURIComponent(space.id)}&m=${encodeURIComponent(target.mapSlug)}&t=${target.ticketNum}`,
     );
-  }
-
-  // Kind is declared on the star-map's picker (ADR 0007); the settings surface
-  // shows kinds read-only and links there. The star deep link is the existing
-  // mechanism — SpacePane already listens for it.
-  function openMaps(spaceId: string) {
-    selectedId = spaceId;
-    navigate(mapsHash(spaceId));
   }
 
   // Keyboard-first navigation (story 30): space switching, alongside the map's
@@ -635,7 +622,7 @@
                 variant="ghost"
                 size="icon-xs"
                 aria-label="{space.name}’s settings"
-                title="This space's effective config — bindings, skills, kinds, and where each layer lives"
+                title="This space's effective config — bindings, skills, and where each layer lives"
                 onclick={(e) => {
                   e.stopPropagation();
                   // Selects the space *and* opens its config — so this sets the
@@ -737,7 +724,6 @@
           scope={route.scope}
           onScope={(s) => navigate(settingsHash(s))}
           onClose={leaveSettings}
-          onOpenMaps={openMaps}
         />
       </div>
     {/if}

@@ -46,7 +46,6 @@
     scope,
     onScope,
     onClose,
-    onOpenMaps,
   }: {
     spaces: Space[]
     // The layers shared by every space — the operator's local binding file and
@@ -62,9 +61,6 @@
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
-    // Kind is declared from the star-map's picker (ADR 0007); this surface shows
-    // it read-only and links there rather than growing a second way to set it.
-    onOpenMaps: (spaceId: string) => void
   } = $props()
 
   // Which layer a value came from, told apart by badge weight rather than hue
@@ -477,36 +473,6 @@
             </ul>
           </section>
 
-          <!-- Map kinds: read-only here. Kind is declared through the deliberate,
-               human-confirmed committed path (ADR 0007), which lives on the
-               star-map's picker — this links there. -->
-          <section class="flex flex-col gap-2">
-            <h2 class="text-xs font-semibold">Map kinds</h2>
-            <p class="text-xs text-muted-foreground">
-              Declared in committed config, never inferred, and confirmed by a human on the
-              star-map — read-only here.
-            </p>
-            {#if space.maps.length}
-              <ul class="flex flex-col gap-1">
-                {#each space.maps as m (m.slug)}
-                  <li class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                    <span class="min-w-0 flex-1 truncate font-mono text-xs">{m.slug}</span>
-                    {#if m.kind}
-                      <Badge variant="secondary">{m.kind}</Badge>
-                    {:else}
-                      <Badge variant="outline">unclassified</Badge>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-              <Button variant="link" size="xs" class="self-start" onclick={() => onOpenMaps(space.id)}>
-                classify on the star-map →
-              </Button>
-            {:else}
-              <p class="text-xs text-muted-foreground">No maps in this space.</p>
-            {/if}
-          </section>
-
           <section class="flex flex-col gap-2">
             <h2 class="text-xs font-semibold">Layers on disk</h2>
             <p class="text-xs text-muted-foreground">
@@ -659,7 +625,7 @@
 {#snippet layerRow(l: ConfigLayer)}
   <div class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
     <span class="flex min-w-0 flex-1 flex-col">
-      <span class="text-xs font-medium">{l.holds === 'bindings' ? 'bindings & map kinds' : 'skills'}</span>
+      <span class="text-xs font-medium">{l.holds === 'bindings' ? 'bindings' : 'skills'}</span>
       <code class="truncate font-mono text-[0.65rem] text-muted-foreground" title={l.path}>{l.path}</code>
     </span>
     {#if !l.exists}

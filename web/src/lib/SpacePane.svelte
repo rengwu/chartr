@@ -50,8 +50,7 @@
   } = $props()
 
   // A deep link names a star (spec): #s=<spaceId>&m=<mapSlug>&t=<ticketNum>, or
-  // &mat=1 for the map material, or &maps=1 for the picker (where a map's kind is
-  // declared, which the settings route links to). Parsed once at init — the
+  // &mat=1 for the map material, or &maps=1 for the picker. Parsed once at init — the
   // enclosing App has already selected the space from the same `s` — so the linked
   // star opens and seats on load; manual edits are picked up by a hashchange
   // listener below.
@@ -136,7 +135,7 @@
       mapShown = true
       lastOpen = openSlug
     } else if (h.maps) {
-      // The picker, where an unclassified map is given its kind (ADR 0007).
+      // The picker: the space's maps, each one a door in.
       openSlug = null
       selectedTicket = null
       showMaterial = false
@@ -337,7 +336,7 @@
         variant="ghost"
         size="icon-sm"
         aria-label="Config"
-        title="The effective config — bindings, skills, kinds, and where each layer lives (,)"
+        title="The effective config — bindings, skills, and where each layer lives (,)"
         onclick={onOpenSettings}
       >
         <Gear />

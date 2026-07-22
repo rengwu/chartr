@@ -64,9 +64,8 @@ export function settingsHash(scope: SettingsScope): string {
 }
 
 /**
- * mapsHash is the deep link to a space's star-map picker — where a map's kind is
- * declared (ADR 0007). The settings surface renders kinds read-only and links
- * here rather than growing a second way to classify.
+ * mapsHash is the deep link to a space's star-map picker — the grid of the
+ * space's maps, and the door into any one of them.
  */
 export function mapsHash(spaceId: string): string {
   return `#s=${encodeURIComponent(spaceId)}&maps=1`
