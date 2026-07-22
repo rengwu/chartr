@@ -178,7 +178,7 @@
 
   async function forget(space: Space) {
     const ok = confirm(
-      `Forget “${space.name}”?\n\nThe harness stops tracking it. Nothing in the repository is touched — re-register any time and it picks up exactly as it sits.`,
+      `Forget “${space.name}”?\n\nThe chartr stops tracking it. Nothing in the repository is touched — re-register any time and it picks up exactly as it sits.`,
     );
     if (!ok) return;
     if (selectedId === space.id) selectedId = null;
@@ -238,7 +238,7 @@
     }
   }
 
-  // The death halt: a dead session offers exactly three choices, and the harness
+  // The death halt: a dead session offers exactly three choices, and the chartr
   // takes none on its own. Resume relaunches it on its own ticket (crash recovery);
   // respawn starts a fresh session on the same ticket; release clears the claim back
   // to the frontier. The resulting state arrives over the control socket.
@@ -335,7 +335,7 @@
         >
           <Compass class="size-3.5" />
         </span>
-        <span class="truncate text-sm font-semibold tracking-tight">Wayfinder</span>
+        <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       </span>
       <Button
         variant="ghost"
@@ -607,7 +607,7 @@
                         {#if t.session && !t.alive}
                           <!-- The death halt: a dead session is pinned to its ticket and
                                offers exactly three choices — resume it (crash recovery),
-                               respawn a fresh session, or release the claim. The harness
+                               respawn a fresh session, or release the claim. The chartr
                                takes none itself. -->
                           <span
                             class="-my-0.5 -mr-1 flex shrink-0 items-center"
@@ -773,7 +773,7 @@
 
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
     <p class="mb-3 text-xs text-muted-foreground">
-      Point the harness at a project folder — paste its absolute path. If it
+      Point the chartr at a project folder — paste its absolute path. If it
       isn’t a git repository yet, one is initialized there, announced.
     </p>
     <RegisterForm

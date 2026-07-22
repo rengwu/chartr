@@ -7,9 +7,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/rengwu/wayfinder-harness/internal/adapter"
-	"github.com/rengwu/wayfinder-harness/internal/config"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // handleOpenTerminal opens an ad-hoc shell in the space's working tree (story

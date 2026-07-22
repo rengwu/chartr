@@ -256,7 +256,7 @@ func indentWithin(lines []string, start, end int) string {
 }
 
 // parseTableHeader parses `[a.b."c"]` into its key path. Array-of-table headers
-// (`[[…]]`) are deliberately not ours: the harness never writes one, and one in
+// (`[[…]]`) are deliberately not ours: the chartr never writes one, and one in
 // the operator's file is left strictly alone.
 func parseTableHeader(line string) ([]string, bool) {
 	s := strings.TrimSpace(stripComment(line))

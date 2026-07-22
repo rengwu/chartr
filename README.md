@@ -1,22 +1,22 @@
-# wayfinder-harness
+# chartr
 
 A cockpit for driving [wayfinder](https://github.com/) maps to completion: switch
 between project spaces, read a map as a star-map, and spawn agent sessions against
 its frontier — with implementation work gated behind review.
 
-The harness runs as one self-contained binary that serves its interface in your
+The chartr runs as one self-contained binary that serves its interface in your
 browser. Point it at a directory of git repositories, open the cockpit, and drive
 maps to done.
 
 ```
-harness            # serves the cockpit on http://127.0.0.1:8787
-harness -addr :9000
-harness -version
+chartr            # serves the cockpit on http://127.0.0.1:8787
+chartr -addr :9000
+chartr -version
 ```
 
 ## What you get: the support tiers
 
-The harness ships **one supported artifact**, and everything else is a
+The chartr ships **one supported artifact**, and everything else is a
 **best-effort tier** that may be absent without anything being wrong. This is a
 deliberate boundary ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)),
 not an accident of what happened to build.
@@ -30,18 +30,18 @@ cgo — and every release is **checksummed** (`checksums.txt`, SHA-256).
 
 "Supported" means: this is the artifact the release pipeline must produce,
 green, for all three operating systems before a tag ships. If you want the
-harness, this is what you download.
+chartr, this is what you download.
 
 ### Best-effort — the native webview shells
 
 Each platform can also have a **native webview shell** — a desktop window around
 the same cockpit instead of a browser tab (cgo + WebKitGTK on Linux, cgo on
 macOS, cgo-free `go-webview2` on Windows). It is a second binary,
-`wayfinder-harness-shell_<version>_<os>_<arch>`, that runs the same server
+`chartr-shell_<version>_<os>_<arch>`, that runs the same server
 in-process on a random loopback port and points a real window at it: a dock icon,
 a minimal native menu (Quit, Reload, the edit items), and one window per
 `--data-dir` — a second launch raises the running one. If the native runtime is
-missing it says so and points you back at `harness`; it never silently opens a
+missing it says so and points you back at `chartr`; it never silently opens a
 browser. Build it yourself with `make webview`
 ([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
 
@@ -64,7 +64,7 @@ under WSL2.
 ## Distribution
 
 **GitHub releases only.** Download the checksummed binary for your platform from
-the [releases page](https://github.com/rengwu/wayfinder-harness/releases), verify
+the [releases page](https://github.com/rengwu/chartr/releases), verify
 it against `checksums.txt`, and run it.
 
 There is deliberately **no `go install`, no Homebrew tap, and no plugin
@@ -79,9 +79,9 @@ A fresh download with **zero agent CLIs installed works everywhere except one
 thing: spawning a session.** You can register spaces, browse maps as star-maps,
 read tickets, open ad-hoc shells, and drive the review hub — all of it works cold.
 
-The agent CLIs (Claude Code, Codex, and friends) are **not the harness's to
+The agent CLIs (Claude Code, Codex, and friends) are **not the chartr's to
 ship.** When you try to spawn a session against a role whose agent is not
-installed, the harness **hard-blocks at spawn time with a message that names
+installed, the chartr **hard-blocks at spawn time with a message that names
 exactly what is missing** — and that block message doubles as your installer's
 to-do list. There is **no separate doctor command**: the environment diagnosis is
 the registry badge and the spawn-time block, surfaced at the moment of need
@@ -92,7 +92,7 @@ rather than as ceremony off to the side.
 You need Go 1.26+ and Node 22+.
 
 ```
-make build     # builds web/dist, then the self-contained binary → bin/harness
+make build     # builds web/dist, then the self-contained binary → bin/chartr
 make check     # go vet + svelte-check
 make test      # the Go process-boundary suite
 make snapshot  # build the supported release binaries locally (goreleaser, no publish)

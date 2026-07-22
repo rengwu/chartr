@@ -2,7 +2,7 @@
 
 The frontend is a **Svelte 5 SPA over Vite** (no SvelteKit — no routing, no SSR), in TypeScript. The framework owns only the **chrome**: the sidebar, tabs, queue, brief, panes — the dozen small views that react to server-pushed state. The two hard surfaces are **imperative islands** the chrome hosts but never reaches inside: xterm.js terminals, and the star-map — one coherent canvas renderer behind a narrow seam (mount, receive model, emit selection), never decomposed into components.
 
-The star-map renderer is **reimplemented cleanly in TypeScript**, not line-ported: ADR 0001's "copy freely where it elevates" is permission, not obligation, and the harness's renderer diverges too far (pushed state, session moons, pane-aware camera) for the old polling-shaped structure to be a head start. The references stay open on the desk — wayfinder-maps' renderer, `starmap-design.md`, the design map's prototypes — and tuned constants (easing, zoom coupling, parallax, dpr) are cribbed directly, because feel-drift is the one real risk of a rewrite.
+The star-map renderer is **reimplemented cleanly in TypeScript**, not line-ported: ADR 0001's "copy freely where it elevates" is permission, not obligation, and the chartr's renderer diverges too far (pushed state, session moons, pane-aware camera) for the old polling-shaped structure to be a head start. The references stay open on the desk — wayfinder-maps' renderer, `starmap-design.md`, the design map's prototypes — and tuned constants (easing, zoom coupling, parallax, dpr) are cribbed directly, because feel-drift is the one real risk of a rewrite.
 
 The built `dist/` is **embedded in the Go binary** (`go:embed`), keeping distribution a single self-contained file; development uses Vite's dev server with HMR, proxying websockets to the Go backend.
 
@@ -23,7 +23,7 @@ Operator actions (approve, spawn, abandon) default to plain HTTP request/respons
 
 - **Plain TypeScript, no framework** — the austere option; loses only on the chrome, where a dozen push-fed live views make hand-written DOM mutation the bug farm.
 - **Preact/React** — virtual DOM around imperative islands means refs and effect discipline everywhere, heaviest runtime, no compensating gain.
-- **Line-porting or vendoring the renderer** — preserves feel by construction, but shoehorns pushed harness state through polling-era structure; rejected in favour of reimplementation with constants cribbed.
+- **Line-porting or vendoring the renderer** — preserves feel by construction, but shoehorns pushed chartr state through polling-era structure; rejected in favour of reimplementation with constants cribbed.
 - **Serving the frontend separately** — buys independent frontend releases a single-operator local cockpit doesn't need; costs ticket 13 a second artifact.
 - **One multiplexed socket** — hand-built framing plus head-of-line risk when a terminal floods, solving a connection scarcity a local cockpit doesn't have.
 - **A sync library (socket.io-style, CRDT)** — reconnection rooms and merge semantics for a client that never writes state through the socket; the server is sole authority.

@@ -17,8 +17,8 @@ import (
 // the harmless half.
 func main() {
 	fmt.Fprintln(os.Stderr,
-		"wayfinder-harness shell: built without the webview tag — use `make webview`.\n"+
+		"chartr shell: built without the webview tag — use `make webview`.\n"+
 			"The native shell needs cgo and a system webview library; the supported,\n"+
-			"cgo-free cockpit binary is `harness`.")
+			"cgo-free cockpit binary is `chartr`.")
 	os.Exit(1)
 }

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Ticket 05 at the process boundary: an ad-hoc shell opens in the space's
@@ -23,8 +23,8 @@ import (
 // streams back down the socket. The marker is computed by the shell (mark-42),
 // so matching it proves the command executed, not just that input echoed.
 func TestAdHocShellRunsCommandAndStreamsOutput(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	termID := h.OpenTerminal(resp.ID)
@@ -43,8 +43,8 @@ func TestAdHocShellRunsCommandAndStreamsOutput(t *testing.T) {
 // output as scrollback and replays it on the fresh connection, so the operator
 // walks back into the running shell rather than a blank pane.
 func TestScrollbackReplayedOnReattach(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	termID := h.OpenTerminal(resp.ID)
@@ -69,8 +69,8 @@ func TestScrollbackReplayedOnReattach(t *testing.T) {
 // space carries no maps. Ad-hoc terminals are not sessions, so they appear even
 // where there is nothing to spawn against.
 func TestMaplessSpaceOffersAdHocShell(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t) // no .plan, no maps
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t) // no .plan, no maps
 	resp := register(t, h, repo)
 
 	if s := findSpace(t, h.Snapshot(ctx(t)), resp.ID); len(s.Maps) != 0 {
@@ -93,8 +93,8 @@ func TestMaplessSpaceOffersAdHocShell(t *testing.T) {
 // model — by notice, not refresh — since ad-hoc shells are ended only by the
 // operator and leave no lifecycle behind.
 func TestClosingShellDropsTheTab(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	termID := h.OpenTerminal(resp.ID)
@@ -121,7 +121,7 @@ func TestClosingShellDropsTheTab(t *testing.T) {
 // Dialling the terminal socket for an id that names no live terminal is refused,
 // not silently accepted — a stale tab or a bad deep link fails closed.
 func TestTerminalSocketRejectsUnknownID(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 	if code, _ := h.Get("/ws/terminal/nope"); code != 404 {
 		t.Errorf("terminal socket for an unknown id = %d, want 404", code)
 	}

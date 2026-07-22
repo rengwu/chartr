@@ -10,10 +10,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/rengwu/wayfinder-harness/internal/config"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
-	"github.com/rengwu/wayfinder-harness/internal/registry"
+	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
 )
 
 // The effective config surface (ticket 05, ADR 0014): the read half derives every
@@ -39,7 +39,7 @@ const (
 // space's own. They are derived once per rebuild rather than repeated under each
 // space.
 //
-// Note the split the surface has to tell honestly: bindings live in the harness
+// Note the split the surface has to tell honestly: bindings live in the chartr
 // state root (`<dataDir>/user.toml`) while the *user skill layer* lives under the
 // operator's config root (`<configDir>/skills/`). One "user layer" in ADR 0009's
 // sense, two files, because the two halves were adopted a ticket apart — the
@@ -234,7 +234,7 @@ func (s *Server) handleOpenLayer(w http.ResponseWriter, r *http.Request) {
 
 // openInEditor launches the operator's editor on path, reporting how it got
 // there. It never blocks on the child: an editor is the operator's to close, and
-// the harness has no business waiting on it.
+// the chartr has no business waiting on it.
 func openInEditor(path string) (how, with string) {
 	for _, env := range []string{"VISUAL", "EDITOR"} {
 		cmd := strings.TrimSpace(os.Getenv(env))

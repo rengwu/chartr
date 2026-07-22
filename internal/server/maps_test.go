@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Ticket 03 at the process boundary: a registered space's maps enter the
@@ -66,8 +66,8 @@ func hasMap(s model.Space, slug string) bool {
 // socket before dropping anything and waits for the pushes to arrive on their
 // own: discovery is by notice.
 func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	// A snapshot right after registration: the space is present with no maps.
@@ -80,8 +80,8 @@ func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
 	cc.ReadSnapshot(ctx(t)) // drain the initial snapshot
 
 	// Flat layout: .plan/<slug>/. Drop it from outside; wait for the notice.
-	harnesstest.WriteMap(t, repo, "flat-map", mapBody)
-	harnesstest.WriteTicket(t, repo, "flat-map", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "flat-map", mapBody)
+	chartrtest.WriteTicket(t, repo, "flat-map", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	cc.WaitFor(ctx(t), func(m model.Model) bool {
 		return hasMap(findSpace(t, m, resp.ID), "flat-map")
 	})
@@ -89,8 +89,8 @@ func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
 	// Nested layout: .plan/maps/<slug>/. Neither layout is hard-coded — the same
 	// discovery finds a map by its map.md wherever wayfinder wrote it.
 	nested := filepath.Join("maps", "nested-map")
-	harnesstest.WriteFile(t, repo, filepath.Join(".plan", nested, "map.md"), mapBody)
-	harnesstest.WriteFile(t, repo, filepath.Join(".plan", nested, "tickets", "01-first.md"), ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteFile(t, repo, filepath.Join(".plan", nested, "map.md"), mapBody)
+	chartrtest.WriteFile(t, repo, filepath.Join(".plan", nested, "tickets", "01-first.md"), ticket(1, "First", "[]", "task", ""))
 	last := cc.WaitFor(ctx(t), func(m model.Model) bool {
 		return hasMap(findSpace(t, m, resp.ID), "nested-map")
 	})
@@ -108,11 +108,11 @@ func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
 // a dependent of it stays held because its blocker is unresolved, not because
 // anything is waiting on approval.
 func TestDerivedStatusesAndFrontier(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "statuses", mapBody)
-	w := func(filename, body string) { harnesstest.WriteTicket(t, repo, "statuses", filename, body) }
+	chartrtest.WriteMap(t, repo, "statuses", mapBody)
+	w := func(filename, body string) { chartrtest.WriteTicket(t, repo, "statuses", filename, body) }
 	w("01-blessed.md", ticket(1, "Blessed", "[]", "task", "## Answer\nApproved."))
 	w("02-scoped.md", ticket(2, "Scoped", "[]", "task", "## Ruled out\nOut of scope."))
 	w("03-on-blessed.md", ticket(3, "OnBlessed", "[01]", "task", ""))
@@ -150,13 +150,13 @@ func TestDerivedStatusesAndFrontier(t *testing.T) {
 // in the snapshot, its well-formed tickets derive normally, and the defects are
 // carried as surfaced strings.
 func TestMalformedMapRendersWithMalformationSurfaced(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "broken", mapBody)
-	harnesstest.WriteTicket(t, repo, "broken", "01-dangling.md", ticket(1, "Dangling", "[99]", "task", ""))
+	chartrtest.WriteMap(t, repo, "broken", mapBody)
+	chartrtest.WriteTicket(t, repo, "broken", "01-dangling.md", ticket(1, "Dangling", "[99]", "task", ""))
 	// A file whose name is not NN-slug.md cannot be parsed as a ticket.
-	harnesstest.WriteTicket(t, repo, "broken", "notaticket.md", "# not a ticket\n")
+	chartrtest.WriteTicket(t, repo, "broken", "notaticket.md", "# not a ticket\n")
 
 	resp := register(t, h, repo)
 	m := findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "broken")
@@ -176,17 +176,17 @@ func TestMalformedMapRendersWithMalformationSurfaced(t *testing.T) {
 // The sidebar nests spaces → maps with finished maps sorting last. Finished-last
 // beats slug order, so a finished map named to sort first still lands last.
 func TestFinishedMapsSortLast(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
 	// "aaa-done" is finished (its one ticket is resolved) yet named to sort first
 	// by slug; "zzz-active" has an open ticket.
 	doneBody := "# Done\n\n## Destination\nD.\n\n## Decisions so far\n\n" +
 		"- [First](./tickets/01-first.md) — done.\n\n## Out of scope\n"
-	harnesstest.WriteMap(t, repo, "aaa-done", doneBody)
-	harnesstest.WriteTicket(t, repo, "aaa-done", "01-first.md", ticket(1, "First", "[]", "task", "## Answer\nDone."))
-	harnesstest.WriteMap(t, repo, "zzz-active", mapBody)
-	harnesstest.WriteTicket(t, repo, "zzz-active", "01-open.md", ticket(1, "Open", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "aaa-done", doneBody)
+	chartrtest.WriteTicket(t, repo, "aaa-done", "01-first.md", ticket(1, "First", "[]", "task", "## Answer\nDone."))
+	chartrtest.WriteMap(t, repo, "zzz-active", mapBody)
+	chartrtest.WriteTicket(t, repo, "zzz-active", "01-open.md", ticket(1, "Open", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
@@ -212,11 +212,11 @@ func TestFinishedMapsSortLast(t *testing.T) {
 // onto the wire, below the H1 title, with the closing answer that lets a blocker
 // show its answer inline.
 func TestTicketAndMapBodiesInlined(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "bodies", mapBody)
-	harnesstest.WriteTicket(t, repo, "bodies", "01-blessed.md",
+	chartrtest.WriteMap(t, repo, "bodies", mapBody)
+	chartrtest.WriteTicket(t, repo, "bodies", "01-blessed.md",
 		ticket(1, "Blessed", "[]", "task", "## Answer\nThe blocker's blessed answer."))
 
 	resp := register(t, h, repo)

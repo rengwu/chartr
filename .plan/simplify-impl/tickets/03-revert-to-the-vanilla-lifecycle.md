@@ -18,7 +18,7 @@ misreads every ticket's status, this map's own included), kept apart from ticket
 - **Parser** (`internal/wayfinder/parse.go`). Remove `StatusProposed`,
   `HasProposedAnswer` / `ProposedHeading`, and their `Derive()` branch; revert
   `Frontier()` to vanilla — resolved blockers unblock, with no approval and no
-  unclaimed condition; `doc.go` loses "the harness's one addition." An in-flight
+  unclaimed condition; `doc.go` loses "the chartr's one addition." An in-flight
   `## Proposed Answer` is now an **unknown heading**: a ticket carrying it derives
   `open` (or `claimed` if a claim marker survives), never `resolved` — ignored,
   not migrated.
@@ -61,7 +61,7 @@ the vocabulary and ADRs.
 
 **Parser** (`internal/wayfinder`). `StatusProposed`, `HasProposedAnswer` /
 `ProposedHeading`, their parse in `ParseTicket` and their `Derive()` branch are
-deleted; `doc.go` drops "the only harness-specific addition." An in-flight
+deleted; `doc.go` drops "the only chartr-specific addition." An in-flight
 `## Proposed Answer` is now an unknown heading — `sectionRange` matches heading
 text exactly, so it never collides with `## Answer` — and its ticket derives
 `open`, or `claimed` if a claim marker survived. Ignored, not migrated.

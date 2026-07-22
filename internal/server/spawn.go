@@ -13,23 +13,23 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/adapter"
-	"github.com/rengwu/wayfinder-harness/internal/config"
-	"github.com/rengwu/wayfinder-harness/internal/mapscan"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
-	"github.com/rengwu/wayfinder-harness/internal/registry"
-	"github.com/rengwu/wayfinder-harness/internal/terminal"
+	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/mapscan"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/terminal"
 )
 
 // sessionRunDir is the gitignored directory, inside each space, that holds live
 // sessions' composed payloads (ADR 0005 — one inspectable file per session), and
 // the ideate on-ramp's starter prompt (ticket 15), which reuses the same
 // writeSessionPayload path though it is deliberately not a session. It sits under
-// the harness's committed `.wayfinder-harness/` directory but is itself never
-// committed: the harness drops a `.gitignore` of `*` beside it so an agent's
+// the chartr's committed `.chartr/` directory but is itself never
+// committed: the chartr drops a `.gitignore` of `*` beside it so an agent's
 // `git commit -a` can never sweep a payload into the audit trail (ADR 0008).
-const sessionRunDir = ".wayfinder-harness/run"
+const sessionRunDir = ".chartr/run"
 
 // handleSpawn is the product's tracer bullet (ticket 09): from a frontier ticket
 // it wires the whole chain — resolve the role's binding, hard-block a missing
@@ -168,7 +168,7 @@ type sessionLaunch struct {
 // launchSession runs the spawn mechanics: it composes the payload fresh
 // off disk (the same assembly the preview shows — ADR 0005), writes the claim
 // commit (ADR 0008), drops the payload gitignored inside the space and archived in
-// harness state (story 49), and launches the agent's TUI with the read-this-file
+// chartr state (story 49), and launches the agent's TUI with the read-this-file
 // opener typed in. It returns the action's result and, on failure, the HTTP status
 // the caller should surface. Every write that can fail happens here in order, so a
 // failure after the claim leaves the claim standing (never rolled back) for the
@@ -199,7 +199,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		return nil, http.StatusNotFound, err
 	}
 
-	// The claim commit — the harness's one write here (ADR 0008), pathspec-limited
+	// The claim commit — the chartr's one write here (ADR 0008), pathspec-limited
 	// to the ticket file and carrying the binding and payload-hash trailers. On a
 	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
 	// the new session id supersedes the dead one.
@@ -297,7 +297,7 @@ func (s *Server) writeSessionPayload(repo, sessionID, markdown string) (string, 
 	return path, nil
 }
 
-// archivePayload keeps the exact payload a session received in harness-owned state
+// archivePayload keeps the exact payload a session received in chartr-owned state
 // outside the repository (under the data root), so the record survives the space's
 // gitignored copy being cleaned and answers "what was this session told" word for
 // word (story 49).

@@ -10,7 +10,7 @@ claimed_at: 2026-07-22T04:08:25Z
 ## Question
 
 Repackage every injected prompt as a standard `SKILL.md` directory on disk while
-the harness keeps composing the payload — the format opens up, the injection path
+the chartr keeps composing the payload — the format opens up, the injection path
 does not (reaffirms **ADR 0002**). Blocked by the vanilla-lifecycle revert (03) so
 the composer is rewritten once, review-free and with the `## Proposed Answer`
 semantics already settled, rather than migrating code tickets 02–03 then change.
@@ -23,8 +23,8 @@ composer through the payload preview.
   `replace` / `append` overlay to skill-directory resolution with **whole-skill
   shadowing**: the most-specific layer defining a skill of a given name wins its
   whole directory across built-in (`<dataDir>/skills/`) ‹ user
-  (`~/.config/wayfinder-harness/skills/`) ‹ workspace
-  (`<space>/.wayfinder-harness/skills/`). Drop the bespoke `replace` / `append`
+  (`~/.config/chartr/skills/`) ‹ workspace
+  (`<space>/.chartr/skills/`). Drop the bespoke `replace` / `append`
   convention. Fork provenance moves from the `<!-- forked from <hash> -->` comment
   to a `forked_from:` frontmatter field; a skill's content hash covers its
   `SKILL.md` plus supporting files in a stable order.
@@ -34,7 +34,7 @@ composer through the payload preview.
   file `glossary.md`). Each `SKILL.md` carries the standard `name` / `description`
   frontmatter contract. `ideate` keeps its special injection (composed alone, no
   core, no context bundle).
-- **Composition.** At spawn the harness reads the resolved `core` + role
+- **Composition.** At spawn the chartr reads the resolved `core` + role
   `SKILL.md` **bodies**, strips `name` / `description` / `forked_from`
   frontmatter, and assembles them with a freshly-built context bundle (map body,
   ticket, blockers' answers, and the glossary *sourced* from `tracker-convention`)
@@ -64,7 +64,7 @@ library.
 
 The prompt library is a **skill library**: seven standard `SKILL.md` directories
 under `internal/prompt/assets/skills/`, resolved by whole-skill shadowing and
-still composed by the harness. The format opened; the injection path did not.
+still composed by the chartr. The format opened; the injection path did not.
 
 **Resolution.** `internal/prompt` no longer knows about `<part>.md`,
 `.replace.md` or `.append.md`. `Resolve(name, Roots)` walks workspace ‹ user ‹
@@ -94,29 +94,29 @@ re-keyed from parts to skills. The wire shape of `Part`/`Segment` is unchanged,
 so the preview needed no rework: a resolved skill is simply one segment now.
 
 **The layer roots needed a name.** The ticket names the user layer
-`~/.config/wayfinder-harness/skills/`, but in this repo `<dataDir>` doubles as
+`~/.config/chartr/skills/`, but in this repo `<dataDir>` doubles as
 the user-config root (`user.toml`), so built-in and user would have collided in
 one directory. Materialization must land in the built-in layer (else every skill
 would forever resolve "user"), so the user layer became the literal path the
 ticket names, via a new `server.Options.ConfigDir` defaulting to
-`os.UserConfigDir()/wayfinder-harness`. **Flagged for ticket 05:** *bindings*
+`os.UserConfigDir()/chartr`. **Flagged for ticket 05:** *bindings*
 still read their user layer from `<dataDir>/user.toml` while *skills* read
-`~/.config/wayfinder-harness/skills/` — one "user layer" with two homes, which
+`~/.config/chartr/skills/` — one "user layer" with two homes, which
 the transparency surface will have to render honestly (CONTEXT.md's User config
 entry already claims the `~/.config` path). The test rig points `ConfigDir` at a
 temp dir so no run reads the developer's own library.
 
 **Docs.** `CONTEXT.md` reads **Skill library** (its `_Avoid_` line inverted) and
 Workspace config's content half reads "skills". **ADR 0002** gains a
-reaffirmation — what it chose was never a file format but that the harness wires
+reaffirmation — what it chose was never a file format but that the chartr wires
 the session itself — noting that its model-heterogeneity clause lapsed with the
 gate. `docs/wayfinder-adapter.md` points at the vendored `tracker-convention`
 skill instead of a `prompts/` path. **ADR 0012** is amended for a live
 consequence, below.
 
 **One thing beyond the ticket's letter, and it was load-bearing.**
-`.wayfinder-harness/prompts/implement.append.md` is **tracked in this repo** —
-it is the design-system guardrail ADR 0012 injects into every harness-spawned UI
+`.chartr/prompts/implement.append.md` is **tracked in this repo** —
+it is the design-system guardrail ADR 0012 injects into every chartr-spawned UI
 session (it is in this session's own payload). Retiring `.append.md` would have
 dropped it silently on the next spawn. It is migrated to a committed workspace
 `implement` skill: a whole-skill fork of the shipped one recording
@@ -152,7 +152,7 @@ the migrated overlay in place `implement` resolves **workspace**, warning-free,
 with the design-system rules still injected.
 
 **Deliberately not done.** No migration of the untracked local `prompts/`
-materialization at the repo root or `.wayfinder-harness/prompts/`'s now-empty
+materialization at the repo root or `.chartr/prompts/`'s now-empty
 directory — untracked operator state, and the housekeeping ticket's business,
 not mine. No `Space.Skills` model field or settings UI (ticket 05's; the
 resolver it needs is exported as `prompt.Library`). No per-skill `append`

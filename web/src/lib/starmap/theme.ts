@@ -4,7 +4,7 @@
 // size, glow, pulse (starmap-design.md, decision 4). Ticket type rides only in
 // the label, never the celestial body.
 //
-// The harness derives its ticket status from `.plan/` (ADR 0004, amended): a
+// The chartr derives its ticket status from `.plan/` (ADR 0004, amended): a
 // ticket is open, claimed, resolved, or out_of_scope, with a `frontier` flag
 // splitting open into the takeable edge and the still-blocked interior. That is
 // exactly five visual states, and this module maps the derived status onto them.
@@ -27,7 +27,7 @@ export interface StarStyle {
   gr: number
 }
 
-// The five base states, ported verbatim from the viewer's theme — the harness
+// The five base states, ported verbatim from the viewer's theme — the chartr
 // adds none of its own (the `proposed` star went with the review feature).
 // Ticket 04: the card the map sits on moved from a near-black `#05070d` to the
 // theme's warm near-black `--card` (`oklch(0.228 0.013 107.4)`, ~`#1d1d16`) —

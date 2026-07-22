@@ -1,4 +1,4 @@
-// Package server is the harness backend: one HTTP server that serves the
+// Package server is the chartr backend: one HTTP server that serves the
 // embedded cockpit SPA, answers operator actions over plain HTTP, and pushes
 // the whole derived model to every browser over a JSON control socket (ADR
 // 0010). The walking skeleton wires the transport end to end with a near-empty
@@ -16,19 +16,19 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
-	"github.com/rengwu/wayfinder-harness/internal/registry"
-	"github.com/rengwu/wayfinder-harness/internal/terminal"
-	"github.com/rengwu/wayfinder-harness/web"
+	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/terminal"
+	"github.com/rengwu/chartr/web"
 )
 
 // Options configures a Server.
 type Options struct {
-	// DataDir is the harness-owned state root (registry, per-session payload
+	// DataDir is the chartr-owned state root (registry, per-session payload
 	// archives, scrollback). The skeleton only holds it; ticket 02 onward reads
 	// and writes beneath it. Defaults to the current directory when empty.
 	DataDir string
-	// ConfigDir is the operator's local config root — `~/.config/wayfinder-harness`
+	// ConfigDir is the operator's local config root — `~/.config/chartr`
 	// on most systems — whose `skills/` directory is the user layer of the skill
 	// library (ADR 0009's content half). Defaults to the OS user config dir; tests
 	// point it at a temp dir so a developer's own library never leaks into a run.
@@ -39,7 +39,7 @@ type Options struct {
 	QuietAfter time.Duration
 }
 
-// Server is a single operator's harness backend. Construct with New, then run
+// Server is a single operator's chartr backend. Construct with New, then run
 // with Serve.
 type Server struct {
 	opts  Options
@@ -59,7 +59,7 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.ConfigDir == "" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			opts.ConfigDir = filepath.Join(dir, "wayfinder-harness")
+			opts.ConfigDir = filepath.Join(dir, "chartr")
 		}
 	}
 	dist, err := web.Dist()
@@ -84,11 +84,11 @@ func New(opts Options) (*Server, error) {
 		reg:  reg,
 	}
 	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild
-	// whenever a space's `.plan/` changes, so a map created outside the harness
+	// whenever a space's `.plan/` changes, so a map created outside the chartr
 	// appears on its own. rebuild also reconciles the watch set, so this starts
 	// covering whatever the persisted registry already holds.
 	s.watch = newWatcher(s.rebuild)
-	// Ad-hoc shells are harness-owned runtime state (ticket 05). The manager
+	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
 	s.terms = terminal.NewManager(s.rebuild, opts.QuietAfter)
@@ -121,7 +121,7 @@ func New(opts Options) (*Server, error) {
 	// the composition reads the library and the map fresh off disk each time.
 	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
 	// Spawn a session (ticket 09): the tracer bullet. From a frontier ticket, the
-	// harness writes the claim commit, composes and archives the payload, resolves
+	// chartr writes the claim commit, composes and archives the payload, resolves
 	// the role binding, and launches the agent's own TUI with the opener typed in —
 	// or hard-blocks the one spawn when the bound agent is absent. A plain HTTP
 	// action so a refusal (missing agent, unclassified map) surfaces as a response.
@@ -129,7 +129,7 @@ func New(opts Options) (*Server, error) {
 	// The death halt (ticket 10): a session that died stays pinned to its ticket,
 	// and the operator resolves it one of exactly three ways — resume it (same-
 	// ticket crash recovery), respawn a fresh session on the same ticket, or release
-	// the claim back to the frontier. The harness itself takes none of these; each is
+	// the claim back to the frontier. The chartr itself takes none of these; each is
 	// an explicit operator action, so nothing changes without an HTTP call.
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)

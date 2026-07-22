@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/rengwu/wayfinder-harness/internal/mapscan"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/mapscan"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // handlePayloadPreview composes and returns the payload a session for one ticket

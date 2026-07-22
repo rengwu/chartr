@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/chartr/internal/config"
 )
 
 // The user-layer binding writer (ticket 05, stories 39–42). Every assertion is on

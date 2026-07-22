@@ -1,4 +1,4 @@
-// Package config resolves the harness's layered configuration. Ticket 02 owns
+// Package config resolves the chartr's layered configuration. Ticket 02 owns
 // the role→agent bindings: what a role runs as, merged across three layers.
 //
 // A role binds to {adapter, model, args?} (ADR 0009). Three layers stack —
@@ -18,17 +18,17 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // WorkspaceConfigName is the committed workspace config file in a space's repo
 // (ADR 0009): the shared, versioned, portable layer holding role bindings and
-// map kinds. It lives under `.wayfinder-harness/` alongside the space's committed
-// prompt overlays, so everything the harness commits into a space sits in one
+// map kinds. It lives under `.chartr/` alongside the space's committed
+// prompt overlays, so everything the chartr commits into a space sits in one
 // directory rather than a loose file one keystroke away from that directory's
 // name. Config owns the filename because it owns the file's shape — the server
 // reads and writes it through this package.
-const WorkspaceConfigName = ".wayfinder-harness/config.toml"
+const WorkspaceConfigName = ".chartr/config.toml"
 
 // Role is one of the closed set of things a session is spawned to do (ADR
 // 0002). The set is fixed here; config that names anything outside it is
@@ -49,7 +49,7 @@ var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 // (spec, Sessions and roles): a planning map grills, prototypes, and researches;
 // an implementation map implements. An unclassified map (any other
 // value, including the empty string) offers none, so it stays inert until a human
-// declares its kind (ADR 0007) — the harness never spawns on a heuristic.
+// declares its kind (ADR 0007) — the chartr never spawns on a heuristic.
 func RolesForKind(kind string) []Role {
 	switch kind {
 	case model.KindPlanning:
@@ -178,7 +178,7 @@ type workspaceFile struct {
 	Maps  map[string]rawMap     `toml:"maps"`
 }
 
-// rawMap is one map's committed harness config, keyed by map slug (ADR 0007).
+// rawMap is one map's committed chartr config, keyed by map slug (ADR 0007).
 // Kind is the only field today; the table exists so per-map committed state has
 // a home to grow into without another top-level key.
 type rawMap struct {
@@ -264,7 +264,7 @@ func resolveKinds(maps map[string]rawMap, warnings *[]string) map[string]string 
 		}
 		if !model.ValidKind(k) {
 			*warnings = append(*warnings, fmt.Sprintf(
-				"committed config declares map %q as kind %q, which the harness does not recognise (want planning or implementation); the map stays unclassified",
+				"committed config declares map %q as kind %q, which the chartr does not recognise (want planning or implementation); the map stays unclassified",
 				slug, k,
 			))
 			continue
@@ -313,13 +313,13 @@ func parseUser(data []byte, spacePath string, warnings *[]string) map[string]raw
 }
 
 // unknownRoleWarnings flags config that binds a name outside the closed role
-// set — a typo or a role the harness does not offer — rather than honouring it
+// set — a typo or a role the chartr does not offer — rather than honouring it
 // silently.
 func unknownRoleWarnings(roles map[string]rawBinding) []string {
 	var out []string
 	for name := range roles {
 		if !isRole(name) {
-			out = append(out, fmt.Sprintf("config binds unknown role %q, which the harness ignores", name))
+			out = append(out, fmt.Sprintf("config binds unknown role %q, which the chartr ignores", name))
 		}
 	}
 	sort.Strings(out)

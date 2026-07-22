@@ -12,7 +12,7 @@
 /node_modules/
 
 # The space registry is user-config runtime state (ticket 02); a copy lands at
-# the repo root when the harness runs with cwd here — never committed.
+# the repo root when the chartr runs with cwd here — never committed.
 /spaces.toml
 
 # The local user config layer (ticket 02, ADR 0009): per-machine binding
@@ -25,13 +25,13 @@
 # The materialized skill library is user-config runtime state too: a copy lands
 # under the data root — the repo root when run with cwd here — as the operator's
 # editable copy. Never committed. (A space's *committed* skill overlay lives under
-# .wayfinder-harness/skills/, which is a different, intentional path.) `/prompts/`
+# .chartr/skills/, which is a different, intentional path.) `/prompts/`
 # is the pre-skills name of the same directory, still ignored so an old checkout's
 # leftovers never surface as a diff.
 /skills/
 /prompts/
 
-# Per-session payload archives (ticket 09) are harness-owned state under the data
+# Per-session payload archives (ticket 09) are chartr-owned state under the data
 # root — the repo root when run with cwd here. Each session's exact payload is kept
 # here for the audit trail, never committed.
 /sessions/
@@ -45,7 +45,7 @@
 # The native shell's single-instance lock (ADR 0013): live runtime state under
 # the data root — the repo root when the shell runs with cwd here. It records a
 # pid and a loopback port, both meaningless to anyone else.
-/.wayfinder-harness/shell.lock
+/.chartr/shell.lock
 
 # macOS
 .DS_Store

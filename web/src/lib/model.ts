@@ -112,7 +112,7 @@ export interface Space {
   pinned: boolean
   // True when the working tree carries uncommitted changes — a session's or a
   // shell's debris. A badge, never a spawn gate (story 68): the operator decides
-  // whether the debris is harmless; the harness spawns into it all the same.
+  // whether the debris is harmless; the chartr spawns into it all the same.
   dirty: boolean
   bindings: RoleBinding[]
   // The resolved skill library: every skill with the layer that won its whole

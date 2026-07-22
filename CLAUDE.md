@@ -4,13 +4,13 @@ Guidance for Claude Code sessions working in this repo.
 
 ## Wayfinder maps in this repo
 
-This repo plans with wayfinder maps under `.plan/`, and it is a space the harness
+This repo plans with wayfinder maps under `.plan/`, and it is a space the chartr
 watches. When you chart a map with `/wayfinder` or graduate one with
 `/to-tickets`, follow **`docs/wayfinder-adapter.md`** on top of the vendored
 local-markdown adapter: it adds one step — **record the new map's kind**
-(`planning` / `implementation`) in the committed `.wayfinder-harness/config.toml`
+(`planning` / `implementation`) in the committed `.chartr/config.toml`
 at creation, keyed by map slug, and commit it with the map. Recording kind on
-creation is how the harness avoids ever guessing or gating a map on a heuristic
+creation is how the chartr avoids ever guessing or gating a map on a heuristic
 (ADR 0007); a map that arrives without it stays inert until a human confirms its
 kind in the star-map panel.
 

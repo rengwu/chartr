@@ -1,12 +1,12 @@
-# simplify — a leaner, more open harness (spec)
+# simplify — a leaner, more open chartr (spec)
 
 _Synthesised from the settled `simplify` planning map (tickets 01–05). This spec
-graduates to one implementation map. It describes the harness **after** the cut;
+graduates to one implementation map. It describes the chartr **after** the cut;
 several CONTEXT.md terms die here (see Implementation Decisions → Vocabulary)._
 
 ## Problem Statement
 
-The operator is driving real work through a harness that has grown heavier than
+The operator is driving real work through a chartr that has grown heavier than
 the job needs, and less open than the project's own principles demand:
 
 - **The review pipeline is load-bearing dead weight.** Every implementation
@@ -19,7 +19,7 @@ the job needs, and less open than the project's own principles demand:
 - **The prompts are hackable in principle but not in the open standard.** Role
   prompts live as vendored `<part>.md` files with a bespoke
   `.replace.md`/`.append.md` layering convention invented before `SKILL.md` was a
-  standard. The operator can't reuse them in an agent CLI outside the harness,
+  standard. The operator can't reuse them in an agent CLI outside the chartr,
   and the bespoke layering is one more thing to learn.
 - **The configuration is opaque.** Role bindings resolve through three layers
   nobody can see; prompts materialise into a gitignored directory; map kinds live
@@ -30,21 +30,21 @@ the job needs, and less open than the project's own principles demand:
 
 ## Solution
 
-Cut the harness down to its working core and open it up, in four moves that ship
+Cut the chartr down to its working core and open it up, in four moves that ship
 as one sequenced implementation effort:
 
 1. **Delete the review pipeline entirely.** The lifecycle becomes vanilla
    wayfinder: a session holds a ticket, writes its `## Answer`, commits its own
    work, and the ticket is **resolved** the instant the heading lands. Resolved
-   blockers unblock their dependents immediately. The harness exits the judgment
+   blockers unblock their dependents immediately. The chartr exits the judgment
    business — no gate, no new deterministic check — and trusts the operator's git
    flow, keeping only the facts it already derives (death halt, dirty-tree badge,
    wayfinder lint).
 
 2. **Repackage every injected prompt as a standard `SKILL.md`.** Role prompts,
-   the core "how to use this harness" prompt, and the tracker convention become
+   the core "how to use this chartr" prompt, and the tracker convention become
    vendored skill directories on disk — readable, editable, and reusable in any
-   agent CLI that reads the standard. The harness **keeps composing** the payload
+   agent CLI that reads the standard. The chartr **keeps composing** the payload
    itself; only the source format and the layering change (whole-skill shadowing
    in place of bespoke replace/append).
 
@@ -79,11 +79,11 @@ transparency surface renders the result of both.
    the frontier advances at the speed of the work.
 4. As an operator, I want the four statuses open / claimed / resolved /
    out_of_scope and nothing else, so that the status model is exactly wayfinder's
-   with no harness-specific `proposed` state to reason about.
+   with no chartr-specific `proposed` state to reason about.
 5. As an operator, I want the agent to write the `## Answer` by prompt convention
-   (never the harness mechanically), so that the discipline "the agent writes,
-   the harness watches" survives the cut.
-6. As an operator, I want the harness's own commits to stay append-only,
+   (never the chartr mechanically), so that the discipline "the agent writes,
+   the chartr watches" survives the cut.
+6. As an operator, I want the chartr's own commits to stay append-only,
    pathspec-limited, and trailer-carrying, shrunk to just the claim (at spawn)
    and the release (at death-halt), so that the audit trail stays honest without
    the promotion/demotion writes the gate needed.
@@ -91,15 +91,15 @@ transparency surface renders the result of both.
    remain visibly pinned to its ticket, so that an unfinished ticket is surfaced
    by the death halt without any new "you didn't answer" check.
 8. As an operator, I want uncommitted debris still surfaced as a dirty-tree badge
-   and never auto-cleaned, so that the harness keeps showing facts without
+   and never auto-cleaned, so that the chartr keeps showing facts without
    enforcing them.
 9. As an operator, I want no blocking lint-before-resolution check of any kind,
    so that no gate returns under another name.
 10. As a future review feature, I want to rebuild against documented conventions
     — file-derived ticket status, fsnotify on `.plan/`, git trailers on lifecycle
     commits, the run-dir layout, in-process session-exit — so that review can
-    return as a consumer without touching harness internals.
-11. As an operator, I want the harness to emit nothing purely for a hypothetical
+    return as a consumer without touching chartr internals.
+11. As an operator, I want the chartr to emit nothing purely for a hypothetical
     reviewer that does not exist, so that no zero-consumer artifact is carried as
     speculative bloat.
 12. As an operator, I want old maps' `## Proposed Answer` sections treated as
@@ -117,14 +117,14 @@ transparency surface renders the result of both.
 
 15. As an operator, I want each role prompt as a standard `SKILL.md` directory on
     disk, so that I can read, edit, and reuse it in any agent CLI outside the
-    harness.
+    chartr.
 16. As an operator, I want seven skills to ship — `grill`, `prototype`,
     `research`, `implement`, `ideate`, plus `core` and `tracker-convention` — so
     that the whole injected library is the open standard.
 17. As an operator, I want the glossary to live inside the `tracker-convention`
     skill as a supporting file, so that the method vocabulary sits with the
     convention it defines rather than fragmented across skills.
-18. As an operator, I want the harness to keep composing the payload — reading the
+18. As an operator, I want the chartr to keep composing the payload — reading the
     resolved `core` and role `SKILL.md` bodies and assembling them with a
     freshly-built context bundle into one gitignored payload file — so that every
     session is deterministically wired to its role and context regardless of what
@@ -152,7 +152,7 @@ transparency surface renders the result of both.
     the ticket I was handed is never mistaken for durable skill content.
 26. As an operator, I want a skill's supporting files left on disk (not inlined
     into the payload), so that the agent can zoom into them on demand and I can
-    reuse them outside the harness at no payload cost.
+    reuse them outside the chartr at no payload cost.
 27. As an operator, I want `SKILL.md` frontmatter (name / description /
     forked_from) stripped before the body reaches the payload, so that metadata
     drives the cockpit listing and drift detection but never leaks into what the
@@ -198,7 +198,7 @@ transparency surface renders the result of both.
 39. As an operator, I want to edit a role binding inline, so that I can change the
     one high-churn setting without opening a file.
 40. As an operator, I want a binding edit written only to the user layer
-    (`~/.config/wayfinder-harness/config.toml`), never to committed workspace
+    (`~/.config/chartr/config.toml`), never to committed workspace
     config, so that a local UI cannot silently override shared content it labels
     "workspace."
 41. As an operator, I want binding writes to be surgical and comment-preserving —
@@ -237,7 +237,7 @@ transparency surface renders the result of both.
 50. As an operator, I want to launch the cockpit as a real mac window with a dock
     icon, so that it feels like an app rather than a browser tab.
 51. As an operator, I want the shell as a separate `cmd/webview` binary built with
-    cgo, so that the supported `harness` binary stays pure-Go and cgo-free.
+    cgo, so that the supported `chartr` binary stays pure-Go and cgo-free.
 52. As an operator, I want the shell to start the existing server in-process on a
     random `127.0.0.1:0` loopback port and point the window at it, so that there
     is one process, no fixed port to collide on, and the server dies with the
@@ -253,7 +253,7 @@ transparency surface renders the result of both.
 56. As an operator, I want a minimal native menu — Quit (⌘Q), Reload (⌘R), and the
     standard edit items — so that a bare webview window regains the OS affordances
     a browser tab gave for free.
-57. As an operator, I want no dock badge and no `harness://` URL scheme in the
+57. As an operator, I want no dock badge and no `chartr://` URL scheme in the
     shell, so that bespoke per-platform integration for signals that already live
     in the chrome (or producers that don't exist) is not carried; each returns
     only on a concrete need.
@@ -261,7 +261,7 @@ transparency surface renders the result of both.
     exactly what is missing and pointing at the supported browser binary, so that
     a missing dependency is never papered over with a silent browser launch.
 59. As an operator, I want no `--browser`/`--shell` force flag, so that the two
-    binaries express the choice (`harness` for the browser, `webview` for the
+    binaries express the choice (`chartr` for the browser, `webview` for the
     shell) without impersonating each other.
 60. As a release engineer, I want the shell built off the same tag with the same
     version/commit stamp but kept out of the supported `checksums.txt` (a per-asset
@@ -270,7 +270,7 @@ transparency surface renders the result of both.
 61. As a release engineer, I want the shell's cgo behind `//go:build webview` with
     a cgo-free stub for the default build, so that `go vet`/`go test`/`go build`
     at `CGO_ENABLED=0` and the embed test stay green and goreleaser (building only
-    `./cmd/harness`) never sees it.
+    `./cmd/chartr`) never sees it.
 62. As a release engineer, I want the `shells` CI matrix to run after the supported
     release with `continue-on-error` and `fail-fast: false`, so that any shell
     build failing never fails the supported release.
@@ -285,7 +285,7 @@ transparency surface renders the result of both.
     review-free composer once instead of porting review code 01 then deletes.
 66. As an operator, I want each cut commit small and independently green (parser
     change, then composer change) with the CLAUDE.md build/test gates as the
-    per-commit tripwire, so that every intermediate state leaves a harness that
+    per-commit tripwire, so that every intermediate state leaves a chartr that
     builds, derives status, and can spawn.
 67. As an operator, I want the green-commit discipline to stay a recommendation I
     own (not a new enforced gate), so that it does not contradict ticket 01's
@@ -293,7 +293,7 @@ transparency surface renders the result of both.
 68. As an operator, I want the escape hatch to be ticket 01's own destination — if
     the cockpit breaks under its own work, I finish the offending ticket with a
     terminal and git, vanilla-wayfinder style — so that the simplification is what
-    makes it safe to rebuild the harness.
+    makes it safe to rebuild the chartr.
 69. As an operator, I want dead weight swept in one deletion-only housekeeping
     ticket (`Probe.svelte`, stale `sessions/` archives, the stray root
     `node_modules`, a `.DS_Store` gitignore entry), isolated so the sweep never
@@ -323,15 +323,15 @@ transparency surface renders the result of both.
 ### Ticket 01 — the lifecycle cut
 
 - **Status model**: four statuses — open, claimed, resolved, out_of_scope. The
-  parser's derived-status table becomes exactly wayfinder's; the harness's "one
+  parser's derived-status table becomes exactly wayfinder's; the chartr's "one
   addition" is withdrawn.
 - **`claimed → resolved`** requires an `## Answer` heading with prose, written by
-  the agent by prompt convention. The harness never writes the Answer. The commit
+  the agent by prompt convention. The chartr never writes the Answer. The commit
   is the agent's act by convention.
 - **Unblocking** is immediate on resolution, even mid-commit. Mitigation is
   social (visible claim on the star-map, operator present), not mechanical.
-- **Harness writes** stay append-only, pathspec-limited, trailer-carrying, shrunk
-  to two: claim (spawn) and release (death-halt). `Harness-Write: true` stays.
+- **Chartr writes** stay append-only, pathspec-limited, trailer-carrying, shrunk
+  to two: claim (spawn) and release (death-halt). `Chartr-Write: true` stays.
 - **No new deterministic check.** Surviving surfaces: death halt, dirty-tree
   badge, wayfinder lint. Rejected: an explicit "ended without an Answer" item
   (duplicates the death halt) and any blocking pre-resolution lint (a gate by
@@ -349,14 +349,14 @@ transparency surface renders the result of both.
 - **Seven skills**: `grill`, `prototype`, `research`, `implement`, `ideate`,
   `core`, `tracker-convention`. The glossary is a supporting file inside
   `tracker-convention`. `review` is deleted (ticket 01), not kept as an example.
-- **Composition retained**: the harness reads resolved `core` + role `SKILL.md`
+- **Composition retained**: the chartr reads resolved `core` + role `SKILL.md`
   bodies, assembles them with the context bundle into one payload in `run/<sid>/`,
-  opener unchanged. Reaffirms ADR 0002 (the harness leans on no agent's skill
+  opener unchanged. Reaffirms ADR 0002 (the chartr leans on no agent's skill
   mechanism). Rejected: materialising into each CLI's native skills path
   (per-adapter, non-deterministic, reverses ADR 0002); point-and-read.
 - **Three layers, whole-skill shadowing**: built-in (`<dataDir>/skills/`) ‹ user
-  (`~/.config/wayfinder-harness/skills/`) ‹ workspace
-  (`<space>/.wayfinder-harness/skills/`). Most-specific layer defining a skill
+  (`~/.config/chartr/skills/`) ‹ workspace
+  (`<space>/.chartr/skills/`). Most-specific layer defining a skill
   wins its whole directory. The `.replace.md`/`.append.md` convention is dropped;
   the append affordance is knowingly given up (revisit: a single per-skill
   house-rules file if forking-for-one-line churn bites in practice).
@@ -406,14 +406,14 @@ transparency surface renders the result of both.
 ### Ticket 04 — the webview shell
 
 - **Separate `cmd/webview` binary**, built `CGO_ENABLED=1 -tags webview`, where
-  the dead `make webview` target already points. Rejected: a `harness --webview`
+  the dead `make webview` target already points. Rejected: a `chartr --webview`
   flag (would put cgo in the supported binary).
 - **In-process server**: `cmd/webview` imports `internal/server`, does what
-  `cmd/harness`'s `run()` does but binds `127.0.0.1:0`, reads the OS-assigned port
+  `cmd/chartr`'s `run()` does but binds `127.0.0.1:0`, reads the OS-assigned port
   off `ln.Addr()`, hands `http://<that>` to the webview. The server dies with the
   window (closing it cancels the same context `signal.NotifyContext` cancels
   today). Rejected: spawning the supported binary as a child.
-- **Single-instance** via a data-dir lock file (`.wayfinder-harness/shell.lock`)
+- **Single-instance** via a data-dir lock file (`.chartr/shell.lock`)
   recording the live instance's loopback URL. A second launch focuses the running
   window through the native handle `webview.Window()` exposes; degrades to
   refuse-with-message where raising is flaky. Keyed to the data dir.
@@ -422,9 +422,9 @@ transparency surface renders the result of both.
   Wails (a second IPC layer for a UI that already talks HTTP/websockets).
 - **Native integration in scope**: a real window + dock icon; a minimal native
   menu (Quit ⌘Q, Reload ⌘R, standard edit items); single-instance focus.
-  **Declined**: a dock badge for the "Needs you" queue; a `harness://` scheme —
+  **Declined**: a dock badge for the "Needs you" queue; a `chartr://` scheme —
   each returns only on a concrete trigger.
-- **Release**: the supported lane (`.goreleaser.yaml`, `./cmd/harness`,
+- **Release**: the supported lane (`.goreleaser.yaml`, `./cmd/chartr`,
   `CGO_ENABLED=0`, owns `checksums.txt`) is untouched. The shell rides a
   `continue-on-error`, `needs: release`, `fail-fast: false` `shells` matrix that
   runs after the supported release and uploads a per-asset `.sha256` sidecar.
@@ -467,7 +467,7 @@ transparency surface renders the result of both.
 - `internal/server/gate.go`, `review.go`, `promote.go` (relocating still-used
   helpers to surviving callers first); the review/gate/proposed tests
   (`proposed_test.go`, `review_test.go`, `gate_test.go`, `gate_edges_test.go`);
-  review stubs in `internal/harnesstest/`.
+  review stubs in `internal/chartrtest/`.
 - `web/src/lib/ReviewHub.svelte` and its `actions.ts`/`model.ts` review surface.
 - `prompts/review.md` and `internal/prompt/assets/review.md`.
 - Amendments across `internal/wayfinder/parse.go` (drop `StatusProposed`,
@@ -494,7 +494,7 @@ ones; each subsystem gets one seam at its highest observable point.
   dependent the moment its blocker is resolved. Prior art: `wayfinder_test.go`
   (the deleted `proposed_test.go` is the inverse of what to assert now — resolved
   never means "proposed"). Server-side, assert the lifecycle-write set shrinks to
-  claim + release via the harnesstest rig's commit inspection (prior art:
+  claim + release via the chartrtest rig's commit inspection (prior art:
   `spawn_test.go`, `halt_test.go`, `claim.go`'s trailer tests).
 
 - **Ticket 02 — `internal/prompt` composer.** Feed layered skill directories
@@ -507,7 +507,7 @@ ones; each subsystem gets one seam at its highest observable point.
   focused `internal/prompt` unit seam for resolution + assembly.
 
 - **Ticket 03 — read via `Server.deriveSpace`, write via `internal/config`.**
-  Read: through the harnesstest rig, assert the pushed `model.Space` carries
+  Read: through the chartrtest rig, assert the pushed `model.Space` carries
   bindings with per-field provenance + PATH probe, the new `Space.Skills` with
   winning layer + stale-fork state, kinds, and warnings (prior art:
   `spaces_test.go`, `maps_test.go`). Write: unit-test the user-layer binding
@@ -531,7 +531,7 @@ ones; each subsystem gets one seam at its highest observable point.
 - **Cross-cutting**: the CLAUDE.md gates — `go vet ./...` / `go test ./...`,
   frontend `check` / `build` / `vitest`, and "no amber in the built CSS" — are the
   per-commit tripwire that keeps every intermediate state a working,
-  self-hosting harness.
+  self-hosting chartr.
 
 ## Out of Scope
 
@@ -542,14 +542,14 @@ ones; each subsystem gets one seam at its highest observable point.
   anything further waits for the "still feels wrong to daily-drive" trigger.
 - **Redesigning the wayfinder method.** The `tracker-convention` skill restates
   the format; it does not change it.
-- **Migrating or rewriting the old maps.** `harness-design`,
-  `harness-design-impl`, and `reskin` are history — human-readable, un-migrated.
+- **Migrating or rewriting the old maps.** `chartr-design`,
+  `chartr-design-impl`, and `reskin` are history — human-readable, un-migrated.
 - **An ad-hoc preferences store.** Refused in ticket 03; a genuine preference
   earns a layer and a home when it actually appears.
 - **A real binding *editing* UI beyond role bindings.** Only bindings are inline;
   everything else is read-value-plus-open-file until a second setting earns
   editing.
-- **Dock badge, `harness://` scheme, per-adapter native skill materialisation,
+- **Dock badge, `chartr://` scheme, per-adapter native skill materialisation,
   and a lightweight skill `append` affordance.** Each is a named revisit trigger,
   not this effort's work.
 
@@ -570,7 +570,7 @@ ones; each subsystem gets one seam at its highest observable point.
   house-rules file); a second editable setting or the global route felt as a
   detour (→ inline editor / read-only hover-card); the shell still feeling wrong
   (→ a TUI companion); single-instance raise unreliable (→ refuse-with-message +
-  polish ticket); a dock badge missed or a `harness://` producer appearing.
+  polish ticket); a dock badge missed or a `chartr://` producer appearing.
 - **The wayfinder-adapter step still applies** (CLAUDE.md): when `to-tickets`
   charts the implementation map, record its kind (`implementation`) in
-  `.wayfinder-harness/config.toml` keyed by slug, and commit it with the map.
+  `.chartr/config.toml` keyed by slug, and commit it with the map.

@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rengwu/wayfinder-harness/internal/config"
-	"github.com/rengwu/wayfinder-harness/internal/mapscan"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
-	"github.com/rengwu/wayfinder-harness/internal/registry"
+	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/mapscan"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
 )
 
-// userConfigName is the operator's local, uncommitted config under the harness
+// userConfigName is the operator's local, uncommitted config under the chartr
 // state root, keyed by space path. It carries per-machine binding overrides.
 const userConfigName = "user.toml"
 
@@ -79,10 +79,10 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleClassify declares a map's kind (ADR 0007). Classification is one HTTP
-// action: the operator confirms the convention guess, and the harness writes the
+// action: the operator confirms the convention guess, and the chartr writes the
 // kind into the space's committed workspace config, keyed by map slug, so the
 // classification rides the repo to every teammate (story 15). The write appends
-// to the config and is left in the working tree — the harness owns no commit here
+// to the config and is left in the working tree — the chartr owns no commit here
 // (its commits are the lifecycle writes of later tickets), the operator commits
 // their config as they commit their bindings.
 func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash
 // mid-write cannot leave the operator's committed config truncated. The committed
-// config sits under `.wayfinder-harness/`, which a space may not have yet, so the
+// config sits under `.chartr/`, which a space may not have yet, so the
 // parent directory is created first.
 func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

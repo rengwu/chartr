@@ -1,10 +1,10 @@
-# wayfinder-harness — build and checks.
+# chartr — build and checks.
 #
 # The one supported artifact is the pure-Go binary with the Svelte build
 # embedded (ADR 0010, 0011). `make build` produces it; `make check` and
 # `make test` run everything a ticket must pass before commit.
 
-BIN := bin/harness
+BIN := bin/chartr
 
 .PHONY: build web go-build dev-backend dev-web check test vet clean \
         webview snapshot release
@@ -17,11 +17,11 @@ web:
 	cd web && npm install && npm run build
 
 go-build:
-	go build -o $(BIN) ./cmd/harness
+	go build -o $(BIN) ./cmd/chartr
 
-## dev-backend: run the harness backend (serves :8787).
+## dev-backend: run the chartr backend (serves :8787).
 dev-backend:
-	go run ./cmd/harness
+	go run ./cmd/chartr
 
 ## dev-web: run Vite with HMR, proxying /api and /ws to the backend.
 dev-web:
@@ -75,7 +75,7 @@ webview:
 	fi; \
 	mkdir -p build/shell; \
 	ext=""; [ "$$goos" = "windows" ] && ext=".exe"; \
-	name="wayfinder-harness-shell_$(WEBVIEW_VERSION)_$${goos}_$${goarch}$$ext"; \
+	name="chartr-shell_$(WEBVIEW_VERSION)_$${goos}_$${goarch}$$ext"; \
 	echo "building native webview shell for $${goos}/$${goarch}"; \
 	CGO_ENABLED=1 go build -tags webview -trimpath \
 		-ldflags "-s -w -X main.version=$(WEBVIEW_VERSION) -X main.commit=$(WEBVIEW_COMMIT) -X main.date=$(WEBVIEW_DATE)" \

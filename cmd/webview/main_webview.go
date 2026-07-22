@@ -16,7 +16,7 @@ import (
 
 	webview "github.com/webview/webview_go"
 
-	"github.com/rengwu/wayfinder-harness/internal/server"
+	"github.com/rengwu/chartr/internal/server"
 )
 
 // version, commit and date are stamped at build time via -ldflags -X, exactly as
@@ -29,20 +29,20 @@ var (
 )
 
 // appName is the window title and the macOS menu-bar name.
-const appName = "wayfinder-harness"
+const appName = "chartr"
 
 func main() {
-	dataDir := flag.String("data-dir", "", "harness-owned state root (defaults to the current directory)")
+	dataDir := flag.String("data-dir", "", "chartr-owned state root (defaults to the current directory)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("wayfinder-harness shell %s (commit %s, built %s)\n", version, commit, date)
+		fmt.Printf("chartr shell %s (commit %s, built %s)\n", version, commit, date)
 		return
 	}
 
 	if err := run(*dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "wayfinder-harness shell: %v\n", err)
+		fmt.Fprintf(os.Stderr, "chartr shell: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -50,7 +50,7 @@ func main() {
 // run is the shell's whole life: bind loopback, claim the single-instance lock,
 // serve the cockpit in-process, and point a native window at it.
 //
-// It is `cmd/harness`'s run() with two differences — the address is always
+// It is `cmd/chartr`'s run() with two differences — the address is always
 // `127.0.0.1:0` so there is no fixed port to collide on, and the window's
 // lifetime is joined to the server's: closing the window cancels the same
 // context signal.NotifyContext cancels today, and the server dies with it.
@@ -128,7 +128,7 @@ func newWindow() (webview.WebView, error) {
 	w := webview.New(false)
 	if nativeHandle(w) == nil {
 		return nil, fmt.Errorf("could not create a native window: %s.\n"+
-			"The shell needs it at runtime; the supported, cgo-free cockpit binary is `harness`,\n"+
+			"The shell needs it at runtime; the supported, cgo-free cockpit binary is `chartr`,\n"+
 			"which serves the same cockpit in your browser", missingRuntime)
 	}
 	return w, nil

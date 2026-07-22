@@ -14,7 +14,7 @@
 # tap, no plugin marketplace entry.
 version: 2
 
-project_name: wayfinder-harness
+project_name: chartr
 
 # Keep goreleaser's output out of ./dist so it is never confused with web/dist,
 # which is the embedded-SPA directory `make web` fills and go:embed reads.
@@ -28,9 +28,9 @@ before:
     - make web
 
 builds:
-  - id: harness
-    main: ./cmd/harness
-    binary: harness
+  - id: chartr
+    main: ./cmd/chartr
+    binary: chartr
     env:
       - CGO_ENABLED=0
     goos:
@@ -50,9 +50,9 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: harness
+  - id: chartr
     ids:
-      - harness
+      - chartr
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     # tar.gz everywhere except Windows, which gets a .zip operators can extract
@@ -86,15 +86,15 @@ changelog:
 release:
   github:
     owner: rengwu
-    name: wayfinder-harness
+    name: chartr
   draft: false
   prerelease: auto
-  name_template: "wayfinder-harness {{ .Tag }}"
+  name_template: "chartr {{ .Tag }}"
   footer: |
     ## Artifacts
 
     **Supported** — the pure-Go, cgo-free binary that serves the cockpit in your
-    browser (`harness`), checksummed above, for macOS, Linux and Windows.
+    browser (`chartr`), checksummed above, for macOS, Linux and Windows.
 
     **Best-effort** — native webview shells, attached above only for the
     platforms whose cgo/webview toolchains built in CI. A missing shell asset for

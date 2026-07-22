@@ -1,5 +1,5 @@
 // Package mapscan discovers a space's wayfinder maps and derives each into the
-// model the harness pushes (ticket 03). It is the harness-side policy layer over
+// model the chartr pushes (ticket 03). It is the chartr-side policy layer over
 // the ported model layer (internal/wayfinder): where maps live, how a malformed
 // one is tolerated, and how derived status crosses onto the wire.
 //
@@ -19,13 +19,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/wayfinder"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
 // planDir is the one fixed point: wayfinder roots its maps under `.plan/`. What
 // sits *below* it — a map directory directly, or nested under `maps/` — is the
-// convention the harness follows rather than hard-codes.
+// convention the chartr follows rather than hard-codes.
 const planDir = ".plan"
 
 // Discover finds every wayfinder map under repoRoot's `.plan/` and derives each

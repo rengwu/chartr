@@ -1,4 +1,4 @@
-// Package model holds the derived model the harness pushes to every browser.
+// Package model holds the derived model the chartr pushes to every browser.
 //
 // The whole model travels over the control socket as a single JSON snapshot on
 // every change (ADR 0010): it is server-authoritative, small enough that
@@ -38,7 +38,7 @@ type ConfigLayer struct {
 	Layer string `json:"layer"`
 	// Holds names what this layer can set: "bindings" (role bindings and, in the
 	// committed layer, map kinds) or "skills". The two halves live in different
-	// files — bindings in the harness state root, skills under the operator's
+	// files — bindings in the chartr state root, skills under the operator's
 	// config root — and the surface shows that split rather than implying one file.
 	Holds string `json:"holds"`
 	// Path is the absolute location on disk, and Exists whether anything is there
@@ -66,7 +66,7 @@ type ResolvedSkill struct {
 	Stale      bool   `json:"stale,omitempty"`
 }
 
-// Space is a registered git repository the harness drives. Ticket 02 fills in
+// Space is a registered git repository the chartr drives. Ticket 02 fills in
 // the registry semantics (path, pin) and the effective role bindings; ticket 03
 // adds the maps beneath. Spaces arrive already ordered — pinned first, then by
 // recency — so the sidebar renders them in slice order without re-sorting.
@@ -86,7 +86,7 @@ type Space struct {
 	// Dirty is true when the working tree carries uncommitted changes — modified,
 	// staged, or untracked files a session or an ad-hoc shell left behind. It is a
 	// badge, never a spawn gate (spec, Git and the gate; story 68): the operator
-	// decides whether the debris is harmless, and the harness spawns into it all
+	// decides whether the debris is harmless, and the chartr spawns into it all
 	// the same. A label, not a guarantee — empty on a tree it cannot read.
 	Dirty bool `json:"dirty"`
 	// Bindings are the space's effective, fully-resolved role bindings in role
@@ -107,7 +107,7 @@ type Space struct {
 	// Ordered for the sidebar: finished maps sort last. Never nil on the wire.
 	Maps []Map `json:"maps"`
 	// Terminals are the space's open ad-hoc shells (ticket 05) in the order the
-	// operator opened them — the tabs of the terminal column. They are harness-
+	// operator opened them — the tabs of the terminal column. They are chartr-
 	// owned runtime state, not derived from disk: deliberately *not* sessions
 	// (no ticket, no lifecycle, ended by the human), so a mapless space is still
 	// usable as a plain multiplexer. Never nil on the wire.
@@ -166,7 +166,7 @@ type Map struct {
 	Finished bool `json:"finished"`
 	// Kind is the map's declared lifecycle (KindPlanning, KindImplementation) or
 	// KindUnclassified when no committed declaration matches this slug. An
-	// unclassified map is inert: the harness offers no session actions on it until
+	// unclassified map is inert: the chartr offers no session actions on it until
 	// a human classifies it (ADR 0007, story 13).
 	Kind string `json:"kind"`
 	// KindGuess is the convention-derived guess the classify affordance pre-fills

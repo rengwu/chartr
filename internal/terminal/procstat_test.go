@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // A freshly opened shell sits at its prompt: sampling reports it idle under its

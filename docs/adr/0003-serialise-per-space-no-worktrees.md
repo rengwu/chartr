@@ -7,5 +7,5 @@ The wayfinder markdown adapter forbids concurrent sessions outright — two coll
 ## Consequences
 
 - Two maps inside one repository still cannot be driven at once.
-- With nothing racing, an agent may write to `.plan/` directly; the harness need not mediate map writes.
+- With nothing racing, an agent may write to `.plan/` directly; the chartr need not mediate map writes.
 - The human gate cannot be a *merge* gate — there is no branch to merge. See ADR 0004.

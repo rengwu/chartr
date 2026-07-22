@@ -10,8 +10,8 @@ binary by the `web` package (`../web/embed.go`).
 Run the Go backend and the Vite dev server side by side:
 
 ```sh
-# terminal 1 — the harness backend on :8787
-go run ./cmd/harness
+# terminal 1 — the chartr backend on :8787
+go run ./cmd/chartr
 
 # terminal 2 — Vite with HMR, proxying /api and /ws to the backend
 cd web && npm install && npm run dev
@@ -19,7 +19,7 @@ cd web && npm install && npm run dev
 
 Open the URL Vite prints. `/api` and `/ws` (the control and terminal sockets)
 are proxied to the Go backend, so the browser only ever speaks to one origin.
-Point at a backend on another port with `HARNESS_BACKEND`.
+Point at a backend on another port with `CHARTR_BACKEND`.
 
 ## Build (what the binary embeds)
 

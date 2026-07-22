@@ -1,18 +1,18 @@
-# The wayfinder adapter for harness-managed spaces
+# The wayfinder adapter for chartr-managed spaces
 
 This is the adapter the `wayfinder` and `to-tickets` skills consult in a space
-the harness watches. It **layers on top of** the local-markdown adapter
+the chartr watches. It **layers on top of** the local-markdown adapter
 ([`TRACKER-MARKDOWN.md`](https://github.com/rengwu/skills/blob/main/pocock/wayfinder/TRACKER-MARKDOWN.md),
 restated by the vendored `tracker-convention` skill) — every rule there still
 holds. The map format is **untouched**: a vanilla wayfinder tool reads the same
-`.plan/<slug>/` map unchanged. This file adds exactly one harness-side step, on
+`.plan/<slug>/` map unchanged. This file adds exactly one chartr-side step, on
 one event.
 
 ## On creation, record the map's kind
 
-The harness needs a map's **kind** — planning or implementation — before it
+The chartr needs a map's **kind** — planning or implementation — before it
 offers any action on it (ADR [0007](adr/0007-map-kind-declared-not-inferred.md)).
-Kind is *declared, never inferred*: the harness will not run a lifecycle on a
+Kind is *declared, never inferred*: the chartr will not run a lifecycle on a
 guess. So a discovered map with no declaration is **inert** — readable, but
 offering no sessions — until a human confirms its kind.
 
@@ -22,8 +22,8 @@ already knows the answer to: charting with `wayfinder` produces a planning map;
 `to-tickets` produces an implementation map. Write it down then, and no one is
 ever asked to.
 
-**When you create a map, append its kind to the space's committed harness
-config, `.wayfinder-harness/config.toml` (create the `.wayfinder-harness/`
+**When you create a map, append its kind to the space's committed chartr
+config, `.chartr/config.toml` (create the `.chartr/`
 directory if the space has none yet):**
 
 ```toml
@@ -47,21 +47,21 @@ kind = "planning"       # wayfinder chart → a planning map
 Why here and not `kind:` in `map.md`: putting it in the map body would extend the
 wayfinder markdown format past what the tracker spec defines, and a vanilla
 wayfinder tool would meet a field it does not know (ADR 0007). The declaration
-lives in harness-owned committed config precisely so the map format stays clean.
+lives in chartr-owned committed config precisely so the map format stays clean.
 
 ### Graduating a planning map to implementation
 
 Running `to-tickets` on a finished planning map writes a new
 `.plan/<slug>-impl/` map. Record **that** map's kind too —
 `[maps."<slug>-impl"]  kind = "implementation"` — in the same commit. The
-harness notices the new directory either way; recording the kind is what spares
+chartr notices the new directory either way; recording the kind is what spares
 it the classify prompt.
 
 ## The fallback, if this step is skipped
 
 A map created without this step — hand-written, charted outside the cockpit, or
 predating the adapter — arrives **unclassified and inert**. That is not an error:
-the harness renders it, marks it unclassified in the sidebar (a quiet dashed
+the chartr renders it, marks it unclassified in the sidebar (a quiet dashed
 marker, no action), and surfaces a one-click **plan / impl** confirm inside the
 star-map panel when the map is opened, with the convention guess pre-selected.
 Recording the kind at creation is simply what keeps that fallback rare.

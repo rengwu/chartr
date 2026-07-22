@@ -166,10 +166,10 @@ func TestReleaseLeavesAnotherInstancesLock(t *testing.T) {
 }
 
 func TestLockPathIsUnderTheDataDir(t *testing.T) {
-	if got, want := lockPath("/tmp/space"), filepath.Join("/tmp/space", ".wayfinder-harness", "shell.lock"); got != want {
+	if got, want := lockPath("/tmp/space"), filepath.Join("/tmp/space", ".chartr", "shell.lock"); got != want {
 		t.Errorf("lockPath = %q, want %q", got, want)
 	}
-	if got, want := lockPath(""), filepath.Join(".", ".wayfinder-harness", "shell.lock"); got != want {
+	if got, want := lockPath(""), filepath.Join(".", ".chartr", "shell.lock"); got != want {
 		t.Errorf("lockPath(\"\") = %q, want %q", got, want)
 	}
 }

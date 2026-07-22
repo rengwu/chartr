@@ -1,4 +1,4 @@
-// Package prompt owns the harness's hackable skill library and the payload a
+// Package prompt owns the chartr's hackable skill library and the payload a
 // session would be told. Every injected prompt — the common core, the four role
 // prompts, the ideate on-ramp, and the tracker convention — is a standard
 // `SKILL.md` directory: `name`/`description` frontmatter over a markdown body,
@@ -8,14 +8,14 @@
 //
 // Resolution is **whole-skill shadowing** across three layers — shipped built-in
 // (`<dataDir>/skills/`) ‹ local user (`<configDir>/skills/`) ‹ committed
-// workspace (`<space>/.wayfinder-harness/skills/`): the most specific layer that
+// workspace (`<space>/.chartr/skills/`): the most specific layer that
 // defines a skill of a given name wins its entire directory. The precedence is
 // the content half of ADR 0009's reconciling rule — what the project ships wins,
 // so a committed workspace skill beats a local one. There is no per-file merge to
 // reason about; a fork records what it forked from in `forked_from:` frontmatter
 // and is surfaced as behind, never auto-merged.
 //
-// The harness keeps composing the payload itself (ADR 0002, reaffirmed): it reads
+// The chartr keeps composing the payload itself (ADR 0002, reaffirmed): it reads
 // the resolved core + role bodies with their frontmatter stripped and assembles
 // them with a context bundle (map body, ticket, blockers' answers, and the
 // glossary sourced from the `tracker-convention` skill) into one markdown
@@ -36,7 +36,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/chartr/internal/config"
 )
 
 // SourceRepo and SourceCommit record where the skill library was vendored from
@@ -48,7 +48,7 @@ const (
 	SourceCommit = "vendored-2026-07 (bump on each sync)"
 )
 
-// The skills the harness knows by name. CoreSkill is injected first before any
+// The skills the chartr knows by name. CoreSkill is injected first before any
 // role skill; IdeateSkill is the ideate on-ramp, composed alone (no core, no
 // context bundle) because an ideate session is ticketless and mapless;
 // TrackerSkill restates the wayfinder map format and carries the method glossary
@@ -74,7 +74,7 @@ const (
 	// libDirName is the skill library directory under the data root, the user
 	// config root, and (below dotDirName) a space's repo.
 	libDirName = "skills"
-	dotDirName = ".wayfinder-harness"
+	dotDirName = ".chartr"
 	// skillFile is the standard entry point of a skill directory.
 	skillFile = "SKILL.md"
 	// embedRoot is where the shipped library sits inside the binary.
@@ -95,12 +95,12 @@ type Roots struct {
 	// User is the operator's local library (`<configDir>/skills`): uncommitted,
 	// machine-local forks.
 	User string
-	// Workspace is a space's committed library (`.wayfinder-harness/skills`):
+	// Workspace is a space's committed library (`.chartr/skills`):
 	// shared, versioned, and — for content — the winning layer (ADR 0009).
 	Workspace string
 }
 
-// RootsFor derives the three roots from the harness's data root, the operator's
+// RootsFor derives the three roots from the chartr's data root, the operator's
 // config root, and a space's repo. Callers pass "" for a root that does not
 // apply (the ideate on-ramp, for instance, resolves with no space).
 func RootsFor(dataDir, configDir, repoDir string) Roots {
@@ -167,7 +167,7 @@ type Payload struct {
 	Markdown  string   `json:"markdown"`
 }
 
-// Names lists the skills the harness ships, in a stable order: the core, the
+// Names lists the skills the chartr ships, in a stable order: the core, the
 // roles, then the two library skills.
 func Names() []string {
 	names := []string{CoreSkill}
@@ -469,7 +469,7 @@ func splitFrontmatter(src string) (map[string]string, string) {
 func readmeText() string {
 	return fmt.Sprintf(`# Skill library
 
-These are the skills the harness injects into every session — standard `+"`SKILL.md`"+`
+These are the skills the chartr injects into every session — standard `+"`SKILL.md`"+`
 directories, yours to read, edit, and reuse in any agent CLI that reads the
 format. Vendored from %s (%s).
 
@@ -489,7 +489,7 @@ a ticket and role would receive, open the payload preview in the cockpit.
 A skill of the same name may be defined in three places, and the most specific one
 wins its **whole directory** — there is no per-file merge:
 
-    built-in (here) ‹ user (<config>/wayfinder-harness/skills/) ‹ workspace (<space>/.wayfinder-harness/skills/)
+    built-in (here) ‹ user (<config>/chartr/skills/) ‹ workspace (<space>/.chartr/skills/)
 
 A fork may record which shipped version it came from in its frontmatter:
 

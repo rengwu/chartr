@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Ticket 02 at the process boundary: the registry (register with an announced
@@ -34,7 +34,7 @@ type registerResp struct {
 	GitInited bool   `json:"gitInited"`
 }
 
-func register(t *testing.T, h *harnesstest.Harness, path string) registerResp {
+func register(t *testing.T, h *chartrtest.Chartr, path string) registerResp {
 	t.Helper()
 	code, body := h.Post("/api/spaces", map[string]string{"path": path})
 	if code != 200 {
@@ -73,7 +73,7 @@ func binding(t *testing.T, s model.Space, role string) model.RoleBinding {
 // repository, initialises one — reported in the action's response, never silent
 // (story 2). An already-registered repo is not re-initialised.
 func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 
 	plain := t.TempDir() // a folder, not a repo
 	if _, err := os.Stat(filepath.Join(plain, ".git")); !os.IsNotExist(err) {
@@ -98,7 +98,7 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 	}
 
 	// A second registration of an existing repo does not re-init.
-	repo := harnesstest.NewSpaceRepo(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp2 := register(t, h, repo)
 	if resp2.GitInited {
 		t.Error("gitInited = true for an existing repo, want false")
@@ -109,16 +109,16 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 // git, not the working tree, not committed config (story 4). Registering must
 // likewise write nothing into the repo: the registry lives in user config.
 func TestForgetNotDestroy(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteFile(t, repo, "README.md", "hello\n")
-	harnesstest.Git(t, repo, "add", "-A")
-	harnesstest.Git(t, repo, "commit", "-qm", "seed")
-	harnesstest.WriteFile(t, repo, "dirty.txt", "uncommitted work\n")
+	chartrtest.WriteFile(t, repo, "README.md", "hello\n")
+	chartrtest.Git(t, repo, "add", "-A")
+	chartrtest.Git(t, repo, "commit", "-qm", "seed")
+	chartrtest.WriteFile(t, repo, "dirty.txt", "uncommitted work\n")
 
-	head := harnesstest.Git(t, repo, "rev-parse", "HEAD")
-	status := harnesstest.Git(t, repo, "status", "--porcelain")
+	head := chartrtest.Git(t, repo, "rev-parse", "HEAD")
+	status := chartrtest.Git(t, repo, "status", "--porcelain")
 	files := worktreeFiles(t, repo)
 
 	resp := register(t, h, repo)
@@ -127,7 +127,7 @@ func TestForgetNotDestroy(t *testing.T) {
 	if got := worktreeFiles(t, repo); !equalStrings(got, files) {
 		t.Errorf("register changed the repo tree:\n before %v\n after  %v", files, got)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness/config.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
 		t.Error("register wrote a committed config file into the repo; it must not")
 	}
 
@@ -137,10 +137,10 @@ func TestForgetNotDestroy(t *testing.T) {
 	}
 
 	// Nothing in the repository moved.
-	if got := harnesstest.Git(t, repo, "rev-parse", "HEAD"); got != head {
+	if got := chartrtest.Git(t, repo, "rev-parse", "HEAD"); got != head {
 		t.Errorf("HEAD changed across register/forget: %s -> %s", head, got)
 	}
-	if got := harnesstest.Git(t, repo, "status", "--porcelain"); got != status {
+	if got := chartrtest.Git(t, repo, "status", "--porcelain"); got != status {
 		t.Errorf("git status changed across register/forget:\n before %q\n after  %q", status, got)
 	}
 	if got, want := readFile(t, filepath.Join(repo, "dirty.txt")), "uncommitted work\n"; got != want {
@@ -159,33 +159,33 @@ func TestForgetNotDestroy(t *testing.T) {
 }
 
 // The registry is a rebuildable index: deleting it costs re-adding folders,
-// never work. A harness started against a data dir whose spaces.toml is gone
+// never work. A chartr started against a data dir whose spaces.toml is gone
 // shows no spaces, and re-registering the untouched repo restores it.
 func TestRegistryLossIsRebuildable(t *testing.T) {
 	dataDir := t.TempDir()
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, "keep.txt", "authoritative work lives in the repo\n")
-	harnesstest.Git(t, repo, "add", "-A")
-	harnesstest.Git(t, repo, "commit", "-qm", "work")
-	head := harnesstest.Git(t, repo, "rev-parse", "HEAD")
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, repo, "keep.txt", "authoritative work lives in the repo\n")
+	chartrtest.Git(t, repo, "add", "-A")
+	chartrtest.Git(t, repo, "commit", "-qm", "work")
+	head := chartrtest.Git(t, repo, "rev-parse", "HEAD")
 
-	first := harnesstest.Start(t, harnesstest.WithDataDir(dataDir))
+	first := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
 	resp := register(t, first, repo)
 	if len(first.Snapshot(ctx(t)).Spaces) != 1 {
-		t.Fatal("space not registered on the first harness")
+		t.Fatal("space not registered on the first chartr")
 	}
 
-	// Lose the registry, then bring a fresh harness up on the same data dir.
+	// Lose the registry, then bring a fresh chartr up on the same data dir.
 	if err := os.Remove(filepath.Join(dataDir, "spaces.toml")); err != nil {
 		t.Fatalf("removing registry: %v", err)
 	}
-	second := harnesstest.Start(t, harnesstest.WithDataDir(dataDir))
+	second := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
 	if got := len(second.Snapshot(ctx(t)).Spaces); got != 0 {
 		t.Fatalf("after registry loss, snapshot has %d spaces, want 0", got)
 	}
 
 	// The repo — the authoritative state — is untouched, so re-adding restores.
-	if got := harnesstest.Git(t, repo, "rev-parse", "HEAD"); got != head {
+	if got := chartrtest.Git(t, repo, "rev-parse", "HEAD"); got != head {
 		t.Errorf("repo HEAD changed across registry loss: %s -> %s", head, got)
 	}
 	resp2 := register(t, second, repo)
@@ -202,11 +202,11 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 // inherits the rest, and the effective binding records where each field came
 // from so the inheritance is visible (story 39).
 func TestBindingMergeMatrix(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
 	// Committed workspace config: full bindings for two roles.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
 adapter = "claude"
 model = "sonnet-ws"
@@ -218,7 +218,7 @@ model = "gpt-ws"
 
 	// Local user config, keyed by space path: override just implement.model and
 	// just research.adapter — each inheriting the other field from workspace.
-	harnesstest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
 [spaces.%q.roles.implement]
 model = "sonnet-user"
 
@@ -261,9 +261,9 @@ func TestAdapterPresenceBadge(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
 adapter = "fake-agent"
 
@@ -290,10 +290,10 @@ adapter = "no-such-agent-xyz"
 // Pinning reorders the sidebar: a pinned space sorts ahead of unpinned ones
 // regardless of recency (story 6). The snapshot carries spaces already ordered.
 func TestPinOrdersAhead(t *testing.T) {
-	h := harnesstest.Start(t)
-	older := register(t, h, harnesstest.NewSpaceRepo(t))
+	h := chartrtest.Start(t)
+	older := register(t, h, chartrtest.NewSpaceRepo(t))
 	time.Sleep(5 * time.Millisecond) // distinct recency timestamps
-	newer := register(t, h, harnesstest.NewSpaceRepo(t))
+	newer := register(t, h, chartrtest.NewSpaceRepo(t))
 
 	// Newest-registered sorts first by recency.
 	if got := h.Snapshot(ctx(t)).Spaces[0].ID; got != newer.ID {

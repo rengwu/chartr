@@ -1,0 +1,14 @@
+[maps."chartr-design-impl"]
+kind = "implementation"
+
+[maps."chartr-design"]
+kind = "planning"
+
+[maps."reskin"]
+kind = "implementation"
+
+[maps."simplify"]
+kind = "planning"
+
+[maps."simplify-impl"]
+kind = "implementation"

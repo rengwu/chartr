@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // Ticket 09 at the process boundary: the spawn tracer bullet. With a stub agent
@@ -41,7 +41,7 @@ type spawnResp struct {
 	PayloadSha string `json:"payloadSha"`
 }
 
-func mustSpawn(t *testing.T, h *harnesstest.Harness, spaceID, slug string, num int, role string) spawnResp {
+func mustSpawn(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int, role string) spawnResp {
 	t.Helper()
 	code, body := h.Spawn(spaceID, slug, num, role)
 	if code != 200 {
@@ -76,27 +76,27 @@ func sessionTab(s model.Space) *model.Terminal {
 // gitignored payload matching the preview, an archived copy, the opener at the
 // agent's stdin, and a live session tab bound to exactly one ticket.
 func TestSpawnWiresTheWholeChain(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	// A stub `claude` on PATH — the default `implement` binding's adapter — records
 	// whatever is typed into it.
-	stdinLog := harnesstest.StubAgent(t, "claude")
+	stdinLog := chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
 
 	// --- The claim commit: pathspec-limited to the one ticket, with trailers. ---
 	rel := filepath.Join(".plan", "widget", "tickets", "01-first.md")
-	files := harnesstest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
 	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
 		t.Errorf("claim commit touched %v, want exactly [%s]", got, rel)
 	}
-	msg := harnesstest.Git(t, repo, "log", "-1", "--format=%B")
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
 	for _, want := range []string{
 		"Session: " + sp.SessionID,
 		"Agent: claude",
@@ -120,7 +120,7 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	}
 
 	// --- The gitignored payload, matching the preview word for word. ---
-	payloadRel := filepath.Join(".wayfinder-harness", "run", sp.SessionID, "payload.md")
+	payloadRel := filepath.Join(".chartr", "run", sp.SessionID, "payload.md")
 	payloadAbs := filepath.Join(repo, payloadRel)
 	got, err := os.ReadFile(payloadAbs)
 	if err != nil {
@@ -134,7 +134,7 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		t.Errorf("session payload %s is not gitignored — it could be swept into a commit", payloadRel)
 	}
 
-	// --- The archived copy in harness state, outside the repo. ---
+	// --- The archived copy in chartr state, outside the repo. ---
 	archive := filepath.Join(h.DataDir, "sessions", sp.SessionID, "payload.md")
 	arch, err := os.ReadFile(archive)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	}
 
 	// --- The opener arrived at the agent's stdin, naming the payload to read. ---
-	log := harnesstest.WaitForFileContains(t, stdinLog, payloadAbs, 5*time.Second)
+	log := chartrtest.WaitForFileContains(t, stdinLog, payloadAbs, 5*time.Second)
 	if !strings.Contains(log, "Read the file") {
 		t.Errorf("opener typed into the agent did not read this-file:\n%s", log)
 	}
@@ -168,14 +168,14 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 // nothing else: no claim is written, the ticket stays open, and the space is still
 // fully usable as a plain multiplexer.
 func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	// Classify implementation and bind `implement` to a binary that cannot exist.
 	cfg := implConfig("widget") + "\n[roles.implement]\nadapter = \"wf-absent-agent-xyz\"\n"
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", cfg)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", cfg)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 
@@ -212,12 +212,12 @@ func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
 // An unclassified map offers no sessions (ADR 0007): spawn is refused, and a role
 // from the other lifecycle is refused even once classified.
 func TestSpawnRespectsKind(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.StubAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
 	resp := register(t, h, repo)
 
 	// Unclassified: no sessions at all.
@@ -226,7 +226,7 @@ func TestSpawnRespectsKind(t *testing.T) {
 	}
 
 	// Classified implementation: a planning role (grill) is not offered.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	if code, body := h.Spawn(resp.ID, "widget", 1, "grill"); code != 400 || !strings.Contains(body, "not offered") {
 		t.Fatalf("grill on an implementation map = %d (%s), want 400 not-offered", code, body)
 	}
@@ -235,14 +235,14 @@ func TestSpawnRespectsKind(t *testing.T) {
 // A non-frontier ticket is not a fresh spawn's to take: a ticket held behind an
 // unresolved blocker is refused.
 func TestSpawnRefusesNonFrontier(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-open.md", ticket(1, "Open blocker", "[]", "task", ""))
-	harnesstest.WriteTicket(t, repo, "widget", "02-held.md", ticket(2, "Held", "[1]", "task", ""))
-	harnesstest.StubAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-open.md", ticket(1, "Open blocker", "[]", "task", ""))
+	chartrtest.WriteTicket(t, repo, "widget", "02-held.md", ticket(2, "Held", "[1]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
 	resp := register(t, h, repo)
 
 	// Ticket 2 is blocked by the still-open ticket 1 — not on the frontier.
@@ -254,14 +254,14 @@ func TestSpawnRefusesNonFrontier(t *testing.T) {
 // One session per space at a time: a second spawn while a session is live is
 // refused, and the refusal writes no second claim.
 func TestSpawnOneSessionPerSpace(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-a.md", ticket(1, "A", "[]", "task", ""))
-	harnesstest.WriteTicket(t, repo, "widget", "02-b.md", ticket(2, "B", "[]", "task", ""))
-	harnesstest.StubAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-a.md", ticket(1, "A", "[]", "task", ""))
+	chartrtest.WriteTicket(t, repo, "widget", "02-b.md", ticket(2, "B", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
 	resp := register(t, h, repo)
 
 	mustSpawn(t, h, resp.ID, "widget", 1, "implement")

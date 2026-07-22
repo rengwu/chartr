@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Ticket 05 at the process boundary: the effective config surface. The read half
@@ -42,7 +42,7 @@ func skill(t *testing.T, s model.Space, name string) model.ResolvedSkill {
 	return model.ResolvedSkill{}
 }
 
-func setBinding(t *testing.T, h *harnesstest.Harness, spaceID string, body map[string]any) (int, string) {
+func setBinding(t *testing.T, h *chartrtest.Chartr, spaceID string, body map[string]any) (int, string) {
 	t.Helper()
 	return h.Put("/api/spaces/"+spaceID+"/config/binding", body)
 }
@@ -51,25 +51,25 @@ func setBinding(t *testing.T, h *harnesstest.Harness, spaceID string, body map[s
 // and PATH presence, the resolved skill library with the layer that won each
 // directory, map kinds, and the path of every participating layer (stories 33–37).
 func TestSnapshotCarriesTheEffectiveConfigSurface(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
 model = "sonnet-ws"
 
 [maps."widget"]
 kind = "implementation"
 `)
-	harnesstest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
 [spaces.%q.roles.implement]
 adapter = "codex"
 `, repo))
 	// A workspace fork of one skill: the committed layer wins its whole directory.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/skills/implement/SKILL.md",
+	chartrtest.WriteFile(t, repo, ".chartr/skills/implement/SKILL.md",
 		"---\nname: implement\ndescription: this space's own\n---\n\nHouse rules.\n")
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 	snap := h.Snapshot(ctx(t))
@@ -87,7 +87,7 @@ adapter = "codex"
 	if got := skill(t, s, "grill").Layer; got != "built-in" {
 		t.Errorf("grill skill resolves from %q, want built-in", got)
 	}
-	if got := skill(t, s, "implement").Dir; got != filepath.Join(repo, ".wayfinder-harness/skills/implement") {
+	if got := skill(t, s, "implement").Dir; got != filepath.Join(repo, ".chartr/skills/implement") {
 		t.Errorf("implement skill dir = %q, want the workspace copy", got)
 	}
 
@@ -98,7 +98,7 @@ adapter = "codex"
 
 	// Every participating layer names where it lives — the space's own on the
 	// space, the shared ones on the model.
-	if got, want := layer(t, s.Layers, "workspace-config").Path, filepath.Join(repo, ".wayfinder-harness/config.toml"); got != want {
+	if got, want := layer(t, s.Layers, "workspace-config").Path, filepath.Join(repo, ".chartr/config.toml"); got != want {
 		t.Errorf("workspace config path = %q, want %q", got, want)
 	}
 	if !layer(t, s.Layers, "workspace-config").Exists {
@@ -121,9 +121,9 @@ adapter = "codex"
 // carried on the skill itself, not only as a warning — the surface states the
 // stale-fork condition where it renders the skill (story 34).
 func TestResolvedSkillCarriesStaleFork(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/skills/grill/SKILL.md",
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, repo, ".chartr/skills/grill/SKILL.md",
 		"---\nname: grill\ndescription: forked\nforked_from: deadbeef\n---\n\nMine.\n")
 
 	resp := register(t, h, repo)
@@ -145,16 +145,16 @@ func TestResolvedSkillCarriesStaleFork(t *testing.T) {
 // operator's bytes around it intact, and re-derives so the new value and its new
 // provenance reflect straight back (stories 39–41, 43).
 func TestBindingEditWritesOnlyTheUserLayer(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
 	const workspaceCfg = `# committed, shared, and not the UI's to write
 [roles.implement]
 adapter = "claude"
 model = "sonnet-ws"
 `
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", workspaceCfg)
-	harnesstest.WriteFile(t, h.DataDir, "user.toml", "# my machine\n")
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", workspaceCfg)
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", "# my machine\n")
 
 	resp := register(t, h, repo)
 
@@ -170,7 +170,7 @@ model = "sonnet-ws"
 	assertField(t, "implement.adapter", impl.Adapter, "claude", impl.AdapterFrom, "workspace")
 
 	// The committed workspace config is untouched, byte for byte.
-	if got := readFile(t, filepath.Join(repo, ".wayfinder-harness/config.toml")); got != workspaceCfg {
+	if got := readFile(t, filepath.Join(repo, ".chartr/config.toml")); got != workspaceCfg {
 		t.Errorf("the UI wrote committed workspace config:\n%s", got)
 	}
 	// The user file kept the operator's comment and gained the override.
@@ -195,8 +195,8 @@ model = "sonnet-ws"
 // args round-trips as a list, and the surface refuses what it cannot honour —
 // an unknown role or field, an unknown space — rather than writing anything.
 func TestBindingEditArgsAndRefusals(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	if code, body := setBinding(t, h, resp.ID, map[string]any{
@@ -228,10 +228,10 @@ func TestBindingEditArgsAndRefusals(t *testing.T) {
 // Map kind stays classify-only: the surface renders it, and there is no
 // config-surface write that sets it (ADR 0007 survives ticket 03's cut).
 func TestSurfaceNeverWritesKind(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	if code, _ := setBinding(t, h, resp.ID, map[string]any{
@@ -239,7 +239,7 @@ func TestSurfaceNeverWritesKind(t *testing.T) {
 	}); code != 400 {
 		t.Error("the binding editor accepted a kind write; kind is classify-only")
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness/config.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
 		t.Error("a refused edit wrote committed config")
 	}
 	if got := findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget").Kind; got != "" {
@@ -250,9 +250,9 @@ func TestSurfaceNeverWritesKind(t *testing.T) {
 // The open action resolves a *named* layer server-side and refuses anything
 // else, so a client-supplied path can never reach the editor (story 45).
 func TestOpenResolvesNamedLayersOnly(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", "[roles.implement]\nmodel = \"x\"\n")
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", "[roles.implement]\nmodel = \"x\"\n")
 	resp := register(t, h, repo)
 
 	// A stub editor on $VISUAL records what it was handed, so the test asserts the
@@ -271,7 +271,7 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &opened); err != nil {
 		t.Fatalf("open response not JSON: %v (%q)", err, body)
 	}
-	want := filepath.Join(repo, ".wayfinder-harness/config.toml")
+	want := filepath.Join(repo, ".chartr/config.toml")
 	if opened.Path != want || !opened.Exists || opened.Opened != "editor" {
 		t.Errorf("open = %+v, want %q opened in the editor", opened, want)
 	}
@@ -306,8 +306,8 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 // A layer with nothing on disk yet is reported with its path and left alone: the
 // surface says where the value would go, and a read-shaped action creates nothing.
 func TestOpenAbsentLayerSurfacesThePath(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
 	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "workspace-config"})
@@ -317,10 +317,10 @@ func TestOpenAbsentLayerSurfacesThePath(t *testing.T) {
 	if !strings.Contains(body, `"exists":false`) || !strings.Contains(body, `"opened":"none"`) {
 		t.Errorf("open of an absent layer = %s, want it surfaced as absent", body)
 	}
-	if !strings.Contains(body, filepath.Join(repo, ".wayfinder-harness/config.toml")) {
+	if !strings.Contains(body, filepath.Join(repo, ".chartr/config.toml")) {
 		t.Errorf("open of an absent layer did not surface its path: %s", body)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness/config.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
 		t.Error("opening an absent layer created the file")
 	}
 }
@@ -341,7 +341,7 @@ func stubEditor(t *testing.T) string {
 }
 
 // waitForFile reads a file the stub editor writes asynchronously, retrying until
-// it appears — the harness starts the editor and deliberately does not wait on it.
+// it appears — the chartr starts the editor and deliberately does not wait on it.
 func waitForFile(t *testing.T, path string) string {
 	t.Helper()
 	for i := 0; i < 100; i++ {

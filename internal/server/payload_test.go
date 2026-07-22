@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
-// The skill library and payload preview at the process boundary. The harness
+// The skill library and payload preview at the process boundary. The chartr
 // materializes a hackable `SKILL.md` library, resolves each skill across
 // built-in ‹ user ‹ workspace with whole-skill shadowing, surfaces a fork behind
 // the shipped default, and composes core + role + context bundle into one
@@ -20,7 +20,7 @@ import (
 // and on the files on disk; no test reaches into the package. The focused
 // resolution/assembly unit seam lives in internal/prompt (prompt_test.go).
 
-func getPayload(t *testing.T, h *harnesstest.Harness, id, slug string, num int, role string) (int, prompt.Payload, string) {
+func getPayload(t *testing.T, h *chartrtest.Chartr, id, slug string, num int, role string) (int, prompt.Payload, string) {
 	t.Helper()
 	code, body := h.Get(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/payload?role=%s", id, slug, num, role))
 	var p prompt.Payload
@@ -98,8 +98,8 @@ func writeUserSkill(t *testing.T, configDir, name, extra, body string) {
 // writeWorkspaceSkill defines a skill in the space's committed library.
 func writeWorkspaceSkill(t *testing.T, repo, name, extra, body string) {
 	t.Helper()
-	harnesstest.WriteFile(t, repo,
-		filepath.Join(".wayfinder-harness", "skills", name, "SKILL.md"), skillSource(name, extra, body))
+	chartrtest.WriteFile(t, repo,
+		filepath.Join(".chartr", "skills", name, "SKILL.md"), skillSource(name, extra, body))
 }
 
 // The preview composes a session's whole payload: the resolved core and role
@@ -107,14 +107,14 @@ func writeWorkspaceSkill(t *testing.T, repo, name, extra, body string) {
 // — glossary, map body, this ticket, and each blocker's answer pulled inline. The
 // composed markdown is the single document a session would be told.
 func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	// A resolved blocker whose answer the bundle must inline.
-	harnesstest.WriteTicket(t, repo, "widget", "01-base.md",
+	chartrtest.WriteTicket(t, repo, "widget", "01-base.md",
 		ticket(1, "Base decision", "[]", "task", "## Answer\nUSE-THE-BASE-APPROACH."))
-	harnesstest.WriteTicket(t, repo, "widget", "02-dependent.md",
+	chartrtest.WriteTicket(t, repo, "widget", "02-dependent.md",
 		ticket(2, "Dependent work", "[1]", "task", ""))
 
 	resp := register(t, h, repo)
@@ -154,7 +154,7 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	}
 
 	// The composed markdown is one document carrying prompt and context together.
-	if !strings.Contains(p.Markdown, "wayfinder-harness session") {
+	if !strings.Contains(p.Markdown, "chartr session") {
 		t.Errorf("composed markdown missing the core prompt:\n%s", p.Markdown)
 	}
 	if !strings.Contains(p.Markdown, "# Context") || !strings.Contains(p.Markdown, "USE-THE-BASE-APPROACH") {
@@ -168,13 +168,13 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 // bundle says the blocker is not resolved rather than handing a session an
 // unblessed proposal as though it were the answer (spec, ignore-don't-tolerate).
 func TestProposedAnswerIsNotABlockersAnswer(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-base.md",
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-base.md",
 		ticket(1, "Base decision", "[]", "task", "## Proposed Answer\nUSE-THE-UNBLESSED-APPROACH."))
-	harnesstest.WriteTicket(t, repo, "widget", "02-dependent.md",
+	chartrtest.WriteTicket(t, repo, "widget", "02-dependent.md",
 		ticket(2, "Dependent work", "[1]", "task", ""))
 
 	resp := register(t, h, repo)
@@ -202,10 +202,10 @@ func TestProposedAnswerIsNotABlockersAnswer(t *testing.T) {
 // whole matrix is observable in the resolved core part's single segment and its
 // layer tag.
 func TestSkillShadowingMatrix(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	// Baseline: the shipped default, one built-in segment.
@@ -222,7 +222,7 @@ func TestSkillShadowingMatrix(t *testing.T) {
 	if got := segLayers(core); !equalStrings(got, []string{"user"}) {
 		t.Errorf("user-shadowed core layers = %v, want [user]", got)
 	}
-	if txt := segText(core); !strings.Contains(txt, "USER-CORE-SKILL") || strings.Contains(txt, "wayfinder-harness session") {
+	if txt := segText(core); !strings.Contains(txt, "USER-CORE-SKILL") || strings.Contains(txt, "chartr session") {
 		t.Errorf("user skill did not shadow the shipped body:\n%s", txt)
 	}
 
@@ -253,10 +253,10 @@ func TestSkillShadowingMatrix(t *testing.T) {
 // rides both the space snapshot and the preview; a fork recording the current
 // shipped hash draws no warning.
 func TestBehindDefaultSurfaced(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	// A stale fork: a skill recording a `forked_from` that is not the shipped hash.
@@ -294,10 +294,10 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 // composition with no restart. The materialized skill directory *is* the built-in
 // layer, so an edit there composes without shadowing anything.
 func TestMaterializedLibraryEditsCompose(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	// The library was materialized on start; edit a role skill in place.
@@ -322,10 +322,10 @@ func TestMaterializedLibraryEditsCompose(t *testing.T) {
 // The preview refuses what it cannot compose, so a bad request is a response, not
 // a surprise: an unknown or missing role, a missing space, map, or ticket.
 func TestPayloadPreviewRejectsBadInput(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	if code, _ := h.Get(fmt.Sprintf("/api/spaces/%s/maps/widget/tickets/1/payload?role=nonesuch", resp.ID)); code != 400 {

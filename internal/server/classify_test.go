@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Ticket 04 at the process boundary: kind is declared, never inferred (ADR
@@ -21,7 +21,7 @@ import (
 // through the gate that will govern them: the map's declared Kind. Every
 // assertion is on the public control-socket snapshot and the files on disk.
 
-func classify(t *testing.T, h *harnesstest.Harness, spaceID, slug, kind string) (int, string) {
+func classify(t *testing.T, h *chartrtest.Chartr, spaceID, slug, kind string) (int, string) {
 	t.Helper()
 	return h.Post(
 		fmt.Sprintf("/api/spaces/%s/maps/%s/classify", spaceID, slug),
@@ -35,16 +35,16 @@ func classify(t *testing.T, h *harnesstest.Harness, spaceID, slug, kind string) 
 // appends rather than rewrites — leaves the operator's existing role bindings
 // untouched.
 func TestClassifyDeclaresKindAndPreservesConfig(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
 	// A pre-existing committed config with a role binding the append must keep.
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
 model = "sonnet-ws"
 `)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 
@@ -71,7 +71,7 @@ model = "sonnet-ws"
 	}
 
 	// The declaration landed in the committed layer, keyed by slug.
-	cfg := readFile(t, filepath.Join(repo, ".wayfinder-harness/config.toml"))
+	cfg := readFile(t, filepath.Join(repo, ".chartr/config.toml"))
 	if !strings.Contains(cfg, "widget") || !strings.Contains(cfg, "implementation") {
 		t.Errorf("committed config does not declare the kind:\n%s", cfg)
 	}
@@ -88,22 +88,22 @@ model = "sonnet-ws"
 // pre-filled for both kinds, so classification is a one-keystroke confirm
 // without ever being automatic.
 func TestClassifyGuessMatchesConventions(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
 	// `-impl` suffix → implementation.
-	harnesstest.WriteMap(t, repo, "analytics-impl", mapBody)
-	harnesstest.WriteTicket(t, repo, "analytics-impl", "01-a.md", ticket(1, "A", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "analytics-impl", mapBody)
+	chartrtest.WriteTicket(t, repo, "analytics-impl", "01-a.md", ticket(1, "A", "[]", "task", ""))
 
 	// No suffix, but every ticket typed `task` → implementation.
-	harnesstest.WriteMap(t, repo, "all-tasks", mapBody)
-	harnesstest.WriteTicket(t, repo, "all-tasks", "01-a.md", ticket(1, "A", "[]", "task", ""))
-	harnesstest.WriteTicket(t, repo, "all-tasks", "02-b.md", ticket(2, "B", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "all-tasks", mapBody)
+	chartrtest.WriteTicket(t, repo, "all-tasks", "01-a.md", ticket(1, "A", "[]", "task", ""))
+	chartrtest.WriteTicket(t, repo, "all-tasks", "02-b.md", ticket(2, "B", "[]", "task", ""))
 
 	// No suffix and a non-task ticket present → planning.
-	harnesstest.WriteMap(t, repo, "discovery", mapBody)
-	harnesstest.WriteTicket(t, repo, "discovery", "01-a.md", ticket(1, "A", "[]", "research", ""))
-	harnesstest.WriteTicket(t, repo, "discovery", "02-b.md", ticket(2, "B", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "discovery", mapBody)
+	chartrtest.WriteTicket(t, repo, "discovery", "01-a.md", ticket(1, "A", "[]", "research", ""))
+	chartrtest.WriteTicket(t, repo, "discovery", "02-b.md", ticket(2, "B", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
@@ -129,11 +129,11 @@ func TestClassifyGuessMatchesConventions(t *testing.T) {
 // fresh guess — never an error (ADR 0007). Discovery is by notice, so the test
 // renames while watching and waits for the push.
 func TestRenamedMapDanglesToUnclassified(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "orig", mapBody)
-	harnesstest.WriteTicket(t, repo, "orig", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "orig", mapBody)
+	chartrtest.WriteTicket(t, repo, "orig", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	if code, body := classify(t, h, resp.ID, "orig", "implementation"); code != 200 {
@@ -176,10 +176,10 @@ func TestRenamedMapDanglesToUnclassified(t *testing.T) {
 // silently rewrite the file (a classified map is not inert, so this only guards
 // a race or a hand-edited entry).
 func TestClassifyRejectsBadInput(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
 	if code, _ := classify(t, h, resp.ID, "widget", "planing"); code != 400 {
@@ -197,18 +197,18 @@ func TestClassifyRejectsBadInput(t *testing.T) {
 	}
 }
 
-// A committed kind the harness does not recognise is surfaced as a warning and
+// A committed kind the chartr does not recognise is surfaced as a warning and
 // the map stays unclassified-and-inert — adoption is never gated on config lint,
-// and no lifecycle runs on a value the harness cannot read.
+// and no lifecycle runs on a value the chartr cannot read.
 func TestUnrecognisedCommittedKindStaysInert(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", `
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [maps."widget"]
 kind = "planing"
 `)
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	resp := register(t, h, repo)
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)

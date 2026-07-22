@@ -1,6 +1,6 @@
 # Build fresh, reusing wayfinder-maps' model layer
 
-wayfinder-maps is a solid read-only viewer, but its architecture is deliberately stateless — no build step, vanilla JS inlined by Go, re-read-on-refresh, no state file — and the harness needs the opposite: live PTYs, background sessions, and pushed state. Rather than bolt a stateful runtime onto a codebase whose charm is having none, wayfinder-harness is a separate project that lifts wayfinder-maps' model layer (`Load`, `Layers`, `Frontier`, derived `Status`, `lint`) and its star-map renderer, copying freely wherever copying elevates the result.
+wayfinder-maps is a solid read-only viewer, but its architecture is deliberately stateless — no build step, vanilla JS inlined by Go, re-read-on-refresh, no state file — and the chartr needs the opposite: live PTYs, background sessions, and pushed state. Rather than bolt a stateful runtime onto a codebase whose charm is having none, chartr is a separate project that lifts wayfinder-maps' model layer (`Load`, `Layers`, `Frontier`, derived `Status`, `lint`) and its star-map renderer, copying freely wherever copying elevates the result.
 
 ## Considered Options
 

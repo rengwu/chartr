@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // Ticket 15 at the process boundary: the ideate on-ramp. A live, ticketless agent
@@ -23,9 +23,9 @@ import (
 // binding, and the starter prompt reaches the agent's stdin through the same
 // read-this-file opener a real session uses, byte-matching the composed prompt.
 func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	stdinLog := harnesstest.StubAgent(t, "claude") // the grill binding's built-in adapter
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	stdinLog := chartrtest.StubAgent(t, "claude") // the grill binding's built-in adapter
 
 	resp := register(t, h, repo)
 	id := h.Ideate(resp.ID)
@@ -39,7 +39,7 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 		t.Errorf("ideate tab carries a Session binding %+v, want none — it must not read as a real session", tab.Session)
 	}
 
-	promptRel := filepath.Join(".wayfinder-harness", "run", id, "payload.md")
+	promptRel := filepath.Join(".chartr", "run", id, "payload.md")
 	promptAbs := filepath.Join(repo, promptRel)
 	got, err := os.ReadFile(promptAbs)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 		t.Errorf("ideate prompt on disk does not match the composed starter prompt:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
-	log := harnesstest.WaitForFileContains(t, stdinLog, promptAbs, 5*time.Second)
+	log := chartrtest.WaitForFileContains(t, stdinLog, promptAbs, 5*time.Second)
 	if !strings.Contains(log, "Read the file") {
 		t.Errorf("opener typed into the agent did not read-this-file:\n%s", log)
 	}
@@ -59,17 +59,17 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 // leaves git history and every ticket exactly as it found them, even in a space
 // that has both.
 func TestIdeateWritesNoClaimCommit(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.StubAgent(t, "claude")
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.StubAgent(t, "claude")
 
 	// A committed baseline so "no commit" is a real assertion, not just "no
 	// commits exist yet".
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.Git(t, repo, "add", "-A")
-	harnesstest.Git(t, repo, "commit", "-q", "-m", "baseline")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.Git(t, repo, "add", "-A")
+	chartrtest.Git(t, repo, "commit", "-q", "-m", "baseline")
 	before := commitCount(t, repo)
 
 	resp := register(t, h, repo)
@@ -88,9 +88,9 @@ func TestIdeateWritesNoClaimCommit(t *testing.T) {
 // it (unlike a real session, which stays pinned to its ticket for resume/respawn/
 // release).
 func TestIdeateHasNoDeathHalt(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	marker := harnesstest.StubDyingAgent(t, "claude")
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	marker := chartrtest.StubDyingAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	id := h.Ideate(resp.ID)
@@ -109,9 +109,9 @@ func TestIdeateHasNoDeathHalt(t *testing.T) {
 // ideate session is told — the on-disk hackable markdown the Done-when calls
 // for.
 func TestIdeateStarterPromptIsEditable(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.StubAgent(t, "claude")
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.StubAgent(t, "claude")
 
 	materialized := filepath.Join(h.DataDir, "skills", "ideate", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
@@ -124,7 +124,7 @@ func TestIdeateStarterPromptIsEditable(t *testing.T) {
 	resp := register(t, h, repo)
 	id := h.Ideate(resp.ID)
 
-	got, err := os.ReadFile(filepath.Join(repo, ".wayfinder-harness", "run", id, "payload.md"))
+	got, err := os.ReadFile(filepath.Join(repo, ".chartr", "run", id, "payload.md"))
 	if err != nil {
 		t.Fatalf("ideate prompt not written: %v", err)
 	}

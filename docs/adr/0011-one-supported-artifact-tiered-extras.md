@@ -1,10 +1,10 @@
 # One supported artifact; everything else is best-effort
 
-The harness ships as **one supported artifact**: the pure-Go binary that serves the browser frontend from its embedded Vite `dist/` (ADR 0010) — cross-compiled for macOS, Linux and Windows from a single CI job, because nothing in it requires cgo. Everything beyond it is a **best-effort tier** that may fail to build without blocking a release: the native webview shell per platform (cgo + WebKitGTK on Linux, cgo on macOS, cgo-free `go-webview2` on Windows), and native Windows itself (built and smoke-tested in CI, not driven daily; WSL2 is the documented sure path).
+The chartr ships as **one supported artifact**: the pure-Go binary that serves the browser frontend from its embedded Vite `dist/` (ADR 0010) — cross-compiled for macOS, Linux and Windows from a single CI job, because nothing in it requires cgo. Everything beyond it is a **best-effort tier** that may fail to build without blocking a release: the native webview shell per platform (cgo + WebKitGTK on Linux, cgo on macOS, cgo-free `go-webview2` on Windows), and native Windows itself (built and smoke-tested in CI, not driven daily; WSL2 is the documented sure path).
 
 Distribution is **GitHub releases only**, goreleaser-built and checksummed, with best-effort shells attached as extra assets where they built. Declined: `go install`, Homebrew, and a Claude Code plugin marketplace entry — the last deliberately, an agent-agnostic tool not distributed through one agent's storefront.
 
-There is **no doctor command**. The environment diagnosis is the registry badge and the spawn-time hard-block message (ticket 05), surfaced at the moment of need. A cold start with zero agent CLIs installed works everywhere except spawn — the agent CLIs are not the harness's to ship.
+There is **no doctor command**. The environment diagnosis is the registry badge and the spawn-time hard-block message (ticket 05), surfaced at the moment of need. A cold start with zero agent CLIs installed works everywhere except spawn — the agent CLIs are not the chartr's to ship.
 
 ## Considered Options
 

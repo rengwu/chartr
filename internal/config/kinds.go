@@ -6,7 +6,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // DeclareMapKind returns the committed workspace-config bytes with map `slug`

@@ -1,5 +1,5 @@
 // Command webview is the best-effort native shell for the cockpit (ADR 0011,
-// ADR 0013): the same in-process server the supported `harness` binary runs,
+// ADR 0013): the same in-process server the supported `chartr` binary runs,
 // wrapped in a real OS window instead of a browser tab.
 //
 // The package is split by build tag. `main_webview.go` (//go:build webview) is
@@ -22,7 +22,7 @@ import (
 // lockName is the single-instance lock, relative to the data dir. Keying the
 // lock to the data dir is what makes distinct --data-dir roots distinct
 // instances by construction (spec story 55): there is no global lock to share.
-const lockName = ".wayfinder-harness/shell.lock"
+const lockName = ".chartr/shell.lock"
 
 // lockInfo is what a live shell records about itself: enough for a second
 // launch to either raise that window or tell the operator exactly where it is.

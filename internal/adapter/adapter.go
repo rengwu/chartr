@@ -1,7 +1,7 @@
 // Package adapter is the agent-agnostic seam between a resolved role binding and
-// the process the harness actually launches (ADR 0002, as amended by the
+// the process the chartr actually launches (ADR 0002, as amended by the
 // interactive-spawn decision). An adapter turns a binding's {model, args} into
-// the argv that starts *that* agent's own interactive TUI; the harness then runs
+// the argv that starts *that* agent's own interactive TUI; the chartr then runs
 // it in a PTY and types a one-line opener in. There is no headless mode and no
 // system-prompt flag — role and context ride the payload body uniformly (spec,
 // Sessions and adapters), so every agent is driven through one path.
@@ -29,7 +29,7 @@ type Launch struct {
 }
 
 // Adapter maps a role binding onto one agent's command line. It never launches
-// anything: the harness owns the PTY and the process (so liveness, stop, and the
+// anything: the chartr owns the PTY and the process (so liveness, stop, and the
 // opener stay uniform across agents). Command is pure so the spawn path — and its
 // tests — can assert exactly what will run without a process.
 type Adapter interface {
@@ -51,7 +51,7 @@ func For(name string) Adapter {
 }
 
 // modelFlagAdapter is the common shape: the model rides a single flag, then the
-// binding's extra args follow. Both agents the harness ships bindings for take
+// binding's extra args follow. Both agents the chartr ships bindings for take
 // `--model`; the type keeps the flag one edit away from a per-agent override.
 type modelFlagAdapter struct {
 	name string
@@ -67,7 +67,7 @@ func (a modelFlagAdapter) Command(model string, args []string) Launch {
 	return Launch{Name: a.name, Args: argv}
 }
 
-// generic drives any CLI the operator binds that the harness ships no specific
+// generic drives any CLI the operator binds that the chartr ships no specific
 // adapter for: model through `--model`, args appended. It forfeits nothing the
 // binding does not already forfeit — the args hatch is where an agent that wants
 // a different flag gets it.

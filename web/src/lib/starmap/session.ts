@@ -1,7 +1,7 @@
 // The session overlay's vocabulary: what a live session looks like on top of a
 // star, and how that state is derived from the pushed model.
 //
-// The base palette (theme.ts) is spent on the six derived statuses. The harness
+// The base palette (theme.ts) is spent on the six derived statuses. The chartr
 // adds a second axis — a session's liveness — so the overlay is deliberately
 // *not* more colour: the session is a **body**, an amber moon orbiting the star
 // it holds (spec, stories 25–27). Liveness is the moon's motion.

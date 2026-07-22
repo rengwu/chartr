@@ -1,6 +1,6 @@
 ---
 name: tracker-convention
-description: The wayfinder map format the harness reads — the files under .plan/, a ticket's frontmatter and sections, and the status derived from them. Restates the convention; it does not change it.
+description: The wayfinder map format the chartr reads — the files under .plan/, a ticket's frontmatter and sections, and the status derived from them. Restates the convention; it does not change it.
 ---
 
 # The wayfinder tracker convention
@@ -9,7 +9,7 @@ A wayfinder effort — a **map** — is a directory of markdown under `.plan/`. 
 is no database and no status field: everything a reader needs is in the files,
 and a ticket's state is *derived* from what the ticket already says. This skill
 restates that format so a session (or any other tool) reads a map the same way
-the harness does. It describes the convention; it does not change it. The shared
+the chartr does. It describes the convention; it does not change it. The shared
 vocabulary lives alongside this file in [`glossary.md`](glossary.md).
 
 ## Layout
@@ -77,7 +77,7 @@ What was decided or built, why, and what was deliberately left out.
 - **`undermined_by`** — tickets whose answers have called this one's into
   question. A flag for a human, never an automatic reopening.
 - **`claimed_by` / `claimed_at`** — the live session holding the ticket. The
-  harness writes these at spawn and removes them when the session dies without
+  chartr writes these at spawn and removes them when the session dies without
   answering; nothing else touches them.
 - **`assets`** — files under the map's `assets/` this ticket refers to.
 

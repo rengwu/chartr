@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // decodeSpawn parses a spawn/respawn success body (both return the same shape).
@@ -41,7 +41,7 @@ func decodeResume(t *testing.T, body string) struct {
 }
 
 // Ticket 10 at the process boundary: liveness and the death halt. With a stub
-// agent that dies on cue, the harness detects the death, pins the dead session to
+// agent that dies on cue, the chartr detects the death, pins the dead session to
 // its ticket with scrollback intact, and does nothing on its own — the operator
 // resolves it exactly three ways (resume, respawn, release), each an HTTP action,
 // so the absence of autonomous action is asserted, not assumed. Separately: the
@@ -59,7 +59,7 @@ func planningConfig(slug string) string {
 // two once a release or a re-claim appends its own commit.
 func commitCount(t *testing.T, repo string) string {
 	t.Helper()
-	return harnesstest.Git(t, repo, "rev-list", "--count", "HEAD")
+	return chartrtest.Git(t, repo, "rev-list", "--count", "HEAD")
 }
 
 // ticketFileBody reads a ticket file's current bytes from the working tree.
@@ -75,7 +75,7 @@ func ticketFileBody(t *testing.T, repo, slug, filename string) string {
 // spawnThenDie spawns a session against a dying stub and waits until it is pinned
 // dead — the precondition every halt test starts from. It returns the dead
 // session's id.
-func spawnThenDie(t *testing.T, h *harnesstest.Harness, spaceID, slug string, num int, role string) string {
+func spawnThenDie(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int, role string) string {
 	t.Helper()
 	sp := mustSpawn(t, h, spaceID, slug, num, role)
 	waitForDeadSession(t, h, spaceID)
@@ -83,7 +83,7 @@ func spawnThenDie(t *testing.T, h *harnesstest.Harness, spaceID, slug string, nu
 }
 
 // waitForDeadSession polls until the space's session tab reads dead and pinned.
-func waitForDeadSession(t *testing.T, h *harnesstest.Harness, spaceID string) model.Terminal {
+func waitForDeadSession(t *testing.T, h *chartrtest.Chartr, spaceID string) model.Terminal {
 	t.Helper()
 	c, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -95,16 +95,16 @@ func waitForDeadSession(t *testing.T, h *harnesstest.Harness, spaceID string) mo
 }
 
 // A session whose process exits is detected dead, stays pinned to its ticket with
-// its scrollback preserved, and the harness takes no action of its own: the claim
+// its scrollback preserved, and the chartr takes no action of its own: the claim
 // stands, no commit beyond it is written, and the dead session lingers untouched.
 func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	marker := harnesstest.StubDyingAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	marker := chartrtest.StubDyingAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	sid := spawnThenDie(t, h, resp.ID, "widget", 1, "implement")
@@ -130,7 +130,7 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 		t.Errorf("dead session's scrollback did not survive; got %q", out)
 	}
 
-	// The harness took nothing on its own: the ticket still derives claimed, and
+	// The chartr took nothing on its own: the ticket still derives claimed, and
 	// only the claim commit exists — no auto-release, no auto-requeue.
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "claimed" {
 		t.Errorf("ticket after a death = %q, want claimed (the stale claim stands)", st)
@@ -158,13 +158,13 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 // derives open and takeable again, recorded as its own pathspec-limited commit that
 // removes the claim, and the dead tab drops.
 func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.StubDyingAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubDyingAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	sid := spawnThenDie(t, h, resp.ID, "widget", 1, "implement")
@@ -189,7 +189,7 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 		t.Errorf("commits after release = %s, want 2 (claim + release)", n)
 	}
 	rel := filepath.Join(".plan", "widget", "tickets", "01-first.md")
-	files := harnesstest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
 	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
 		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
 	}
@@ -202,13 +202,13 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 // one (re-stamped in place, its own commit), so the ticket stays claimed but by the
 // new session, and nothing is doubled.
 func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.StubDyingAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubDyingAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	oldSid := spawnThenDie(t, h, resp.ID, "widget", 1, "implement")
@@ -252,13 +252,13 @@ func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
 // ticket; the claim stands (no new commit), and the payload is still in place for
 // the agent to walk back into.
 func TestHaltResumeRelaunchesSameSession(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.StubDyingAgent(t, "claude")
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubDyingAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	sid := spawnThenDie(t, h, resp.ID, "widget", 1, "implement")
@@ -285,7 +285,7 @@ func TestHaltResumeRelaunchesSameSession(t *testing.T) {
 		t.Errorf("resume did not seat the same session on its ticket: %+v", tab)
 	}
 	// The payload the opener points at is on disk for the relaunched agent.
-	if _, err := os.Stat(filepath.Join(repo, ".wayfinder-harness", "run", sid, "payload.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(repo, ".chartr", "run", sid, "payload.md")); err != nil {
 		t.Errorf("resume did not keep the session's payload in place: %v", err)
 	}
 }
@@ -293,13 +293,13 @@ func TestHaltResumeRelaunchesSameSession(t *testing.T) {
 // The halt actions require a dead session: a live one is refused, so nothing the
 // operator has not explicitly ended can be resumed, respawned, or released.
 func TestHaltRefusesLiveSession(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	harnesstest.StubAgent(t, "claude") // blocking: the session stays live
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude") // blocking: the session stays live
 
 	resp := register(t, h, repo)
 	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
@@ -318,24 +318,24 @@ func TestHaltRefusesLiveSession(t *testing.T) {
 // the threshold reads quiet, while a grill (HITL) session — supposed to sit idle
 // waiting on its human — never does.
 func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
-	h := harnesstest.Start(t, harnesstest.WithQuietAfter(150*time.Millisecond))
+	h := chartrtest.Start(t, chartrtest.WithQuietAfter(150*time.Millisecond))
 
 	// One shared stub `claude` on PATH — the adapter both grill and implement bind
 	// to — that stays live and silent.
-	harnesstest.StubAgent(t, "claude")
+	chartrtest.StubAgent(t, "claude")
 
 	// AFK space: an implementation map, spawn implement.
-	afk := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, afk, "widget", mapBody)
-	harnesstest.WriteFile(t, afk, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	afk := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, afk, "widget", mapBody)
+	chartrtest.WriteFile(t, afk, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	afkID := register(t, h, afk).ID
 
 	// HITL space: a planning map, spawn grill.
-	hitl := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteMap(t, hitl, "plan", mapBody)
-	harnesstest.WriteFile(t, hitl, ".wayfinder-harness/config.toml", planningConfig("plan"))
-	harnesstest.WriteTicket(t, hitl, "plan", "01-q.md", ticket(1, "Q", "[]", "question", ""))
+	hitl := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, hitl, "plan", mapBody)
+	chartrtest.WriteFile(t, hitl, ".chartr/config.toml", planningConfig("plan"))
+	chartrtest.WriteTicket(t, hitl, "plan", "01-q.md", ticket(1, "Q", "[]", "question", ""))
 	hitlID := register(t, h, hitl).ID
 
 	mustSpawn(t, h, afkID, "widget", 1, "implement")
@@ -361,16 +361,16 @@ func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
 // badge, never a spawn gate: the space reports dirty, and a spawn into it still
 // proceeds.
 func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
 
-	harnesstest.WriteMap(t, repo, "widget", mapBody)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", implConfig("widget"))
-	harnesstest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	// Commit the map and config so the tree is clean to start, then leave debris.
-	harnesstest.Git(t, repo, "add", "-A")
-	harnesstest.Git(t, repo, "commit", "-q", "-m", "seed")
-	harnesstest.StubAgent(t, "claude")
+	chartrtest.Git(t, repo, "add", "-A")
+	chartrtest.Git(t, repo, "commit", "-q", "-m", "seed")
+	chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	if findSpace(t, h.Snapshot(ctx(t)), resp.ID).Dirty {
@@ -378,7 +378,7 @@ func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
 	}
 
 	// Debris left in the working tree — as a session or an ad-hoc shell would.
-	harnesstest.WriteFile(t, repo, "scratch.txt", "uncommitted debris\n")
+	chartrtest.WriteFile(t, repo, "scratch.txt", "uncommitted debris\n")
 	if !findSpace(t, h.SnapshotUntil(ctx(t), func(m model.Model) bool {
 		return findSpace(t, m, resp.ID).Dirty
 	}), resp.ID).Dirty {

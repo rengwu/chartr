@@ -1,4 +1,4 @@
-// Package terminal owns the harness's PTYs and the ad-hoc shells that run in
+// Package terminal owns the chartr's PTYs and the ad-hoc shells that run in
 // them. An ad-hoc shell is deliberately not a session (spec, State model): it
 // carries no ticket and no lifecycle — it is a plain multiplexer
 // terminal in a space's working tree, opened by the operator and ended by the
@@ -22,7 +22,7 @@ import (
 
 	"github.com/aymanbagabas/go-pty"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // scrollbackCap bounds the server-side replay buffer per terminal. Raw PTY bytes
@@ -60,7 +60,7 @@ type Session struct {
 // OpenSession additionally carries a Session, which is the only thing that makes
 // it a session rather than a plain multiplexer terminal.
 type Terminal struct {
-	// ID is the terminal's stable identity within the harness process. SpaceID
+	// ID is the terminal's stable identity within the chartr process. SpaceID
 	// ties it to the space whose working tree it runs in; Title labels its tab.
 	ID      string
 	SpaceID string

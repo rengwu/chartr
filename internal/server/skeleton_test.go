@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/harnesstest"
+	"github.com/rengwu/chartr/internal/chartrtest"
 )
 
 // The walking skeleton's transport contract (ticket 01 Done-when): a snapshot
@@ -16,7 +16,7 @@ import (
 // ticket extends.
 
 func TestControlSocketSendsSnapshotOnConnect(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -36,7 +36,7 @@ func TestControlSocketSendsSnapshotOnConnect(t *testing.T) {
 }
 
 func TestControlSocketResendsSnapshotOnReconnect(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -58,7 +58,7 @@ func TestControlSocketResendsSnapshotOnReconnect(t *testing.T) {
 }
 
 func TestTwoBrowsersEachGetSnapshot(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -74,7 +74,7 @@ func TestTwoBrowsersEachGetSnapshot(t *testing.T) {
 }
 
 func TestHealthActionOverHTTP(t *testing.T) {
-	h := harnesstest.Start(t)
+	h := chartrtest.Start(t)
 
 	code, body := h.Get("/api/health")
 	if code != 200 {

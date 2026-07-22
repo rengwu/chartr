@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rengwu/wayfinder-harness/internal/model"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // ErrNoTerminal is returned when an id names no live terminal — it never
@@ -20,7 +20,7 @@ var ErrNoTerminal = errors.New("terminal: no such terminal")
 // alongside its one session.
 var ErrSessionExists = errors.New("terminal: the space already has a live session")
 
-// Manager owns every ad-hoc terminal in the harness process, keyed by id and
+// Manager owns every ad-hoc terminal in the chartr process, keyed by id and
 // grouped by space. It is the one seam the server reaches: opening a shell,
 // finding one to attach a socket to, ending one, and listing a space's terminals
 // for the pushed model. onChange is the server's rebuild-and-push, called

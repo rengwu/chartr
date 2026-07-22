@@ -9,7 +9,7 @@ shows every resolved config value with its provenance layer and edits role
 bindings inline; and the cockpit launchable as a real native window behind the
 one supported cgo-free browser binary. Done looks like the housekeeping sweep
 resolved with every slice before it demoable in the real cockpit — a leaner, more
-open harness that still drives its own maps.
+open chartr that still drives its own maps.
 
 ## Notes
 
@@ -62,7 +62,7 @@ scripts and `vitest`, and confirm **no amber in the built CSS**. Review the diff
 where a "Done when" is only real at runtime. No map linter is wired in this repo.
 
 **The wayfinder-adapter step is already done for this map:** `[maps."simplify-impl"]
-kind = "implementation"` is recorded in `.wayfinder-harness/config.toml`, committed
+kind = "implementation"` is recorded in `.chartr/config.toml`, committed
 alongside these files (see `docs/wayfinder-adapter.md`).
 
 ## Decisions so far
@@ -75,13 +75,13 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   cgo hides behind `//go:build webview` so the default build stays green and
   goreleaser never sees it. Single-instance is a data-dir lock file keyed by pid
   (not `webview.Window()` — a window handle does not cross a process boundary);
-  a missing runtime is a hard error pointing at `harness`, never a silent browser.
+  a missing runtime is a hard error pointing at `chartr`, never a silent browser.
   Writes **ADR 0013**, confirms **ADR 0011** unamended.
 
 - **The review feature is gone; the lifecycle is already livable.**
   [Ticket 02](tickets/02-delete-the-review-feature.md) cut the gate, its server
   mechanics, its UI and its role in two independently-green commits (frontend,
-  then backend), shrinking the harness's lifecycle writes to **claim + release**
+  then backend), shrinking the chartr's lifecycle writes to **claim + release**
   and retargeting `implement.md` — and `core.md` with it — to `## Answer`, so a
   session resolves and its dependents unblock with no gate in the path. The
   parser's `proposed` is left **dormant** for ticket 03; **no ADR is touched
@@ -93,9 +93,9 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   `tracker-convention` carrying the glossary), swapped the `replace`/`append`
   overlay for **whole-skill shadowing** across built-in ‹ user ‹ workspace, and
   moved fork provenance to `forked_from:` frontmatter with drift measured over
-  the whole directory hash. The harness still composes the payload itself
+  the whole directory hash. The chartr still composes the payload itself
   (**ADR 0002** reaffirmed); the claim's provenance trailers re-key to `Skill:`
-  lines. The user skill layer is `~/.config/wayfinder-harness/skills/` via a new
+  lines. The user skill layer is `~/.config/chartr/skills/` via a new
   `Options.ConfigDir` — bindings still read `<dataDir>/user.toml`, a split
   ticket 05 must render. **ADR 0012** amended: this space's design-system
   overlay is now a committed workspace `implement` skill.
@@ -132,7 +132,7 @@ alongside these files (see `docs/wayfinder-adapter.md`).
 - **A plugin system, extension API, or hook framework** — the filesystem and git conventions are the seam; review returns only when a real second consumer earns an interface.
 - **A TUI or true-native frontend** — the webview shell is the native answer; anything further waits for the "still feels wrong to daily-drive" trigger.
 - **Redesigning the wayfinder method** — the `tracker-convention` skill restates the format; it does not change it.
-- **Migrating or rewriting the old maps** — `harness-design`, `harness-design-impl`, `reskin` stay human-readable and un-migrated.
+- **Migrating or rewriting the old maps** — `chartr-design`, `chartr-design-impl`, `reskin` stay human-readable and un-migrated.
 - **An ad-hoc preferences store** — refused on the transparency surface; a genuine preference earns a layer and a home when it actually appears.
 - **A binding-editing UI beyond role bindings** — only bindings are inline; everything else is read-value-plus-open-file until a second setting earns editing.
-- **Dock badge, `harness://` scheme, per-adapter native skill materialisation, a lightweight skill `append`** — each a named revisit trigger, not this effort's work.
+- **Dock badge, `chartr://` scheme, per-adapter native skill materialisation, a lightweight skill `append`** — each a named revisit trigger, not this effort's work.

@@ -62,7 +62,7 @@
   })
 
   // Re-fetch whenever the preview is open and the role (or ticket) changes. The
-  // harness reads the library fresh, so re-opening after editing a prompt on disk
+  // chartr reads the library fresh, so re-opening after editing a prompt on disk
   // shows the edit with no reload.
   let token = 0
   $effect(() => {

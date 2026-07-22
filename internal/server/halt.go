@@ -7,16 +7,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rengwu/wayfinder-harness/internal/adapter"
-	"github.com/rengwu/wayfinder-harness/internal/config"
-	"github.com/rengwu/wayfinder-harness/internal/mapscan"
-	"github.com/rengwu/wayfinder-harness/internal/model"
-	"github.com/rengwu/wayfinder-harness/internal/registry"
-	"github.com/rengwu/wayfinder-harness/internal/terminal"
+	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/mapscan"
+	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/terminal"
 )
 
 // The death halt (ticket 10). When a session's process exits, its tab stays pinned
-// to its ticket — dead, scrollback intact — and the harness does nothing on its
+// to its ticket — dead, scrollback intact — and the chartr does nothing on its
 // own: no auto-kill, no timeout, no auto-requeue. The operator resolves it exactly
 // three ways, each a plain HTTP action so nothing changes without a call:
 //

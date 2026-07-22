@@ -47,7 +47,7 @@
   {#if variant === 'first-run'}
     <h1 class="text-lg font-semibold">Register your first space</h1>
     <p class="text-sm text-muted-foreground">
-      Point the harness at a project folder. If it isn’t a git repository yet, one is
+      Point the chartr at a project folder. If it isn’t a git repository yet, one is
       initialized there — announced, never silent.
     </p>
   {/if}

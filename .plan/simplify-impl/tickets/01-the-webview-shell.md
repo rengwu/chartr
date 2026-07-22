@@ -16,13 +16,13 @@ Write `cmd/webview` where the dead `make webview` target already points, built
 `main_webview.go` (`//go:build webview`, the real cgo shell) and `main_stub.go`
 (`//go:build !webview`, a tiny main that prints "built without the webview tag —
 use `make webview`" and exits non-zero) — so the default cgo-free build compiles
-only the harmless stub and goreleaser (building `./cmd/harness` explicitly) never
-sees the cgo. The real shell imports `internal/server`, does what `cmd/harness`'s
+only the harmless stub and goreleaser (building `./cmd/chartr` explicitly) never
+sees the cgo. The real shell imports `internal/server`, does what `cmd/chartr`'s
 `run()` does but binds `127.0.0.1:0`, reads the OS-assigned port off `ln.Addr()`,
 and points a `webview/webview` (zserge) window at `http://<that>`; closing the
 window cancels the same context `signal.NotifyContext` cancels today. Add a
 minimal native menu (Quit ⌘Q, Reload ⌘R, the standard edit items) and
-single-instance focus via a data-dir lock file (`.wayfinder-harness/shell.lock`
+single-instance focus via a data-dir lock file (`.chartr/shell.lock`
 recording the live instance's loopback URL; a second launch raises the running
 window through `webview.Window()`, degrading to a "shell already running at
 `<url>`" refuse-with-message where raising is flaky; keyed to the data dir so
@@ -39,13 +39,13 @@ Done when: `go build ./...` / `go vet ./...` / `go test ./...` are green at
 builds a tagged binary that opens the cockpit in a real native window with a dock
 icon and the native menu; a second launch focuses the existing window or refuses
 with the running URL; a missing native runtime exits non-zero naming it and
-pointing at `harness`; ADR 0013 is written and the single-instance lockfile logic
+pointing at `chartr`; ADR 0013 is written and the single-instance lockfile logic
 is unit-tested without a real window.
 
 ## Answer
 
 Shipped as specified. `cmd/webview` is a second binary that imports
-`internal/server`, runs `cmd/harness`'s `run()` against `127.0.0.1:0`, reads the
+`internal/server`, runs `cmd/chartr`'s `run()` against `127.0.0.1:0`, reads the
 OS-assigned port off `ln.Addr()`, and points a `webview/webview` window at
 `http://<that>`. Window-close, `⌘Q` and `SIGTERM` all converge on one teardown:
 the signal path dispatches `Terminate` onto the native loop, `Run()` returns, and
@@ -61,7 +61,7 @@ can reach is reachable at `CGO_ENABLED=0`. Verified green there:
 plus `go vet -tags webview` with cgo on.
 
 **Single-instance is keyed to the data dir and identified by pid, not by
-`webview.Window()`.** `<data-dir>/.wayfinder-harness/shell.lock` records pid +
+`webview.Window()`.** `<data-dir>/.chartr/shell.lock` records pid +
 loopback URL, claimed with `O_EXCL`. The ticket named the native window handle,
 but a second launch is a *different process* and a window handle does not cross
 that boundary — macOS raises through `NSRunningApplication`; Linux and Windows
@@ -75,7 +75,7 @@ mechanism is corrected in ADR 0013 rather than silently.
 are all responder-chain selectors with a nil target — `NSApplication` answers the
 app items, `WKWebView` answers `reload:` and the edit items itself. Because a
 bare binary is not a `.app` bundle, the shell seeds `CFBundleName` before
-`NSApplication` exists, so the menu bar reads `wayfinder-harness` instead of the
+`NSApplication` exists, so the menu bar reads `chartr` instead of the
 executable name. macOS-only by decision; GTK/Win32 keep their own controls.
 
 **Missing runtime is a hard error, and detecting it needed one unsafe corner.**
@@ -83,20 +83,20 @@ executable name. macOS-only by decision; GTK/Win32 keep their own controls.
 inside a *non-nil* interface, and calling `Window()` to ask is the crash we are
 avoiding — so `nativeHandle` reads the wrapper's handle field by reflection. On
 NULL the shell exits non-zero naming the platform's missing piece and pointing at
-`harness`. No auto browser fallback, no force flag.
+`chartr`. No auto browser fallback, no force flag.
 
 **Release plumbing confirmed and completed.** The `shells` matrix
 (`needs: release`, `continue-on-error`, `fail-fast: false`) and the goreleaser
 split were already correct. `make webview` now stamps the same
 version/commit/date, names the asset
-`wayfinder-harness-shell_<version>_<os>_<arch>`, writes a **per-asset `.sha256`
+`chartr-shell_<version>_<os>_<arch>`, writes a **per-asset `.sha256`
 sidecar** (basename-relative, so `shasum -c` works next to the download), and
 exits 0 without building when asked to cross-compile — cgo cannot, so the matrix
 builds natively per runner.
 
 **Driven for real, not just built.** On darwin: `make webview` → a titled window
 with a dock icon serving the cockpit (HTTP 200 on the loopback port), menu bar
-`wayfinder-harness / Edit / View` with the expected items under each; a second
+`chartr / Edit / View` with the expected items under each; a second
 launch raised the running window and exited 0; `SIGTERM` tore down the window,
 the server, and the lock file. Seven lock tests cover write/read of the loopback
 URL, refusal of a live holder (carrying its URL and pid), takeover of a stale and

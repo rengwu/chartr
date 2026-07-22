@@ -1,5 +1,5 @@
 {
-  "name": "wayfinder-harness-web",
+  "name": "chartr-web",
   "private": true,
   "type": "module",
   "description": "The Svelte 5 cockpit chrome, embedded into the Go binary as a built dist.",

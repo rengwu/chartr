@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/rengwu/wayfinder-harness/internal/config"
+	"github.com/rengwu/chartr/internal/config"
 )
 
 // Blocker is one of a ticket's blockers as the context bundle carries it: its

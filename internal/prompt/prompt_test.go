@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rengwu/wayfinder-harness/internal/prompt"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // The skill library's own seam (ticket 04): resolution across the three layers,
@@ -24,7 +24,7 @@ func roots(t *testing.T) prompt.Roots {
 	return prompt.Roots{
 		Builtin:   filepath.Join(dir, "data", "skills"),
 		User:      filepath.Join(dir, "config", "skills"),
-		Workspace: filepath.Join(dir, "repo", ".wayfinder-harness", "skills"),
+		Workspace: filepath.Join(dir, "repo", ".chartr", "skills"),
 	}
 }
 
@@ -120,7 +120,7 @@ func TestDirectoryWithoutSkillMDDoesNotDefine(t *testing.T) {
 	}
 }
 
-// Composition (ADR 0002, reaffirmed): the harness reads the resolved core and role
+// Composition (ADR 0002, reaffirmed): the chartr reads the resolved core and role
 // bodies, strips their frontmatter, and appends the freshly-built context bundle —
 // map, ticket, blockers' answers, and the glossary sourced from the
 // tracker-convention skill.
@@ -263,12 +263,12 @@ func TestIdeateComposesAlone(t *testing.T) {
 	if got != "MY OWN IDEATE SKILL" {
 		t.Errorf("Ideate = %q, want just the resolved body", got)
 	}
-	if strings.Contains(got, "# Context") || strings.Contains(got, "wayfinder-harness session") {
+	if strings.Contains(got, "# Context") || strings.Contains(got, "chartr session") {
 		t.Errorf("ideate carried core or a context bundle:\n%s", got)
 	}
 }
 
-// The shipped library is the seven skills the harness composes from, each a real
+// The shipped library is the seven skills the chartr composes from, each a real
 // SKILL.md carrying the standard frontmatter contract, and the glossary lives
 // inside tracker-convention as a supporting file (stories 16–17).
 func TestShippedLibraryIsSevenSkills(t *testing.T) {

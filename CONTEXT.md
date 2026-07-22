@@ -1,4 +1,4 @@
-# wayfinder-harness
+# chartr
 
 A cockpit for driving wayfinder maps to completion: switch between project spaces, read a map as a star-map, and spawn agent sessions against its frontier.
 
@@ -7,7 +7,7 @@ A cockpit for driving wayfinder maps to completion: switch between project space
 ### The map
 
 **Space**:
-A git repository the harness drives, registered once and switched between. It owns exactly one working tree, which is what makes it the unit of serialisation.
+A git repository the chartr drives, registered once and switched between. It owns exactly one working tree, which is what makes it the unit of serialisation.
 _Avoid_: project, workspace, repo, folder
 
 **Map**:
@@ -23,7 +23,7 @@ A map whose tickets deliver code, with every decision already settled in a spec.
 _Avoid_: impl map, task map, build map
 
 **Kind**:
-Whether a map is a planning map or an implementation map — the property that decides which roles its sessions may be spawned as. Both kinds share one lifecycle. A property of the *map*, not the ticket. Declared explicitly in committed harness config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
+Whether a map is a planning map or an implementation map — the property that decides which roles its sessions may be spawned as. Both kinds share one lifecycle. A property of the *map*, not the ticket. Declared explicitly in committed chartr config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
 _Avoid_: type, mode, flavour, class
 
 **Ticket**:
@@ -51,11 +51,11 @@ The orientation injected into a session at spawn — the map body, the ticket, i
 _Avoid_: memory, prompt context, preamble
 
 **Skill library**:
-The harness-owned, hackable skills — one per role, plus the common core, the ideate on-ramp, and the tracker convention — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard.
+The chartr-owned, hackable skills — one per role, plus the common core, the ideate on-ramp, and the tracker convention — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard.
 _Avoid_: prompt library, prompts, templates, system prompts
 
 **Cockpit**:
-The harness's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
+The chartr's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
 
 ### The frontend
@@ -79,15 +79,15 @@ _Avoid_: pty stream, data channel
 ### Configuration
 
 **Role binding**:
-What a role resolves to — an `{adapter, model, args?}` triple. Structured so the harness can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
+What a role resolves to — an `{adapter, model, args?}` triple. Structured so the chartr can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
 _Avoid_: mapping, agent config, role config
 
 **Workspace config**:
-The committed, shared harness config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
+The committed, shared chartr config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
 _Avoid_: project config, repo config, settings
 
 **User config**:
-The operator's local, uncommitted harness config under `~/.config/wayfinder-harness/`, keyed by space. Overrides workspace bindings for execution choices.
+The operator's local, uncommitted chartr config under `~/.config/chartr/`, keyed by space. Overrides workspace bindings for execution choices.
 _Avoid_: local settings, preferences, overrides
 
 **Effective config surface**:

@@ -76,7 +76,7 @@ export function ideate(id: string): Promise<{ id: string }> {
 // previewPayload composes what a session for one ticket and role would be told
 // (ticket 08) — the resolved skills and the context bundle — with per-part
 // provenance. Read-only inspection, so a GET; the
-// harness reads the library and the map fresh, so an edit on disk shows up here.
+// chartr reads the library and the map fresh, so an edit on disk shows up here.
 export function previewPayload(
   id: string,
   slug: string,
@@ -101,11 +101,11 @@ export interface SpawnResult {
   payloadSha: string
 }
 
-// spawnSession spawns a session on a frontier ticket (ticket 09): the harness
+// spawnSession spawns a session on a frontier ticket (ticket 09): the chartr
 // writes the claim commit, composes and archives the payload, and launches the
 // bound agent's TUI with the read-this-file opener typed in. A blocked spawn — an
 // absent agent, an unclassified map, a held ticket — surfaces as a thrown
-// ActionError carrying the harness's specific message.
+// ActionError carrying the chartr's specific message.
 export function spawnSession(
   id: string,
   slug: string,
@@ -121,7 +121,7 @@ export function spawnSession(
 
 // The death halt (ticket 10): a session whose process exited stays pinned to its
 // ticket, and the operator resolves it exactly one of three ways — each a plain
-// HTTP action, so the harness itself never acts. resumeSession relaunches the same
+// HTTP action, so the chartr itself never acts. resumeSession relaunches the same
 // session on its own ticket (same-ticket crash recovery, its claim standing);
 // respawnSession starts a fresh session on the same ticket (a new claim supersedes
 // the stale one); releaseSession clears the claim back to the frontier. The

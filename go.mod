@@ -1,4 +1,4 @@
-module github.com/rengwu/wayfinder-harness
+module github.com/rengwu/chartr
 
 go 1.26
 

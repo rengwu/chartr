@@ -51,10 +51,10 @@ lines.** All three rules are already committed at HEAD (`.gitignore:37`, `:12`,
 `:51`) and `git ls-files` tracks nothing matching any of them, so the honest work
 was to confirm rather than to change:
 
-- `sessions/` is not a stale archive — it is *live* harness state, the
+- `sessions/` is not a stale archive — it is *live* chartr state, the
   per-session payload audit trail from ADR-era ticket 09, and it holds this very
   session's payload. Correctly ignored; deliberately left on disk. Deleting it
-  would have destroyed the audit trail the harness is currently writing.
+  would have destroyed the audit trail the chartr is currently writing.
 - The stray root `node_modules` held only a `.vite` cache directory (Vite run
   with the repo root as cwd). Removed from disk; `/node_modules/` already ignores
   its return.
