@@ -47,11 +47,11 @@ The per-agent shim that knows how to launch one agent CLI, inject its prompt and
 _Avoid_: driver, plugin, backend, integration
 
 **Context bundle**:
-The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, this glossary. Assembled fresh each time and never accumulated.
+The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, this glossary, and the skill-library manifest (what skills exist, their uses, and the paths to read them at). Assembled fresh each time and never accumulated.
 _Avoid_: memory, prompt context, preamble
 
 **Skill library**:
-The chartr-owned, hackable skills — one per role, plus the common core, the ideate on-ramp, and the tracker convention — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard.
+The chartr-owned, hackable skills — the common core, one per role, the ideate on-ramp, the tracker convention, and the four method skills (`wayfinder`, `domain-modeling`, `to-spec`, `to-tickets`) — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. The method skills ship in the library but are never auto-composed into a session payload. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard. The shipped copy lives in `internal/prompt/assets/skills/`; re-fitting upstream updates follows `docs/skill-sync.md`.
 _Avoid_: prompt library, prompts, templates, system prompts
 
 **Cockpit**:

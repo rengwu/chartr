@@ -45,19 +45,28 @@ import (
 // bump SourceCommit whenever the embedded skills are re-vendored.
 const (
 	SourceRepo   = "github.com/rengwu/skills"
-	SourceCommit = "vendored-2026-07 (bump on each sync)"
+	SourceCommit = "9e8b5ea"
 )
 
 // The skills the chartr knows by name. CoreSkill is injected first before any
 // role skill; IdeateSkill is the ideate on-ramp, composed alone (no core, no
 // context bundle) because an ideate session is ticketless and mapless;
 // TrackerSkill restates the wayfinder map format and carries the method glossary
-// as its supporting file, which the context bundle sources.
+// as its supporting file, which the context bundle sources. The four method
+// skills — WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill — are shipped,
+// resolved, and materialized like the rest, but never auto-composed into a
+// session payload: they serve charting, speccing, and ticket-breaking work done
+// outside a composed session.
 const (
 	CoreSkill    = "core"
 	IdeateSkill  = "ideate"
 	TrackerSkill = "tracker-convention"
 	GlossaryFile = "glossary.md"
+
+	WayfinderSkill = "wayfinder"
+	DomainSkill    = "domain-modeling"
+	SpecSkill      = "to-spec"
+	TicketsSkill   = "to-tickets"
 )
 
 // Segment layer tags. The three skill layers reuse config's names so provenance
@@ -168,13 +177,14 @@ type Payload struct {
 }
 
 // Names lists the skills the chartr ships, in a stable order: the core, the
-// roles, then the two library skills.
+// roles, then the two library skills, then the four method skills.
 func Names() []string {
 	names := []string{CoreSkill}
 	for _, r := range config.Roles {
 		names = append(names, string(r))
 	}
-	return append(names, IdeateSkill, TrackerSkill)
+	return append(names, IdeateSkill, TrackerSkill,
+		WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill)
 }
 
 // shortHash is the 8-hex prefix of a content hash — short enough to read in
@@ -480,6 +490,15 @@ format. Vendored from %s (%s).
 - `+"`ideate/`"+` — the ticketless ideate on-ramp, composed alone.
 - `+"`tracker-convention/`"+` — the wayfinder map format, carrying `+"`glossary.md`"+`
   (the glossary each session's context bundle is built from) as a supporting file.
+- `+"`wayfinder/`"+` — the map method: charting an effort and working its tickets.
+- `+"`domain-modeling/`"+` — keep `+"`CONTEXT.md`"+` and the ADRs current as terms
+  crystallise.
+- `+"`to-spec/`"+` — synthesize a resolved planning map or conversation into a spec.
+- `+"`to-tickets/`"+` — break a spec into an implementation map of tracer-bullet
+  tickets.
+
+The method skills are never auto-composed into a session payload; they serve
+charting, speccing, and ticket-breaking work done outside a composed session.
 
 Editing any of these changes what the next session is told. To read exactly what
 a ticket and role would receive, open the payload preview in the cockpit.

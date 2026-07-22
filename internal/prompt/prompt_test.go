@@ -172,6 +172,25 @@ func TestComposeCarriesResolvedBodiesAndBundle(t *testing.T) {
 	if got := text(part(t, p, "glossary")); !strings.Contains(got, "USER-GLOSSARY-TERM") {
 		t.Errorf("glossary not sourced from the resolved tracker-convention skill: %q", got)
 	}
+
+	// The skill-library manifest names every shipped skill with its use and the
+	// path its winning layer sits at — a layer win points at that layer's
+	// directory, the embedded floor at the materialized built-in root.
+	manifest := text(part(t, p, "skill-library"))
+	for _, want := range []string{"`core`", "`wayfinder`", "`domain-modeling`", "`to-spec`", "`to-tickets`"} {
+		if !strings.Contains(manifest, want) {
+			t.Errorf("skill-library manifest missing %s:\n%s", want, manifest)
+		}
+	}
+	if !strings.Contains(manifest, filepath.Join(r.User, "core")) {
+		t.Errorf("manifest should point core at the winning user layer:\n%s", manifest)
+	}
+	if !strings.Contains(manifest, filepath.Join(r.Builtin, "wayfinder")) {
+		t.Errorf("manifest should point wayfinder at the materialized built-in root:\n%s", manifest)
+	}
+	if strings.Contains(manifest, "USER-CORE-BODY") {
+		t.Error("the manifest carries reach, never a skill's body")
+	}
 	if got := text(part(t, p, "map")); got != "THE-MAP-BODY" {
 		t.Errorf("map part = %q", got)
 	}
@@ -268,12 +287,14 @@ func TestIdeateComposesAlone(t *testing.T) {
 	}
 }
 
-// The shipped library is the seven skills the chartr composes from, each a real
-// SKILL.md carrying the standard frontmatter contract, and the glossary lives
-// inside tracker-convention as a supporting file (stories 16–17).
-func TestShippedLibraryIsSevenSkills(t *testing.T) {
+// The shipped library is the eleven skills the chartr composes from, each a real
+// SKILL.md carrying the standard frontmatter contract; the glossary lives inside
+// tracker-convention, and domain-modeling carries its two format references as
+// supporting files (stories 16–17).
+func TestShippedLibraryIsElevenSkills(t *testing.T) {
 	lib := prompt.Library(prompt.Roots{})
-	want := []string{"core", "grill", "prototype", "research", "implement", "ideate", "tracker-convention"}
+	want := []string{"core", "grill", "prototype", "research", "implement", "ideate", "tracker-convention",
+		"wayfinder", "domain-modeling", "to-spec", "to-tickets"}
 	if len(lib) != len(want) {
 		t.Fatalf("shipped library has %d skills, want %d: %+v", len(lib), len(want), lib)
 	}
@@ -298,6 +319,15 @@ func TestShippedLibraryIsSevenSkills(t *testing.T) {
 	}
 	if g, ok := tc.Support("glossary.md"); !ok || !strings.Contains(g, "**Map**") {
 		t.Errorf("the glossary is not a supporting file of tracker-convention: %v", ok)
+	}
+	dm, ok := prompt.Resolve("domain-modeling", prompt.Roots{})
+	if !ok {
+		t.Fatal("domain-modeling did not resolve")
+	}
+	for _, f := range []string{"CONTEXT-FORMAT.md", "ADR-FORMAT.md"} {
+		if _, ok := dm.Support(f); !ok {
+			t.Errorf("%s is not a supporting file of domain-modeling", f)
+		}
 	}
 }
 

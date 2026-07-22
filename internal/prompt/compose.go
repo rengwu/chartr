@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
@@ -64,9 +65,10 @@ func Compose(in ComposeInput) (Payload, error) {
 	}
 
 	// The context bundle, assembled fresh (ADR 0005): the glossary sourced from
-	// the resolved `tracker-convention` skill, the map body, this ticket, and each
-	// blocker's answer inline. The bundle is composed, never a skill: the ticket a
-	// session was handed must not be mistaken for durable skill content.
+	// the resolved `tracker-convention` skill, the skill-library manifest, the
+	// map body, this ticket, and each blocker's answer inline. The bundle is
+	// composed, never a skill: the ticket a session was handed must not be
+	// mistaken for durable skill content.
 	var gloss string
 	if tc, ok := Resolve(TrackerSkill, in.Roots); ok {
 		if g, ok := tc.Support(GlossaryFile); ok {
@@ -78,6 +80,7 @@ func Compose(in ComposeInput) (Payload, error) {
 	}
 	parts = append(parts,
 		ctxPart("glossary", "Glossary", gloss),
+		ctxPart("skill-library", "Skill library", skillManifest(in.Roots)),
 		ctxPart("map", "Map: "+orDash(in.Bundle.MapName), in.Bundle.MapBody),
 		ctxPart("ticket", fmt.Sprintf("Ticket #%02d — %s", in.Bundle.TicketNum, orDash(in.Bundle.TicketTitle)), in.Bundle.TicketBody),
 	)
@@ -120,6 +123,38 @@ func ctxPart(name, label, text string) Part {
 		Kind:     "context",
 		Segments: []Segment{{Layer: LayerContext, Label: label, Text: strings.TrimRight(text, "\n")}},
 	}
+}
+
+// skillManifest renders the library a session may reach for: every shipped
+// skill's name, its one-line use, and the path its winning layer sits at — so
+// when the map's Notes or a ticket names a skill, the session can read its
+// SKILL.md off disk. Existence and reach only, never content: the bodies stay
+// out of the payload, and a stale fork is surfaced through LibraryWarnings,
+// not here.
+func skillManifest(roots Roots) string {
+	var b strings.Builder
+	b.WriteString("The skills the chartr ships. When the map or your ticket names one, read its `SKILL.md` under the path shown and apply it — do not work from memory of this list.")
+	for _, name := range Names() {
+		s, ok := Resolve(name, roots)
+		if !ok {
+			continue
+		}
+		desc := s.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		dir := s.Dir
+		if dir == "" && roots.Builtin != "" {
+			// The embedded floor is materialized under the built-in root.
+			dir = filepath.Join(roots.Builtin, name)
+		}
+		if dir != "" {
+			fmt.Fprintf(&b, "\n- `%s` — %s (`%s`)", name, desc, dir)
+		} else {
+			fmt.Fprintf(&b, "\n- `%s` — %s", name, desc)
+		}
+	}
+	return b.String()
 }
 
 func orDash(s string) string {
