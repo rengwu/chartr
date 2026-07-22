@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [14]
+claimed_by: se2aa9875fec4
+claimed_at: 2026-07-22T11:37:48Z
 ---
 
 # Fix: the action-station hover ring and the dialog-guard keyboard races
