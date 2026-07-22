@@ -173,3 +173,31 @@ Verified: `go vet ./...` and `go test ./...` green, `svelte-check` 0 errors,
 `vitest` 85 passing, `npm run build` clean, no amber in the built CSS. This
 ticket changed no Go or frontend code, so the gates confirm no collateral damage
 rather than a change.
+
+## Correction — the glossary that rides the bundle is not `CONTEXT.md`
+
+Recorded after the map was reviewed, and left as an amendment rather than an
+edit, per this repo's ADR convention.
+
+The `CONTEXT.md` paragraph above justifies itself with "this glossary is
+injected into *every* context bundle". That is wrong about the mechanism.
+`prompt.Compose` sources the bundle's glossary part from the resolved
+`tracker-convention` skill's `glossary.md` support file
+(`internal/prompt/compose.go`, the `ctxPart("glossary", …)` line) — never from
+the repo's root `CONTEXT.md`, which no composed payload reads. `glossary.md` was
+already clean of kind, so nothing kind-related was ever reaching sessions by
+that route.
+
+The edit itself stands on its own ground: `CONTEXT.md` is the repo's glossary,
+the `domain-modeling` / `to-spec` / `to-tickets` skills all direct sessions to
+take their vocabulary from it, and a **Kind** entry defining a deleted concept in
+the present tense was wrong wherever it was read.
+
+What the wrong premise did cost: it pointed the sweep at the wrong file and left
+the *right* one standing. `tracker-convention/SKILL.md` — the shipped skill whose
+support file actually rides every bundle — still said a session's role follows
+from the ticket's `type:` "and with the map's kind", teaching the deleted rule to
+every charting session. Fixed in the review follow-up commit, along with two
+stale comments (`internal/server/spawn.go`'s `resolve` doc,
+`internal/model/model.go`'s `ConfigLayer.Holds` doc) that ticket 03's sweep
+missed.

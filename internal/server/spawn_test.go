@@ -264,6 +264,34 @@ func TestSpawnHonoursTheTicketsOwnType(t *testing.T) {
 	}
 }
 
+// A string that is not one of the four roles is a malformed request, answered
+// 400 — not the 500 it became when the kind cut removed `KindOffersRole`, which
+// had been the only thing checking the role was a role at all. The match is
+// exact: a wrong-case role is not a role. The preview path answers the same
+// input the same way, so the two never disagree about one request.
+func TestSpawnRefusesAStringThatIsNotARole(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
+	resp := register(t, h, repo)
+
+	for _, role := range []string{"bogus", "IMPLEMENT", "Implement"} {
+		if code, body := h.Spawn(resp.ID, "widget", 1, role); code != 400 {
+			t.Errorf("spawn as %q = %d (%s), want 400", role, code, body)
+		}
+		code, body := h.Get(fmt.Sprintf("/api/spaces/%s/maps/widget/tickets/1/payload?role=%s", resp.ID, role))
+		if code != 400 {
+			t.Errorf("payload preview as %q = %d (%s), want 400 — the two paths must agree", role, code, body)
+		}
+	}
+
+	// The four real ones still go through, so the check refuses only non-roles.
+	mustSpawn(t, h, resp.ID, "widget", 1, "grill")
+}
+
 // A non-frontier ticket is not a fresh spawn's to take: a ticket held behind an
 // unresolved blocker is refused.
 func TestSpawnRefusesNonFrontier(t *testing.T) {

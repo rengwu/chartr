@@ -70,8 +70,9 @@ What was decided or built, why, and what was deliberately left out.
 ```
 
 - **`type`** — `grilling`, `research`, `prototype` (planning maps) or `task`
-  (implementation maps). It selects the kind of work, and with the map's kind,
-  the role a session is spawned in.
+  (implementation maps). It selects the kind of work, and on its own the role a
+  session is spawned in — the four types map one-to-one onto the four roles, and
+  nothing about the map narrows that.
 - **`blocked_by`** — the ticket numbers whose answers this one builds on. A
   blocker's `## Answer` is handed to a session as a premise.
 - **`undermined_by`** — tickets whose answers have called this one's into

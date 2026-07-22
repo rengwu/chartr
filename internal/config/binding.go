@@ -48,6 +48,20 @@ const (
 // operator picks from all four at the gate.
 var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 
+// IsRole reports whether a string names one of the four roles, exactly (the set
+// is case-sensitive, as every producer of it is). Every surface that takes a
+// role from outside — the spawn action's request body, the payload preview's —
+// checks it here, so an unknown role is one caller's mistake with one answer
+// rather than each entry point's own.
+func IsRole(role string) bool {
+	for _, r := range Roles {
+		if string(r) == role {
+			return true
+		}
+	}
+	return false
+}
+
 // RoleForTicketType returns the role a ticket of this type spawns as. The
 // method's four ticket types map one-to-one onto the four roles, which is the
 // per-ticket fact a map's kind used to approximate uniformly; an unrecognised

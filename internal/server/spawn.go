@@ -64,6 +64,15 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "role is required")
 		return
 	}
+	// The role must name one of the four. *Which* role is never refused (see
+	// below) — but a string that is not a role at all is a malformed request, and
+	// saying so here is what keeps it from arriving at `bindingFor` as a binding
+	// that could not exist and being reported as a 500. The payload preview
+	// answers the same input the same way, through prompt.Compose.
+	if !config.IsRole(role) {
+		httpError(w, http.StatusBadRequest, "unknown role "+role)
+		return
+	}
 
 	// Discover fresh (as the preview does) so the spawn acts on the truth on disk,
 	// not a cached snapshot — the ticket may have been resolved or claimed since the
@@ -244,9 +253,9 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	}, http.StatusOK, nil
 }
 
-// resolve resolves a space's whole config — bindings and committed map kinds —
-// across the three layers, exactly as the pushed model renders it, so the spawn
-// path reads kinds and a binding's PATH presence from what the operator sees.
+// resolve resolves a space's whole config — the role bindings — across the three
+// layers, exactly as the pushed model renders it, so the spawn path reads a
+// binding and its PATH presence from what the operator sees.
 func (s *Server) resolve(e registry.Entry) config.Resolution {
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
 	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, config.WorkspaceConfigName))

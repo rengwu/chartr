@@ -42,7 +42,7 @@ type ComposeInput struct {
 // context bundle. It returns the parts with provenance, the skills that won,
 // any stale-fork warnings, and the single markdown document they render to.
 func Compose(in ComposeInput) (Payload, error) {
-	if !validRole(in.Role) {
+	if !config.IsRole(in.Role) {
 		return Payload{}, fmt.Errorf("unknown role %q; want one of %v", in.Role, config.Roles)
 	}
 

@@ -47,10 +47,11 @@ type ConfigLayer struct {
 	// Layer is which of the three layers this file is (built-in, workspace, user),
 	// matching the provenance badges on the values it can set.
 	Layer string `json:"layer"`
-	// Holds names what this layer can set: "bindings" (role bindings and, in the
-	// committed layer, map kinds) or "skills". The two halves live in different
-	// files — bindings in the chartr state root, skills under the operator's
-	// config root — and the surface shows that split rather than implying one file.
+	// Holds names what this layer can set: "bindings" (role bindings — the config
+	// file's only tenant since the kind cut) or "skills". The two halves live in
+	// different files — bindings in the chartr state root, skills under the
+	// operator's config root — and the surface shows that split rather than
+	// implying one file.
 	Holds string `json:"holds"`
 	// Path is the absolute location on disk, and Exists whether anything is there
 	// yet. A layer that does not exist is still listed: it is where the value

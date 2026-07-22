@@ -433,15 +433,6 @@ func Ideate(roots Roots) string {
 	return s.Body
 }
 
-func validRole(role string) bool {
-	for _, r := range config.Roles {
-		if string(r) == role {
-			return true
-		}
-	}
-	return false
-}
-
 // splitFrontmatter peels a leading `---` delimited block off a SKILL.md, returning
 // its simple `key: value` pairs and the body below it. The frontmatter is metadata
 // for the cockpit and for drift detection — it never reaches the payload (story
