@@ -91,6 +91,23 @@ not an inconsistency to resolve early.
   the gate outright would have shown spawn buttons that the backend still 409s.
   Covered by a spawn test proving a `task` ticket on a `planning` map spawns as
   `implement`, plus a new `model.test.ts`. [ticket](tickets/01-roles-come-from-the-ticket.md)
+- **02 — the frontend stops reading kind**: `Kind`, `Map.kind`, `Map.kindGuess`,
+  `rolesForKind` and `classifyMap` are gone, along with the picker's plan/impl
+  confirm, its unclassified section and Settings' "Map kinds" section. Three
+  deletions the ticket did not list followed from ones it did: `MapPickerCard`'s
+  now-purposeless `spaceId` prop, `attention.ts`'s copy of the same inert-map
+  gate the detail pane carried, and `spawnSession`'s doc listing an unclassified
+  map among its refusals. **`mapsHash` kept** — `onOpenMaps` and `App.openMaps`
+  went with the button, but `#s=…&maps=1` is still a live route SpacePane parses,
+  and deleting half a live route's grammar is a different decision. **The
+  done-when's spawn clause is unmeetable here by design**: the backend still 409s
+  an unclassified spawn until 03, so such a map now opens and offers its four
+  spawn buttons while the click surfaces the chartr's refusal inline — the
+  window ticket 01 named, closing in 03, needing nothing revisited. Verified
+  against a real running backend (socket still sending `kind`/`kindGuess`; those
+  verbatim bytes mounted through the real `MapCard` render every map as an open
+  target) — but **no eyes-on cockpit pass**: the browser extension was not
+  connected. [ticket](tickets/02-the-frontend-stops-reading-kind.md)
 
 ## Not yet specified
 
