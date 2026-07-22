@@ -14,11 +14,13 @@
   import RegisterForm from './lib/RegisterForm.svelte'
   import SpacePane from './lib/SpacePane.svelte'
   import NeedsYouQueue from './lib/NeedsYouQueue.svelte'
+  import Settings from './lib/Settings.svelte'
   import Modal from './lib/Modal.svelte'
   import { Button } from './lib/components/ui/button'
   import { Input } from './lib/components/ui/input'
   import { needsYouQueue, spaceAttention, spaceLiveness, type QueueEntry } from './lib/attention'
   import { isEditingTarget } from './lib/keys'
+  import { mapsHash, parseRoute, settingsHash, type SettingsScope } from './lib/route'
   import {
     Plus,
     X,
@@ -34,6 +36,7 @@
     ArrowClockwise,
     ArrowUUpLeft,
     Bell,
+    Gear,
     Warning,
   } from 'phosphor-svelte'
 
@@ -55,6 +58,33 @@
   // latest snapshot holds and reacts to every push (ADR 0010).
   const control = new ControlSocket()
 
+  // The cockpit's one route besides itself: the effective config surface, on a
+  // `#/settings` hash prefix (ticket 05). The star deep link (`#s=…`, never a
+  // leading slash) is a disjoint scheme, so the two share the bar without
+  // colliding. No routing library — a parser and a `$derived`.
+  let hash = $state(typeof location === 'undefined' ? '' : location.hash)
+  const route = $derived(parseRoute(hash))
+
+  // Navigation is a hash assignment, so the hashchange listener below is the one
+  // place route state changes — including for links the space pane owns.
+  function navigate(next: string) {
+    if (next === location.hash) {
+      hash = next
+      return
+    }
+    location.hash = next
+  }
+
+  function openSettings(scope?: SettingsScope) {
+    navigate(settingsHash(scope ?? (selected ? { kind: 'space', spaceId: selected.id } : { kind: 'default' })))
+  }
+
+  // Leaving settings is Esc, the ⚙ again, or selecting a space: the surface is a
+  // place you visit, never a mode you get stuck in.
+  function leaveSettings() {
+    if (route.settings) navigate('')
+  }
+
   onMount(() => {
     control.connect()
     // A deep link names its space (#s=<id>&…); select it up front so the linked
@@ -62,12 +92,20 @@
     // rest of the link — map and star — is applied inside the space's pane.
     const s = new URLSearchParams(location.hash.replace(/^#/, '')).get('s')
     if (s) selectedId = s
-    return () => control.close()
+    const onHash = () => (hash = location.hash)
+    window.addEventListener('hashchange', onHash)
+    return () => {
+      window.removeEventListener('hashchange', onHash)
+      control.close()
+    }
   })
 
   // Spaces arrive already ordered — pinned first, then by recency — so we render
   // them in slice order and never re-sort on the client.
   const spaces = $derived<Space[]>(control.model?.spaces ?? [])
+  // The config layers shared by every space — the operator's local binding file
+  // and the two skill libraries that are not a space's own.
+  const configLayers = $derived(control.model?.config ?? [])
 
   let selectedId = $state<string | null>(null)
   // The active shell, lifted here from the pane: the sidebar's session rows are
@@ -123,15 +161,22 @@
     await deregisterSpace(space.id)
   }
 
+  // Selecting a space is also how you leave the settings route — it is a place
+  // you visit, not a mode.
+  function selectSpace(id: string) {
+    selectedId = id
+    leaveSettings()
+  }
+
   // Selecting a session selects its space and makes that shell active, so one
   // click drives both the sidebar highlight and what the pane renders.
   function selectSession(space: Space, t: Terminal) {
-    selectedId = space.id
+    selectSpace(space.id)
     activeTermId = t.id
   }
 
   async function openShell(space: Space) {
-    selectedId = space.id
+    selectSpace(space.id)
     opening = true
     try {
       const { id } = await openTerminal(space.id)
@@ -148,7 +193,7 @@
   // spawn primitive with a real session, so it opens exactly like a shell (no
   // role picker, no ticket, nothing to gate on).
   async function ideateSpace(space: Space) {
-    selectedId = space.id
+    selectSpace(space.id)
     opening = true
     try {
       const { id } = await ideate(space.id)
@@ -179,7 +224,7 @@
     verb: string,
     run: (spaceId: string, sessionId: string) => Promise<unknown>,
   ) {
-    selectedId = space.id
+    selectSpace(space.id)
     activeTermId = t.id
     try {
       await run(space.id, t.id)
@@ -195,8 +240,18 @@
   // rather than reaching into the pane's own state.
   function jumpToQueueEntry(entry: QueueEntry) {
     selectedId = entry.spaceId
-    location.hash = `#s=${encodeURIComponent(entry.spaceId)}&m=${encodeURIComponent(entry.mapSlug)}&t=${entry.ticketNum}`
+    navigate(
+      `#s=${encodeURIComponent(entry.spaceId)}&m=${encodeURIComponent(entry.mapSlug)}&t=${entry.ticketNum}`,
+    )
     queueOpen = false
+  }
+
+  // Kind is declared on the star-map's picker (ADR 0007); the settings surface
+  // shows kinds read-only and links there. The star deep link is the existing
+  // mechanism — SpacePane already listens for it.
+  function openMaps(spaceId: string) {
+    selectedId = spaceId
+    navigate(mapsHash(spaceId))
   }
 
   // Keyboard-first navigation (story 30): space switching and queue summoning,
@@ -207,6 +262,20 @@
   // itself, matching how the bindings drawer already behaves.
   function onGlobalKey(e: KeyboardEvent) {
     if (isEditingTarget() || e.metaKey || e.ctrlKey || e.altKey) return
+    // `,` enters the settings route (the conventional preferences key); Esc
+    // leaves it, ahead of the map's own Esc, which the pane suppresses while
+    // settings is up.
+    if (e.key === ',') {
+      e.preventDefault()
+      if (route.settings) leaveSettings()
+      else openSettings()
+      return
+    }
+    if (e.key === 'Escape' && route.settings) {
+      e.preventDefault()
+      leaveSettings()
+      return
+    }
     if (e.key === 'q' || e.key === 'Q') {
       e.preventDefault()
       queueOpen = !queueOpen
@@ -261,6 +330,18 @@
               >
             {/if}
           </span>
+          <!-- The effective config surface (ticket 05): one home for what the
+               three layers resolve, entered here or with `,`. -->
+          <Button
+            variant={route.settings ? 'secondary' : 'ghost'}
+            size="icon-sm"
+            aria-label="Settings"
+            aria-pressed={route.settings}
+            title="Settings — every resolved value and where it comes from (,)"
+            onclick={() => (route.settings ? leaveSettings() : openSettings())}
+          >
+            <Gear />
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -317,7 +398,7 @@
               <button
                 class="min-w-0 flex-1 truncate px-2.5 py-2 text-left text-xs font-semibold"
                 title={space.path}
-                onclick={() => (selectedId = space.id)}
+                onclick={() => selectSpace(space.id)}
               >
                 <span class="flex items-center gap-1.5">
                   {#if attention === 'halt'}
@@ -499,7 +580,7 @@
     {/if}
   </aside>
 
-  <main class="col-start-2 row-start-1 min-h-0 min-w-0">
+  <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
     {#if spaces.length === 0}
       <div class="grid h-full place-items-center p-6">
         <RegisterForm variant="first-run" onRegistered={(id) => (selectedId = id)} />
@@ -508,10 +589,29 @@
       <SpacePane
         space={selected}
         {activeTerm}
+        active={!route.settings}
         onOpenShell={() => openShell(selected)}
         onIdeate={() => ideateSpace(selected)}
         onspawned={(id) => (activeTermId = id)}
       />
+    {/if}
+
+    <!-- The settings route renders over the space cockpit rather than replacing
+         it in the tree: the terminal and the star-map are imperative islands
+         (ADR 0010), and tearing them down to read config would cost a re-attach
+         and the map's open state. The pane below goes inert while this is up —
+         it takes no keystrokes and stops reflecting itself into the URL. -->
+    {#if route.settings && route.scope}
+      <div class="absolute inset-0 z-20 bg-background">
+        <Settings
+          {spaces}
+          config={configLayers}
+          scope={route.scope}
+          onScope={(s) => navigate(settingsHash(s))}
+          onClose={leaveSettings}
+          onOpenMaps={openMaps}
+        />
+      </div>
     {/if}
   </main>
 

@@ -115,13 +115,51 @@ export interface Space {
   // whether the debris is harmless; the harness spawns into it all the same.
   dirty: boolean
   bindings: RoleBinding[]
+  // The resolved skill library: every skill with the layer that won its whole
+  // directory and its stale-fork state (ticket 05, story 34).
+  skills: ResolvedSkill[]
+  // This space's own config files — its committed workspace config and committed
+  // skill library. The layers it shares with every space live on `Model.config`.
+  layers: ConfigLayer[]
   maps: Map[]
   terminals: Terminal[]
   warnings?: string[]
 }
 
+// ResolvedSkill is one skill of the library as it resolves for a space: which
+// layer won its whole directory (whole-skill shadowing), and whether a fork has
+// fallen behind the shipped default. The positive statement of resolution —
+// "your grill resolves from: user" — not just the warning.
+export interface ResolvedSkill {
+  name: string
+  layer: Layer
+  // Where the winning directory sits; absent when the copy embedded in the binary
+  // is the floor.
+  dir?: string
+  description?: string
+  // The shipped content hash a shadowing skill recorded in its frontmatter, and
+  // whether the shipped default has since moved past it.
+  forkedFrom?: string
+  stale?: boolean
+}
+
+// ConfigLayer is one file or directory a space's effective config resolves
+// through. `name` is the server-side token the open action resolves — the client
+// never sends a path (ADR 0014). `holds` is what the layer can set: role
+// bindings (and, committed, map kinds) or skills.
+export interface ConfigLayer {
+  name: string
+  layer: Layer
+  holds: 'bindings' | 'skills'
+  path: string
+  exists: boolean
+}
+
 export interface Model {
   spaces: Space[]
+  // The config layers that are not any one space's: the operator's local binding
+  // overrides and the two skill libraries above and below them.
+  config: ConfigLayer[]
 }
 
 /** A space needs an agent installed if any of its bindings is absent from PATH. */

@@ -39,6 +39,8 @@ function space(id: string, extra: Partial<Space> = {}): Space {
     pinned: false,
     dirty: false,
     bindings: [],
+    skills: [],
+    layers: [],
     maps: [],
     terminals: [],
     ...extra,

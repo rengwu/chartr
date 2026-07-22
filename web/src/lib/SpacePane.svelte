@@ -4,28 +4,14 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import { Button } from './components/ui/button'
-  import { Badge, type BadgeVariant } from './components/ui/badge'
-  import * as Sheet from './components/ui/sheet'
-  import * as ScrollArea from './components/ui/scroll-area'
-  import type { Layer } from './model'
   import { spaceActionCount } from './attention'
   import { isEditingTarget } from './keys'
-  import { Warning, CheckCircle, Sparkle, SlidersHorizontal, Lightbulb } from 'phosphor-svelte'
-
-  // Which layer a field was inherited from, told apart by badge weight rather than
-  // hue (the palette is monochrome + destructive): built-in is the lightest touch
-  // (the shipped baseline), workspace the shared committed layer, user the
-  // operator's own override and so the strongest emphasis. Mirrors the payload
-  // preview's layer scale (ticket 08) so provenance reads the same everywhere.
-  const layerVariant: Record<Layer, BadgeVariant> = {
-    'built-in': 'outline',
-    workspace: 'secondary',
-    user: 'default',
-  }
+  import { settingsHash } from './route'
+  import { Warning, Sparkle, SlidersHorizontal, Lightbulb } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
-  // identity (name and path) plus the stage-level controls — the effective role
-  // bindings (stories 39, 40) and the star-map toggle — over the terminal. The
+  // identity (name and path) plus the stage-level controls — the way into this
+  // space's config (ticket 05) and the star-map toggle — over the terminal. The
   // sidebar now owns session selection (its space cards list each shell), so the
   // active shell arrives as a prop and this pane simply renders it: no tab strip,
   // no per-pane action bar. A mapless space is fully usable this way (story 29).
@@ -38,12 +24,18 @@
   let {
     space,
     activeTerm,
+    active = true,
     onOpenShell,
     onIdeate,
     onspawned,
   }: {
     space: Space
     activeTerm: Term | null
+    // False while the settings route covers the stage (ticket 05). The pane stays
+    // mounted — its terminal and star-map are imperative islands worth keeping
+    // alive — but goes inert: it takes no keystrokes and stops reflecting its
+    // selection into the URL, which the settings route owns while it is up.
+    active?: boolean
     onOpenShell: () => void
     // The ideate on-ramp (ticket 15): a live, ticketless chat, the one
     // opinionated nudge toward charting for a space with no map to spawn onto.
@@ -53,15 +45,15 @@
     onspawned?: (sessionId: string) => void
   } = $props()
 
-  let showBindings = $state(false)
-
   // A deep link names a star (spec): #s=<spaceId>&m=<mapSlug>&t=<ticketNum>, or
-  // &mat=1 for the map material. Parsed once at init — the enclosing App has
-  // already selected the space from the same `s` — so the linked star opens and
-  // seats on load; manual edits are picked up by a hashchange listener below.
+  // &mat=1 for the map material, or &maps=1 for the picker (where a map's kind is
+  // declared, which the settings route links to). Parsed once at init — the
+  // enclosing App has already selected the space from the same `s` — so the linked
+  // star opens and seats on load; manual edits are picked up by a hashchange
+  // listener below.
   function parseHash() {
     const p = new URLSearchParams(location.hash.replace(/^#/, ''))
-    return { s: p.get('s'), m: p.get('m'), t: p.get('t'), mat: p.get('mat') }
+    return { s: p.get('s'), m: p.get('m'), t: p.get('t'), mat: p.get('mat'), maps: p.get('maps') }
   }
   const boot = parseHash()
   // A one-time read at construction: the enclosing App has already selected this
@@ -71,7 +63,7 @@
 
   // Star-map card state (persists across space switches by design). `openSlug`
   // names the open map, or is null for the picker screen.
-  let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat))
+  let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat || !!boot.maps))
   let dock = $state(true)
   let openSlug = $state<string | null>(bootApplies ? boot.m : null)
   let selectedTicket = $state<number | null>(bootApplies && boot.t ? Number(boot.t) : null)
@@ -123,8 +115,10 @@
 
   // Reflect the current selection into the URL so a star (or the map material) is
   // a shareable deep link. replaceState never fires hashchange, so this and the
-  // listener below do not loop.
+  // listener below do not loop. While the settings route is up it owns the hash,
+  // so this stands down and restores its own link when the pane is active again.
   $effect(() => {
+    if (!active) return
     const p = new URLSearchParams()
     p.set('s', space.id)
     if (openSlug) p.set('m', openSlug)
@@ -150,6 +144,12 @@
       } else if (h.mat) {
         showMaterial = true
         selectedTicket = null
+        mapShown = true
+      } else if (h.maps) {
+        // The picker, where an unclassified map is given its kind (ADR 0007).
+        openSlug = null
+        selectedTicket = null
+        showMaterial = false
         mapShown = true
       }
     }
@@ -229,9 +229,11 @@
   // not inside the terminal (whose PTY owns every raw keystroke) or a text field.
   // The edge handle is the always-available path when the shell has the keyboard.
   function onKey(e: KeyboardEvent) {
-    // A summoned Sheet/Dialog (the bindings drawer, the action station) owns
-    // its own Escape; the chrome's M/Esc bindings must not also fire while it
-    // holds focus.
+    // Inert while the settings route covers the stage: its own Esc must not also
+    // peel back this pane's map underneath it.
+    if (!active) return
+    // A summoned Sheet/Dialog (the action station) owns its own Escape; the
+    // chrome's M/Esc bindings must not also fire while it holds focus.
     const editing = isEditingTarget()
     if (e.key === 'Escape' && !editing) {
       // Esc peels back one layer: the open detail pane first, then the open map
@@ -285,74 +287,17 @@
           <Warning class="size-3.5" /> {warnings.length}
         </span>
       {/if}
-      <!-- Effective role bindings, summoned into a right Sheet from the header. -->
-      <Sheet.Root bind:open={showBindings}>
-        <Sheet.Trigger>
-          {#snippet child({ props })}
-            <Button {...props} variant="outline" size="sm" title="Effective role bindings">
-              <SlidersHorizontal /> bindings
-            </Button>
-          {/snippet}
-        </Sheet.Trigger>
-        <Sheet.Content side="right" class="w-full gap-0 p-0 sm:max-w-md">
-          <Sheet.Header class="border-b border-border px-4 py-3 text-left">
-            <Sheet.Title class="text-sm">Effective role bindings</Sheet.Title>
-            <Sheet.Description class="text-xs text-muted-foreground">
-              What each role resolves to after merging built-in ‹ workspace ‹ user. The tag on
-              a field names the layer it was inherited from.
-            </Sheet.Description>
-          </Sheet.Header>
-          <ScrollArea.Root class="min-h-0 flex-1">
-            <div class="flex flex-col gap-3 p-4">
-              {#if warnings.length}
-                <ul class="flex flex-col gap-1.5 rounded-md border border-border p-2.5">
-                  {#each warnings as w}
-                    <li class="flex items-start gap-1.5 text-xs text-muted-foreground">
-                      <Warning class="mt-0.5 size-3.5 shrink-0" /> <span>{w}</span>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-
-              <ul class="flex flex-col gap-2">
-                {#each space.bindings as b (b.role)}
-                  <li class="rounded-md border border-border p-2.5">
-                    <div class="mb-1.5 flex items-center justify-between gap-2">
-                      <span class="text-xs font-semibold">{b.role}</span>
-                      {#if b.present}
-                        <span class="flex items-center gap-1 text-[0.7rem] text-muted-foreground">
-                          <CheckCircle class="size-3.5" /> on PATH
-                        </span>
-                      {:else}
-                        <Badge variant="destructive" class="gap-1"><Warning /> not found</Badge>
-                      {/if}
-                    </div>
-                    <div class="flex flex-col gap-1">
-                      <div class="flex items-center gap-1.5">
-                        <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.adapter}</span>
-                        <Badge variant={layerVariant[b.adapterFrom]}>{b.adapterFrom}</Badge>
-                      </div>
-                      <div class="flex items-center gap-1.5">
-                        <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.model}</span>
-                        <Badge variant={layerVariant[b.modelFrom]}>{b.modelFrom}</Badge>
-                      </div>
-                      {#if b.args && b.args.length}
-                        <div class="flex items-center gap-1.5">
-                          <span class="min-w-0 flex-1 truncate font-mono text-xs">{b.args.join(' ')}</span>
-                          <Badge variant={layerVariant[b.argsFrom]}>{b.argsFrom}</Badge>
-                        </div>
-                      {/if}
-                    </div>
-                    {#if !b.present && b.missing}
-                      <p class="mt-1.5 text-[0.7rem] text-muted-foreground">{b.missing}</p>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          </ScrollArea.Root>
-        </Sheet.Content>
-      </Sheet.Root>
+      <!-- Config has one home (ticket 05): this navigates to the settings route
+           scoped to this space, rather than opening a second, per-space drawer
+           over the same values. -->
+      <Button
+        variant="outline"
+        size="sm"
+        title="This space's effective config — bindings, skills, kinds, and where each layer lives"
+        onclick={() => (location.hash = settingsHash({ kind: 'space', spaceId: space.id }))}
+      >
+        <SlidersHorizontal /> config
+      </Button>
 
       {#if maps.length}
         <!-- The one star-map show/hide control for the whole stage, beside the

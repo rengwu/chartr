@@ -22,10 +22,13 @@
 # who clones.
 /user.toml
 
-# The materialized prompt library (ticket 08) is user-config runtime state too: a
-# copy lands under the data root — the repo root when run with cwd here — as the
-# operator's editable copy. Never committed. (A space's *committed* prompt overlay
-# lives under .wayfinder-harness/prompts/, which is a different, intentional path.)
+# The materialized skill library is user-config runtime state too: a copy lands
+# under the data root — the repo root when run with cwd here — as the operator's
+# editable copy. Never committed. (A space's *committed* skill overlay lives under
+# .wayfinder-harness/skills/, which is a different, intentional path.) `/prompts/`
+# is the pre-skills name of the same directory, still ignored so an old checkout's
+# leftovers never surface as a diff.
+/skills/
 /prompts/
 
 # Per-session payload archives (ticket 09) are harness-owned state under the data

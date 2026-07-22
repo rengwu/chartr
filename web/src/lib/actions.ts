@@ -139,6 +139,46 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
   return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/release`)
 }
 
+// setBinding edits one field of one role binding from the transparency surface
+// (ticket 05). It writes the **user layer and nowhere else** — bindings resolve
+// user-over-workspace (ADR 0009), so that is their home, and the cockpit never
+// writes a space's committed config. Pass null to clear the override, which
+// reveals the layer beneath it; `args` takes a list. The edited value and its new
+// provenance arrive over the control socket, so there is no optimistic state here.
+export function setBinding(
+  id: string,
+  role: string,
+  field: 'adapter' | 'model' | 'args',
+  value: string | string[] | null,
+): Promise<{ role: string; field: string; cleared: boolean; path: string }> {
+  return send('PUT', `/api/spaces/${encodeURIComponent(id)}/config/binding`, {
+    role,
+    field,
+    value,
+  }) as Promise<{ role: string; field: string; cleared: boolean; path: string }>
+}
+
+// OpenLayerResult reports how far the open action got: `editor` launched
+// $VISUAL/$EDITOR, `os` fell back to the OS opener, and `none` means the path
+// itself is the answer — a layer with nothing on disk yet, or an environment with
+// no way to open it.
+export interface OpenLayerResult {
+  path: string
+  exists: boolean
+  opened: 'editor' | 'os' | 'none'
+  with?: string
+}
+
+// openConfigLayer opens a config layer in the operator's editor — the escape
+// hatch for everything the surface deliberately does not edit inline. `layer` is
+// a *name* the server resolves to a path (`workspace-config`, `user-config`,
+// `skill:<name>`, …); a local server never opens a path the client sent.
+export function openConfigLayer(id: string, layer: string): Promise<OpenLayerResult> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/config/open`, {
+    layer,
+  }) as Promise<OpenLayerResult>
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.
