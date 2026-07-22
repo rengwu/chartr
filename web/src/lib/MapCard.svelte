@@ -397,6 +397,8 @@
         bind:open={stationOpen}
         {map}
         {spaceId}
+        {agents}
+        {lastAgent}
         onselect={(num) => (selected = num)}
         {onspawned}
         onhover={(num) => (hoverNum = num)}

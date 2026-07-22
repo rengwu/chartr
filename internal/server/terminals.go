@@ -8,7 +8,6 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/rengwu/chartr/internal/adapter"
-	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
@@ -38,24 +37,32 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 // sixth role — so it shares only the adapter's spawn primitive with a real
 // session: no map or ticket is looked up, no claim is written, and the tab it
 // seats carries no Session, so it reads and ends exactly like an ad-hoc shell
-// (never the session grammar, never the death halt). It borrows the `grill`
-// binding to pick an agent — the closest existing analogue, a live
-// human-in-the-loop conversation — rather than opening a sixth entry in the
-// closed role set.
+// (never the session grammar, never the death halt).
+//
+// It names its agent explicitly, exactly as a session does (ticket 03). It used
+// to borrow the `grill` binding — an indirection that appeared on no surface and
+// was documented only here — so an operator could not see, and could not choose,
+// what their on-ramp ran. The ideate control now says both.
 func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.reg.Get(r.PathValue("id"))
 	if !ok {
 		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
-
-	binding, ok := bindingFor(s.resolve(e), string(config.RoleGrill))
-	if !ok {
-		httpError(w, http.StatusInternalServerError, "no binding to ideate with")
-		return
+	// An empty body is still a well-formed request that named no agent, which
+	// agentSpec refuses with the same message as any other nameless one.
+	var body struct {
+		Agent string `json:"agent"`
 	}
-	if !binding.Present {
-		httpError(w, http.StatusConflict, binding.Missing)
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+
+	// The same doorstep, the same refusals, in the same order a spawn gives them:
+	// nothing here is a special case any more.
+	spec, status, err := agentSpec(s.resolve(e), body.Agent)
+	if err != nil {
+		httpError(w, status, err.Error())
 		return
 	}
 
@@ -67,10 +74,10 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	launch := adapter.Command(adapter.Spawn{
-		Adapter: binding.Adapter,
-		Args:    binding.Args,
+		Adapter: spec.Adapter,
+		Args:    spec.Args,
 		Prompt:  adapter.Opener(promptPath),
-		Deliver: binding.Prompt,
+		Deliver: spec.Prompt,
 	})
 	t, err := s.terms.OpenIdeate(e.ID, e.Path, id, launch.Name, launch.Args, launch.TypeIn)
 	if err != nil {

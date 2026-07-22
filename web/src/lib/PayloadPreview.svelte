@@ -1,7 +1,8 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
-  import { defaultRole, ROLES, type Payload, type PayloadPart, type Role } from './model'
+  import { defaultRole, ROLES, type Agent, type Payload, type PayloadPart, type Role } from './model'
   import { previewPayload } from './actions'
+  import { chooseAgent, type AgentChoice } from './agentchoice'
   import { renderMarkdown } from './markdown'
   import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
@@ -14,6 +15,10 @@
   // library and the context bundle, with per-part layer provenance. The operator
   // reads it here before spawning ever exists — the library is hackable and this
   // is the window onto what an edit actually produces.
+  //
+  // It answers *what will run it* as well as *what will it read* (ticket 03,
+  // story 24): the agent this space would spawn with, and the command line that
+  // agent produces.
   let {
     open,
     spaceId,
@@ -21,6 +26,8 @@
     ticketNum,
     ticketTitle,
     ticketType,
+    agents,
+    lastAgent,
     onClose,
   }: {
     open: boolean
@@ -29,8 +36,15 @@
     ticketNum: number
     ticketTitle: string
     ticketType: string
+    // The registered library and the space's remembered choice — the same two
+    // inputs the spawn control decides from, so the preview names the agent that
+    // control would actually launch and cannot disagree with it.
+    agents: Agent[]
+    lastAgent?: string
     onClose: () => void
   } = $props()
+
+  const agentChoice = $derived<AgentChoice>(chooseAgent(agents, lastAgent))
 
   // The role a ticket's type points at is the sensible default the preview opens
   // on; the operator can preview — and spawn — any of the four from here. It is
@@ -121,6 +135,41 @@
           onclick={() => (role = r)}>{r}</Button
         >
       {/each}
+    </div>
+
+    <!-- What will run it (ticket 03, story 24). The command comes off the agent
+         library, which builds it through the same seam that builds the real argv,
+         so this preview cannot drift from the launch. -->
+    <div class="rounded-md border border-border p-2.5">
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="text-sm font-medium">
+          {#if agentChoice.kind === 'ready'}
+            {agentChoice.agent.name}
+          {:else if agentChoice.kind === 'empty'}
+            No agent registered
+          {:else}
+            No agent chosen yet
+          {/if}
+        </span>
+        <span class="text-[0.65rem] tracking-wide text-muted-foreground uppercase">runs this</span>
+      </div>
+      {#if agentChoice.kind === 'ready'}
+        <p class="mt-1 font-mono text-[0.7rem] break-all text-muted-foreground">
+          {agentChoice.agent.command.join(' ')}
+        </p>
+        <p class="mt-0.5 text-[0.7rem] text-muted-foreground">
+          <span class="font-mono">‹opener›</span> is the read-this-file line pointing at the composed
+          payload below.
+        </p>
+      {:else if agentChoice.kind === 'empty'}
+        <p class="mt-1 text-[0.7rem] text-muted-foreground">
+          Register an agent in settings before this ticket can be spawned.
+        </p>
+      {:else}
+        <p class="mt-1 text-[0.7rem] text-muted-foreground">
+          This space has not spawned yet — the spawn control will ask which agent to run it.
+        </p>
+      {/if}
     </div>
 
     {#if loading}

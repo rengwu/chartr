@@ -497,6 +497,8 @@
     ticketNum={previewTarget.ticket.num}
     ticketTitle={previewTarget.ticket.title}
     ticketType={typeForRole[previewRole] ?? 'task'}
+    {agents}
+    lastAgent={space.lastAgent}
     onClose={() => (previewRole = null)}
   />
 {/if}

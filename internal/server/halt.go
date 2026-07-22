@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/rengwu/chartr/internal/adapter"
-	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/registry"
@@ -62,8 +61,10 @@ func (s *Server) haltTarget(w http.ResponseWriter, r *http.Request) (registry.En
 // recovery (ADR 0005 as amended). The claim stands (no new commit), the archived
 // payload is re-materialized to the gitignored path the opener points at, and the
 // agent is launched afresh under the same session id, so it walks back into the
-// working tree it left. The binding is re-resolved, so a resume after the operator
-// fixed a missing CLI picks up the fix and re-checks presence.
+// working tree it left. The session's own agent is re-resolved from the library,
+// so a resume after the operator fixed a missing CLI picks up the fix and
+// re-checks presence — and one whose agent has since gone is refused rather than
+// silently relaunched on something else.
 func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	e, info, ok := s.haltTarget(w, r)
 	if !ok {
@@ -75,8 +76,9 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusConflict, "this space already has a live session — end it before resuming")
 		return
 	}
-	binding, ok := s.resolveBinding(w, e, sess.Role)
-	if !ok {
+	spec, status, err := launchSpecFor(s.resolve(e), sess.Role, sess.AgentName)
+	if err != nil {
+		httpError(w, status, err.Error())
 		return
 	}
 
@@ -90,17 +92,18 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	s.terms.Discard(info.ID)
 
 	launch := adapter.Command(adapter.Spawn{
-		Adapter: binding.Adapter,
-		Args:    binding.Args,
+		Adapter: spec.Adapter,
+		Args:    spec.Args,
 		Prompt:  adapter.Opener(payloadPath),
-		Deliver: binding.Prompt,
+		Deliver: spec.Prompt,
 	})
 	if _, err := s.terms.OpenSession(e.ID, e.Path, info.ID, launch.Name, launch.Args,
 		launch.TypeIn, terminal.Session{
 			MapSlug:   sess.MapSlug,
 			TicketNum: sess.TicketNum,
 			Role:      sess.Role,
-			Agent:     binding.Adapter,
+			Agent:     spec.Adapter,
+			AgentName: spec.Name,
 		}); err != nil {
 		if errors.Is(err, terminal.ErrSessionExists) {
 			httpError(w, http.StatusConflict, "this space already has a live session")
@@ -146,8 +149,14 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusConflict, "ticket is no longer claimed by this session — nothing to respawn")
 		return
 	}
-	binding, ok := s.resolveBinding(w, e, sess.Role)
-	if !ok {
+	// "Start over cleanly" composes a fresh payload and writes a fresh claim; it
+	// does not change what executes. So the agent comes from the dead session
+	// itself, not from re-deciding — and one that has since been deregistered or
+	// fallen off PATH is refused with the message any other absent agent gets,
+	// surfaced rather than silently substituted.
+	spec, status, err := launchSpecFor(s.resolve(e), sess.Role, sess.AgentName)
+	if err != nil {
+		httpError(w, status, err.Error())
 		return
 	}
 
@@ -157,7 +166,7 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 		m:         m,
 		tk:        tk,
 		role:      sess.Role,
-		spec:      specOf(binding),
+		spec:      spec,
 		sessionID: newSessionID(),
 	})
 	if err != nil {
@@ -204,24 +213,6 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request) {
 		"ticketNum": sess.TicketNum,
 		"released":  true,
 	})
-}
-
-// resolveBinding resolves one role's binding for a halt action and hard-blocks an
-// absent agent with the resolver's own message — the same doorstep diagnosis a
-// fresh spawn gives (story 40), so a resume or respawn after the CLI vanished fails
-// the same recognisable way. It writes the error response and returns ok=false on
-// any block.
-func (s *Server) resolveBinding(w http.ResponseWriter, e registry.Entry, role string) (config.Resolved, bool) {
-	binding, ok := bindingFor(s.resolve(e), role)
-	if !ok {
-		httpError(w, http.StatusInternalServerError, "no binding for role "+role)
-		return config.Resolved{}, false
-	}
-	if !binding.Present {
-		httpError(w, http.StatusConflict, binding.Missing)
-		return config.Resolved{}, false
-	}
-	return binding, true
 }
 
 // frozenTicket discovers the map and ticket a session names, fresh off disk (as

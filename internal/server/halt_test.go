@@ -378,3 +378,100 @@ func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
 		t.Errorf("tree should still read dirty after the spawn (the debris remains)")
 	}
 }
+
+// Ticket 03: a respawn launches the agent the dead session ran, not a
+// re-resolution of its role. "Start over cleanly" composes a fresh payload and
+// writes a fresh claim; it does not change what executes.
+func TestHaltRespawnReusesTheDeadSessionsAgent(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+
+	// The role's bound adapter is present *and* recording, so re-resolving the
+	// binding would leave a trace. The chosen agent's binary dies on cue, which is
+	// what gets the session to the halt in the first place.
+	claudeDelivery := chartrtest.StubAgent(t, "claude")
+	chartrtest.StubDyingAgent(t, "some-harness")
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "harness-yolo", map[string]any{
+		"adapter": "some-harness",
+		"args":    []string{"-m", "big", "--think"},
+	})
+
+	code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "harness-yolo")
+	if code != 200 {
+		t.Fatalf("spawn naming harness-yolo = %d, body %s", code, body)
+	}
+	oldSid := decodeSpawn(t, body).SessionID
+	waitForDeadSession(t, h, resp.ID)
+
+	code, body = h.Respawn(resp.ID, oldSid)
+	if code != 200 {
+		t.Fatalf("respawn = %d, body %s", code, body)
+	}
+	fresh := decodeSpawn(t, body)
+	if fresh.Agent != "some-harness" || fresh.AgentName != "harness-yolo" {
+		t.Errorf("respawn ran %q (%q), want some-harness (harness-yolo) — the dead session's own agent",
+			fresh.Agent, fresh.AgentName)
+	}
+	if b, _ := os.ReadFile(claudeDelivery); len(b) > 0 {
+		t.Errorf("respawn re-resolved the role's binding and launched claude:\n%s", b)
+	}
+
+	// The fresh claim records the same choice and the same mechanism as the first.
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
+	for _, w := range []string{"Agent: harness-yolo", "Adapter: some-harness", "Args: -m big --think"} {
+		if !strings.Contains(msg, w) {
+			t.Errorf("re-claim commit missing trailer %q:\n%s", w, msg)
+		}
+	}
+}
+
+// A respawn whose agent has since been deregistered is refused with the message
+// any other absent agent gets — surfaced, never silently substituted onto
+// whatever the role would have resolved to. The halt is left exactly as it was,
+// so the operator can register the agent again and retry.
+func TestHaltRespawnRefusesWhenTheAgentIsGone(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude") // the role's binding, present and never wanted
+	chartrtest.StubDyingAgent(t, "some-harness")
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "harness-yolo", map[string]any{"adapter": "some-harness"})
+
+	code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "harness-yolo")
+	if code != 200 {
+		t.Fatalf("spawn naming harness-yolo = %d, body %s", code, body)
+	}
+	oldSid := decodeSpawn(t, body).SessionID
+	waitForDeadSession(t, h, resp.ID)
+	before := commitCount(t, repo)
+
+	if code, body := h.Delete("/api/config/agents/harness-yolo"); code != 200 {
+		t.Fatalf("deleting harness-yolo = %d, body %s", code, body)
+	}
+
+	code, body = h.Respawn(resp.ID, oldSid)
+	if code != 400 {
+		t.Fatalf("respawn on a deregistered agent = %d, want 400; body %s", code, body)
+	}
+	if !strings.Contains(body, "harness-yolo") {
+		t.Errorf("the refusal does not name the agent that is gone: %s", body)
+	}
+
+	// No re-claim, and the dead tab is still pinned to its ticket to retry from.
+	if after := commitCount(t, repo); after != before {
+		t.Errorf("a refused respawn wrote a commit: %s -> %s", before, after)
+	}
+	tab := sessionTab(findSpace(t, h.Snapshot(ctx(t)), resp.ID))
+	if tab == nil || tab.ID != oldSid {
+		t.Errorf("a refused respawn dropped the dead tab: %+v", tab)
+	}
+}

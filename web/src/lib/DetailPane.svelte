@@ -9,15 +9,14 @@
   } from "./model";
   import { renderMarkdown, sectionOf } from "./markdown";
   import { spawnSession, ActionError } from "./actions";
-  import { chooseAgent, type AgentChoice } from "./agentchoice";
   import PayloadPreview from "./PayloadPreview.svelte";
+  import AgentSplitButton from "./AgentSplitButton.svelte";
   import * as Accordion from "$lib/components/ui/accordion";
   import * as Card from "$lib/components/ui/card";
   import * as ScrollArea from "$lib/components/ui/scroll-area";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
-  import { Button, buttonVariants } from "$lib/components/ui/button";
-  import { CaretDown, Compass, Eye, X, Rocket, Warning } from "phosphor-svelte";
+  import { Button } from "$lib/components/ui/button";
+  import { Compass, Eye, X, Rocket, Warning } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -79,17 +78,6 @@
   let spawningRole = $state<Role | null>(null);
   let spawnError = $state<string | null>(null);
 
-  // Which agent this space will spawn with — a pure function over the library and
-  // the remembered name. The spawn buttons use this to name the agent and decide
-  // whether the primary click spawns or opens the picker.
-  const agentChoice = $derived<AgentChoice>(chooseAgent(agents, lastAgent));
-
-  // Each role button has its own dropdown so the operator can override the
-  // remembered agent for just that role's spawn.
-  let roleOpen = $state<Record<Role, boolean>>(
-    Object.fromEntries(ROLES.map((r) => [r, false])) as Record<Role, boolean>,
-  );
-
   // A single DetailPane instance is reused as the selection changes ticket, so a
   // block message the operator saw on one ticket must not linger onto the next.
   let lastNum: number | undefined = undefined;
@@ -119,26 +107,6 @@
 
   function roleLabel(role: Role): string {
     return role.slice(0, 1).toUpperCase() + role.slice(1);
-  }
-
-  function spawnButtonLabel(role: Role): string {
-    if (spawningRole === role) return "Starting…";
-    if (agentChoice.kind === "ready") {
-      return `${roleLabel(role)} with ${agentChoice.agent.name}`;
-    }
-    return `Start ${roleLabel(role)}`;
-  }
-
-  function handleMainClick(role: Role) {
-    if (agentChoice.kind === "ready") {
-      spawn(role, agentChoice.agent.name);
-    } else if (agentChoice.kind === "unchosen") {
-      roleOpen[role] = true;
-    } else {
-      // Empty library: ticket 04 owns the empty state. For now fall through to
-      // the existing server refusal path by attempting a spawn with no name.
-      spawn(role, "");
-    }
   }
 
   // The closing-answer section names, in the order a resolved/ruled-out ticket
@@ -423,48 +391,21 @@
       {/if}
       <span class="flex-1"></span>
       {#each spawnRoles as r (r)}
-        {@const variant = r === preferredRole ? "default" : "outline"}
-        <DropdownMenu.Root bind:open={roleOpen[r]}>
-          <div class="inline-flex">
-            <Button
-              {variant}
-              size="sm"
-              disabled={spawningRole !== null}
-              class="rounded-r-none"
-              title={agentChoice.kind === "ready"
-                ? `Start a ${r} session on #${ticket ? pad(ticket.num) : ""} with ${agentChoice.agent.name}`
-                : `Start a ${r} session on #${ticket ? pad(ticket.num) : ""}`}
-              onclick={() => handleMainClick(r)}
-            >
-              {#if r === preferredRole}<Rocket />{/if}
-              {spawnButtonLabel(r)}
-            </Button>
-            <DropdownMenu.Trigger
-              class={cn(
-                buttonVariants({ variant, size: "sm" }),
-                "rounded-l-none border-l-0 px-1.5",
-              )}
-              disabled={spawningRole !== null}
-              aria-label="Choose agent"
-            >
-              <CaretDown />
-            </DropdownMenu.Trigger>
-          </div>
-          <DropdownMenu.Content align="end" class="min-w-48 w-auto">
-            {#each agents as a (a.name)}
-              <DropdownMenu.Item
-                class="flex flex-col items-start gap-0.5"
-                disabled={!a.present}
-                onclick={() => spawn(r, a.name)}
-              >
-                <span class="font-medium">{a.name}</span>
-                {#if !a.present && a.missing}
-                  <span class="text-[0.65rem] text-destructive">{a.missing}</span>
-                {/if}
-              </DropdownMenu.Item>
-            {/each}
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+        <AgentSplitButton
+          {agents}
+          {lastAgent}
+          label={roleLabel(r)}
+          unchosenLabel="Start {roleLabel(r)}"
+          busy={spawningRole === r}
+          disabled={spawningRole !== null}
+          variant={r === preferredRole ? "default" : "outline"}
+          title="Start a {r} session on #{ticket ? pad(ticket.num) : ''}"
+          onrun={(agent) => spawn(r, agent)}
+        >
+          {#snippet icon()}
+            {#if r === preferredRole}<Rocket />{/if}
+          {/snippet}
+        </AgentSplitButton>
       {/each}
     </div>
   {/if}
@@ -478,6 +419,8 @@
     ticketNum={ticket.num}
     ticketTitle={ticket.title}
     ticketType={ticket.type}
+    {agents}
+    {lastAgent}
     onClose={() => (showPreview = false)}
   />
 {/if}

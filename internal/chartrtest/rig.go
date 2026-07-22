@@ -202,13 +202,16 @@ func (h *Chartr) OpenTerminal(spaceID string) string {
 	return r.ID
 }
 
-// Ideate opens the ideate on-ramp in the space and returns its tab id (ticket
-// 15). It fails the test on a non-200 response.
-func (h *Chartr) Ideate(spaceID string) string {
+// Ideate opens the ideate on-ramp in the space on a named registered agent and
+// returns its tab id (ticket 15). Ideate names its agent like every other spawn
+// (ticket 03), so — unlike Spawn — there is one helper and it always says which:
+// there is no role behind it to fall back to. It fails the test on a non-200
+// response; IdeateRaw is the way to assert a refusal.
+func (h *Chartr) Ideate(spaceID, agent string) string {
 	h.t.Helper()
-	code, body := h.Post("/api/spaces/"+spaceID+"/ideate", nil)
+	code, body := h.IdeateRaw(spaceID, agent)
 	if code != 200 {
-		h.t.Fatalf("chartrtest: ideate in %s = %d, body %s", spaceID, code, body)
+		h.t.Fatalf("chartrtest: ideate in %s with %q = %d, body %s", spaceID, agent, code, body)
 	}
 	var r struct {
 		ID string `json:"id"`
@@ -217,6 +220,13 @@ func (h *Chartr) Ideate(spaceID string) string {
 		h.t.Fatalf("chartrtest: ideate response not JSON: %v (%q)", err, body)
 	}
 	return r.ID
+}
+
+// IdeateRaw posts the ideate action and returns the status code and body, so a
+// test can assert a refusal — an unregistered agent, or one whose binary is gone.
+func (h *Chartr) IdeateRaw(spaceID, agent string) (int, string) {
+	h.t.Helper()
+	return h.Post("/api/spaces/"+spaceID+"/ideate", map[string]string{"agent": agent})
 }
 
 // Spawn posts a spawn action for a ticket and role and returns the status code

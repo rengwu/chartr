@@ -17,6 +17,7 @@
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
   import Settings from "./lib/Settings.svelte";
+  import AgentSplitButton from "./lib/AgentSplitButton.svelte";
   import Modal from "./lib/Modal.svelte";
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
@@ -272,11 +273,15 @@
   // live, ticketless agent tab typed the starter prompt on open — shares only the
   // spawn primitive with a real session, so it opens exactly like a shell (no
   // role picker, no ticket, nothing to gate on).
-  async function ideateSpace(space: Space) {
+  //
+  // It does name the agent that runs it (ticket 03). The control is the same
+  // split button the action bar uses, so the space's remembered agent runs it in
+  // one click and the picker opens when there is nothing remembered.
+  async function ideateSpace(space: Space, agent: string) {
     selectSpace(space.id);
     opening = true;
     try {
-      const { id } = await ideate(space.id);
+      const { id } = await ideate(space.id, agent);
       activeTermId = id;
     } catch (e) {
       actionError = `Couldn’t start ideating: ${(e as Error).message}`;
@@ -697,19 +702,26 @@
                 <Gear class="size-3.5" />
               </Button>
               <span class="flex-1"></span>
-              <Button
-                variant="outline"
-                size="xs"
-                aria-label="Ideate in {space.name}"
-                title="Ideate — a live, ticketless chat to think an idea through"
+              <!-- Ideate names its agent (ticket 03). The row's own click just
+                   selects the space, which ideateSpace does anyway, so this one
+                   deliberately does not stop propagation — the dropdown trigger
+                   has no click handler of its own to protect. The agent's name is
+                   in the menu and the tooltip rather than on this label: the
+                   sidebar button has no room for it. -->
+              <AgentSplitButton
+                agents={agentLibrary}
+                lastAgent={space.lastAgent}
+                label="Idea"
+                nameOnLabel={false}
                 disabled={opening}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  ideateSpace(space);
-                }}
+                size="xs"
+                ariaLabel="Ideate in {space.name}"
+                title="Ideate in {space.name}"
+                note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
+                onrun={(agent) => ideateSpace(space, agent)}
               >
-                <Plus /> Idea
-              </Button>
+                {#snippet icon()}<Plus />{/snippet}
+              </AgentSplitButton>
               <Button
                 variant="outline"
                 size="xs"
@@ -819,7 +831,7 @@
         {activeTerm}
         active={!route.settings}
         onOpenShell={() => openShell(selected)}
-        onIdeate={() => ideateSpace(selected)}
+        onIdeate={(agent) => ideateSpace(selected, agent)}
         onOpenSettings={() => openSettings()}
         onspawned={(id) => (activeTermId = id)}
       />

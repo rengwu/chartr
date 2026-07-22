@@ -83,8 +83,14 @@ export function closeTerminal(spaceId: string, termId: string): Promise<void> {
 // the on-disk starter prompt on open. It shares only the adapter's spawn
 // primitive with a real session — no map or ticket, no claim, no lifecycle, ended
 // only by the human, exactly like an ad-hoc shell — and returns the new tab's id.
-export function ideate(id: string): Promise<{ id: string }> {
-  return send('POST', `/api/spaces/${encodeURIComponent(id)}/ideate`) as Promise<{
+//
+// It names its agent like every other spawn (ticket 03): ideate used to borrow
+// the `grill` role's binding, which appeared on no surface. There is no role
+// behind it to fall back on, so the name is always sent.
+export function ideate(id: string, agent = ''): Promise<{ id: string }> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/ideate`, {
+    agent,
+  }) as Promise<{
     id: string
   }>
 }

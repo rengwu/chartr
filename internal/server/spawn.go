@@ -206,16 +206,7 @@ type launchSpec struct {
 // alongside a non-nil error.
 func launchSpecFor(res config.Resolution, role, agent string) (launchSpec, int, error) {
 	if agent != "" {
-		for _, a := range res.Agents {
-			if a.Name != agent {
-				continue
-			}
-			if !a.Present {
-				return launchSpec{}, http.StatusConflict, errors.New(a.Missing)
-			}
-			return launchSpec{Name: a.Name, Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt}, 0, nil
-		}
-		return launchSpec{}, http.StatusBadRequest, fmt.Errorf("no agent named %q is registered", agent)
+		return agentSpec(res, agent)
 	}
 
 	binding, ok := bindingFor(res, role)
@@ -226,6 +217,30 @@ func launchSpecFor(res config.Resolution, role, agent string) (launchSpec, int, 
 		return launchSpec{}, http.StatusConflict, errors.New(binding.Missing)
 	}
 	return specOf(binding), 0, nil
+}
+
+// agentSpec resolves one registered agent's name into what it launches. It is the
+// whole of the explicit-selection path, shared by every surface that names an
+// agent — spawn, ideate, and the halt actions that relaunch what a dead session
+// ran — so an unregistered name is a malformed request (400) and a registered
+// agent absent from PATH is a conflict carrying the library's own diagnosis (409)
+// in exactly one place, whichever surface asked. An empty name is refused here
+// too: it is the request that named nothing, and no path reaching this function
+// has anything to fall back to (ticket 04 makes that the rule everywhere).
+func agentSpec(res config.Resolution, agent string) (launchSpec, int, error) {
+	if agent == "" {
+		return launchSpec{}, http.StatusBadRequest, errors.New("an agent is required — pick one from your library")
+	}
+	for _, a := range res.Agents {
+		if a.Name != agent {
+			continue
+		}
+		if !a.Present {
+			return launchSpec{}, http.StatusConflict, errors.New(a.Missing)
+		}
+		return launchSpec{Name: a.Name, Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt}, 0, nil
+	}
+	return launchSpec{}, http.StatusBadRequest, fmt.Errorf("no agent named %q is registered", agent)
 }
 
 // specOf reads a resolved role binding as a launch spec. A binding assigned to a
@@ -324,6 +339,10 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 			TicketNum: in.tk.Num,
 			Role:      in.role,
 			Agent:     in.spec.Adapter,
+			// The registered name travels with the session so a resume or a respawn
+			// relaunches the agent this session actually ran, rather than re-deciding
+			// it (ticket 03).
+			AgentName: in.spec.Name,
 		}); err != nil {
 		// The claim already stands (ADR 0008: it is not rolled back). A live-session
 		// race is a conflict; a launch failure after a present-on-PATH check is an

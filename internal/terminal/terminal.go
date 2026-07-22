@@ -49,7 +49,14 @@ type Session struct {
 	MapSlug   string
 	TicketNum int
 	Role      string
+	// Agent is the adapter — the binary that actually ran. AgentName is the
+	// operator's registered name for it, empty when no agent was named. Both are
+	// kept because they answer different questions: the adapter is what a tab
+	// renders and what means something anywhere, and the name is what a resume or
+	// respawn relaunches, so "start over cleanly" changes the payload and not the
+	// execution rather than re-deciding it from config.
 	Agent     string
+	AgentName string
 }
 
 // Terminal is one tab: a running process attached to a PTY, its bounded

@@ -3,6 +3,7 @@
   import type { Agent, Space, Terminal as Term, Map as WMap } from './model'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
+  import AgentSplitButton from './AgentSplitButton.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
@@ -44,7 +45,9 @@
     onOpenShell: () => void
     // The ideate on-ramp (ticket 15): a live, ticketless chat, the one
     // opinionated nudge toward charting for a space with no map to spawn onto.
-    onIdeate: () => void
+    // It names the agent that runs it (ticket 03), so the control here picks one
+    // and hands it up.
+    onIdeate: (agent: string) => void
     // The cockpit-wide way into the config surface (ticket 05), owned by the
     // enclosing App — the route is App's, this pane just carries the control at
     // the right end of its title bar.
@@ -369,10 +372,16 @@
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
           <div class="flex items-center gap-2">
             <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
-            <Button variant="outline" size="sm" onclick={onIdeate}>
-              <Lightbulb />
-              New Idea
-            </Button>
+            <AgentSplitButton
+              {agents}
+              lastAgent={space.lastAgent}
+              label="New Idea"
+              title="Think an idea through"
+              note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
+              onrun={onIdeate}
+            >
+              {#snippet icon()}<Lightbulb />{/snippet}
+            </AgentSplitButton>
             <Button
               variant="outline"
               size="sm"
