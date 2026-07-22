@@ -119,7 +119,7 @@ export interface SpawnResult {
 
 // spawnSession spawns a session on a frontier ticket (ticket 09): chartr
 // writes the claim commit, composes and archives the payload, and launches the
-// bound agent's TUI with the read-this-file opener typed in. A blocked spawn — an
+// chosen agent's TUI with the read-this-file opener typed in. A blocked spawn — an
 // absent agent, a held ticket — surfaces as a thrown ActionError carrying the
 // chartr's specific message, whatever chartr's reason was.
 export function spawnSession(
@@ -127,11 +127,12 @@ export function spawnSession(
   slug: string,
   num: number,
   role: string,
+  agent = '',
 ): Promise<SpawnResult> {
   return send(
     'POST',
     `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/tickets/${num}/spawn`,
-    { role },
+    { role, agent },
   ) as Promise<SpawnResult>
 }
 

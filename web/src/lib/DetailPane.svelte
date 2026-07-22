@@ -2,19 +2,22 @@
   import {
     defaultRole,
     ROLES,
+    type Agent,
     type Map as WMap,
     type Role,
     type Ticket,
   } from "./model";
   import { renderMarkdown, sectionOf } from "./markdown";
   import { spawnSession, ActionError } from "./actions";
+  import { chooseAgent, type AgentChoice } from "./agentchoice";
   import PayloadPreview from "./PayloadPreview.svelte";
   import * as Accordion from "$lib/components/ui/accordion";
   import * as Card from "$lib/components/ui/card";
   import * as ScrollArea from "$lib/components/ui/scroll-area";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
-  import { Button } from "$lib/components/ui/button";
-  import { Compass, Eye, X, Rocket, Warning } from "phosphor-svelte";
+  import { Button, buttonVariants } from "$lib/components/ui/button";
+  import { CaretDown, Compass, Eye, X, Rocket, Warning } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -28,6 +31,8 @@
     ticket = null,
     dock = "right",
     spaceId,
+    lastAgent,
+    agents,
     onclose,
     onspawned,
   }: {
@@ -36,6 +41,10 @@
     dock?: "right" | "bottom";
     // The space the ticket belongs to — the key the payload preview fetches by.
     spaceId?: string;
+    // The space's remembered agent and the global library (ticket 02): the spawn
+    // buttons name and pick from these.
+    lastAgent?: string;
+    agents: Agent[];
     onclose: () => void;
     // Called with the new session id after a successful spawn, so the enclosing
     // chrome can make that session's tab active.
@@ -70,6 +79,17 @@
   let spawningRole = $state<Role | null>(null);
   let spawnError = $state<string | null>(null);
 
+  // Which agent this space will spawn with — a pure function over the library and
+  // the remembered name. The spawn buttons use this to name the agent and decide
+  // whether the primary click spawns or opens the picker.
+  const agentChoice = $derived<AgentChoice>(chooseAgent(agents, lastAgent));
+
+  // Each role button has its own dropdown so the operator can override the
+  // remembered agent for just that role's spawn.
+  let roleOpen = $state<Record<Role, boolean>>(
+    Object.fromEntries(ROLES.map((r) => [r, false])) as Record<Role, boolean>,
+  );
+
   // A single DetailPane instance is reused as the selection changes ticket, so a
   // block message the operator saw on one ticket must not linger onto the next.
   let lastNum: number | undefined = undefined;
@@ -81,12 +101,12 @@
     }
   });
 
-  async function spawn(role: Role) {
+  async function spawn(role: Role, agent: string) {
     if (!spaceId || !ticket || spawningRole) return;
     spawningRole = role;
     spawnError = null;
     try {
-      const res = await spawnSession(spaceId, map.slug, ticket.num, role);
+      const res = await spawnSession(spaceId, map.slug, ticket.num, role, agent);
       onspawned?.(res.sessionId);
     } catch (e) {
       // A blocked spawn (absent agent, held ticket) carries chartr's specific
@@ -94,6 +114,30 @@
       spawnError = e instanceof ActionError ? e.message : (e as Error).message;
     } finally {
       spawningRole = null;
+    }
+  }
+
+  function roleLabel(role: Role): string {
+    return role.slice(0, 1).toUpperCase() + role.slice(1);
+  }
+
+  function spawnButtonLabel(role: Role): string {
+    if (spawningRole === role) return "Starting…";
+    if (agentChoice.kind === "ready") {
+      return `${roleLabel(role)} with ${agentChoice.agent.name}`;
+    }
+    return `Start ${roleLabel(role)}`;
+  }
+
+  function handleMainClick(role: Role) {
+    if (agentChoice.kind === "ready") {
+      spawn(role, agentChoice.agent.name);
+    } else if (agentChoice.kind === "unchosen") {
+      roleOpen[role] = true;
+    } else {
+      // Empty library: ticket 04 owns the empty state. For now fall through to
+      // the existing server refusal path by attempting a spawn with no name.
+      spawn(role, "");
     }
   }
 
@@ -363,8 +407,9 @@
 
   <!-- The action footer: every session this ticket can start, surfaced on one bar
        that the content scrolls under rather than buried at the end of the body.
-       It exists only where a spawn is actually takeable, so the bar is never an
-       empty ledge; a refused spawn reports on the same line it was asked from. -->
+       Each role is a split control (ticket 02): the primary action spawns with the
+       space's remembered agent and names it, or opens the picker when nothing is
+       remembered; the secondary opens the agent list for a one-off override. -->
   {#if canSpawn}
     <div class="flex items-center gap-2 border-t border-border px-3 py-2">
       {#if spawnError}
@@ -378,18 +423,48 @@
       {/if}
       <span class="flex-1"></span>
       {#each spawnRoles as r (r)}
-        <Button
-          variant={r === preferredRole ? "default" : "outline"}
-          size="sm"
-          disabled={spawningRole !== null}
-          title="Start a {r} session on #{ticket ? pad(ticket.num) : ''}"
-          onclick={() => spawn(r)}
-        >
-          {#if r === preferredRole}<Rocket />{/if}
-          {spawningRole === r
-            ? "Starting…"
-            : `Start ${r.slice(0, 1).toUpperCase() + r.slice(1)}`}
-        </Button>
+        {@const variant = r === preferredRole ? "default" : "outline"}
+        <DropdownMenu.Root bind:open={roleOpen[r]}>
+          <div class="inline-flex">
+            <Button
+              {variant}
+              size="sm"
+              disabled={spawningRole !== null}
+              class="rounded-r-none"
+              title={agentChoice.kind === "ready"
+                ? `Start a ${r} session on #${ticket ? pad(ticket.num) : ""} with ${agentChoice.agent.name}`
+                : `Start a ${r} session on #${ticket ? pad(ticket.num) : ""}`}
+              onclick={() => handleMainClick(r)}
+            >
+              {#if r === preferredRole}<Rocket />{/if}
+              {spawnButtonLabel(r)}
+            </Button>
+            <DropdownMenu.Trigger
+              class={cn(
+                buttonVariants({ variant, size: "sm" }),
+                "rounded-l-none border-l-0 px-1.5",
+              )}
+              disabled={spawningRole !== null}
+              aria-label="Choose agent"
+            >
+              <CaretDown />
+            </DropdownMenu.Trigger>
+          </div>
+          <DropdownMenu.Content align="end" class="min-w-48 w-auto">
+            {#each agents as a (a.name)}
+              <DropdownMenu.Item
+                class="flex flex-col items-start gap-0.5"
+                disabled={!a.present}
+                onclick={() => spawn(r, a.name)}
+              >
+                <span class="font-medium">{a.name}</span>
+                {#if !a.present && a.missing}
+                  <span class="text-[0.65rem] text-destructive">{a.missing}</span>
+                {/if}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
       {/each}
     </div>
   {/if}

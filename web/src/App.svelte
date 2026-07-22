@@ -815,6 +815,7 @@
     {:else if selected}
       <SpacePane
         space={selected}
+        agents={agentLibrary}
         {activeTerm}
         active={!route.settings}
         onOpenShell={() => openShell(selected)}

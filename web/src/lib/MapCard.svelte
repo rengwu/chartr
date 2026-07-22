@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { Map as WMap, Terminal, Ticket } from "./model";
+  import type { Agent, Map as WMap, Terminal, Ticket } from "./model";
   import StarMap from "./StarMap.svelte";
   import DetailPane from "./DetailPane.svelte";
   import MapPickerCard from "./MapPickerCard.svelte";
@@ -33,6 +33,8 @@
   let {
     maps,
     spaceId,
+    lastAgent,
+    agents,
     terminals = [],
     slug = $bindable(),
     dock = $bindable(false),
@@ -50,6 +52,10 @@
     // The space these maps belong to — threaded to the detail pane so its payload
     // preview can fetch (ticket 08).
     spaceId: string;
+    // The space's remembered agent and the global library (ticket 02): handed to
+    // the detail pane so the spawn buttons can name and pick which agent runs.
+    lastAgent?: string;
+    agents: Agent[];
     slug: string | null;
     dock?: boolean;
     selected?: number | null;
@@ -379,6 +385,8 @@
             ticket={paneTicket}
             dock={paneDock}
             {spaceId}
+            {lastAgent}
+            {agents}
             onclose={closePane}
             {onspawned}
           />

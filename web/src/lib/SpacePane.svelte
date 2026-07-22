@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
-  import type { Space, Terminal as Term, Map as WMap } from './model'
+  import type { Agent, Space, Terminal as Term, Map as WMap } from './model'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import { Button } from './components/ui/button'
@@ -22,6 +22,7 @@
   // the pane (persisting across space switches) and not per-map.
   let {
     space,
+    agents,
     activeTerm,
     active = true,
     onOpenShell,
@@ -30,6 +31,10 @@
     onspawned,
   }: {
     space: Space
+    // The registered agent library, global like the settings surface (ticket 02):
+    // passed down to the star-map's detail pane so each spawn button can name and
+    // pick the agent it will run.
+    agents: Agent[]
     activeTerm: Term | null
     // False while the settings route covers the stage (ticket 05). The pane stays
     // mounted — its terminal and star-map are imperative islands worth keeping
@@ -386,6 +391,8 @@
       <MapCard
         {maps}
         spaceId={space.id}
+        lastAgent={space.lastAgent}
+        {agents}
         terminals={space.terminals ?? []}
         bind:slug={openSlug}
         bind:dock
