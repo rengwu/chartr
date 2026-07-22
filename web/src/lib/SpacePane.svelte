@@ -4,7 +4,6 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import { Button } from './components/ui/button'
-  import { spaceActionCount } from './attention'
   import { isEditingTarget } from './keys'
   import { Warning, Sparkle, Lightbulb } from 'phosphor-svelte'
 
@@ -73,9 +72,6 @@
 
   const warnings = $derived<string[]>(space.warnings ?? [])
   const maps = $derived<WMap[]>(space.maps ?? [])
-  // Summed across every map (ticket 14): what the tucked-away handle carries
-  // when the card is hidden and no one map is singled out yet.
-  const actionCount = $derived(spaceActionCount(space))
 
   // A selection belongs to one map: when the open map *changes*, drop it (and any
   // open material) so the island never carries a ticket number from a different
@@ -276,7 +272,7 @@
         return
       }
     }
-    if ((e.key === 'm' || e.key === 'M') && !editing && maps.length && !e.metaKey && !e.ctrlKey) {
+    if ((e.key === 'm' || e.key === 'M') && !editing && !e.metaKey && !e.ctrlKey) {
       e.preventDefault()
       toggleMap()
     }
@@ -318,28 +314,18 @@
           <Warning class="size-3.5" /> {warnings.length}
         </span>
       {/if}
-      {#if maps.length}
-        <!-- The one star-map show/hide control for the whole stage, beside the
-             bindings; reflects mapShown via aria-pressed. Tucked away, it also
-             carries the action-station's badge (ticket 14, story 24) — hiding
-             the map costs ambience, never awareness of what is actionable
-             across its maps. -->
-        <Button
-          variant={mapShown ? 'secondary' : 'ghost'}
-          size="sm"
-          aria-pressed={mapShown}
-          title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
-          onclick={toggleMap}
-        >
-          <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
-          {#if !mapShown && actionCount > 0}
-            <span
-              class="grid size-4 place-items-center rounded-full bg-primary text-[0.6rem] font-semibold text-primary-foreground"
-              >{actionCount}</span
-            >
-          {/if}
-        </Button>
-      {/if}
+      <!-- The one star-map show/hide control for the whole stage, beside the
+           bindings; reflects mapShown via aria-pressed. Available even with
+           zero maps: the picker itself explains there's nothing yet. -->
+      <Button
+        variant={mapShown ? 'secondary' : 'ghost'}
+        size="sm"
+        aria-pressed={mapShown}
+        title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
+        onclick={toggleMap}
+      >
+        <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
+      </Button>
     </div>
   </header>
 
@@ -362,22 +348,26 @@
         <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
           <div class="flex items-center gap-2">
-            <Button variant="outline" size="sm" onclick={onOpenShell}>Open a shell</Button>
+            <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
             <Button variant="outline" size="sm" onclick={onIdeate}>
               <Lightbulb />
-              Ideate
+              New Idea
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={mapShown}
+              onclick={toggleMap}
+            >
+              <Sparkle weight={mapShown ? 'fill' : 'regular'} />
+              {mapShown ? 'Hide Maps' : 'View Maps'}
             </Button>
           </div>
-          <p class="max-w-xs text-xs text-muted-foreground">
-            A plain shell in <code class="font-mono">{space.name}</code>’s working tree, or ideate — a
-            live chat to think an idea through. Both are ticketless, no claim, ended when you close
-            them.
-          </p>
         </div>
       {/if}
     </div>
 
-    {#if mapShown && maps.length}
+    {#if mapShown}
       <MapCard
         {maps}
         spaceId={space.id}

@@ -454,11 +454,13 @@
           {/if}
         </div>
       {:else}
-        <p
-          class="grid h-full place-items-center p-6 text-sm text-muted-foreground"
-        >
-          No maps in this space.
-        </p>
+        <div class="grid h-full place-items-center p-6">
+          <p class="max-w-xs text-center text-sm text-muted-foreground">
+            No maps in this space yet — chart one with <code class="font-mono"
+              >/wayfinder</code
+            > in a shell.
+          </p>
+        </div>
       {/if}
     </ScrollArea.Root>
   {/if}

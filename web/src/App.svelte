@@ -333,32 +333,9 @@
       </Button>
     </div>
 
-    <div class="cockpit-bar justify-between bg-transparent">
-      <span class="text-xs font-semibold tracking-wide">Spaces</span>
+    <div class="cockpit-bar justify-between gap-2 bg-transparent">
+      <span class="shrink-0 text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
-        <span class="flex items-center gap-0.5">
-          <!-- The effective config surface (ticket 05) is entered per space —
-               each space card carries its own ⚙ — or with `,`; this bar keeps
-               only what is genuinely cross-space. -->
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Add a space"
-            aria-expanded={showAdd}
-            onclick={() => (showAdd = !showAdd)}
-          >
-            <Plus />
-          </Button>
-        </span>
-      {/if}
-    </div>
-
-    {#if control.model === null}
-      <p class="px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
-    {:else if spaces.length === 0}
-      <p class="px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
-    {:else}
-      <div class="p-2">
         <Input
           type="text"
           class="h-7"
@@ -369,9 +346,15 @@
           autocomplete="off"
           aria-label="Filter spaces and sessions"
         />
-      </div>
+      {/if}
+    </div>
 
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+    {#if control.model === null}
+      <p class="px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
+    {:else if spaces.length === 0}
+      <p class="px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
+    {:else}
+      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {#each filtered as space (space.id)}
           {@const isSelected = selected?.id === space.id}
           {@const attention = spaceAttention(space)}
@@ -699,6 +682,21 @@
             No spaces match “{filter}”.
           </p>
         {/each}
+      </div>
+
+      <!-- The effective config surface (ticket 05) is entered per space — each
+           space card carries its own ⚙ — or with `,`; this stickied footer
+           keeps only what is genuinely cross-space: adding a new one. -->
+      <div class="border-t border-sidebar-border p-2">
+        <Button
+          variant="outline"
+          size="sm"
+          class="w-full"
+          aria-expanded={showAdd}
+          onclick={() => (showAdd = !showAdd)}
+        >
+          <Plus /> New Space
+        </Button>
       </div>
     {/if}
   </aside>
