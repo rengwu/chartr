@@ -89,15 +89,12 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		m.Kind = kind
 	}
 
-	// Which roles are offered follows the map's kind; an unclassified map offers
-	// none (ADR 0007). Both refusals are the operator's to resolve — classify the
-	// map, or pick a role that belongs to its lifecycle.
+	// Every ticket offers all four roles, so the role itself is never refused:
+	// trust-at-the-gate, where the gate is the operator choosing in the spawn
+	// preview. An unclassified map still offers no sessions at all (ADR 0007) —
+	// that refusal is the operator's to resolve by classifying the map.
 	if m.Kind == model.KindUnclassified {
 		httpError(w, http.StatusConflict, "this map is unclassified and offers no sessions — classify it first")
-		return
-	}
-	if !config.KindOffersRole(m.Kind, role) {
-		httpError(w, http.StatusBadRequest, "role "+role+" is not offered by a "+m.Kind+" map")
 		return
 	}
 

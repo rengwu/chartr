@@ -107,7 +107,7 @@
   })
   let previewRole = $state<string | null>(null)
   // The preview opens on the role a ticket's *type* points at, so a role is
-  // handed over as the type that resolves back to it (PayloadPreview.defaultRole).
+  // handed over as the type that resolves back to it (model.defaultRole).
   const typeForRole: Record<string, string> = {
     grill: 'grilling',
     prototype: 'prototype',

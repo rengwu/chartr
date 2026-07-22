@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
-  import { ROLES, type Payload, type PayloadPart, type Role } from './model'
+  import { defaultRole, ROLES, type Payload, type PayloadPart, type Role } from './model'
   import { previewPayload } from './actions'
   import { renderMarkdown } from './markdown'
   import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
@@ -32,21 +32,10 @@
     onClose: () => void
   } = $props()
 
-  // The role a ticket's type points at, as the sensible default the preview opens
-  // on; the operator can preview any role from here regardless.
-  function defaultRole(type: string): Role {
-    switch (type) {
-      case 'research':
-        return 'research'
-      case 'prototype':
-        return 'prototype'
-      case 'grilling':
-        return 'grill'
-      default:
-        return 'implement'
-    }
-  }
-
+  // The role a ticket's type points at is the sensible default the preview opens
+  // on; the operator can preview — and spawn — any of the four from here. It is
+  // the shared default (model.defaultRole), so the preview and the surfaces that
+  // spawn one-click agree on which role a ticket is.
   let role = $state<Role>('implement')
   let payload = $state<Payload | null>(null)
   let error = $state<string | null>(null)

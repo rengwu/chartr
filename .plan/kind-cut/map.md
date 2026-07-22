@@ -76,6 +76,22 @@ not an inconsistency to resolve early.
 
 <!-- one line per resolved ticket: gist + link. -->
 
+- **01 — roles come from the ticket, not the map**: the cut's one real behaviour
+  change has landed on its own, ahead of the deletions. `config.RoleForTicketType`
+  (taking `wayfinder.Type` — `config → wayfinder` closes no cycle, so the
+  one-to-one mapping is stated once, not restated as literals) picks a ticket's
+  role from its own `type:`; every ticket offers all four roles and the operator
+  picks at the gate. The spawn path's `KindOffersRole` refusal is gone; the
+  unclassified refusal stays for ticket 03. `model.ts`'s `defaultRole` dropped its
+  `offered` parameter and its clamp, and `PayloadPreview`'s byte-identical private
+  copy folded into it. **Judgement call:** `DetailPane`'s footer now offers all
+  four `ROLES`, with `rolesForKind` kept in the same function reduced to the
+  classified-or-inert gate only — leaving it as the offered set would have left the
+  pane's emphasised role missing from its own buttons for one commit, and removing
+  the gate outright would have shown spawn buttons that the backend still 409s.
+  Covered by a spawn test proving a `task` ticket on a `planning` map spawns as
+  `implement`, plus a new `model.test.ts`. [ticket](tickets/01-roles-come-from-the-ticket.md)
+
 ## Not yet specified
 
 <!-- Empty. The cut is settled; a ticket that surfaces a genuinely new question

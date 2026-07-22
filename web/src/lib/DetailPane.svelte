@@ -2,6 +2,7 @@
   import {
     defaultRole,
     rolesForKind,
+    ROLES,
     type Kind,
     type Map as WMap,
     type Role,
@@ -49,21 +50,22 @@
   let showPreview = $state(false);
 
   // Spawn (tickets 09, 11): a frontier ticket on a classified map offers a fresh
-  // session in any of the kind's roles; an unclassified map offers none. So the
+  // session in any of the four roles — the ticket's type picks the default, and
+  // the operator picks from all of them. An unclassified map offers none. So the
   // affordance appears only where a spawn is actually takeable.
   function offeredRoles(kind: Kind, tk: Ticket | null): Role[] {
-    if (!tk) return [];
-    if (tk.frontier) return rolesForKind(kind);
-    return [];
+    if (!tk || !tk.frontier) return [];
+    if (rolesForKind(kind).length === 0) return [];
+    return [...ROLES];
   }
   const spawnRoles = $derived<Role[]>(offeredRoles(map.kind, ticket));
   const canSpawn = $derived(!!spaceId && spawnRoles.length > 0);
 
   // Every offered role is its own footer action — one click starts it, no
-  // pick-then-confirm step. The role the ticket's type points at (clamped to what
-  // the kind offers) is the emphasised one, so the obvious move stays obvious.
+  // pick-then-confirm step. The role the ticket's own type points at is the
+  // emphasised one, so the obvious move stays obvious.
   const preferredRole = $derived<Role | null>(
-    canSpawn && ticket ? defaultRole(ticket.type, spawnRoles) : null,
+    canSpawn && ticket ? defaultRole(ticket.type) : null,
   );
 
   // The role currently being spawned — labels its own button and disables the row,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { defaultRole, padTicket, rolesForKind, type Map as WMap } from './model'
+  import { defaultRole, padTicket, type Map as WMap } from './model'
   import { mapActionItems, type ActionItem } from './attention'
   import { spawnSession, ActionError } from './actions'
   import * as Sheet from './components/ui/sheet'
@@ -8,8 +8,8 @@
   // The per-map "Next up" action station (spec story 23): a drawer over
   // everything actionable on this map — the frontier ranked by how much each
   // unblocks. Hovering a row highlights its star (via `onhover`, threaded to
-  // the island's hover seam); clicking spawns the ticket straight away in its
-  // kind's default role (the same one-click ethos story 32 established), then
+  // the island's hover seam); clicking spawns the ticket straight away in the
+  // role its own type names (the same one-click ethos story 32 established), then
   // selects it so the operator lands on the fresh session.
   let {
     open = $bindable(false),
@@ -33,7 +33,7 @@
   let spawnError = $state<string | null>(null)
 
   async function act(item: ActionItem) {
-    const role = defaultRole(item.ticket.type, rolesForKind(map.kind))
+    const role = defaultRole(item.ticket.type)
     spawningNum = item.ticket.num
     spawnError = null
     try {

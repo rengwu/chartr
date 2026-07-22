@@ -20,6 +20,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
 // WorkspaceConfigName is the committed workspace config file in a space's repo
@@ -43,8 +44,31 @@ const (
 	RoleImplement Role = "implement"
 )
 
-// Roles is the closed role set in a stable display order.
+// Roles is the closed role set in a stable display order. It is the set every
+// ticket offers a session in: what a ticket *is* picks the default role, and the
+// operator picks from all four at the gate.
 var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
+
+// RoleForTicketType returns the role a ticket of this type spawns as. The
+// method's four ticket types map one-to-one onto the four roles, which is the
+// per-ticket fact a map's kind used to approximate uniformly; an unrecognised
+// type falls to implement, the same default the frontend has always used.
+//
+// This takes wayfinder's own types rather than restating the strings: config
+// already imports model, and wayfinder imports nothing of ours, so there is no
+// cycle to dodge and no second copy of the mapping to drift.
+func RoleForTicketType(t wayfinder.Type) Role {
+	switch t {
+	case wayfinder.TypeGrilling:
+		return RoleGrill
+	case wayfinder.TypePrototype:
+		return RolePrototype
+	case wayfinder.TypeResearch:
+		return RoleResearch
+	default:
+		return RoleImplement
+	}
+}
 
 // RolesForKind returns the roles a map of the given kind offers a session for
 // (spec, Sessions and roles): a planning map grills, prototypes, and researches;
@@ -78,9 +102,11 @@ func RoleIsAFK(role string) bool {
 	return role != string(RoleGrill)
 }
 
-// KindOffersRole reports whether a map of this kind offers the named role — the
-// gate the spawn path checks so an unclassified map (which offers nothing) and a
-// role that belongs to the other lifecycle are both refused.
+// KindOffersRole reports whether a map of this kind offers the named role. It
+// has no callers: the spawn path used it to refuse a role from the other
+// lifecycle, and that clamp is gone — a ticket's own type says which role it is,
+// and the operator picks from all four at the gate. It is deleted with the rest
+// of kind.
 func KindOffersRole(kind, role string) bool {
 	for _, r := range RolesForKind(kind) {
 		if string(r) == role {

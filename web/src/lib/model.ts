@@ -239,30 +239,31 @@ export interface Payload {
 export const ROLES = ['grill', 'prototype', 'research', 'implement'] as const
 export type Role = (typeof ROLES)[number]
 
-// rolesForKind mirrors the backend (config.RolesForKind): which roles a map of a
-// given kind offers to spawn. A planning map grills, prototypes, and researches;
-// an implementation map implements; an unclassified map offers none, so its
-// tickets show no spawn affordance until a human declares its kind.
+// rolesForKind mirrors the backend (config.RolesForKind). It no longer picks
+// *which* roles a ticket offers — a ticket's own type does that, and the operator
+// picks from all four — so all that is left of it is whether a map offers
+// sessions at all: an unclassified map returns none, and its tickets show no
+// spawn affordance until a human declares its kind.
 export function rolesForKind(kind: Kind): Role[] {
   if (kind === 'planning') return ['grill', 'prototype', 'research']
   if (kind === 'implementation') return ['implement']
   return []
 }
 
-// The role a ticket's own type points at, clamped to what its kind actually
-// offers — shared by the detail pane and the action station (ticket 14) so a
-// one-click spawn always lands on the same default no matter which surface
-// triggered it.
-export function defaultRole(type: string, offered: Role[]): Role {
-  const guess: Role =
-    type === 'research'
-      ? 'research'
-      : type === 'prototype'
-        ? 'prototype'
-        : type === 'grilling'
-          ? 'grill'
-          : 'implement'
-  return offered.includes(guess) ? guess : offered[0]
+// The role a ticket's own type points at (mirrors config.RoleForTicketType) —
+// shared by the detail pane, the action station (ticket 14) and the payload
+// preview so a one-click spawn always lands on the same default no matter which
+// surface triggered it. The type says exactly which role the ticket is; nothing
+// clamps it, and every ticket offers all four roles for the operator to pick
+// from at the gate.
+export function defaultRole(type: string): Role {
+  return type === 'research'
+    ? 'research'
+    : type === 'prototype'
+      ? 'prototype'
+      : type === 'grilling'
+        ? 'grill'
+        : 'implement'
 }
 
 // Zero-padded ticket number (#04, #12) — the id format used everywhere a

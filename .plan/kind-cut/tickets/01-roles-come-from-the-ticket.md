@@ -60,3 +60,65 @@ Done when: `go vet ./...` / `go test ./...` and the frontend `check` / `build` /
 rather than `grill`; every ticket's spawn preview offers all four roles with its
 type's role pre-selected; and `KindOffersRole` has no callers left (it is
 deleted in 03, not here).
+
+## Answer
+
+**A ticket's own `type:` now picks its role, and nothing clamps it.** The clamp
+is gone from both ends — the backend no longer refuses a role by the map's kind,
+and the frontend's shared default no longer narrows to a kind's set.
+
+**`config.RoleForTicketType` takes `wayfinder.Type`, not a plain string.**
+Checked the import direction before writing it: `internal/wayfinder` imports no
+internal package of ours, and `config` already imports `internal/model`, so
+`config → wayfinder` closes no cycle. Taking the typed constants keeps the
+one-to-one mapping stated once instead of restating the four literals a third
+time (`wayfinder`, `model.ts`, and here). It lives in `internal/config/binding.go`
+beside `Roles`, whose doc now says what it became: the set *every* ticket offers.
+
+**`internal/server/spawn.go` lost the role refusal** (`KindOffersRole` branch and
+its "role X is not offered by a Y map" 400). The unclassified refusal above it
+stands untouched, as instructed — ticket 03 takes it with the rest of kind.
+`KindOffersRole` and `RolesForKind` stay in place with no callers; their doc
+comment now says so rather than claiming a gate that no longer exists.
+
+**Frontend.** `defaultRole(type)` in `model.ts` dropped its `offered` parameter
+and returns the type's role directly. Its two callers — the detail pane's
+`preferredRole` and the action station's one-click `act()` — both pass just the
+type, so they still land on the same role as each other. `PayloadPreview` had its
+*own* byte-identical copy of the old un-clamped derivation; with the shared one
+now identical, the copy is deleted and the preview imports the shared default, so
+there is one definition on the frontend rather than two drifting ones.
+
+**One judgement call, flagged: what the detail pane's footer offers.** The
+ticket's "every ticket offers all four roles… everywhere" and its "leave
+`rolesForKind` in place for ticket 02" pull in opposite directions for
+`DetailPane.offeredRoles`. Leaving it as `rolesForKind(kind)` would have left the
+pane visibly incoherent for one commit — on a planning map a `task` ticket's
+`preferredRole` (`implement`) would not be among the buttons rendered, so no
+button would be emphasised and the one-click implement spawn would be unreachable
+from the pane. So the offered set became all four `ROLES`, and `rolesForKind` was
+kept in the same function reduced to the only thing it still decides: whether the
+map is classified at all (`.length === 0` → offer nothing). That is the inert-map
+gate, which ticket 02 removes — deliberately *not* removed here, because with the
+backend's unclassified 409 still standing until 03, offering spawn buttons on an
+unclassified map would render an affordance that always fails.
+
+**Tests.** Go: `TestSpawnHonoursTheTicketsOwnType` is the behavioural delta — a
+`type: task` ticket on a map declared `planning` (via the existing
+`planningConfig` helper) defaults to `implement` via `RoleForTicketType` and
+spawns successfully as `implement`, seating a live `implement` session bound to
+ticket 1. `TestSpawnRespectsKind` lost its "grill on an implementation map is
+refused" half — that refusal is what this ticket deletes — and now asserts the
+other side of the same gate: unclassified is refused, and the same spawn goes
+through once classified. Frontend: a new `web/src/lib/model.test.ts` covers
+`defaultRole` over all four types, the unrecognised-type fallback, and that it
+never returns a role outside the closed set.
+
+**Gates:** `go vet ./...` and `go test ./...` green; frontend `check` (0 errors),
+`build`, and `vitest` (85 passed, 9 files) green; no amber in the built CSS (0
+occurrences in `dist/assets/*.css`).
+
+**Not verified in a running cockpit** — this ticket's delta is a pure logic change
+covered end-to-end by the process-boundary spawn test (real HTTP, real git, real
+PTY), and the UI change is one offered-set expression. Flagged rather than
+claimed.

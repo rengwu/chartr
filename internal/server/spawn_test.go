@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
 // Ticket 09 at the process boundary: the spawn tracer bullet. With a stub agent
@@ -210,8 +212,9 @@ func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
 	}
 }
 
-// An unclassified map offers no sessions (ADR 0007): spawn is refused, and a role
-// from the other lifecycle is refused even once classified.
+// An unclassified map offers no sessions (ADR 0007): spawn is refused until the
+// map is classified. Which *role* is asked for is not the map's business — see
+// TestSpawnHonoursTheTicketsOwnType.
 func TestSpawnRespectsKind(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -226,10 +229,39 @@ func TestSpawnRespectsKind(t *testing.T) {
 		t.Fatalf("spawn on an unclassified map = %d (%s), want 409 naming unclassified", code, body)
 	}
 
-	// Classified implementation: a planning role (grill) is not offered.
+	// Classified: the same spawn goes through.
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
-	if code, body := h.Spawn(resp.ID, "widget", 1, "grill"); code != 400 || !strings.Contains(body, "not offered") {
-		t.Fatalf("grill on an implementation map = %d (%s), want 400 not-offered", code, body)
+	mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+}
+
+// The behavioural delta of the kind cut: a `task` ticket — which wayfinder
+// explicitly permits on a planning map — spawns as `implement`, the role its own
+// type names. The map's kind used to clamp that away to `grill`, which is not
+// what the person who typed `type: task` meant.
+func TestSpawnHonoursTheTicketsOwnType(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", planningConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
+
+	// The role a `task` ticket defaults to, derived from the type alone.
+	if got := config.RoleForTicketType(wayfinder.TypeTask); got != config.RoleImplement {
+		t.Fatalf("default role for a task ticket = %q, want implement", got)
+	}
+
+	resp := register(t, h, repo)
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	if sp.Role != "implement" {
+		t.Errorf("spawned role = %q, want implement", sp.Role)
+	}
+
+	// It really is an implement session, seated and bound to the ticket.
+	tab := sessionTab(findSpace(t, h.Snapshot(ctx(t)), resp.ID))
+	if tab == nil || tab.Session.Role != "implement" || tab.Session.TicketNum != 1 {
+		t.Errorf("session tab after spawn = %+v, want ticket 1 / implement", tab)
 	}
 }
 
