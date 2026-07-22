@@ -88,7 +88,11 @@ func TestRegisteredAgentDrivesTheSpawn(t *testing.T) {
 	// model rather than invisible to it.
 	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
 	for _, w := range []string{
-		"Agent: some-harness",
+		// The name the operator registered, and the binary it stands for: the name
+		// says which of their agents was chosen, the adapter says what that means
+		// on any other machine.
+		"Agent: harness-yolo",
+		"Adapter: some-harness",
 		"Args: -m big --dangerously-skip-permissions --sandbox danger-full-access",
 	} {
 		if !strings.Contains(msg, w) {

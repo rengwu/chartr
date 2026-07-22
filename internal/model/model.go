@@ -112,6 +112,13 @@ type Space struct {
 	// order, each carrying per-field provenance and PATH presence so the
 	// operator sees what will actually run (stories 39, 40).
 	Bindings []RoleBinding `json:"bindings"`
+	// LastAgent is the registered agent this space last spawned with — the
+	// remembered choice the next spawn reuses (stories 12, 13, 20). It is state,
+	// not config: nothing edits it, and it is reported exactly as the registry
+	// holds it. A name that no longer names a registered agent reads as *nothing
+	// remembered* on the client, which is what re-opens the picker rather than
+	// substituting something (story 19). Empty until the first spawn.
+	LastAgent string `json:"lastAgent,omitempty"`
 	// Skills are the space's resolved skill library — every skill with the layer
 	// that won its whole directory and its stale-fork state (ticket 05). Derived
 	// beside Bindings so the settings route reads content provenance and execution

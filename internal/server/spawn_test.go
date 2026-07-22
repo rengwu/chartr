@@ -28,10 +28,13 @@ import (
 
 // spawnResp is the spawn action's own result.
 type spawnResp struct {
-	SessionID  string   `json:"sessionId"`
-	TicketNum  int      `json:"ticketNum"`
-	Role       string   `json:"role"`
-	Agent      string   `json:"agent"`
+	SessionID string `json:"sessionId"`
+	TicketNum int    `json:"ticketNum"`
+	Role      string `json:"role"`
+	Agent     string `json:"agent"`
+	// AgentName is the registered agent the operator picked, empty when the
+	// request named none and the role's binding decided.
+	AgentName  string   `json:"agentName"`
 	Args       []string `json:"args"`
 	PayloadSha string   `json:"payloadSha"`
 }
@@ -93,7 +96,9 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
 	for _, want := range []string{
 		"Session: " + sp.SessionID,
-		"Agent: claude",
+		// No `Agent:` — this spawn named none, and the role's binding is four
+		// fields rather than a registered agent, so there is no name to record.
+		"Adapter: claude",
 		"Args: --model sonnet",
 		"Role: implement",
 		"Payload-SHA256: " + sp.PayloadSha,
@@ -106,6 +111,9 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Errorf("claim commit message missing trailer %q:\n%s", want, msg)
 		}
+	}
+	if strings.Contains(msg, "Agent:") {
+		t.Errorf("claim commit names an agent for a spawn that chose none:\n%s", msg)
 	}
 
 	// The ticket now derives `claimed`.
@@ -413,4 +421,189 @@ func gitHEAD(repo string) (string, error) {
 	cmd.Dir = repo
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
+}
+
+// Ticket 01 at the process boundary: the agent is chosen at the moment of
+// spawning. The request may name a registered agent, that agent runs instead of
+// whatever the role was bound to, and the space quietly remembers the choice.
+// Sending no name is still the old behaviour exactly — the expand step adds a
+// path beside the binding rather than replacing it.
+
+// Naming a registered agent launches *that* agent, and every flag the operator
+// typed reaches the process verbatim and in order. Both binaries are on PATH, so
+// what is under test is the choice deciding — not the binding's adapter happening
+// to be absent.
+func TestSpawnWithAnExplicitAgentLaunchesThatAgent(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+
+	claudeDelivery := chartrtest.StubAgent(t, "claude") // what `implement` is bound to
+	delivery := chartrtest.StubAgent(t, "some-harness") // what the operator picks
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "harness-yolo", map[string]any{
+		"adapter": "some-harness",
+		"args":    []string{"-m", "big", "--dangerously-skip-permissions"},
+		"prompt":  "argv",
+	})
+
+	code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "harness-yolo")
+	if code != 200 {
+		t.Fatalf("spawn naming harness-yolo = %d, body %s", code, body)
+	}
+	var sp spawnResp
+	if err := json.Unmarshal([]byte(body), &sp); err != nil {
+		t.Fatalf("spawn response not JSON: %v (%q)", err, body)
+	}
+	if sp.Agent != "some-harness" || sp.AgentName != "harness-yolo" {
+		t.Errorf("spawn ran %q (%q), want some-harness (harness-yolo)", sp.Agent, sp.AgentName)
+	}
+
+	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
+	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
+	want := []string{
+		"argv: -m", "argv: big",
+		"argv: --dangerously-skip-permissions",
+		"argv: Read the file " + payloadAbs,
+	}
+	if !inOrder(log, want) {
+		t.Errorf("the chosen agent's argv did not reach the process in order.\nwant %v\ngot:\n%s", want, log)
+	}
+
+	// The role's own binding was not consulted: nothing was launched as `claude`.
+	if b, _ := os.ReadFile(claudeDelivery); len(b) > 0 {
+		t.Errorf("the role's bound adapter ran even though an agent was named:\n%s", b)
+	}
+
+	// The claim carries the local name *and* what it means anywhere else.
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
+	for _, w := range []string{
+		"Agent: harness-yolo",
+		"Adapter: some-harness",
+		"Args: -m big --dangerously-skip-permissions",
+	} {
+		if !strings.Contains(msg, w) {
+			t.Errorf("claim commit missing trailer %q:\n%s", w, msg)
+		}
+	}
+}
+
+// Sending no agent is untouched: the role's binding still decides, which is what
+// makes this ticket an addition rather than a migration.
+func TestSpawnWithoutAnAgentStillResolvesTheBinding(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	delivery := chartrtest.StubAgent(t, "claude")
+
+	resp := register(t, h, repo)
+	// A registered agent exists and is deliberately *not* named: its presence must
+	// not pull the spawn away from the binding.
+	registerAgent(t, h, "harness-yolo", map[string]any{"adapter": "some-harness"})
+
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	if sp.Agent != "claude" || sp.AgentName != "" {
+		t.Errorf("spawn ran %q (%q), want claude with no registered name", sp.Agent, sp.AgentName)
+	}
+	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
+	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
+	if !inOrder(log, []string{"argv: --model", "argv: sonnet"}) {
+		t.Errorf("the binding's args did not reach the process:\n%s", log)
+	}
+	// Nothing durable was remembered: there is no name to remember.
+	if got := findSpace(t, h.Snapshot(ctx(t)), resp.ID).LastAgent; got != "" {
+		t.Errorf("space remembered %q after a spawn that named no agent", got)
+	}
+}
+
+// Both refusals land on the doorstep — before the claim, before any write — so a
+// blocked spawn leaves the space exactly as it was (story 33). An unregistered
+// name is a malformed request; a registered agent whose binary has gone is a
+// conflict carrying the library's own diagnosis, which is what stops a stale
+// picker from launching nothing (story 18).
+func TestSpawnRefusesAnUnknownOrAbsentAgentWithoutClaiming(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
+
+	resp := register(t, h, repo)
+	// Registered, but its binary was never installed.
+	registerAgent(t, h, "ghost", map[string]any{"adapter": "not-a-real-binary"})
+
+	for _, tc := range []struct {
+		name, agent, wantIn string
+		wantCode            int
+	}{
+		{"unregistered", "never-registered", "never-registered", 400},
+		{"off PATH", "ghost", "not-a-real-binary", 409},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", tc.agent)
+			if code != tc.wantCode {
+				t.Fatalf("spawn naming %q = %d, want %d (body %s)", tc.agent, code, tc.wantCode, body)
+			}
+			if !strings.Contains(body, tc.wantIn) {
+				t.Errorf("refusal does not say what was wrong: %s", body)
+			}
+		})
+	}
+
+	// No claim commit — HEAD is still unborn — and the ticket is still takeable.
+	if _, err := gitHEAD(repo); err == nil {
+		t.Errorf("a refused spawn should write no claim commit, but HEAD exists")
+	}
+	tk := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1)
+	if tk.Status != "open" || !tk.Frontier {
+		t.Errorf("ticket after a refused spawn = %q (frontier %v), want open and on the frontier", tk.Status, tk.Frontier)
+	}
+}
+
+// The space remembers what it last spawned with: the name appears in the pushed
+// model, a refused spawn does not disturb it, and it is a property of the space
+// rather than of the running process — it survives restarting the server against
+// the same data root (stories 12, 20).
+func TestSpaceRemembersTheAgentItSpawnedWith(t *testing.T) {
+	dataDir := t.TempDir()
+	h := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteTicket(t, repo, "widget", "02-second.md", ticket(2, "Second", "[]", "task", ""))
+	chartrtest.StubAgent(t, "some-harness")
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "harness-yolo", map[string]any{"adapter": "some-harness"})
+	registerAgent(t, h, "ghost", map[string]any{"adapter": "not-a-real-binary"})
+
+	if code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "harness-yolo"); code != 200 {
+		t.Fatalf("spawn = %d, body %s", code, body)
+	}
+	if got := findSpace(t, h.Snapshot(ctx(t)), resp.ID).LastAgent; got != "harness-yolo" {
+		t.Fatalf("space remembered %q after spawning, want harness-yolo", got)
+	}
+
+	// A refusal changes nothing durable — it is turned away before the memory is
+	// touched, exactly as it is before the claim.
+	if code, _ := h.SpawnWithAgent(resp.ID, "widget", 2, "implement", "ghost"); code != 409 {
+		t.Fatalf("spawn naming an off-PATH agent = %d, want 409", code)
+	}
+	if got := findSpace(t, h.Snapshot(ctx(t)), resp.ID).LastAgent; got != "harness-yolo" {
+		t.Errorf("a refused spawn changed the remembered agent to %q", got)
+	}
+
+	// A second server over the same data root reads the same memory: it is state
+	// on the space, not on the tab.
+	h2 := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	if got := findSpace(t, h2.Snapshot(ctx(t)), resp.ID).LastAgent; got != "harness-yolo" {
+		t.Errorf("remembered agent after restart = %q, want harness-yolo", got)
+	}
 }

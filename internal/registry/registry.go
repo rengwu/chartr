@@ -34,6 +34,14 @@ type Entry struct {
 	Path       string    `toml:"path"`
 	Pinned     bool      `toml:"pinned"`
 	LastActive time.Time `toml:"last_active"`
+	// LastAgent is the registered agent this space last spawned with — state, not
+	// config: chartr writes it after a successful launch and nothing edits it.
+	// It sits here because the registry is already per-space, local, chartr-owned
+	// and rebuildable, which is exactly this value's lifecycle. A name that no
+	// longer resolves against the library is *not* rewritten away: it is reported
+	// as it stands and read as nothing remembered, so deleting an agent costs no
+	// registry surgery.
+	LastAgent string `toml:"last_agent,omitempty"`
 }
 
 // Registry is the in-memory registry backed by <dataDir>/spaces.toml. It is
@@ -144,6 +152,22 @@ func (r *Registry) SetPin(id string, pinned bool) error {
 		return nil
 	}
 	e.Pinned = pinned
+	r.entries[id] = e
+	return r.saveLocked()
+}
+
+// SetLastAgent records the registered agent a space just spawned with, so the
+// next spawn there can reuse it without asking again. Only a *successful* launch
+// calls it, so a refused spawn leaves the memory exactly as it was. Recording an
+// unknown ID, or the name already held, is a no-op.
+func (r *Registry) SetLastAgent(id, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok || e.LastAgent == name {
+		return nil
+	}
+	e.LastAgent = name
 	r.entries[id] = e
 	return r.saveLocked()
 }

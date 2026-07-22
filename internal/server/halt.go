@@ -157,7 +157,7 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 		m:         m,
 		tk:        tk,
 		role:      sess.Role,
-		binding:   binding,
+		spec:      specOf(binding),
 		sessionID: newSessionID(),
 	})
 	if err != nil {

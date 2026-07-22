@@ -139,6 +139,12 @@ export interface Space {
   // whether the debris is harmless; chartr spawns into it all the same.
   dirty: boolean
   bindings: RoleBinding[]
+  // The registered agent this space last spawned with — the remembered choice the
+  // next spawn reuses. State, never config: nothing edits it, and it arrives
+  // exactly as the server holds it. A name that no longer matches a registered
+  // agent reads as *nothing remembered* here, which re-opens the picker rather
+  // than substituting one. Absent until the space's first spawn.
+  lastAgent?: string
   // The resolved skill library: every skill with the layer that won its whole
   // directory and its stale-fork state (ticket 05, story 34).
   skills: ResolvedSkill[]

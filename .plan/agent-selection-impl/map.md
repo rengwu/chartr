@@ -70,6 +70,8 @@ procedure rather than hand-rolling a menu.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- **01 — spawn takes an explicit agent**: the spawn request gains an optional `agent`, resolved against the operator's library off the `Resolution` that already carries it — unregistered is `400`, registered-but-off-PATH is `409` with the library's own message, both on the same doorstep and in the same order as the binding case, before the claim and before any write. Both paths converge on one `launchSpec` (`{Name, Adapter, Args, Prompt}` + provenance) *before* `launchSession`, so the launch mechanics no longer know bindings exist and ticket 05 is a subtraction. The claim trailer now carries the registered **name** as `Agent:` (omitted, never blank, when none was chosen) beside a new `Adapter:` for the binary, since a local name means nothing on a teammate's machine; the `*-From:` provenance is written only when a binding decided. The space remembers a successful spawn's agent as `LastAgent` on the existing `registry.Entry` — state with exactly the right lifecycle, no new store — surfaced on the pushed model as-is, with an unresolvable name deliberately left for the frontend to read as nothing remembered. [ticket](tickets/01-spawn-takes-an-explicit-agent.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the spec — it does not open fog here. -->

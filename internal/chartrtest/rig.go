@@ -229,6 +229,17 @@ func (h *Chartr) Spawn(spaceID, slug string, num int, role string) (int, string)
 		map[string]string{"role": role})
 }
 
+// SpawnWithAgent posts a spawn that names the registered agent to run it — what
+// the picker sends, as against Spawn's role-only request. The two are separate
+// helpers rather than one variadic so a test says which shape of request it is
+// making, and so the role-only path keeps a caller proving it still resolves
+// through the binding.
+func (h *Chartr) SpawnWithAgent(spaceID, slug string, num int, role, agent string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/spawn", spaceID, slug, num),
+		map[string]string{"role": role, "agent": agent})
+}
+
 // Resume, Respawn, and Release drive the three death-halt choices for a pinned
 // dead session (ticket 10). Each is a plain HTTP action so a test asserts that the
 // halt takes none of them on its own and that each does exactly its one thing.

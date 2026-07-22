@@ -199,6 +199,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Pinned:    e.Pinned,
 		Dirty:     gitDirty(e.Path),
 		Bindings:  bindings,
+		LastAgent: e.LastAgent,
 		Skills:    s.resolvedSkills(e.Path),
 		Layers:    s.spaceLayers(e.Path),
 		Maps:      maps,

@@ -25,9 +25,15 @@ import (
 // the model where one was asked for, and the permission and sandbox flags beside
 // it, which is exactly what an audit trail is read for.
 type claim struct {
-	SessionID   string
-	Role        string
+	SessionID string
+	Role      string
+	// Agent is the *registered agent's name* the operator chose, and is empty when
+	// the role's binding decided instead. Adapter is the binary that actually ran.
+	// Both travel: a local name says which of the operator's agents was picked but
+	// means nothing on a teammate's machine, while the adapter and args are what
+	// the trailer means anywhere (stories 30, 31).
 	Agent       string
+	Adapter     string
 	Args        []string
 	PayloadSHA  string
 	Skills      []prompt.Skill
@@ -181,9 +187,21 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 // `%(trailers)` parse them; a repeated key is legal and reads as a list.
 func claimMessage(rel string, c claim) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Claim %s for %s (%s)\n\n", rel, c.Role, c.Agent)
+	// The subject names what the operator chose where they chose one, and falls
+	// back to the binary when nothing was named — never a blank pair of brackets.
+	subject := c.Agent
+	if subject == "" {
+		subject = c.Adapter
+	}
+	fmt.Fprintf(&b, "Claim %s for %s (%s)\n\n", rel, c.Role, subject)
 	fmt.Fprintf(&b, "Session: %s\n", c.SessionID)
-	fmt.Fprintf(&b, "Agent: %s\n", c.Agent)
+	// On the binding path there is no registered name, so `Agent:` is omitted
+	// rather than written blank: a trailer with nothing after it would read as a
+	// nameless agent instead of as no name at all.
+	if c.Agent != "" {
+		fmt.Fprintf(&b, "Agent: %s\n", c.Agent)
+	}
+	fmt.Fprintf(&b, "Adapter: %s\n", c.Adapter)
 	if len(c.Args) > 0 {
 		fmt.Fprintf(&b, "Args: %s\n", strings.Join(c.Args, " "))
 	}
@@ -192,8 +210,16 @@ func claimMessage(rel string, c claim) string {
 	for _, sk := range c.Skills {
 		fmt.Fprintf(&b, "Skill: %s=%s:%s\n", sk.Name, sk.Layer, sk.Hash)
 	}
-	fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
-	fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)
+	// The layer provenance is a fact about role bindings, so it is written only
+	// when a binding decided. An explicit agent consulted no layers, and claiming
+	// one resolved from `built-in` would be a lie. Ticket 05 removes these with the
+	// layers they name.
+	if c.AdapterFrom != "" {
+		fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
+	}
+	if c.ArgsFrom != "" {
+		fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)
+	}
 	fmt.Fprintf(&b, "Chartr-Write: true")
 	return b.String()
 }

@@ -54,6 +54,11 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Role string `json:"role"`
+		// Agent names a registered agent from the operator's library — the explicit
+		// "run this session on *that*" the picker sends. Optional here and only
+		// here: while it is absent the role's binding still decides, so nothing that
+		// does not send it changes behaviour. Ticket 04 makes it required.
+		Agent string `json:"agent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpError(w, http.StatusBadRequest, "invalid request body")
@@ -102,17 +107,14 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the binding and hard-block an absent agent *here*, before any write:
-	// the ordinary missing-CLI case is a doorstep diagnosis naming the binding, its
-	// source layer, and the local-override fix — and it blocks nothing else (story
-	// 40).
-	binding, ok := bindingFor(res, role)
-	if !ok {
-		httpError(w, http.StatusInternalServerError, "no binding for role "+role)
-		return
-	}
-	if !binding.Present {
-		httpError(w, http.StatusConflict, binding.Missing)
+	// Settle what will actually run, and hard-block an absent binary *here*, before
+	// any write: an unregistered name and a missing CLI are both doorstep
+	// diagnoses, refused in the same place and the same order whether the agent was
+	// named explicitly or inherited from the role's binding (story 40), and neither
+	// blocks anything else.
+	spec, status, err := launchSpecFor(res, role, body.Agent)
+	if err != nil {
+		httpError(w, status, err.Error())
 		return
 	}
 
@@ -133,12 +135,24 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		m:         m,
 		tk:        tk,
 		role:      role,
-		binding:   binding,
+		spec:      spec,
 		sessionID: newSessionID(),
 	})
 	if err != nil {
 		httpError(w, status, err.Error())
 		return
+	}
+
+	// The space remembers what it just spawned with, so the next spawn here is one
+	// click. Written only now, past every refusal and past the launch itself: a
+	// blocked spawn must leave the memory exactly as it was. An override is
+	// therefore self-persisting and needs no confirming action. Failing to persist
+	// costs the operator one re-pick, never the running session, so it does not
+	// fail the request.
+	if spec.Name != "" {
+		if err := s.reg.SetLastAgent(e.ID, spec.Name); err == nil {
+			s.rebuild()
+		}
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -154,8 +168,84 @@ type sessionLaunch struct {
 	m         model.Map
 	tk        model.Ticket
 	role      string
-	binding   config.Resolved
+	spec      launchSpec
 	sessionID string
+}
+
+// launchSpec is the one thing the launch mechanics need to know about execution:
+// the binary, its flags, how the opener reaches it, and — when the operator chose
+// from the library rather than inheriting a role's binding — the registered name
+// they chose. Both paths converge on it *before* launchSession, so the mechanics
+// below never learn that role bindings exist, and deleting them (ticket 05) is a
+// subtraction rather than a rewrite.
+type launchSpec struct {
+	// Name is the registered agent's name, empty on the binding path — a local
+	// name, meaningful only on this machine, which is why the audit trail records
+	// the adapter and args beside it rather than instead of them.
+	Name    string
+	Adapter string
+	Args    []string
+	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
+	// name. Empty leaves the adapter's own default in force.
+	Prompt string
+	// AdapterFrom and ArgsFrom are the config layers the binding path resolved
+	// those fields from, and are empty on the explicit-agent path, which consults
+	// no layers at all. They travel only as far as the claim trailers, and go with
+	// the layers they name in ticket 05.
+	AdapterFrom config.Layer
+	ArgsFrom    config.Layer
+}
+
+// launchSpecFor settles what a spawn will run. A named agent is resolved against
+// the operator's library — unregistered is a malformed request (400), registered
+// but absent from PATH is a conflict carrying the library's own diagnosis (409),
+// and a stale picker therefore can never launch nothing (story 18). With no name
+// the role's binding decides exactly as it always has, refused the same two ways.
+// Either way it settles before the claim and before any write, so a refusal
+// leaves the space untouched (story 33). The int is the HTTP status to surface
+// alongside a non-nil error.
+func launchSpecFor(res config.Resolution, role, agent string) (launchSpec, int, error) {
+	if agent != "" {
+		for _, a := range res.Agents {
+			if a.Name != agent {
+				continue
+			}
+			if !a.Present {
+				return launchSpec{}, http.StatusConflict, errors.New(a.Missing)
+			}
+			return launchSpec{Name: a.Name, Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt}, 0, nil
+		}
+		return launchSpec{}, http.StatusBadRequest, fmt.Errorf("no agent named %q is registered", agent)
+	}
+
+	binding, ok := bindingFor(res, role)
+	if !ok {
+		return launchSpec{}, http.StatusInternalServerError, errors.New("no binding for role " + role)
+	}
+	if !binding.Present {
+		return launchSpec{}, http.StatusConflict, errors.New(binding.Missing)
+	}
+	return specOf(binding), 0, nil
+}
+
+// specOf reads a resolved role binding as a launch spec. A binding assigned to a
+// registered agent keeps that name — it is still a name out of the library, and
+// dropping it would make the trailer poorer for no reason. A binding bound field
+// by field has no name to keep, and one naming an agent the library does not hold
+// is not a registered agent at all, so both carry none.
+func specOf(b config.Resolved) launchSpec {
+	name := b.Agent
+	if b.AgentMissing != "" {
+		name = ""
+	}
+	return launchSpec{
+		Name:        name,
+		Adapter:     b.Adapter,
+		Args:        b.Args,
+		Prompt:      b.Prompt,
+		AdapterFrom: b.AdapterFrom,
+		ArgsFrom:    b.ArgsFrom,
+	}
 }
 
 // launchSession runs the spawn mechanics: it composes the payload fresh
@@ -199,12 +289,13 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	if err := writeClaimCommit(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
 		SessionID:   in.sessionID,
 		Role:        in.role,
-		Agent:       in.binding.Adapter,
-		Args:        in.binding.Args,
+		Agent:       in.spec.Name,
+		Adapter:     in.spec.Adapter,
+		Args:        in.spec.Args,
 		PayloadSHA:  payloadSHA,
 		Skills:      payload.Skills,
-		AdapterFrom: in.binding.AdapterFrom,
-		ArgsFrom:    in.binding.ArgsFrom,
+		AdapterFrom: in.spec.AdapterFrom,
+		ArgsFrom:    in.spec.ArgsFrom,
 	}); err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim commit: %w", err)
 	}
@@ -222,17 +313,17 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	// the argv or gets typed in is the adapter's call, so the spawn path hands over
 	// the same line either way.
 	launch := adapter.Command(adapter.Spawn{
-		Adapter: in.binding.Adapter,
-		Args:    in.binding.Args,
+		Adapter: in.spec.Adapter,
+		Args:    in.spec.Args,
 		Prompt:  adapter.Opener(payloadPath),
-		Deliver: in.binding.Prompt,
+		Deliver: in.spec.Prompt,
 	})
 	if _, err := s.terms.OpenSession(in.entry.ID, in.entry.Path, in.sessionID, launch.Name, launch.Args,
 		launch.TypeIn, terminal.Session{
 			MapSlug:   in.slug,
 			TicketNum: in.tk.Num,
 			Role:      in.role,
-			Agent:     in.binding.Adapter,
+			Agent:     in.spec.Adapter,
 		}); err != nil {
 		// The claim already stands (ADR 0008: it is not rolled back). A live-session
 		// race is a conflict; a launch failure after a present-on-PATH check is an
@@ -244,11 +335,15 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	}
 
 	return map[string]any{
-		"sessionId":  in.sessionID,
-		"ticketNum":  in.tk.Num,
-		"role":       in.role,
-		"agent":      in.binding.Adapter,
-		"args":       in.binding.Args,
+		"sessionId": in.sessionID,
+		"ticketNum": in.tk.Num,
+		"role":      in.role,
+		// `agent` stays the adapter — what launched — and `agentName` carries the
+		// registered name when the operator picked one, so the response says both
+		// what ran and what they chose without either changing meaning.
+		"agent":      in.spec.Adapter,
+		"agentName":  in.spec.Name,
+		"args":       in.spec.Args,
 		"payloadSha": payloadSHA,
 	}, http.StatusOK, nil
 }
