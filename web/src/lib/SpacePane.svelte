@@ -6,12 +6,11 @@
   import { Button } from './components/ui/button'
   import { spaceActionCount } from './attention'
   import { isEditingTarget } from './keys'
-  import { settingsHash } from './route'
-  import { Warning, Sparkle, SlidersHorizontal, Lightbulb } from 'phosphor-svelte'
+  import { Warning, Sparkle, Lightbulb } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
-  // identity (name and path) plus the stage-level controls — the way into this
-  // space's config (ticket 05) and the star-map toggle — over the terminal. The
+  // identity (name and path) plus the stage-level controls — warnings and the
+  // star-map toggle; config lives in the branding bar — over the terminal. The
   // sidebar now owns session selection (its space cards list each shell), so the
   // active shell arrives as a prop and this pane simply renders it: no tab strip,
   // no per-pane action bar. A mapless space is fully usable this way (story 29).
@@ -266,17 +265,24 @@
      path) over a row of its subpanes. The identity lives here, one level above
      the panes, so the hierarchy reads "space › {terminals, map}": each pane
      carries only its own chrome. A floating map overlays the panes row but never
-     this header — the panes row is its positioning context, and it sits below. -->
-<div class="flex h-full min-h-0 flex-col">
+     this header — the panes row is its positioning context, and it sits below.
+
+     `isolate` makes this stage one stacking context: every z-index inside (the
+     floating card, the map's chrome bar, the resize grips) is then local to the
+     stage and cannot climb over a route overlay rendered beside it, such as the
+     settings surface. Without it a docked card — `relative`, z-auto, so no
+     context of its own — leaked its z-30 chrome through settings. -->
+<div class="isolate flex h-full min-h-0 flex-col">
   <header class="cockpit-bar justify-between">
     <div class="flex min-w-0 items-baseline gap-2" title={space.path}>
       <span class="truncate text-sm font-semibold">{space.name}</span>
       <code class="truncate font-mono text-[0.7rem] text-muted-foreground">{space.path}</code>
     </div>
 
-    <!-- The stage-level controls, right-aligned: any surfaced warnings, the
-         effective role bindings, and the one star-map show/hide toggle — lifted
-         here beside the map toggle now that the terminal has no action bar. -->
+    <!-- The stage-level controls, right-aligned: any surfaced warnings and the
+         one star-map show/hide toggle — lifted here now that the terminal has no
+         action bar. Config is not here: it has one entry, the branding bar's
+         gear (and each space card's own ⚙). -->
     <div class="flex items-center gap-1.5">
       {#if warnings.length}
         <span
@@ -287,18 +293,6 @@
           <Warning class="size-3.5" /> {warnings.length}
         </span>
       {/if}
-      <!-- Config has one home (ticket 05): this navigates to the settings route
-           scoped to this space, rather than opening a second, per-space drawer
-           over the same values. -->
-      <Button
-        variant="outline"
-        size="sm"
-        title="This space's effective config — bindings, skills, kinds, and where each layer lives"
-        onclick={() => (location.hash = settingsHash({ kind: 'space', spaceId: space.id }))}
-      >
-        <SlidersHorizontal /> config
-      </Button>
-
       {#if maps.length}
         <!-- The one star-map show/hide control for the whole stage, beside the
              bindings; reflects mapShown via aria-pressed. Tucked away, it also
