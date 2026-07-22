@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [02]
+claimed_by: s46b8beb325ff
+claimed_at: 2026-07-22T03:48:44Z
 ---
 
 # Revert to the vanilla lifecycle
