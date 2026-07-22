@@ -311,12 +311,9 @@
                  ticket's own body, so the answers are opened on demand.
                  `multiple` because comparing two blockers is the common read,
                  and nothing is open by default. -->
-            <Accordion.Root type="multiple" class="flex flex-col gap-2">
+            <Accordion.Root type="multiple" class="flex flex-col">
               {#each blockers as b (b.num)}
-                <Accordion.Item
-                  value={String(b.num)}
-                  class="rounded-md border border-border"
-                >
+                <Accordion.Item value={String(b.num)}>
                   <!-- items-center overrides the primitive's items-start, which
                        in this row would top-align the badge against the caret;
                        no-underline keeps the hover off the title and badge. -->
