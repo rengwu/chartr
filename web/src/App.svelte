@@ -216,13 +216,29 @@
     );
   });
 
-  async function forget(space: Space) {
-    const ok = confirm(
-      `Forget “${space.name}”?\n\nThe chartr stops tracking it. Nothing in the repository is touched — re-register any time and it picks up exactly as it sits.`,
-    );
-    if (!ok) return;
+  // Confirmations and failures are the chrome's own surfaces, never the browser's
+  // `confirm()`/`alert()`. The native shell's webview implements one WKUIDelegate
+  // method — the file-open panel — so a JS dialog there is a silent no-op and
+  // `confirm()` returns false on the spot: the forget action simply did nothing,
+  // and every failure message vanished. Both now render as Modals, which also
+  // keeps them on the design system instead of an OS-drawn box.
+  let pendingForget = $state<Space | null>(null);
+  let actionError = $state<string | null>(null);
+
+  function forget(space: Space) {
+    pendingForget = space;
+  }
+
+  async function confirmForget() {
+    const space = pendingForget;
+    pendingForget = null;
+    if (!space) return;
     if (selectedId === space.id) selectedId = null;
-    await deregisterSpace(space.id);
+    try {
+      await deregisterSpace(space.id);
+    } catch (e) {
+      actionError = `Couldn’t remove “${space.name}”: ${(e as Error).message}`;
+    }
   }
 
   // Selecting a space is also how you leave the settings route — it is a place
@@ -246,7 +262,7 @@
       const { id } = await openTerminal(space.id);
       activeTermId = id;
     } catch (e) {
-      alert(`Couldn’t open a shell: ${(e as Error).message}`);
+      actionError = `Couldn’t open a shell: ${(e as Error).message}`;
     } finally {
       opening = false;
     }
@@ -263,7 +279,7 @@
       const { id } = await ideate(space.id);
       activeTermId = id;
     } catch (e) {
-      alert(`Couldn’t start ideating: ${(e as Error).message}`);
+      actionError = `Couldn’t start ideating: ${(e as Error).message}`;
     } finally {
       opening = false;
     }
@@ -274,7 +290,7 @@
     try {
       await closeTerminal(space.id, t.id);
     } catch (e) {
-      alert(`Couldn’t end “${t.title}”: ${(e as Error).message}`);
+      actionError = `Couldn’t end “${t.title}”: ${(e as Error).message}`;
     }
   }
 
@@ -293,7 +309,7 @@
     try {
       await run(space.id, t.id);
     } catch (e) {
-      alert(`Couldn’t ${verb} this session: ${(e as Error).message}`);
+      actionError = `Couldn’t ${verb} this session: ${(e as Error).message}`;
     }
   }
 
@@ -483,8 +499,8 @@
                 variant="ghost"
                 size="icon-xs"
                 class="-mt-0.5 -mr-0.5 hover:text-destructive"
-                aria-label="Forget space"
-                title="Forget (repository untouched)"
+                aria-label="Remove space"
+                title="Remove from this list (your files stay put)"
                 onclick={(e) => {
                   e.stopPropagation();
                   forget(space);
@@ -860,5 +876,42 @@
         showAdd = false;
       }}
     />
+  </Modal>
+
+  <!-- Removing a space is destructive-sounding enough to confirm, and the
+       confirmation is ours: dismissal (Esc, backdrop, ✕) is Cancel, so the only
+       way through is the explicit button. -->
+  <Modal
+    open={pendingForget !== null}
+    title="Remove “{pendingForget?.name ?? ''}”?"
+    onClose={() => (pendingForget = null)}
+  >
+    <p class="text-xs text-muted-foreground">
+      This only takes it off your list here. Your files stay exactly where they
+      are, and you can add it back any time.
+    </p>
+    <div class="mt-4 flex justify-end gap-2">
+      <Button variant="outline" size="sm" onclick={() => (pendingForget = null)}>
+        Cancel
+      </Button>
+      <Button variant="destructive" size="sm" onclick={confirmForget}>
+        Remove
+      </Button>
+    </div>
+  </Modal>
+
+  <!-- Every action failure that used to be an `alert()`. One surface, dismissed
+       the ordinary way. -->
+  <Modal
+    open={actionError !== null}
+    title="That didn’t work"
+    onClose={() => (actionError = null)}
+  >
+    <p class="text-xs text-muted-foreground">{actionError}</p>
+    <div class="mt-4 flex justify-end">
+      <Button variant="outline" size="sm" onclick={() => (actionError = null)}>
+        Close
+      </Button>
+    </div>
   </Modal>
 </div>
