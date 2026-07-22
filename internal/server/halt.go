@@ -136,8 +136,8 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Respawn re-claims a ticket a dead session still holds; anything else (already
-	// released, proposed, resolved) is not this halt's to re-take.
+	// Respawn re-claims a ticket a dead session still holds; anything else
+	// (already released, resolved) is not this halt's to re-take.
 	if tk.Status != "claimed" {
 		httpError(w, http.StatusConflict, "ticket is no longer claimed by this session — nothing to respawn")
 		return

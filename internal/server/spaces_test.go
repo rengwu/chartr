@@ -17,9 +17,8 @@ import (
 
 // Ticket 02 at the process boundary: the registry (register with an announced
 // git init, forget-not-destroy removal, a rebuildable index) and role bindings
-// (three-layer field-level merge resolving user-over-workspace, a committed
-// autopilot flag ignored with a warning, an absent adapter surfaced as a
-// badge). Every assertion is on what the design makes public — HTTP responses,
+// (three-layer field-level merge resolving user-over-workspace, an absent
+// adapter surfaced as a badge). Every assertion is on what the design makes public — HTTP responses,
 // control-socket snapshots, the filesystem, and git — never on internals.
 
 func ctx(t *testing.T) context.Context {
@@ -247,22 +246,6 @@ adapter = "opencode"
 	}
 	if grill.Adapter == "" || grill.Model == "" {
 		t.Errorf("grill built-in binding is empty: %+v", grill)
-	}
-}
-
-// A committed autopilot flag is ignored with a warning — committing "no human
-// reviews this code" for everyone who clones is exactly what "cockpit, not
-// autopilot" refuses; autopilot is strictly a local choice (ADR 0009).
-func TestCommittedAutopilotIgnoredWithWarning(t *testing.T) {
-	h := harnesstest.Start(t)
-	repo := harnesstest.NewSpaceRepo(t)
-	harnesstest.WriteFile(t, repo, ".wayfinder-harness/config.toml", "autopilot = true\n")
-
-	resp := register(t, h, repo)
-	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
-
-	if !hasSubstring(s.Warnings, "autopilot") {
-		t.Errorf("committed autopilot produced no warning; warnings = %v", s.Warnings)
 	}
 }
 

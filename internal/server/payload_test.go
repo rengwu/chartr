@@ -156,6 +156,40 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	}
 }
 
+// A blocker carrying only an in-flight `## Proposed Answer` — wreckage from the
+// retired review lifecycle — contributes *no* answer to a dependent's bundle. The
+// heading is unknown to the reader and no human blessed what is under it, so the
+// bundle says the blocker is not resolved rather than handing a session an
+// unblessed proposal as though it were the answer (spec, ignore-don't-tolerate).
+func TestProposedAnswerIsNotABlockersAnswer(t *testing.T) {
+	h := harnesstest.Start(t)
+	repo := harnesstest.NewSpaceRepo(t)
+
+	harnesstest.WriteMap(t, repo, "widget", mapBody)
+	harnesstest.WriteTicket(t, repo, "widget", "01-base.md",
+		ticket(1, "Base decision", "[]", "task", "## Proposed Answer\nUSE-THE-UNBLESSED-APPROACH."))
+	harnesstest.WriteTicket(t, repo, "widget", "02-dependent.md",
+		ticket(2, "Dependent work", "[1]", "task", ""))
+
+	resp := register(t, h, repo)
+
+	code, p, body := getPayload(t, h, resp.ID, "widget", 2, "implement")
+	if code != 200 {
+		t.Fatalf("payload preview = %d, body %s", code, body)
+	}
+
+	blocker := findPart(t, p, "blocker #01")
+	if strings.Contains(segText(blocker), "USE-THE-UNBLESSED-APPROACH") {
+		t.Errorf("proposed answer leaked into the bundle as an answer:\n%s", segText(blocker))
+	}
+	if !strings.Contains(segText(blocker), "not resolved") {
+		t.Errorf("blocker without an answer should read as unresolved:\n%s", segText(blocker))
+	}
+	if strings.Contains(p.Markdown, "USE-THE-UNBLESSED-APPROACH") {
+		t.Errorf("proposed answer leaked into the composed markdown:\n%s", p.Markdown)
+	}
+}
+
 // Resolution walks built-in ‹ user ‹ workspace with `append` stacking and
 // `replace` resetting the base — and, for a replace, the highest layer wins
 // (committed workspace over local user), the content half of ADR 0009. The whole

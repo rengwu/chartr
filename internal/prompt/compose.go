@@ -83,11 +83,14 @@ func Compose(in ComposeInput) (Payload, error) {
 }
 
 // AnswerSection returns a ticket's closing answer prose for inlining as a
-// blocker's answer in the context bundle — its Answer, else its Proposed Answer,
-// else its Ruled out. Empty when the blocker carries none, which Compose renders
-// as an explicit "not resolved" note rather than a silent gap.
+// blocker's answer in the context bundle — its Answer, else its Ruled out.
+// Empty when the blocker carries none, which Compose renders as an explicit
+// "not resolved" note rather than a silent gap. An in-flight `## Proposed
+// Answer` is deliberately *not* read: it is an unknown heading no one blessed,
+// and handing it to a dependent as though it were the answer is the one failure
+// this narrowing exists to prevent.
 func AnswerSection(body string) string {
-	return firstSection(body, "Answer", "Proposed Answer", "Ruled out")
+	return firstSection(body, "Answer", "Ruled out")
 }
 
 func ctxPart(name, label, text string) Part {

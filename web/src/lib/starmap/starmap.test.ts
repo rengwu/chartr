@@ -36,7 +36,6 @@ function fixture(overrides: Partial<Record<number, Ticket['status']>> = {}): Tic
 // per beat. The structure (tickets + edges) never changes — only statuses do.
 const LIFECYCLE: Array<Record<number, Ticket['status']>> = [
   { 1: 'resolved', 2: 'resolved', 3: 'claimed' },
-  { 1: 'resolved', 2: 'resolved', 3: 'proposed' },
   { 1: 'resolved', 2: 'resolved', 3: 'resolved', 4: 'claimed' },
   { 1: 'resolved', 2: 'resolved', 3: 'resolved', 4: 'resolved', 5: 'out_of_scope' },
 ]
@@ -92,18 +91,17 @@ describe('the island seam', () => {
     sm = mounted().sm
   })
 
-  it('renders all six base states without a 2D context', () => {
-    // open→frontier, open→blocked, claimed, proposed, resolved, out_of_scope —
-    // one push carrying all six, and every star present in the model.
+  it('renders all five base states without a 2D context', () => {
+    // open→frontier, open→blocked, claimed, resolved, out_of_scope — one push
+    // carrying all five, and every star present in the model.
     sm.setModel([
       { num: 1, slug: '1', title: 'frontier', type: 'task', status: 'open', frontier: true, blockedBy: [] },
       { num: 2, slug: '2', title: 'blocked', type: 'task', status: 'open', frontier: false, blockedBy: [1] },
       { num: 3, slug: '3', title: 'claimed', type: 'task', status: 'claimed', frontier: false, blockedBy: [] },
-      { num: 4, slug: '4', title: 'proposed', type: 'task', status: 'proposed', frontier: false, blockedBy: [] },
-      { num: 5, slug: '5', title: 'resolved', type: 'task', status: 'resolved', frontier: false, blockedBy: [] },
-      { num: 6, slug: '6', title: 'oos', type: 'task', status: 'out_of_scope', frontier: false, blockedBy: [] },
+      { num: 4, slug: '4', title: 'resolved', type: 'task', status: 'resolved', frontier: false, blockedBy: [] },
+      { num: 5, slug: '5', title: 'oos', type: 'task', status: 'out_of_scope', frontier: false, blockedBy: [] },
     ])
-    expect(Object.keys(sm.positions()).sort()).toEqual(['1', '2', '3', '4', '5', '6'])
+    expect(Object.keys(sm.positions()).sort()).toEqual(['1', '2', '3', '4', '5'])
   })
 
   it('never moves a star as the model pushes new statuses across the lifecycle', () => {

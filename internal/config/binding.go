@@ -8,8 +8,7 @@
 // execution choices the operator makes win (bindings, here). Because a user
 // override may set one field and inherit the rest, the effective binding
 // records where each field came from so silent inheritance stays visible
-// (story 39). Autopilot has no committed meaning: a committed autopilot flag is
-// ignored with a warning (ADR 0009); only the local user layer may set it.
+// (story 39).
 package config
 
 import (
@@ -145,14 +144,12 @@ type Resolved struct {
 
 // Resolution is the whole outcome for one space: its effective bindings in role
 // order, the committed map-kind declarations (slug → kind, ADR 0007), any
-// warnings to surface (a committed autopilot flag, an unknown role, an
-// unrecognised kind, a malformed config file), and the effective autopilot flag
-// (user layer only).
+// warnings to surface (an unknown role, an unrecognised kind, a malformed
+// config file).
 type Resolution struct {
-	Bindings  []Resolved
-	Kinds     map[string]string
-	Warnings  []string
-	Autopilot bool
+	Bindings []Resolved
+	Kinds    map[string]string
+	Warnings []string
 }
 
 // Input is everything Resolve needs for one space. The TOML byte slices are the
@@ -177,9 +174,8 @@ type rawBinding struct {
 }
 
 type workspaceFile struct {
-	Roles     map[string]rawBinding `toml:"roles"`
-	Maps      map[string]rawMap     `toml:"maps"`
-	Autopilot *bool                 `toml:"autopilot"`
+	Roles map[string]rawBinding `toml:"roles"`
+	Maps  map[string]rawMap     `toml:"maps"`
 }
 
 // rawMap is one map's committed harness config, keyed by map slug (ADR 0007).
@@ -196,14 +192,13 @@ type userFile struct {
 }
 
 type userSpace struct {
-	Roles     map[string]rawBinding `toml:"roles"`
-	Autopilot *bool                 `toml:"autopilot"`
+	Roles map[string]rawBinding `toml:"roles"`
 }
 
 // Resolve merges the three layers for one space and reports the effective
-// bindings, warnings, and autopilot. It never errors: a malformed config file
-// degrades to a warning and the layers below it, because adoption is never
-// gated on config lint.
+// bindings and warnings. It never errors: a malformed config file degrades to a
+// warning and the layers below it, because adoption is never gated on config
+// lint.
 func Resolve(in Input) Resolution {
 	onPath := in.OnPath
 	if onPath == nil {
@@ -213,19 +208,9 @@ func Resolve(in Input) Resolution {
 	var warnings []string
 
 	wf := parseWorkspace(in.WorkspaceTOML, &warnings)
-	ws, wsAuto := wf.Roles, wf.Autopilot
+	ws := wf.Roles
 	kinds := resolveKinds(wf.Maps, &warnings)
-	us, usAuto := parseUser(in.UserTOML, in.SpacePath, &warnings)
-
-	// A committed autopilot flag is ignored with a warning; only the local user
-	// layer may enable it (ADR 0009).
-	if wsAuto != nil {
-		warnings = append(warnings, "committed autopilot flag ignored — autopilot is a local-only choice, never committed for everyone who clones")
-	}
-	autopilot := false
-	if usAuto != nil {
-		autopilot = *usAuto
-	}
+	us := parseUser(in.UserTOML, in.SpacePath, &warnings)
 
 	warnings = append(warnings, unknownRoleWarnings(ws)...)
 	warnings = append(warnings, unknownRoleWarnings(us)...)
@@ -252,7 +237,7 @@ func Resolve(in Input) Resolution {
 		bindings = append(bindings, r)
 	}
 
-	return Resolution{Bindings: bindings, Kinds: kinds, Warnings: warnings, Autopilot: autopilot}
+	return Resolution{Bindings: bindings, Kinds: kinds, Warnings: warnings}
 }
 
 // resolveKinds turns the committed [maps.<slug>] tables into a slug → kind map,
@@ -315,20 +300,16 @@ func parseWorkspace(data []byte, warnings *[]string) workspaceFile {
 	return wf
 }
 
-func parseUser(data []byte, spacePath string, warnings *[]string) (map[string]rawBinding, *bool) {
+func parseUser(data []byte, spacePath string, warnings *[]string) map[string]rawBinding {
 	if len(data) == 0 {
-		return nil, nil
+		return nil
 	}
 	var uf userFile
 	if _, err := toml.Decode(string(data), &uf); err != nil {
 		*warnings = append(*warnings, "local user config is malformed and was ignored: "+err.Error())
-		return nil, nil
+		return nil
 	}
-	us, ok := uf.Spaces[spacePath]
-	if !ok {
-		return nil, nil
-	}
-	return us.Roles, us.Autopilot
+	return uf.Spaces[spacePath].Roles
 }
 
 // unknownRoleWarnings flags config that binds a name outside the closed role

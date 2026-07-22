@@ -14,8 +14,7 @@ import (
 )
 
 // userConfigName is the operator's local, uncommitted config under the harness
-// state root, keyed by space path. It carries per-machine binding overrides and
-// the local-only autopilot flag.
+// state root, keyed by space path. It carries per-machine binding overrides.
 const userConfigName = "user.toml"
 
 // handleRegister registers a folder as a space. Registration is a plain HTTP

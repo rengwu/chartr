@@ -8,8 +8,8 @@
 //
 // Ported from github.com/rengwu/wayfinder-maps internal/wayfinder at commit
 // 94a3be97d937db06574c15515ad8c0cd23854ffd (2026-07-14). Re-sync by re-copying
-// these files and re-running the ported tests; the only harness-specific
-// addition is the non-resolving `proposed` status (ADR 0004), marked in parse.go
-// where it derives — the harness extends the derived-status table by exactly one
-// value and touches nothing else, so a vanilla tool reads the same map unchanged.
+// these files and re-running the ported tests; the harness adds nothing to the
+// derived-status table — the `proposed` status it once carried was withdrawn
+// with the review feature (ADR 0004, amended), so this layer reads a map exactly
+// as a vanilla tool does.
 package wayfinder

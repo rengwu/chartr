@@ -274,8 +274,7 @@ func (m *Manager) Lookup(id string) (Info, bool) {
 // liveness — never the PTY itself. Session is set when the tab is a session (a
 // PTY bound to a ticket), nil for an ad-hoc shell. Silent is the sampler's raw
 // silence verdict for a live session (quiet past the threshold); the server, which
-// alone knows the role's AFK-ness and the ticket's proposed status, turns it into
-// the tab's final quiet reading.
+// alone knows the role's AFK-ness, turns it into the tab's final quiet reading.
 type Info struct {
 	ID      string
 	SpaceID string

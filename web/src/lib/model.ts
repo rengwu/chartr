@@ -21,9 +21,9 @@ export interface RoleBinding {
 }
 
 // Ticket is one ticket's derived state: its identity, type, the status derived
-// from its file (open | claimed | proposed | resolved | out_of_scope, ADR 0004),
-// its blockers, and whether it sits on the harness's stricter frontier.
-export type TicketStatus = 'open' | 'claimed' | 'proposed' | 'resolved' | 'out_of_scope'
+// from its file (open | claimed | resolved | out_of_scope, ADR 0004 as amended),
+// its blockers, and whether it sits on the frontier.
+export type TicketStatus = 'open' | 'claimed' | 'resolved' | 'out_of_scope'
 
 export interface Ticket {
   num: number

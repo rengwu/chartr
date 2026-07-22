@@ -159,8 +159,8 @@ export function renderMarkdown(src: string): string {
 
 /**
  * Extract the raw markdown body under the first matching `## <name>` heading, up
- * to the next `## ` heading. Used to pull a blocker's answer (Answer / Proposed
- * Answer / Ruled out) out of its inlined body for the blockers-inline section.
+ * to the next `## ` heading. Used to pull a blocker's answer (Answer / Ruled
+ * out) out of its inlined body for the blockers-inline section.
  * Returns '' when none of the names are present.
  */
 export function sectionOf(body: string, names: string[]): string {

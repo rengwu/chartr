@@ -98,8 +98,8 @@ type Terminal struct {
 	// model.Terminal* states); lastPgrp caches the foreground group so a name is
 	// only re-resolved when the foreground actually changes. silent is the last
 	// sampled silence verdict for a session (alive and quiet past the threshold),
-	// which the server folds together with the role and the ticket's proposed
-	// status to decide whether the tab actually reads quiet.
+	// which the server folds together with the role to decide whether the tab
+	// actually reads quiet.
 	proc     string
 	state    string
 	lastPgrp int
@@ -380,10 +380,10 @@ func (t *Terminal) sample(quietAfter time.Duration) bool {
 
 // sampleSession recomputes a session tab: dead once its process exits, otherwise
 // working, with a silence verdict (alive and quiet past the threshold) the server
-// folds together with the role and the ticket's proposed status to decide whether
-// it actually reads quiet. The quiet decision is deliberately not made here — the
-// terminal knows the silence but not the role's AFK-ness or the ticket's answer —
-// so a threshold crossing still pushes, and the server has the last word.
+// folds together with the role to decide whether it actually reads quiet. The
+// quiet decision is deliberately not made here — the terminal knows the silence
+// but not the role's AFK-ness — so a threshold crossing still pushes, and the
+// server has the last word.
 func (t *Terminal) sampleSession(quietAfter time.Duration) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()

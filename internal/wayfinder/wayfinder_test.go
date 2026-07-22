@@ -256,6 +256,57 @@ func TestDeriveStatus(t *testing.T) {
 	}
 }
 
+// Derive's whole range is vanilla wayfinder's four statuses — the harness's
+// `proposed` addition is withdrawn (ADR 0004, amended). Anything a file can say
+// lands in one of these four; there is no fifth, non-resolving state to reason
+// about.
+func TestDeriveYieldsOnlyTheFourStatuses(t *testing.T) {
+	vanilla := map[Status]bool{
+		StatusOpen: true, StatusClaimed: true, StatusResolved: true, StatusOutOfScope: true,
+	}
+	closings := []string{
+		"", "## Answer\nDone.", "## Ruled out\nNot this route.",
+		"## Proposed Answer\nCommitted, never blessed.", "## Answer\n", "## Proposed Answer\n",
+	}
+	for _, claim := range []string{"", "claimed_by: session-a\nclaimed_at: 2026-07-20T09:00:00Z\n"} {
+		for _, closing := range closings {
+			src := "---\ntype: task\nblocked_by: []\n" + claim + "---\n\n# T\n\n## Question\nQ.\n\n" + closing + "\n"
+			tk, err := ParseTicket("p", "01-t.md", src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !vanilla[tk.Status] {
+				t.Errorf("derived %q, outside the four vanilla statuses (claim %q, closing %q)", tk.Status, claim, closing)
+			}
+		}
+	}
+}
+
+// An in-flight `## Proposed Answer` is wreckage from the retired review
+// lifecycle: an unknown heading that settles nothing. Its ticket reads open, or
+// claimed if the claim marker survived — never resolved, and never a hidden
+// fifth status (spec: ignored, not migrated).
+func TestProposedAnswerIsAnUnknownHeading(t *testing.T) {
+	const proposed = "\n## Proposed Answer\nCommitted, never blessed.\n"
+
+	tk, err := ParseTicket("p", "01-wreck.md", "---\ntype: task\nblocked_by: []\n---\n\n# T\n\n## Question\nQ.\n"+proposed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Status != StatusOpen {
+		t.Errorf("proposed-only ticket derived %q, want open", tk.Status)
+	}
+
+	claimed, err := ParseTicket("p", "02-wreck.md",
+		"---\ntype: task\nblocked_by: []\nclaimed_by: session-a\nclaimed_at: 2026-07-20T09:00:00Z\n---\n\n# T\n\n## Question\nQ.\n"+proposed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.Status != StatusClaimed {
+		t.Errorf("proposed-with-surviving-claim derived %q, want claimed", claimed.Status)
+	}
+}
+
 const okMap = "# M\n\n## Destination\nD.\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n"
 
 func diagsContain(d []Diagnostic, sub string) bool {
@@ -272,6 +323,28 @@ func TestFrontier(t *testing.T) {
 	got := e.Frontier()
 	if len(got) != 2 || got[0].Num != 2 || got[1].Num != 3 {
 		t.Fatalf("frontier = %v, want [02 03]", got)
+	}
+}
+
+// The frontier is vanilla: a resolved blocker unblocks its dependent the instant
+// its Answer lands, with nothing to approve in between. The same dependent is
+// held while its blocker merely carries a claim and an unblessed proposal.
+func TestResolvingABlockerUnblocksItsDependentImmediately(t *testing.T) {
+	blocker := tk(1, StatusClaimed)
+	dep := tk(2, StatusOpen, 1)
+	e := effort(okMap, blocker, dep)
+
+	if len(e.Frontier()) != 0 {
+		t.Fatalf("dependent of an unresolved blocker is on the frontier: %v", e.Frontier())
+	}
+
+	// The session writes its Answer; the next read is all it takes.
+	blocker.HasAnswer, blocker.AnswerHeading = true, true
+	blocker.Derive()
+
+	got := e.Frontier()
+	if len(got) != 1 || got[0].Num != 2 {
+		t.Fatalf("frontier after the blocker resolved = %v, want [02]", got)
 	}
 }
 

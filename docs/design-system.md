@@ -160,10 +160,9 @@ island wrappers call it and pass colours in:
 ### Star-map data-viz exemption
 
 The star-map's palette lives in `web/src/lib/starmap/theme.ts` (`STAR` and
-`LABEL` maps). Its **six status hues** — `resolved` / `frontier` / `claimed` /
-`proposed` / `blocked` / `out_of_scope` — are **categorical data-viz colour
-(meaning), not brand decoration**, and are therefore *exempt* from the monochrome
-rule. They are kept (re-tuned to sit legibly on the warm near-black `--card`), not
+`LABEL` maps). Its **five status hues** — `resolved` / `frontier` / `claimed` /
+`blocked` / `out_of_scope` — are **categorical data-viz colour (meaning), not
+brand decoration**, and are therefore *exempt* from the monochrome rule. They are kept (re-tuned to sit legibly on the warm near-black `--card`), not
 folded into the neutral chrome. **Amber survives only as the `claimed` star and
 nowhere else in the product.** When the card colour changes, re-check each status
 hue for contrast against it (`out_of_scope`, the dimmest, is the first to fail)

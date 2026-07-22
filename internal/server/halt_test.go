@@ -45,8 +45,8 @@ func decodeResume(t *testing.T, body string) struct {
 // its ticket with scrollback intact, and does nothing on its own — the operator
 // resolves it exactly three ways (resume, respawn, release), each an HTTP action,
 // so the absence of autonomous action is asserted, not assumed. Separately: the
-// "quiet" hint appears only for an AFK session silent past the threshold with no
-// proposed answer, and a dirtied tree badges while a spawn still proceeds. Every
+// "quiet" hint appears only for an AFK session silent past the threshold, and a
+// dirtied tree badges while a spawn still proceeds. Every
 // assertion is on what the design makes public — snapshots, the filesystem, git.
 
 // planningConfig is a committed workspace config declaring one map as a planning
@@ -316,8 +316,7 @@ func TestHaltRefusesLiveSession(t *testing.T) {
 
 // Quiet is a hint for the AFK case only: an implement (AFK) session silent past
 // the threshold reads quiet, while a grill (HITL) session — supposed to sit idle
-// waiting on its human — never does; and once the AFK ticket carries a proposed
-// answer, its silence is expected and the hint is withdrawn.
+// waiting on its human — never does.
 func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
 	h := harnesstest.Start(t, harnesstest.WithQuietAfter(150*time.Millisecond))
 

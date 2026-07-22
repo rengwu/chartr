@@ -53,7 +53,7 @@ describe('sectionOf', () => {
   })
 
   it('prefers the first matching name and returns empty when none match', () => {
-    expect(sectionOf(body, ['Proposed Answer', 'Answer'])).toBe('We did it.\nAcross two lines.')
+    expect(sectionOf(body, ['Ruled out', 'Answer'])).toBe('We did it.\nAcross two lines.')
     expect(sectionOf(body, ['Ruled out'])).toBe('')
   })
 })

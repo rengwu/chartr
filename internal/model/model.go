@@ -55,9 +55,9 @@ type Space struct {
 	// (no ticket, no lifecycle, ended by the human), so a mapless space is still
 	// usable as a plain multiplexer. Never nil on the wire.
 	Terminals []Terminal `json:"terminals"`
-	// Warnings are non-fatal notices surfaced against the space — a committed
-	// autopilot flag ignored, an unknown role in config, a malformed config
-	// file. Surface, never enforce.
+	// Warnings are non-fatal notices surfaced against the space — an unknown
+	// role in config, an unrecognised map kind, a malformed config file.
+	// Surface, never enforce.
 	Warnings []string `json:"warnings,omitempty"`
 }
 
@@ -124,9 +124,9 @@ type Map struct {
 }
 
 // Ticket is one ticket's derived state on the wire: its identity, type, the
-// status derived from its file (open, claimed, proposed, resolved, out_of_scope
-// — ADR 0004), its blockers, and whether it sits on the harness's stricter
-// frontier (open, unclaimed, every blocker blessed).
+// status derived from its file (open, claimed, resolved, out_of_scope — ADR
+// 0004), its blockers, and whether it sits on the frontier (open, every blocker
+// resolved).
 type Ticket struct {
 	Num       int    `json:"num"`
 	Slug      string `json:"slug"`
@@ -134,8 +134,8 @@ type Ticket struct {
 	Type      string `json:"type"`
 	Status    string `json:"status"`
 	BlockedBy []int  `json:"blockedBy,omitempty"`
-	// Frontier is membership in the stricter frontier — the takeable edge. A
-	// ticket blocked by merely-proposed (ungated) work is never on it.
+	// Frontier is membership in the frontier — the takeable edge: open, with
+	// every blocker resolved.
 	Frontier bool `json:"frontier"`
 	// Body is the ticket's markdown below its H1 title — Question and Done-when,
 	// and any closing answer. Inlined so the detail pane (ticket 07) reads the
@@ -190,9 +190,9 @@ type Session struct {
 // foreground command runs (a spinner), or exited once the shell is gone. A session
 // tab reads on the session grammar instead (ticket 10): working while it is live
 // and producing, quiet when an AFK session has fallen silent past the threshold
-// with no proposed answer yet (a hint, never an alarm), and dead once its process
-// exits — a dead session freezes in place rather than vanishing, pinned to its
-// ticket until the operator resumes, respawns, or releases it.
+// (a hint, never an alarm), and dead once its process exits — a dead session
+// freezes in place rather than vanishing, pinned to its ticket until the
+// operator resumes, respawns, or releases it.
 const (
 	TerminalIdle    = "idle"
 	TerminalWorking = "working"

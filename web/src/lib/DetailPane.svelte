@@ -97,9 +97,11 @@
     }
   }
 
-  // The closing-answer section names, in the order a resolved/proposed/ruled-out
-  // ticket carries them — used to show a blocker's answer inline.
-  const ANSWER_SECTIONS = ['Answer', 'Proposed Answer', 'Ruled out']
+  // The closing-answer section names, in the order a resolved/ruled-out ticket
+  // carries them — used to show a blocker's answer inline. An in-flight
+  // `## Proposed Answer` is deliberately absent: nothing blessed it, so it is
+  // never shown as a blocker's answer.
+  const ANSWER_SECTIONS = ['Answer', 'Ruled out']
 
   // A blocker resolved from the same map, with its answer pulled from its body.
   interface Blocker {
@@ -120,7 +122,6 @@
   const statusLabel: Record<string, string> = {
     open: 'open',
     claimed: 'claimed',
-    proposed: 'proposed',
     resolved: 'resolved',
     out_of_scope: 'out of scope',
     unknown: 'missing',
@@ -128,13 +129,12 @@
 
   // resolved reads as the bold/solid "done" state (the palette's only accent
   // besides destructive is the neutral --primary — there is no green to key a
-  // literal success tint off); proposed/claimed share the lighter --primary-
-  // adjacent secondary emphasis the ticket calls for; out_of_scope stays muted;
+  // literal success tint off); claimed takes the lighter --primary-adjacent
+  // secondary emphasis the ticket calls for; out_of_scope stays muted;
   // an unresolved blocker reference is the one true "problem" and gets destructive.
   const statusVariant: Record<string, BadgeVariant> = {
     open: 'outline',
     claimed: 'secondary',
-    proposed: 'secondary',
     resolved: 'default',
     out_of_scope: 'outline',
     unknown: 'destructive',

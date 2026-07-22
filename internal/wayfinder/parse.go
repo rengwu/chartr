@@ -16,15 +16,6 @@ const (
 	StatusClaimed    Status = "claimed"
 	StatusResolved   Status = "resolved"
 	StatusOutOfScope Status = "out_of_scope"
-	// StatusProposed is the harness's one addition to the derived-status table
-	// (ADR 0004): an implementation ticket carrying `## Proposed Answer` but no
-	// `## Answer` — work committed but no gate has blessed it. It is deliberately
-	// *not* resolved, so the frontier scan (`^## (Answer|Ruled out)`) does not
-	// match it and its dependents stay blocked until a human approves. `proposed`
-	// derives from the file, so it survives a harness crash. A vanilla wayfinder
-	// tool, which knows only the four statuses above, reads such a ticket as
-	// `claimed` or `open` and still reads the map correctly.
-	StatusProposed Status = "proposed"
 )
 
 // Closed reports whether the ticket is off the frontier for good. Out-of-scope
@@ -62,20 +53,13 @@ type Ticket struct {
 	AnswerHeading   bool
 	RuledOutHeading bool
 
-	// HasProposedAnswer means a `## Proposed Answer` section with prose under it
-	// (ADR 0004) — the harness's non-resolving heading. Tracked the same way as a
-	// real answer: a bare `## Proposed Answer` from a session that died mid-write
-	// proposes nothing, so ProposedHeading records the heading separately.
-	HasProposedAnswer bool
-	ProposedHeading   bool
-
 	Legacy       bool   // loose "Type:" header rather than YAML frontmatter
 	StoredStatus Status // a deprecated `status:` field, if the file still carries one
 
 	// Body is the ticket's markdown below its H1 title — Question and Done-when,
-	// and any closing section (Answer / Proposed Answer / Ruled out). The harness
-	// inlines it into the pushed model so the detail pane reads the full ticket
-	// from one snapshot with no second fetch (ticket 07; starmap-design.md).
+	// and any closing section (Answer / Ruled out). The harness inlines it into
+	// the pushed model so the detail pane reads the full ticket from one
+	// snapshot with no second fetch (ticket 07; starmap-design.md).
 	Body string
 }
 
@@ -84,20 +68,19 @@ func (t *Ticket) EmptyClosing() bool {
 	return (t.AnswerHeading && !t.HasAnswer) || (t.RuledOutHeading && !t.HasRuledOut)
 }
 
-// Derive sets Status from the ticket's own contents. Closure is read first, so
-// a claim left behind on a closed ticket is inert litter rather than a broken
-// invariant: it can never hold the frontier. `proposed` is read after closure
-// and before the claim, so a blessed answer always wins over a proposal it
-// supersedes, and a ticket carrying a proposal reads `proposed` rather than the
-// `claimed` its still-set claim would otherwise imply.
+// Derive sets Status from the ticket's own contents — the four statuses vanilla
+// wayfinder derives, and no more. Closure is read first, so a claim left behind
+// on a closed ticket is inert litter rather than a broken invariant: it can
+// never hold the frontier. Any other heading a ticket carries — an in-flight
+// `## Proposed Answer` from the retired review lifecycle among them — is unknown
+// to the reader and settles nothing: such a ticket derives `claimed` if a claim
+// marker survives, else `open`.
 func (t *Ticket) Derive() {
 	switch {
 	case t.HasAnswer:
 		t.Status = StatusResolved
 	case t.HasRuledOut:
 		t.Status = StatusOutOfScope
-	case t.HasProposedAnswer:
-		t.Status = StatusProposed
 	case t.ClaimedBy != "":
 		t.Status = StatusClaimed
 	default:
@@ -146,8 +129,10 @@ func (e *Effort) ByNum(n int) *Ticket {
 	return nil
 }
 
-// Frontier returns the open, unclaimed tickets whose every blocker is resolved,
-// in ticket-number order — the edge of the known.
+// Frontier returns the open tickets whose every blocker is resolved, in
+// ticket-number order — the edge of the known, exactly as vanilla wayfinder
+// reads it. A blocker need only be resolved: there is no approval to wait on,
+// and a dependent unblocks the instant its blocker's `## Answer` lands.
 func (e *Effort) Frontier() []*Ticket {
 	var out []*Ticket
 	for _, t := range e.Tickets {
@@ -396,11 +381,6 @@ func ParseTicket(path, filename, src string) (*Ticket, error) {
 	t.RuledOutHeading = hasHeading(scan, "Ruled out")
 	t.HasAnswer = t.AnswerHeading && !blank(sectionOf(raw, scan, "Answer"))
 	t.HasRuledOut = t.RuledOutHeading && !blank(sectionOf(raw, scan, "Ruled out"))
-	// `## Proposed Answer` is a distinct heading — the exact-match section scan
-	// never confuses it with `## Answer`, so the frontier stays blind to it and
-	// only the harness reads it as `proposed` (ADR 0004).
-	t.ProposedHeading = hasHeading(scan, "Proposed Answer")
-	t.HasProposedAnswer = t.ProposedHeading && !blank(sectionOf(raw, scan, "Proposed Answer"))
 	if s := kv["status"]; s != "" {
 		t.StoredStatus = Status(strings.ToLower(strings.ReplaceAll(s, " ", "_")))
 	}

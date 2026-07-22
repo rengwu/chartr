@@ -12,7 +12,7 @@ import (
 
 // Ticket 03 at the process boundary: a registered space's maps enter the
 // snapshot live, discovered by notice under either `.plan/` layout; derived
-// statuses (including `proposed`) and the stricter frontier are asserted against
+// statuses and the frontier are asserted against
 // fixture tickets; a malformed map renders as-is with its malformation surfaced;
 // finished maps sort last. Every assertion is on what the design makes public —
 // the control-socket snapshot — never on internals.
@@ -101,12 +101,13 @@ func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
 	}
 }
 
-// Derived statuses cross onto the wire — open, claimed, proposed, resolved,
-// out_of_scope (ADR 0004) — and the harness's stricter frontier holds: a ticket
-// blocked only by merely-proposed (committed but ungated) work is open yet never
-// on the frontier, while one whose blocker is blessed is. This is the
-// containment, asserted at the seam.
-func TestDerivedStatusesAndStricterFrontier(t *testing.T) {
+// Derived statuses cross onto the wire — open, claimed, resolved, out_of_scope
+// (ADR 0004, amended) — and the frontier is vanilla wayfinder's: a dependent is
+// takeable exactly when every blocker is resolved. A leftover `## Proposed
+// Answer` is an unknown heading that settles nothing: its ticket reads open, and
+// a dependent of it stays held because its blocker is unresolved, not because
+// anything is waiting on approval.
+func TestDerivedStatusesAndFrontier(t *testing.T) {
 	h := harnesstest.Start(t)
 	repo := harnesstest.NewSpaceRepo(t)
 
@@ -115,8 +116,8 @@ func TestDerivedStatusesAndStricterFrontier(t *testing.T) {
 	w("01-blessed.md", ticket(1, "Blessed", "[]", "task", "## Answer\nApproved."))
 	w("02-scoped.md", ticket(2, "Scoped", "[]", "task", "## Ruled out\nOut of scope."))
 	w("03-on-blessed.md", ticket(3, "OnBlessed", "[01]", "task", ""))
-	w("04-on-proposed.md", ticket(4, "OnProposed", "[05]", "task", ""))
-	w("05-proposed.md", ticket(5, "Proposed", "[]", "task", "## Proposed Answer\nCommitted, ungated."))
+	w("04-on-wreckage.md", ticket(4, "OnWreckage", "[05]", "task", ""))
+	w("05-wreckage.md", ticket(5, "Wreckage", "[]", "task", "## Proposed Answer\nIn-flight wreckage from the retired gate."))
 	w("06-claimed.md", "---\ntype: task\nblocked_by: []\nclaimed_by: session-a\nclaimed_at: 2026-07-19T09:00:00Z\n---\n\n# Claimed\n\n## Question\nQ.\n")
 	w("07-frontier.md", ticket(7, "Frontier", "[]", "task", ""))
 
@@ -125,7 +126,7 @@ func TestDerivedStatusesAndStricterFrontier(t *testing.T) {
 
 	wantStatus := map[int]string{
 		1: "resolved", 2: "out_of_scope", 3: "open",
-		4: "open", 5: "proposed", 6: "claimed", 7: "open",
+		4: "open", 5: "open", 6: "claimed", 7: "open",
 	}
 	for num, want := range wantStatus {
 		if got := findTicket(t, m, num).Status; got != want {
@@ -133,9 +134,10 @@ func TestDerivedStatusesAndStricterFrontier(t *testing.T) {
 		}
 	}
 
-	// Stricter frontier: 03 (blocker blessed) and 07 (no blockers) are takeable;
-	// 04 (blocker only proposed) is open but held; nothing closed or claimed is on it.
-	wantFrontier := map[int]bool{1: false, 2: false, 3: true, 4: false, 5: false, 6: false, 7: true}
+	// 03 (blocker resolved), 05 (unknown heading, no blockers) and 07 (no
+	// blockers) are takeable; 04 is held because its blocker is unresolved;
+	// nothing closed or claimed is on the frontier.
+	wantFrontier := map[int]bool{1: false, 2: false, 3: true, 4: false, 5: true, 6: false, 7: true}
 	for num, want := range wantFrontier {
 		if got := findTicket(t, m, num).Frontier; got != want {
 			t.Errorf("ticket %02d frontier = %v, want %v", num, got, want)
