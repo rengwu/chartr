@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [03]
+claimed_by: s644781a7b16e
+claimed_at: 2026-07-22T04:08:25Z
 ---
 
 # Everything is a skill
