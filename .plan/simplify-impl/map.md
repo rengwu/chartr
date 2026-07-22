@@ -87,6 +87,19 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   parser's `proposed` is left **dormant** for ticket 03; **no ADR is touched
   here**.
 
+- **Every injected prompt is a skill.**
+  [Ticket 04](tickets/04-everything-is-a-skill.md) repackaged the library as
+  seven `SKILL.md` directories (the four roles, `core`, `ideate`, and a new
+  `tracker-convention` carrying the glossary), swapped the `replace`/`append`
+  overlay for **whole-skill shadowing** across built-in ‹ user ‹ workspace, and
+  moved fork provenance to `forked_from:` frontmatter with drift measured over
+  the whole directory hash. The harness still composes the payload itself
+  (**ADR 0002** reaffirmed); the claim's provenance trailers re-key to `Skill:`
+  lines. The user skill layer is `~/.config/wayfinder-harness/skills/` via a new
+  `Options.ConfigDir` — bindings still read `<dataDir>/user.toml`, a split
+  ticket 05 must render. **ADR 0012** amended: this space's design-system
+  overlay is now a committed workspace `implement` skill.
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the planning map — it does not open fog here. -->
