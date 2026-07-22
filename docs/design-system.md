@@ -98,6 +98,30 @@ helpers the vendored primitives are typed against.
 `destructive` · `link`. The binding-layer tags use the built-in→`outline` /
 workspace→`secondary` / user→`default` scale.
 
+### Overriding a vendored class
+
+Passing `class` to a primitive merges through `cn()` (tailwind-merge), which
+resolves same-group conflicts by *last one wins* — `px-3` beats the primitive's
+`px-(--card-spacing)`. Two kinds of base class slip past that, and both have
+already bitten `DetailPane`:
+
+- **A different utility group.** `cn()` only de-duplicates within a group, so a
+  base class the override doesn't conflict with simply survives. `Card.Header`
+  ships `items-start`; overriding its `grid` with `flex flex-col` left that
+  alignment in place, and in a *column* it shrank every row to its content —
+  no edge for a title to ellipsis against, and a `flex-1` spacer collapsed to
+  nothing. Set the axis property you actually want (`items-stretch`).
+- **A two-class selector.** Variants like `[.border-b]:pb-(--card-spacing)`
+  compile to `.\[\.border-b\]\:pb-\(--card-spacing\).border-b` — specificity
+  (0,2,0), which outranks any plain `.py-*` (0,1,0). Adding `border-b` to a
+  `Card.Header` therefore silently reinstates the card's full bottom padding.
+
+**Retune the variable, don't escalate the selector.** These rules read
+`--card-spacing`, so `[--card-spacing:--spacing(2)]` on the element fixes the
+padding at its source; reach for `!` or a bespoke CSS override and the next
+person inherits a fight. When an override looks ignored, read the primitive's
+own class string first — the answer is usually in it.
+
 ### Adding a primitive
 
 Use the CLI against the vendored config:
