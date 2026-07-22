@@ -56,3 +56,56 @@ goes one click and names its agent on the button, choosing a different agent fro
 the list spawns that one and makes it the space's new default, and an agent whose
 binary is missing is unselectable with the reason readable on its row.
 
+## Answer
+
+The detail pane's spawn buttons now name the agent they will run and let the
+operator pick or override it, while the rule that decides *which* agent lives in a
+testable pure module rather than inside a component. Implemented in three parts:
+
+- **`web/src/lib/agentchoice.ts` — the selection rule as a pure function.**
+  `chooseAgent(agents, lastAgent)` returns one of `ready`, `unchosen`, or `empty`.
+  `ready` requires a remembered name that resolves to a registered agent whose
+  binary is on PATH; a missing name, a stale name, and an agent whose binary is
+  absent all read as `unchosen`. `empty` is reserved for a completely empty
+  library. There is no automatic first choice — a library of one agent with
+  nothing remembered still opens the picker, so adding a second agent never
+  silently changes behaviour. `agentchoice.test.ts` covers ready, unchosen under
+  all three conditions, and empty.
+- **`web/src/lib/actions.ts` and prop drilling — the frontend always names an
+  agent.** `spawnSession` now sends `agent` in the request body (defaulting to the
+  empty string in the still-deferred empty-library case). The global agent library
+  and the space's `lastAgent` are threaded `App → SpacePane → MapCard →
+  DetailPane`, so the pane has both inputs it needs without reaching outside its
+  props.
+- **`web/src/lib/DetailPane.svelte` and the new dropdown primitive — split
+  controls on the action bar.** Each role button is now an inline-flex pair: the
+  primary button spawns with the remembered agent and names it on the label when
+  `agentChoice` is `ready`; when `unchosen` it opens the agent picker instead. The
+  caret button is a `DropdownMenu.Trigger` styled from the same `buttonVariants`
+  so the two halves match. The picker lists every registered agent; an agent whose
+  binary is missing is disabled and shows its `missing` reason on the row. A
+  one-off choice from the picker spawns with that agent, and ticket 01's
+  server-side `SetLastAgent` makes it the space's new remembered choice with no
+  second confirming action. The empty-library case is intentionally left to fall
+  through to the existing server refusal path — ticket 04 owns that surface.
+
+A new `dropdown-menu` primitive was vendored through `npx shadcn-svelte@latest add
+dropdown-menu`. Its lucide icons were swapped for Phosphor (`CaretRight`, `Check`,
+`Minus`), the unused `@lucide/svelte` dependency was removed from
+`web/package.json`, and `npm install` cleaned the lockfile. No raw colours were
+introduced: the menu uses `--popover`, `--accent`, `--muted-foreground`, and
+`--destructive` only.
+
+Against Done-when: `go vet ./...` and `go test ./...` pass; frontend `check`
+reports 0 errors, `build` succeeds, and `vitest` passes 91 tests including the 6
+new `agentchoice` tests. The built CSS contains no amber. The server was rebuilt
+and starts cleanly, returning the cockpit on the loopback address.
+
+ADR 0012 is followed throughout: tokens, vendored primitives, and Phosphor icons
+only. ADR 0002 holds — the frontend still knows nothing about what any CLI's
+flags mean; it only names and sends the chosen agent. No ADR is changed.
+
+Scope note for review: the action bar is intentionally more crowded with up to
+four agent-named split buttons; collapsing the roles is deferred work per the
+map's Out of scope. The empty-library state is also ticket 04's responsibility.
+
