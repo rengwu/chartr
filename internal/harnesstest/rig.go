@@ -146,6 +146,29 @@ func (h *Harness) Post(path string, body any) (int, string) {
 	return resp.StatusCode, string(out)
 }
 
+// Put performs a JSON PUT — the shape an action that sets one named field to one
+// value takes (the transparency surface's binding edit, ticket 05) — and returns
+// the status code and body.
+func (h *Harness) Put(path string, body any) (int, string) {
+	h.t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		h.t.Fatalf("harnesstest: marshal PUT body: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPut, h.BaseURL+path, bytes.NewReader(b))
+	if err != nil {
+		h.t.Fatalf("harnesstest: build PUT %s: %v", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatalf("harnesstest: PUT %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(out)
+}
+
 // Delete performs a DELETE and returns the status code and body.
 func (h *Harness) Delete(path string) (int, string) {
 	h.t.Helper()

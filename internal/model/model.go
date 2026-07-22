@@ -16,6 +16,54 @@ type Model struct {
 	// Empty until ticket 02 registers the first space. Never nil on the wire —
 	// New seeds an empty slice so the snapshot is always a well-formed array.
 	Spaces []Space `json:"spaces"`
+	// Config are the config layers that are not a space's own — the operator's
+	// one local config file and the two skill libraries above and below it. They
+	// participate in resolving every space, so they are derived once here rather
+	// than repeated under each one, and the settings route reads them as the
+	// global half of the effective config surface (ADR 0014). Never nil.
+	Config []ConfigLayer `json:"config"`
+}
+
+// ConfigLayer is one file or directory a space's effective config resolves
+// through, named so the operator can open it. Legibility is the whole point
+// (story 36): every value the surface shows names the layer it came from, and
+// every layer names where on disk it lives.
+//
+// Name is the server-side token the open action resolves — the client never
+// sends a path, only one of these names (ADR 0014).
+type ConfigLayer struct {
+	Name string `json:"name"`
+	// Layer is which of the three layers this file is (built-in, workspace, user),
+	// matching the provenance badges on the values it can set.
+	Layer string `json:"layer"`
+	// Holds names what this layer can set: "bindings" (role bindings and, in the
+	// committed layer, map kinds) or "skills". The two halves live in different
+	// files — bindings in the harness state root, skills under the operator's
+	// config root — and the surface shows that split rather than implying one file.
+	Holds string `json:"holds"`
+	// Path is the absolute location on disk, and Exists whether anything is there
+	// yet. A layer that does not exist is still listed: it is where the value
+	// *would* go.
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+}
+
+// ResolvedSkill is one skill of the library as it resolves for a space: which
+// layer won its whole directory (whole-skill shadowing), and whether a fork has
+// fallen behind the shipped default. It is the positive statement of resolution —
+// "your grill resolves from: user" — not just the warning (story 34).
+type ResolvedSkill struct {
+	Name  string `json:"name"`
+	Layer string `json:"layer"`
+	// Dir is where the winning directory sits, or empty when no layer defines it
+	// on disk and the copy embedded in the binary is the floor.
+	Dir         string `json:"dir,omitempty"`
+	Description string `json:"description,omitempty"`
+	// ForkedFrom is the shipped content hash a shadowing skill recorded in its
+	// frontmatter; Stale is true once the shipped default has moved past it. A
+	// stale fork is surfaced, never auto-merged.
+	ForkedFrom string `json:"forkedFrom,omitempty"`
+	Stale      bool   `json:"stale,omitempty"`
 }
 
 // Space is a registered git repository the harness drives. Ticket 02 fills in
@@ -45,6 +93,15 @@ type Space struct {
 	// order, each carrying per-field provenance and PATH presence so the
 	// operator sees what will actually run (stories 39, 40).
 	Bindings []RoleBinding `json:"bindings"`
+	// Skills are the space's resolved skill library — every skill with the layer
+	// that won its whole directory and its stale-fork state (ticket 05). Derived
+	// beside Bindings so the settings route reads content provenance and execution
+	// provenance out of the same push. Never nil on the wire.
+	Skills []ResolvedSkill `json:"skills"`
+	// Layers are this space's own config files — its committed workspace config
+	// and committed skill library — each with its path. The layers it shares with
+	// every other space live on Model.Config.
+	Layers []ConfigLayer `json:"layers"`
 	// Maps are the space's discovered wayfinder maps (ticket 03), derived live
 	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
 	// Ordered for the sidebar: finished maps sort last. Never nil on the wire.
@@ -218,8 +275,9 @@ type RoleBinding struct {
 	Missing string `json:"missing,omitempty"`
 }
 
-// Empty returns a well-formed, near-empty model: no spaces, but a non-nil slice
-// so the JSON snapshot is always `{"spaces":[]}` rather than `{"spaces":null}`.
+// Empty returns a well-formed, near-empty model: no spaces and no config layers,
+// but non-nil slices so the JSON snapshot is always well-formed arrays rather
+// than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}}
+	return Model{Spaces: []Space{}, Config: []ConfigLayer{}}
 }

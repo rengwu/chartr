@@ -156,7 +156,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	for _, e := range entries {
 		spaces = append(spaces, s.deriveSpace(e, userTOML))
 	}
-	return model.Model{Spaces: spaces}
+	return model.Model{Spaces: spaces, Config: s.globalLayers()}
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
@@ -241,6 +241,8 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Pinned:    e.Pinned,
 		Dirty:     gitDirty(e.Path),
 		Bindings:  bindings,
+		Skills:    s.resolvedSkills(e.Path),
+		Layers:    s.spaceLayers(e.Path),
 		Maps:      maps,
 		Terminals: terminals,
 		Warnings:  warnings,

@@ -108,6 +108,14 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/classify", s.handleClassify)
+	// The effective config surface (ticket 05, ADR 0014). The read half rides the
+	// per-space model push; these are the two writes it is allowed. Editing a role
+	// binding is a PUT because it sets one named field to one value; it lands in
+	// the user layer and nowhere else. Opening a layer file is a POST because it
+	// launches a process, and it resolves a *named* layer server-side — never a
+	// path from the client.
+	s.mux.HandleFunc("PUT /api/spaces/{id}/config/binding", s.handleSetBinding)
+	s.mux.HandleFunc("POST /api/spaces/{id}/config/open", s.handleOpenLayer)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part layer provenance. Read-only, so a GET;
 	// the composition reads the library and the map fresh off disk each time.
