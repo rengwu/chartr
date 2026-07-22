@@ -392,7 +392,7 @@ func stubEditor(t *testing.T) string {
 }
 
 // waitForFile reads a file the stub editor writes asynchronously, retrying until
-// it appears — the chartr starts the editor and deliberately does not wait on it.
+// it appears — chartr starts the editor and deliberately does not wait on it.
 func waitForFile(t *testing.T, path string) string {
 	t.Helper()
 	for i := 0; i < 100; i++ {

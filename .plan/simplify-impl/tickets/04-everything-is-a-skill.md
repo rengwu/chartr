@@ -10,7 +10,7 @@ claimed_at: 2026-07-22T04:08:25Z
 ## Question
 
 Repackage every injected prompt as a standard `SKILL.md` directory on disk while
-the chartr keeps composing the payload — the format opens up, the injection path
+chartr keeps composing the payload — the format opens up, the injection path
 does not (reaffirms **ADR 0002**). Blocked by the vanilla-lifecycle revert (03) so
 the composer is rewritten once, review-free and with the `## Proposed Answer`
 semantics already settled, rather than migrating code tickets 02–03 then change.
@@ -34,7 +34,7 @@ composer through the payload preview.
   file `glossary.md`). Each `SKILL.md` carries the standard `name` / `description`
   frontmatter contract. `ideate` keeps its special injection (composed alone, no
   core, no context bundle).
-- **Composition.** At spawn the chartr reads the resolved `core` + role
+- **Composition.** At spawn chartr reads the resolved `core` + role
   `SKILL.md` **bodies**, strips `name` / `description` / `forked_from`
   frontmatter, and assembles them with a freshly-built context bundle (map body,
   ticket, blockers' answers, and the glossary *sourced* from `tracker-convention`)
@@ -64,7 +64,7 @@ library.
 
 The prompt library is a **skill library**: seven standard `SKILL.md` directories
 under `internal/prompt/assets/skills/`, resolved by whole-skill shadowing and
-still composed by the chartr. The format opened; the injection path did not.
+still composed by chartr. The format opened; the injection path did not.
 
 **Resolution.** `internal/prompt` no longer knows about `<part>.md`,
 `.replace.md` or `.append.md`. `Resolve(name, Roots)` walks workspace ‹ user ‹
@@ -108,7 +108,7 @@ temp dir so no run reads the developer's own library.
 
 **Docs.** `CONTEXT.md` reads **Skill library** (its `_Avoid_` line inverted) and
 Workspace config's content half reads "skills". **ADR 0002** gains a
-reaffirmation — what it chose was never a file format but that the chartr wires
+reaffirmation — what it chose was never a file format but that chartr wires
 the session itself — noting that its model-heterogeneity clause lapsed with the
 gate. `docs/wayfinder-adapter.md` points at the vendored `tracker-convention`
 skill instead of a `prompts/` path. **ADR 0012** is amended for a live

@@ -81,7 +81,7 @@ alongside these files (see `docs/wayfinder-adapter.md`).
 - **The review feature is gone; the lifecycle is already livable.**
   [Ticket 02](tickets/02-delete-the-review-feature.md) cut the gate, its server
   mechanics, its UI and its role in two independently-green commits (frontend,
-  then backend), shrinking the chartr's lifecycle writes to **claim + release**
+  then backend), shrinking chartr's lifecycle writes to **claim + release**
   and retargeting `implement.md` — and `core.md` with it — to `## Answer`, so a
   session resolves and its dependents unblock with no gate in the path. The
   parser's `proposed` is left **dormant** for ticket 03; **no ADR is touched
@@ -93,7 +93,7 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   `tracker-convention` carrying the glossary), swapped the `replace`/`append`
   overlay for **whole-skill shadowing** across built-in ‹ user ‹ workspace, and
   moved fork provenance to `forked_from:` frontmatter with drift measured over
-  the whole directory hash. The chartr still composes the payload itself
+  the whole directory hash. chartr still composes the payload itself
   (**ADR 0002** reaffirmed); the claim's provenance trailers re-key to `Skill:`
   lines. The user skill layer is `~/.config/chartr/skills/` via a new
   `Options.ConfigDir` — bindings still read `<dataDir>/user.toml`, a split

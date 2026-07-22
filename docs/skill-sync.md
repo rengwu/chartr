@@ -23,7 +23,7 @@ fork, update the fork first, then sync chartr from the fork.
 - **The test for any change:** if fitting it requires writing "instead" or
   "ignore", re-author that part from scratch instead of patching around it.
 
-## The chartr contract — what every shipped skill must satisfy
+## chartr contract — what every shipped skill must satisfy
 
 - **Frontmatter:** `name` + `description` only. Strip Claude-Code-specific
   fields (`disable-model-invocation`, etc.) — chartr injects skills itself.
@@ -63,7 +63,7 @@ fork, update the fork first, then sync chartr from the fork.
 
 1. **Pin the upstream ref.** Clone or pull `github.com/rengwu/skills`; record
    the commit hash you are syncing to.
-2. **Diff per skill.** For each upstream skill with a chartr counterpart, diff
+2. **Diff per skill.** For each upstream skill with chartr counterpart, diff
    upstream-now against upstream-at-last-sync (the ref in `SourceCommit`,
    `internal/prompt/prompt.go`). This shows what *changed upstream* — do not
    diff upstream directly against the chartr skill, which is a re-authoring and

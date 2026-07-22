@@ -1,5 +1,5 @@
 // An agent's args are a *list* of strings on the wire — that is what execve
-// takes, and what the chartr passes through untouched — but a list is a
+// takes, and what chartr passes through untouched — but a list is a
 // miserable thing to edit. So the surface edits one text field and this module is
 // the seam between the two.
 //

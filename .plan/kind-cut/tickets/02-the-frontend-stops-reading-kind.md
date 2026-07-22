@@ -81,7 +81,7 @@ return []` at the top of `mapActionItems` — which the ticket named only throug
 its test; deleting `Map.kind` forced it, so an unclassified map's frontier
 tickets now reach the action station like any other. And `actions.ts`'s
 `spawnSession` doc listed "an unclassified map" among the refusals it surfaces;
-it now names none of the chartr's specific reasons, since the frontend renders
+it now names none of chartr's specific reasons, since the frontend renders
 whatever message comes back and ticket 03 deletes that particular one.
 
 **`mapsHash` stays.** `onOpenMaps` had exactly one caller — the deleted
@@ -101,7 +101,7 @@ something — a map whose only tickets are blocked offers no action items — so
 `internal/server/spawn.go:96` still 409s a spawn on an unclassified map (pinned
 by `TestSpawnRespectsKind`), and ticket 01 deliberately left it for 03. So a map
 forced to `kind: ""` now *opens* directly and *offers* all four spawn buttons —
-but clicking one gets the chartr's "this map is unclassified" message surfaced
+but clicking one gets chartr's "this map is unclassified" message surfaced
 inline in the detail pane. This is the window ticket 01 named when it kept the
 gate, now moved to where the map says it belongs: the frontend is ready, the
 backend has one ticket left to catch up, and the reverse order is the one the

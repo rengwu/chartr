@@ -1,7 +1,7 @@
 # Agent adapter contract — CLI capability survey
 
 Research for [ticket 01](../tickets/01-the-agent-adapter-contract.md). Investigates the four
-candidate agent CLIs — **claude, codex, opencode, pi** — against the four things the chartr
+candidate agent CLIs — **claude, codex, opencode, pi** — against the four things chartr
 needs from each (launch, prompt injection, context bundle, observation), plus model selection,
 resume, stop, and cost reporting. Ends with **the narrowest contract every agent can satisfy** —
 the adapter interface (ADR 0002) — and what degrades when an optional capability is absent.
@@ -152,30 +152,30 @@ adapter's whole job.
    disk the prompt points the agent at.
 2. **`observe(PTY) → {alive, exited(code), tokens}`** — read liveness and failure from the process
    (exit code) and token usage from the agent's JSON event stream. It does **not** owe a semantic
-   "the work is done" signal: per ADR 0004 the chartr derives *finished* from the ticket's
+   "the work is done" signal: per ADR 0004 chartr derives *finished* from the ticket's
    `## Answer` + commit, not from the agent. So the adapter only reports **alive / died / tokens**.
 3. **`stop(PTY)`** — terminate the process by signal. Graceful stop is a bonus, not part of the floor.
 
 **Optional per-adapter capabilities, and what degrades without them** (the spec must state each degradation):
 
 - **Dedicated system-prompt injection** (claude, and pi via extensions). *Degrade:* prepend the role
-  to the prompt body — the portable path, so the chartr should use it *uniformly* rather than
-  branching, keeping one prompt-assembly path (ADR 0002: "the chartr owns prompt and context assembly").
+  to the prompt body — the portable path, so chartr should use it *uniformly* rather than
+  branching, keeping one prompt-assembly path (ADR 0002: "chartr owns prompt and context assembly").
 - **Native dollar cost** (claude in-stream; opencode via `stats`). *Degrade:* multiply the universally
-  available token counts by a per-model price table the chartr maintains. Tokens are the floor;
+  available token counts by a per-model price table chartr maintains. Tokens are the floor;
   dollars are always computable. (This is what clears the cost-visibility fog — see ticket 14.)
-- **Native budget/turn caps** (`--max-budget-usd`, `--max-turns`, claude only). *Degrade:* the chartr
+- **Native budget/turn caps** (`--max-budget-usd`, `--max-turns`, claude only). *Degrade:* chartr
   enforces a cap itself by watching token usage in the stream and calling `stop()` at a threshold.
 - **MCP / config-file context channels.** *Degrade:* a file on disk the prompt tells the agent to read;
   every agent has a read/bash tool, so a pointed-at file is the lowest common denominator.
 - **Resume** (all four support it). **Excluded by design, not merely optional:** ADR 0005 assembles a
   fresh context bundle per spawn and forbids accumulated agent memory. Resuming an agent's own session
-  state would reintroduce exactly that memory, so the chartr **re-spawns fresh** every time and never
+  state would reintroduce exactly that memory, so chartr **re-spawns fresh** every time and never
   calls resume. Recorded here so a future adapter author doesn't "helpfully" wire it up.
 - **Structured/schema output** (`--json-schema`, `--output-schema`). Not needed for orchestration; ignore.
 
 **One tension worth flagging (not re-decided here).** codex has no clean system-prompt flag *and*
 weaker in-stream cost. Neither breaks the contract — role goes in the prompt body, dollars are
 derived — but codex is the agent that most tests the "narrowest contract" premise. If a future
-capability the chartr *needs* turns out to be codex's blind spot, that is the moment to ask whether
+capability chartr *needs* turns out to be codex's blind spot, that is the moment to ask whether
 codex stays a supported adapter, and it is an ADR 0002 question, not a quiet workaround.

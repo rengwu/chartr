@@ -68,7 +68,7 @@ func WithQuietAfter(d time.Duration) Option {
 	return func(o *server.Options) { o.QuietAfter = d }
 }
 
-// Start launches a chartr on a random loopback port and registers cleanup that
+// Start launches chartr on a random loopback port and registers cleanup that
 // shuts it down when the test ends. It fails the test on any startup error.
 func Start(t testing.TB, opts ...Option) *Chartr {
 	t.Helper()

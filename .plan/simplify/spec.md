@@ -1,12 +1,12 @@
 # simplify — a leaner, more open chartr (spec)
 
 _Synthesised from the settled `simplify` planning map (tickets 01–05). This spec
-graduates to one implementation map. It describes the chartr **after** the cut;
+graduates to one implementation map. It describes chartr **after** the cut;
 several CONTEXT.md terms die here (see Implementation Decisions → Vocabulary)._
 
 ## Problem Statement
 
-The operator is driving real work through a chartr that has grown heavier than
+The operator is driving real work through chartr that has grown heavier than
 the job needs, and less open than the project's own principles demand:
 
 - **The review pipeline is load-bearing dead weight.** Every implementation
@@ -19,7 +19,7 @@ the job needs, and less open than the project's own principles demand:
 - **The prompts are hackable in principle but not in the open standard.** Role
   prompts live as vendored `<part>.md` files with a bespoke
   `.replace.md`/`.append.md` layering convention invented before `SKILL.md` was a
-  standard. The operator can't reuse them in an agent CLI outside the chartr,
+  standard. The operator can't reuse them in an agent CLI outside chartr,
   and the bespoke layering is one more thing to learn.
 - **The configuration is opaque.** Role bindings resolve through three layers
   nobody can see; prompts materialise into a gitignored directory; map kinds live
@@ -30,21 +30,21 @@ the job needs, and less open than the project's own principles demand:
 
 ## Solution
 
-Cut the chartr down to its working core and open it up, in four moves that ship
+Cut chartr down to its working core and open it up, in four moves that ship
 as one sequenced implementation effort:
 
 1. **Delete the review pipeline entirely.** The lifecycle becomes vanilla
    wayfinder: a session holds a ticket, writes its `## Answer`, commits its own
    work, and the ticket is **resolved** the instant the heading lands. Resolved
-   blockers unblock their dependents immediately. The chartr exits the judgment
+   blockers unblock their dependents immediately. chartr exits the judgment
    business — no gate, no new deterministic check — and trusts the operator's git
    flow, keeping only the facts it already derives (death halt, dirty-tree badge,
    wayfinder lint).
 
 2. **Repackage every injected prompt as a standard `SKILL.md`.** Role prompts,
-   the core "how to use this chartr" prompt, and the tracker convention become
+   the core "how to use chartr" prompt, and the tracker convention become
    vendored skill directories on disk — readable, editable, and reusable in any
-   agent CLI that reads the standard. The chartr **keeps composing** the payload
+   agent CLI that reads the standard. chartr **keeps composing** the payload
    itself; only the source format and the layering change (whole-skill shadowing
    in place of bespoke replace/append).
 
@@ -81,9 +81,9 @@ transparency surface renders the result of both.
    out_of_scope and nothing else, so that the status model is exactly wayfinder's
    with no chartr-specific `proposed` state to reason about.
 5. As an operator, I want the agent to write the `## Answer` by prompt convention
-   (never the chartr mechanically), so that the discipline "the agent writes,
-   the chartr watches" survives the cut.
-6. As an operator, I want the chartr's own commits to stay append-only,
+   (never chartr mechanically), so that the discipline "the agent writes,
+   chartr watches" survives the cut.
+6. As an operator, I want chartr's own commits to stay append-only,
    pathspec-limited, and trailer-carrying, shrunk to just the claim (at spawn)
    and the release (at death-halt), so that the audit trail stays honest without
    the promotion/demotion writes the gate needed.
@@ -91,7 +91,7 @@ transparency surface renders the result of both.
    remain visibly pinned to its ticket, so that an unfinished ticket is surfaced
    by the death halt without any new "you didn't answer" check.
 8. As an operator, I want uncommitted debris still surfaced as a dirty-tree badge
-   and never auto-cleaned, so that the chartr keeps showing facts without
+   and never auto-cleaned, so that chartr keeps showing facts without
    enforcing them.
 9. As an operator, I want no blocking lint-before-resolution check of any kind,
    so that no gate returns under another name.
@@ -99,7 +99,7 @@ transparency surface renders the result of both.
     — file-derived ticket status, fsnotify on `.plan/`, git trailers on lifecycle
     commits, the run-dir layout, in-process session-exit — so that review can
     return as a consumer without touching chartr internals.
-11. As an operator, I want the chartr to emit nothing purely for a hypothetical
+11. As an operator, I want chartr to emit nothing purely for a hypothetical
     reviewer that does not exist, so that no zero-consumer artifact is carried as
     speculative bloat.
 12. As an operator, I want old maps' `## Proposed Answer` sections treated as
@@ -116,7 +116,7 @@ transparency surface renders the result of both.
 ### Everything is a skill (ticket 02)
 
 15. As an operator, I want each role prompt as a standard `SKILL.md` directory on
-    disk, so that I can read, edit, and reuse it in any agent CLI outside the
+    disk, so that I can read, edit, and reuse it in any agent CLI outside
     chartr.
 16. As an operator, I want seven skills to ship — `grill`, `prototype`,
     `research`, `implement`, `ideate`, plus `core` and `tracker-convention` — so
@@ -124,7 +124,7 @@ transparency surface renders the result of both.
 17. As an operator, I want the glossary to live inside the `tracker-convention`
     skill as a supporting file, so that the method vocabulary sits with the
     convention it defines rather than fragmented across skills.
-18. As an operator, I want the chartr to keep composing the payload — reading the
+18. As an operator, I want chartr to keep composing the payload — reading the
     resolved `core` and role `SKILL.md` bodies and assembling them with a
     freshly-built context bundle into one gitignored payload file — so that every
     session is deterministically wired to its role and context regardless of what
@@ -152,7 +152,7 @@ transparency surface renders the result of both.
     the ticket I was handed is never mistaken for durable skill content.
 26. As an operator, I want a skill's supporting files left on disk (not inlined
     into the payload), so that the agent can zoom into them on demand and I can
-    reuse them outside the chartr at no payload cost.
+    reuse them outside chartr at no payload cost.
 27. As an operator, I want `SKILL.md` frontmatter (name / description /
     forked_from) stripped before the body reaches the payload, so that metadata
     drives the cockpit listing and drift detection but never leaks into what the
@@ -285,7 +285,7 @@ transparency surface renders the result of both.
     review-free composer once instead of porting review code 01 then deletes.
 66. As an operator, I want each cut commit small and independently green (parser
     change, then composer change) with the CLAUDE.md build/test gates as the
-    per-commit tripwire, so that every intermediate state leaves a chartr that
+    per-commit tripwire, so that every intermediate state leaves chartr that
     builds, derives status, and can spawn.
 67. As an operator, I want the green-commit discipline to stay a recommendation I
     own (not a new enforced gate), so that it does not contradict ticket 01's
@@ -293,7 +293,7 @@ transparency surface renders the result of both.
 68. As an operator, I want the escape hatch to be ticket 01's own destination — if
     the cockpit breaks under its own work, I finish the offending ticket with a
     terminal and git, vanilla-wayfinder style — so that the simplification is what
-    makes it safe to rebuild the chartr.
+    makes it safe to rebuild chartr.
 69. As an operator, I want dead weight swept in one deletion-only housekeeping
     ticket (`Probe.svelte`, stale `sessions/` archives, the stray root
     `node_modules`, a `.DS_Store` gitignore entry), isolated so the sweep never
@@ -323,10 +323,10 @@ transparency surface renders the result of both.
 ### Ticket 01 — the lifecycle cut
 
 - **Status model**: four statuses — open, claimed, resolved, out_of_scope. The
-  parser's derived-status table becomes exactly wayfinder's; the chartr's "one
+  parser's derived-status table becomes exactly wayfinder's; chartr's "one
   addition" is withdrawn.
 - **`claimed → resolved`** requires an `## Answer` heading with prose, written by
-  the agent by prompt convention. The chartr never writes the Answer. The commit
+  the agent by prompt convention. chartr never writes the Answer. The commit
   is the agent's act by convention.
 - **Unblocking** is immediate on resolution, even mid-commit. Mitigation is
   social (visible claim on the star-map, operator present), not mechanical.
@@ -349,9 +349,9 @@ transparency surface renders the result of both.
 - **Seven skills**: `grill`, `prototype`, `research`, `implement`, `ideate`,
   `core`, `tracker-convention`. The glossary is a supporting file inside
   `tracker-convention`. `review` is deleted (ticket 01), not kept as an example.
-- **Composition retained**: the chartr reads resolved `core` + role `SKILL.md`
+- **Composition retained**: chartr reads resolved `core` + role `SKILL.md`
   bodies, assembles them with the context bundle into one payload in `run/<sid>/`,
-  opener unchanged. Reaffirms ADR 0002 (the chartr leans on no agent's skill
+  opener unchanged. Reaffirms ADR 0002 (chartr leans on no agent's skill
   mechanism). Rejected: materialising into each CLI's native skills path
   (per-adapter, non-deterministic, reverses ADR 0002); point-and-read.
 - **Three layers, whole-skill shadowing**: built-in (`<dataDir>/skills/`) ‹ user

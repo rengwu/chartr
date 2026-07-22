@@ -12,7 +12,7 @@ import (
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
-// The skill library and payload preview at the process boundary. The chartr
+// The skill library and payload preview at the process boundary. chartr
 // materializes a hackable `SKILL.md` library, resolves each skill across
 // built-in ‹ user ‹ workspace with whole-skill shadowing, surfaces a fork behind
 // the shipped default, and composes core + role + context bundle into one

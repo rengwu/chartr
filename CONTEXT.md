@@ -7,7 +7,7 @@ A cockpit for driving wayfinder maps to completion: switch between project space
 ### The map
 
 **Space**:
-A git repository the chartr drives, registered once and switched between. It owns exactly one working tree, which is what makes it the unit of serialisation.
+A git repository chartr drives, registered once and switched between. It owns exactly one working tree, which is what makes it the unit of serialisation.
 _Avoid_: project, workspace, repo, folder
 
 **Map**:
@@ -51,7 +51,7 @@ The chartr-owned, hackable skills — the common core, one per role, the ideate 
 _Avoid_: prompt library, prompts, templates, system prompts
 
 **Cockpit**:
-The chartr's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
+chartr's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
 
 ### The frontend
@@ -75,7 +75,7 @@ _Avoid_: pty stream, data channel
 ### Configuration
 
 **Role binding**:
-What a role resolves to — an `{adapter, model, args?}` triple. Structured so the chartr can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
+What a role resolves to — an `{adapter, model, args?}` triple. Structured so chartr can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
 _Avoid_: mapping, agent config, role config
 
 **Workspace config**:

@@ -120,7 +120,7 @@ func TestDirectoryWithoutSkillMDDoesNotDefine(t *testing.T) {
 	}
 }
 
-// Composition (ADR 0002, reaffirmed): the chartr reads the resolved core and role
+// Composition (ADR 0002, reaffirmed): chartr reads the resolved core and role
 // bodies, strips their frontmatter, and appends the freshly-built context bundle —
 // map, ticket, blockers' answers, and the glossary sourced from the
 // tracker-convention skill.
@@ -287,7 +287,7 @@ func TestIdeateComposesAlone(t *testing.T) {
 	}
 }
 
-// The shipped library is the eleven skills the chartr composes from, each a real
+// The shipped library is the eleven skills chartr composes from, each a real
 // SKILL.md carrying the standard frontmatter contract; the glossary lives inside
 // tracker-convention, and domain-modeling carries its two format references as
 // supporting files (stories 16–17).

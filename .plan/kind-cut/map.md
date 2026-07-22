@@ -2,7 +2,7 @@
 
 ## Destination
 
-A map's `kind` is gone from the chartr entirely, and the thing it approximated —
+A map's `kind` is gone from chartr entirely, and the thing it approximated —
 which role a session spawns as — is read off the ticket's own `type:`, where it
 was always stated exactly. Done looks like `internal/config/kinds.go` deleted;
 `Map.Kind` / `Map.KindGuess`, `Resolution.Kinds`, `resolveKinds`, `GuessKind`,
@@ -102,7 +102,7 @@ not an inconsistency to resolve early.
   and deleting half a live route's grammar is a different decision. **The
   done-when's spawn clause is unmeetable here by design**: the backend still 409s
   an unclassified spawn until 03, so such a map now opens and offers its four
-  spawn buttons while the click surfaces the chartr's refusal inline — the
+  spawn buttons while the click surfaces chartr's refusal inline — the
   window ticket 01 named, closing in 03, needing nothing revisited. Verified
   against a real running backend (socket still sending `kind`/`kindGuess`; those
   verbatim bytes mounted through the real `MapCard` render every map as an open
@@ -160,7 +160,7 @@ not an inconsistency to resolve early.
 
 ## Out of scope
 
-- **Changing wayfinder's ticket types.** The four types are the method's, not the
+- **Changing wayfinder's ticket types.** The four types are the method's, not
   chartr's. This cut *reads* them; it does not touch the format, the linter, or
   the `tracker-convention` skill's restatement of it.
 - **Changing the role set.** `grill` / `prototype` / `research` / `implement`

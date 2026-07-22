@@ -4,7 +4,7 @@ A cockpit for driving [wayfinder](https://github.com/) maps to completion: switc
 between project spaces, read a map as a star-map, and spawn agent sessions against
 its frontier — with implementation work gated behind review.
 
-The chartr runs as one self-contained binary that serves its interface in your
+chartr runs as one self-contained binary that serves its interface in your
 browser. Point it at a directory of git repositories, open the cockpit, and drive
 maps to done.
 
@@ -16,7 +16,7 @@ chartr -version
 
 ## What you get: the support tiers
 
-The chartr ships **one supported artifact**, and everything else is a
+chartr ships **one supported artifact**, and everything else is a
 **best-effort tier** that may be absent without anything being wrong. This is a
 deliberate boundary ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)),
 not an accident of what happened to build.
@@ -29,7 +29,7 @@ Linux, and Windows** from a single **cgo-free** CI job — nothing in it require
 cgo — and every release is **checksummed** (`checksums.txt`, SHA-256).
 
 "Supported" means: this is the artifact the release pipeline must produce,
-green, for all three operating systems before a tag ships. If you want the
+green, for all three operating systems before a tag ships. If you want
 chartr, this is what you download.
 
 ### Best-effort — the native webview shells
@@ -79,9 +79,9 @@ A fresh download with **zero agent CLIs installed works everywhere except one
 thing: spawning a session.** You can register spaces, browse maps as star-maps,
 read tickets, open ad-hoc shells, and drive the review hub — all of it works cold.
 
-The agent CLIs (Claude Code, Codex, and friends) are **not the chartr's to
+The agent CLIs (Claude Code, Codex, and friends) are **not chartr's to
 ship.** When you try to spawn a session against a role whose agent is not
-installed, the chartr **hard-blocks at spawn time with a message that names
+installed, chartr **hard-blocks at spawn time with a message that names
 exactly what is missing** — and that block message doubles as your installer's
 to-do list. There is **no separate doctor command**: the environment diagnosis is
 the registry badge and the spawn-time block, surfaced at the moment of need

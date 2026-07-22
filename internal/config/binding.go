@@ -1,4 +1,4 @@
-// Package config resolves the chartr's layered configuration. Ticket 02 owns
+// Package config resolves chartr's layered configuration. Ticket 02 owns
 // the role→agent bindings: what a role runs as, merged across three layers.
 //
 // A role binds to {adapter, args?, prompt?} (ADR 0009). Three layers stack —
@@ -25,7 +25,7 @@ import (
 // WorkspaceConfigName is the committed workspace config file in a space's repo
 // (ADR 0009): the shared, versioned, portable layer holding role bindings. It
 // lives under `.chartr/` alongside the space's committed prompt overlays, so
-// everything the chartr commits into a space sits in one directory rather than a
+// everything chartr commits into a space sits in one directory rather than a
 // loose file one keystroke away from that directory's name. Config owns the
 // filename because it owns the file's shape — the server reads and writes it
 // through this package.
@@ -139,7 +139,7 @@ type Binding struct {
 	// Prompt overrides how the opener reaches this agent — `argv`, `type`, or a
 	// flag name like `--prompt` (see adapter.ParseDelivery). Empty means the
 	// adapter's own default stands, which is what nearly every binding wants; it
-	// is the hatch that lets an operator drive a harness the chartr ships no
+	// is the hatch that lets an operator drive a harness chartr ships no
 	// knowledge of without waiting for an adapter row.
 	Prompt string `json:"prompt,omitempty"`
 }
@@ -218,7 +218,7 @@ func (b rawBinding) setsFields() bool {
 	return b.Adapter != nil || b.Args != nil || b.Prompt != nil
 }
 
-// workspaceFile decodes only what the chartr reads. A config written before the
+// workspaceFile decodes only what chartr reads. A config written before the
 // kind cut still carries [maps."<slug>"] tables; the decoder is non-strict, so
 // they are ignored — a teammate's checkout resolves clean, with no warning and no
 // error, rather than being punished for a key that stopped mattering.
@@ -394,13 +394,13 @@ func parseUser(data []byte, spacePath string, warnings *[]string) map[string]raw
 // retired — a model is a flag, and flags live in `args` — and a key that quietly
 // stopped taking effect is exactly the kind of thing that costs an afternoon when
 // a session turns out to be running the wrong model. Surfaced, never honoured and
-// never guessed at: the chartr will not invent the flag name a harness wants.
+// never guessed at: chartr will not invent the flag name a harness wants.
 func retiredModelWarnings(layer Layer, roles map[string]rawBinding) []string {
 	var out []string
 	for name, b := range roles {
 		if b.Model != nil && isRole(name) {
 			out = append(out, fmt.Sprintf(
-				"role %s sets model = %q in %s config, which the chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
+				"role %s sets model = %q in %s config, which chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
 				name, *b.Model, layer, *b.Model,
 			))
 		}
@@ -410,13 +410,13 @@ func retiredModelWarnings(layer Layer, roles map[string]rawBinding) []string {
 }
 
 // unknownRoleWarnings flags config that binds a name outside the closed role
-// set — a typo or a role the chartr does not offer — rather than honouring it
+// set — a typo or a role chartr does not offer — rather than honouring it
 // silently.
 func unknownRoleWarnings(roles map[string]rawBinding) []string {
 	var out []string
 	for name := range roles {
 		if !isRole(name) {
-			out = append(out, fmt.Sprintf("config binds unknown role %q, which the chartr ignores", name))
+			out = append(out, fmt.Sprintf("config binds unknown role %q, which chartr ignores", name))
 		}
 	}
 	sort.Strings(out)

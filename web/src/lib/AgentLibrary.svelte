@@ -15,7 +15,7 @@
   // three-quarters of one.
   //
   // Nothing here knows anything about any particular CLI, and there is no model
-  // field: a model is a flag, and it goes in the list with the rest. The chartr
+  // field: a model is a flag, and it goes in the list with the rest. chartr
   // cannot know what `--model sonnet`, `--dangerously-skip-permissions` or
   // `--sandbox danger-full-access` mean to the harness that defines them, so
   // flags are an opaque list the operator types. The command preview under each

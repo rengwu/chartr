@@ -290,7 +290,7 @@ implement = { model = "opus" }
 
 // Prompt delivery is a binding field like any other: it merges layer by layer,
 // carries its own provenance, and clears back to the agent's default. It is the
-// hatch that drives a harness the chartr ships no adapter row for, so it has to
+// hatch that drives a harness chartr ships no adapter row for, so it has to
 // be settable from the same surface as the rest.
 func TestPromptDeliveryMergesAndClears(t *testing.T) {
 	const workspace = `[roles.implement]

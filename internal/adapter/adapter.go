@@ -1,5 +1,5 @@
 // Package adapter is the agent-agnostic seam between a resolved role binding and
-// the process the chartr actually launches (ADR 0002, as amended by the
+// the process chartr actually launches (ADR 0002, as amended by the
 // interactive-spawn decision and again by prompt delivery). An adapter turns a
 // binding's args into the argv that starts *that* agent's own interactive TUI,
 // and decides how that agent receives its opening line. There is no headless mode
@@ -9,7 +9,7 @@
 // It models exactly one thing about a CLI: prompt delivery. Everything else an
 // agent wants — its model, its permissions, its sandbox — is args the operator
 // writes, because those are the flags no two harnesses agree on and the ones this
-// package would have to guess at. Delivery is modelled only because the chartr
+// package would have to guess at. Delivery is modelled only because chartr
 // itself has to *do* something differently depending on the answer.
 //
 // # Prompt delivery
@@ -26,14 +26,14 @@
 //     argv, for CLIs whose positional argument means something else.
 //   - type — the line is typed into the live TUI as keystrokes, submitted with a
 //     carriage return. The universal fallback: it needs nothing of the CLI but a
-//     PTY, and it is what an agent the chartr has never heard of gets.
+//     PTY, and it is what an agent chartr has never heard of gets.
 //
-// The chartr ships argv delivery for the agents whose command lines it knows
+// chartr ships argv delivery for the agents whose command lines it knows
 // first-hand, and types for everything else. An operator running any other
 // harness upgrades it in one line of config — `prompt = "argv"` or
 // `prompt = "--prompt"` on the role binding — without this package learning about
 // their CLI first. That hatch is the point: the closed set here is a convenience,
-// never a gate on which agents the chartr can drive.
+// never a gate on which agents chartr can drive.
 package adapter
 
 import (
@@ -110,10 +110,10 @@ type Agent struct {
 	Prompt Delivery
 }
 
-// agents are the CLIs whose command lines the chartr knows first-hand. Both take
+// agents are the CLIs whose command lines chartr knows first-hand. Both take
 // their prompt as a trailing positional argument that starts the interactive TUI
 // with it already submitted (`claude [prompt]`, `codex [PROMPT]`) — not to be
-// confused with their headless flags, which the chartr never uses.
+// confused with their headless flags, which chartr never uses.
 //
 // This table is deliberately short. An agent is only listed once its flags have
 // actually been checked, because a wrong guess here is worse than the fallback: a

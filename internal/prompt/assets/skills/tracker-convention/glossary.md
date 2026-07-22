@@ -1,6 +1,6 @@
 # Glossary
 
-The shared vocabulary of the wayfinder method and this chartr. Use these words
+The shared vocabulary of the wayfinder method and chartr. Use these words
 as defined; they are how the map, the tickets, and this session mean the same
 thing.
 

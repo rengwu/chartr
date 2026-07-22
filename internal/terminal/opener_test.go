@@ -80,7 +80,7 @@ func shrinkOpenerTiming(t *testing.T) {
 
 // rawModeAgent installs a stub agent that turns off the line discipline (as every
 // real TUI does) and copies its stdin verbatim to a log, so the test reads the
-// exact bytes the chartr typed rather than the kernel's translation of them.
+// exact bytes chartr typed rather than the kernel's translation of them.
 func rawModeAgent(t *testing.T, log string) string {
 	t.Helper()
 	dir := t.TempDir()

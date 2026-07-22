@@ -60,9 +60,9 @@ The whole map at low resolution, loaded once per session. Open tickets are **not
 
 A ticket's body is the question, sized to one fresh agent session.
 
-A session **claims** a ticket, **first**, before any work, so concurrent sessions skip it. Under the chartr the harness writes and clears the claim itself; worked by hand, a claim is expressed however the tracker convention states.
+A session **claims** a ticket, **first**, before any work, so concurrent sessions skip it. Under chartr the claim is written and cleared for you; worked by hand, a claim is expressed however the tracker convention states.
 
-Blocking is a ticket's list of the tickets it waits on. A ticket is **unblocked** when every ticket it lists is `resolved`; the **frontier** is the open, unblocked, unclaimed tickets — the edge of the known. The frontier is derived from those edges, never written down — which is what lets the chartr render it visually as a star-map, so the human sees what's takeable without opening the map.
+Blocking is a ticket's list of the tickets it waits on. A ticket is **unblocked** when every ticket it lists is `resolved`; the **frontier** is the open, unblocked, unclaimed tickets — the edge of the known. The frontier is derived from those edges, never written down — which is what lets chartr render it visually as a star-map, so the human sees what's takeable without opening the map.
 
 `out_of_scope` is closed, and closed is not resolved: it satisfies no blocking edge. A ticket blocked by an out-of-scope ticket therefore never unblocks — one of the two is mis-scoped, and you should say which.
 

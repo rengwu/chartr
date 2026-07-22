@@ -41,7 +41,7 @@ func Git(t testing.TB, dir string, args ...string) string {
 // WriteMap writes a map body to .plan/<slug>/map.md under repo, creating
 // directories as needed. It does not commit — a test that wants the map in
 // history commits it explicitly, and one testing discovery-by-notice drops it
-// while the chartr is watching.
+// while chartr is watching.
 func WriteMap(t testing.TB, repo, slug, body string) string {
 	t.Helper()
 	return WriteFile(t, repo, filepath.Join(".plan", slug, "map.md"), body)
@@ -57,7 +57,7 @@ func WriteTicket(t testing.TB, repo, slug, filename, body string) string {
 
 // StubAgent installs a fake agent CLI named `name` on PATH for the rest of the
 // test — the "stub agent CLI on PATH" the spawn tests drive against (spec, Testing
-// Decisions). The stub is a real executable the chartr launches in a PTY: it
+// Decisions). The stub is a real executable chartr launches in a PTY: it
 // appends every argument it was launched with, and then every line it reads on
 // stdin, to one record file, and blocks reading more so the session stays live.
 // The returned path is that record file, so a test asserts the opener reached the
@@ -98,7 +98,7 @@ func StubAgent(t testing.TB, name string) (recordPath string) {
 // StubDyingAgent installs a fake agent CLI that emits a unique marker to its PTY
 // and then exits — the stub the death-halt tests drive against (ticket 10). Unlike
 // StubAgent, which blocks so the session stays live, this one dies on cue, so a
-// test can assert the chartr detects the death, pins the dead session with its
+// test can assert chartr detects the death, pins the dead session with its
 // scrollback (the marker) intact, and takes no action of its own. It returns the
 // marker so a test asserts scrollback survival by finding it after the death.
 //
@@ -114,7 +114,7 @@ func StubDyingAgent(t testing.TB, name string) (marker string) {
 	marker = "SESSION-OUTPUT-" + name
 
 	// Print the marker to the PTY (so it lands in scrollback), then exit — the read
-	// loop sees EOF and the chartr detects the death.
+	// loop sees EOF and chartr detects the death.
 	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\nexit 0\n", marker)
 	stub := filepath.Join(binDir, name)
 	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {

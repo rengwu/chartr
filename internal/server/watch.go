@@ -18,7 +18,7 @@ const discoveryDebounce = 120 * time.Millisecond
 // rather than hard-codes (see internal/mapscan).
 const planDirName = ".plan"
 
-// watcher gives the chartr discovery-by-notice (story 11): it watches each
+// watcher gives chartr discovery-by-notice (story 11): it watches each
 // registered space's repo root and its whole `.plan/` subtree, and on any change
 // fires a debounced rebuild so a map created by a hosted shell, an external
 // terminal, or a `git pull` enters the snapshot with no operator refresh action.
@@ -28,7 +28,7 @@ const planDirName = ".plan"
 // directory the moment it is created so the map.md written into a fresh slug
 // directory a beat later is noticed too. A watch that cannot be established
 // degrades to no live discovery for that path — operator actions still rebuild —
-// rather than failing the chartr.
+// rather than failing chartr.
 type watcher struct {
 	fsw      *fsnotify.Watcher
 	onChange func()

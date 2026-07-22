@@ -1,8 +1,8 @@
 # Go backend, xterm.js panes, canvas star-map, browser-first
 
-The chartr is a Go backend — reusing wayfinder-maps' model layer directly, plus `creack/pty` for terminals, `fsnotify` for watching `.plan/`, and process supervision per space — talking over websockets to a web frontend that renders terminals with **xterm.js** and the star-map on **canvas**. It serves a browser by default, with a native webview shell as a second front end: the split wayfinder-maps already proves.
+chartr is a Go backend — reusing wayfinder-maps' model layer directly, plus `creack/pty` for terminals, `fsnotify` for watching `.plan/`, and process supervision per space — talking over websockets to a web frontend that renders terminals with **xterm.js** and the star-map on **canvas**. It serves a browser by default, with a native webview shell as a second front end: the split wayfinder-maps already proves.
 
-The chartr owns PTYs directly rather than delegating to tmux, and renders terminals with xterm.js rather than embedding libghostty or hand-rolling a renderer over a Go VT emulator. Terminal emulation is not this project's value; orchestrating wayfinder maps is.
+chartr owns PTYs directly rather than delegating to tmux, and renders terminals with xterm.js rather than embedding libghostty or hand-rolling a renderer over a Go VT emulator. Terminal emulation is not this project's value; orchestrating wayfinder maps is.
 
 ## Considered Options
 

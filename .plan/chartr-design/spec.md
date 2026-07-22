@@ -8,7 +8,7 @@ An operator driving wayfinder maps today does it by hand: they open a terminal p
 
 ## Solution
 
-**chartr**: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. The operator registers project spaces and switches between them; each space's maps render as a star-map; frontier tickets spawn prompt-injected agent sessions in real interactive TUIs; and on implementation maps, work passes through agent review and a human review hub before it resolves. The chartr is a **cockpit, not an autopilot**: a human drives, deterministic code makes the driving safe, and an agent sits only where judgment is the product. Everything the chartr injects and reasons with — prompts above all — is **hackable**: plain markdown on disk, visible and editable, never sealed in the binary.
+**chartr**: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. The operator registers project spaces and switches between them; each space's maps render as a star-map; frontier tickets spawn prompt-injected agent sessions in real interactive TUIs; and on implementation maps, work passes through agent review and a human review hub before it resolves. chartr is a **cockpit, not an autopilot**: a human drives, deterministic code makes the driving safe, and an agent sits only where judgment is the product. Everything chartr injects and reasons with — prompts above all — is **hackable**: plain markdown on disk, visible and editable, never sealed in the binary.
 
 Concretely, it is one Go binary serving a browser frontend: a Svelte chrome around two imperative islands (xterm.js terminals, a canvas star-map), a spaces sidebar, a per-map action station, and a review brief — all fed by server-pushed state derived live from each space's `.plan/` and git history.
 
@@ -16,11 +16,11 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ### Spaces and the registry
 
-1. As an operator, I want to register a folder as a space, so that the chartr can drive its maps.
+1. As an operator, I want to register a folder as a space, so that chartr can drive its maps.
 2. As an operator, I want registering a non-repo folder to run `git init` announced and never silently, so that an empty folder is no obstacle and I always know when history begins.
 3. As an operator, I want the registry to be a rebuildable index rather than a source of truth, so that losing it costs me re-adding folders, never work.
-4. As an operator, I want to de-register a space without the chartr touching anything in the repository, so that removal is forget, not destroy.
-5. As an operator, I want de-registering a space with a live session to reclaim only the chartr-owned process and leave every byte it wrote, so that the chartr owns the process and I own the tree.
+4. As an operator, I want to de-register a space without chartr touching anything in the repository, so that removal is forget, not destroy.
+5. As an operator, I want de-registering a space with a live session to reclaim only the chartr-owned process and leave every byte it wrote, so that chartr owns the process and I own the tree.
 6. As an operator, I want pinned spaces first and the rest ordered by recency in a flat list, so that five to twenty spaces stay legible without sections.
 7. As an operator, I want an always-present filter box over the space list, so that the list scales past what a flat list carries.
 8. As an operator, I want an actionable signal to flag a row but never re-sort it, so that muscle memory over the sidebar holds.
@@ -29,14 +29,14 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ### Maps and discovery
 
-11. As an operator, I want the chartr to notice a new map under a space's `.plan/` — from a hosted shell, an external terminal, or a `git pull` — without a refresh button, so that every map enters by the same adoption path.
-12. As an operator, I want map discovery to read wherever wayfinder writes — today `.plan/<slug>/`, tolerating the move to `.plan/maps/<slug>/` — so that the chartr follows the convention rather than hard-coding a layout.
+11. As an operator, I want chartr to notice a new map under a space's `.plan/` — from a hosted shell, an external terminal, or a `git pull` — without a refresh button, so that every map enters by the same adoption path.
+12. As an operator, I want map discovery to read wherever wayfinder writes — today `.plan/<slug>/`, tolerating the move to `.plan/maps/<slug>/` — so that chartr follows the convention rather than hard-coding a layout.
 13. *Struck by the `kind-cut` map, which removed map kind entirely. This story asked for a newly discovered map to be inert until classified, so that no lifecycle ever ran on a heuristic. There is no lifecycle to gate — the two kinds resolved identically once review was cut — and a session's role now comes from the ticket's own `type:`, which states it exactly rather than by map-uniform approximation. A discovered map is live: readable, rendered, and spawnable the moment it is found.*
 14. *Struck by the `kind-cut` map. This story asked for the kind guess pre-filled from convention (the `-impl` suffix, all-`task` tickets) for a one-keystroke confirm. With nothing to declare there is nothing to guess, and the conventions it read are gone from the code with `GuessKind`.*
 15. *Struck by the `kind-cut` map. This story asked for map kind in committed workspace config so a teammate's chartr and mine agreed without re-classifying. The agreement it bought was over which maps gate review, and review is gone; the per-ticket `type:` that replaced kind already rides the map itself, so a clone inherits it with no chartr config at all.*
-16. As an operator, I want the chartr to notice when `to-tickets` produces an implementation map, so that graduation is observed rather than orchestrated. *(Restated by the `kind-cut` map, which struck this story's other half — surfacing the new map for classification. Noticing is the whole of it now: the map appears and is live.)*
+16. As an operator, I want chartr to notice when `to-tickets` produces an implementation map, so that graduation is observed rather than orchestrated. *(Restated by the `kind-cut` map, which struck this story's other half — surfacing the new map for classification. Noticing is the whole of it now: the map appears and is live.)*
 17. As an operator, I want a malformed map (dangling `blocked_by`, unparseable ticket) rendered as-is with the malformation surfaced where it bites, so that adoption is never gated on lint.
-18. As a vanilla-wayfinder user, I want the chartr to leave the map format untouched apart from the one `## Proposed Answer` heading, so that my tools read the same map unchanged.
+18. As a vanilla-wayfinder user, I want chartr to leave the map format untouched apart from the one `## Proposed Answer` heading, so that my tools read the same map unchanged.
 
 ### The cockpit and the star-map
 
@@ -50,7 +50,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 26. As an operator, I want proposed work shown as the moon docked at the star's rim and agent review as a violet counter-orbiter, so that the pipeline reads as the moon's story.
 27. As an operator, I want human review to break the orbital grammar — a gold beacon with pings, and an edge chevron when the star is offscreen — so that the one state that is a call to action cannot be missed.
 28. As an operator, I want live state changes to never move a star — one flare and one fading ticker line only — so that spatial memory and calm survive the map going live.
-29. As an operator, I want a mapless space to still offer ad-hoc shells in its working tree, so that the chartr is usable as a plain multiplexer.
+29. As an operator, I want a mapless space to still offer ad-hoc shells in its working tree, so that chartr is usable as a plain multiplexer.
 30. As a keyboard-driven operator, I want keys for summoning the map and switching spaces, so that no path in a cockpit I live in all day is mouse-only.
 31. As an operator with atypical color vision, I want every liveness and attention state to carry a non-color channel — motion, shape, or label — so that no state is color-only.
 
@@ -58,7 +58,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 32. As an operator, I want to spawn a session on a frontier ticket in one click, with the ticket claimed by a chartr-owned commit, so that starting work is cheap and recorded.
 33. As an operator, I want every session to run the agent's own interactive TUI in a PTY, so that I can type into a drifting session and intervene losslessly instead of killing it.
-34. As an operator, I want the chartr to surface working / quiet / dead and never act on a heuristic — no auto-kill, no timeout, no auto-nudge — so that hints stay hints.
+34. As an operator, I want chartr to surface working / quiet / dead and never act on a heuristic — no auto-kill, no timeout, no auto-nudge — so that hints stay hints.
 35. As an operator, I want an idle grilling session to show no "quiet" badge, so that a session waiting on me is not dressed as a problem.
 36. As an operator, I want a dead session to halt to me — resume (same-ticket crash recovery only), respawn fresh, or abandon — so that nothing requeues or retries on its own.
 37. As an operator, I want a dead session's scrollback preserved and pinned to its ticket, so that the next spawn doesn't walk in blind.
@@ -68,7 +68,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 41. As a project maintainer, I want committed bindings restricted to adapters, models, and portable args — no machine-specific paths — so that what lands in the repo works for whoever clones it.
 42. As an operator, I want a committed autopilot flag ignored with a warning, so that no repo can turn off human review for everyone who clones it.
 43. As an operator, I want the "ideate" button to spawn a ticketless, un-reviewed session from a hackable starter prompt that suggests — never triggers — escalation to `/wayfinder`, so that the nudge toward charting stays advice.
-44. As an operator, I want charting to be my own `/wayfinder` flow in an ordinary shell, with the skill owning the slug and the chartr only noticing the folder, so that the chartr stays a cockpit over wayfinder, not a wrapper around its skills.
+44. As an operator, I want charting to be my own `/wayfinder` flow in an ordinary shell, with the skill owning the slug and chartr only noticing the folder, so that chartr stays a cockpit over wayfinder, not a wrapper around its skills.
 
 ### Prompts and context
 
@@ -97,16 +97,16 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ### Git, commits, and the audit trail
 
-64. As an operator, I want the chartr to commit exactly its lifecycle writes — claim, promotion, demotion — as pathspec-limited commits with structured trailers, so that approval never waits on a live session and gate commits can never sweep an agent's staged work.
+64. As an operator, I want chartr to commit exactly its lifecycle writes — claim, promotion, demotion — as pathspec-limited commits with structured trailers, so that approval never waits on a live session and gate commits can never sweep an agent's staged work.
 65. As an operator, I want promotion to be its own commit, never an amend, so that proposed-then-blessed stays visible and no SHA is ever rewritten.
-66. As an operator, I want agents to commit their own work under prompt convention — message format, granularity, never push — with violations surfaced rather than enforced, so that the chartr claims only what it can guarantee.
-67. As an operator, I want the chartr to never push, so that the remote stays strictly my business.
+66. As an operator, I want agents to commit their own work under prompt convention — message format, granularity, never push — with violations surfaced rather than enforced, so that chartr claims only what it can guarantee.
+67. As an operator, I want chartr to never push, so that the remote stays strictly my business.
 68. As an operator, I want a dirty tree surfaced as a badge, never a spawn gate, so that I decide whether debris is harmless — accepting that contamination is mine to prevent.
 69. As an auditor of past work, I want linear history plus the map to answer who ran what, when, on which model, and how it ended — with no second event store to drift — so that git is the whole audit trail.
 
 ### Shipping and platforms
 
-70. As a user on macOS, Linux, or Windows, I want one supported artifact — the pure-Go browser-serving binary with the frontend embedded — cross-compiled from one cgo-free CI job, so that "the chartr" means the same thing everywhere.
+70. As a user on macOS, Linux, or Windows, I want one supported artifact — the pure-Go browser-serving binary with the frontend embedded — cross-compiled from one cgo-free CI job, so that "chartr" means the same thing everywhere.
 71. As a user who prefers a native window, I want per-platform webview shells as best-effort extras that never block a release, so that the tier boundary follows the cgo asymmetry.
 72. As a user, I want checksummed GitHub releases as the only channel, so that distribution stays honest and simple until releases exist to hang more on.
 73. As a cold-start user with zero agent CLIs installed, I want registry, maps, star-map, and ad-hoc shells all working — only spawn blocked, with the block message doubling as my to-do list — so that the first run is un-dramatic.
@@ -125,8 +125,8 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ### State model
 
-- Ticket state is derived from `.plan/` markdown by the reused model layer; session state (agent, PTY, alive/dead) is the chartr's own and lives nowhere near the map (ADR 0004). `proposed` is itself derived (`## Proposed Answer` present, `## Answer` absent) and survives a chartr crash.
-- The chartr's frontier is stricter than wayfinder's: a blocker must be resolved *and* human-approved. That hold is the containment.
+- Ticket state is derived from `.plan/` markdown by the reused model layer; session state (agent, PTY, alive/dead) is chartr's own and lives nowhere near the map (ADR 0004). `proposed` is itself derived (`## Proposed Answer` present, `## Answer` absent) and survives a chartr crash.
+- chartr's frontier is stricter than wayfinder's: a blocker must be resolved *and* human-approved. That hold is the containment.
 - One session per space at a time; parallelism is many spaces (ADR 0003). No worktrees, no branches, linear history. Sessions are space-scoped because the working tree is.
 - `session ↔ ticket` is a hard invariant. Ad-hoc shells and the ideate on-ramp are deliberately *not* sessions: ticketless, live, un-reviewed, ended only by the human, sharing only the adapter's spawn primitive.
 - A ticket's `type:` selects the role its session spawns as — `grilling`→grill, `prototype`→prototype, `research`→research, `task`→implement — and every ticket offers all four, with the operator picking at the spawn gate (ADR 0015, superseding 0007). A discovered map is live: it renders and spawns the moment it is found, on no chartr config at all. There is no map-level kind, no classification step, and nothing about a map is declared outside the map.
@@ -143,9 +143,9 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ### Prompts and payload
 
-- The prompt library is vendored from the wayfinder skills, adapted away from Claude-Code-specific conventions, owned and versioned by the chartr, recording the upstream commit per sync. Five role prompts (grill, prototype, research, implement, review) plus a common core injected first; the role set is closed — no "charter" role, and the ideate starter prompt is filed as a non-role on-ramp.
+- The prompt library is vendored from the wayfinder skills, adapted away from Claude-Code-specific conventions, owned and versioned by chartr, recording the upstream commit per sync. Five role prompts (grill, prototype, research, implement, review) plus a common core injected first; the role set is closed — no "charter" role, and the ideate starter prompt is filed as a non-role on-ramp.
 - Resolution per role walks space committed config → user config → embedded defaults, with `replace` (resets base) and `append` (stacks) semantics per layer. Embedded defaults materialize to disk as plain markdown. A replacement behind the shipped default is surfaced, never auto-merged.
-- At spawn the chartr composes core + role prompt + context bundle into one markdown payload, writes it gitignored inside the space, and types a one-line "read this file" opener into the TUI. One assembly path for every agent. An agent that skips the read is visible in its pane — surfaced, not enforced.
+- At spawn chartr composes core + role prompt + context bundle into one markdown payload, writes it gitignored inside the space, and types a one-line "read this file" opener into the TUI. One assembly path for every agent. An agent that skips the read is visible in its pane — surfaced, not enforced.
 - The claim commit carries trailers for layer provenance and a payload content hash; the composed payload is archived per session in chartr-owned state outside git.
 - The review payload always includes the ticket's Done-when and the spec, composed by assembly — the reviewer cannot be handed only a diff.
 
@@ -161,7 +161,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 ### Git and the gate
 
 - Commit ownership splits (ADR 0008). Chartr commits, deterministically: claim at spawn, promotion at approval, rejection demotion at abandonment — each pathspec-limited to the one ticket file, each carrying structured trailers (agent, model, role, verdict). Agents commit their own work plus `## Proposed Answer` under prompt convention; violations (including a push) are verified after the fact and surfaced.
-- Promotion is its own commit, never an amend; the chartr never rewrites a SHA and never pushes. Approval proceeds during a live session — the narrow write is safe against the shared index; the residual attribution smear (an agent's `commit -a` sweeping the promotion edit) is detected by the chartr's own commit coming up empty, and reported.
+- Promotion is its own commit, never an amend; chartr never rewrites a SHA and never pushes. Approval proceeds during a live session — the narrow write is safe against the shared index; the residual attribution smear (an agent's `commit -a` sweeping the promotion edit) is detected by chartr's own commit coming up empty, and reported.
 - Abandonment demotes `## Proposed Answer` to a dated `### Rejected` subsection with the human's reason — the ticket derives open again and the record rides the next bundle. Undoing commits is the human's, with one-click revert (and reset when the commits are verifiably the tip) as optional levers.
 - A dirty tree is a badge, not a spawn gate. Git is the audit trail; there is no event store.
 
@@ -182,20 +182,20 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 ## Testing Decisions
 
-- **A good test observes external behaviour at the seam and never implementation details.** It drives the chartr exactly as an operator would and asserts only on what the design already makes public: HTTP responses, control-socket snapshots, the files in `.plan/`, and git history. No test reaches into Go packages, chartr memory, or private state — if a behaviour matters, the design has already put it on the outside (derived state on disk, lifecycle as commits, the model as a pushed snapshot), and a behaviour observable nowhere outside is a design smell to fix, not a reason for an internal test.
+- **A good test observes external behaviour at the seam and never implementation details.** It drives chartr exactly as an operator would and asserts only on what the design already makes public: HTTP responses, control-socket snapshots, the files in `.plan/`, and git history. No test reaches into Go packages, chartr memory, or private state — if a behaviour matters, the design has already put it on the outside (derived state on disk, lifecycle as commits, the model as a pushed snapshot), and a behaviour observable nowhere outside is a design smell to fix, not a reason for an internal test.
 - **The seam is the chartr process boundary, and it is deliberately the only one.** A test starts the real chartr against a temporary fixture space — a git repository with a real `.plan/` map — acts through the operator surface (register, spawn, approve, send back, abandon), and asserts on snapshot + filesystem + git. One seam, tested end to end: derivation, the gate, commit ownership, discovery-by-notice, and the push model all fall out of the same style of test.
 - **Agent CLIs are stubbed at the PATH boundary the adapters already probe** — a fake agent script that reads its injected payload, writes a `## Proposed Answer`, commits, hangs, or dies on cue. This exercises spawn, injection, liveness, death-halts-to-human, and the review pipeline deterministically without adding any test-only interface: the PATH probe is a boundary the product already has.
 - **The star-map island's seam (mount, receive model, emit selection) is the one frontend test point**, reserved for the renderer's binding guarantees: deterministic layout from ticket data, and zero star movement across the full lifecycle — the property the prototype verified and the design record protects.
 - **What gets tested**: the lifecycle end to end (planning tickets resolve directly; implementation tickets walk implementing → proposed → agent review → human review → resolved); the gate's commit discipline (claim/promotion/demotion pathspec-limited, trailers present, promotion during a live session, the empty-commit smear detection); abandonment's demotion and re-derivation; discovery (notice, both `.plan/` layouts); config resolution (field-level merge, user-over-workspace bindings, space-over-user prompts, ignored committed autopilot, absent-agent hard block); payload assembly (layer provenance, review payload always carrying Done-when + spec); and registry semantics (rebuildability, forget-not-destroy).
-- **Prior art**: wayfinder-maps' model-layer test suite travels with the reused model layer (ADR 0001) and remains the pattern for exercising derived status against fixture markdown; the chartr's own tests extend that fixture-driven style up to the process boundary.
+- **Prior art**: wayfinder-maps' model-layer test suite travels with the reused model layer (ADR 0001) and remains the pattern for exercising derived status against fixture markdown; chartr's own tests extend that fixture-driven style up to the process boundary.
 
 ## Out of Scope
 
 - **Cost and token visibility** — declined, not designed. Per-session figures live in each agent's own TUI; the global total is a lagging shadow of the liveness signals already surfaced; cost control is the human watching. Reopen triggers: autopilot, or explicit demand for money-legible spend. The re-entry material is banked in the ticket.
-- **Concurrent-session resource limits** — the chartr has no governor. It never blocks a spawn for machine load, provider limits, or spend; the operator owns the machine, the rate limits, and the wallet. Same reopen trigger: autopilot.
-- **The network and environment sandbox** — a leaf agent still hits live APIs and spends money; containing that is a separate, orthogonal layer. The chartr assumes nothing and documents the boundary: the operator owns sandboxing.
-- **Redesigning the wayfinder method** — the chartr drives maps and extends the markdown adapter by exactly one non-resolving heading. The method, its skills, and its storage shapes are not this project's to change.
-- **Charting as a chartr capability** — charting is the user's own `/wayfinder` flow in a shell; the chartr injects nothing for it and owns no part of it.
+- **Concurrent-session resource limits** — chartr has no governor. It never blocks a spawn for machine load, provider limits, or spend; the operator owns the machine, the rate limits, and the wallet. Same reopen trigger: autopilot.
+- **The network and environment sandbox** — a leaf agent still hits live APIs and spends money; containing that is a separate, orthogonal layer. chartr assumes nothing and documents the boundary: the operator owns sandboxing.
+- **Redesigning the wayfinder method** — chartr drives maps and extends the markdown adapter by exactly one non-resolving heading. The method, its skills, and its storage shapes are not this project's to change.
+- **Charting as a chartr capability** — charting is the user's own `/wayfinder` flow in a shell; chartr injects nothing for it and owns no part of it.
 - **Autopilot** — named, strictly-local, non-default, and not designed here; it is the recorded reopen trigger for caps, clean-tree-at-spawn, machine stuck-detection, and cost visibility.
 - **tmux as session substrate; retry loops and auto-requeue; an event store; a doctor command; `go install`/Homebrew/marketplace distribution; per-ticket worktrees or branches; SvelteKit; sync libraries** — each considered and declined in the tickets/ADRs cited above.
 
@@ -203,7 +203,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 
 - **The honest ceiling** (map Notes): this design makes *orchestration* correct, reliable, and reversible. It cannot make the *work* correct — residual risk lands on leaf-implementation quality and human diligence at the one gate. The gate design (anchored findings, mechanical recommendation, one-tick acknowledgement) is the mitigation, not a solution.
 - **Two standing preferences bind every future decision**: *cockpit, not autopilot* — anything that must always be true belongs in deterministic code; an agent sits only where judgment is the product — and *the client is hackable* — prompts, payloads, briefs, and config are plain, editable text on disk.
-- **Surface, never enforce** is the recurring stance at every trust boundary: commit conventions, heterogeneity, dirty trees, map lint, an agent skipping its payload read. The chartr tells the human; only lifecycle writes are enforced, in code.
+- **Surface, never enforce** is the recurring stance at every trust boundary: commit conventions, heterogeneity, dirty trees, map lint, an agent skipping its payload read. chartr tells the human; only lifecycle writes are enforced, in code.
 - **Named revisit triggers** recorded in the tickets, so future re-opens are decisions, not rediscoveries: autopilot (caps, cost, clean-tree-at-spawn, headless observation), cross-ticket contamination in real driving (clean-tree-at-spawn), a required capability landing in codex's blind spots (ADR 0002 support question), and demand for money-legible spend (cost visibility).
 - **Vendored prompt sync** is a standing maintenance duty: each sync from the upstream wayfinder skills records the source commit, and the diff surface is small enough (~hundreds of lines of markdown) to actually review.
 - The design map's prototype assets (cockpit layout, star-map states, review hub, registry) hold the rejected variants and the canonical ones; the prototypes are throwaway, but they are the visual reference for the layout, grammar, and hub decisions above.

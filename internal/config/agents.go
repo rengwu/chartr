@@ -16,7 +16,7 @@ import (
 // An agent is a *complete, self-describing way to run a harness* — the binary,
 // whatever flags that harness wants, and how it takes its opening prompt. Nothing
 // here knows anything about any particular CLI: flags are an opaque list the
-// operator types, because the chartr cannot know what `--model sonnet`,
+// operator types, because chartr cannot know what `--model sonnet`,
 // `--dangerously-skip-permissions`, or `--sandbox danger-full-access` mean to the
 // harness that defines them, and pretending to would make the library exactly as
 // agent-specific as ADR 0002 refused to be. The model is in that list like
@@ -105,7 +105,7 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 		}
 		if a.Model != "" {
 			warnings = append(warnings, fmt.Sprintf(
-				"agent %q sets model = %q, which the chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
+				"agent %q sets model = %q, which chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
 				name, a.Model, a.Model))
 		}
 		r := ResolvedAgent{

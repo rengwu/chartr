@@ -1,6 +1,6 @@
 # One global settings route shows what the layers resolve, and edits only role bindings into the user layer
 
-The chartr's configuration resolves through three documented layers that nobody could see. The **effective config surface** is the answer: a single global route — the cockpit's first real route — that renders every value the layers resolve, with the layer it came from and the file that layer lives in. Its governing constraint is **legibility first**: it explains the config that already exists and **never becomes a second config store**.
+chartr's configuration resolves through three documented layers that nobody could see. The **effective config surface** is the answer: a single global route — the cockpit's first real route — that renders every value the layers resolve, with the layer it came from and the file that layer lives in. Its governing constraint is **legibility first**: it explains the config that already exists and **never becomes a second config store**.
 
 **The route is a hash prefix, not a router.** `App.svelte` reads `#/settings` in one `$derived` (`web/src/lib/route.ts` is a parser and its inverse), with `#/settings/s=<spaceId>` and `#/settings/user` as the two scopes. The star deep-link scheme (`#s=<id>&m=<slug>&t=<num>`) has no leading slash, so the two schemes are disjoint by construction and neither has to know about the other. Entry is a ⚙ in the sidebar header or `,`; exit is Esc, the ⚙ again, or selecting a space. Rejected: a routing library for one route; and keeping *both* a per-space drawer and a global screen — `SpacePane`'s bindings button now navigates here, so config has one home.
 
@@ -39,7 +39,7 @@ The chartr's configuration resolves through three documented layers that nobody 
 
 ## Amendment: the map-kind row and the `DeclareMapKind` comparison lapse (kind-cut, ticket 04)
 
-**Map kind is removed from the chartr entirely** (ADR 0015, superseding 0007),
+**Map kind is removed from chartr entirely** (ADR 0015, superseding 0007),
 so the consequence "map kind stays classify-only" has no subject: there is no
 read-only kind row on this surface, no classify action to link out to, and the
 star-map picker it pointed at no longer classifies anything. The consequence's

@@ -15,7 +15,7 @@ Settle:
 
 - **The order.** Which ticket's work lands first, and why — with the dependencies named explicitly rather than gestured at. Where can implementation maps run in parallel (different file surfaces), and where would they collide (composer, config, cockpit screens)?
 - **The map shape.** One implementation map for the whole effort, or one per decision? The repo's convention (`to-tickets` graduating a planning map) suggests one — argue whether that holds when the four decisions are this independent.
-- **Self-hosting continuity.** At every point in the sequence, the chartr must still drive this repo's own maps. Which intermediate state is the most dangerous (lifecycle half-cut? payload composer mid-repackaging?), and what is the escape hatch if the cockpit breaks underneath its own work?
+- **Self-hosting continuity.** At every point in the sequence, chartr must still drive this repo's own maps. Which intermediate state is the most dangerous (lifecycle half-cut? payload composer mid-repackaging?), and what is the escape hatch if the cockpit breaks underneath its own work?
 - **Done.** What the operator can *do* at the end that they cannot do today — stated as a short list of concrete capabilities, not virtues. Include what happens to the dead weight that is not part of any ticket (`Probe.svelte`, stale `sessions/` archives, the no-op `make webview` target, tracked `.DS_Store` files, the stray root `node_modules`): swept by a named ticket, or left to rot?
 
 ## Answer
@@ -59,11 +59,11 @@ The `to-tickets` convention (one planning map graduates to one implementation ma
 
 ### Self-hosting continuity
 
-Every intermediate commit must leave a chartr that **builds, derives ticket status, and can spawn** — the CLAUDE.md gates (`go vet`/`go test`, frontend `check`/`build`/`vitest`) are the per-commit tripwire, load-bearing here because a red commit is a cockpit that cannot drive its own next ticket.
+Every intermediate commit must leave chartr that **builds, derives ticket status, and can spawn** — the CLAUDE.md gates (`go vet`/`go test`, frontend `check`/`build`/`vitest`) are the per-commit tripwire, load-bearing here because a red commit is a cockpit that cannot drive its own next ticket.
 
 - **Most dangerous state: a half-cut parser (01 mid-flight).** `internal/wayfinder/parse.go` feeds the star-map, the frontier, and spawn eligibility. A half-done `StatusProposed` removal or `Frontier()` revert makes the cockpit misread the status of every ticket in every map — including this one — and it can no longer tell what its own frontier is. Strictly worse than the runner-up.
 - **Runner-up: the composer mid-repackaging (02).** A `compose.go` caught between part-resolution and skill-resolution injects a broken or empty payload — a new session spawns with no role wiring. Bad but bounded: it breaks *new spawns*, not status derivation or live sessions, so the operator sees it on the next spawn rather than having the map silently misread.
-- **The escape hatch is ticket 01's own destination.** Once the gate is gone the lifecycle is "write `## Answer`, commit" — which needs no cockpit: a terminal and `git` complete any ticket. So if the cockpit breaks *underneath its own work*, the operator finishes the offending ticket the vanilla-wayfinder way and the repair lands like any other commit. The chartr's own simplification is what makes it safe to rebuild the chartr. The concrete discipline: **land 01 and 02 as small, independently-green commits** (parser change, then composer change), never a big-bang — the `01 → 02` order already guarantees each is touched once, cleanly. This is a stated discipline, not an enforced gate: ticket 01 chose to trust the operator's git flow and exit the judgment business, and re-imposing a green-commit *gate* here would contradict that — so it is a recommendation the operator owns, backed by the build/test tripwire, not a new check.
+- **The escape hatch is ticket 01's own destination.** Once the gate is gone the lifecycle is "write `## Answer`, commit" — which needs no cockpit: a terminal and `git` complete any ticket. So if the cockpit breaks *underneath its own work*, the operator finishes the offending ticket the vanilla-wayfinder way and the repair lands like any other commit. chartr's own simplification is what makes it safe to rebuild chartr. The concrete discipline: **land 01 and 02 as small, independently-green commits** (parser change, then composer change), never a big-bang — the `01 → 02` order already guarantees each is touched once, cleanly. This is a stated discipline, not an enforced gate: ticket 01 chose to trust the operator's git flow and exit the judgment business, and re-imposing a green-commit *gate* here would contradict that — so it is a recommendation the operator owns, backed by the build/test tripwire, not a new check.
 - **04 does not de-risk self-hosting** — it is additive UI; front-loading it is a momentum choice. The safety comes entirely from ordering 01 before 02 and keeping each commit green. The supported cgo-free browser binary is always available, so 03's chrome breaking never strands the operator either.
 
 ### Done
@@ -71,7 +71,7 @@ Every intermediate commit must leave a chartr that **builds, derives ticket stat
 Concrete capabilities the operator gains, not virtues:
 
 1. **Resolve a ticket by writing `## Answer` and committing** — no review gate, no `proposed` state, no approval hop; resolved blockers unblock immediately (01).
-2. **Read, edit, and reuse every injected prompt as a standard `SKILL.md`** on disk — the same skills usable in an agent CLI *outside* the chartr (02).
+2. **Read, edit, and reuse every injected prompt as a standard `SKILL.md`** on disk — the same skills usable in an agent CLI *outside* chartr (02).
 3. **See every resolved config value with its provenance layer and file location on one settings screen**, edit role bindings inline (user layer only, comment-preserving, reversible), and open any layer file in `$EDITOR` (03).
 4. **Launch the cockpit as a real mac window** — dock icon, native menu, single-instance — instead of a browser tab, Linux best-effort behind it (04).
 

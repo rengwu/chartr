@@ -150,7 +150,7 @@ and refusals. `route.test.ts` pins the two hash schemes apart. `go vet` /
 `go test`, `check` / `build` / `vitest`, and no amber in the built CSS: green.
 
 **Also swept, because it bit:** `.gitignore` never learned ticket 04's rename, so
-running the chartr from the repo root left an untracked `skills/` in the tree.
+running chartr from the repo root left an untracked `skills/` in the tree.
 One line, ignore-only — ticket 06's character, but it dirties every run until
 it lands.
 

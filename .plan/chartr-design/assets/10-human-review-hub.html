@@ -19,7 +19,7 @@
 
     D  Brief    — one screen, three headings: what was done (the Proposed
                   Answer verbatim), what the reviewer found (one line + the
-                  blocking finding), and a recommendation the chartr derives
+                  blocking finding), and a recommendation chartr derives
                   mechanically from the verdict. Done-when check, findings and
                   diff collapse behind expanders. Approve is one click; a
                   rejecting verdict adds exactly one acknowledgement tick.
@@ -724,7 +724,7 @@ function hubHead(t,v){
       h("div",{class:"hub-title"},
         h("span",{class:"chip proposed"},"proposed"),
         h("h2",{},pad(t.n)+" "+t.t),
-        h("button",{class:"btn",style:"padding:5px 10px",title:"the same brief, as the markdown the chartr wrote to disk",
+        h("button",{class:"btn",style:"padding:5px 10px",title:"the same brief, as the markdown chartr wrote to disk",
           onclick:()=>{S.raw[t.n]=!S.raw[t.n];renderHub();}},S.raw[t.n]?"rendered":"{ } raw"),
         h("button",{class:"btn",onclick:closeHub},"✕ esc")),
       h("div",{style:"font-size:11px;color:var(--dim);margin-top:5px"},

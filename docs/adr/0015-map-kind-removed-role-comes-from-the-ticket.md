@@ -2,7 +2,7 @@
 
 Supersedes [0007](0007-map-kind-declared-not-inferred.md).
 
-Map kind is gone from the chartr — the field, the config declaration, the classify action, and the inert-until-classified gate. A session's role is selected by the **ticket's own `type:`** (`grilling`→grill, `prototype`→prototype, `research`→research, `task`→implement), every ticket offers all four roles, and the operator picks at the spawn gate. **A discovered map is live**: it renders and spawns the moment the chartr finds it, on no chartr config at all.
+Map kind is gone from chartr — the field, the config declaration, the classify action, and the inert-until-classified gate. A session's role is selected by the **ticket's own `type:`** (`grilling`→grill, `prototype`→prototype, `research`→research, `task`→implement), every ticket offers all four roles, and the operator picks at the spawn gate. **A discovered map is live**: it renders and spawns the moment chartr finds it, on no chartr config at all.
 
 The decision rests on two findings, one about the ADR being superseded and one about what it was still doing.
 
@@ -25,6 +25,6 @@ The decision rests on two findings, one about the ADR being superseded and one a
 - **Given up: teammate-level agreement about a map.** Kind was committed precisely so two operators could not silently disagree about it. Nothing about a map is declared outside the map any more, so there is nothing to agree on — but the *capacity* for a shared, versioned, per-map assertion is gone, and a future one would need a new home rather than an existing table.
 - **The role is chosen later and by a human.** Every ticket offers all four roles at the spawn gate with its `type:`-derived role emphasised, so a wrong role is now a mis-click rather than a mis-declaration — visible at the moment of the act instead of set once and inherited.
 - **Committed workspace config loses a tenant.** It holds role bindings and skills; ADR 0009's "second tenant beside map-kind" framing is now the only tenant. A space with no `.chartr/config.toml` at all is fully supported — this repo is one.
-- **The wayfinder adapter is gone.** `docs/wayfinder-adapter.md` existed to add exactly one chartr-side step at map creation; with no step it was deleted, and this repo's maps are plain local-markdown with nothing on top. The chartr is one step further from being a wrapper around the method's skills and one step closer to a pure observer of them.
+- **The wayfinder adapter is gone.** `docs/wayfinder-adapter.md` existed to add exactly one chartr-side step at map creation; with no step it was deleted, and this repo's maps are plain local-markdown with nothing on top. chartr is one step further from being a wrapper around the method's skills and one step closer to a pure observer of them.
 - **Old committed configs cost nothing.** `toml.Decode` is non-strict, so a teammate's checkout carrying `[maps."<slug>"]` tables resolves with no error and no warning; the tables are simply not read.
 - **If this is wrong, it comes back as a new decision.** Not as kind under another name.

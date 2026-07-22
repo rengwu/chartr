@@ -26,8 +26,8 @@ import (
 // sessions' composed payloads (ADR 0005 — one inspectable file per session), and
 // the ideate on-ramp's starter prompt (ticket 15), which reuses the same
 // writeSessionPayload path though it is deliberately not a session. It sits under
-// the chartr's committed `.chartr/` directory but is itself never
-// committed: the chartr drops a `.gitignore` of `*` beside it so an agent's
+// chartr's committed `.chartr/` directory but is itself never
+// committed: chartr drops a `.gitignore` of `*` beside it so an agent's
 // `git commit -a` can never sweep a payload into the audit trail (ADR 0008).
 const sessionRunDir = ".chartr/run"
 
@@ -192,7 +192,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		return nil, http.StatusNotFound, err
 	}
 
-	// The claim commit — the chartr's one write here (ADR 0008), pathspec-limited
+	// The claim commit — chartr's one write here (ADR 0008), pathspec-limited
 	// to the ticket file and carrying the binding and payload-hash trailers. On a
 	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
 	// the new session id supersedes the dead one.

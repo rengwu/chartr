@@ -133,7 +133,7 @@ func ctxPart(name, label, text string) Part {
 // not here.
 func skillManifest(roots Roots) string {
 	var b strings.Builder
-	b.WriteString("The skills the chartr ships. When the map or your ticket names one, read its `SKILL.md` under the path shown and apply it — do not work from memory of this list.")
+	b.WriteString("The skills chartr ships. When the map or your ticket names one, read its `SKILL.md` under the path shown and apply it — do not work from memory of this list.")
 	for _, name := range Names() {
 		s, ok := Resolve(name, roots)
 		if !ok {

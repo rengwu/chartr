@@ -12,26 +12,26 @@ The review pipeline is not a feature bolted on the side — it is load-bearing. 
 
 Settle:
 
-- **The new status model.** Which statuses survive (open / blocked / claimed / resolved / out_of_scope?), what exactly `claimed → resolved` requires (an `## Answer` heading? a commit? both?), and who writes the Answer — the agent by prompt convention, or the chartr mechanically at session end? The old design deliberately kept the chartr's writes append-only and pathspec-limited (ADR 0008); does that discipline survive unchanged?
-- **What the chartr still guarantees.** With no gate, is there *any* deterministic check left — lint, "session ended without an Answer" surfacing — or does the chartr fully exit the judgment business and trust the operator's git flow? Where is the line between "surfaced, not enforced" and silence?
-- **The extension seam, made concrete.** The map refuses a plugin framework but promises that review could return as a consumer of conventions. Name the actual seams (fsnotify events, derived statuses, git trailers, run-dir layout) precisely enough that a future effort could build review *without* touching chartr internals — and decide what the chartr must keep emitting (trailers? session end records?) purely for that hypothetical consumer, versus what is YAGNI and gets cut too.
+- **The new status model.** Which statuses survive (open / blocked / claimed / resolved / out_of_scope?), what exactly `claimed → resolved` requires (an `## Answer` heading? a commit? both?), and who writes the Answer — the agent by prompt convention, or chartr mechanically at session end? The old design deliberately kept chartr's writes append-only and pathspec-limited (ADR 0008); does that discipline survive unchanged?
+- **What chartr still guarantees.** With no gate, is there *any* deterministic check left — lint, "session ended without an Answer" surfacing — or does chartr fully exit the judgment business and trust the operator's git flow? Where is the line between "surfaced, not enforced" and silence?
+- **The extension seam, made concrete.** The map refuses a plugin framework but promises that review could return as a consumer of conventions. Name the actual seams (fsnotify events, derived statuses, git trailers, run-dir layout) precisely enough that a future effort could build review *without* touching chartr internals — and decide what chartr must keep emitting (trailers? session end records?) purely for that hypothetical consumer, versus what is YAGNI and gets cut too.
 - **What dies, file by file.** The deletion list: `gate.go`, `review.go`, `promote.go`, `ReviewHub.svelte`, the `proposed` status, autopilot resolution, the `review` role, the violet counter-orbiter and gold beacon on the star-map, the review brief vocabulary in `CONTEXT.md`, ADRs 0004 and 0008. For each: deleted, amended, or retained-and-repurposed — and which ADR amendments the answer must write.
 - **In-flight wreckage.** Old maps carry `proposed` tickets, `## Proposed Answer` sections, and rejected-ticket prose. Does the new parser still read them (cheap tolerance), migrate them (a one-time rewrite), or ignore them (history is history)?
 
 ## Answer
 
-**The lifecycle is vanilla wayfinder, and the chartr exits the judgment business entirely.** A session holds a ticket, writes its `## Answer`, commits its own work; the ticket resolves the instant the heading lands, and resolved blockers unblock immediately. There is no gate, no chartr-side check, and no new emission for hypothetical consumers. Old maps' `## Proposed Answer` sections become unknown headings — ignored, not tolerated, not migrated.
+**The lifecycle is vanilla wayfinder, and chartr exits the judgment business entirely.** A session holds a ticket, writes its `## Answer`, commits its own work; the ticket resolves the instant the heading lands, and resolved blockers unblock immediately. There is no gate, no chartr-side check, and no new emission for hypothetical consumers. Old maps' `## Proposed Answer` sections become unknown headings — ignored, not tolerated, not migrated.
 
 ### The new status model
 
-Four statuses survive: **open, claimed, resolved, out_of_scope**. `proposed` dies with the pipeline that defined it, and nothing replaces it — the chartr's "one addition" to wayfinder's derived-status table (ADR 0004) is withdrawn, and the table becomes exactly wayfinder's own.
+Four statuses survive: **open, claimed, resolved, out_of_scope**. `proposed` dies with the pipeline that defined it, and nothing replaces it — chartr's "one addition" to wayfinder's derived-status table (ADR 0004) is withdrawn, and the table becomes exactly wayfinder's own.
 
-- **What `claimed → resolved` requires:** an `## Answer` heading with prose beneath it, written **by the agent, by prompt convention** — the same convention that today produces `## Proposed Answer`, retargeted. The commit of the work is likewise the agent's act by convention (ADR 0008 already established that agents commit on their own initiative regardless). The chartr never writes the Answer, mechanically or otherwise: ADR 0004's core — *the agent writes, the chartr watches* — survives intact; only the gate at the end of the watch is gone.
+- **What `claimed → resolved` requires:** an `## Answer` heading with prose beneath it, written **by the agent, by prompt convention** — the same convention that today produces `## Proposed Answer`, retargeted. The commit of the work is likewise the agent's act by convention (ADR 0008 already established that agents commit on their own initiative regardless). chartr never writes the Answer, mechanically or otherwise: ADR 0004's core — *the agent writes, chartr watches* — survives intact; only the gate at the end of the watch is gone.
 - **Unblocking:** a resolved blocker unblocks its dependents **immediately**, even while the resolving session is still live and mid-commit. This knowingly gives up ADR 0004's containment consequence ("that hold is the containment") — the operator chose vanilla semantics over a `resolved AND unclaimed` frontier rule. The failure mode it accepts: a dependent can spawn against a ticket whose session hasn't finished committing. The mitigation is social, not mechanical: the claim is visible on the star-map, and the operator is present by design (cockpit, not autopilot).
-- **ADR 0008's discipline survives, shrunk.** The chartr's writes stay append-only, pathspec-limited, trailer-carrying commits — but the set shrinks to two: the **claim** at spawn and the **release** at death-halt. The promotion and demotion commits die with the gate they served. `Chartr-Write: true` stays; it is cheap and it is what makes chartr commits distinguishable in the audit trail.
+- **ADR 0008's discipline survives, shrunk.** chartr's writes stay append-only, pathspec-limited, trailer-carrying commits — but the set shrinks to two: the **claim** at spawn and the **release** at death-halt. The promotion and demotion commits die with the gate they served. `Chartr-Write: true` stays; it is cheap and it is what makes chartr commits distinguishable in the audit trail.
 - **`resolved` no longer means blessed.** On disk it now means "the session said so." CONTEXT.md's definition ("resolved always means blessed") and every term built on the gate — `proposed`, `agent review`, `human review`, `review brief`, `abandon`, `autopilot` — die with this ticket. `implementing` survives (a session holding a ticket is still a fact worth naming).
 
-### What the chartr still guarantees
+### What chartr still guarantees
 
 **Nothing new, and nothing that blocks.** The deterministic surfaces that already exist are exactly the ones that survive:
 
@@ -39,13 +39,13 @@ Four statuses survive: **open, claimed, resolved, out_of_scope**. `proposed` die
 - the **dirty-tree badge** — uncommitted debris is surfaced, never cleaned (ADR 0008, unchanged);
 - **wayfinder lint** — untouched, it never had proposed/review logic.
 
-Rejected: an explicit "session ended without an Answer" attention item (duplicates what the death halt already shows — a surfaced-not-enforced mechanism of exactly the kind this cut exists to remove), and any blocking lint-before-resolution check (a gate by another name, against the settled direction). The line between surfaced and silent is: **the chartr surfaces facts it already derives; it computes no new judgments.**
+Rejected: an explicit "session ended without an Answer" attention item (duplicates what the death halt already shows — a surfaced-not-enforced mechanism of exactly the kind this cut exists to remove), and any blocking lint-before-resolution check (a gate by another name, against the settled direction). The line between surfaced and silent is: **chartr surfaces facts it already derives; it computes no new judgments.**
 
 ### The extension seam, made concrete
 
 The seam is documented convention, and every leg of it has a live consumer today — **nothing is emitted for the hypothetical reviewer alone**:
 
-1. **File-derived ticket status.** The parser's heading table (`## Answer`, `## Ruled out`, `claimed_by`) is the public contract. Any consumer, in-process or external, re-derives what the chartr derives from the same markdown.
+1. **File-derived ticket status.** The parser's heading table (`## Answer`, `## Ruled out`, `claimed_by`) is the public contract. Any consumer, in-process or external, re-derives what chartr derives from the same markdown.
 2. **fsnotify on `.plan/`.** `watch.go` already watches exactly this; an external consumer subscribes to the same directory.
 3. **Git trailers on lifecycle commits.** Claim commits carry `Session`, `Agent`, `Model`, `Role`, `Payload-SHA256`, the `*-From` provenance triple, and `Chartr-Write: true`; release commits carry `Session` and `Chartr-Write: true`. This is the audit trail a future review would mine — who implemented, on what model, with what payload.
 4. **The run-dir layout.** `.chartr/run/<sid>/` holds the injected payload and its archive — what the agent was told — gitignored, ephemeral, on disk where a consumer can read it.
@@ -66,7 +66,7 @@ Cut alongside the gate, as gate-owned vocabulary no consumer will miss: the revi
 
 **Amended:**
 
-- `internal/wayfinder/parse.go` — `StatusProposed`, `HasProposedAnswer`/`ProposedHeading` and their `Derive()` branch removed; `Frontier()` reverts to vanilla (resolved blockers unblock; no approval, no unclaimed condition). `doc.go` loses "the chartr's one addition."
+- `internal/wayfinder/parse.go` — `StatusProposed`, `HasProposedAnswer`/`ProposedHeading` and their `Derive()` branch removed; `Frontier()` reverts to vanilla (resolved blockers unblock; no approval, no unclaimed condition). `doc.go` loses "chartr's one addition."
 - `internal/server/` — routes (`server.go`), the review-role seating gate (`spawn.go`), `reviewState`/`ticketProposed` and `Ticket.Review` wiring (`spaces.go`, `model.go`), the review-payload guarantee (`internal/prompt/compose.go`, `prompt.go` role list).
 - `internal/config/binding.go` — `RoleReview`, its `Roles` entry, the implementation-map role pair, and the entire `autopilot` resolution (fields, warning, `Resolution.Autopilot`): confirmed resolved-and-consumed-nowhere, so it dies without replacement.
 - Star-map: `session.ts` drops `proposed`/`agent-review`/`human-review` states and their grammar (docked moon, violet counter-orbiter, warm break); `theme.ts` loses the proposed palette and violet hue; `starmap.ts` loses the sealed ring, the gold warming, and the offscreen "keeps calling" beacon.
@@ -94,4 +94,4 @@ Rejected: *tolerate-as-answer* (~5 parser lines) — it would silently bless ans
 Two tripwires, either sufficient:
 
 - **Containment bites.** If dependents seeded by still-live, mid-commit resolutions produce real wreckage in practice — not in anticipation — the `resolved AND unclaimed` frontier rule returns as a parser-level fix. That is a new ticket, not a resurrection of the gate.
-- **A real second consumer appears.** If review (or anything else) is actually rebuilt against these seams, its concrete needs earn an interface — and only then does the chartr emit anything for it.
+- **A real second consumer appears.** If review (or anything else) is actually rebuilt against these seams, its concrete needs earn an interface — and only then does chartr emit anything for it.

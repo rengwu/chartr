@@ -1,4 +1,4 @@
-// Package prompt owns the chartr's hackable skill library and the payload a
+// Package prompt owns chartr's hackable skill library and the payload a
 // session would be told. Every injected prompt — the common core, the four role
 // prompts, the ideate on-ramp, and the tracker convention — is a standard
 // `SKILL.md` directory: `name`/`description` frontmatter over a markdown body,
@@ -15,7 +15,7 @@
 // reason about; a fork records what it forked from in `forked_from:` frontmatter
 // and is surfaced as behind, never auto-merged.
 //
-// The chartr keeps composing the payload itself (ADR 0002, reaffirmed): it reads
+// chartr keeps composing the payload itself (ADR 0002, reaffirmed): it reads
 // the resolved core + role bodies with their frontmatter stripped and assembles
 // them with a context bundle (map body, ticket, blockers' answers, and the
 // glossary sourced from the `tracker-convention` skill) into one markdown
@@ -48,7 +48,7 @@ const (
 	SourceCommit = "9e8b5ea"
 )
 
-// The skills the chartr knows by name. CoreSkill is injected first before any
+// The skills chartr knows by name. CoreSkill is injected first before any
 // role skill; IdeateSkill is the ideate on-ramp, composed alone (no core, no
 // context bundle) because an ideate session is ticketless and mapless;
 // TrackerSkill restates the wayfinder map format and carries the method glossary
@@ -109,7 +109,7 @@ type Roots struct {
 	Workspace string
 }
 
-// RootsFor derives the three roots from the chartr's data root, the operator's
+// RootsFor derives the three roots from chartr's data root, the operator's
 // config root, and a space's repo. Callers pass "" for a root that does not
 // apply (the ideate on-ramp, for instance, resolves with no space).
 func RootsFor(dataDir, configDir, repoDir string) Roots {
@@ -176,7 +176,7 @@ type Payload struct {
 	Markdown  string   `json:"markdown"`
 }
 
-// Names lists the skills the chartr ships, in a stable order: the core, the
+// Names lists the skills chartr ships, in a stable order: the core, the
 // roles, then the two library skills, then the four method skills.
 func Names() []string {
 	names := []string{CoreSkill}
@@ -470,7 +470,7 @@ func splitFrontmatter(src string) (map[string]string, string) {
 func readmeText() string {
 	return fmt.Sprintf(`# Skill library
 
-These are the skills the chartr injects into every session — standard `+"`SKILL.md`"+`
+These are the skills chartr injects into every session — standard `+"`SKILL.md`"+`
 directories, yours to read, edit, and reuse in any agent CLI that reads the
 format. Vendored from %s (%s).
 

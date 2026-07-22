@@ -8,7 +8,7 @@ blocked_by: []
 ## Question
 
 Remove the review pipeline as a *feature* — the gate, its server mechanics, its
-UI, its role — leaving a chartr that compiles and, crucially, still resolves and
+UI, its role — leaving chartr that compiles and, crucially, still resolves and
 unblocks so it can keep driving its own map. This is the bulk deletion; retiring
 the `proposed` status itself and the last gate-shaped semantics (the parser, the
 `Frontier` revert) is ticket 03, split out so a stall here never strands the
@@ -38,7 +38,7 @@ backend).
   guarantee, `resolveSpec` / `reSpecLink`, `ProposedAnswerSection`). In
   `config/binding.go` remove `RoleReview`, its `Roles` entry, and its
   `RolesForKind` pair, so no review role can be seated. Deleting `promote.go`
-  removes the promotion/demotion commits, shrinking the chartr's lifecycle writes
+  removes the promotion/demotion commits, shrinking chartr's lifecycle writes
   to the **claim** at spawn and the **release** at death-halt (the surviving
   append-only, `Chartr-Write: true` writes). The helpers in the deleted files —
   `repoRel`, `firstLine`, `shortSHA`, `sectionBody` — have no callers outside
@@ -61,7 +61,7 @@ and its dependents unblocking immediately; and no review role can be spawned.
 ## Answer
 
 The review pipeline is gone as a feature, in two independently-green commits —
-frontend, then backend. The chartr still builds, still derives ticket status,
+frontend, then backend. chartr still builds, still derives ticket status,
 and still spawns; it now resolves a ticket the vanilla-wayfinder way.
 
 **Frontend.** `ReviewHub.svelte` deleted, with the `actions.ts` review surface
@@ -87,7 +87,7 @@ the review routes, and the `chartrtest` review stubs. `RoleReview` left
 its proposed-ticket seating branch and every role now spawns onto the frontier.
 `compose.go` lost the review branch, `resolveSpec` / `reSpecLink` /
 `ProposedAnswerSection`, and `spaces.go` lost `reviewState` / `ticketProposed` /
-the `Ticket.Review` wiring. Deleting `promote.go` shrank the chartr's lifecycle
+the `Ticket.Review` wiring. Deleting `promote.go` shrank chartr's lifecycle
 writes to the **claim** and the **release**.
 
 **Prompts.** `review.md` and its asset deleted. `implement.md` was retargeted to
@@ -120,7 +120,7 @@ through to the SPA; a review role is refused at both spawn (`role review is not
 offered by a implementation map`) and preview (`unknown role "review"; want one
 of [grill prototype research implement]`); and a session spawned on a frontier
 ticket resolved it by writing `## Answer` and committing, with its dependent
-unblocking on the next pushed snapshot and only two commits in the log — the
+unblocking on the next pushed snapshot and only two commits in the log —
 chartr's claim and the agent's own.
 
 Done when, met: `go vet ./...` / `go test ./...` green with gate / review /

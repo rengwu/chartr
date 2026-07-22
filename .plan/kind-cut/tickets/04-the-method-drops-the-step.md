@@ -23,7 +23,7 @@ if it stays, it must not describe a step.
 
 **`CLAUDE.md`.** The "Wayfinder maps in this repo" section exists almost entirely
 to mandate the kind declaration. Reduce it to what remains true: this repo plans
-with wayfinder maps under `.plan/`, and the chartr watches this space. No
+with wayfinder maps under `.plan/`, and chartr watches this space. No
 recording step, no ADR 0007 gate, no "stays inert until a human confirms".
 
 **`.chartr/config.toml`.** Remove all seven `[maps."…"]` tables — the six that
@@ -36,7 +36,7 @@ scope:
 - The "Maps, kind, and discovery" heading (~:30) loses `kind`.
 - **Strike stories 13, 14, 15 and 16** (~:34–37) — inert-until-classified, the
   pre-filled guess, committed kind for teammates, and noticing graduation *for
-  classification*. Story 16's surviving half (the chartr notices a new map
+  classification*. Story 16's surviving half (chartr notices a new map
   directory) is real and should be restated rather than lost.
 - Line ~123 drops `classify` from the list of operator actions.
 - Line ~132 — the whole map-kind paragraph — is struck and replaced by the rule

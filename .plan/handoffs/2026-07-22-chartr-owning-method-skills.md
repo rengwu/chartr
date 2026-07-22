@@ -125,7 +125,7 @@ the layering rule so an adaptation survives shadowing.
 - `internal/prompt/compose.go` — where a wrap would land (`Compose`, `Segment`).
 - `internal/prompt/prompt.go:353` — `Library` iterates the closed `Names()` set;
   an open namespace would change here.
-- `docs/adr/0007-map-kind-declared-not-inferred.md` — "the chartr stays a cockpit
+- `docs/adr/0007-map-kind-declared-not-inferred.md` — "chartr stays a cockpit
   *over* wayfinder"; owning the authoring path strikes that consequence.
 - `docs/wayfinder-adapter.md` — the existing, working extension point a wrap
   would inline.

@@ -1,4 +1,4 @@
-// Package model holds the derived model the chartr pushes to every browser.
+// Package model holds the derived model chartr pushes to every browser.
 //
 // The whole model travels over the control socket as a single JSON snapshot on
 // every change (ADR 0010): it is server-authoritative, small enough that
@@ -85,7 +85,7 @@ type ResolvedSkill struct {
 	Stale      bool   `json:"stale,omitempty"`
 }
 
-// Space is a registered git repository the chartr drives. Ticket 02 fills in
+// Space is a registered git repository chartr drives. Ticket 02 fills in
 // the registry semantics (path, pin) and the effective role bindings; ticket 03
 // adds the maps beneath. Spaces arrive already ordered — pinned first, then by
 // recency — so the sidebar renders them in slice order without re-sorting.
@@ -105,7 +105,7 @@ type Space struct {
 	// Dirty is true when the working tree carries uncommitted changes — modified,
 	// staged, or untracked files a session or an ad-hoc shell left behind. It is a
 	// badge, never a spawn gate (spec, Git and the gate; story 68): the operator
-	// decides whether the debris is harmless, and the chartr spawns into it all
+	// decides whether the debris is harmless, and chartr spawns into it all
 	// the same. A label, not a guarantee — empty on a tree it cannot read.
 	Dirty bool `json:"dirty"`
 	// Bindings are the space's effective, fully-resolved role bindings in role

@@ -88,7 +88,7 @@
       const res = await spawnSession(spaceId, map.slug, ticket.num, role);
       onspawned?.(res.sessionId);
     } catch (e) {
-      // A blocked spawn (absent agent, held ticket) carries the chartr's specific
+      // A blocked spawn (absent agent, held ticket) carries chartr's specific
       // message — surface it inline rather than as a silent no-op.
       spawnError = e instanceof ActionError ? e.message : (e as Error).message;
     } finally {

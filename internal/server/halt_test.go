@@ -40,7 +40,7 @@ func decodeResume(t *testing.T, body string) struct {
 }
 
 // Ticket 10 at the process boundary: liveness and the death halt. With a stub
-// agent that dies on cue, the chartr detects the death, pins the dead session to
+// agent that dies on cue, chartr detects the death, pins the dead session to
 // its ticket with scrollback intact, and does nothing on its own — the operator
 // resolves it exactly three ways (resume, respawn, release), each an HTTP action,
 // so the absence of autonomous action is asserted, not assumed. Separately: the
@@ -88,7 +88,7 @@ func waitForDeadSession(t *testing.T, h *chartrtest.Chartr, spaceID string) mode
 }
 
 // A session whose process exits is detected dead, stays pinned to its ticket with
-// its scrollback preserved, and the chartr takes no action of its own: the claim
+// its scrollback preserved, and chartr takes no action of its own: the claim
 // stands, no commit beyond it is written, and the dead session lingers untouched.
 func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 	h := chartrtest.Start(t)
@@ -122,7 +122,7 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 		t.Errorf("dead session's scrollback did not survive; got %q", out)
 	}
 
-	// The chartr took nothing on its own: the ticket still derives claimed, and
+	// chartr took nothing on its own: the ticket still derives claimed, and
 	// only the claim commit exists — no auto-release, no auto-requeue.
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "claimed" {
 		t.Errorf("ticket after a death = %q, want claimed (the stale claim stands)", st)

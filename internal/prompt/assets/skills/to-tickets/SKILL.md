@@ -1,13 +1,13 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into tracer-bullet implementation tickets, written as a wayfinder map — one file per ticket under `.plan/<slug>-impl/`, so the chartr can track implementation progress.
+description: Break a plan, spec, or the current conversation into tracer-bullet implementation tickets, written as a wayfinder map — one file per ticket under `.plan/<slug>-impl/`, so chartr can track implementation progress.
 ---
 
 # To Tickets
 
 Break a plan, spec, or conversation into a set of **tickets** — tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The output is a **wayfinder implementation map**: a real wayfinder map in the tracker convention's format, not a flat checklist. One `map.md` plus one file per ticket, under `.plan/<slug>-impl/`. This is what lets the chartr render the tickets as a star-map and track progress against it — the same tool that reads a planning map reads this one, because it *is* a planning map, one whose Notes carry execution rather than decisions.
+The output is a **wayfinder implementation map**: a real wayfinder map in the tracker convention's format, not a flat checklist. One `map.md` plus one file per ticket, under `.plan/<slug>-impl/`. This is what lets chartr render the tickets as a star-map and track progress against it — the same tool that reads a planning map reads this one, because it *is* a planning map, one whose Notes carry execution rather than decisions.
 
 **Read the `tracker-convention` skill before writing anything.** It is the format contract: where files live, what frontmatter carries structure, how status is derived, and what to verify before committing. Everything below defers to it — this skill only says how an *implementation* map differs from a planning one. The format is never invented here.
 

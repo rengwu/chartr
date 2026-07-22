@@ -24,7 +24,7 @@ answer to it.
   session's job.
 - **Commit your own work** under the repository's conventions: focused commits,
   clear messages, and never a `git push` — the remote is the operator's alone.
-  The chartr commits only the ticket's lifecycle writes, never your code.
+  chartr commits only the ticket's lifecycle writes, never your code.
 - **Surface, don't hide.** When something is uncertain, blocked, or smells wrong,
   write it down where a human will read it. A flagged doubt is worth more than a
   confident guess.

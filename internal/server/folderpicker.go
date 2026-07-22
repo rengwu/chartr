@@ -16,7 +16,7 @@ import (
 // The folder picker is the native half of "add a space": the operator names a
 // folder in their own OS chooser rather than typing an absolute path into a
 // text field. It is raised server-side, exactly like the config surface's open
-// action (ADR 0014) — the chartr always serves on loopback, so a dialog the
+// action (ADR 0014) — chartr always serves on loopback, so a dialog the
 // server raises lands on the operator's own desktop whether they are in the
 // native shell or a plain browser at :8787. That is what lets one code path
 // cover both binaries.

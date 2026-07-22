@@ -159,7 +159,7 @@ func TestForgetNotDestroy(t *testing.T) {
 }
 
 // The registry is a rebuildable index: deleting it costs re-adding folders,
-// never work. A chartr started against a data dir whose spaces.toml is gone
+// never work. chartr started against a data dir whose spaces.toml is gone
 // shows no spaces, and re-registering the untouched repo restores it.
 func TestRegistryLossIsRebuildable(t *testing.T) {
 	dataDir := t.TempDir()

@@ -60,7 +60,7 @@ with no warnings; and `POST /api/spaces/{id}/maps/{slug}/classify` returns 404.
 
 ## Answer
 
-**Kind is gone from the chartr.** `internal/config/kinds.go` is deleted;
+**Kind is gone from chartr.** `internal/config/kinds.go` is deleted;
 `RolesForKind`, `KindOffersRole`, `resolveKinds`, `rawMap`, `Resolution.Kinds`,
 `GuessKind`, `ValidKind`, the three `Kind*` constants, `Map.Kind`,
 `Map.KindGuess`, `handleClassify` and its route are all gone. The spawn path's

@@ -14,7 +14,7 @@ export interface RoleBinding {
   args?: string[]
   // How the opener reaches this agent — `argv`, `type`, or a flag name like
   // `--prompt`. Absent means the adapter's own default stands, which is what
-  // nearly every binding wants; it is set only to drive a harness the chartr
+  // nearly every binding wants; it is set only to drive a harness chartr
   // ships no knowledge of.
   prompt?: string
   adapterFrom: Layer
@@ -136,7 +136,7 @@ export interface Space {
   pinned: boolean
   // True when the working tree carries uncommitted changes — a session's or a
   // shell's debris. A badge, never a spawn gate (story 68): the operator decides
-  // whether the debris is harmless; the chartr spawns into it all the same.
+  // whether the debris is harmless; chartr spawns into it all the same.
   dirty: boolean
   bindings: RoleBinding[]
   // The resolved skill library: every skill with the layer that won its whole

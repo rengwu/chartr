@@ -18,7 +18,7 @@ misreads every ticket's status, this map's own included), kept apart from ticket
 - **Parser** (`internal/wayfinder/parse.go`). Remove `StatusProposed`,
   `HasProposedAnswer` / `ProposedHeading`, and their `Derive()` branch; revert
   `Frontier()` to vanilla — resolved blockers unblock, with no approval and no
-  unclaimed condition; `doc.go` loses "the chartr's one addition." An in-flight
+  unclaimed condition; `doc.go` loses "chartr's one addition." An in-flight
   `## Proposed Answer` is now an **unknown heading**: a ticket carrying it derives
   `open` (or `claimed` if a claim marker survives), never `resolved` — ignored,
   not migrated.

@@ -88,7 +88,7 @@ func New(opts Options) (*Server, error) {
 		reg:  reg,
 	}
 	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild
-	// whenever a space's `.plan/` changes, so a map created outside the chartr
+	// whenever a space's `.plan/` changes, so a map created outside chartr
 	// appears on its own. rebuild also reconciles the watch set, so this starts
 	// covering whatever the persisted registry already holds.
 	s.watch = newWatcher(s.rebuild)
@@ -149,7 +149,7 @@ func New(opts Options) (*Server, error) {
 	// The death halt (ticket 10): a session that died stays pinned to its ticket,
 	// and the operator resolves it one of exactly three ways — resume it (same-
 	// ticket crash recovery), respawn a fresh session on the same ticket, or release
-	// the claim back to the frontier. The chartr itself takes none of these; each is
+	// the claim back to the frontier. chartr itself takes none of these; each is
 	// an explicit operator action, so nothing changes without an HTTP call.
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)

@@ -16,7 +16,7 @@ import (
 )
 
 // The death halt (ticket 10). When a session's process exits, its tab stays pinned
-// to its ticket — dead, scrollback intact — and the chartr does nothing on its
+// to its ticket — dead, scrollback intact — and chartr does nothing on its
 // own: no auto-kill, no timeout, no auto-requeue. The operator resolves it exactly
 // three ways, each a plain HTTP action so nothing changes without a call:
 //

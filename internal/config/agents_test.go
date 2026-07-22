@@ -341,7 +341,7 @@ func TestAgentIsJustABinaryAndFlags(t *testing.T) {
 // `model` was a binding field and is not one any more — it is a flag, and flags
 // live in args. A config that still sets it is *told*, in both layers and in the
 // library, because a key that quietly stopped taking effect is how a session ends
-// up running a model nobody chose. Nothing is migrated automatically: the chartr
+// up running a model nobody chose. Nothing is migrated automatically: chartr
 // will not invent the flag name a given harness wants.
 func TestRetiredModelKeyIsSurfacedNotHonoured(t *testing.T) {
 	res := resolveWith(t,

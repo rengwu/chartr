@@ -80,7 +80,7 @@ recommendation is still mechanical.
 - **A real bug fixed on the way:** `gitDirty` ran `git status --porcelain` on
   every rebuild, which takes `index.lock` to write its stat cache. A lifecycle
   write touches a watched ticket, which fires a rebuild, which raced the gate's
-  own `git add`. Every read-only git call the chartr makes now runs under
+  own `git add`. Every read-only git call chartr makes now runs under
   `--no-optional-locks`. It failed one full-suite run before I found it.
 
 **How each Done-when clause is met** (`internal/server/gate_test.go`, six
@@ -97,8 +97,8 @@ drives one exit):
   `unblocked: [2]` and the strip's suggestion pointing at it.
 - *smear detection* — `TestApproveDetectsTheAttributionSmear` drives the race for
   real rather than simulating it: a repository `pre-commit` hook (the operator's
-  own git, not a chartr seam) commits the whole tree out from under the chartr's
-  commit. The chartr's commit comes up empty, `smearedInto` names the hook's
+  own git, not a chartr seam) commits the whole tree out from under chartr's
+  commit. chartr's commit comes up empty, `smearedInto` names the hook's
   commit, the warning reaches the operator, and the ticket still resolves.
 - *the rejection tick gating approve* — `TestApproveOverRejectionNeedsTheTick`:
   without it, 409 naming the blocking finding, HEAD unmoved, ticket still
@@ -167,9 +167,9 @@ claim trailers.
   no-second-store rule, and it is what I hit while driving the demo. If that
   proves annoying, the fix is a per-ticket brief path rather than a per-session
   one — a change to where ticket 11 writes.
-- **`workCommits` identifies the chartr's own commits by subject prefix**
+- **`workCommits` identifies chartr's own commits by subject prefix**
   (`Claim `, `Release `, `Resolve `, `Abandon the proposal on `). Trailer-based
-  matching would be sturdier; the subjects are the chartr's own and stable, so I
+  matching would be sturdier; the subjects are chartr's own and stable, so I
   took the simpler read.
 - **Not built here:** the "Needs you" queue and the action-station badge (ticket
   14). The gate signal they read now exists on the snapshot.

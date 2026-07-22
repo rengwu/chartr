@@ -51,9 +51,9 @@ read wrong at the gate):
   renders "Nothing changed in this scope" — a wrong answer dressed as an empty
   diff. Return an anchored error instead.
 - **Chartr commits fingerprinted by subject.** `workCommits` / `isChartrSubject`
-  identify the chartr's own commits by subject prefix (`Claim `, `Resolve `, …),
+  identify chartr's own commits by subject prefix (`Claim `, `Resolve `, …),
   so any agent commit whose message starts with one is silently excluded from the
-  revert/reset set. Match the chartr's own commit **trailers** instead.
+  revert/reset set. Match chartr's own commit **trailers** instead.
 - **Cosmetic.** `demoteProposal` on a second abandonment inserts the new
   `### Rejected` section at the current proposal's position rather than grouping it
   under `## Rejected attempts`; the record can scatter.

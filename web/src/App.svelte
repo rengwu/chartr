@@ -141,7 +141,7 @@
   let opening = $state(false);
 
   // Adding a space is the operator's own OS folder chooser, raised server-side
-  // (the chartr always serves on loopback, so the dialog lands on their desktop
+  // (chartr always serves on loopback, so the dialog lands on their desktop
   // in the native shell and in a plain browser alike). The typed-path modal
   // survives only as the fallback for a machine with no chooser at all — a Linux
   // box with neither zenity nor kdialog — where it is the only way in.
@@ -294,7 +294,7 @@
     }
   }
 
-  // The death halt: a dead session offers exactly three choices, and the chartr
+  // The death halt: a dead session offers exactly three choices, and chartr
   // takes none on its own. Resume relaunches it on its own ticket (crash recovery);
   // respawn starts a fresh session on the same ticket; release clears the claim back
   // to the frontier. The resulting state arrives over the control socket.
@@ -623,7 +623,7 @@
                         {#if t.session && !t.alive}
                           <!-- The death halt: a dead session is pinned to its ticket and
                                offers exactly three choices — resume it (crash recovery),
-                               respawn a fresh session, or release the claim. The chartr
+                               respawn a fresh session, or release the claim. chartr
                                takes none itself. -->
                           <span
                             class="-my-0.5 -mr-1 flex shrink-0 items-center"
@@ -791,7 +791,7 @@
           <div class="flex w-full max-w-sm flex-col items-start gap-3">
             <h1 class="text-lg font-semibold">Register your first space</h1>
             <p class="text-sm text-muted-foreground">
-              Point the chartr at a project folder. If it isn’t a git repository
+              Point chartr at a project folder. If it isn’t a git repository
               yet, one is initialized there — announced, never silent.
             </p>
             <Button disabled={picking} onclick={addSpace}>
@@ -865,7 +865,7 @@
        operator gets their own OS chooser and never sees this. -->
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
     <p class="mb-3 text-xs text-muted-foreground">
-      No folder chooser was found on this machine, so point the chartr at a
+      No folder chooser was found on this machine, so point chartr at a
       project folder by pasting its absolute path. If it isn’t a git repository
       yet, one is initialized there, announced.
     </p>

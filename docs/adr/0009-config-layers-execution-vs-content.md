@@ -9,13 +9,13 @@ The rule that reconciles them: **content the project ships wins; execution choic
 
 Two things follow at the boundary of "what may be committed":
 
-- Bindings are `{adapter, model, args?}` — structured, so the chartr can reason about them (compare models for heterogeneity, probe binaries for presence). Machine-specific absolute paths do not belong in the committed layer; that is what the user layer is for. The `args` escape hatch exists for flags the adapter does not model, and using it knowingly forfeits the chartr's introspection on that binding.
+- Bindings are `{adapter, model, args?}` — structured, so chartr can reason about them (compare models for heterogeneity, probe binaries for presence). Machine-specific absolute paths do not belong in the committed layer; that is what the user layer is for. The `args` escape hatch exists for flags the adapter does not model, and using it knowingly forfeits chartr's introspection on that binding.
 - **Autopilot has no committed representation.** Disabling both reviews is a per-machine, disclaimed choice; a committed autopilot flag is ignored with a warning. Committing "no human reviews this code" for everyone who clones is the exact drift "cockpit, not autopilot" exists to prevent.
 
 ## Consequences
 
-- Heterogeneity (`implement ≠ review` model) is **not enforced in config** — it cannot be an invariant (model strings can alias one backend, and the `args` hatch can swap the effective model), so it is surfaced as an *observed*-model line in the human-review brief (ticket 10) rather than guarded at resolution time. The chartr always allows; judgment lives at the one human gate.
-- Merge is field-level: a user override may set one field and inherit the rest, so the chartr renders the **effective** resolved binding to keep silent inheritance visible.
+- Heterogeneity (`implement ≠ review` model) is **not enforced in config** — it cannot be an invariant (model strings can alias one backend, and the `args` hatch can swap the effective model), so it is surfaced as an *observed*-model line in the human-review brief (ticket 10) rather than guarded at resolution time. chartr always allows; judgment lives at the one human gate.
+- Merge is field-level: a user override may set one field and inherit the rest, so chartr renders the **effective** resolved binding to keep silent inheritance visible.
 - The committed config file gains a second tenant beside map-kind. The local user layer is the first chartr state that is neither a space's committed config nor per-map — its home is `~/.config/chartr/`, keyed by space, and the space registry (ticket 11) owns its lifecycle.
 
 ## Considered options
@@ -54,7 +54,7 @@ Repeating `{adapter, args, prompt}` per role was fine while a binding was two sh
 
 **The library is global; assignment stays per space.** This is the one place this ADR's "keyed by space" user layer grows an unkeyed section, and it is deliberate: which agents exist is a property of the *machine* (its PATH, its logins, how much rope its operator wants), while which role runs which agent is a property of the *work*. Registering once and assigning everywhere follows from that split, and so does the safety property — the library is never committed, so no `git pull` can hand a teammate a permission-skipping agent. The edit boundary from the previous amendment is unchanged and now covers a second table: a UI writes the user layer only, `[agents.*]` and `roles.<role>.agent` included.
 
-**Flags are an opaque list, deliberately.** The surface offers no curated per-CLI toggles. The chartr cannot know what any given flag means to the harness that defines it, and a menu of them would make the library exactly as agent-specific as ADR 0002 refused to be — it would also silently exclude every harness not on the menu. The honest substitute is the command preview under each agent, built by the same seam that builds the real argv, so what the operator reads is what will run.
+**Flags are an opaque list, deliberately.** The surface offers no curated per-CLI toggles. chartr cannot know what any given flag means to the harness that defines it, and a menu of them would make the library exactly as agent-specific as ADR 0002 refused to be — it would also silently exclude every harness not on the menu. The honest substitute is the command preview under each agent, built by the same seam that builds the real argv, so what the operator reads is what will run.
 
 Deleting an agent leaves assignments pointing at it. That is not an oversight: the delete reports which roles it stranded, and each stranded role resolves to a visible explanation while falling back to its own fields. A library edit that quietly rewrote a space's bindings would be precisely the kind of action this surface exists not to take.
 
@@ -68,11 +68,11 @@ adapter = "claude"
 args    = ["--model", "sonnet", "--dangerously-skip-permissions"]
 ```
 
-The field only ever looked structural. In practice it was one CLI's spelling promoted to a schema: `--model` is Claude's and Codex's, and a harness that spells it `-m`, configures it in its own file, or has no model concept at all had to route around a first-class field that did not fit. Line 12's claim that structure lets the chartr "reason about" bindings has already lapsed twice — the heterogeneity comparison it justified went with the review gate, and PATH presence is probed from `adapter`, not `model`. What remained was a field the chartr stored, rendered, and passed through without ever reading. That is not structure; it is a guess with a text box.
+The field only ever looked structural. In practice it was one CLI's spelling promoted to a schema: `--model` is Claude's and Codex's, and a harness that spells it `-m`, configures it in its own file, or has no model concept at all had to route around a first-class field that did not fit. Line 12's claim that structure lets chartr "reason about" bindings has already lapsed twice — the heterogeneity comparison it justified went with the review gate, and PATH presence is probed from `adapter`, not `model`. What remained was a field chartr stored, rendered, and passed through without ever reading. That is not structure; it is a guess with a text box.
 
 Three consequences, all simplifications:
 
-- **The adapter seam models exactly one thing about a CLI: prompt delivery.** `ModelFlag` is gone. Delivery stays modelled only because the chartr itself must *behave* differently depending on the answer (type keystrokes, or don't); no flag has ever needed that.
+- **The adapter seam models exactly one thing about a CLI: prompt delivery.** `ModelFlag` is gone. Delivery stays modelled only because chartr itself must *behave* differently depending on the answer (type keystrokes, or don't); no flag has ever needed that.
 - **The claim trailer records `Args:` instead of `Model:`.** Strictly more of the audit trail, not less: the argv is what actually ran, so the model appears where one was asked for *and* the permission and sandbox flags appear beside it — which is what the trail is read for. The subject line drops its `· model` suffix.
 - **The shipped defaults express their model as args** (`args = ["--model", "opus"]` for grill, sonnet for the rest), so behaviour is unchanged for anyone who never touched their config.
 
@@ -81,7 +81,7 @@ A config that still sets `model` is **surfaced, never honoured** — one warning
 ## Amendment: map kind lapses from the committed layer (kind-cut, ticket 04)
 
 The two-layer mechanism this ADR decides is **untouched**. What lapses is the
-other tenant it kept naming: **map kind is removed from the chartr entirely**
+other tenant it kept naming: **map kind is removed from chartr entirely**
 (ADR 0015, superseding 0007). So line 3's parenthetical is provenance only —
 committed workspace config was first established for map-kind, and no longer
 holds it — and the consequence that "the committed config file gains a second

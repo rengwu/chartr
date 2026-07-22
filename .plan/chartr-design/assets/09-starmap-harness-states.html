@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROTOTYPE — rendering chartr states on the star-map (ticket 09)</title>
 <!--
-  PROTOTYPE — throwaway. Answers ticket 09: how do the chartr's new states —
+  PROTOTYPE — throwaway. Answers ticket 09: how do chartr's new states —
   implementing, proposed, agent review, human review, plus ticket 02's liveness
   vocabulary (working / quiet / dead) — read on a star-map whose palette is
   already spent on six states?
@@ -172,7 +172,7 @@
 
 <div id="help"><div class="inner">
   <h2>Ticket 09 — rendering chartr states on the star-map</h2>
-  <p>The shipped viewer spends colour, size, glow and pulse on six states. The chartr adds
+  <p>The shipped viewer spends colour, size, glow and pulse on six states. chartr adds
      a pipeline (implementing → proposed → agent review → human review) and a liveness hint
      (working / quiet / dead). Adding five more colours is a christmas tree — so each variant
      proposes a different <em>orthogonal axis</em>, leaving the base palette untouched.</p>
@@ -748,7 +748,7 @@ function drawLegendFrames(){
 /* --- selection card --------------------------------------------------------- */
 var STATE_COPY = {
   "resolved":"Answered and blessed. On disk, resolved always means human-approved (ADR 0004).",
-  "frontier":"Open, unblocked, unclaimed — takeable now. The chartr's frontier is stricter than wayfinder's: blockers must be approved, not merely answered.",
+  "frontier":"Open, unblocked, unclaimed — takeable now. chartr's frontier is stricter than wayfinder's: blockers must be approved, not merely answered.",
   "claimed":"A session holds this ticket (vanilla wayfinder read — no chartr session overlay).",
   "blocked":"Open, but a blocker is not yet approved.",
   "out_of_scope":"Ruled out of this map's destination.",

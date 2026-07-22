@@ -12,7 +12,7 @@
 /node_modules/
 
 # The space registry is user-config runtime state (ticket 02); a copy lands at
-# the repo root when the chartr runs with cwd here — never committed.
+# the repo root when chartr runs with cwd here — never committed.
 /spaces.toml
 
 # The local user config layer (ticket 02, ADR 0009): per-machine binding

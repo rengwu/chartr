@@ -1,4 +1,4 @@
-// Package terminal owns the chartr's PTYs and the ad-hoc shells that run in
+// Package terminal owns chartr's PTYs and the ad-hoc shells that run in
 // them. An ad-hoc shell is deliberately not a session (spec, State model): it
 // carries no ticket and no lifecycle — it is a plain multiplexer
 // terminal in a space's working tree, opened by the operator and ended by the

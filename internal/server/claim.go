@@ -35,12 +35,12 @@ type claim struct {
 	ArgsFrom    config.Layer
 }
 
-// writeClaimCommit is the chartr's one lifecycle write at spawn (ADR 0008): it
+// writeClaimCommit is chartr's one lifecycle write at spawn (ADR 0008): it
 // stamps the ticket file with claimed_by/claimed_at so the ticket derives
 // `claimed`, then commits *only that file* with structured trailers. The commit is
 // pathspec-limited — `git commit --only -- <ticket>` builds it from HEAD plus the
 // one path, so whatever else sits staged in the operator's index (their own work,
-// a live session's edits) can never be swept into the chartr's claim. It handles
+// a live session's edits) can never be swept into chartr's claim. It handles
 // a not-yet-tracked ticket (a freshly charted map) and an unborn HEAD (a first
 // commit); the caller has already resolved the binding and composed the payload,
 // so this only records them.

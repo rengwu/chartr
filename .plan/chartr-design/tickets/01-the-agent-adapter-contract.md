@@ -9,9 +9,9 @@ assets: [.plan/chartr-design/assets/01-agent-adapter-contract-research.md]
 
 ## Question
 
-The chartr is agent-agnostic (ADR 0002), so every session runs through a per-agent **adapter**. What must an adapter be able to do — and can the agents we intend to support actually do it?
+chartr is agent-agnostic (ADR 0002), so every session runs through a per-agent **adapter**. What must an adapter be able to do — and can the agents we intend to support actually do it?
 
-Investigate the current CLIs — **claude, codex, opencode, pi**, plus any other worth including — against the four things the chartr needs from each:
+Investigate the current CLIs — **claude, codex, opencode, pi**, plus any other worth including — against the four things chartr needs from each:
 
 1. **Launch** into a PTY, in a given working directory, without a human present to answer a first-run prompt.
 2. **Inject an opening prompt** that wires the session to a role.
@@ -20,7 +20,7 @@ Investigate the current CLIs — **claude, codex, opencode, pi**, plus any other
 
 Record per agent, because later tickets need it: how a **model is selected** (ticket 05 needs this for review heterogeneity), whether a session can be **resumed**, how the agent is told to **stop**, and what it reports about **cost** (a fog patch hangs on this).
 
-Produce a cited comparison as a linked asset — one section per agent — ending with the finding that matters most: **the narrowest contract every supported agent can satisfy.** That intersection is the adapter interface. Anything outside it is a per-adapter capability the chartr must treat as optional, and the spec has to say what degrades when it is missing.
+Produce a cited comparison as a linked asset — one section per agent — ending with the finding that matters most: **the narrowest contract every supported agent can satisfy.** That intersection is the adapter interface. Anything outside it is a per-adapter capability chartr must treat as optional, and the spec has to say what degrades when it is missing.
 
 ## Answer
 
@@ -39,7 +39,7 @@ what they share is a clean adapter interface. Full cited survey:
    first-run/approval prompt by its own incantation, which the adapter hides.
 2. **`observe(PTY) → {alive, exited(code), tokens}`** — liveness/failure from the process exit code,
    token usage from the agent's JSON event stream (all four emit one). The adapter owes **no**
-   semantic "finished" signal: per ADR 0004 the chartr derives *finished* from the ticket's
+   semantic "finished" signal: per ADR 0004 chartr derives *finished* from the ticket's
    `## Answer` + commit.
 3. **`stop(PTY)`** — terminate by signal.
 
@@ -49,13 +49,13 @@ what they share is a clean adapter interface. Full cited survey:
   uniformly, for every agent — keeping one prompt-assembly path (ADR 0002).
 - **Dollar cost is native only on claude (in-stream) and opencode (`stats`, out of band).** codex and
   pi report **token counts** only. Floor = tokens (universal); dollars are **derived** from tokens ×
-  a per-model price table the chartr maintains. *(This clears the cost-visibility fog — now
+  a per-model price table chartr maintains. *(This clears the cost-visibility fog — now
   [ticket 14](./14-cost-and-token-visibility.md).)*
-- **Budget/turn caps are native only on claude** (`--max-budget-usd`, `--max-turns`). For the rest the
+- **Budget/turn caps are native only on claude** (`--max-budget-usd`, `--max-turns`). For the rest
   chartr enforces a cap itself by watching stream tokens and calling `stop()`.
 
 **One capability is excluded by design, not merely optional:** every agent *can* resume a prior
-session, but ADR 0005 (assembled context, no agent memory) means the chartr **re-spawns fresh** each
+session, but ADR 0005 (assembled context, no agent memory) means chartr **re-spawns fresh** each
 time and never resumes — resuming would smuggle back the accumulated agent memory that ADR rejects.
 
 **Flagged, not re-decided:** codex is the agent that most strains the "narrowest contract" premise

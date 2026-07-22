@@ -67,7 +67,7 @@
     - Register a space (+ button): path -> git-repo check ("not a repo? git
       init") -> .plan scan ("3 maps" / "no maps yet, usable as shells").
     - First run: an empty cockpit with nothing but "register your first space".
-    - Remove a space: forget-not-destroy — the chartr touches NOTHING in the
+    - Remove a space: forget-not-destroy — chartr touches NOTHING in the
       repo, warns if a session is live, reclaims only its own PTY.
     - An unclassified map (ADR 0007): notice -> one-click confirm kind, inline.
 
@@ -436,7 +436,7 @@ function actionables(){
 
 /* ============================================================================
    THE STAR-MAP — ticket 09's canonical "Moons" surface, made live here.
-   Ticket 08 owns the map pane and its M / Esc summon; ticket 09 owns how the
+   Ticket 08 owns the map pane and its M / Esc summon; ticket 09 owns how
    chartr's session states paint on it. This viewer ports the *decided* pieces
    of both (only the canonical A overlay, not 09's rejected B/C) so the "◀ map"
    handle stops being a stub. Everything below is throwaway prototype code.
@@ -464,7 +464,7 @@ const HH={ session:"#ffd873", violet:"#c792ea", human:"#ffedbe", dead:"#8894a5" 
 
 /* real-ish ticket titles per map so the graphs read as real work, not lorem */
 const TITLES={
-  "chartr-design":["The agent adapter contract","Knowing a session finished, hung, or died","Planning map vs implementation map","The prompt library the chartr injects","Mapping roles to agents","Who commits, and how work is abandoned","Charting a new map from a space","The cockpit layout","Rendering chartr states on the star-map","The human review hub","The space registry and switching","Frontend framework and build","Shipping the chartr cross-platform","Cost and token visibility"],
+  "chartr-design":["The agent adapter contract","Knowing a session finished, hung, or died","Planning map vs implementation map","The prompt library chartr injects","Mapping roles to agents","Who commits, and how work is abandoned","Charting a new map from a space","The cockpit layout","Rendering chartr states on the star-map","The human review hub","The space registry and switching","Frontend framework and build","Shipping chartr cross-platform","Cost and token visibility"],
   "export-csv-impl":["The filtering seam and streaming CSV download","Per-date historical conversion & rate backfill","The streaming-export endpoint","The Export page and its preview fragment","Large-export pagination & backpressure","Docs and architecture catch up"],
   "starmap-v2":["Port the shipped viewer's draw layer","Deterministic layout, computed once","The status → overlay mapping","Human-review call-to-action rendering","Offscreen beacon chevrons","fsnotify → re-derive → push","Live flare + ticker on change","Touch and trackpad input","WebKit verification pass"],
   "adapter-impl":["Spawn: launch the agent CLI in a PTY","Inject the context bundle at spawn","Observe: liveness from PTY output","Stop: reclaim the process cleanly","Detect finished vs hung vs died","The proposed-answer handshake","Adapter conformance tests"],
@@ -476,7 +476,7 @@ const TITLES={
 const MVCOPY={
   "resolved":"Answered and blessed. On disk, resolved always means human-approved (ADR 0004).",
   "frontier":"Open, unblocked, unclaimed — takeable now. Spawn a session against it.",
-  "blocked":"Open, but a blocker is not yet approved. The chartr's frontier is stricter than wayfinder's.",
+  "blocked":"Open, but a blocker is not yet approved. chartr's frontier is stricter than wayfinder's.",
   "out_of_scope":"Ruled out of this map's destination.",
   "implementing-working":"A session holds the ticket and its PTY is producing output.",
   "implementing-quiet":"Silent past the threshold with no Proposed Answer — a hint the cockpit surfaces and never acts on (ticket 02).",
@@ -984,7 +984,7 @@ function openRegister(){
   S.dialog=()=>{
     const body=h("div",{class:"dlg"},
       h("h3",{},"Register a space"),
-      h("div",{class:"sub"},"A space is a git repository the chartr drives. Pick a folder — you register it once, then switch to it from the sidebar."),
+      h("div",{class:"sub"},"A space is a git repository chartr drives. Pick a folder — you register it once, then switch to it from the sidebar."),
       h("div",{class:"field"},
         h("input",{id:"reg-path",placeholder:"~/dev/my-project",value:path,autocomplete:"off",
           oninput:e=>{path=e.target.value;}}),
@@ -1016,7 +1016,7 @@ function probeFor(p){
 function probeBox(pr){
   if(pr.empty) return h("div",{class:"probe"},h("span",{class:"dm"},"Enter a path, then Check."));
   const lns=[];
-  if(pr.git) lns.push(h("div",{class:"ln"},h("span",{class:"ok"},"✓"),h("span",{},"Git repository — ",h("b",{},pr.nm),". The chartr drives one working tree per space.")));
+  if(pr.git) lns.push(h("div",{class:"ln"},h("span",{class:"ok"},"✓"),h("span",{},"Git repository — ",h("b",{},pr.nm),". chartr drives one working tree per space.")));
   else lns.push(h("div",{class:"ln"},h("span",{class:"warn"},"○"),h("span",{},"Not a git repo yet — ",h("b",{},"Register runs git init here first"),". An empty or non-repo folder is fine.")));
   if(pr.git && pr.plan) lns.push(h("div",{class:"ln"},h("span",{class:"ok"},"✓"),h("span",{},"Found ",h("b",{},".plan/")," — ",h("b",{},pr.maps+(pr.maps===1?" map":" maps")),pr.unknown?", "+pr.unknown+" to classify (you'll confirm after).":".")));
   else lns.push(h("div",{class:"ln"},h("span",{class:"warn"},"○"),h("span",{},"No maps yet — that's fine. This space opens as shells; chart a map later with ",h("b",{},"/wayfinder"),".")));
@@ -1060,7 +1060,7 @@ function openRemove(s){
       h("h3",{},"Remove ",s.nm,"?"),
       h("div",{class:"sub"},"This is ",h("b",{},"forget, not destroy"),"."),
       h("div",{class:"does"},
-        h("div",{},h("b",{},"The chartr touches nothing in the repo:")," not ",h("span",{class:"no",style:"color:#9aa7c2"},".plan/"),", not the working tree, not git, not committed workspace config. It only forgets this entry and its local pin/recency."),
+        h("div",{},h("b",{},"chartr touches nothing in the repo:")," not ",h("span",{class:"no",style:"color:#9aa7c2"},".plan/"),", not the working tree, not git, not committed workspace config. It only forgets this entry and its local pin/recency."),
         h("div",{style:"margin-top:7px"},h("span",{class:"no"},"Re-register any time")," and the repo picks up exactly as it sits — commits in git, a dirty tree still dirty.")),
       live && h("div",{class:"warnbox"},"⚠ A session is ",h("b",{},"live")," here. Removing stops that terminal session — the files it already wrote ",h("b",{},"stay exactly as they are"),"."),
       h("div",{class:"acts"},
@@ -1075,7 +1075,7 @@ function removeSpace(s){
   const i=SPACES.indexOf(s); if(i>=0)SPACES.splice(i,1);
   if(s.active && SPACES.length){ SPACES[0].active=true; }
   closeDialog();
-  toast("Removed <b>"+s.nm+"</b> from the chartr. Every byte on disk is untouched — this only forgot the registry entry.");
+  toast("Removed <b>"+s.nm+"</b> from chartr. Every byte on disk is untouched — this only forgot the registry entry.");
 }
 
 /* ============ first-run empty state ============ */
@@ -1084,7 +1084,7 @@ function firstRun(){
     h("div",{class:"fr-card"},
       h("div",{class:"mk"},"✦"),
       h("h2",{},"No spaces yet"),
-      h("p",{},"The chartr drives git repositories — register your first to begin. Nothing else is on screen because there is nothing yet to switch between or map."),
+      h("p",{},"chartr drives git repositories — register your first to begin. Nothing else is on screen because there is nothing yet to switch between or map."),
       h("button",{class:"btn primary",style:"font-size:13px;padding:9px 18px",onclick:()=>{S.firstrun=false; openRegister();}},"Register a space →"),
       h("div",{class:"hint"},"Point at a repo with a wayfinder map and you land on its star-map, one click from a frontier ticket. Point at one without and it opens as shells — chart a map with /wayfinder when you're ready.")));
 }
@@ -1104,7 +1104,7 @@ const INFO_COMMON=`
 <p><b>Discover</b> — two layers: the registry (spaces) over wayfinder-maps' liftable per-<i>.plan/</i> picker (maps). New maps appear by <i>notice</i> (ticket 07), not a refresh button. Finished maps sort last; an unclassified map gets a one-click <b>confirm-kind</b> inline (ADR 0007).</p>
 <p><b>Switch</b> — switching swaps the terminal column and star-map; the space you leave <b>keeps cooking</b> in its own PTY. Switching is attention redirection, <b>never a lifecycle event</b> — it never pauses, kills or checkpoints a session (one runs per space, ADR 0003).</p>
 <p><b>Order & scale</b> — 5–20 spaces, <b>flat, no sections</b>: pinned first (manual), then recency. An actionable signal flags a row but <b>never re-sorts</b> it (stable layout, like 09's overlays-not-positions). The filter box is <b>always present</b>.</p>
-<p><b>Remove</b> — <b>forget, not destroy</b>: touches nothing in the repo, ever. A live session only means the chartr reclaims its own PTY (the process is the chartr's; the tree is yours). Re-register and the repo is exactly as it sits.</p>
+<p><b>Remove</b> — <b>forget, not destroy</b>: touches nothing in the repo, ever. A live session only means chartr reclaims its own PTY (the process is chartr's; the tree is yours). Re-register and the repo is exactly as it sits.</p>
 <p><b>First run</b> — an empty cockpit is just “register your first space”; from there onboarding hands straight to ticket 07's on-ramps (map → spawn; no map → shells/ideate). This clears <i>First-run onboarding</i> from the map's Not-yet-specified.</p>`;
 const INFO={
 A:`<h4>A — Harbour · canonical</h4>

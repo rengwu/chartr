@@ -277,7 +277,7 @@ func openResolved(w http.ResponseWriter, path string) {
 
 // openInEditor launches the operator's editor on path, reporting how it got
 // there. It never blocks on the child: an editor is the operator's to close, and
-// the chartr has no business waiting on it.
+// chartr has no business waiting on it.
 func openInEditor(path string) (how, with string) {
 	for _, env := range []string{"VISUAL", "EDITOR"} {
 		cmd := strings.TrimSpace(os.Getenv(env))

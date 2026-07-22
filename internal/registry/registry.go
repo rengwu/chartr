@@ -218,7 +218,7 @@ func spaceID(absPath string) string {
 
 func isGitRepo(dir string) bool {
 	// A .git entry (directory for a normal clone, a file for a linked worktree)
-	// marks the repository root; the chartr registers repository roots.
+	// marks the repository root; chartr registers repository roots.
 	_, err := os.Stat(filepath.Join(dir, ".git"))
 	return err == nil
 }
