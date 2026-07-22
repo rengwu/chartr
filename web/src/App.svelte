@@ -10,6 +10,9 @@
     respawnSession,
     releaseSession,
     ideate,
+    pickFolder,
+    registerSpace,
+    ActionError,
   } from "./lib/actions";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
@@ -42,6 +45,7 @@
     Warning,
     GitBranchIcon,
     GitDiffIcon,
+    FolderOpen,
   } from "phosphor-svelte";
 
   // Zero-pad a ticket number for a session row's label (#01), matching the detail
@@ -134,8 +138,50 @@
   // now what selects a terminal, so the pane just renders whichever one is active.
   let activeTermId = $state<string | null>(null);
   let filter = $state("");
-  let showAdd = $state(false);
   let opening = $state(false);
+
+  // Adding a space is the operator's own OS folder chooser, raised server-side
+  // (the chartr always serves on loopback, so the dialog lands on their desktop
+  // in the native shell and in a plain browser alike). The typed-path modal
+  // survives only as the fallback for a machine with no chooser at all — a Linux
+  // box with neither zenity nor kdialog — where it is the only way in.
+  const nativePicker = $derived(control.model?.nativePicker ?? false);
+  let showAdd = $state(false);
+  let picking = $state(false);
+  // The register outcome, shown inline beside the button that started it: the
+  // announced `git init` (story 2) and every refusal. There is no modal left to
+  // carry them.
+  let addNotice = $state<string | null>(null);
+  let addError = $state<string | null>(null);
+
+  // addSpace is the whole add flow: name a folder in the native chooser, then
+  // register it. The two are separate calls on purpose — registration keeps the
+  // one action, and one response shape, it has always had.
+  async function addSpace() {
+    if (picking) return;
+    if (!nativePicker) {
+      showAdd = true;
+      return;
+    }
+    picking = true;
+    addNotice = null;
+    addError = null;
+    try {
+      const picked = await pickFolder();
+      // Dismissing the chooser is an ordinary outcome, not a failure: say nothing
+      // and leave the sidebar exactly as it was.
+      if (picked.cancelled || !picked.path) return;
+      const res = await registerSpace(picked.path);
+      addNotice = res.gitInited
+        ? `Added ${picked.path} — it wasn’t a git repository, so a new one was initialized there.`
+        : `Added ${picked.path}.`;
+      selectedId = res.id;
+    } catch (err) {
+      addError = err instanceof ActionError ? err.message : String(err);
+    } finally {
+      picking = false;
+    }
+  }
   // The effective selection falls back to the first space when the id is stale
   // (e.g. the selected space was just forgotten), so the pane never blanks while
   // spaces remain. No effect mutates state; selection is pure derivation.
@@ -673,15 +719,46 @@
       <!-- The effective config surface (ticket 05) is entered per space — each
            space card carries its own ⚙ — or with `,`; this stickied footer
            keeps only what is genuinely cross-space: adding a new one. -->
-      <div class="border-t border-sidebar-border p-2">
+      <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
+        <!-- The register outcome lands here, next to the control that caused it:
+             the announced `git init` and every refusal. Dismissible, because it
+             is a report on a finished action and nothing depends on it. -->
+        {#if addNotice || addError}
+          <div
+            class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
+            role={addError ? "alert" : "status"}
+          >
+            <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
+              {addError ?? addNotice}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss"
+              onclick={() => {
+                addNotice = null;
+                addError = null;
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        {/if}
         <Button
           variant="outline"
           size="sm"
           class="w-full"
-          aria-expanded={showAdd}
-          onclick={() => (showAdd = !showAdd)}
+          disabled={picking}
+          aria-expanded={nativePicker ? undefined : showAdd}
+          onclick={addSpace}
         >
-          <Plus /> New Space
+          {#if picking}
+            <CircleNotch class="animate-spin" /> Choosing…
+          {:else if nativePicker}
+            <FolderOpen /> New Space
+          {:else}
+            <Plus /> New Space
+          {/if}
         </Button>
       </div>
     {/if}
@@ -690,10 +767,34 @@
   <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
     {#if spaces.length === 0}
       <div class="grid h-full place-items-center p-6">
-        <RegisterForm
-          variant="first-run"
-          onRegistered={(id) => (selectedId = id)}
-        />
+        <!-- First run is the same add action as the sidebar's, so it is the same
+             chooser — a native picker the operator would only meet on their
+             second space would be a picker they never meet. The typed form is
+             still what a machine with no chooser gets. -->
+        {#if nativePicker}
+          <div class="flex w-full max-w-sm flex-col items-start gap-3">
+            <h1 class="text-lg font-semibold">Register your first space</h1>
+            <p class="text-sm text-muted-foreground">
+              Point the chartr at a project folder. If it isn’t a git repository
+              yet, one is initialized there — announced, never silent.
+            </p>
+            <Button disabled={picking} onclick={addSpace}>
+              {#if picking}
+                <CircleNotch class="animate-spin" /> Choosing…
+              {:else}
+                <FolderOpen /> Choose a folder…
+              {/if}
+            </Button>
+            {#if addError}
+              <p class="text-xs text-destructive" role="alert">{addError}</p>
+            {/if}
+          </div>
+        {:else}
+          <RegisterForm
+            variant="first-run"
+            onRegistered={(id) => (selectedId = id)}
+          />
+        {/if}
       </div>
     {:else if selected}
       <SpacePane
@@ -742,10 +843,15 @@
     <span>control socket: {control.status}</span>
   </footer>
 
+  <!-- The typed-path modal is now the fallback and nothing else: it opens only on
+       a machine with no native folder chooser (Linux without zenity or kdialog,
+       or Windows), where pasting a path is the only way in. Everywhere else the
+       operator gets their own OS chooser and never sees this. -->
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
     <p class="mb-3 text-xs text-muted-foreground">
-      Point the chartr at a project folder — paste its absolute path. If it
-      isn’t a git repository yet, one is initialized there, announced.
+      No folder chooser was found on this machine, so point the chartr at a
+      project folder by pasting its absolute path. If it isn’t a git repository
+      yet, one is initialized there, announced.
     </p>
     <RegisterForm
       variant="inline"

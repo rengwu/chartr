@@ -112,11 +112,18 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// The global skill library resolves with no repo in play, so it is the same
 	// answer whether or not a space is registered — which is exactly what the
 	// settings route's global scope needs.
+	// Whether a native folder chooser exists is a property of the machine, not of
+	// the registry, so it is resolved here on the same lookup the picker itself
+	// does rather than cached — it is a $PATH check, and the answer must not go
+	// stale if the operator installs zenity mid-run.
+	_, nativePicker := nativePicker(pickStartDir())
+
 	return model.Model{
-		Spaces: spaces,
-		Config: s.globalLayers(),
-		Skills: s.resolvedSkills(""),
-		Agents: agentLibrary(userTOML),
+		Spaces:       spaces,
+		Config:       s.globalLayers(),
+		Skills:       s.resolvedSkills(""),
+		Agents:       agentLibrary(userTOML),
+		NativePicker: nativePicker,
 	}
 }
 

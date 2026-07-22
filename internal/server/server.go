@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/rengwu/chartr/internal/prompt"
@@ -48,6 +49,9 @@ type Server struct {
 	reg   *registry.Registry
 	watch *watcher
 	terms *terminal.Manager
+	// pickLock serializes native folder choosers, so a double-click on New Space
+	// raises one dialog rather than a stack the operator dismisses in order.
+	pickLock sync.Mutex
 }
 
 // New builds a Server with the control-socket hub seeded to the empty model and
@@ -105,6 +109,12 @@ func New(opts Options) (*Server, error) {
 	// registry actions; spawn, halt, and the rest hang here later.
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("POST /api/spaces", s.handleRegister)
+	// Naming the folder to register: the operator's own OS folder chooser, raised
+	// server-side like the config surface's open action. It is a POST because it
+	// raises a dialog, and it is separate from the register above so that action
+	// stays the one place a space is created — the client posts back whatever path
+	// comes out of here.
+	s.mux.HandleFunc("POST /api/spaces/pick", s.handlePickFolder)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	// The effective config surface (ticket 05, ADR 0014). The read half rides the

@@ -36,6 +36,22 @@ export function registerSpace(path: string): Promise<RegisterResult> {
   return send('POST', '/api/spaces', { path }) as Promise<RegisterResult>
 }
 
+// pickFolder raises the operator's own OS folder chooser and resolves to the
+// folder they named, or `cancelled` when they dismiss it. It registers nothing —
+// the caller posts the returned path through registerSpace — so the announced
+// `git init` and every refusal keep the one response shape they already have.
+//
+// The request stays open for as long as the dialog does, which is exactly the
+// point: the chooser is modal to the operator, not to the page.
+export interface PickResult {
+  path?: string
+  cancelled: boolean
+}
+
+export function pickFolder(): Promise<PickResult> {
+  return send('POST', '/api/spaces/pick') as Promise<PickResult>
+}
+
 export function deregisterSpace(id: string): Promise<void> {
   return send('DELETE', `/api/spaces/${encodeURIComponent(id)}`) as Promise<void>
 }

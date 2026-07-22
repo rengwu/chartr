@@ -33,6 +33,13 @@ type Model struct {
 	// in the operator's own config and is never committed), so it is derived once
 	// here beside the layers that resolve it. Never nil.
 	Agents []Agent `json:"agents"`
+	// NativePicker is whether this machine can raise an OS folder chooser for
+	// "add a space" — always true on macOS, true on Linux with zenity or kdialog
+	// installed, false otherwise. It is capability, not state, so it never
+	// changes over a run; it rides the snapshot because the frontend has no other
+	// way to know whether to raise a chooser or fall back to asking the operator
+	// to paste a path.
+	NativePicker bool `json:"nativePicker"`
 }
 
 // ConfigLayer is one file or directory a space's effective config resolves
