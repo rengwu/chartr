@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: saba3c5ff2ada
+claimed_at: 2026-07-22T05:50:05Z
 ---
 
 # Sweep dead weight
