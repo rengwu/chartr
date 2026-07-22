@@ -12,3 +12,11 @@ The alternatives were rejected on the map's standing rule. Harness-commits-every
 - Approval never waits on a live session: the narrow write is safe against the shared index, and the residual race (an agent's `git commit -a` sweeping the promotion edit) degrades to an attribution smear the harness detects — its own commit comes up empty — and reports.
 - The harness's linearity guarantee ends at the local repository; the remote is the operator's.
 - A dirty tree is surfaced, never cleaned: uncommitted debris from a dead or abandoned session is a badge in the cockpit, and spawning into it is allowed. The contamination risk this accepts is the operator's to manage; autopilot, if it ever arrives, forces this open again.
+
+## Amendment: the harness's write set shrinks to claim + release (simplify, ticket 03)
+
+The ownership split and the append-only rule are unchanged — the harness still commits only its own lifecycle writes, each pathspec-limited and trailer-carrying, and still never amends, resets, reverts or pushes. What changes is *how many* writes it owns.
+
+With the review feature gone there is no promotion and no rejection demotion, so the harness's deterministic writes are **two**: the **claim** at spawn and the **release** at a death halt. The implementing agent writes its own `## Answer` — not a `## Proposed Answer` — and commits it, still by prompt convention the harness cannot enforce.
+
+Two consequences lapse with the writes they described: the approval-vs-live-session race (there is no approval commit left to smear) and the revert/reset levers the review hub offered (there is no hub). The dirty-tree badge stands, and so does git as the whole audit trail.

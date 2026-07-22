@@ -1,6 +1,6 @@
 # wayfinder-harness
 
-A cockpit for driving wayfinder maps to completion: switch between project spaces, read a map as a star-map, and spawn agent sessions against its frontier — with implementation work gated behind review.
+A cockpit for driving wayfinder maps to completion: switch between project spaces, read a map as a star-map, and spawn agent sessions against its frontier.
 
 ## Language
 
@@ -15,22 +15,22 @@ A wayfinder effort — a `map.md` and its tickets under `.plan/<slug>/`. Always 
 _Avoid_: plan, effort, graph, board
 
 **Planning map**:
-A map whose tickets resolve decisions. Worked live with a human, and subject to no review apparatus.
+A map whose tickets resolve decisions. Worked live with a human.
 _Avoid_: design map, wayfinder map, decision map
 
 **Implementation map**:
-A map whose tickets deliver code, with every decision already settled in a spec. Its tickets pass through review before they resolve.
+A map whose tickets deliver code, with every decision already settled in a spec.
 _Avoid_: impl map, task map, build map
 
 **Kind**:
-Whether a map is a planning map or an implementation map — the property that decides which lifecycle its tickets follow. A property of the *map*, not the ticket: every ticket inherits the map's one lifecycle. Declared explicitly in committed harness config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
+Whether a map is a planning map or an implementation map — the property that decides which roles its sessions may be spawned as. Both kinds share one lifecycle. A property of the *map*, not the ticket. Declared explicitly in committed harness config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
 _Avoid_: type, mode, flavour, class
 
 **Ticket**:
 One question or one unit of work in a map, sized to a single session. Its status is derived from its file, never stored in it.
 
 **Frontier**:
-The open, unblocked, unclaimed tickets of a map — the edge of the known. The harness's frontier is stricter than wayfinder's: a blocker must be resolved *and* human-approved.
+The open, unblocked, unclaimed tickets of a map — the edge of the known. Wayfinder's own: a blocker counts as cleared the moment it is resolved.
 
 ### Sessions
 
@@ -39,7 +39,7 @@ A PTY running an agent CLI against exactly one ticket, wired by a pre-injected p
 _Avoid_: run, job, task, agent, terminal
 
 **Role**:
-What a session is spawned to do — grill, prototype, research, implement, or review. Resolves through config to a concrete agent command.
+What a session is spawned to do — grill, prototype, research, or implement. Resolves through config to a concrete agent command.
 _Avoid_: mode, kind, job type
 
 **Adapter**:
@@ -87,7 +87,7 @@ The committed, shared harness config in a space's repo — map kinds (ADR 0007) 
 _Avoid_: project config, repo config, settings
 
 **User config**:
-The operator's local, uncommitted harness config under `~/.config/wayfinder-harness/`, keyed by space. Overrides workspace bindings for execution choices, and is the only layer where autopilot may be enabled.
+The operator's local, uncommitted harness config under `~/.config/wayfinder-harness/`, keyed by space. Overrides workspace bindings for execution choices.
 _Avoid_: local settings, preferences, overrides
 
 ### Ticket lifecycle
@@ -95,30 +95,6 @@ _Avoid_: local settings, preferences, overrides
 **Implementing**:
 The state of an implementation ticket while a session holds it.
 
-**Proposed**:
-An implementation ticket whose session has committed its work and written a `## Proposed Answer`, but which no gate has yet blessed. Not resolved.
-_Avoid_: pending, staged, candidate, done, complete
-
-**Agent review**:
-An adversarial session, on a different model than the implementer, critiquing a proposed ticket against its Done-when and its spec.
-_Avoid_: QA, lint, check, verification
-
-**Human review**:
-The hub where a human reads the review brief — and beneath it the verdict detail and diff — then approves, sends back, takes it further, or abandons.
-_Avoid_: gate, approval, sign-off
-
-**Review brief**:
-The one-screen summary the hub leads with — what was done, what the reviewer found, and a harness-derived recommendation — assembled as plain markdown on disk, detail behind expanders. The GUI renders it and adds buttons, nothing else.
-_Avoid_: dossier, report, verdict summary
-
 **Resolved**:
-A ticket whose `## Answer` is written. On disk, resolved always means blessed.
-_Avoid_: done, complete, merged, closed
-
-**Abandon**:
-The human-review outcome that rejects a proposed ticket: the harness demotes its `## Proposed Answer` to `### Rejected` prose (keeping the record for the next attempt) and the ticket returns to the frontier. Undoing the rejected commits is the human's act, with revert offered as a lever.
-_Avoid_: discard, reject, rollback
-
-**Autopilot**:
-The opt-in, non-default configuration in which both reviews are disabled and a ticket resolves with no human in the loop.
-_Avoid_: auto, unattended, headless, YOLO
+A ticket whose `## Answer` is written — the session said so. Nothing blesses it; a dependent unblocks the moment it lands.
+_Avoid_: done, complete, merged, closed, blessed, approved

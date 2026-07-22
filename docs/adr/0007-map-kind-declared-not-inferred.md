@@ -27,3 +27,9 @@ Two adjustments, neither of which touches the core decision (kind is declared, n
 - **The reactive confirm moves out of the sidebar into the star-map panel.** An undeclared map now shows only a quiet dashed marker in the sidebar (no action); the `plan / impl` confirm — guess pre-emphasised, `p` / `i` to declare — surfaces inside the panel when the map is opened. It is the same classify action against the same endpoint; only its location changed, from per-row nav clutter to one confirm at the surface where the operator is already looking at that map.
 
 Net effect: recording-at-creation makes the confirm rare, and relocating it makes the rare case unobtrusive. The invariant is intact — an unclassified map is still inert until a human declares its kind.
+
+## Amendment: kind selects the role set, not a lifecycle (simplify, ticket 03)
+
+One premise of this ADR is **struck**: that the two kinds have different lifecycles. They no longer do. With the review feature gone, a planning ticket and an implementation ticket resolve the same way — the session writes `## Answer` and commits — so "getting the kind wrong lets code resolve unreviewed" is no longer a failure mode, and the stricter-frontier rule the per-ticket-kind option was rejected over does not exist any more.
+
+The decision itself stands, on its remaining ground: **kind is declared in committed config, never inferred**, because kind still selects **which roles a map offers** (planning grills, prototypes and researches; implementation implements), and an undeclared map still offers none — inert until a human classifies it. Recording kind at creation (the addendum above) is unchanged, and so is the reason it is committed rather than local: teammates must agree on it.

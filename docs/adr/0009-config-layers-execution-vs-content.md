@@ -23,3 +23,11 @@ Two things follow at the boundary of "what may be committed":
 - **Uniform direction — one layer always wins** — rejected: space-always-wins makes the absent-agent case unsolvable in config (you cannot override the committed CLI you lack), while user-always-wins lets a personal preference silently override the project's deliberate prompt content.
 - **Committed autopilot, honored on clone** — rejected: it resolves a teammate's code unreviewed without their consent from first run.
 - **Committed autopilot, confirmed on clone** (mirroring ADR 0007's declared-but-confirmed map-kind) — rejected: even gated behind a local confirmation, it gives the flag a committed meaning the standing preference says it should never have. Autopilot stays purely local.
+
+## Amendment: the autopilot bullets lapse (simplify, ticket 03)
+
+The mechanism this ADR decides is **untouched**: two layers, field-level merge, bindings resolving user-over-workspace and content resolving space-over-user, under the same reconciling rule — content the project ships wins, execution choices the operator makes win.
+
+What lapses is autopilot. With no review to disable, "autopilot" names nothing, so the **"Autopilot has no committed representation"** bullet and the two rejected committed-autopilot options are historical rather than operative, and the resolver's autopilot fields, its ignored-flag warning, and `Resolution.Autopilot` are deleted without replacement — they resolved a value nothing consumed. An `autopilot` key in either layer is now simply an unknown key: ignored, unwarned.
+
+The heterogeneity consequence lapses with it — there is no `review` binding to differ from `implement`, and no review brief to surface an observed model in.
