@@ -131,7 +131,7 @@ export function needsAgents(space: Space): boolean {
 
 // The payload preview (ticket 08): exactly what a session for a ticket and role
 // would be told, with per-part layer provenance. `layer` is the config layer a
-// prompt segment resolved from, or 'context' for an assembled bundle artifact.
+// skill segment resolved from, or 'context' for an assembled bundle artifact.
 export type PartLayer = Layer | 'context'
 
 export interface PayloadSegment {
@@ -140,7 +140,7 @@ export interface PayloadSegment {
   text: string
 }
 
-// A labelled block of the payload — a resolved prompt (`kind: 'prompt'`, e.g.
+// A labelled block of the payload — a resolved skill (`kind: 'prompt'`, e.g.
 // core or a role) or an assembled context artifact (`kind: 'context'`, e.g. the
 // glossary, map body, ticket, or a blocker's answer).
 export interface PayloadPart {

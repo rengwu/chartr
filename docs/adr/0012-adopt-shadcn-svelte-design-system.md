@@ -46,9 +46,11 @@ Three things are decided:
   both token-driven. New chrome composes primitives + utilities; it does not
   hand-roll CSS.
 - There is now an **enforceable standard**: `docs/design-system.md` (the spec),
-  the root `CLAUDE.md` guardrail, and `prompts/implement.append.md` so
-  harness-spawned implementation sessions inherit the rules. New UI styles on
-  tokens + primitives + Phosphor by default.
+  the root `CLAUDE.md` guardrail, and the space's committed `implement` skill
+  (`.wayfinder-harness/skills/implement/`, a fork of the shipped one carrying the
+  rules — it was `prompts/implement.append.md` before the skill repackaging
+  retired the `.append.md` convention) so harness-spawned implementation sessions
+  inherit them. New UI styles on tokens + primitives + Phosphor by default.
 - A **raw colour in the chrome is now a defect**, not a choice. If a surface needs
   a colour no token covers, the palette is missing a role — that gets flagged, not
   inlined.

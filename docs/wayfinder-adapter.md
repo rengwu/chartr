@@ -3,9 +3,10 @@
 This is the adapter the `wayfinder` and `to-tickets` skills consult in a space
 the harness watches. It **layers on top of** the local-markdown adapter
 ([`TRACKER-MARKDOWN.md`](https://github.com/rengwu/skills/blob/main/pocock/wayfinder/TRACKER-MARKDOWN.md),
-vendored under `prompts/`) — every rule there still holds. The map format is
-**untouched**: a vanilla wayfinder tool reads the same `.plan/<slug>/` map
-unchanged. This file adds exactly one harness-side step, on one event.
+restated by the vendored `tracker-convention` skill) — every rule there still
+holds. The map format is **untouched**: a vanilla wayfinder tool reads the same
+`.plan/<slug>/` map unchanged. This file adds exactly one harness-side step, on
+one event.
 
 ## On creation, record the map's kind
 

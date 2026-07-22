@@ -50,9 +50,9 @@ _Avoid_: driver, plugin, backend, integration
 The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, this glossary. Assembled fresh each time and never accumulated.
 _Avoid_: memory, prompt context, preamble
 
-**Prompt library**:
-The harness-owned, hackable role prompts — one per role plus a common core — vendored from the wayfinder skills and resolved through space → user → built-in layers at spawn. Plain markdown on disk, editable by the operator.
-_Avoid_: skills, templates, system prompts
+**Skill library**:
+The harness-owned, hackable skills — one per role, plus the common core, the ideate on-ramp, and the tracker convention — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard.
+_Avoid_: prompt library, prompts, templates, system prompts
 
 **Cockpit**:
 The harness's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
@@ -83,7 +83,7 @@ What a role resolves to — an `{adapter, model, args?}` triple. Structured so t
 _Avoid_: mapping, agent config, role config
 
 **Workspace config**:
-The committed, shared harness config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (prompts); yields to it for *execution* (bindings).
+The committed, shared harness config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
 _Avoid_: project config, repo config, settings
 
 **User config**:

@@ -10,7 +10,7 @@
   import { cn } from '$lib/utils'
 
   // The payload preview (ticket 08, stories 45–49): for a chosen ticket and role,
-  // exactly what a session would be told, assembled from the resolved prompt
+  // exactly what a session would be told, assembled from the resolved skill
   // library and the context bundle, with per-part layer provenance. The operator
   // reads it here before spawning ever exists — the library is hackable and this
   // is the window onto what an edit actually produces.
@@ -118,7 +118,7 @@
       <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground break-words"
         >#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code
       >
-      would be told — the resolved prompt library and the context bundle, assembled fresh. Each block is
+      would be told — the resolved skill library and the context bundle, assembled fresh. Each block is
       tagged with the layer it came from.
     </p>
 

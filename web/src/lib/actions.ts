@@ -74,7 +74,7 @@ export function ideate(id: string): Promise<{ id: string }> {
 }
 
 // previewPayload composes what a session for one ticket and role would be told
-// (ticket 08) — the resolved prompts and the context bundle — with per-part
+// (ticket 08) — the resolved skills and the context bundle — with per-part
 // provenance. Read-only inspection, so a GET; the
 // harness reads the library and the map fresh, so an edit on disk shows up here.
 export function previewPayload(
