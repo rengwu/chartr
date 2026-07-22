@@ -90,6 +90,10 @@ _Avoid_: project config, repo config, settings
 The operator's local, uncommitted harness config under `~/.config/wayfinder-harness/`, keyed by space. Overrides workspace bindings for execution choices.
 _Avoid_: local settings, preferences, overrides
 
+**Effective config surface**:
+The global settings route showing every value the three layers resolve, with the layer it came from and the file that layer lives in. Edits exactly one thing — a role binding, into the user layer; everything else is read-value-plus-open-file. Never a second config store.
+_Avoid_: settings screen, preferences, config panel, options
+
 ### Ticket lifecycle
 
 **Implementing**:

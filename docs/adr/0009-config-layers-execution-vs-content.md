@@ -31,3 +31,13 @@ The mechanism this ADR decides is **untouched**: two layers, field-level merge, 
 What lapses is autopilot. With no review to disable, "autopilot" names nothing, so the **"Autopilot has no committed representation"** bullet and the two rejected committed-autopilot options are historical rather than operative, and the resolver's autopilot fields, its ignored-flag warning, and `Resolution.Autopilot` are deleted without replacement — they resolved a value nothing consumed. An `autopilot` key in either layer is now simply an unknown key: ignored, unwarned.
 
 The heterogeneity consequence lapses with it — there is no `review` binding to differ from `implement`, and no review brief to surface an observed model in.
+
+## Amendment: the layers gain a surface, and an edit boundary (simplify, ticket 05)
+
+The mechanism is again **untouched** — the same layers, the same field-level merge, the same reconciling rule. Two things are added on top of it.
+
+**These layers now have a surface.** The effective config surface (ADR 0014) is where this ADR's asymmetry becomes visible: a global `#/settings` route renders every resolved value with the layer it came from and the file that layer lives in, so "silent inheritance stays visible" is a screen rather than a promise. The per-field provenance this ADR made the resolver record is what that screen is built out of.
+
+**The edit boundary follows from the asymmetry.** A UI may write **only the user layer, and only role bindings** (`[spaces."<path>".roles.<role>]`). This is not a policy bolted on top — it is what user-over-workspace *means*: the user layer is where an operator's execution choice belongs, so writing there is always correct and always overridable by nothing. Writing the committed layer from a local UI is refused outright: it is shared content the operator's teammates receive on clone, and a screen that labels a value "workspace" must not then edit it on their behalf. Content (skills) is not editable from the UI at all, in either layer — it resolves the other direction, and the shipped-wins rule makes an in-app edit the wrong instrument. Everything the surface does not edit gets an open-the-file hatch instead.
+
+One practical consequence to record, because the surface has to show it: the user layer is **two files**, not one. Bindings resolve from `<dataDir>/user.toml` while the user *skill* layer lives at `<configDir>/skills/` (adopted with the skill repackaging, ticket 04). One layer in this ADR's sense; two paths on disk, both named on the surface rather than papered over.
