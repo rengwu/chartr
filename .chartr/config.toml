@@ -15,3 +15,6 @@ kind = "implementation"
 
 [maps."needs-you-cut"]
 kind = "implementation"
+
+[maps."kind-cut"]
+kind = "implementation"
