@@ -100,6 +100,19 @@ alongside these files (see `docs/wayfinder-adapter.md`).
   ticket 05 must render. **ADR 0012** amended: this space's design-system
   overlay is now a committed workspace `implement` skill.
 
+- **The config layers have a face, and one edit boundary.**
+  [Ticket 05](tickets/05-the-transparency-surface.md) shipped the cockpit's
+  first real route — a `#/settings` hash prefix disjoint from the star deep-link
+  by construction — rendering every resolved value with its layer and its file
+  from the pushed model (`Space.Skills`, `Space.Layers`, a new `Model.Config`
+  for the layers no space owns). It edits **only role bindings, only into the
+  user layer**, through a key-level comment-preserving TOML line editor; every
+  other layer gets a server-named open-in-editor hatch. The route renders *over*
+  the pane rather than replacing it — the terminal and star-map are islands
+  worth keeping alive — with the pane inert underneath. Ticket 04's two-homed
+  user layer is rendered honestly rather than papered over. Writes **ADR 0014**;
+  **ADR 0009** amended with the edit boundary.
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the planning map — it does not open fog here. -->
