@@ -24,12 +24,10 @@ function unblockCountOf(map: WMap, num: number): number {
 }
 
 // Everything actionable on one map: the spawnable frontier tickets ranked by
-// unblock count (ties broken by ticket number, for determinism). An
-// unclassified map offers no spawn affordance (ADR 0007), so it contributes
-// nothing here even if the model already marks a ticket `frontier`.
+// unblock count (ties broken by ticket number, for determinism). The frontier is
+// the whole condition — every discovered map is live, so `frontier` is the only
+// thing standing between a ticket and a session.
 export function mapActionItems(map: WMap): ActionItem[] {
-  if (map.kind === '') return []
-
   return map.tickets
     .filter((t) => t.frontier)
     .map((ticket) => ({ ticket, unblockCount: unblockCountOf(map, ticket.num) }))

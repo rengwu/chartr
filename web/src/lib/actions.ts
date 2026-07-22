@@ -104,8 +104,8 @@ export interface SpawnResult {
 // spawnSession spawns a session on a frontier ticket (ticket 09): the chartr
 // writes the claim commit, composes and archives the payload, and launches the
 // bound agent's TUI with the read-this-file opener typed in. A blocked spawn — an
-// absent agent, an unclassified map, a held ticket — surfaces as a thrown
-// ActionError carrying the chartr's specific message.
+// absent agent, a held ticket — surfaces as a thrown ActionError carrying the
+// chartr's specific message, whatever the chartr's reason was.
 export function spawnSession(
   id: string,
   slug: string,

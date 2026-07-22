@@ -27,8 +27,8 @@ function ticket(num: number, extra: Partial<Ticket> = {}): Ticket {
   }
 }
 
-function map(slug: string, kind: WMap['kind'], ...tickets: Ticket[]): WMap {
-  return { slug, name: slug, dir: `/${slug}`, destination: '', tickets, finished: false, kind }
+function map(slug: string, ...tickets: Ticket[]): WMap {
+  return { slug, name: slug, dir: `/${slug}`, destination: '', tickets, finished: false }
 }
 
 function space(id: string, extra: Partial<Space> = {}): Space {
@@ -75,7 +75,6 @@ describe('mapActionItems', () => {
     // frontier. 2 and 3 are blocked, so neither is actionable.
     const m = map(
       'impl',
-      'implementation',
       ticket(1, { frontier: true }),
       ticket(2, { blockedBy: [1] }),
       ticket(3, { blockedBy: [1] }),
@@ -89,24 +88,19 @@ describe('mapActionItems', () => {
   })
 
   it('breaks an unblock-count tie by ticket number', () => {
-    const m = map(
-      'impl',
-      'implementation',
-      ticket(1, { frontier: true }),
-      ticket(2, { frontier: true }),
-    )
+    const m = map('impl', ticket(1, { frontier: true }), ticket(2, { frontier: true }))
     const items = mapActionItems(m)
     expect(items.map((i) => i.ticket.num)).toEqual([1, 2])
   })
 
-  it('offers nothing on an unclassified map, even with a frontier ticket', () => {
-    const m = map('unk', '', ticket(1, { frontier: true }))
+  it('offers nothing on a map with no frontier ticket', () => {
+    const m = map('none', ticket(1), ticket(2, { blockedBy: [1] }))
     expect(mapActionItems(m)).toEqual([])
   })
 
   it('counts mirror the item list, summed across a space', () => {
-    const a = map('a', 'implementation', ticket(1, { frontier: true }))
-    const b = map('b', 'planning', ticket(2, { frontier: true }), ticket(3, { frontier: true }))
+    const a = map('a', ticket(1, { frontier: true }))
+    const b = map('b', ticket(2, { frontier: true }), ticket(3, { frontier: true }))
     expect(mapActionCount(a)).toBe(1)
     expect(mapActionCount(b)).toBe(2)
     expect(spaceActionCount(space('s', { maps: [a, b] }))).toBe(3)
@@ -116,7 +110,7 @@ describe('mapActionItems', () => {
 describe('spaceHaltTarget', () => {
   it('names the halted session’s ticket — where the flag’s click lands', () => {
     const s = space('s2', {
-      maps: [map('impl2', 'implementation', ticket(2))],
+      maps: [map('impl2', ticket(2))],
       terminals: [haltedTerminal('impl2', 2)],
     })
     expect(spaceHaltTarget(s)).toEqual({ mapSlug: 'impl2', ticketNum: 2 })
@@ -124,7 +118,7 @@ describe('spaceHaltTarget', () => {
 
   it('takes the first halted terminal in order — one glyph offers no choice', () => {
     const s = space('s', {
-      maps: [map('m', 'implementation', ticket(1), ticket(2))],
+      maps: [map('m', ticket(1), ticket(2))],
       terminals: [workingTerminal('m', 9), haltedTerminal('m', 1), haltedTerminal('m', 2)],
     })
     expect(spaceHaltTarget(s)).toEqual({ mapSlug: 'm', ticketNum: 1 })
@@ -133,7 +127,7 @@ describe('spaceHaltTarget', () => {
   // The flag and the jump read the same predicate, so they can never disagree.
   it('is null exactly when the flag is not raised', () => {
     const s = space('s', {
-      maps: [map('m', 'implementation', ticket(1, { frontier: true }))],
+      maps: [map('m', ticket(1, { frontier: true }))],
       terminals: [workingTerminal('m', 1)],
     })
     expect(spaceAttention(s)).toBe(null)
@@ -143,18 +137,18 @@ describe('spaceHaltTarget', () => {
 
 describe('the sidebar echo', () => {
   it('flags a space with a halted session', () => {
-    const s = space('s', { maps: [map('m', 'implementation', ticket(1))], terminals: [haltedTerminal('m', 1)] })
+    const s = space('s', { maps: [map('m', ticket(1))], terminals: [haltedTerminal('m', 1)] })
     expect(spaceAttention(s)).toBe('halt')
   })
 
   it('flags nothing for a space with no decision-level signal', () => {
-    const s = space('s', { maps: [map('m', 'implementation', ticket(1, { frontier: true }))] })
+    const s = space('s', { maps: [map('m', ticket(1, { frontier: true }))] })
     expect(spaceAttention(s)).toBe(null)
   })
 
   it('reads liveness independently of attention — both can hold at once', () => {
     const s = space('s', {
-      maps: [map('m', 'implementation', ticket(1, { frontier: true }))],
+      maps: [map('m', ticket(1, { frontier: true }))],
       terminals: [workingTerminal('m', 9), haltedTerminal('m', 1)],
     })
     expect(spaceAttention(s)).toBe('halt')

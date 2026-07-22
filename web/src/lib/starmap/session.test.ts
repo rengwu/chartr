@@ -12,7 +12,7 @@ function ticket(num: number, status: Ticket['status']): Ticket {
 }
 
 function map(...tickets: Ticket[]): WMap {
-  return { slug: 'm', name: 'M', dir: '/m', destination: '', tickets, finished: false, kind: 'implementation' }
+  return { slug: 'm', name: 'M', dir: '/m', destination: '', tickets, finished: false }
 }
 
 function tab(ticketNum: number, role: string, status: Terminal['status'], alive: boolean): Terminal {

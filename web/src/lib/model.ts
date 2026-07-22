@@ -71,15 +71,10 @@ export interface Ticket {
   body?: string
 }
 
-// A map's declared lifecycle (ADR 0007). The empty string is the third state:
-// an undeclared map, inert until a human classifies it.
-export type Kind = '' | 'planning' | 'implementation'
-
 // Map is one discovered wayfinder map beneath a space, derived live from
 // `.plan/` and re-pushed on every filesystem notice. Rendered as-is: a malformed
-// map is never dropped, only surfaced through `malformations`. `kind` gates the
-// map's session actions: while it is unclassified (`''`) the map is inert, and
-// `kindGuess` carries the convention proposal the classify confirm pre-fills.
+// map is never dropped, only surfaced through `malformations`. A discovered map
+// is live — there is nothing between it arriving and opening or spawning on it.
 export interface Map {
   slug: string
   name: string
@@ -90,8 +85,6 @@ export interface Map {
   body?: string
   tickets: Ticket[]
   finished: boolean
-  kind: Kind
-  kindGuess?: Kind
   malformations?: string[]
 }
 
@@ -177,7 +170,7 @@ export interface ResolvedSkill {
 // ConfigLayer is one file or directory a space's effective config resolves
 // through. `name` is the server-side token the open action resolves — the client
 // never sends a path (ADR 0014). `holds` is what the layer can set: role
-// bindings (and, committed, map kinds) or skills.
+// bindings or skills.
 export interface ConfigLayer {
   name: string
   layer: Layer
@@ -238,17 +231,6 @@ export interface Payload {
 // order — what the preview lets the operator choose between.
 export const ROLES = ['grill', 'prototype', 'research', 'implement'] as const
 export type Role = (typeof ROLES)[number]
-
-// rolesForKind mirrors the backend (config.RolesForKind). It no longer picks
-// *which* roles a ticket offers — a ticket's own type does that, and the operator
-// picks from all four — so all that is left of it is whether a map offers
-// sessions at all: an unclassified map returns none, and its tickets show no
-// spawn affordance until a human declares its kind.
-export function rolesForKind(kind: Kind): Role[] {
-  if (kind === 'planning') return ['grill', 'prototype', 'research']
-  if (kind === 'implementation') return ['implement']
-  return []
-}
 
 // The role a ticket's own type points at (mirrors config.RoleForTicketType) —
 // shared by the detail pane, the action station (ticket 14) and the payload

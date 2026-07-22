@@ -1,9 +1,7 @@
 <script lang="ts">
   import {
     defaultRole,
-    rolesForKind,
     ROLES,
-    type Kind,
     type Map as WMap,
     type Role,
     type Ticket,
@@ -49,16 +47,14 @@
   // a session on it would be told. Available only with a spaceId in hand.
   let showPreview = $state(false);
 
-  // Spawn (tickets 09, 11): a frontier ticket on a classified map offers a fresh
-  // session in any of the four roles — the ticket's type picks the default, and
-  // the operator picks from all of them. An unclassified map offers none. So the
-  // affordance appears only where a spawn is actually takeable.
-  function offeredRoles(kind: Kind, tk: Ticket | null): Role[] {
-    if (!tk || !tk.frontier) return [];
-    if (rolesForKind(kind).length === 0) return [];
-    return [...ROLES];
+  // Spawn (tickets 09, 11): a frontier ticket offers a fresh session in any of
+  // the four roles — the ticket's type picks the default, and the operator picks
+  // from all of them at the gate. The frontier is the whole condition, so the
+  // affordance appears exactly where a spawn is actually takeable.
+  function offeredRoles(tk: Ticket | null): Role[] {
+    return tk?.frontier ? [...ROLES] : [];
   }
-  const spawnRoles = $derived<Role[]>(offeredRoles(map.kind, ticket));
+  const spawnRoles = $derived<Role[]>(offeredRoles(ticket));
   const canSpawn = $derived(!!spaceId && spawnRoles.length > 0);
 
   // Every offered role is its own footer action — one click starts it, no
@@ -189,7 +185,9 @@
   aria-label={isMap ? "Map material" : "Ticket detail"}
   class={cn(
     "h-full min-h-0 flex-col gap-0 overflow-hidden rounded-none py-0 ring-0",
-    dock === "bottom" ? "border-t border-border" : "border-l border-border",
+    dock === "bottom"
+      ? "border-t border-border"
+      : "border-l border-border border-t",
   )}
 >
   <!-- Two tiers. The identity line — the ticket's number as a struck coin, its
