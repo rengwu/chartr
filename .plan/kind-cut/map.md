@@ -128,6 +128,30 @@ not an inconsistency to resolve early.
   `implConfig` / `planningConfig` and all sixteen call sites are gone, so those
   tests now run against a space with no `.chartr/config.toml` at all.
   [ticket](./tickets/03-the-backend-stops-serving-kind.md)
+- **04 — the method drops the step**: no map-creating session is asked to record
+  anything. `docs/wayfinder-adapter.md` **deleted rather than reduced** — its own
+  stated purpose is "adds exactly one chartr-side step", a stub would be a pointer
+  to nowhere, and worse, would keep an *adapter* hook alive for the next
+  chartr-side step; `CLAUDE.md` keeps the sentence that stayed true. All seven
+  `[maps."…"]` tables gone — and with them the whole of `.chartr/config.toml`,
+  which held nothing else: a zero-byte file implying content is worse than the
+  no-config case ticket 03 pinned, verified live (this repo resolves with zero
+  warnings, the settings surface reporting the layer as `exists: false` with its
+  path). Spec: stories 13/14/15 struck in place with a note each and 16 restated
+  around noticing graduation, numbering held per the `needs-you-cut` precedent;
+  line 189 lost `per map kind` and nothing else, leaving the review staleness
+  the map ruled out of scope. ADR 0015 supersedes 0007, which keeps its body,
+  addendum and amendment whole under a pointer; 0009 and 0014 corrected **by
+  amendment, not edit** (this repo's ADR convention), with 0009's rejected
+  committed-autopilot option left verbatim as frozen deliberation. **Beyond the
+  ticket's named files:** `CONTEXT.md`'s **Kind** glossary entry was deleted and
+  **Role** restated around `type:` — that glossary rides every context bundle, so
+  it was teaching the deleted concept to every session. **The eyes-on cockpit
+  clause is not met** (extension not connected, as in ticket 02); verified
+  instead against a running binary — a freshly registered space with no
+  `.chartr/` at all arrives live with both tickets on the frontier, no `kind`
+  key in the snapshot, no classify route, and zero `classif`/`kindGuess` in the
+  built assets. [ticket](./tickets/04-the-method-drops-the-step.md)
 
 ## Not yet specified
 
