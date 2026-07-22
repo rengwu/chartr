@@ -90,7 +90,7 @@ not an inconsistency to resolve early.
   pane's emphasised role missing from its own buttons for one commit, and removing
   the gate outright would have shown spawn buttons that the backend still 409s.
   Covered by a spawn test proving a `task` ticket on a `planning` map spawns as
-  `implement`, plus a new `model.test.ts`. [ticket](tickets/01-roles-come-from-the-ticket.md)
+  `implement`, plus a new `model.test.ts`. [ticket](./tickets/01-roles-come-from-the-ticket.md)
 - **02 — the frontend stops reading kind**: `Kind`, `Map.kind`, `Map.kindGuess`,
   `rolesForKind` and `classifyMap` are gone, along with the picker's plan/impl
   confirm, its unclassified section and Settings' "Map kinds" section. Three
@@ -107,7 +107,27 @@ not an inconsistency to resolve early.
   against a real running backend (socket still sending `kind`/`kindGuess`; those
   verbatim bytes mounted through the real `MapCard` render every map as an open
   target) — but **no eyes-on cockpit pass**: the browser extension was not
-  connected. [ticket](tickets/02-the-frontend-stops-reading-kind.md)
+  connected. [ticket](./tickets/02-the-frontend-stops-reading-kind.md)
+- **03 — the backend stops serving kind**: `internal/config/kinds.go` deleted;
+  `RolesForKind`, `KindOffersRole`, `resolveKinds`, `rawMap`, `Resolution.Kinds`,
+  `GuessKind`, `ValidKind`, the `Kind*` constants, `Map.Kind`, `Map.KindGuess`,
+  `handleClassify` and its route all gone, along with the spawn path's
+  unclassified refusal — so a discovered map is live, spawnable on no config at
+  all, and the window ticket 02 named is closed. **Old configs cost nothing:**
+  `toml.Decode` is non-strict, so leftover `[maps.*]` tables are simply not
+  decoded — no error, no warning, no placeholder field — pinned at both the
+  resolution level and the process boundary. **Judgement call:** landed as one
+  commit rather than the map's usual several, because kind's producer, resolver,
+  carrier and four consumers are one type and its transitive users; every
+  partition left either a non-compiling tree or a commit of pure dead code.
+  **The done-when's 404 clause is not met and was not forced**: `spaHandler` is
+  mounted at `/` and serves `index.html` for *any* unmatched path, so the dead
+  route answers 200 with the SPA shell — pre-existing for every unregistered API
+  path, and making `/api/` 404 as JSON is a decision about the whole HTTP surface,
+  flagged rather than taken. Test pruning went past the three named files:
+  `implConfig` / `planningConfig` and all sixteen call sites are gone, so those
+  tests now run against a space with no `.chartr/config.toml` at all.
+  [ticket](./tickets/03-the-backend-stops-serving-kind.md)
 
 ## Not yet specified
 

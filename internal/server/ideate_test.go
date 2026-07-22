@@ -66,7 +66,6 @@ func TestIdeateWritesNoClaimCommit(t *testing.T) {
 	// A committed baseline so "no commit" is a real assertion, not just "no
 	// commits exist yet".
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.Git(t, repo, "add", "-A")
 	chartrtest.Git(t, repo, "commit", "-q", "-m", "baseline")

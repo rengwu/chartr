@@ -49,7 +49,9 @@ func setBinding(t *testing.T, h *chartrtest.Chartr, spaceID string, body map[str
 
 // The pushed model carries the whole surface: bindings with per-field provenance
 // and PATH presence, the resolved skill library with the layer that won each
-// directory, map kinds, and the path of every participating layer (stories 33–37).
+// directory, and the path of every participating layer (stories 33–37). The
+// fixture's config still carries a `[maps.*]` table from before the kind cut,
+// which must cost a real checkout nothing.
 func TestSnapshotCarriesTheEffectiveConfigSurface(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -91,9 +93,11 @@ adapter = "codex"
 		t.Errorf("implement skill dir = %q, want the workspace copy", got)
 	}
 
-	// Kinds, read-only, from the same push.
-	if got := findMap(t, s, "widget").Kind; got != "implementation" {
-		t.Errorf("map kind = %q, want implementation", got)
+	// The leftover [maps."widget"] table is ignored outright: it is neither an
+	// error nor a warning, so a teammate's checkout written before the kind cut
+	// still resolves clean.
+	if len(s.Warnings) != 0 {
+		t.Errorf("a config carrying a stale [maps.*] table warned: %v", s.Warnings)
 	}
 
 	// Every participating layer names where it lives — the space's own on the
@@ -211,7 +215,7 @@ func TestBindingEditArgsAndRefusals(t *testing.T) {
 
 	for name, body := range map[string]map[string]any{
 		"unknown role":  {"role": "review", "field": "adapter", "value": "x"},
-		"unknown field": {"role": "implement", "field": "kind", "value": "planning"},
+		"unknown field": {"role": "implement", "field": "colour", "value": "olive"},
 		"empty value":   {"role": "implement", "field": "adapter", "value": ""},
 		"retired field": {"role": "implement", "field": "model", "value": "opus"},
 	} {
@@ -223,28 +227,6 @@ func TestBindingEditArgsAndRefusals(t *testing.T) {
 		"role": "implement", "field": "adapter", "value": "x",
 	}); code != 404 {
 		t.Errorf("set binding on a missing space = %d, want 404", code)
-	}
-}
-
-// Map kind stays classify-only: the surface renders it, and there is no
-// config-surface write that sets it (ADR 0007 survives ticket 03's cut).
-func TestSurfaceNeverWritesKind(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	resp := register(t, h, repo)
-
-	if code, _ := setBinding(t, h, resp.ID, map[string]any{
-		"role": "implement", "field": "kind", "value": "implementation",
-	}); code != 400 {
-		t.Error("the binding editor accepted a kind write; kind is classify-only")
-	}
-	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
-		t.Error("a refused edit wrote committed config")
-	}
-	if got := findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget").Kind; got != "" {
-		t.Errorf("map kind = %q after a refused write, want unclassified", got)
 	}
 }
 

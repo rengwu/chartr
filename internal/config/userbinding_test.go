@@ -109,8 +109,8 @@ func TestSetNewKeyInExistingTable(t *testing.T) {
 	}
 }
 
-// A role with no table yet gets one appended in DeclareMapKind's style — a blank
-// line off what precedes it — leaving the whole existing file ahead of it intact.
+// A role with no table yet gets one appended — a blank line off what precedes
+// it — leaving the whole existing file ahead of it intact.
 func TestSetCreatesAbsentTable(t *testing.T) {
 	got := set(t, handWritten, config.BindingEdit{
 		SpacePath: space, Role: "research", Field: config.FieldAdapter, Value: "codex",

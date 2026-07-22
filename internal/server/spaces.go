@@ -79,54 +79,6 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleClassify declares a map's kind (ADR 0007). Classification is one HTTP
-// action: the operator confirms the convention guess, and the chartr writes the
-// kind into the space's committed workspace config, keyed by map slug, so the
-// classification rides the repo to every teammate (story 15). The write appends
-// to the config and is left in the working tree — the chartr owns no commit here
-// (its commits are the lifecycle writes of later tickets), the operator commits
-// their config as they commit their bindings.
-func (s *Server) handleClassify(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
-	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
-		return
-	}
-	slug := r.PathValue("slug")
-
-	var body struct {
-		Kind string `json:"kind"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httpError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if !model.ValidKind(body.Kind) {
-		httpError(w, http.StatusBadRequest, "kind must be planning or implementation")
-		return
-	}
-
-	path := filepath.Join(e.Path, config.WorkspaceConfigName)
-	existing, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		httpError(w, http.StatusInternalServerError, "reading committed config: "+err.Error())
-		return
-	}
-	next, err := config.DeclareMapKind(existing, slug, body.Kind)
-	if err != nil {
-		// An already-declared slug or an unknown kind is the operator's to fix.
-		httpError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := writeFileAtomic(path, next); err != nil {
-		httpError(w, http.StatusInternalServerError, "writing committed config: "+err.Error())
-		return
-	}
-	s.rebuild()
-
-	writeJSON(w, http.StatusOK, map[string]any{"slug": slug, "kind": body.Kind})
-}
-
 // rebuild recomputes the whole derived model from the registry and current
 // config on disk, and pushes it to every browser. It is the one place the
 // registry slice of the model is published, called after every mutating action,
@@ -194,18 +146,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		})
 	}
 
-	// Discovery derives every map with its convention guess; the committed
-	// declaration overlays it, so a classified map goes inert-no-more and its
-	// lingering guess is cleared. A declared kind whose slug matches no discovered
-	// map simply dangles (a renamed directory), which is inert-and-fine, never an
-	// error (ADR 0007).
 	maps := mapscan.Discover(e.Path)
-	for i := range maps {
-		if kind, ok := res.Kinds[maps[i].Slug]; ok {
-			maps[i].Kind = kind
-			maps[i].KindGuess = ""
-		}
-	}
 
 	// Ad-hoc shells and sessions are runtime state the manager owns, not derived
 	// from disk; fold them in so a mapless space still shows its terminal tabs and a

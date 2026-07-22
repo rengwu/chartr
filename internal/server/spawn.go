@@ -80,23 +80,10 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve the space's config once — kinds and bindings both come from it. The
-	// committed kind declaration overlays the discovered map (Discover only carries
-	// the convention guess), so the map reads classified exactly as the pushed model
-	// shows it.
+	// Every ticket on every discovered map offers all four roles, so the role
+	// itself is never refused: trust-at-the-gate, where the gate is the operator
+	// choosing in the spawn preview.
 	res := s.resolve(e)
-	if kind, ok := res.Kinds[slug]; ok {
-		m.Kind = kind
-	}
-
-	// Every ticket offers all four roles, so the role itself is never refused:
-	// trust-at-the-gate, where the gate is the operator choosing in the spawn
-	// preview. An unclassified map still offers no sessions at all (ADR 0007) —
-	// that refusal is the operator's to resolve by classifying the map.
-	if m.Kind == model.KindUnclassified {
-		httpError(w, http.StatusConflict, "this map is unclassified and offers no sessions — classify it first")
-		return
-	}
 
 	// Every role is a fresh spawn onto the frontier (open, unclaimed, every blocker
 	// resolved): anything already claimed, closed, or held behind an unresolved

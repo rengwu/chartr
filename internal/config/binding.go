@@ -19,17 +19,16 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/rengwu/chartr/internal/adapter"
-	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
 // WorkspaceConfigName is the committed workspace config file in a space's repo
-// (ADR 0009): the shared, versioned, portable layer holding role bindings and
-// map kinds. It lives under `.chartr/` alongside the space's committed
-// prompt overlays, so everything the chartr commits into a space sits in one
-// directory rather than a loose file one keystroke away from that directory's
-// name. Config owns the filename because it owns the file's shape — the server
-// reads and writes it through this package.
+// (ADR 0009): the shared, versioned, portable layer holding role bindings. It
+// lives under `.chartr/` alongside the space's committed prompt overlays, so
+// everything the chartr commits into a space sits in one directory rather than a
+// loose file one keystroke away from that directory's name. Config owns the
+// filename because it owns the file's shape — the server reads and writes it
+// through this package.
 const WorkspaceConfigName = ".chartr/config.toml"
 
 // Role is one of the closed set of things a session is spawned to do (ADR
@@ -54,9 +53,9 @@ var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 // per-ticket fact a map's kind used to approximate uniformly; an unrecognised
 // type falls to implement, the same default the frontend has always used.
 //
-// This takes wayfinder's own types rather than restating the strings: config
-// already imports model, and wayfinder imports nothing of ours, so there is no
-// cycle to dodge and no second copy of the mapping to drift.
+// This takes wayfinder's own types rather than restating the strings: wayfinder
+// imports nothing of ours, so there is no cycle to dodge and no second copy of
+// the mapping to drift.
 func RoleForTicketType(t wayfinder.Type) Role {
 	switch t {
 	case wayfinder.TypeGrilling:
@@ -67,22 +66,6 @@ func RoleForTicketType(t wayfinder.Type) Role {
 		return RoleResearch
 	default:
 		return RoleImplement
-	}
-}
-
-// RolesForKind returns the roles a map of the given kind offers a session for
-// (spec, Sessions and roles): a planning map grills, prototypes, and researches;
-// an implementation map implements. An unclassified map (any other
-// value, including the empty string) offers none, so it stays inert until a human
-// declares its kind (ADR 0007) — the chartr never spawns on a heuristic.
-func RolesForKind(kind string) []Role {
-	switch kind {
-	case model.KindPlanning:
-		return []Role{RoleGrill, RolePrototype, RoleResearch}
-	case model.KindImplementation:
-		return []Role{RoleImplement}
-	default:
-		return nil
 	}
 }
 
@@ -100,20 +83,6 @@ func RolesForKind(kind string) []Role {
 // AFK: a stray session shows the hint rather than swallowing a possible stall.
 func RoleIsAFK(role string) bool {
 	return role != string(RoleGrill)
-}
-
-// KindOffersRole reports whether a map of this kind offers the named role. It
-// has no callers: the spawn path used it to refuse a role from the other
-// lifecycle, and that clamp is gone — a ticket's own type says which role it is,
-// and the operator picks from all four at the gate. It is deleted with the rest
-// of kind.
-func KindOffersRole(kind, role string) bool {
-	for _, r := range RolesForKind(kind) {
-		if string(r) == role {
-			return true
-		}
-	}
-	return false
 }
 
 func isRole(name string) bool {
@@ -188,12 +157,9 @@ type Resolved struct {
 }
 
 // Resolution is the whole outcome for one space: its effective bindings in role
-// order, the committed map-kind declarations (slug → kind, ADR 0007), any
-// warnings to surface (an unknown role, an unrecognised kind, a malformed
-// config file).
+// order, and any warnings to surface (an unknown role, a malformed config file).
 type Resolution struct {
 	Bindings []Resolved
-	Kinds    map[string]string
 	// Agents is the operator's registered agent library, in name order. It is
 	// global rather than per space (agents.go), and is carried on the resolution so
 	// a caller reads bindings and the library they may name out of one pass.
@@ -238,16 +204,12 @@ func (b rawBinding) setsFields() bool {
 	return b.Adapter != nil || b.Args != nil || b.Prompt != nil
 }
 
+// workspaceFile decodes only what the chartr reads. A config written before the
+// kind cut still carries [maps."<slug>"] tables; the decoder is non-strict, so
+// they are ignored — a teammate's checkout resolves clean, with no warning and no
+// error, rather than being punished for a key that stopped mattering.
 type workspaceFile struct {
 	Roles map[string]rawBinding `toml:"roles"`
-	Maps  map[string]rawMap     `toml:"maps"`
-}
-
-// rawMap is one map's committed chartr config, keyed by map slug (ADR 0007).
-// Kind is the only field today; the table exists so per-map committed state has
-// a home to grow into without another top-level key.
-type rawMap struct {
-	Kind string `toml:"kind"`
 }
 
 type userFile struct {
@@ -272,9 +234,7 @@ func Resolve(in Input) Resolution {
 
 	var warnings []string
 
-	wf := parseWorkspace(in.WorkspaceTOML, &warnings)
-	ws := wf.Roles
-	kinds := resolveKinds(wf.Maps, &warnings)
+	ws := parseWorkspace(in.WorkspaceTOML, &warnings).Roles
 	us := parseUser(in.UserTOML, in.SpacePath, &warnings)
 
 	warnings = append(warnings, unknownRoleWarnings(ws)...)
@@ -320,10 +280,10 @@ func Resolve(in Input) Resolution {
 		}
 
 		// A prompt delivery the adapter seam cannot read is dropped to a warning and
-		// the agent's default stands, in the same spirit as an unrecognised map kind:
-		// config that says something unreadable never silently changes how a session
-		// is launched, and never blocks one either. The library validates its own on
-		// the way through, so this catches the field-bound form.
+		// the agent's default stands: config that says something unreadable never
+		// silently changes how a session is launched, and never blocks one either. The
+		// library validates its own on the way through, so this catches the
+		// field-bound form.
 		if r.Prompt != "" {
 			if _, err := adapter.ParseDelivery(r.Prompt); err != nil {
 				warnings = append(warnings, fmt.Sprintf(
@@ -344,7 +304,7 @@ func Resolve(in Input) Resolution {
 		bindings = append(bindings, r)
 	}
 
-	return Resolution{Bindings: bindings, Kinds: kinds, Agents: library, Warnings: warnings}
+	return Resolution{Bindings: bindings, Agents: library, Warnings: warnings}
 }
 
 // findAgent picks one agent out of the resolved library by name.
@@ -373,40 +333,6 @@ func assignmentWarnings(role Role, agent string, layers ...map[string]rawBinding
 		}
 	}
 	return out
-}
-
-// resolveKinds turns the committed [maps.<slug>] tables into a slug → kind map,
-// keeping only recognised kinds (ADR 0007: kind is planning or implementation).
-// A table with no kind declares nothing, and an unrecognised kind is surfaced as
-// a warning and dropped — either way the map stays unclassified and inert rather
-// than being refused. Kind is committed-layer only: teammates must agree on it
-// (story 15), so the user layer never declares it.
-func resolveKinds(maps map[string]rawMap, warnings *[]string) map[string]string {
-	if len(maps) == 0 {
-		return nil
-	}
-	slugs := make([]string, 0, len(maps))
-	for slug := range maps {
-		slugs = append(slugs, slug)
-	}
-	sort.Strings(slugs) // deterministic warning order
-
-	kinds := make(map[string]string)
-	for _, slug := range slugs {
-		k := maps[slug].Kind
-		if k == "" {
-			continue
-		}
-		if !model.ValidKind(k) {
-			*warnings = append(*warnings, fmt.Sprintf(
-				"committed config declares map %q as kind %q, which the chartr does not recognise (want planning or implementation); the map stays unclassified",
-				slug, k,
-			))
-			continue
-		}
-		kinds[slug] = k
-	}
-	return kinds
 }
 
 // apply overrides r's fields with those set in b (nil fields inherit), tagging

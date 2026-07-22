@@ -144,8 +144,8 @@ func (s *Server) resolvedSkills(repoDir string) []model.ResolvedSkill {
 // reversible rather than a one-way ratchet.
 //
 // The write is surgical and comment-preserving (config.SetUserBinding), and it is
-// followed by the same rebuild the classify action triggers, so the new value and
-// its new provenance reflect straight back over the control socket with no
+// followed by the same rebuild every mutating action triggers, so the new value
+// and its new provenance reflect straight back over the control socket with no
 // optimistic client state (story 43).
 func (s *Server) handleSetBinding(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.reg.Get(r.PathValue("id"))

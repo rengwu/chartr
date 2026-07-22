@@ -46,12 +46,12 @@ type BindingEdit struct {
 // the user layer is where an operator's execution choice belongs, and a local UI
 // never edits committed workspace config on someone else's behalf.
 //
-// The edit is key-level and comment-preserving. Unlike DeclareMapKind, which only
-// ever appends a table it has proven absent, this reaches into an existing table
-// to set, replace, or delete one key — so it works on the file's own lines rather
-// than decoding and re-encoding: every surrounding byte (comments, key ordering,
+// The edit is key-level and comment-preserving. It reaches into an existing table
+// to set, replace, or delete one key, working on the file's own lines rather than
+// decoding and re-encoding: every surrounding byte (comments, key ordering,
 // unrelated tables, the operator's spacing) survives untouched. Only when the
-// target table is absent entirely does it append one, in DeclareMapKind's style.
+// target table is absent entirely does it append one — a blank line off whatever
+// precedes it, then the table.
 //
 // It refuses rather than guess. A role already bound through some other TOML
 // shape than the canonical `[spaces."<path>".roles.<role>]` table — an inline
@@ -130,8 +130,8 @@ func SetUserBinding(existing []byte, e BindingEdit) ([]byte, error) {
 	return []byte(strings.Join(lines, eol)), nil
 }
 
-// appendBindingTable adds the canonical table for a role that has none, in
-// DeclareMapKind's style: a blank line off whatever precedes it, then the table.
+// appendBindingTable adds the canonical table for a role that has none: a blank
+// line off whatever precedes it, then the table.
 func appendBindingTable(existing []byte, e BindingEdit) []byte {
 	var b bytes.Buffer
 	b.Write(existing)

@@ -102,12 +102,11 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("/ws/terminal/{termID}", s.handleTerminal)
 	// Operator actions are plain HTTP request/response so a failure surfaces as
 	// a response (ADR 0010). Health is the skeleton's; ticket 02 adds the
-	// registry actions; classify, spawn, approve, and the rest hang here later.
+	// registry actions; spawn, halt, and the rest hang here later.
 	s.mux.HandleFunc("/api/health", s.handleHealth)
 	s.mux.HandleFunc("POST /api/spaces", s.handleRegister)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
-	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/classify", s.handleClassify)
 	// The effective config surface (ticket 05, ADR 0014). The read half rides the
 	// per-space model push; these are the two writes it is allowed. Editing a role
 	// binding is a PUT because it sets one named field to one value; it lands in
@@ -134,7 +133,8 @@ func New(opts Options) (*Server, error) {
 	// chartr writes the claim commit, composes and archives the payload, resolves
 	// the role binding, and launches the agent's own TUI with the opener typed in —
 	// or hard-blocks the one spawn when the bound agent is absent. A plain HTTP
-	// action so a refusal (missing agent, unclassified map) surfaces as a response.
+	// action so a refusal (missing agent, a ticket off the frontier) surfaces as a
+	// response.
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/spawn", s.handleSpawn)
 	// The death halt (ticket 10): a session that died stays pinned to its ticket,
 	// and the operator resolves it one of exactly three ways — resume it (same-

@@ -46,7 +46,6 @@ func TestRegisteredAgentDrivesTheSpawn(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	delivery := chartrtest.StubAgent(t, "some-harness")
 
@@ -105,7 +104,6 @@ func TestNothingIsAddedToTheRegisteredArgv(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	delivery := chartrtest.StubAgent(t, "bare-harness")
 

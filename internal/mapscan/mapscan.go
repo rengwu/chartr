@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/wayfinder"
@@ -117,11 +116,6 @@ func deriveMap(dir string) model.Map {
 		m.Malformations = append(m.Malformations, formatDiag(diag))
 	}
 
-	// The convention guess the classify affordance pre-fills (story 14). It is
-	// only ever a guess: server overlays a committed declaration when one exists
-	// and blanks this, so no lifecycle ever runs on the heuristic (ADR 0007).
-	m.KindGuess = GuessKind(slug, tickets)
-
 	m.Tickets = make([]model.Ticket, 0, len(tickets))
 	allClosed := len(tickets) > 0
 	for _, t := range tickets {
@@ -175,30 +169,6 @@ func loadTickets(dir string) ([]*wayfinder.Ticket, []string) {
 	}
 	sort.Slice(tickets, func(i, j int) bool { return tickets[i].Num < tickets[j].Num })
 	return tickets, malformations
-}
-
-// GuessKind proposes a map's kind from the breakable conventions ADR 0007 keeps
-// alive only as a one-time guess: the `-impl` directory suffix, and every ticket
-// typed `task`. Either signal points to an implementation map; absent both, the
-// guess is planning. It is never authoritative — a human confirms it, and a
-// committed declaration always overrides it.
-func GuessKind(slug string, tickets []*wayfinder.Ticket) string {
-	if strings.HasSuffix(slug, "-impl") {
-		return model.KindImplementation
-	}
-	if len(tickets) > 0 {
-		allTask := true
-		for _, t := range tickets {
-			if t.Type != wayfinder.TypeTask {
-				allTask = false
-				break
-			}
-		}
-		if allTask {
-			return model.KindImplementation
-		}
-	}
-	return model.KindPlanning
 }
 
 func formatDiag(d wayfinder.Diagnostic) string {

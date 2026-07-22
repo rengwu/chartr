@@ -225,17 +225,13 @@ func (s *Server) resolveBinding(w http.ResponseWriter, e registry.Entry, role st
 }
 
 // frozenTicket discovers the map and ticket a session names, fresh off disk (as
-// spawn does), overlaying the committed kind so the map reads classified. It
-// writes the error response and returns ok=false when either is gone (a map or
-// ticket renamed out from under a pinned dead session).
+// spawn does). It writes the error response and returns ok=false when either is
+// gone (a map or ticket renamed out from under a pinned dead session).
 func (s *Server) frozenTicket(w http.ResponseWriter, e registry.Entry, slug string, num int) (model.Map, model.Ticket, bool) {
 	m, found := findMap(mapscan.Discover(e.Path), slug)
 	if !found {
 		httpError(w, http.StatusNotFound, "no such map")
 		return model.Map{}, model.Ticket{}, false
-	}
-	if kind, ok := s.resolve(e).Kinds[slug]; ok {
-		m.Kind = kind
 	}
 	tk, found := findTicket(m, num)
 	if !found {

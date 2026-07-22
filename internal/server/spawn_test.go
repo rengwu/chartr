@@ -26,13 +26,6 @@ import (
 // and blocks nothing else. Every assertion is on what the design makes public —
 // HTTP responses, the control-socket snapshot, the filesystem, and git history.
 
-// implConfig is a committed workspace config declaring one map as an
-// implementation map, so its `implement` role is offered (an unclassified map
-// offers none).
-func implConfig(slug string) string {
-	return fmt.Sprintf("[maps.%q]\nkind = \"implementation\"\n", slug)
-}
-
 // spawnResp is the spawn action's own result.
 type spawnResp struct {
 	SessionID  string   `json:"sessionId"`
@@ -82,7 +75,6 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	// A stub `claude` on PATH — the default `implement` binding's adapter — records
@@ -175,9 +167,9 @@ func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	// Classify implementation and bind `implement` to a binary that cannot exist.
-	cfg := implConfig("widget") + "\n[roles.implement]\nadapter = \"wf-absent-agent-xyz\"\n"
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", cfg)
+	// Bind `implement` to a binary that cannot exist.
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml",
+		"[roles.implement]\nadapter = \"wf-absent-agent-xyz\"\n")
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	resp := register(t, h, repo)
@@ -212,10 +204,11 @@ func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
 	}
 }
 
-// An unclassified map offers no sessions (ADR 0007): spawn is refused until the
-// map is classified. Which *role* is asked for is not the map's business — see
-// TestSpawnHonoursTheTicketsOwnType.
-func TestSpawnRespectsKind(t *testing.T) {
+// A discovered map is live: with no committed chartr config at all, it spawns
+// the moment it is found — and in a role the map itself would once have had to
+// be declared `planning` to offer. There is no classification step left to gate
+// it, and the route that used to write one is gone.
+func TestDiscoveredMapSpawnsWithNoConfig(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 
@@ -224,14 +217,21 @@ func TestSpawnRespectsKind(t *testing.T) {
 	chartrtest.StubAgent(t, "claude")
 	resp := register(t, h, repo)
 
-	// Unclassified: no sessions at all.
-	if code, body := h.Spawn(resp.ID, "widget", 1, "implement"); code != 409 || !strings.Contains(body, "unclassified") {
-		t.Fatalf("spawn on an unclassified map = %d (%s), want 409 naming unclassified", code, body)
+	if sp := mustSpawn(t, h, resp.ID, "widget", 1, "grill"); sp.Role != "grill" {
+		t.Errorf("spawned role = %q, want grill", sp.Role)
 	}
 
-	// Classified: the same spawn goes through.
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
-	mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	// The classify route is unregistered, so the POST falls through to the SPA
+	// handler rather than 404ing (an unmatched /api/ path has always been served
+	// index.html — pre-existing, not this cut's to change). What matters is that
+	// it is inert: nothing handles it, so nothing is written.
+	if code, body := h.Post(fmt.Sprintf("/api/spaces/%s/maps/widget/classify", resp.ID),
+		map[string]any{"kind": "implementation"}); strings.Contains(body, "kind") {
+		t.Errorf("something still answers classify: %d %s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
+		t.Error("a POST to the dead classify route wrote committed config")
+	}
 }
 
 // The behavioural delta of the kind cut: a `task` ticket — which wayfinder
@@ -243,7 +243,6 @@ func TestSpawnHonoursTheTicketsOwnType(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", planningConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.StubAgent(t, "claude")
 
@@ -272,7 +271,6 @@ func TestSpawnRefusesNonFrontier(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-open.md", ticket(1, "Open blocker", "[]", "task", ""))
 	chartrtest.WriteTicket(t, repo, "widget", "02-held.md", ticket(2, "Held", "[1]", "task", ""))
 	chartrtest.StubAgent(t, "claude")
@@ -291,7 +289,6 @@ func TestSpawnOneSessionPerSpace(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-a.md", ticket(1, "A", "[]", "task", ""))
 	chartrtest.WriteTicket(t, repo, "widget", "02-b.md", ticket(2, "B", "[]", "task", ""))
 	chartrtest.StubAgent(t, "claude")
@@ -327,7 +324,6 @@ func TestSpawnDeliversTheOpenerTheWayTheBindingSays(t *testing.T) {
 			repo := chartrtest.NewSpaceRepo(t)
 
 			chartrtest.WriteMap(t, repo, "widget", mapBody)
-			chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 			chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 			if tc.userTOML != "" {
 				chartrtest.WriteFile(t, h.DataDir, "user.toml",
@@ -355,7 +351,6 @@ func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.WriteFile(t, h.DataDir, "user.toml",
 		fmt.Sprintf("[spaces.%q.roles.implement]\nprompt = \"stdin\"\n", repo))

@@ -124,37 +124,16 @@ type Space struct {
 	// usable as a plain multiplexer. Never nil on the wire.
 	Terminals []Terminal `json:"terminals"`
 	// Warnings are non-fatal notices surfaced against the space — an unknown
-	// role in config, an unrecognised map kind, a malformed config file.
-	// Surface, never enforce.
+	// role in config, a malformed config file. Surface, never enforce.
 	Warnings []string `json:"warnings,omitempty"`
-}
-
-// Kind is a map's declared character — planning tickets resolve decisions, an
-// implementation map's deliver code against a settled spec, and the kind selects
-// which roles a session may be spawned as (ADR 0007). It is a property
-// of the map, uniform across its tickets, declared in committed workspace config
-// and never inferred at read time. The empty string is the third state: an
-// undeclared map, inert until a human classifies it.
-const (
-	KindUnclassified   = ""
-	KindPlanning       = "planning"
-	KindImplementation = "implementation"
-)
-
-// ValidKind reports whether k is a declarable kind — the two the operator may
-// confirm. The unclassified empty string is a derived state, not something
-// config declares, so it is deliberately not valid here.
-func ValidKind(k string) bool {
-	return k == KindPlanning || k == KindImplementation
 }
 
 // Map is one discovered wayfinder map beneath a space: its body material and its
 // tickets with their derived status. It is read wherever wayfinder writes — the
 // `.plan/<slug>/` layout or the `.plan/maps/<slug>/` one — and rendered as-is: a
 // malformed map is never refused, only surfaced through Malformations (story
-// 17). A map's declared Kind gates its session actions: until a human classifies
-// it (ADR 0007), Kind is unclassified and the map is inert — readable, rendered,
-// but offering no session actions.
+// 17). A discovered map is live: it opens and offers session actions the moment
+// it is found, with no classification step in between.
 type Map struct {
 	// Slug is the map directory's name — its stable identity within the space.
 	Slug string `json:"slug"`
@@ -175,16 +154,6 @@ type Map struct {
 	// Finished is true when the map has tickets and every one of them is closed
 	// (resolved or ruled out); finished maps sort last in the sidebar.
 	Finished bool `json:"finished"`
-	// Kind is the map's declared lifecycle (KindPlanning, KindImplementation) or
-	// KindUnclassified when no committed declaration matches this slug. An
-	// unclassified map is inert: the chartr offers no session actions on it until
-	// a human classifies it (ADR 0007, story 13).
-	Kind string `json:"kind"`
-	// KindGuess is the convention-derived guess the classify affordance pre-fills
-	// for a one-keystroke confirm (story 14) — the `-impl` suffix and all-`task`
-	// tickets. Set only while the map is unclassified; blank once Kind is
-	// declared, so the guess never lingers as gospel.
-	KindGuess string `json:"kindGuess,omitempty"`
 	// Malformations are the map's surfaced defects — an unparseable ticket, a
 	// dangling blocked_by, a drifted index — each rendered where it bites and
 	// never a reason to refuse the map (story 17).

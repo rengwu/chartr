@@ -3,7 +3,6 @@ package server_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,12 +47,6 @@ func decodeResume(t *testing.T, body string) struct {
 // "quiet" hint appears only for an AFK session silent past the threshold, and a
 // dirtied tree badges while a spawn still proceeds. Every
 // assertion is on what the design makes public — snapshots, the filesystem, git.
-
-// planningConfig is a committed workspace config declaring one map as a planning
-// map, so its grill/prototype/research roles are offered.
-func planningConfig(slug string) string {
-	return fmt.Sprintf("[maps.%q]\nkind = \"planning\"\n", slug)
-}
 
 // commitCount is the number of commits reachable from HEAD — one after a claim,
 // two once a release or a re-claim appends its own commit.
@@ -102,7 +95,6 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	marker := chartrtest.StubDyingAgent(t, "claude")
 
@@ -162,7 +154,6 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.StubDyingAgent(t, "claude")
 
@@ -206,7 +197,6 @@ func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.StubDyingAgent(t, "claude")
 
@@ -256,7 +246,6 @@ func TestHaltResumeRelaunchesSameSession(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.StubDyingAgent(t, "claude")
 
@@ -297,7 +286,6 @@ func TestHaltRefusesLiveSession(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	chartrtest.StubAgent(t, "claude") // blocking: the session stays live
 
@@ -327,14 +315,12 @@ func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
 	// AFK space: an implementation map, spawn implement.
 	afk := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, afk, "widget", mapBody)
-	chartrtest.WriteFile(t, afk, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	afkID := register(t, h, afk).ID
 
 	// HITL space: a planning map, spawn grill.
 	hitl := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, hitl, "plan", mapBody)
-	chartrtest.WriteFile(t, hitl, ".chartr/config.toml", planningConfig("plan"))
 	chartrtest.WriteTicket(t, hitl, "plan", "01-q.md", ticket(1, "Q", "[]", "question", ""))
 	hitlID := register(t, h, hitl).ID
 
@@ -365,7 +351,6 @@ func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	// Commit the map and config so the tree is clean to start, then leave debris.
 	chartrtest.Git(t, repo, "add", "-A")
