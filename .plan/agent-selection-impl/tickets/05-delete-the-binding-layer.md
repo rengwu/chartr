@@ -75,3 +75,10 @@ no error; the cockpit still spawns, ideates and respawns end to end; the setting
 route shows the agent library and its file paths and nothing else; and ADR 0014
 and ADR 0009 carry their supersessions with `CONTEXT.md` updated.
 
+**If the cockpit cannot spawn this ticket, no agent was ever registered.** Ticket
+04 made one mandatory, so a data root with an empty library cannot start the very
+session that would work this ticket — and the fix is not reachable from a cockpit
+that will not spawn. Either register an agent and rebuild, or finish this ticket
+the vanilla-wayfinder way: a terminal, `git`, and a `## Answer` committed by hand
+(see the map's self-hosting note).
+
