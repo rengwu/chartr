@@ -77,3 +77,17 @@ Three consequences, all simplifications:
 - **The shipped defaults express their model as args** (`args = ["--model", "opus"]` for grill, sonnet for the rest), so behaviour is unchanged for anyone who never touched their config.
 
 A config that still sets `model` is **surfaced, never honoured** — one warning per binding and per agent, naming the args line to write instead. Nothing is migrated automatically, precisely because migration would mean guessing the flag name a given harness wants, which is the guess this amendment exists to stop making. Editing an agent through the surface clears the dead key on the way through.
+
+## Amendment: map kind lapses from the committed layer (kind-cut, ticket 04)
+
+The two-layer mechanism this ADR decides is **untouched**. What lapses is the
+other tenant it kept naming: **map kind is removed from the chartr entirely**
+(ADR 0015, superseding 0007). So line 3's parenthetical is provenance only —
+committed workspace config was first established for map-kind, and no longer
+holds it — and the consequence that "the committed config file gains a second
+tenant beside map-kind" now reads the other way round: role bindings and the
+committed skills layer are its tenants, and a space with no
+`.chartr/config.toml` at all is fully supported. The rejected
+"committed autopilot, confirmed on clone" option stands as written; the
+declared-but-confirmed map-kind it mirrored is simply gone, which strengthens
+rather than weakens the rejection.

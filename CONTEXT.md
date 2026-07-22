@@ -22,10 +22,6 @@ _Avoid_: design map, wayfinder map, decision map
 A map whose tickets deliver code, with every decision already settled in a spec.
 _Avoid_: impl map, task map, build map
 
-**Kind**:
-Whether a map is a planning map or an implementation map — the property that decides which roles its sessions may be spawned as. Both kinds share one lifecycle. A property of the *map*, not the ticket. Declared explicitly in committed chartr config, never inferred from the map's contents; an undeclared map is inert until a human classifies it.
-_Avoid_: type, mode, flavour, class
-
 **Ticket**:
 One question or one unit of work in a map, sized to a single session. Its status is derived from its file, never stored in it.
 
@@ -39,7 +35,7 @@ A PTY running an agent CLI against exactly one ticket, wired by a pre-injected p
 _Avoid_: run, job, task, agent, terminal
 
 **Role**:
-What a session is spawned to do — grill, prototype, research, or implement. Resolves through config to a concrete agent command.
+What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. Resolves through config to a concrete agent command.
 _Avoid_: mode, kind, job type
 
 **Adapter**:
@@ -83,7 +79,7 @@ What a role resolves to — an `{adapter, model, args?}` triple. Structured so t
 _Avoid_: mapping, agent config, role config
 
 **Workspace config**:
-The committed, shared chartr config in a space's repo — map kinds (ADR 0007) and role bindings — versioned and portable. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
+The committed, shared chartr config in a space's repo — role bindings and the committed skills layer — versioned and portable. A space may have none at all. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
 _Avoid_: project config, repo config, settings
 
 **User config**:

@@ -36,3 +36,18 @@ The chartr's configuration resolves through three documented layers that nobody 
 - **Accepting a path from the client on the open action** — rejected: a loopback server that opens any path on request is an arbitrary-file-open primitive. Named layers only.
 - **An ad-hoc preferences table** — rejected: the "second config system" the surface exists to avoid.
 - **Rebuilding the payload assembly on this screen** — rejected: the payload preview already answers "what would a session be told"; the surface links to it.
+
+## Amendment: the map-kind row and the `DeclareMapKind` comparison lapse (kind-cut, ticket 04)
+
+**Map kind is removed from the chartr entirely** (ADR 0015, superseding 0007),
+so the consequence "map kind stays classify-only" has no subject: there is no
+read-only kind row on this surface, no classify action to link out to, and the
+star-map picker it pointed at no longer classifies anything. The consequence's
+actual content — *this surface edits role bindings and nothing else* — is
+unchanged and is what the bullet should now be read for.
+
+The edit-boundary paragraph compares `config.SetUserBinding`'s difficulty against
+`config.DeclareMapKind`, which is deleted. The comparison still holds, stated in
+its own terms: appending a whole table after a blank line, to a slug already
+proven absent, is strictly easier than the key-level, comment-preserving edit
+`SetUserBinding` performs on an existing table.

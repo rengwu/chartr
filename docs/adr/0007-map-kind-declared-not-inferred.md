@@ -1,5 +1,15 @@
 # Map kind is declared in committed config, never inferred
 
+> **Superseded by [0015](0015-map-kind-removed-role-comes-from-the-ticket.md)
+> (the `kind-cut` map).** Map kind is removed from the chartr entirely: a
+> session's role comes from the ticket's own `type:`, and a discovered map is
+> live rather than inert-until-classified. The deciding premise below — that the
+> two kinds have different lifecycles — was struck by this ADR's own amendment
+> when review was cut, and the ground the amendment kept (kind selects the role
+> set) turned out to be redundant with per-ticket `type:`. Nothing below is
+> current; it is kept whole, addendum and amendment included, as the record of
+> how the decision moved.
+
 A map is either a planning map or an implementation map, and the two have different lifecycles — an implementation ticket passes through review before it resolves, a planning ticket resolves live. The chartr must know which kind it is looking at *before it offers any action*, because getting it wrong either gates a conversation that needed no gate or lets code resolve unreviewed. The candidate signals — the `.plan/<slug>-impl/` directory suffix, every ticket typed `task`, the Notes carrying execution — are each individually breakable (a hand-written implementation map follows none of them; wayfinder explicitly permits a `task` ticket and a Notes override on a planning map), so we do **not** infer kind from them at read time. Kind is an **explicit declaration**, recorded in chartr-owned config committed to the space's repo and keyed by map slug; the signals survive only as a one-time *guess* the chartr proposes when it first meets a map, for a human to confirm.
 
 ## Considered options
