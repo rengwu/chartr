@@ -107,14 +107,30 @@ func Compose(in ComposeInput) (Payload, error) {
 }
 
 // AnswerSection returns a ticket's closing answer prose for inlining as a
-// blocker's answer in the context bundle — its Answer, else its Ruled out.
-// Empty when the blocker carries none, which Compose renders as an explicit
-// "not resolved" note rather than a silent gap. An in-flight `## Proposed
-// Answer` is deliberately *not* read: it is an unknown heading no one blessed,
-// and handing it to a dependent as though it were the answer is the one failure
-// this narrowing exists to prevent.
+// blocker's answer in the context bundle — its Answer, else its Ruled out,
+// together with any amendment sections appended below it. Empty when the blocker
+// carries none, which Compose renders as an explicit "not resolved" note rather
+// than a silent gap. An in-flight `## Proposed Answer` is deliberately *not*
+// read: it is an unknown heading no one blessed, and handing it to a dependent as
+// though it were the answer is the one failure this narrowing exists to prevent.
 func AnswerSection(body string) string {
-	return firstSection(body, "Answer", "Ruled out")
+	return answerThroughAmendments(body, "Answer", "Ruled out")
+}
+
+// isAmendment reports whether a `## ` heading opens a section that corrects the
+// answer above it rather than starting an unrelated one.
+//
+// This repo's convention is to amend a resolved ticket by *appending* a
+// `## Correction …` or `## Amendment (…)` section rather than editing the answer
+// in place, so the answer and its corrections are one artifact split across
+// sibling headings. Reading only up to the next `## ` would hand a dependent the
+// superseded text and silently drop the retraction — the worst of both, since the
+// wrong statement travels with the authority of a blessed answer. Prefix-matched
+// because both headings carry trailing prose (`## Correction — the glossary …`,
+// `## Amendment (2026-07-19 — operator-approved)`).
+func isAmendment(heading string) bool {
+	h := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(heading, "## ")))
+	return strings.HasPrefix(h, "correction") || strings.HasPrefix(h, "amendment")
 }
 
 func ctxPart(name, label, text string) Part {
@@ -210,23 +226,30 @@ func partText(p Part) string {
 	return strings.Join(segs, "\n\n")
 }
 
-// firstSection returns the body under the first matching `## <name>` heading, up
-// to the next `## ` heading. Case-insensitive on the heading text.
-func firstSection(body string, names ...string) string {
+// answerThroughAmendments returns the body under the first matching `## <name>`
+// heading, continuing through any amendment sections that follow it and stopping
+// at the first unrelated `## ` heading. Case-insensitive on the heading text.
+//
+// An amendment's own heading is kept — it carries the correction's point
+// ("the glossary that rides the bundle is not `CONTEXT.md`") and marks the prose
+// below it as superseding rather than continuing what came before. The matched
+// answer heading itself is dropped, as the part is already labelled.
+func answerThroughAmendments(body string, names ...string) string {
 	lines := strings.Split(body, "\n")
 	for _, name := range names {
 		want := "## " + name
 		for i, l := range lines {
-			if strings.EqualFold(strings.TrimSpace(l), want) {
-				var out []string
-				for j := i + 1; j < len(lines); j++ {
-					if strings.HasPrefix(lines[j], "## ") {
-						break
-					}
-					out = append(out, lines[j])
-				}
-				return strings.TrimSpace(strings.Join(out, "\n"))
+			if !strings.EqualFold(strings.TrimSpace(l), want) {
+				continue
 			}
+			var out []string
+			for j := i + 1; j < len(lines); j++ {
+				if strings.HasPrefix(lines[j], "## ") && !isAmendment(lines[j]) {
+					break
+				}
+				out = append(out, lines[j])
+			}
+			return strings.TrimSpace(strings.Join(out, "\n"))
 		}
 	}
 	return ""

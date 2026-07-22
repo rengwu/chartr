@@ -196,6 +196,54 @@ func TestProposedAnswerIsNotABlockersAnswer(t *testing.T) {
 	}
 }
 
+// A blocker corrected after it resolved hands its dependent the *corrected*
+// answer. This repo amends a resolved ticket by appending a `## Correction` or
+// `## Amendment (…)` section rather than editing the answer in place, so reading
+// only up to the next `## ` would inline the superseded text and drop the
+// retraction — a wrong statement travelling with a blessed answer's authority.
+// The amendment's heading rides along too: it carries the correction's point and
+// marks the prose below it as superseding.
+func TestBlockerAnswerCarriesItsCorrections(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-base.md", ticket(1, "Base decision", "[]", "task",
+		"## Answer\nUSE-THE-BASE-APPROACH.\n\n"+
+			"## Correction — the base approach was wrong about the mechanism\n\n"+
+			"USE-THE-CORRECTED-APPROACH.\n\n"+
+			"## Out of scope\n\nUNRELATED-TRAILING-SECTION."))
+	chartrtest.WriteTicket(t, repo, "widget", "02-dependent.md",
+		ticket(2, "Dependent work", "[1]", "task", ""))
+
+	resp := register(t, h, repo)
+
+	code, p, body := getPayload(t, h, resp.ID, "widget", 2, "implement")
+	if code != 200 {
+		t.Fatalf("payload preview = %d, body %s", code, body)
+	}
+
+	blocker := segText(findPart(t, p, "blocker #01"))
+	if !strings.Contains(blocker, "USE-THE-CORRECTED-APPROACH") {
+		t.Errorf("the correction was dropped from the blocker's answer:\n%s", blocker)
+	}
+	if !strings.Contains(blocker, "## Correction — the base approach was wrong") {
+		t.Errorf("the correction's heading was dropped, so the prose reads as a continuation:\n%s", blocker)
+	}
+	// The original still travels: an amendment supersedes in prose, and the
+	// dependent reads both halves in order rather than a rewritten answer.
+	if !strings.Contains(blocker, "USE-THE-BASE-APPROACH") {
+		t.Errorf("the amended answer lost its original:\n%s", blocker)
+	}
+	// A heading that amends nothing still ends the answer.
+	if strings.Contains(blocker, "UNRELATED-TRAILING-SECTION") {
+		t.Errorf("an unrelated trailing section leaked into the answer:\n%s", blocker)
+	}
+	if !strings.Contains(p.Markdown, "USE-THE-CORRECTED-APPROACH") {
+		t.Errorf("composed markdown missing the correction:\n%s", p.Markdown)
+	}
+}
+
 // Resolution walks built-in ‹ user ‹ workspace with whole-skill shadowing: the
 // most specific layer defining a skill wins its entire directory, and a committed
 // workspace skill wins over a local user one (the content half of ADR 0009). The
