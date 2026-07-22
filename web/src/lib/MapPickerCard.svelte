@@ -67,7 +67,10 @@
 <Card.Root
   size="sm"
   class={[
-    "w-78 gap-2 p-3 text-left transition-colors",
+    // Width comes from the enclosing auto-fill grid track, not the tile: the
+    // picker fills its pane edge to edge at any width rather than leaving a
+    // gutter next to a fixed-width row.
+    "w-full min-w-0 gap-2 p-3 text-left transition-colors",
     classified &&
       "cursor-pointer hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none",
   ]}

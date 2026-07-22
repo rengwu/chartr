@@ -405,8 +405,10 @@
   {:else}
     <!-- The picker screen: a header bar, over the space's maps split into a
          classified section (openable) and an unclassified one (classify in place
-         first, ADR 0007). Each section is its own flex-wrap row, so the taller
-         unclassified tiles never stretch the classified ones. -->
+         first, ADR 0007). Each section is its own auto-fill grid — tiles share
+         the width evenly and reach both edges at any pane width — and the two
+         grids are separate, so the taller unclassified tiles never stretch the
+         classified ones. -->
     <header class="cockpit-bar">
       <span class="min-w-0 flex-1 truncate text-sm font-semibold">Maps</span>
       <div class="flex items-center gap-1">
@@ -419,7 +421,9 @@
         <div class="flex min-h-full flex-col gap-3 p-3">
           {#if classified.length}
             <!-- The openable maps flow from the top, unheaded. -->
-            <div class="flex flex-wrap items-start gap-3">
+            <div
+              class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
+            >
               {#each classified as m (m.slug)}
                 <MapPickerCard
                   map={m}
@@ -441,7 +445,9 @@
               >
                 Unclassified maps
               </h3>
-              <div class="flex flex-wrap items-start gap-3">
+              <div
+                class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
+              >
                 {#each unclassified as m (m.slug)}
                   <MapPickerCard
                     map={m}

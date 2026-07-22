@@ -5,12 +5,13 @@
   import MapCard from './MapCard.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
-  import { Warning, Sparkle, Lightbulb } from 'phosphor-svelte'
+  import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
-  // identity (name and path) plus the stage-level controls — warnings and the
-  // star-map toggle; config lives in the branding bar — over the terminal. The
-  // sidebar now owns session selection (its space cards list each shell), so the
+  // identity (name and path) plus the stage-level controls — warnings, the
+  // star-map toggle, and the cockpit-wide way into config, pinned to the far
+  // right of the chrome rather than sitting beside the branding — over the
+  // terminal. The sidebar now owns session selection (its space cards list each shell), so the
   // active shell arrives as a prop and this pane simply renders it: no tab strip,
   // no per-pane action bar. A mapless space is fully usable this way (story 29).
   //
@@ -25,6 +26,7 @@
     active = true,
     onOpenShell,
     onIdeate,
+    onOpenSettings,
     onspawned,
   }: {
     space: Space
@@ -38,6 +40,10 @@
     // The ideate on-ramp (ticket 15): a live, ticketless chat, the one
     // opinionated nudge toward charting for a space with no map to spawn onto.
     onIdeate: () => void
+    // The cockpit-wide way into the config surface (ticket 05), owned by the
+    // enclosing App — the route is App's, this pane just carries the control at
+    // the right end of its title bar.
+    onOpenSettings: () => void
     // Bubbled from the star-map's detail pane when a session is spawned (ticket
     // 09), so the enclosing App can make the new session's tab active.
     onspawned?: (sessionId: string) => void
@@ -300,10 +306,11 @@
       <code class="truncate font-mono text-[0.7rem] text-muted-foreground">{space.path}</code>
     </div>
 
-    <!-- The stage-level controls, right-aligned: any surfaced warnings and the
-         one star-map show/hide toggle — lifted here now that the terminal has no
-         action bar. Config is not here: it has one entry, the branding bar's
-         gear (and each space card's own ⚙). -->
+    <!-- The stage-level controls, right-aligned: any surfaced warnings, the one
+         star-map show/hide toggle — lifted here now that the terminal has no
+         action bar — and, at the far right corner of the chrome, the
+         cockpit-wide gear into the config surface (each space card keeps its
+         own ⚙ for that space's scope). -->
     <div class="flex items-center gap-1.5">
       {#if warnings.length}
         <span
@@ -325,6 +332,15 @@
         onclick={toggleMap}
       >
         <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Config"
+        title="The effective config — bindings, skills, kinds, and where each layer lives (,)"
+        onclick={onOpenSettings}
+      >
+        <Gear />
       </Button>
     </div>
   </header>

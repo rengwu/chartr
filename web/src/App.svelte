@@ -313,11 +313,11 @@
   <aside
     class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
   >
-    <!-- Branding: a marked home for the cockpit, above the spaces list. Its
-         right end carries the cockpit-wide way into the config surface (ticket
-         05) — one gear, at the top of the chrome, rather than a labelled button
-         on the space's own title bar. -->
-    <div class="cockpit-bar justify-between gap-2 bg-transparent">
+    <!-- Branding: a marked home for the cockpit, above the spaces list. Just the
+         mark and the name — the cockpit-wide way into the config surface (ticket
+         05) sits at the far top-right of the chrome instead, past the stage's
+         Map toggle (SpacePane). -->
+    <div class="cockpit-bar gap-2 bg-transparent">
       <span class="flex min-w-0 items-center gap-2">
         <span
           class="grid size-5 shrink-0 place-items-center rounded-full border border-sidebar-border text-sidebar-foreground"
@@ -326,15 +326,6 @@
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       </span>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Config"
-        title="The effective config — bindings, skills, kinds, and where each layer lives (,)"
-        onclick={() => openSettings()}
-      >
-        <Gear />
-      </Button>
     </div>
 
     <div class="cockpit-bar justify-between gap-2 bg-transparent">
@@ -720,6 +711,7 @@
         active={!route.settings}
         onOpenShell={() => openShell(selected)}
         onIdeate={() => ideateSpace(selected)}
+        onOpenSettings={() => openSettings()}
         onspawned={(id) => (activeTermId = id)}
       />
     {/if}
