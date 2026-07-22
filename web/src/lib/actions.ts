@@ -90,14 +90,14 @@ export function previewPayload(
 }
 
 // SpawnResult is the spawn action's own response — the session it started, the
-// resolved agent and model, and the payload hash the claim commit recorded. The
+// resolved agent and args, and the payload hash the claim commit recorded. The
 // live session tab arrives separately over the control socket.
 export interface SpawnResult {
   sessionId: string
   ticketNum: number
   role: string
   agent: string
-  model: string
+  args?: string[]
   payloadSha: string
 }
 
@@ -148,7 +148,7 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
 export function setBinding(
   id: string,
   role: string,
-  field: 'adapter' | 'model' | 'args',
+  field: 'adapter' | 'args' | 'prompt' | 'agent',
   value: string | string[] | null,
 ): Promise<{ role: string; field: string; cleared: boolean; path: string }> {
   return send('PUT', `/api/spaces/${encodeURIComponent(id)}/config/binding`, {
@@ -200,4 +200,30 @@ export function classifyMap(
     `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/classify`,
     { kind },
   ) as Promise<{ slug: string; kind: string }>
+}
+
+// setAgent registers or updates one agent of the operator's library. It is a PUT
+// because the body is the agent's whole spec: what is sent is what the agent
+// becomes, so a flag removed here is removed on disk rather than merged back in.
+// Global, like the library itself — no space id, and it works with nothing
+// registered at all.
+export function setAgent(
+  name: string,
+  agent: { adapter: string; args?: string[]; prompt?: string },
+): Promise<{ name: string; path: string }> {
+  return send('PUT', `/api/config/agents/${encodeURIComponent(name)}`, agent) as Promise<{
+    name: string
+    path: string
+  }>
+}
+
+// deleteAgent removes one agent from the library. Roles assigned to it are left
+// exactly as they are — the response names them, and each resolves to a visible
+// warning with the role falling back to its own fields, rather than a delete here
+// quietly rewriting a space's bindings.
+export function deleteAgent(name: string): Promise<{ name: string; assigned?: string[] }> {
+  return send('DELETE', `/api/config/agents/${encodeURIComponent(name)}`) as Promise<{
+    name: string
+    assigned?: string[]
+  }>
 }

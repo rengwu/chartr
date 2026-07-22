@@ -1,7 +1,7 @@
 // Package config resolves the chartr's layered configuration. Ticket 02 owns
 // the role→agent bindings: what a role runs as, merged across three layers.
 //
-// A role binds to {adapter, model, args?} (ADR 0009). Three layers stack —
+// A role binds to {adapter, args?, prompt?} (ADR 0009). Three layers stack —
 // shipped built-in defaults ‹ committed workspace config ‹ local user config —
 // and merge field by field, with the user layer winning: the reconciling rule
 // is that content the project ships wins (prompts, a later ticket) while
@@ -18,6 +18,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/model"
 )
 
@@ -110,19 +111,28 @@ const (
 
 // builtins are the shipped default bindings — the starting point every layer
 // above may override.
+// The model rides `args` like every other flag: which flag carries a model — and
+// whether a harness has the concept at all — is exactly the per-CLI knowledge the
+// chartr refuses to hold (ADR 0002).
 var builtins = map[Role]Binding{
-	RoleGrill:     {Adapter: "claude", Model: "opus"},
-	RolePrototype: {Adapter: "claude", Model: "sonnet"},
-	RoleResearch:  {Adapter: "claude", Model: "sonnet"},
-	RoleImplement: {Adapter: "claude", Model: "sonnet"},
+	RoleGrill:     {Adapter: "claude", Args: []string{"--model", "opus"}},
+	RolePrototype: {Adapter: "claude", Args: []string{"--model", "sonnet"}},
+	RoleResearch:  {Adapter: "claude", Args: []string{"--model", "sonnet"}},
+	RoleImplement: {Adapter: "claude", Args: []string{"--model", "sonnet"}},
 }
 
-// Binding is a fully-resolved role→agent binding: which adapter to launch, on
-// which model, with any extra args the adapter does not model (ADR 0009).
+// Binding is a fully-resolved role→agent binding: which adapter to launch, with
+// which args (ADR 0009), and how that agent takes its opening prompt. There is no
+// model field — a model is a flag, and it lives in Args with every other flag.
 type Binding struct {
 	Adapter string   `json:"adapter"`
-	Model   string   `json:"model"`
 	Args    []string `json:"args,omitempty"`
+	// Prompt overrides how the opener reaches this agent — `argv`, `type`, or a
+	// flag name like `--prompt` (see adapter.ParseDelivery). Empty means the
+	// adapter's own default stands, which is what nearly every binding wants; it
+	// is the hatch that lets an operator drive a harness the chartr ships no
+	// knowledge of without waiting for an adapter row.
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // Resolved is one role's effective binding, plus per-field provenance and
@@ -131,11 +141,20 @@ type Resolved struct {
 	Role Role `json:"role"`
 	Binding
 	// Each *From names the layer that last set that field, so a user override
-	// of just `model` shows model←user, adapter←workspace, and nothing is a
+	// of just `args` shows args←user, adapter←workspace, and nothing is a
 	// surprise (story 39).
 	AdapterFrom Layer `json:"adapterFrom"`
-	ModelFrom   Layer `json:"modelFrom"`
 	ArgsFrom    Layer `json:"argsFrom"`
+	PromptFrom  Layer `json:"promptFrom"`
+	// Agent is the registered agent this role is assigned to, empty when the role
+	// is bound field by field the older way. When it is set and registered, the
+	// agent *is* the binding — every field above came from it wholesale — so the
+	// surface shows one name instead of four values with four provenances.
+	Agent string `json:"agent,omitempty"`
+	// AgentMissing is set when Agent names nothing in the library: the assignment
+	// is shown as it stands, with the fields beneath it saying what actually runs,
+	// rather than the name silently disappearing.
+	AgentMissing string `json:"agentMissing,omitempty"`
 	// Present is whether the adapter binary was found on PATH at resolve time.
 	// Missing carries the absence badge — empty when Present is true.
 	Present bool   `json:"present"`
@@ -149,6 +168,10 @@ type Resolved struct {
 type Resolution struct {
 	Bindings []Resolved
 	Kinds    map[string]string
+	// Agents is the operator's registered agent library, in name order. It is
+	// global rather than per space (agents.go), and is carried on the resolution so
+	// a caller reads bindings and the library they may name out of one pass.
+	Agents   []ResolvedAgent
 	Warnings []string
 }
 
@@ -169,8 +192,24 @@ type Input struct {
 // inherited args.
 type rawBinding struct {
 	Adapter *string  `toml:"adapter"`
-	Model   *string  `toml:"model"`
 	Args    []string `toml:"args"`
+	// Model is no longer a binding field — it is a flag like any other, and lives
+	// in Args. It is still decoded so a config written before that change is
+	// *told* it stopped taking effect rather than silently launching a different
+	// model (retiredModelWarnings).
+	Model  *string `toml:"model"`
+	Prompt *string `toml:"prompt"`
+	// Agent assigns this role to a registered agent by name, which supplies the
+	// whole binding. It is the field the surface writes now; the four above remain
+	// for a role bound the older way, and for anyone who prefers the file.
+	Agent *string `toml:"agent"`
+}
+
+// setsFields reports whether this layer sets any of the four execution fields —
+// what an agent assignment would override wholesale, and therefore what is worth
+// telling the operator about when both are present in one table.
+func (b rawBinding) setsFields() bool {
+	return b.Adapter != nil || b.Args != nil || b.Prompt != nil
 }
 
 type workspaceFile struct {
@@ -214,17 +253,59 @@ func Resolve(in Input) Resolution {
 
 	warnings = append(warnings, unknownRoleWarnings(ws)...)
 	warnings = append(warnings, unknownRoleWarnings(us)...)
+	warnings = append(warnings, retiredModelWarnings(LayerWorkspace, ws)...)
+	warnings = append(warnings, retiredModelWarnings(LayerUser, us)...)
+
+	// The agent library is global and local (agents.go), so it resolves once for
+	// every role here, out of the same user bytes.
+	library, libWarnings := ResolveAgents(in.UserTOML, onPath)
+	warnings = append(warnings, libWarnings...)
 
 	bindings := make([]Resolved, 0, len(Roles))
 	for _, role := range Roles {
 		r := Resolved{Role: role, Binding: builtins[role]}
-		r.AdapterFrom, r.ModelFrom, r.ArgsFrom = LayerBuiltin, LayerBuiltin, LayerBuiltin
+		r.AdapterFrom, r.ArgsFrom, r.PromptFrom = LayerBuiltin, LayerBuiltin, LayerBuiltin
 
 		if b, ok := ws[string(role)]; ok {
 			apply(&r, b, LayerWorkspace)
 		}
 		if b, ok := us[string(role)]; ok {
 			apply(&r, b, LayerUser)
+		}
+
+		// An assignment supersedes the field merge entirely: a registered agent is
+		// one indivisible way to run a harness, so taking three of its fields and a
+		// fourth from somewhere else would launch something nobody registered.
+		if r.Agent != "" {
+			warnings = append(warnings, assignmentWarnings(role, r.Agent, ws, us)...)
+			if a, ok := findAgent(library, r.Agent); ok {
+				r.Binding = Binding{Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt}
+				// Every field now comes from one place — the library, which lives in the
+				// user layer — so the provenance says so rather than pointing at three.
+				r.AdapterFrom, r.ArgsFrom, r.PromptFrom = LayerUser, LayerUser, LayerUser
+			} else {
+				// A dangling assignment falls back to the fields beneath it. The role is
+				// still spawnable, and the surface shows the name that resolved to
+				// nothing rather than quietly dropping it.
+				r.AgentMissing = fmt.Sprintf("no agent named %q is registered; this role falls back to its own fields", r.Agent)
+				warnings = append(warnings, fmt.Sprintf(
+					"role %s is assigned to agent %q, which is not registered; it falls back to its own fields", role, r.Agent))
+			}
+		}
+
+		// A prompt delivery the adapter seam cannot read is dropped to a warning and
+		// the agent's default stands, in the same spirit as an unrecognised map kind:
+		// config that says something unreadable never silently changes how a session
+		// is launched, and never blocks one either. The library validates its own on
+		// the way through, so this catches the field-bound form.
+		if r.Prompt != "" {
+			if _, err := adapter.ParseDelivery(r.Prompt); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s config binds role %s with an unreadable prompt delivery: %s; the agent's default stands",
+					r.PromptFrom, role, err,
+				))
+				r.Prompt, r.PromptFrom = "", LayerBuiltin
+			}
 		}
 
 		r.Present = onPath(r.Adapter)
@@ -237,7 +318,35 @@ func Resolve(in Input) Resolution {
 		bindings = append(bindings, r)
 	}
 
-	return Resolution{Bindings: bindings, Kinds: kinds, Warnings: warnings}
+	return Resolution{Bindings: bindings, Kinds: kinds, Agents: library, Warnings: warnings}
+}
+
+// findAgent picks one agent out of the resolved library by name.
+func findAgent(library []ResolvedAgent, name string) (ResolvedAgent, bool) {
+	for _, a := range library {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return ResolvedAgent{}, false
+}
+
+// assignmentWarnings flags a role table that both assigns an agent and sets the
+// fields the agent supplies. The agent wins, and the operator is told which lines
+// stopped mattering — a value silently ignored is the kind of thing that costs an
+// afternoon when a session launches on the wrong model.
+func assignmentWarnings(role Role, agent string, layers ...map[string]rawBinding) []string {
+	names := []Layer{LayerWorkspace, LayerUser}
+	var out []string
+	for i, roles := range layers {
+		if b, ok := roles[string(role)]; ok && b.setsFields() {
+			out = append(out, fmt.Sprintf(
+				"role %s is assigned to agent %q, so the adapter/model/args/prompt set in %s config no longer apply",
+				role, agent, names[i],
+			))
+		}
+	}
+	return out
 }
 
 // resolveKinds turns the committed [maps.<slug>] tables into a slug → kind map,
@@ -280,11 +389,14 @@ func apply(r *Resolved, b rawBinding, layer Layer) {
 	if b.Adapter != nil {
 		r.Adapter, r.AdapterFrom = *b.Adapter, layer
 	}
-	if b.Model != nil {
-		r.Model, r.ModelFrom = *b.Model, layer
-	}
 	if b.Args != nil {
 		r.Args, r.ArgsFrom = b.Args, layer
+	}
+	if b.Prompt != nil {
+		r.Prompt, r.PromptFrom = *b.Prompt, layer
+	}
+	if b.Agent != nil {
+		r.Agent = *b.Agent
 	}
 }
 
@@ -310,6 +422,25 @@ func parseUser(data []byte, spacePath string, warnings *[]string) map[string]raw
 		return nil
 	}
 	return uf.Spaces[spacePath].Roles
+}
+
+// retiredModelWarnings flags a binding that still sets `model`. The field was
+// retired — a model is a flag, and flags live in `args` — and a key that quietly
+// stopped taking effect is exactly the kind of thing that costs an afternoon when
+// a session turns out to be running the wrong model. Surfaced, never honoured and
+// never guessed at: the chartr will not invent the flag name a harness wants.
+func retiredModelWarnings(layer Layer, roles map[string]rawBinding) []string {
+	var out []string
+	for name, b := range roles {
+		if b.Model != nil && isRole(name) {
+			out = append(out, fmt.Sprintf(
+				"role %s sets model = %q in %s config, which the chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
+				name, *b.Model, layer, *b.Model,
+			))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // unknownRoleWarnings flags config that binds a name outside the closed role

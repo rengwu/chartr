@@ -20,12 +20,12 @@ import (
 // `.plan/` at all, which is the point of the on-ramp (planning ticket 07).
 
 // Opening ideate in a mapless space spawns a live tab that carries no Session
-// binding, and the starter prompt reaches the agent's stdin through the same
+// binding, and the starter prompt reaches the agent through the same
 // read-this-file opener a real session uses, byte-matching the composed prompt.
 func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	stdinLog := chartrtest.StubAgent(t, "claude") // the grill binding's built-in adapter
+	deliveryLog := chartrtest.StubAgent(t, "claude") // the grill binding's built-in adapter
 
 	resp := register(t, h, repo)
 	id := h.Ideate(resp.ID)
@@ -49,9 +49,9 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 		t.Errorf("ideate prompt on disk does not match the composed starter prompt:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
-	log := chartrtest.WaitForFileContains(t, stdinLog, promptAbs, 5*time.Second)
+	log := chartrtest.WaitForFileContains(t, deliveryLog, promptAbs, 5*time.Second)
 	if !strings.Contains(log, "Read the file") {
-		t.Errorf("opener typed into the agent did not read-this-file:\n%s", log)
+		t.Errorf("the opener the agent received did not read-this-file:\n%s", log)
 	}
 }
 

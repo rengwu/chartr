@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/model"
@@ -159,7 +160,12 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// The global skill library resolves with no repo in play, so it is the same
 	// answer whether or not a space is registered — which is exactly what the
 	// settings route's global scope needs.
-	return model.Model{Spaces: spaces, Config: s.globalLayers(), Skills: s.resolvedSkills("")}
+	return model.Model{
+		Spaces: spaces,
+		Config: s.globalLayers(),
+		Skills: s.resolvedSkills(""),
+		Agents: agentLibrary(userTOML),
+	}
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
@@ -174,15 +180,17 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 	bindings := make([]model.RoleBinding, 0, len(res.Bindings))
 	for _, b := range res.Bindings {
 		bindings = append(bindings, model.RoleBinding{
-			Role:        string(b.Role),
-			Adapter:     b.Adapter,
-			Model:       b.Model,
-			Args:        b.Args,
-			AdapterFrom: string(b.AdapterFrom),
-			ModelFrom:   string(b.ModelFrom),
-			ArgsFrom:    string(b.ArgsFrom),
-			Present:     b.Present,
-			Missing:     b.Missing,
+			Role:         string(b.Role),
+			Adapter:      b.Adapter,
+			Args:         b.Args,
+			Prompt:       b.Prompt,
+			AdapterFrom:  string(b.AdapterFrom),
+			ArgsFrom:     string(b.ArgsFrom),
+			PromptFrom:   string(b.PromptFrom),
+			Agent:        b.Agent,
+			AgentMissing: b.AgentMissing,
+			Present:      b.Present,
+			Missing:      b.Missing,
 		})
 	}
 
@@ -217,7 +225,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 				TicketNum: info.Session.TicketNum,
 				Role:      info.Session.Role,
 				Agent:     info.Session.Agent,
-				Model:     info.Session.Model,
 			}
 			// The quiet hint is the server's call, not the terminal's: the sampler
 			// reports raw silence, and here — where the role is in hand — that silence
@@ -279,4 +286,40 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func httpError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// openerPlaceholder stands in for the read-this-file opener in the library's
+// command preview. It is deliberately unmistakable for a real path: the preview
+// answers "where does the opener go", not "what will it say".
+const openerPlaceholder = "‹opener›"
+
+// agentLibrary derives the operator's registered agent library for the snapshot.
+// It is resolved from the user config alone — the library is global, the same
+// answer for every space and for none at all — so the settings surface can list
+// and edit agents before a single space is registered. Never nil on the wire.
+func agentLibrary(userTOML []byte) []model.Agent {
+	resolved, _ := config.ResolveAgents(userTOML, nil)
+	out := make([]model.Agent, 0, len(resolved))
+	for _, a := range resolved {
+		// The command preview comes from the seam that builds the real argv, with a
+		// placeholder for the opener, so the library never shows a command the spawn
+		// path would not actually run.
+		launch := adapter.Command(adapter.Spawn{
+			Adapter: a.Adapter,
+			Args:    a.Args,
+			Prompt:  openerPlaceholder,
+			Deliver: a.Prompt,
+		})
+		out = append(out, model.Agent{
+			Name:     a.Name,
+			Adapter:  a.Adapter,
+			Args:     a.Args,
+			Prompt:   a.Prompt,
+			Delivery: adapter.DeliveryFor(a.Adapter, a.Prompt).String(),
+			Command:  append([]string{launch.Name}, launch.Args...),
+			Present:  a.Present,
+			Missing:  a.Missing,
+		})
+	}
+	return out
 }

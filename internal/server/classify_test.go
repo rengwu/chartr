@@ -41,7 +41,7 @@ func TestClassifyDeclaresKindAndPreservesConfig(t *testing.T) {
 	// A pre-existing committed config with a role binding the append must keep.
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
-model = "sonnet-ws"
+args = ["--model", "sonnet-ws"]
 `)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
@@ -78,8 +78,8 @@ model = "sonnet-ws"
 
 	// The pre-existing role binding survived the append (write, not rewrite).
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
-	if impl := binding(t, s, "implement"); impl.Model != "sonnet-ws" {
-		t.Errorf("classify clobbered the binding: implement.model = %q, want sonnet-ws", impl.Model)
+	if impl := binding(t, s, "implement"); strings.Join(impl.Args, " ") != "--model sonnet-ws" {
+		t.Errorf("classify clobbered the binding: implement.args = %q, want --model sonnet-ws", impl.Args)
 	}
 }
 

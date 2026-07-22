@@ -28,6 +28,11 @@ type Model struct {
 	// route can answer "what are my skills, and where do they live" without a
 	// space registered at all. Never nil.
 	Skills []ResolvedSkill `json:"skills"`
+	// Agents is the operator's registered agent library — named launch specs a
+	// role in any space may be assigned to. Global rather than per space (it lives
+	// in the operator's own config and is never committed), so it is derived once
+	// here beside the layers that resolve it. Never nil.
+	Agents []Agent `json:"agents"`
 }
 
 // ConfigLayer is one file or directory a space's effective config resolves
@@ -245,7 +250,6 @@ type Session struct {
 	TicketNum int    `json:"ticketNum"`
 	Role      string `json:"role"`
 	Agent     string `json:"agent"`
-	Model     string `json:"model"`
 }
 
 // A terminal's activity states, uniform across the wire and the sidebar's status
@@ -264,19 +268,53 @@ const (
 	TerminalDead    = "dead"
 )
 
-// RoleBinding is one role's effective binding on the wire: which adapter runs on
-// which model with which args, where each field was inherited from, and whether
-// the adapter's binary is actually present on the operator's PATH.
+// RoleBinding is one role's effective binding on the wire: which adapter runs
+// with which args, where each field was inherited from, and whether the adapter's
+// binary is actually present on the operator's PATH.
 type RoleBinding struct {
-	Role        string   `json:"role"`
-	Adapter     string   `json:"adapter"`
-	Model       string   `json:"model"`
-	Args        []string `json:"args,omitempty"`
-	AdapterFrom string   `json:"adapterFrom"`
-	ModelFrom   string   `json:"modelFrom"`
-	ArgsFrom    string   `json:"argsFrom"`
+	Role    string   `json:"role"`
+	Adapter string   `json:"adapter"`
+	Args    []string `json:"args,omitempty"`
+	// Prompt is how the opener reaches this agent — argv, type, or a flag name.
+	// Empty means the adapter's own default stands.
+	Prompt      string `json:"prompt,omitempty"`
+	AdapterFrom string `json:"adapterFrom"`
+	ArgsFrom    string `json:"argsFrom"`
+	PromptFrom  string `json:"promptFrom"`
+	// Agent is the registered agent this role is assigned to, empty when the role
+	// is bound field by field. When set and registered it supplied every field
+	// above, so the surface renders one name rather than four provenances.
+	// AgentMissing says the name resolved to nothing and the fields beneath it are
+	// what actually runs.
+	Agent        string `json:"agent,omitempty"`
+	AgentMissing string `json:"agentMissing,omitempty"`
 	// Present is whether the adapter binary was found on PATH; when false,
 	// Missing is the absence badge naming the binding, its source, and the fix.
+	Present bool   `json:"present"`
+	Missing string `json:"missing,omitempty"`
+}
+
+// Agent is one entry of the operator's registered agent library on the wire: a
+// named, complete way to run a harness — the binary, whatever flags that harness
+// wants (its model among them), and how it takes its opening prompt. The library is
+// global rather than per space, so it hangs off the model rather than off a
+// space, and roles across every space assign to it by name.
+type Agent struct {
+	Name    string   `json:"name"`
+	Adapter string   `json:"adapter"`
+	Args    []string `json:"args,omitempty"`
+	Prompt  string   `json:"prompt,omitempty"`
+	// Delivery is what Prompt actually resolves to once the adapter's own default
+	// is taken into account — `argv`, `type`, or a flag name. Resolved server-side
+	// so the surface renders how a harness is told what to do as a fact, rather
+	// than re-deriving the adapter table in the browser and drifting from it.
+	Delivery string `json:"delivery"`
+	// Command is the argv this agent would actually launch, with a placeholder
+	// standing in for the opener. It is built by the same seam that builds the real
+	// one, so what the operator reads in the library is what will run.
+	Command []string `json:"command"`
+	// Present is whether the adapter binary was found on PATH; Missing is the
+	// absence badge when it was not.
 	Present bool   `json:"present"`
 	Missing string `json:"missing,omitempty"`
 }
@@ -285,5 +323,5 @@ type RoleBinding struct {
 // but non-nil slices so the JSON snapshot is always well-formed arrays rather
 // than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}}
+	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}, Agents: []Agent{}}
 }

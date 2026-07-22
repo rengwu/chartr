@@ -26,7 +26,7 @@ adapter = "codex"   # the other project runs on codex
 
 [spaces."/home/op/proj".roles.implement]
 # pinned while the sonnet build is flaky
-model  = "opus"
+adapter  = "opencode"
 args = ["--verbose"]
 
 [spaces."/home/op/proj".roles.grill]
@@ -67,22 +67,22 @@ func resolveUser(t *testing.T, userTOML, workspaceTOML, role string) config.Reso
 // lines, and every unrelated table come back byte for byte.
 func TestSetExistingKeyPreservesEverythingElse(t *testing.T) {
 	got := set(t, handWritten, config.BindingEdit{
-		SpacePath: space, Role: "implement", Field: config.FieldModel, Value: "sonnet",
+		SpacePath: space, Role: "implement", Field: config.FieldAdapter, Value: "codex",
 	})
 
-	if !strings.Contains(got, `model = "sonnet"`) {
+	if !strings.Contains(got, `adapter = "codex"`) {
 		t.Errorf("the edited key is not in the result:\n%s", got)
 	}
-	if strings.Contains(got, `model  = "opus"`) {
+	if strings.Contains(got, `adapter  = "opencode"`) {
 		t.Errorf("the old value survived the edit:\n%s", got)
 	}
 
 	// Everything but that one line is byte-identical.
-	assertOnlyLineChanged(t, handWritten, got, `model  = "opus"`, `model = "sonnet"`)
+	assertOnlyLineChanged(t, handWritten, got, `adapter  = "opencode"`, `adapter = "codex"`)
 
 	// And it means what it says.
-	if b := resolveUser(t, got, "", "implement"); b.Model != "sonnet" || b.ModelFrom != config.LayerUser {
-		t.Errorf("implement.model resolved %q from %q, want sonnet from user", b.Model, b.ModelFrom)
+	if b := resolveUser(t, got, "", "implement"); b.Adapter != "codex" || b.AdapterFrom != config.LayerUser {
+		t.Errorf("implement.adapter resolved %q from %q, want codex from user", b.Adapter, b.AdapterFrom)
 	}
 }
 
@@ -91,16 +91,16 @@ func TestSetExistingKeyPreservesEverythingElse(t *testing.T) {
 // first key stays attached to it.
 func TestSetNewKeyInExistingTable(t *testing.T) {
 	got := set(t, handWritten, config.BindingEdit{
-		SpacePath: space, Role: "grill", Field: config.FieldModel, Value: "opus",
+		SpacePath: space, Role: "grill", Field: config.FieldPrompt, Value: "argv",
 	})
 
-	want := "[spaces.\"/home/op/proj\".roles.grill]\nadapter = \"claude\"\nmodel = \"opus\"\n"
+	want := "[spaces.\"/home/op/proj\".roles.grill]\nadapter = \"claude\"\nprompt = \"argv\"\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("the new key did not land after the table's existing keys:\n%s", got)
 	}
 	for _, keep := range []string{
 		"# pinned while the sonnet build is flaky",
-		`model  = "opus"`,
+		`adapter  = "opencode"`,
 		`adapter = "codex"   # the other project runs on codex`,
 	} {
 		if !strings.Contains(got, keep) {
@@ -140,28 +140,27 @@ func TestSetCreatesAbsentTable(t *testing.T) {
 func TestClearRevealsTheLayerBeneath(t *testing.T) {
 	const workspace = `
 [roles.implement]
-adapter = "claude"
-model = "sonnet-ws"
+adapter = "claude-ws"
 `
 	// Before: the user layer wins.
-	if b := resolveUser(t, handWritten, workspace, "implement"); b.Model != "opus" || b.ModelFrom != config.LayerUser {
-		t.Fatalf("precondition: implement.model resolved %q from %q, want opus from user", b.Model, b.ModelFrom)
+	if b := resolveUser(t, handWritten, workspace, "implement"); b.Adapter != "opencode" || b.AdapterFrom != config.LayerUser {
+		t.Fatalf("precondition: implement.adapter resolved %q from %q, want opencode from user", b.Adapter, b.AdapterFrom)
 	}
 
 	got := set(t, handWritten, config.BindingEdit{
-		SpacePath: space, Role: "implement", Field: config.FieldModel, Clear: true,
+		SpacePath: space, Role: "implement", Field: config.FieldAdapter, Clear: true,
 	})
 
-	if strings.Contains(got, `model  = "opus"`) {
+	if strings.Contains(got, `adapter  = "opencode"`) {
 		t.Errorf("the cleared key is still in the file:\n%s", got)
 	}
 	// After: the workspace layer shows through, and the sibling override stands.
 	b := resolveUser(t, got, workspace, "implement")
-	if b.Model != "sonnet-ws" || b.ModelFrom != config.LayerWorkspace {
-		t.Errorf("after clearing, implement.model resolved %q from %q, want sonnet-ws from workspace", b.Model, b.ModelFrom)
+	if b.Adapter != "claude-ws" || b.AdapterFrom != config.LayerWorkspace {
+		t.Errorf("after clearing, implement.adapter resolved %q from %q, want claude-ws from workspace", b.Adapter, b.AdapterFrom)
 	}
 	if len(b.Args) != 1 || b.Args[0] != "--verbose" || b.ArgsFrom != config.LayerUser {
-		t.Errorf("clearing model disturbed the args override: %v from %q", b.Args, b.ArgsFrom)
+		t.Errorf("clearing the adapter disturbed the args override: %v from %q", b.Args, b.ArgsFrom)
 	}
 	// The comment that sat above the cleared key stays with its table.
 	if !strings.Contains(got, "# pinned while the sonnet build is flaky") {
@@ -173,8 +172,8 @@ model = "sonnet-ws"
 // a rewrite: the file comes back byte-identical.
 func TestClearingAnAbsentOverrideChangesNothing(t *testing.T) {
 	for _, e := range []config.BindingEdit{
-		{SpacePath: space, Role: "grill", Field: config.FieldModel, Clear: true},     // table exists, key does not
-		{SpacePath: space, Role: "prototype", Field: config.FieldModel, Clear: true}, // no table at all
+		{SpacePath: space, Role: "grill", Field: config.FieldPrompt, Clear: true},     // table exists, key does not
+		{SpacePath: space, Role: "prototype", Field: config.FieldPrompt, Clear: true}, // no table at all
 	} {
 		if got := set(t, handWritten, e); got != handWritten {
 			t.Errorf("clearing an absent %s override rewrote the file:\n%s", e.Role, got)
@@ -219,7 +218,7 @@ args = [
   "--one",
   "--two",
 ]
-model = "opus"
+adapter = "codex"
 `
 	got := set(t, src, config.BindingEdit{
 		SpacePath: space, Role: "implement", Field: config.FieldArgs, Args: []string{"--three"},
@@ -227,14 +226,14 @@ model = "opus"
 	if strings.Contains(got, "--one") || strings.Contains(got, "--two") {
 		t.Errorf("a tail of the old array survived:\n%s", got)
 	}
-	if !strings.Contains(got, "args = [\"--three\"]\nmodel = \"opus\"\n") {
+	if !strings.Contains(got, "args = [\"--three\"]\nadapter = \"codex\"\n") {
 		t.Errorf("the multi-line array was not replaced whole:\n%s", got)
 	}
 	if b := resolveUser(t, got, "", "implement"); len(b.Args) != 1 || b.Args[0] != "--three" {
 		t.Errorf("replaced args resolved %v, want [--three]", b.Args)
 	}
-	if b := resolveUser(t, got, "", "implement"); b.Model != "opus" {
-		t.Errorf("replacing the array disturbed the key beneath it: model = %q", b.Model)
+	if b := resolveUser(t, got, "", "implement"); b.Adapter != "codex" {
+		t.Errorf("replacing the array disturbed the key beneath it: adapter = %q", b.Adapter)
 	}
 }
 
@@ -264,10 +263,10 @@ func TestEditIsScopedToItsSpace(t *testing.T) {
 // a shape this editor does not rewrite.
 func TestRefusals(t *testing.T) {
 	for name, e := range map[string]config.BindingEdit{
-		"unknown role":  {SpacePath: space, Role: "review", Field: config.FieldModel, Value: "x"},
+		"unknown role":  {SpacePath: space, Role: "review", Field: config.FieldAdapter, Value: "x"},
 		"unknown field": {SpacePath: space, Role: "implement", Field: "autopilot", Value: "true"},
-		"empty value":   {SpacePath: space, Role: "implement", Field: config.FieldModel},
-		"no space":      {Role: "implement", Field: config.FieldModel, Value: "x"},
+		"empty value":   {SpacePath: space, Role: "implement", Field: config.FieldAdapter},
+		"no space":      {Role: "implement", Field: config.FieldAdapter, Value: "x"},
 	} {
 		if _, err := config.SetUserBinding([]byte(handWritten), e); err == nil {
 			t.Errorf("%s: SetUserBinding succeeded, want a refusal", name)
@@ -279,13 +278,86 @@ func TestRefusals(t *testing.T) {
 implement = { model = "opus" }
 `
 	_, err := config.SetUserBinding([]byte(inline), config.BindingEdit{
-		SpacePath: space, Role: "implement", Field: config.FieldModel, Value: "sonnet",
+		SpacePath: space, Role: "implement", Field: config.FieldAdapter, Value: "codex",
 	})
 	if err == nil {
 		t.Fatal("SetUserBinding rewrote an inline table, want a refusal pointing at a hand edit")
 	}
 	if !strings.Contains(err.Error(), "by hand") {
 		t.Errorf("refusal = %q, want it to point at editing by hand", err)
+	}
+}
+
+// Prompt delivery is a binding field like any other: it merges layer by layer,
+// carries its own provenance, and clears back to the agent's default. It is the
+// hatch that drives a harness the chartr ships no adapter row for, so it has to
+// be settable from the same surface as the rest.
+func TestPromptDeliveryMergesAndClears(t *testing.T) {
+	const workspace = `[roles.implement]
+adapter = "opencode"
+prompt = "type"
+`
+	// Nothing in the user layer: the workspace's delivery stands, and says so.
+	b := resolveUser(t, "", workspace, "implement")
+	if b.Prompt != "type" || b.PromptFrom != config.LayerWorkspace {
+		t.Errorf("prompt = %q from %s, want type from workspace", b.Prompt, b.PromptFrom)
+	}
+
+	// The operator learns their harness takes a flag, and says so locally.
+	user := set(t, "", config.BindingEdit{
+		SpacePath: space, Role: "implement", Field: config.FieldPrompt, Value: "--prompt",
+	})
+	b = resolveUser(t, user, workspace, "implement")
+	if b.Prompt != "--prompt" || b.PromptFrom != config.LayerUser {
+		t.Errorf("prompt = %q from %s, want --prompt from user", b.Prompt, b.PromptFrom)
+	}
+	// The rest of the binding still comes from the layer beneath, untouched.
+	if b.Adapter != "opencode" || b.AdapterFrom != config.LayerWorkspace {
+		t.Errorf("adapter = %q from %s, want opencode from workspace", b.Adapter, b.AdapterFrom)
+	}
+
+	// Cleared, the workspace's delivery shows through again.
+	user = set(t, user, config.BindingEdit{
+		SpacePath: space, Role: "implement", Field: config.FieldPrompt, Clear: true,
+	})
+	b = resolveUser(t, user, workspace, "implement")
+	if b.Prompt != "type" || b.PromptFrom != config.LayerWorkspace {
+		t.Errorf("after clearing, prompt = %q from %s, want type from workspace", b.Prompt, b.PromptFrom)
+	}
+}
+
+// A delivery nobody can read is refused at the edit — with the vocabulary in the
+// message — and, if it reaches the file some other way, degrades to a warning and
+// the agent's default rather than a launch nobody asked for.
+func TestUnreadablePromptDelivery(t *testing.T) {
+	_, err := config.SetUserBinding(nil, config.BindingEdit{
+		SpacePath: space, Role: "implement", Field: config.FieldPrompt, Value: "stdin",
+	})
+	if err == nil {
+		t.Fatal("SetUserBinding accepted an unreadable delivery, want a refusal")
+	}
+	for _, want := range []string{"argv", "type", "--prompt"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+
+	res := config.Resolve(config.Input{
+		WorkspaceTOML: []byte("[roles.implement]\nprompt = \"stdin\"\n"),
+		SpacePath:     space,
+		OnPath:        func(string) bool { return true },
+	})
+	var impl config.Resolved
+	for _, b := range res.Bindings {
+		if b.Role == config.RoleImplement {
+			impl = b
+		}
+	}
+	if impl.Prompt != "" || impl.PromptFrom != config.LayerBuiltin {
+		t.Errorf("prompt = %q from %s, want it dropped back to the built-in default", impl.Prompt, impl.PromptFrom)
+	}
+	if len(res.Warnings) == 0 || !strings.Contains(strings.Join(res.Warnings, "\n"), "prompt delivery") {
+		t.Errorf("warnings = %v, want one naming the unreadable prompt delivery", res.Warnings)
 	}
 }
 

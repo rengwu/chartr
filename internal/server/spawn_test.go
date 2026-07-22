@@ -19,7 +19,7 @@ import (
 // CLI on PATH, spawning a frontier ticket writes the claim commit (pathspec +
 // trailers), drops the gitignored payload whose content matches the preview,
 // archives a per-session copy, and delivers the read-this-file opener to the
-// agent's stdin — landing a live session tab bound to exactly one ticket. Binding
+// agent — landing a live session tab bound to exactly one ticket. Binding
 // a role to a missing binary hard-blocks that one spawn with the specific message
 // and blocks nothing else. Every assertion is on what the design makes public —
 // HTTP responses, the control-socket snapshot, the filesystem, and git history.
@@ -33,12 +33,12 @@ func implConfig(slug string) string {
 
 // spawnResp is the spawn action's own result.
 type spawnResp struct {
-	SessionID  string `json:"sessionId"`
-	TicketNum  int    `json:"ticketNum"`
-	Role       string `json:"role"`
-	Agent      string `json:"agent"`
-	Model      string `json:"model"`
-	PayloadSha string `json:"payloadSha"`
+	SessionID  string   `json:"sessionId"`
+	TicketNum  int      `json:"ticketNum"`
+	Role       string   `json:"role"`
+	Agent      string   `json:"agent"`
+	Args       []string `json:"args"`
+	PayloadSha string   `json:"payloadSha"`
 }
 
 func mustSpawn(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int, role string) spawnResp {
@@ -73,8 +73,8 @@ func sessionTab(s model.Space) *model.Terminal {
 }
 
 // The whole chain from one click: claim commit (pathspec-limited, trailers),
-// gitignored payload matching the preview, an archived copy, the opener at the
-// agent's stdin, and a live session tab bound to exactly one ticket.
+// gitignored payload matching the preview, an archived copy, the opener reaching
+// the agent, and a live session tab bound to exactly one ticket.
 func TestSpawnWiresTheWholeChain(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -84,8 +84,8 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
 	// A stub `claude` on PATH — the default `implement` binding's adapter — records
-	// whatever is typed into it.
-	stdinLog := chartrtest.StubAgent(t, "claude")
+	// how it was launched and what was typed into it.
+	deliveryLog := chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
 	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
@@ -100,7 +100,7 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	for _, want := range []string{
 		"Session: " + sp.SessionID,
 		"Agent: claude",
-		"Model: sonnet",
+		"Args: --model sonnet",
 		"Role: implement",
 		"Payload-SHA256: " + sp.PayloadSha,
 		// The content provenance, re-keyed from prompt parts to skills: which
@@ -144,10 +144,11 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		t.Errorf("archived payload does not match the preview")
 	}
 
-	// --- The opener arrived at the agent's stdin, naming the payload to read. ---
-	log := chartrtest.WaitForFileContains(t, stdinLog, payloadAbs, 5*time.Second)
+	// --- The opener reached the agent, naming the payload to read. Which delivery
+	// carried it is the adapter's business, asserted on its own below. ---
+	log := chartrtest.WaitForFileContains(t, deliveryLog, payloadAbs, 5*time.Second)
 	if !strings.Contains(log, "Read the file") {
-		t.Errorf("opener typed into the agent did not read this-file:\n%s", log)
+		t.Errorf("the opener the agent received did not read this-file:\n%s", log)
 	}
 
 	// --- A live session tab, bound to exactly one ticket. ---
@@ -271,6 +272,74 @@ func TestSpawnOneSessionPerSpace(t *testing.T) {
 	// Ticket 2 was never claimed.
 	if st := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 2).Status; st != "open" {
 		t.Errorf("ticket 2 after a refused second spawn = %q, want open", st)
+	}
+}
+
+// Prompt delivery at the process boundary. A known agent is *told on its command
+// line* — the opener is already submitted when the TUI comes up, so nothing waits
+// on a human pressing enter. An operator running a harness that wants keystrokes
+// instead says so in one line of user config, and the same opener arrives on
+// stdin. Both are asserted through the agent process itself, which records how
+// each line reached it.
+func TestSpawnDeliversTheOpenerTheWayTheBindingSays(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		userTOML string
+		want     string // the tagged line the agent must record
+	}{
+		{name: "argv by default", want: "argv: Read the file "},
+		{name: "typed when the binding says so", userTOML: "prompt = \"type\"\n", want: "stdin: Read the file "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := chartrtest.Start(t)
+			repo := chartrtest.NewSpaceRepo(t)
+
+			chartrtest.WriteMap(t, repo, "widget", mapBody)
+			chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+			chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+			if tc.userTOML != "" {
+				chartrtest.WriteFile(t, h.DataDir, "user.toml",
+					fmt.Sprintf("[spaces.%q.roles.implement]\n%s", repo, tc.userTOML))
+			}
+			delivery := chartrtest.StubAgent(t, "claude")
+
+			resp := register(t, h, repo)
+			sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+
+			payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
+			log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
+			if !strings.Contains(log, tc.want) {
+				t.Errorf("the opener did not reach the agent as %q:\n%s", strings.TrimSuffix(tc.want, "Read the file "), log)
+			}
+		})
+	}
+}
+
+// A prompt delivery the adapter seam cannot read never reaches the command line:
+// the agent's own default stands and the operator is told, rather than the spawn
+// dying or the CLI being handed a flag it will refuse.
+func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", implConfig("widget"))
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteFile(t, h.DataDir, "user.toml",
+		fmt.Sprintf("[spaces.%q.roles.implement]\nprompt = \"stdin\"\n", repo))
+	delivery := chartrtest.StubAgent(t, "claude")
+
+	resp := register(t, h, repo)
+	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
+	if !hasSubstring(s.Warnings, "unreadable prompt delivery") {
+		t.Errorf("no warning for an unreadable prompt delivery: %v", s.Warnings)
+	}
+
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
+	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
+	if !strings.Contains(log, "argv: Read the file ") {
+		t.Errorf("a typo in the delivery changed how the agent was launched:\n%s", log)
 	}
 }
 

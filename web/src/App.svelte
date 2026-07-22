@@ -129,6 +129,10 @@
   // route's global scope lists, so it answers "what are my skills" with nothing
   // registered.
   const globalSkills = $derived(control.model?.skills ?? []);
+  // The registered agent library. Global like the skills above it — the same list
+  // whatever space is in view — so it is read once here and handed to the settings
+  // surface, which lists it on the global scope and assigns from it on a space's.
+  const agentLibrary = $derived(control.model?.agents ?? []);
 
   let selectedId = $state<string | null>(null);
   // The active shell, lifted here from the pane: the sidebar's session rows are
@@ -729,6 +733,7 @@
           {spaces}
           config={configLayers}
           skills={globalSkills}
+          agents={agentLibrary}
           scope={route.scope}
           onScope={(s) => navigate(settingsHash(s))}
           onClose={leaveSettings}

@@ -22,7 +22,7 @@ function tab(ticketNum: number, role: string, status: Terminal['status'], alive:
     proc: 'agent',
     status,
     alive,
-    session: { mapSlug: 'm', ticketNum, role, agent: 'claude', model: 'opus' },
+    session: { mapSlug: 'm', ticketNum, role, agent: 'claude' },
   }
 }
 

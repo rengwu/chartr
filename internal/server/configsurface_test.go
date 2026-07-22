@@ -56,7 +56,7 @@ func TestSnapshotCarriesTheEffectiveConfigSurface(t *testing.T) {
 
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
-model = "sonnet-ws"
+args = ["--model", "sonnet-ws"]
 
 [maps."widget"]
 kind = "implementation"
@@ -78,7 +78,7 @@ adapter = "codex"
 	// Bindings: per-field provenance and the PATH probe.
 	impl := binding(t, s, "implement")
 	assertField(t, "implement.adapter", impl.Adapter, "codex", impl.AdapterFrom, "user")
-	assertField(t, "implement.model", impl.Model, "sonnet-ws", impl.ModelFrom, "workspace")
+	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model sonnet-ws", impl.ArgsFrom, "workspace")
 
 	// Skills: the winning layer per whole directory, positively stated.
 	if got := skill(t, s, "implement").Layer; got != "workspace" {
@@ -151,7 +151,7 @@ func TestBindingEditWritesOnlyTheUserLayer(t *testing.T) {
 	const workspaceCfg = `# committed, shared, and not the UI's to write
 [roles.implement]
 adapter = "claude"
-model = "sonnet-ws"
+args = ["--model", "sonnet-ws"]
 `
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", workspaceCfg)
 	chartrtest.WriteFile(t, h.DataDir, "user.toml", "# my machine\n")
@@ -159,14 +159,14 @@ model = "sonnet-ws"
 	resp := register(t, h, repo)
 
 	if code, body := setBinding(t, h, resp.ID, map[string]any{
-		"role": "implement", "field": "model", "value": "opus",
+		"role": "implement", "field": "args", "value": []string{"--model", "opus"},
 	}); code != 200 {
 		t.Fatalf("set binding = %d, body %s", code, body)
 	}
 
 	// The value and its provenance are back over the socket with no reload.
 	impl := binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	assertField(t, "implement.model", impl.Model, "opus", impl.ModelFrom, "user")
+	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model opus", impl.ArgsFrom, "user")
 	assertField(t, "implement.adapter", impl.Adapter, "claude", impl.AdapterFrom, "workspace")
 
 	// The committed workspace config is untouched, byte for byte.
@@ -178,18 +178,18 @@ model = "sonnet-ws"
 	if !strings.HasPrefix(user, "# my machine\n") {
 		t.Errorf("the binding edit rewrote the user file's head:\n%s", user)
 	}
-	if !strings.Contains(user, `model = "opus"`) {
+	if !strings.Contains(user, `args = ["--model", "opus"]`) {
 		t.Errorf("the override is not in the user file:\n%s", user)
 	}
 
 	// Clearing it reveals the layer beneath — the edit is reversible.
 	if code, body := setBinding(t, h, resp.ID, map[string]any{
-		"role": "implement", "field": "model", "value": nil,
+		"role": "implement", "field": "args", "value": nil,
 	}); code != 200 {
 		t.Fatalf("clear binding = %d, body %s", code, body)
 	}
 	impl = binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	assertField(t, "implement.model", impl.Model, "sonnet-ws", impl.ModelFrom, "workspace")
+	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model sonnet-ws", impl.ArgsFrom, "workspace")
 }
 
 // args round-trips as a list, and the surface refuses what it cannot honour —
@@ -210,16 +210,17 @@ func TestBindingEditArgsAndRefusals(t *testing.T) {
 	}
 
 	for name, body := range map[string]map[string]any{
-		"unknown role":  {"role": "review", "field": "model", "value": "x"},
+		"unknown role":  {"role": "review", "field": "adapter", "value": "x"},
 		"unknown field": {"role": "implement", "field": "kind", "value": "planning"},
-		"empty value":   {"role": "implement", "field": "model", "value": ""},
+		"empty value":   {"role": "implement", "field": "adapter", "value": ""},
+		"retired field": {"role": "implement", "field": "model", "value": "opus"},
 	} {
 		if code, resp2 := setBinding(t, h, resp.ID, body); code != 400 {
 			t.Errorf("%s: set binding = %d, want 400 (body %s)", name, code, resp2)
 		}
 	}
 	if code, _ := h.Put("/api/spaces/no-such-space/config/binding", map[string]any{
-		"role": "implement", "field": "model", "value": "x",
+		"role": "implement", "field": "adapter", "value": "x",
 	}); code != 404 {
 		t.Errorf("set binding on a missing space = %d, want 404", code)
 	}
@@ -252,7 +253,7 @@ func TestSurfaceNeverWritesKind(t *testing.T) {
 func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", "[roles.implement]\nmodel = \"x\"\n")
+	chartrtest.WriteFile(t, repo, ".chartr/config.toml", "[roles.implement]\nadapter = \"x\"\n")
 	resp := register(t, h, repo)
 
 	// A stub editor on $VISUAL records what it was handed, so the test asserts the

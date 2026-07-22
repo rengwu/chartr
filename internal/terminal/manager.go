@@ -3,6 +3,7 @@ package terminal
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -181,13 +182,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 	m.mu.Unlock()
 
 	t.start(func() { m.onExit(id) })
-
-	// Type the opener into the live TUI. The PTY's input buffer holds it until the
-	// agent reads, so no readiness handshake is needed; a write error only means the
-	// agent already exited, which the read loop is reaping in parallel.
-	if opener != "" {
-		_, _ = t.Write([]byte(opener))
-	}
+	typeOpener(t, opener)
 
 	m.notify()
 	return t, nil
@@ -216,13 +211,56 @@ func (m *Manager) OpenIdeate(spaceID, cwd, id, name string, args []string, opene
 	m.mu.Unlock()
 
 	t.start(func() { m.onExit(id) })
-
-	if opener != "" {
-		_, _ = t.Write([]byte(opener))
-	}
+	typeOpener(t, opener)
 
 	m.notify()
 	return t, nil
+}
+
+// Opener typing thresholds. A TUI is ready for keystrokes once it has drawn
+// something and then gone still, so readiness is read off the PTY's own output
+// rather than guessed at with a flat sleep: openerSettle is the stillness that
+// counts as drawn, openerGrace caps the wait for an agent that draws nothing at
+// all, and openerSubmit is the beat between the line and its carriage return.
+// Vars, not consts, so a test can shrink them.
+var (
+	openerSettle = 400 * time.Millisecond
+	openerGrace  = 2 * time.Second
+	openerSubmit = 150 * time.Millisecond
+)
+
+// typeOpener types a session's opening line into a live TUI and presses return —
+// the fallback delivery, for agents that take no prompt on their command line
+// (adapter.ModeType). An empty opener types nothing, which is the argv and flag
+// deliveries: they already carried the line, so there is nothing to type.
+//
+// It is fussier than a single Write for two reasons, both learned from real TUIs:
+//
+//   - **Return is CR, not LF.** A `\n` is what Ctrl+J sends; TUIs that
+//     distinguish the two (anything on Ink, which parses `\r` as return and `\n`
+//     as linefeed) read it as "insert a newline" and leave the line sitting in the
+//     composer unsent, waiting for a human to press enter.
+//   - **The submit key must arrive in its own read.** Text and return in one
+//     chunk look like a paste, and a TUI that buffers pastes swallows the return
+//     along with the text.
+//
+// It runs off the caller's goroutine so a spawn's HTTP response does not wait on
+// the TUI drawing itself. A write error only means the agent already exited, which
+// the read loop is reaping in parallel.
+func typeOpener(t *Terminal, opener string) {
+	if opener == "" {
+		return
+	}
+	go func() {
+		if !t.awaitReady(openerSettle, openerGrace) {
+			return // the agent died before it could be told anything
+		}
+		if _, err := t.Write([]byte(strings.TrimRight(opener, "\r\n"))); err != nil {
+			return
+		}
+		time.Sleep(openerSubmit)
+		_, _ = t.Write([]byte("\r"))
+	}()
 }
 
 // Get returns the live terminal with id, or false if none.

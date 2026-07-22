@@ -120,6 +120,12 @@ func New(opts Options) (*Server, error) {
 	// config file and the global skill library. The global scope is reachable with
 	// nothing registered, so it cannot borrow a space id to open its own files.
 	s.mux.HandleFunc("POST /api/config/open", s.handleOpenGlobalLayer)
+	// The agent library: named launch specs the operator registers once and assigns
+	// to roles in any space. Global, like the config surface above it — the library
+	// lives in the operator's own file and is never committed — so these routes take
+	// no space id and work with nothing registered at all.
+	s.mux.HandleFunc("PUT /api/config/agents/{name}", s.handleSetAgent)
+	s.mux.HandleFunc("DELETE /api/config/agents/{name}", s.handleDeleteAgent)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part layer provenance. Read-only, so a GET;
 	// the composition reads the library and the map fresh off disk each time.

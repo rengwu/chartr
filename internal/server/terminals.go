@@ -39,7 +39,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 // session: no map or ticket is looked up, no claim is written, and the tab it
 // seats carries no Session, so it reads and ends exactly like an ad-hoc shell
 // (never the session grammar, never the death halt). It borrows the `grill`
-// binding to pick an agent and model — the closest existing analogue, a live
+// binding to pick an agent — the closest existing analogue, a live
 // human-in-the-loop conversation — rather than opening a sixth entry in the
 // closed role set.
 func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +66,13 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	launch := adapter.For(binding.Adapter).Command(binding.Model, binding.Args)
-	t, err := s.terms.OpenIdeate(e.ID, e.Path, id, launch.Name, launch.Args, adapter.Opener(promptPath))
+	launch := adapter.Command(adapter.Spawn{
+		Adapter: binding.Adapter,
+		Args:    binding.Args,
+		Prompt:  adapter.Opener(promptPath),
+		Deliver: binding.Prompt,
+	})
+	t, err := s.terms.OpenIdeate(e.ID, e.Path, id, launch.Name, launch.Args, launch.TypeIn)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "opening ideate: "+err.Error())
 		return

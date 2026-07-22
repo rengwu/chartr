@@ -89,14 +89,18 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	// Drop the pinned dead tab so the same session id can seat a live one again.
 	s.terms.Discard(info.ID)
 
-	launch := adapter.For(binding.Adapter).Command(binding.Model, binding.Args)
+	launch := adapter.Command(adapter.Spawn{
+		Adapter: binding.Adapter,
+		Args:    binding.Args,
+		Prompt:  adapter.Opener(payloadPath),
+		Deliver: binding.Prompt,
+	})
 	if _, err := s.terms.OpenSession(e.ID, e.Path, info.ID, launch.Name, launch.Args,
-		adapter.Opener(payloadPath), terminal.Session{
+		launch.TypeIn, terminal.Session{
 			MapSlug:   sess.MapSlug,
 			TicketNum: sess.TicketNum,
 			Role:      sess.Role,
 			Agent:     binding.Adapter,
-			Model:     binding.Model,
 		}); err != nil {
 		if errors.Is(err, terminal.ErrSessionExists) {
 			httpError(w, http.StatusConflict, "this space already has a live session")

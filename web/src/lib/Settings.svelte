@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {
+    Agent,
     ConfigLayer,
     Layer,
     ResolvedSkill,
@@ -10,7 +11,10 @@
   import { padTicket } from './model'
   import { settingsHash, type SettingsScope } from './route'
   import { openConfigLayer, openGlobalLayer, setBinding } from './actions'
+  import { formatArgs, parseArgs } from './args'
   import PayloadPreview from './PayloadPreview.svelte'
+  import AgentLibrary from './AgentLibrary.svelte'
+  import * as Select from './components/ui/select'
   import { Button } from './components/ui/button'
   import { Badge, type BadgeVariant } from './components/ui/badge'
   import { Input } from './components/ui/input'
@@ -38,6 +42,7 @@
     spaces,
     config,
     skills,
+    agents,
     scope,
     onScope,
     onClose,
@@ -50,6 +55,10 @@
     // The skill library as it resolves with no space in play: the built-in floor
     // with the operator's own forks over it.
     skills: ResolvedSkill[]
+    // The operator's registered agent library — global, so it is the same list on
+    // every scope: read and edited on the global one, assigned to roles on a
+    // space's.
+    agents: Agent[]
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
@@ -106,22 +115,51 @@
     implement: 'task',
   }
 
+  // The picker's sentinel for "no agent" — a Select needs a value, and the empty
+  // string is not one it can distinguish from unset. It can never collide with an
+  // agent name: the library refuses everything but letters, digits, hyphen and
+  // underscore.
+  const unassigned = '<fields>'
+
   // A binding field being edited. Only one at a time — this is a legibility
   // surface with an edit affordance, not a form.
-  let editing = $state<{ role: string; field: 'adapter' | 'model' | 'args' } | null>(null)
+  type BindingField = 'adapter' | 'args' | 'prompt'
+  let editing = $state<{ role: string; field: BindingField } | null>(null)
   let draft = $state('')
 
-  function fieldValue(b: RoleBinding, field: 'adapter' | 'model' | 'args'): string {
-    if (field === 'args') return (b.args ?? []).join(' ')
-    return field === 'adapter' ? b.adapter : b.model
+  // What each field wants, for the operator who has never typed one before. The
+  // prompt hint is the whole vocabulary of prompt delivery: how this agent is
+  // told what to work on — already submitted on its command line, or typed into
+  // its TUI. Its default comes from the adapter, so most bindings never set it.
+  const placeholders: Record<BindingField, string> = {
+    adapter: 'adapter',
+    args: 'space-separated — quote one containing a space',
+    prompt: 'argv · type · --prompt',
   }
 
-  function fieldFrom(b: RoleBinding, field: 'adapter' | 'model' | 'args'): Layer {
-    if (field === 'args') return b.argsFrom
-    return field === 'adapter' ? b.adapterFrom : b.modelFrom
+  function fieldValue(b: RoleBinding, field: BindingField): string {
+    switch (field) {
+      case 'args':
+        return formatArgs(b.args)
+      case 'prompt':
+        return b.prompt ?? ''
+      default:
+        return b.adapter
+    }
   }
 
-  function beginEdit(b: RoleBinding, field: 'adapter' | 'model' | 'args') {
+  function fieldFrom(b: RoleBinding, field: BindingField): Layer {
+    switch (field) {
+      case 'args':
+        return b.argsFrom
+      case 'prompt':
+        return b.promptFrom
+      default:
+        return b.adapterFrom
+    }
+  }
+
+  function beginEdit(b: RoleBinding, field: BindingField) {
     editing = { role: b.role, field }
     draft = fieldValue(b, field)
     note = null
@@ -137,7 +175,10 @@
   async function commit() {
     if (!editing || !space) return
     const { role, field } = editing
-    const value = field === 'args' ? draft.trim().split(/\s+/).filter(Boolean) : draft.trim()
+    // args is a list on the wire and a line in the field; the same reader the
+    // agent editor uses turns one into the other, so a flag carrying a space
+    // survives being edited here too (args.ts).
+    const value = field === 'args' ? parseArgs(draft) : draft.trim()
     busy = role + '.' + field
     try {
       await setBinding(space.id, role, field, value)
@@ -151,7 +192,7 @@
 
   // Clearing an override reveals the layer beneath it — editing is reversible,
   // never a one-way ratchet (story 42).
-  async function clearOverride(role: string, field: 'adapter' | 'model' | 'args') {
+  async function clearOverride(role: string, field: BindingField) {
     if (!space) return
     busy = role + '.' + field
     try {
@@ -162,6 +203,36 @@
     } finally {
       busy = null
     }
+  }
+
+  // Assigning a role to a registered agent. The agent supplies the whole binding,
+  // so the row collapses to one name — which is the point: a role runs *an agent*,
+  // not four fields that might disagree. Clearing hands the role back to its own
+  // fields, exactly as clearing any other override does.
+  async function assign(role: string, name: string | null) {
+    if (!space) return
+    busy = role + '.agent'
+    note = null
+    try {
+      await setBinding(space.id, role, 'agent', name)
+    } catch (e) {
+      note = (e as Error).message
+    } finally {
+      busy = null
+    }
+  }
+
+  // Which roles, in which spaces, currently point at an agent — read straight off
+  // the snapshot so the delete confirm in the library says what it is about to
+  // strand without a second request.
+  function assignmentsOf(name: string): string[] {
+    const out: string[] = []
+    for (const sp of spaces) {
+      for (const b of sp.bindings) {
+        if (b.agent === name) out.push(`${sp.name} › ${b.role}`)
+      }
+    }
+    return out
   }
 
   // The escape hatch for everything not editable inline: the server resolves the
@@ -292,6 +363,8 @@
             {/each}
           </section>
 
+          <AgentLibrary {agents} {assignmentsOf} />
+
           <!-- The library itself, not just the roots it lives in: the same skills
                a space resolves, minus any committed layer shadowing them. Reading
                it here is what the global scope is *for* — it should never take
@@ -363,11 +436,24 @@
                       {/if}
                     </span>
                   </div>
-                  <div class="flex flex-col gap-1">
-                    {@render field(b, 'adapter')}
-                    {@render field(b, 'model')}
-                    {@render field(b, 'args')}
-                  </div>
+                  {@render agentRow(b)}
+                  {#if b.agent && !b.agentMissing}
+                    <!-- Assigned: the agent is the binding, so the fields are shown
+                         as the settled fact they now are rather than four editable
+                         rows that could no longer take effect. -->
+                    <p class="mt-1.5 truncate font-mono text-[0.7rem] text-muted-foreground">
+                      {[b.adapter, formatArgs(b.args)].filter(Boolean).join(' ')}
+                    </p>
+                  {:else}
+                    <div class="flex flex-col gap-1">
+                      {@render field(b, 'adapter')}
+                      {@render field(b, 'args')}
+                      {@render field(b, 'prompt')}
+                    </div>
+                  {/if}
+                  {#if b.agentMissing}
+                    <p class="mt-1.5 text-[0.7rem] text-muted-foreground">{b.agentMissing}</p>
+                  {/if}
                   {#if !b.present && b.missing}
                     <p class="mt-1.5 text-[0.7rem] text-muted-foreground">{b.missing}</p>
                   {/if}
@@ -449,7 +535,47 @@
   />
 {/if}
 
-{#snippet field(b: RoleBinding, name: 'adapter' | 'model' | 'args')}
+<!-- One role's agent assignment: the whole binding in one name, or the sentinel
+     that hands the role back to its own fields. The picker lists the operator's
+     library; with nothing registered it says so and points at the global scope,
+     rather than offering an empty menu. -->
+{#snippet agentRow(b: RoleBinding)}
+  <div class="flex items-center gap-1.5">
+    <span class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground">agent</span>
+    {#if agents.length}
+      <Select.Root
+        type="single"
+        value={b.agent ?? unassigned}
+        onValueChange={(v: string) => assign(b.role, v === unassigned ? null : v)}
+        disabled={busy !== null}
+      >
+        <Select.Trigger class="h-7 min-w-0 flex-1 font-mono text-xs" aria-label="{b.role} agent">
+          {b.agent || 'bound by its own fields'}
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value={unassigned} class="text-xs">bound by its own fields</Select.Item>
+          {#each agents as a (a.name)}
+            <Select.Item value={a.name} class="font-mono text-xs">{a.name}</Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
+      {#if b.agent}
+        <Badge variant={b.agentMissing ? 'destructive' : 'default'}>
+          {b.agentMissing ? 'not registered' : 'user'}
+        </Badge>
+      {/if}
+    {:else}
+      <span class="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground">
+        none registered
+      </span>
+      <Button variant="ghost" size="xs" onclick={() => onScope({ kind: 'user' })}>
+        register one
+      </Button>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet field(b: RoleBinding, name: BindingField)}
   {@const from = fieldFrom(b, name)}
   {@const value = fieldValue(b, name)}
   <div class="flex items-center gap-1.5">
@@ -462,7 +588,7 @@
         autocapitalize="off"
         autocomplete="off"
         aria-label="{b.role} {name}"
-        placeholder={name === 'args' ? 'space-separated flags' : name}
+        placeholder={placeholders[name] ?? name}
         onkeydown={(e: KeyboardEvent) => {
           if (e.key === 'Enter') commit()
           else if (e.key === 'Escape') editing = null

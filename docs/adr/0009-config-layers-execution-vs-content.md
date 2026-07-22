@@ -41,3 +41,39 @@ The mechanism is again **untouched** — the same layers, the same field-level m
 **The edit boundary follows from the asymmetry.** A UI may write **only the user layer, and only role bindings** (`[spaces."<path>".roles.<role>]`). This is not a policy bolted on top — it is what user-over-workspace *means*: the user layer is where an operator's execution choice belongs, so writing there is always correct and always overridable by nothing. Writing the committed layer from a local UI is refused outright: it is shared content the operator's teammates receive on clone, and a screen that labels a value "workspace" must not then edit it on their behalf. Content (skills) is not editable from the UI at all, in either layer — it resolves the other direction, and the shipped-wins rule makes an in-app edit the wrong instrument. Everything the surface does not edit gets an open-the-file hatch instead.
 
 One practical consequence to record, because the surface has to show it: the user layer is **two files**, not one. Bindings resolve from `<dataDir>/user.toml` while the user *skill* layer lives at `<configDir>/skills/` (adopted with the skill repackaging, ticket 04). One layer in this ADR's sense; two paths on disk, both named on the surface rather than papered over.
+
+## Amendment: bindings gain a name — the agent library
+
+The layering is again **untouched**: the same two layers, the same field-level merge, the same reconciling rule. What changes is the *unit* an operator works in.
+
+Repeating `{adapter, args, prompt}` per role was fine while a binding was two short fields, and stopped being fine the moment real flags arrived. The flags that matter — `--dangerously-skip-permissions`, `--yolo`, `--sandbox danger-full-access`, an `--add-dir` list — are properties of *how you are willing to run a harness*, not of a role, and they are identical across the roles you run that way. So they get a name:
+
+- **An agent is a complete, self-describing launch spec** — `[agents.<name>]` = `{adapter, args?, prompt?}`. Adapter is the only required field; everything a harness wants beyond its own name is args.
+- **A role assigns to one by name** — `[spaces."<path>".roles.<role>] agent = "<name>"` — and the agent then supplies the *whole* binding. Not three of its fields plus a leftover: a role runs one registered way of driving a harness, and taking part of an agent would launch something nobody registered. A role table that sets both is resolved in the agent's favour, with a warning naming the lines that stopped mattering.
+- **Roles that name no agent resolve exactly as they always did**, field by field across the three layers. The library is an addition, never a migration, and there is no shipped agent — an empty library is the starting state.
+
+**The library is global; assignment stays per space.** This is the one place this ADR's "keyed by space" user layer grows an unkeyed section, and it is deliberate: which agents exist is a property of the *machine* (its PATH, its logins, how much rope its operator wants), while which role runs which agent is a property of the *work*. Registering once and assigning everywhere follows from that split, and so does the safety property — the library is never committed, so no `git pull` can hand a teammate a permission-skipping agent. The edit boundary from the previous amendment is unchanged and now covers a second table: a UI writes the user layer only, `[agents.*]` and `roles.<role>.agent` included.
+
+**Flags are an opaque list, deliberately.** The surface offers no curated per-CLI toggles. The chartr cannot know what any given flag means to the harness that defines it, and a menu of them would make the library exactly as agent-specific as ADR 0002 refused to be — it would also silently exclude every harness not on the menu. The honest substitute is the command preview under each agent, built by the same seam that builds the real argv, so what the operator reads is what will run.
+
+Deleting an agent leaves assignments pointing at it. That is not an oversight: the delete reports which roles it stranded, and each stranded role resolves to a visible explanation while falling back to its own fields. A library edit that quietly rewrote a space's bindings would be precisely the kind of action this surface exists not to take.
+
+## Amendment: `model` is not a binding field
+
+`model` is retired from bindings and from agents alike. It is a **flag**, and it lives in `args` with every other flag:
+
+```toml
+[agents.claude-yolo]
+adapter = "claude"
+args    = ["--model", "sonnet", "--dangerously-skip-permissions"]
+```
+
+The field only ever looked structural. In practice it was one CLI's spelling promoted to a schema: `--model` is Claude's and Codex's, and a harness that spells it `-m`, configures it in its own file, or has no model concept at all had to route around a first-class field that did not fit. Line 12's claim that structure lets the chartr "reason about" bindings has already lapsed twice — the heterogeneity comparison it justified went with the review gate, and PATH presence is probed from `adapter`, not `model`. What remained was a field the chartr stored, rendered, and passed through without ever reading. That is not structure; it is a guess with a text box.
+
+Three consequences, all simplifications:
+
+- **The adapter seam models exactly one thing about a CLI: prompt delivery.** `ModelFlag` is gone. Delivery stays modelled only because the chartr itself must *behave* differently depending on the answer (type keystrokes, or don't); no flag has ever needed that.
+- **The claim trailer records `Args:` instead of `Model:`.** Strictly more of the audit trail, not less: the argv is what actually ran, so the model appears where one was asked for *and* the permission and sandbox flags appear beside it — which is what the trail is read for. The subject line drops its `· model` suffix.
+- **The shipped defaults express their model as args** (`args = ["--model", "opus"]` for grill, sonnet for the rest), so behaviour is unchanged for anyone who never touched their config.
+
+A config that still sets `model` is **surfaced, never honoured** — one warning per binding and per agent, naming the args line to write instead. Nothing is migrated automatically, precisely because migration would mean guessing the flag name a given harness wants, which is the guess this amendment exists to stop making. Editing an agent through the surface clears the dead key on the way through.

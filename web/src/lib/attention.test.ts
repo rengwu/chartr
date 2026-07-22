@@ -54,7 +54,7 @@ function haltedTerminal(mapSlug: string, ticketNum: number): Terminal {
     proc: 'agent',
     status: 'dead',
     alive: false,
-    session: { mapSlug, ticketNum, role: 'implement', agent: 'claude', model: 'opus' },
+    session: { mapSlug, ticketNum, role: 'implement', agent: 'claude' },
   }
 }
 
@@ -65,7 +65,7 @@ function workingTerminal(mapSlug: string, ticketNum: number, status: Terminal['s
     proc: 'agent',
     status,
     alive: true,
-    session: { mapSlug, ticketNum, role: 'implement', agent: 'claude', model: 'opus' },
+    session: { mapSlug, ticketNum, role: 'implement', agent: 'claude' },
   }
 }
 

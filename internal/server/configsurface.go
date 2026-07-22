@@ -157,8 +157,8 @@ func (s *Server) handleSetBinding(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Role  string `json:"role"`
 		Field string `json:"field"`
-		// Value is the new value: a string for adapter and model, an array of
-		// strings for args, and null to clear the override.
+		// Value is the new value: a string for adapter, model, prompt and agent, an
+		// array of strings for args, and null to clear the override.
 		Value json.RawMessage `json:"value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -182,9 +182,8 @@ func (s *Server) handleSetBinding(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	path := filepath.Join(s.opts.DataDir, userConfigName)
-	existing, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
+	path, existing, err := s.readUserConfig()
+	if err != nil {
 		httpError(w, http.StatusInternalServerError, "reading user config: "+err.Error())
 		return
 	}

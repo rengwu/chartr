@@ -207,11 +207,10 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		SessionID:   in.sessionID,
 		Role:        in.role,
 		Agent:       in.binding.Adapter,
-		Model:       in.binding.Model,
+		Args:        in.binding.Args,
 		PayloadSHA:  payloadSHA,
 		Skills:      payload.Skills,
 		AdapterFrom: in.binding.AdapterFrom,
-		ModelFrom:   in.binding.ModelFrom,
 		ArgsFrom:    in.binding.ArgsFrom,
 	}); err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim commit: %w", err)
@@ -225,16 +224,22 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		return nil, http.StatusInternalServerError, fmt.Errorf("archiving the session payload: %w", err)
 	}
 
-	// Resolve the binding onto this agent's command line (ADR 0002) and launch its
-	// TUI in a PTY, with the read-this-file opener typed in.
-	launch := adapter.For(in.binding.Adapter).Command(in.binding.Model, in.binding.Args)
+	// Resolve the binding — and the read-this-file opener — onto this agent's
+	// command line (ADR 0002) and launch its TUI in a PTY. Whether the opener rides
+	// the argv or gets typed in is the adapter's call, so the spawn path hands over
+	// the same line either way.
+	launch := adapter.Command(adapter.Spawn{
+		Adapter: in.binding.Adapter,
+		Args:    in.binding.Args,
+		Prompt:  adapter.Opener(payloadPath),
+		Deliver: in.binding.Prompt,
+	})
 	if _, err := s.terms.OpenSession(in.entry.ID, in.entry.Path, in.sessionID, launch.Name, launch.Args,
-		adapter.Opener(payloadPath), terminal.Session{
+		launch.TypeIn, terminal.Session{
 			MapSlug:   in.slug,
 			TicketNum: in.tk.Num,
 			Role:      in.role,
 			Agent:     in.binding.Adapter,
-			Model:     in.binding.Model,
 		}); err != nil {
 		// The claim already stands (ADR 0008: it is not rolled back). A live-session
 		// race is a conflict; a launch failure after a present-on-PATH check is an
@@ -250,7 +255,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		"ticketNum":  in.tk.Num,
 		"role":       in.role,
 		"agent":      in.binding.Adapter,
-		"model":      in.binding.Model,
+		"args":       in.binding.Args,
 		"payloadSha": payloadSHA,
 	}, http.StatusOK, nil
 }

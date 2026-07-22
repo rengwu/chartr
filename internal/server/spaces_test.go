@@ -209,18 +209,18 @@ func TestBindingMergeMatrix(t *testing.T) {
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
 adapter = "claude"
-model = "sonnet-ws"
+args = ["--model", "sonnet-ws"]
 
 [roles.research]
 adapter = "codex"
-model = "gpt-ws"
+args = ["--model", "gpt-ws"]
 `)
 
 	// Local user config, keyed by space path: override just implement.model and
 	// just research.adapter — each inheriting the other field from workspace.
 	chartrtest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
 [spaces.%q.roles.implement]
-model = "sonnet-user"
+args = ["--model", "sonnet-user"]
 
 [spaces.%q.roles.research]
 adapter = "opencode"
@@ -232,19 +232,19 @@ adapter = "opencode"
 	// implement: adapter inherited from workspace, model won by the user layer.
 	impl := binding(t, s, "implement")
 	assertField(t, "implement.adapter", impl.Adapter, "claude", impl.AdapterFrom, "workspace")
-	assertField(t, "implement.model", impl.Model, "sonnet-user", impl.ModelFrom, "user")
+	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model sonnet-user", impl.ArgsFrom, "user")
 
 	// research: model inherited from workspace, adapter won by the user layer.
 	res := binding(t, s, "research")
 	assertField(t, "research.adapter", res.Adapter, "opencode", res.AdapterFrom, "user")
-	assertField(t, "research.model", res.Model, "gpt-ws", res.ModelFrom, "workspace")
+	assertField(t, "research.args", strings.Join(res.Args, " "), "--model gpt-ws", res.ArgsFrom, "workspace")
 
 	// An untouched role falls through to the shipped built-in default.
 	grill := binding(t, s, "grill")
-	if grill.AdapterFrom != "built-in" || grill.ModelFrom != "built-in" {
-		t.Errorf("grill resolved from %s/%s, want built-in/built-in", grill.AdapterFrom, grill.ModelFrom)
+	if grill.AdapterFrom != "built-in" || grill.ArgsFrom != "built-in" {
+		t.Errorf("grill resolved from %s/%s, want built-in/built-in", grill.AdapterFrom, grill.ArgsFrom)
 	}
-	if grill.Adapter == "" || grill.Model == "" {
+	if grill.Adapter == "" || len(grill.Args) == 0 {
 		t.Errorf("grill built-in binding is empty: %+v", grill)
 	}
 }

@@ -16,17 +16,22 @@ import (
 // claim is everything a claim commit records: the session it claims for, the
 // resolved binding driving it, the hash of the exact payload that session was
 // told, and the skills composed into it. The layer provenance travels too, so the
-// audit trail answers not just which agent and model ran but where in the config
-// stack that choice was made — and, for content, which layer won each skill.
+// audit trail answers not just which agent ran but where in the config stack that
+// choice was made — and, for content, which layer won each skill.
+//
+// The binding is recorded as the *argv* rather than an agent-and-model pair: a
+// model is a flag like any other, and the flags are what actually ran. `Args:`
+// therefore says strictly more than the `Model:` trailer it replaces — it carries
+// the model where one was asked for, and the permission and sandbox flags beside
+// it, which is exactly what an audit trail is read for.
 type claim struct {
 	SessionID   string
 	Role        string
 	Agent       string
-	Model       string
+	Args        []string
 	PayloadSHA  string
 	Skills      []prompt.Skill
 	AdapterFrom config.Layer
-	ModelFrom   config.Layer
 	ArgsFrom    config.Layer
 }
 
@@ -176,17 +181,18 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 // `%(trailers)` parse them; a repeated key is legal and reads as a list.
 func claimMessage(rel string, c claim) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Claim %s for %s (%s · %s)\n\n", rel, c.Role, c.Agent, c.Model)
+	fmt.Fprintf(&b, "Claim %s for %s (%s)\n\n", rel, c.Role, c.Agent)
 	fmt.Fprintf(&b, "Session: %s\n", c.SessionID)
 	fmt.Fprintf(&b, "Agent: %s\n", c.Agent)
-	fmt.Fprintf(&b, "Model: %s\n", c.Model)
+	if len(c.Args) > 0 {
+		fmt.Fprintf(&b, "Args: %s\n", strings.Join(c.Args, " "))
+	}
 	fmt.Fprintf(&b, "Role: %s\n", c.Role)
 	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
 	for _, sk := range c.Skills {
 		fmt.Fprintf(&b, "Skill: %s=%s:%s\n", sk.Name, sk.Layer, sk.Hash)
 	}
 	fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
-	fmt.Fprintf(&b, "Model-From: %s\n", c.ModelFrom)
 	fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)
 	fmt.Fprintf(&b, "Chartr-Write: true")
 	return b.String()

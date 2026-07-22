@@ -7,20 +7,26 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/rengwu/chartr/internal/adapter"
 )
 
-// The three fields of a role binding, and the only keys the transparency surface
-// may write. Anything outside this set is refused rather than written blind.
+// The fields of a role binding, and the only keys the transparency surface may
+// write. Anything outside this set is refused rather than written blind.
 const (
 	FieldAdapter = "adapter"
-	FieldModel   = "model"
 	FieldArgs    = "args"
+	FieldPrompt  = "prompt"
+	// FieldAgent assigns the role to a registered agent by name, which supplies
+	// the whole binding (agents.go). Clearing it hands the role back to its own
+	// fields, so an assignment is as reversible as any other override.
+	FieldAgent = "agent"
 )
 
 // BindingEdit is one field of one role's binding in one space — the unit the
 // transparency surface edits (ADR 0014). Clear removes the override instead of
-// setting one, which reveals the layer beneath it; Value carries adapter and
-// model, Args carries args (a nil Args with Clear false writes `args = []`,
+// setting one, which reveals the layer beneath it; Value carries adapter, prompt
+// and agent, Args carries args (a nil Args with Clear false writes `args = []`,
 // which is the explicit "inherit nothing" the resolver already understands).
 type BindingEdit struct {
 	SpacePath string
@@ -60,13 +66,36 @@ func SetUserBinding(existing []byte, e BindingEdit) ([]byte, error) {
 		return nil, fmt.Errorf("unknown role %q; want one of grill, prototype, research, implement", e.Role)
 	}
 	switch e.Field {
-	case FieldAdapter, FieldModel:
+	case FieldAdapter:
 		if !e.Clear && strings.TrimSpace(e.Value) == "" {
 			return nil, fmt.Errorf("%s needs a value; clear the override instead to fall back to the layer beneath", e.Field)
 		}
+	case FieldPrompt:
+		// Validate here rather than only on resolve: an edit made through the
+		// surface is a live keystroke away from its author, so a mistyped delivery
+		// is refused with the vocabulary in hand instead of landing in the file and
+		// coming back as a warning on the next push.
+		if !e.Clear {
+			if strings.TrimSpace(e.Value) == "" {
+				return nil, fmt.Errorf("prompt needs a value; clear the override instead to fall back to the agent's default")
+			}
+			if _, err := adapter.ParseDelivery(e.Value); err != nil {
+				return nil, err
+			}
+		}
+	case FieldAgent:
+		// The name is checked for shape, not for existence: assigning a role to an
+		// agent registered later is a legitimate order to do things in, and a name
+		// that resolves to nothing is already surfaced as a warning with the role
+		// falling back to its own fields.
+		if !e.Clear {
+			if err := ValidAgentName(strings.TrimSpace(e.Value)); err != nil {
+				return nil, err
+			}
+		}
 	case FieldArgs:
 	default:
-		return nil, fmt.Errorf("unknown binding field %q; want adapter, model or args", e.Field)
+		return nil, fmt.Errorf("unknown binding field %q; want adapter, args, prompt or agent", e.Field)
 	}
 
 	lines, eol := splitLines(existing)

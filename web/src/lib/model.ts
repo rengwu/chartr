@@ -4,18 +4,50 @@
 
 export type Layer = 'built-in' | 'workspace' | 'user'
 
-// RoleBinding is one role's effective binding: which adapter runs on which
-// model with which args, where each field was inherited from (so field-level
+// RoleBinding is one role's effective binding: which adapter runs with which
+// args, where each field was inherited from (so field-level
 // inheritance is visible, story 39), and whether the adapter's binary is on the
 // operator's PATH (`missing` carries the absence badge when it is not).
 export interface RoleBinding {
   role: string
   adapter: string
-  model: string
   args?: string[]
+  // How the opener reaches this agent — `argv`, `type`, or a flag name like
+  // `--prompt`. Absent means the adapter's own default stands, which is what
+  // nearly every binding wants; it is set only to drive a harness the chartr
+  // ships no knowledge of.
+  prompt?: string
   adapterFrom: Layer
-  modelFrom: Layer
   argsFrom: Layer
+  promptFrom: Layer
+  // agent is the registered agent this role is assigned to, absent when the role
+  // is bound field by field. When it is set and registered it supplied every
+  // field above, so the row renders one name instead of four provenances.
+  // agentMissing says the name resolved to nothing and the fields beneath it are
+  // what actually runs.
+  agent?: string
+  agentMissing?: string
+  present: boolean
+  missing?: string
+}
+
+// Agent is one entry of the operator's registered agent library: a named,
+// complete way to run a harness — the binary, whatever flags that harness wants
+// (its model among them), and how it takes its opening prompt. The library is global
+// rather than per space, so it hangs off the model; roles in every space assign
+// to it by name.
+export interface Agent {
+  name: string
+  adapter: string
+  args?: string[]
+  prompt?: string
+  // What `prompt` resolves to once the adapter's own default is taken into
+  // account — `argv`, `type`, or a flag name. Resolved server-side, so the
+  // browser never re-derives the adapter table and drifts from it.
+  delivery: string
+  // The argv this agent would actually launch, with a placeholder standing in for
+  // the opener. Built by the same seam as the real launch.
+  command: string[]
   present: boolean
   missing?: string
 }
@@ -75,14 +107,13 @@ export type TerminalStatus = 'idle' | 'working' | 'exited' | 'quiet' | 'dead'
 // Session is a tab's ticket binding when it is a session — a PTY running an agent
 // against exactly one ticket (ticket 09) — rather than an ad-hoc shell. It names
 // the map and ticket the session is claimed on, the role it was spawned as, and
-// the resolved agent and model. Its presence is what tells a session tab apart
+// the resolved agent. Its presence is what tells a session tab apart
 // from a plain shell in the sidebar.
 export interface Session {
   mapSlug: string
   ticketNum: number
   role: string
   agent: string
-  model: string
 }
 
 // Terminal is one tab under its space in the sidebar. Without a `session` it is an
@@ -164,6 +195,10 @@ export interface Model {
   // with the operator's own forks over it. What every space starts from before
   // its committed library shadows anything.
   skills: ResolvedSkill[]
+  // The operator's registered agent library — named launch specs any space's
+  // roles may be assigned to. Global: it lives in the operator's own config and
+  // is never committed, so it is the same list whatever space is in view.
+  agents: Agent[]
 }
 
 /** A space needs an agent installed if any of its bindings is absent from PATH. */

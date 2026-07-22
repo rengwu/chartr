@@ -50,7 +50,6 @@ type Session struct {
 	TicketNum int
 	Role      string
 	Agent     string
-	Model     string
 }
 
 // Terminal is one tab: a running process attached to a PTY, its bounded
@@ -94,6 +93,11 @@ type Terminal struct {
 	// is what earns an AFK session the "quiet" hint (ticket 10); it is refreshed on
 	// every chunk broadcast, so any agent output — even a spinner redraw — resets it.
 	lastActivity time.Time
+	// spoke records that this PTY has produced at least one byte. lastActivity is
+	// seeded at launch (so silence is measured from there), which makes it unable to
+	// tell "has drawn nothing yet" from "has been quiet a while" — the distinction
+	// awaitReady needs to know a TUI is up rather than merely slow to start.
+	spoke bool
 	// proc/state are the last sampled foreground process and activity (one of the
 	// model.Terminal* states); lastPgrp caches the foreground group so a name is
 	// only re-resolved when the foreground actually changes. silent is the last
@@ -165,6 +169,33 @@ func (t *Terminal) Attach() *Attachment {
 // channel — raw bytes straight to the PTY.
 func (t *Terminal) Write(p []byte) (int, error) { return t.pty.Write(p) }
 
+// awaitReady blocks until this tab's process looks ready to be typed at: it has
+// drawn something and then held still for settle. A TUI paints its frame as it
+// comes up, so stillness after paint is the closest thing to a readiness
+// handshake a PTY offers — and it beats a flat sleep in both directions, waiting
+// longer for a slow agent and less for a fast one.
+//
+// It gives up after grace and reports true anyway: an agent that draws nothing
+// (a stub, a pipe-like CLI) is not thereby unreachable, and the keystrokes sit in
+// the PTY buffer until it reads. It reports false only for a process that has
+// already exited, where there is nobody left to type to.
+func (t *Terminal) awaitReady(settle, grace time.Duration) bool {
+	const poll = 25 * time.Millisecond
+	deadline := time.Now().Add(grace)
+	for {
+		t.mu.Lock()
+		alive, spoke, quiet := t.alive, t.spoke, time.Since(t.lastActivity)
+		t.mu.Unlock()
+		switch {
+		case !alive:
+			return false
+		case spoke && quiet >= settle, time.Now().After(deadline):
+			return true
+		}
+		time.Sleep(poll)
+	}
+}
+
 // Resize sets the PTY window size (columns, rows) so the shell reflows to the
 // browser's terminal geometry.
 func (t *Terminal) Resize(cols, rows int) error { return t.pty.Resize(cols, rows) }
@@ -177,7 +208,7 @@ func (t *Terminal) broadcast(chunk []byte) {
 	copy(b, chunk)
 
 	t.mu.Lock()
-	t.lastActivity = time.Now()
+	t.lastActivity, t.spoke = time.Now(), true
 	t.scrollback = appendCapped(t.scrollback, b, scrollbackCap)
 	for s := range t.subs {
 		select {
