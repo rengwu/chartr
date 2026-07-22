@@ -9,6 +9,7 @@
   import { renderMarkdown, sectionOf } from "./markdown";
   import { spawnSession, ActionError } from "./actions";
   import PayloadPreview from "./PayloadPreview.svelte";
+  import * as Accordion from "$lib/components/ui/accordion";
   import * as Card from "$lib/components/ui/card";
   import * as ScrollArea from "$lib/components/ui/scroll-area";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
@@ -305,28 +306,47 @@
               None — this ticket depends on nothing.
             </p>
           {:else}
-            <ul class="flex flex-col gap-2">
+            <!-- Each blocker collapses to its header row. A resolved blocker's
+                 answer is full prose — several of them stacked buried the
+                 ticket's own body, so the answers are opened on demand.
+                 `multiple` because comparing two blockers is the common read,
+                 and nothing is open by default. -->
+            <Accordion.Root type="multiple" class="flex flex-col gap-2">
               {#each blockers as b (b.num)}
-                <li class="rounded-md border border-border p-2.5">
-                  <div class="mb-1 flex items-center gap-1.5 text-xs">
+                <Accordion.Item
+                  value={String(b.num)}
+                  class="rounded-md border border-border"
+                >
+                  <!-- items-center overrides the primitive's items-start, which
+                       in this row would top-align the badge against the caret;
+                       no-underline keeps the hover off the title and badge. -->
+                  <Accordion.Trigger
+                    class="items-center gap-1.5 p-2 text-xs hover:no-underline"
+                  >
                     <span class="font-mono text-muted-foreground"
                       >#{pad(b.num)}</span
                     >
-                    <span class="flex-1 truncate font-medium">{b.title}</span>
+                    <span class="flex-1 truncate text-left font-medium"
+                      >{b.title}</span
+                    >
                     <Badge variant={statusVariant[b.status] ?? "outline"}
                       >{statusLabel[b.status] ?? b.status}</Badge
                     >
-                  </div>
-                  {#if b.answer}
-                    <div class="prose-sm">{@html renderMarkdown(b.answer)}</div>
-                  {:else}
-                    <p class="text-xs text-muted-foreground">
-                      Not yet answered.
-                    </p>
-                  {/if}
-                </li>
+                  </Accordion.Trigger>
+                  <Accordion.Content class="pb-2">
+                    {#if b.answer}
+                      <div class="prose-sm">
+                        {@html renderMarkdown(b.answer)}
+                      </div>
+                    {:else}
+                      <p class="text-xs text-muted-foreground">
+                        Not yet answered.
+                      </p>
+                    {/if}
+                  </Accordion.Content>
+                </Accordion.Item>
               {/each}
-            </ul>
+            </Accordion.Root>
           {/if}
         </section>
 

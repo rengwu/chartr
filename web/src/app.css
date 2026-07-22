@@ -93,6 +93,31 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* The accordion's open/close motion. The vendored primitive asks for
+     `animate-accordion-down` / `-up`; under Tailwind v4 those resolve to
+     `--animate-*` here, and without them the utilities compile to nothing and
+     the panel snaps open. Height comes from bits-ui, which measures the panel
+     and publishes it as --bits-accordion-content-height on the element. */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--bits-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--bits-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
 }
 
 /* Olive / warm-neutral token values (assets/theme.css). Light in :root, dark in
