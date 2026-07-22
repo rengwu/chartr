@@ -112,6 +112,52 @@
     }
   })
 
+  // Apply whatever star link the hash currently names to this pane. Shared by
+  // the hashchange listener below and the on-activation effect; only ever acts
+  // on a link that targets this space (App owns switching to another space's).
+  function applyHash() {
+    const h = parseHash()
+    if (h.s && h.s !== space.id) return
+    if (h.m) openSlug = h.m
+    // A link names its map and its star together, so record the slug as already
+    // seen: the drop-on-map-change guard above must not clear the star that
+    // arrived with the slug — the same exemption its first run makes for the
+    // boot link, now that a link can also land mid-life (the halt flag's jump).
+    if (h.t) {
+      selectedTicket = Number(h.t)
+      showMaterial = false
+      mapShown = true
+      lastOpen = openSlug
+    } else if (h.mat) {
+      showMaterial = true
+      selectedTicket = null
+      mapShown = true
+      lastOpen = openSlug
+    } else if (h.maps) {
+      // The picker, where an unclassified map is given its kind (ADR 0007).
+      openSlug = null
+      selectedTicket = null
+      showMaterial = false
+      mapShown = true
+    }
+  }
+
+  // Apply the link the moment this pane swings to another space (or comes back
+  // from settings), not only on hashchange. App can switch space and set a star
+  // link in one click — the sidebar halt flag's jump — and hashchange is
+  // delivered a task later, by which time the reflecting effect below, seeing a
+  // pane with nothing open, would already have wiped the link it was about to
+  // read. Applying first means the reflection agrees with the link instead of
+  // erasing it. Declared above that effect (and below the space-change reset,
+  // whose stale selection it overwrites) so the order within one flush is
+  // reset → apply → reflect. The hash read is untracked: this fires on a space
+  // change and nothing else.
+  $effect(() => {
+    space.id
+    if (!active) return
+    untrack(() => applyHash())
+  })
+
   // Reflect the current selection into the URL so a star (or the map material) is
   // a shareable deep link. replaceState never fires hashchange, so this and the
   // listener below do not loop. While the settings route is up it owns the hash,
@@ -129,31 +175,10 @@
     }
   })
 
-  // Manual URL edits and back/forward re-apply, but only when the hash targets
-  // this space (App owns switching to another space's link).
+  // Manual URL edits and back/forward re-apply, through the same path.
   onMount(() => {
-    const apply = () => {
-      const h = parseHash()
-      if (h.s && h.s !== space.id) return
-      if (h.m) openSlug = h.m
-      if (h.t) {
-        selectedTicket = Number(h.t)
-        showMaterial = false
-        mapShown = true
-      } else if (h.mat) {
-        showMaterial = true
-        selectedTicket = null
-        mapShown = true
-      } else if (h.maps) {
-        // The picker, where an unclassified map is given its kind (ADR 0007).
-        openSlug = null
-        selectedTicket = null
-        showMaterial = false
-        mapShown = true
-      }
-    }
-    window.addEventListener('hashchange', apply)
-    return () => window.removeEventListener('hashchange', apply)
+    window.addEventListener('hashchange', applyHash)
+    return () => window.removeEventListener('hashchange', applyHash)
   })
 
   // Freeze the terminal's pixel width at the moment of docking, then let the map

@@ -6,10 +6,9 @@
 // Two altitudes (spec, "The interface"):
 //   - the map's own action station (`mapActionItems`/`mapActionCount`) — the
 //     frontier ranked by how many tickets each directly unblocks;
-//   - the cross-space "Needs you" queue (`needsYouQueue`) and the sidebar's
-//     ambient echo (`spaceAttention`, `spaceLiveness`) — decision-level signals
-//     only: a session halted. Ambient liveness is a separate, weaker signal that
-//     never promotes into the pull-only queue.
+//   - the sidebar's ambient cross-space echo (`spaceAttention`,
+//     `spaceLiveness`) — decision-level signals only: a session halted. Ambient
+//     liveness is a separate, weaker signal that never promotes into a flag.
 
 import type { Map as WMap, Space, Ticket } from './model'
 
@@ -49,51 +48,25 @@ export function spaceActionCount(space: Space): number {
   return space.maps.reduce((n, m) => n + mapActionCount(m), 0)
 }
 
-// One row in the cross-space "Needs you" queue: exactly the decision-level
-// signals (spec story 63) — never plain liveness, which stays ambient-only.
-export interface QueueEntry {
-  spaceId: string
-  spaceName: string
-  mapSlug: string
-  mapName: string
-  ticketNum: number
-  ticketTitle: string
-  kind: 'halt'
-}
-
-// Halted sessions across every space. Never sorted by recency or anything
-// else: the queue is a flat, small, pull-only list (strictly summoned, never
-// auto-surfaced).
-export function needsYouQueue(spaces: Space[]): QueueEntry[] {
-  const halts: QueueEntry[] = []
-
-  for (const space of spaces) {
-    for (const t of space.terminals) {
-      if (!t.session || t.alive) continue
-      const map = space.maps.find((m) => m.slug === t.session!.mapSlug)
-      const ticket = map?.tickets.find((tk) => tk.num === t.session!.ticketNum)
-      halts.push({
-        spaceId: space.id,
-        spaceName: space.name,
-        mapSlug: t.session.mapSlug,
-        mapName: map?.name ?? t.session.mapSlug,
-        ticketNum: t.session.ticketNum,
-        ticketTitle: ticket?.title ?? `#${t.session.ticketNum}`,
-        kind: 'halt',
-      })
-    }
-  }
-  return halts
-}
-
 // The sidebar row's ambient "wants-you" flag (story 8: flags a row, never
-// re-sorts it) — exactly the same condition the queue pulls for that space,
-// so the two never disagree.
+// re-sorts it).
 export type Attention = 'halt' | null
 
 export function spaceAttention(space: Space): Attention {
   if (space.terminals.some((t) => t.session && !t.alive)) return 'halt'
   return null
+}
+
+// Where the flag's click lands: the halted session's ticket in this space, or
+// null when nothing is halted. Derived from exactly the predicate
+// `spaceAttention` tests, so the flag and its jump can never disagree — if one
+// is shown, the other exists. A space can hold more than one halted terminal;
+// this takes the first in terminal order, because the flag is one glyph and
+// cannot offer a choice.
+export function spaceHaltTarget(space: Space): { mapSlug: string; ticketNum: number } | null {
+  const halted = space.terminals.find((t) => t.session && !t.alive)
+  if (!halted?.session) return null
+  return { mapSlug: halted.session.mapSlug, ticketNum: halted.session.ticketNum }
 }
 
 // Ambient liveness across a space's one live session (ADR 0003 caps a space

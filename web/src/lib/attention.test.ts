@@ -1,5 +1,5 @@
-// Attention (ticket 14): the action station's ranking, the cross-space queue's
-// decision-level filter, and the sidebar's ambient echo — all pure derivations
+// Attention (ticket 14): the action station's ranking, and the sidebar's
+// ambient echo with the halt flag's jump target — all pure derivations
 // over a snapshot, tested the same way ticket 13's session.test.ts tests
 // `sessionStates`: tiny fixture builders, no DOM.
 
@@ -8,8 +8,8 @@ import {
   mapActionItems,
   mapActionCount,
   spaceActionCount,
-  needsYouQueue,
   spaceAttention,
+  spaceHaltTarget,
   spaceLiveness,
 } from './attention'
 import type { Map as WMap, Space, Terminal, Ticket } from './model'
@@ -113,32 +113,31 @@ describe('mapActionItems', () => {
   })
 })
 
-describe('needsYouQueue', () => {
-  it('pulls exactly the decision-level signal — a halted session', () => {
-    const withHalt = map('impl2', 'implementation', ticket(2))
-    const s2 = space('s2', { maps: [withHalt], terminals: [haltedTerminal('impl2', 2)] })
-
-    // A live, working session is ambient, not actionable — it must not appear.
-    const withLiveSession = map('impl3', 'implementation', ticket(3))
-    const s3 = space('s3', { maps: [withLiveSession], terminals: [workingTerminal('impl3', 3)] })
-
-    const entries = needsYouQueue([s2, s3])
-    expect(entries).toEqual([
-      {
-        spaceId: 's2',
-        spaceName: 's2',
-        mapSlug: 'impl2',
-        mapName: 'impl2',
-        ticketNum: 2,
-        ticketTitle: 'Ticket 2',
-        kind: 'halt',
-      },
-    ])
+describe('spaceHaltTarget', () => {
+  it('names the halted session’s ticket — where the flag’s click lands', () => {
+    const s = space('s2', {
+      maps: [map('impl2', 'implementation', ticket(2))],
+      terminals: [haltedTerminal('impl2', 2)],
+    })
+    expect(spaceHaltTarget(s)).toEqual({ mapSlug: 'impl2', ticketNum: 2 })
   })
 
-  it('is empty when nothing across any space needs a decision', () => {
-    const quiet = map('m', 'implementation', ticket(1, { frontier: true }))
-    expect(needsYouQueue([space('s', { maps: [quiet] })])).toEqual([])
+  it('takes the first halted terminal in order — one glyph offers no choice', () => {
+    const s = space('s', {
+      maps: [map('m', 'implementation', ticket(1), ticket(2))],
+      terminals: [workingTerminal('m', 9), haltedTerminal('m', 1), haltedTerminal('m', 2)],
+    })
+    expect(spaceHaltTarget(s)).toEqual({ mapSlug: 'm', ticketNum: 1 })
+  })
+
+  // The flag and the jump read the same predicate, so they can never disagree.
+  it('is null exactly when the flag is not raised', () => {
+    const s = space('s', {
+      maps: [map('m', 'implementation', ticket(1, { frontier: true }))],
+      terminals: [workingTerminal('m', 1)],
+    })
+    expect(spaceAttention(s)).toBe(null)
+    expect(spaceHaltTarget(s)).toBe(null)
   })
 })
 

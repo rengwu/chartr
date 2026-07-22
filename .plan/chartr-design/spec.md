@@ -10,7 +10,7 @@ An operator driving wayfinder maps today does it by hand: they open a terminal p
 
 **chartr**: a cross-platform, agent-agnostic cockpit that drives wayfinder maps to completion. The operator registers project spaces and switches between them; each space's maps render as a star-map; frontier tickets spawn prompt-injected agent sessions in real interactive TUIs; and on implementation maps, work passes through agent review and a human review hub before it resolves. The chartr is a **cockpit, not an autopilot**: a human drives, deterministic code makes the driving safe, and an agent sits only where judgment is the product. Everything the chartr injects and reasons with — prompts above all — is **hackable**: plain markdown on disk, visible and editable, never sealed in the binary.
 
-Concretely, it is one Go binary serving a browser frontend: a Svelte chrome around two imperative islands (xterm.js terminals, a canvas star-map), a spaces sidebar, a per-map action station, a cross-space "Needs you" queue, and a review brief — all fed by server-pushed state derived live from each space's `.plan/` and git history.
+Concretely, it is one Go binary serving a browser frontend: a Svelte chrome around two imperative islands (xterm.js terminals, a canvas star-map), a spaces sidebar, a per-map action station, and a review brief — all fed by server-pushed state derived live from each space's `.plan/` and git history.
 
 ## User Stories
 
@@ -51,7 +51,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 27. As an operator, I want human review to break the orbital grammar — a gold beacon with pings, and an edge chevron when the star is offscreen — so that the one state that is a call to action cannot be missed.
 28. As an operator, I want live state changes to never move a star — one flare and one fading ticker line only — so that spatial memory and calm survive the map going live.
 29. As an operator, I want a mapless space to still offer ad-hoc shells in its working tree, so that the chartr is usable as a plain multiplexer.
-30. As a keyboard-driven operator, I want keys for summoning the map, switching spaces, and opening the queue, so that no path in a cockpit I live in all day is mouse-only.
+30. As a keyboard-driven operator, I want keys for summoning the map and switching spaces, so that no path in a cockpit I live in all day is mouse-only.
 31. As an operator with atypical color vision, I want every liveness and attention state to carry a non-color channel — motion, shape, or label — so that no state is color-only.
 
 ### Sessions, roles, and spawning
@@ -93,7 +93,7 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 60. As an operator, I want abandon to demand one thing — a rejection reason addressed to the next attempt, demoted into the ticket as `### Rejected` prose — and destroy nothing, with revert offered as an unticked lever, so that a failed attempt informs the next instead of vanishing.
 61. As an operator, I want the post-approve strip to suggest the next best frontier ticket with a spawn button that can never inherit the approve click, so that momentum is offered and never shoved.
 62. As a TUI-preferring operator, I want the review brief assembled as plain markdown on disk that the GUI merely renders with buttons, so that a pure-CLI review flow stays open.
-63. As an operator, I want a cross-space "Needs you" queue — gate-level signals only, reviews first, jump-to, strictly pull and never auto-surfaced — so that surfacing from an hour heads-down is one summons, not a tour of every space.
+63. As an operator, I want the sidebar's per-space wants-you flag to be the jump — one click lands on that space's halted ticket — so that surfacing from an hour heads-down is one click, not a tour of every space. *(Restated by the `needs-you-cut` map, which struck this story's original form: a summonable cross-space queue, gate-level signals only, reviews first, strictly pull. Reviews were cut on the `simplify` effort, and at this cockpit's scale the queue only ever restated the sidebar flag; jump-to, the one thing it added, moved onto the flag.)*
 
 ### Git, commits, and the audit trail
 
@@ -171,8 +171,8 @@ Concretely, it is one Go binary serving a browser frontend: a Svelte chrome arou
 - Ticket detail is a responsive pane — right dock, re-docking to bottom (capped at half the map panel) when narrow — with the camera easing the selected star into the space the pane leaves free. Deep-links name a star.
 - The action station is a numbered badge on the map card toggling a drawer: reviews first, then frontier tickets by unblock count; it rides the map's handle when the map is tucked away.
 - Star-map session grammar: amber moon orbiting = session; motion = liveness (working orbits, quiet crawls dimmed, dead freezes grey); docked at rim = proposed; violet counter-orbiter = agent review (the one new hue); gold beacon + pings + offscreen edge chevron = human review, the deliberate break in the orbital grammar. Layout is computed once per map and a state change never moves a star; a live change is one flare plus one fading ticker line.
-- Cross-space attention at two altitudes: ambient on sidebar rows (liveness dot, wants-you flag, beacon echo), actionable in the summonable "Needs you" queue — gate-level signals only, reviews-first, jump-to, strictly pull.
-- Two binding interface constraints: keyboard-first navigation (map summon, space switch, queue open all have keys) and no color-only state (every state carries motion, shape, or label).
+- Cross-space attention is ambient on sidebar rows and nowhere else: liveness dot, wants-you flag, beacon echo. The wants-you flag is also the jump — clicking it selects the space and lands on its halted ticket — so a gate-level signal has one surface, not two.
+- Two binding interface constraints: keyboard-first navigation (map summon and space switch both have keys) and no color-only state (every state carries motion, shape, or label).
 - The review hub takes over the map card: brief-first (proposed answer verbatim, one-line verdict plus blocking finding, mechanically derived recommendation — no agent free text at the gate), per-clause Done-when check and diff behind expanders, findings blocking only by clause citation, one-click approve plus a single acknowledgement tick over a rejection, forced-arrival banner on agent-review rejection, take-it-further with three diff scopes, send-back briefing dialog, abandon dialog requiring a reason addressed to the next attempt, and a post-approve suggestion strip whose spawn button enables only after a short delay. The brief is plain markdown on disk; the GUI adds buttons and nothing else.
 
 ### Shipping

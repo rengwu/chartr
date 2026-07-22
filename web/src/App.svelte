@@ -13,16 +13,14 @@
   } from "./lib/actions";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
-  import NeedsYouQueue from "./lib/NeedsYouQueue.svelte";
   import Settings from "./lib/Settings.svelte";
   import Modal from "./lib/Modal.svelte";
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
   import {
-    needsYouQueue,
     spaceAttention,
+    spaceHaltTarget,
     spaceLiveness,
-    type QueueEntry,
   } from "./lib/attention";
   import { isEditingTarget } from "./lib/keys";
   import {
@@ -45,7 +43,6 @@
     Play,
     ArrowClockwise,
     ArrowUUpLeft,
-    Bell,
     Gear,
     Warning,
     GitBranchIcon,
@@ -136,12 +133,6 @@
   let filter = $state("");
   let showAdd = $state(false);
   let opening = $state(false);
-  // The cross-space "Needs you" queue (ticket 14): summoned here, over the
-  // whole cockpit rather than any one space's pane, since its entries can
-  // point at a space other than the one currently open.
-  let queueOpen = $state(false);
-  const queueCount = $derived(needsYouQueue(spaces).length);
-
   // The effective selection falls back to the first space when the id is stale
   // (e.g. the selected space was just forgotten), so the pane never blanks while
   // spaces remain. No effect mutates state; selection is pure derivation.
@@ -257,17 +248,18 @@
     }
   }
 
-  // One click from the queue: select the entry's space and set the deep-link
-  // hash naming its map and ticket. The selected space's SpacePane instance
-  // persists across space switches (ticket 07) and already listens for
-  // hashchange to seat a linked star, so this reuses that exact mechanism
-  // rather than reaching into the pane's own state.
-  function jumpToQueueEntry(entry: QueueEntry) {
-    selectedId = entry.spaceId;
+  // One click on a sidebar card's halt flag: select that space and set the
+  // deep-link hash naming the halted session's map and ticket. The selected
+  // space's SpacePane instance persists across space switches (ticket 07) and
+  // already listens for hashchange to seat a linked star, so this reuses that
+  // exact mechanism rather than reaching into the pane's own state.
+  function jumpToHalt(space: Space) {
+    const target = spaceHaltTarget(space);
+    if (!target) return;
+    selectedId = space.id;
     navigate(
-      `#s=${encodeURIComponent(entry.spaceId)}&m=${encodeURIComponent(entry.mapSlug)}&t=${entry.ticketNum}`,
+      `#s=${encodeURIComponent(space.id)}&m=${encodeURIComponent(target.mapSlug)}&t=${target.ticketNum}`,
     );
-    queueOpen = false;
   }
 
   // Kind is declared on the star-map's picker (ADR 0007); the settings surface
@@ -278,12 +270,10 @@
     navigate(mapsHash(spaceId));
   }
 
-  // Keyboard-first navigation (story 30): space switching and queue summoning,
-  // alongside the map's own M/Esc (SpacePane.onKey). `[`/`]` cycle spaces in
-  // the same pinned-then-recency order the sidebar renders, never the
-  // filtered view — a keyboard shortcut should not depend on what's typed in
-  // the filter box. `q` toggles the queue; Esc-to-close comes from the Sheet
-  // itself, matching how the bindings drawer already behaves.
+  // Keyboard-first navigation (story 30): space switching, alongside the map's
+  // own M/Esc (SpacePane.onKey). `[`/`]` cycle spaces in the same
+  // pinned-then-recency order the sidebar renders, never the filtered view — a
+  // keyboard shortcut should not depend on what's typed in the filter box.
   function onGlobalKey(e: KeyboardEvent) {
     if (isEditingTarget() || e.metaKey || e.ctrlKey || e.altKey) return;
     // `,` enters the settings route (the conventional preferences key); Esc
@@ -298,11 +288,6 @@
     if (e.key === "Escape" && route.settings) {
       e.preventDefault();
       leaveSettings();
-      return;
-    }
-    if (e.key === "q" || e.key === "Q") {
-      e.preventDefault();
-      queueOpen = !queueOpen;
       return;
     }
     if ((e.key === "[" || e.key === "]") && spaces.length > 1) {
@@ -352,25 +337,6 @@
       <span class="text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
         <span class="flex items-center gap-0.5">
-          <!-- The cross-space "Needs you" queue (ticket 14): strictly pull —
-               it renders only while this Sheet is open, never on its own. -->
-          <span class="relative">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Needs you — {queueCount} across every space"
-              title="Needs you — decision-level signals across every space (Q)"
-              onclick={() => (queueOpen = !queueOpen)}
-            >
-              <Bell />
-            </Button>
-            {#if queueCount > 0}
-              <span
-                class="pointer-events-none absolute -top-0.5 -right-0.5 grid size-3.5 place-items-center rounded-full bg-primary text-[0.55rem] font-semibold text-primary-foreground"
-                >{queueCount}</span
-              >
-            {/if}
-          </span>
           <!-- The effective config surface (ticket 05) is entered per space —
                each space card carries its own ⚙ — or with `,`; this bar keeps
                only what is genuinely cross-space. -->
@@ -450,10 +416,29 @@
                   class="flex min-w-0 items-center gap-1.5 text-xs font-semibold"
                 >
                   {#if attention === "halt"}
-                    <Warning
-                      class="size-3.5 shrink-0 text-destructive"
-                      aria-label="a session halted, needs a decision"
-                    />
+                    <!-- The flag is also the jump: one click selects the space
+                         and deep-links its halted ticket. Inside a card that is
+                         itself role="button", so the handler stops propagation
+                         the way the forget action does. -->
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
+                      aria-label="a session halted — go to the halted ticket"
+                      title="A session halted, needs a decision — go to it"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        jumpToHalt(space);
+                      }}
+                      onkeydown={(e) => {
+                        // The card handles Enter/Space itself and preventDefaults
+                        // it; let the button's own activation win instead.
+                        if (e.key === "Enter" || e.key === " ")
+                          e.stopPropagation();
+                      }}
+                    >
+                      <Warning />
+                    </Button>
                   {/if}
                   {#if liveness === "working"}
                     <CircleNotch
@@ -784,6 +769,4 @@
       }}
     />
   </Modal>
-
-  <NeedsYouQueue bind:open={queueOpen} {spaces} onjump={jumpToQueueEntry} />
 </div>
