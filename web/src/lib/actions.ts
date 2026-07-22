@@ -187,21 +187,6 @@ export function openGlobalLayer(layer: string): Promise<OpenLayerResult> {
   return send('POST', '/api/config/open', { layer }) as Promise<OpenLayerResult>
 }
 
-// classifyMap declares a map's kind (ADR 0007), writing it into the space's
-// committed workspace config. The new classification arrives over the control
-// socket like any other state; this returns only the action's own result.
-export function classifyMap(
-  id: string,
-  slug: string,
-  kind: 'planning' | 'implementation',
-): Promise<{ slug: string; kind: string }> {
-  return send(
-    'POST',
-    `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/classify`,
-    { kind },
-  ) as Promise<{ slug: string; kind: string }>
-}
-
 // setAgent registers or updates one agent of the operator's library. It is a PUT
 // because the body is the agent's whole spec: what is sent is what the agent
 // becomes, so a flag removed here is removed on disk rather than merged back in.

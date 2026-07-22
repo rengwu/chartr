@@ -21,9 +21,8 @@
   // interface): summoned, never toggled by switching spaces or maps. It carries
   // two screens in the one floating/docked frame:
   //
-  //   • the picker — a grid of the space's maps (name, kind, resolution), and the
-  //     door in; an unclassified map is classified from its tile, never opened
-  //     until it has a kind (ADR 0007);
+  //   • the picker — a grid of the space's maps (name, resolution), and the
+  //     door in;
   //   • the map — the island, with the back / map-name / dock / close chrome
   //     floating directly over it (no header bar), and the responsive detail pane
   //     (ticket 07) docked right, re-docking to the bottom when the card is narrow.
@@ -49,7 +48,7 @@
     // on the ticket it holds (ticket 13).
     terminals?: Terminal[];
     // The space these maps belong to — threaded to the detail pane so its payload
-    // preview can fetch (ticket 08), and to the picker tiles for classify.
+    // preview can fetch (ticket 08).
     spaceId: string;
     slug: string | null;
     dock?: boolean;
@@ -68,13 +67,6 @@
   const map = $derived<WMap | null>(
     slug ? (maps.find((m) => m.slug === slug) ?? null) : null,
   );
-
-  // The picker splits the maps into two sections. Beyond reading as "ready to
-  // open" vs "needs a kind first", it keeps the taller unclassified tiles (they
-  // carry the classify confirm) from stretching the shorter classified tiles they
-  // would otherwise share a flex-wrap row with.
-  const classified = $derived(maps.filter((m) => m.kind !== ""));
-  const unclassified = $derived(maps.filter((m) => m.kind === ""));
 
   // Both are bound inside the map screen's `{#if map}`, so they mount only when a
   // map opens — $state so the measuring effects below re-run when they appear.
@@ -403,12 +395,9 @@
       />
     </div>
   {:else}
-    <!-- The picker screen: a header bar, over the space's maps split into a
-         classified section (openable) and an unclassified one (classify in place
-         first, ADR 0007). Each section is its own auto-fill grid — tiles share
-         the width evenly and reach both edges at any pane width — and the two
-         grids are separate, so the taller unclassified tiles never stretch the
-         classified ones. -->
+    <!-- The picker screen: a header bar over one flat auto-fill grid of the
+         space's maps, every one of them a live open target. Tiles share the
+         width evenly and reach both edges at any pane width. -->
     <header class="cockpit-bar">
       <span class="min-w-0 flex-1 truncate text-sm font-semibold">Maps</span>
       <div class="flex items-center gap-1">
@@ -419,45 +408,13 @@
     <ScrollArea.Root class="min-h-0 flex-1">
       {#if maps.length}
         <div class="flex min-h-full flex-col gap-3 p-3">
-          {#if classified.length}
-            <!-- The openable maps flow from the top, unheaded. -->
-            <div
-              class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
-            >
-              {#each classified as m (m.slug)}
-                <MapPickerCard
-                  map={m}
-                  {spaceId}
-                  onopen={() => (slug = m.slug)}
-                />
-              {/each}
-            </div>
-          {/if}
-          {#if unclassified.length}
-            <!-- The maps still awaiting a kind, pinned to the bottom of the pane
-                 (mt-auto) behind a divider — a standing to-do, out of the way of
-                 the maps you actually open. -->
-            <section
-              class="mt-auto flex flex-col gap-2 border-t border-border pt-3"
-            >
-              <h3
-                class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase"
-              >
-                Unclassified maps
-              </h3>
-              <div
-                class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
-              >
-                {#each unclassified as m (m.slug)}
-                  <MapPickerCard
-                    map={m}
-                    {spaceId}
-                    onopen={() => (slug = m.slug)}
-                  />
-                {/each}
-              </div>
-            </section>
-          {/if}
+          <div
+            class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
+          >
+            {#each maps as m (m.slug)}
+              <MapPickerCard map={m} onopen={() => (slug = m.slug)} />
+            {/each}
+          </div>
         </div>
       {:else}
         <div class="grid h-full place-items-center p-6">
