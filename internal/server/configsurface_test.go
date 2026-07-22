@@ -325,6 +325,74 @@ func TestOpenAbsentLayerSurfacesThePath(t *testing.T) {
 	}
 }
 
+// The global half of the surface stands on its own: the skill library resolves
+// with no space in play, so "what are my skills and where do they live" is
+// answerable with nothing registered — and the open action for those layers is
+// reachable without borrowing a space id.
+func TestGlobalSkillsResolveWithoutASpace(t *testing.T) {
+	// A user fork shadows one whole directory; everything else stands on the
+	// shipped floor. It is in place before the server starts, since nothing but a
+	// registered space would prompt a rebuild here.
+	configDir := t.TempDir()
+	chartrtest.WriteFile(t, filepath.Join(configDir, "skills"), "grill/SKILL.md",
+		"---\nname: grill\ndescription: mine\n---\n\nMy grill.\n")
+	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+
+	snap := h.Snapshot(ctx(t))
+	if len(snap.Spaces) != 0 {
+		t.Fatalf("expected no registered spaces, got %d", len(snap.Spaces))
+	}
+	if len(snap.Skills) == 0 {
+		t.Fatal("the global scope lists no skills; it should never take a space to read the library")
+	}
+
+	global := func(name string) model.ResolvedSkill {
+		t.Helper()
+		for _, sk := range snap.Skills {
+			if sk.Name == name {
+				return sk
+			}
+		}
+		t.Fatalf("skill %q not in the global library (%d skills)", name, len(snap.Skills))
+		return model.ResolvedSkill{}
+	}
+	if got, want := global("grill").Layer, "user"; got != want {
+		t.Errorf("forked grill resolves from %q, want %q", got, want)
+	}
+	if got, want := global("grill").Dir, filepath.Join(h.ConfigDir, "skills", "grill"); got != want {
+		t.Errorf("grill dir = %q, want %q", got, want)
+	}
+	if got, want := global("core").Layer, "built-in"; got != want {
+		t.Errorf("core resolves from %q, want %q", got, want)
+	}
+	// The method skills ship in the same library and resolve space-less too.
+	for _, name := range []string{"wayfinder", "domain-modeling", "to-spec", "to-tickets"} {
+		if got, want := global(name).Layer, "built-in"; got != want {
+			t.Errorf("%s resolves from %q, want %q", name, got, want)
+		}
+	}
+
+	// The space-less open resolves the same named layers, and refuses everything
+	// else exactly as the per-space one does.
+	record := stubEditor(t)
+	code, body := h.Post("/api/config/open", map[string]string{"layer": "skill:grill"})
+	if code != 200 {
+		t.Fatalf("open skill:grill = %d, body %s", code, body)
+	}
+	want := filepath.Join(h.ConfigDir, "skills", "grill")
+	if !strings.Contains(body, want) {
+		t.Errorf("open skill:grill = %s, want the user fork at %q", body, want)
+	}
+	if got := waitForFile(t, record); !strings.Contains(got, want) {
+		t.Errorf("the editor was handed %q, want the server-resolved %q", got, want)
+	}
+	for _, bad := range []string{"/etc/passwd", "skill:../../etc/passwd", "workspace-config", ""} {
+		if code, _ := h.Post("/api/config/open", map[string]string{"layer": bad}); code != 400 {
+			t.Errorf("global open %q = %d, want 400 — only global names resolve here", bad, code)
+		}
+	}
+}
+
 // stubEditor installs a $VISUAL that records its arguments instead of opening
 // anything, and returns the record file's path.
 func stubEditor(t *testing.T) string {

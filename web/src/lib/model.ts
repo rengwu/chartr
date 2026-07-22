@@ -160,6 +160,10 @@ export interface Model {
   // The config layers that are not any one space's: the operator's local binding
   // overrides and the two skill libraries above and below them.
   config: ConfigLayer[]
+  // The skill library as it resolves with no space in play — the built-in floor
+  // with the operator's own forks over it. What every space starts from before
+  // its committed library shadows anything.
+  skills: ResolvedSkill[]
 }
 
 /** A space needs an agent installed if any of its bindings is absent from PATH. */

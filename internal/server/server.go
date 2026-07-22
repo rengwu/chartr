@@ -116,6 +116,10 @@ func New(opts Options) (*Server, error) {
 	// path from the client.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/config/binding", s.handleSetBinding)
 	s.mux.HandleFunc("POST /api/spaces/{id}/config/open", s.handleOpenLayer)
+	// The same open, for the layers that belong to no space — the operator's own
+	// config file and the global skill library. The global scope is reachable with
+	// nothing registered, so it cannot borrow a space id to open its own files.
+	s.mux.HandleFunc("POST /api/config/open", s.handleOpenGlobalLayer)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part layer provenance. Read-only, so a GET;
 	// the composition reads the library and the map fresh off disk each time.

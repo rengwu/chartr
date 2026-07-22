@@ -125,6 +125,10 @@
   // The config layers shared by every space — the operator's local binding file
   // and the two skill libraries that are not a space's own.
   const configLayers = $derived(control.model?.config ?? []);
+  // The skill library as it resolves with no space in play — what the settings
+  // route's global scope lists, so it answers "what are my skills" with nothing
+  // registered.
+  const globalSkills = $derived(control.model?.skills ?? []);
 
   let selectedId = $state<string | null>(null);
   // The active shell, lifted here from the pane: the sidebar's session rows are
@@ -732,6 +736,7 @@
         <Settings
           {spaces}
           config={configLayers}
+          skills={globalSkills}
           scope={route.scope}
           onScope={(s) => navigate(settingsHash(s))}
           onClose={leaveSettings}

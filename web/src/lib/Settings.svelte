@@ -9,7 +9,7 @@
   } from './model'
   import { padTicket } from './model'
   import { settingsHash, type SettingsScope } from './route'
-  import { openConfigLayer, setBinding } from './actions'
+  import { openConfigLayer, openGlobalLayer, setBinding } from './actions'
   import PayloadPreview from './PayloadPreview.svelte'
   import { Button } from './components/ui/button'
   import { Badge, type BadgeVariant } from './components/ui/badge'
@@ -37,6 +37,7 @@
   let {
     spaces,
     config,
+    skills,
     scope,
     onScope,
     onClose,
@@ -46,6 +47,9 @@
     // The layers shared by every space — the operator's local binding file and
     // the two skill libraries that are not a space's own.
     config: ConfigLayer[]
+    // The skill library as it resolves with no space in play: the built-in floor
+    // with the operator's own forks over it.
+    skills: ResolvedSkill[]
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
@@ -163,14 +167,14 @@
   // The escape hatch for everything not editable inline: the server resolves the
   // *named* layer and launches the operator's editor. Where it cannot, the path
   // itself is the answer, surfaced here.
+  //
+  // On the global scope there is no space to resolve through — and there may be
+  // none registered at all — so it opens through the space-less endpoint, which
+  // resolves the shared layers and the same library the global scope lists.
   async function open(layerName: string) {
-    if (!space) {
-      note = 'Register a space to open a config layer.'
-      return
-    }
     busy = layerName
     try {
-      const r = await openConfigLayer(space.id, layerName)
+      const r = await (space ? openConfigLayer(space.id, layerName) : openGlobalLayer(layerName))
       note =
         r.opened === 'editor' || r.opened === 'os' ? null
         : r.exists ? `Nothing to open it with — it lives at ${r.path}`
@@ -262,7 +266,7 @@
             workspace-over-user (content the project ships wins).
           </span>
           <span class="flex items-center gap-1">
-            <Button variant="link" size="xs" disabled={!space} onclick={() => open('skill:core')}>
+            <Button variant="link" size="xs" onclick={() => open('skill:core')}>
               how resolution works →
             </Button>
             <span class="font-mono text-[0.65rem]">docs/adr/0009</span>
@@ -286,6 +290,24 @@
             {#each config as l (l.name)}
               {@render layerRow(l)}
             {/each}
+          </section>
+
+          <!-- The library itself, not just the roots it lives in: the same skills
+               a space resolves, minus any committed layer shadowing them. Reading
+               it here is what the global scope is *for* — it should never take
+               registering a space to find out what your skills are. -->
+          <section class="flex flex-col gap-2">
+            <h2 class="text-xs font-semibold">Skills</h2>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              Your library before any space has its say: the shipped baseline, with your own forks
+              shadowing whole directories. A space's committed library wins over both — open a space
+              above to see what it resolves.
+            </p>
+            <ul class="flex flex-col gap-1">
+              {#each skills as sk (sk.name)}
+                {@render skillRow(sk)}
+              {/each}
+            </ul>
           </section>
         {:else if !space}
           <p class="text-sm text-muted-foreground">No spaces registered.</p>
@@ -364,35 +386,7 @@
             </p>
             <ul class="flex flex-col gap-1">
               {#each skillsOf(space) as sk (sk.name)}
-                <li class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                  <span class="flex min-w-0 flex-1 flex-col">
-                    <span class="flex items-center gap-1.5 text-xs font-medium">
-                      <Sparkle class="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      <span class="truncate">{sk.name}</span>
-                      {#if sk.stale}
-                        <Badge variant="destructive" class="gap-1" title="forked from {sk.forkedFrom}; the shipped default has moved on — never auto-merged">
-                          <Warning /> behind
-                        </Badge>
-                      {/if}
-                    </span>
-                    {#if sk.dir}
-                      <code class="truncate font-mono text-[0.65rem] text-muted-foreground">{sk.dir}</code>
-                    {:else}
-                      <span class="text-[0.65rem] text-muted-foreground">shipped in the binary</span>
-                    {/if}
-                  </span>
-                  <Badge variant={layerVariant[sk.layer]}>{sk.layer}</Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="Open the {sk.name} skill"
-                    title="Open the winning {sk.name} directory"
-                    disabled={busy !== null}
-                    onclick={() => open('skill:' + sk.name)}
-                  >
-                    <ArrowSquareOut />
-                  </Button>
-                </li>
+                {@render skillRow(sk)}
               {/each}
             </ul>
           </section>
@@ -499,6 +493,41 @@
       {/if}
     {/if}
   </div>
+{/snippet}
+
+<!-- One resolved skill: the layer that won its whole directory, where that
+     directory sits, and a way into it. The same row on both scopes, so a skill
+     reads identically whether or not a space is shadowing it. -->
+{#snippet skillRow(sk: ResolvedSkill)}
+  <li class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
+    <span class="flex min-w-0 flex-1 flex-col">
+      <span class="flex items-center gap-1.5 text-xs font-medium">
+        <Sparkle class="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span class="truncate">{sk.name}</span>
+        {#if sk.stale}
+          <Badge variant="destructive" class="gap-1" title="forked from {sk.forkedFrom}; the shipped default has moved on — never auto-merged">
+            <Warning /> behind
+          </Badge>
+        {/if}
+      </span>
+      {#if sk.dir}
+        <code class="truncate font-mono text-[0.65rem] text-muted-foreground">{sk.dir}</code>
+      {:else}
+        <span class="text-[0.65rem] text-muted-foreground">shipped in the binary</span>
+      {/if}
+    </span>
+    <Badge variant={layerVariant[sk.layer]}>{sk.layer}</Badge>
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label="Open the {sk.name} skill"
+      title="Open the winning {sk.name} directory"
+      disabled={busy !== null}
+      onclick={() => open('skill:' + sk.name)}
+    >
+      <ArrowSquareOut />
+    </Button>
+  </li>
 {/snippet}
 
 {#snippet layerRow(l: ConfigLayer)}

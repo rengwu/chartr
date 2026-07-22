@@ -179,6 +179,14 @@ export function openConfigLayer(id: string, layer: string): Promise<OpenLayerRes
   }) as Promise<OpenLayerResult>
 }
 
+// openGlobalLayer is the same open for the layers that belong to no space — the
+// operator's own config file and the global skill library. The settings route's
+// global scope is reachable with nothing registered, so it never borrows a space
+// id to open its own files.
+export function openGlobalLayer(layer: string): Promise<OpenLayerResult> {
+  return send('POST', '/api/config/open', { layer }) as Promise<OpenLayerResult>
+}
+
 // classifyMap declares a map's kind (ADR 0007), writing it into the space's
 // committed workspace config. The new classification arrives over the control
 // socket like any other state; this returns only the action's own result.

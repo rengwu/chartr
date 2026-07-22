@@ -22,6 +22,12 @@ type Model struct {
 	// than repeated under each one, and the settings route reads them as the
 	// global half of the effective config surface (ADR 0014). Never nil.
 	Config []ConfigLayer `json:"config"`
+	// Skills is the skill library as it resolves with no space in play — the
+	// built-in floor with the operator's own forks over it. It is what every space
+	// starts from before its committed library shadows anything, so the settings
+	// route can answer "what are my skills, and where do they live" without a
+	// space registered at all. Never nil.
+	Skills []ResolvedSkill `json:"skills"`
 }
 
 // ConfigLayer is one file or directory a space's effective config resolves
@@ -279,5 +285,5 @@ type RoleBinding struct {
 // but non-nil slices so the JSON snapshot is always well-formed arrays rather
 // than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}, Config: []ConfigLayer{}}
+	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}}
 }

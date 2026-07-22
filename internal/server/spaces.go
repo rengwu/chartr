@@ -156,7 +156,10 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	for _, e := range entries {
 		spaces = append(spaces, s.deriveSpace(e, userTOML))
 	}
-	return model.Model{Spaces: spaces, Config: s.globalLayers()}
+	// The global skill library resolves with no repo in play, so it is the same
+	// answer whether or not a space is registered — which is exactly what the
+	// settings route's global scope needs.
+	return model.Model{Spaces: spaces, Config: s.globalLayers(), Skills: s.resolvedSkills("")}
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {

@@ -84,6 +84,22 @@ func (s *Server) resolveLayerPath(name string, e registry.Entry) (string, error)
 	return "", fmt.Errorf("unknown config layer %q", name)
 }
 
+// resolveGlobalLayerPath is the same resolution with no space in play: the
+// layers every space shares, and skills resolved through the built-in and user
+// roots alone. The global scope of the settings route is reachable before any
+// space is registered, so its open action cannot be routed through a space id.
+func (s *Server) resolveGlobalLayerPath(name string) (string, error) {
+	if skill, ok := strings.CutPrefix(name, layerSkillPrefix); ok {
+		return s.resolveSkillDir(skill, "")
+	}
+	for _, l := range s.globalLayers() {
+		if l.Name == name {
+			return l.Path, nil
+		}
+	}
+	return "", fmt.Errorf("unknown config layer %q", name)
+}
+
 // resolveSkillDir names the directory that actually won a skill, so "open the
 // grill skill" opens the copy a session would read rather than a layer that lost.
 // A skill resolving from the binary's embedded floor opens the materialized
@@ -219,7 +235,35 @@ func (s *Server) handleOpenLayer(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, statErr := os.Stat(path); statErr != nil {
+	openResolved(w, path)
+}
+
+// handleOpenGlobalLayer is handleOpenLayer for the layers that are nobody's
+// space: the operator's own config file and the two global skill libraries. Same
+// named-layer resolution, same editor ladder — it just never needs a space.
+func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Layer string `json:"layer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	path, err := s.resolveGlobalLayerPath(body.Layer)
+	if err != nil {
+		httpError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	openResolved(w, path)
+}
+
+// openResolved runs the editor ladder on an already-resolved path and reports how
+// far it got. A layer with nothing on disk yet is reported as such with its path:
+// the surface says where the value *would* go, and a read-shaped action creates
+// nothing.
+func openResolved(w http.ResponseWriter, path string) {
+	if _, err := os.Stat(path); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"path": path, "exists": false, "opened": "none",
 		})
