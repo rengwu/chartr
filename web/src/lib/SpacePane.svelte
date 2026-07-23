@@ -350,7 +350,7 @@
         variant="ghost"
         size="icon-sm"
         aria-label="Config"
-        title="The effective config — bindings, skills, and where each layer lives (,)"
+        title="Your agents, and where the files behind them live (,)"
         onclick={onOpenSettings}
       >
         <Gear />

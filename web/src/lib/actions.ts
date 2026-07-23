@@ -162,25 +162,6 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
   return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/release`)
 }
 
-// setBinding edits one field of one role binding from the transparency surface
-// (ticket 05). It writes the **user layer and nowhere else** — bindings resolve
-// user-over-workspace (ADR 0009), so that is their home, and the cockpit never
-// writes a space's committed config. Pass null to clear the override, which
-// reveals the layer beneath it; `args` takes a list. The edited value and its new
-// provenance arrive over the control socket, so there is no optimistic state here.
-export function setBinding(
-  id: string,
-  role: string,
-  field: 'adapter' | 'args' | 'prompt' | 'agent',
-  value: string | string[] | null,
-): Promise<{ role: string; field: string; cleared: boolean; path: string }> {
-  return send('PUT', `/api/spaces/${encodeURIComponent(id)}/config/binding`, {
-    role,
-    field,
-    value,
-  }) as Promise<{ role: string; field: string; cleared: boolean; path: string }>
-}
-
 // OpenLayerResult reports how far the open action got: `editor` launched
 // $VISUAL/$EDITOR, `os` fell back to the OS opener, and `none` means the path
 // itself is the answer — a layer with nothing on disk yet, or an environment with
@@ -192,9 +173,8 @@ export interface OpenLayerResult {
   with?: string
 }
 
-// openConfigLayer opens a config layer in the operator's editor — the escape
-// hatch for everything the surface deliberately does not edit inline. `layer` is
-// a *name* the server resolves to a path (`workspace-config`, `user-config`,
+// openConfigLayer opens a config file in the operator's editor. `layer` is a
+// *name* the server resolves to a path (`user-config`, `user-skills`,
 // `skill:<name>`, …); a local server never opens a path the client sent.
 export function openConfigLayer(id: string, layer: string): Promise<OpenLayerResult> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/config/open`, {
@@ -225,13 +205,12 @@ export function setAgent(
   }>
 }
 
-// deleteAgent removes one agent from the library. Roles assigned to it are left
-// exactly as they are — the response names them, and each resolves to a visible
-// warning with the role falling back to its own fields, rather than a delete here
-// quietly rewriting a space's bindings.
-export function deleteAgent(name: string): Promise<{ name: string; assigned?: string[] }> {
+// deleteAgent removes one agent from the library. A space that last spawned with
+// it simply reads nothing remembered on its next snapshot and reopens the picker —
+// there is no assignment for a delete to strand.
+export function deleteAgent(name: string): Promise<{ name: string; path: string }> {
   return send('DELETE', `/api/config/agents/${encodeURIComponent(name)}`) as Promise<{
     name: string
-    assigned?: string[]
+    path: string
   }>
 }

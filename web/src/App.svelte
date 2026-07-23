@@ -125,13 +125,9 @@
   // The config layers shared by every space — the operator's local binding file
   // and the two skill libraries that are not a space's own.
   const configLayers = $derived(control.model?.config ?? []);
-  // The skill library as it resolves with no space in play — what the settings
-  // route's global scope lists, so it answers "what are my skills" with nothing
-  // registered.
-  const globalSkills = $derived(control.model?.skills ?? []);
-  // The registered agent library. Global like the skills above it — the same list
-  // whatever space is in view — so it is read once here and handed to the settings
-  // surface, which lists it on the global scope and assigns from it on a space's.
+  // The registered agent library. Global — the same list whatever space is in
+  // view — so it is read once here and handed to the settings surface, which lists
+  // and edits it on the global scope, and to every spawn picker.
   const agentLibrary = $derived(control.model?.agents ?? []);
   // The known agent CLIs found on this machine's PATH — the advisory hint the
   // registration surface renders beneath the adapter input. A machine property,
@@ -855,7 +851,6 @@
         <Settings
           {spaces}
           config={configLayers}
-          skills={globalSkills}
           agents={agentLibrary}
           {detected}
           scope={route.scope}

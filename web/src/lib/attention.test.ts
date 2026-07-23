@@ -38,7 +38,6 @@ function space(id: string, extra: Partial<Space> = {}): Space {
     path: `/${id}`,
     pinned: false,
     dirty: false,
-    bindings: [],
     skills: [],
     layers: [],
     maps: [],

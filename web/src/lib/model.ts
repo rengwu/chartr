@@ -2,40 +2,16 @@
 // `model.Model` exactly; it is the whole state a snapshot carries, replaced
 // wholesale on every push (ADR 0010). Later tickets grow both sides together.
 
+// Layer names where a skill resolved from — the shipped floor, the operator's own
+// fork, or a space's committed library. Skill resolution is the content half of
+// the config story; execution is no longer layered at all (agents.ts).
 export type Layer = 'built-in' | 'workspace' | 'user'
-
-// RoleBinding is one role's effective binding: which adapter runs with which
-// args, where each field was inherited from (so field-level
-// inheritance is visible, story 39), and whether the adapter's binary is on the
-// operator's PATH (`missing` carries the absence badge when it is not).
-export interface RoleBinding {
-  role: string
-  adapter: string
-  args?: string[]
-  // How the opener reaches this agent — `argv`, `type`, or a flag name like
-  // `--prompt`. Absent means the adapter's own default stands, which is what
-  // nearly every binding wants; it is set only to drive a harness chartr
-  // ships no knowledge of.
-  prompt?: string
-  adapterFrom: Layer
-  argsFrom: Layer
-  promptFrom: Layer
-  // agent is the registered agent this role is assigned to, absent when the role
-  // is bound field by field. When it is set and registered it supplied every
-  // field above, so the row renders one name instead of four provenances.
-  // agentMissing says the name resolved to nothing and the fields beneath it are
-  // what actually runs.
-  agent?: string
-  agentMissing?: string
-  present: boolean
-  missing?: string
-}
 
 // Agent is one entry of the operator's registered agent library: a named,
 // complete way to run a harness — the binary, whatever flags that harness wants
-// (its model among them), and how it takes its opening prompt. The library is global
-// rather than per space, so it hangs off the model; roles in every space assign
-// to it by name.
+// (its model among them), and how it takes its opening prompt. The library is
+// global and is the only execution config there is; a spawn picks from it at the
+// gate.
 export interface Agent {
   name: string
   adapter: string
@@ -138,7 +114,6 @@ export interface Space {
   // shell's debris. A badge, never a spawn gate (story 68): the operator decides
   // whether the debris is harmless; chartr spawns into it all the same.
   dirty: boolean
-  bindings: RoleBinding[]
   // The registered agent this space last spawned with — the remembered choice the
   // next spawn reuses. State, never config: nothing edits it, and it arrives
   // exactly as the server holds it. A name that no longer matches a registered
@@ -146,10 +121,10 @@ export interface Space {
   // than substituting one. Absent until the space's first spawn.
   lastAgent?: string
   // The resolved skill library: every skill with the layer that won its whole
-  // directory and its stale-fork state (ticket 05, story 34).
+  // directory and its stale-fork state (story 34).
   skills: ResolvedSkill[]
-  // This space's own config files — its committed workspace config and committed
-  // skill library. The layers it shares with every space live on `Model.config`.
+  // This space's own config files — its committed skill library. The layers it
+  // shares with every space live on `Model.config`.
   layers: ConfigLayer[]
   maps: Map[]
   terminals: Terminal[]
@@ -173,30 +148,29 @@ export interface ResolvedSkill {
   stale?: boolean
 }
 
-// ConfigLayer is one file or directory a space's effective config resolves
-// through. `name` is the server-side token the open action resolves — the client
-// never sends a path (ADR 0014). `holds` is what the layer can set: role
-// bindings or skills.
+// ConfigLayer is one file or directory the operator's config lives in. `name` is
+// the server-side token the open action resolves — the client never sends a path.
+// `holds` is what the file carries: the agent library or skills.
 export interface ConfigLayer {
   name: string
   layer: Layer
-  holds: 'bindings' | 'skills'
+  holds: 'agents' | 'skills'
   path: string
   exists: boolean
 }
 
 export interface Model {
   spaces: Space[]
-  // The config layers that are not any one space's: the operator's local binding
-  // overrides and the two skill libraries above and below them.
+  // The config files that are not any one space's: the operator's agent library
+  // and the two skill libraries.
   config: ConfigLayer[]
   // The skill library as it resolves with no space in play — the built-in floor
   // with the operator's own forks over it. What every space starts from before
   // its committed library shadows anything.
   skills: ResolvedSkill[]
-  // The operator's registered agent library — named launch specs any space's
-  // roles may be assigned to. Global: it lives in the operator's own config and
-  // is never committed, so it is the same list whatever space is in view.
+  // The operator's registered agent library — named launch specs a spawn picks
+  // from at the gate. Global: it lives in the operator's own config and is never
+  // committed, so it is the same list whatever space is in view.
   agents: Agent[]
   // The known agent CLIs found on this machine's PATH, in a curated order — the
   // advisory hint the registration surface renders beneath the adapter input so a
@@ -208,11 +182,6 @@ export interface Model {
   // kdialog, false otherwise — and it is what decides whether New Space opens the
   // operator's own chooser or falls back to asking them to paste a path.
   nativePicker: boolean
-}
-
-/** A space needs an agent installed if any of its bindings is absent from PATH. */
-export function needsAgents(space: Space): boolean {
-  return space.bindings.some((b) => !b.present)
 }
 
 // The payload preview (ticket 08): exactly what a session for a ticket and role

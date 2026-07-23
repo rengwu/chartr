@@ -24,7 +24,6 @@
   let {
     agents,
     detected = [],
-    assignmentsOf,
   }: {
     agents: Agent[]
     // The known agent CLIs found on this machine's PATH (ticket 04) — an advisory
@@ -34,9 +33,6 @@
     // whether or not it appears here (ADR 0002). With none detected the field
     // falls back to a single generic example instead.
     detected?: string[]
-    // What each agent is currently assigned to, for the delete confirm — a
-    // library edit should never silently strand a role.
-    assignmentsOf: (name: string) => string[]
   } = $props()
 
   // The hint under the adapter field: the CLIs actually on PATH, or one generic
@@ -124,11 +120,8 @@
     busy = name
     note = null
     try {
-      const r = await deleteAgent(name)
+      await deleteAgent(name)
       confirmingDelete = null
-      if (r.assigned?.length) {
-        note = `${name} is gone; ${r.assigned.join(', ')} fell back to their own fields.`
-      }
     } catch (e) {
       note = (e as Error).message
     } finally {
@@ -275,16 +268,10 @@
           {/if}
 
           {#if confirmingDelete === a.name}
-            {@const assigned = assignmentsOf(a.name)}
             <div class="mt-2 flex flex-col gap-1.5 rounded-md border border-border bg-muted/50 p-2">
               <p class="text-[0.7rem]">
-                {#if assigned.length}
-                  {assigned.join(', ')}
-                  {assigned.length === 1 ? 'is' : 'are'} assigned to {a.name} and will fall back to
-                  their own fields.
-                {:else}
-                  No role is assigned to {a.name}.
-                {/if}
+                Delete {a.name}? A space that last spawned with it will reopen the picker on its
+                next spawn.
               </p>
               <div class="flex items-center gap-1.5">
                 <Button
