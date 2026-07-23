@@ -323,11 +323,17 @@
         <Button
           variant={showMaterial ? "secondary" : "ghost"}
           size="sm"
-          class="min-w-0 truncate"
+          class="min-w-0 shrink flex-1"
           aria-pressed={showMaterial}
           title="Open map material — destination, notes, decisions, fog"
-          onclick={openMaterial}>{map.name}</Button
+          onclick={openMaterial}
         >
+          <!-- The button itself is a flex container (justify-center), so
+               `truncate` on it clips the centred text from both ends with no
+               ellipsis. Truncating this inner, left-aligned span instead lets
+               the name end in a normal ellipsis. -->
+          <span class="min-w-0 flex-1 truncate text-left">{map.name}</span>
+        </Button>
         <div class="ml-auto flex items-center gap-1">
           <Button
             variant="outline"

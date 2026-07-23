@@ -151,7 +151,11 @@
   // The register outcome, shown inline beside the button that started it: the
   // announced `git init` (story 2) and every refusal. There is no modal left to
   // carry them.
-  let addNotice = $state<string | null>(null);
+  // Structured rather than a pre-formatted string, so the template can front-
+  // truncate the path on its own (the operator needs the project name at the
+  // end of it, not the drive/user segments at the front) without swallowing
+  // the git-init caveat into the same truncated run.
+  let addNotice = $state<{ path: string; gitInited: boolean } | null>(null);
   let addError = $state<string | null>(null);
 
   // addSpace is the whole add flow: name a folder in the native chooser, then
@@ -172,9 +176,7 @@
       // and leave the sidebar exactly as it was.
       if (picked.cancelled || !picked.path) return;
       const res = await registerSpace(picked.path);
-      addNotice = res.gitInited
-        ? `Added ${picked.path} — it wasn’t a git repository, so a new one was initialized there.`
-        : `Added ${picked.path}.`;
+      addNotice = { path: picked.path, gitInited: res.gitInited };
       selectedId = res.id;
     } catch (err) {
       addError = err instanceof ActionError ? err.message : String(err);
@@ -779,24 +781,43 @@
              the announced `git init` and every refusal. Dismissible, because it
              is a report on a finished action and nothing depends on it. -->
         {#if addNotice || addError}
-          <div
-            class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
-            role={addError ? "alert" : "status"}
-          >
-            <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
-              {addError ?? addNotice}
-            </p>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Dismiss"
-              onclick={() => {
-                addNotice = null;
-                addError = null;
-              }}
-            >
-              <X />
-            </Button>
+          <div class="flex flex-col gap-0.5" role={addError ? "alert" : "status"}>
+            <div class="flex items-center gap-1.5 text-[0.7rem]">
+              {#if addError}
+                <p class="min-w-0 flex-1 truncate text-destructive" title={addError}>
+                  {addError}
+                </p>
+              {:else if addNotice}
+                <!-- The path front-truncates (dir="rtl" flips which end the
+                     ellipsis eats from) so the project name at its end stays
+                     visible instead of the drive/user segments at its front. -->
+                <p class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground">
+                  <span class="shrink-0">Added</span>
+                  <span
+                    dir="rtl"
+                    class="min-w-0 flex-1 truncate text-left font-mono"
+                    title={addNotice.path}
+                  >{addNotice.path}</span
+                  ><span class="shrink-0">.</span>
+                </p>
+              {/if}
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Dismiss"
+                onclick={() => {
+                  addNotice = null;
+                  addError = null;
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+            {#if addNotice?.gitInited}
+              <p class="text-[0.65rem] leading-snug text-muted-foreground">
+                Wasn’t a git repository — a new one was initialized there.
+              </p>
+            {/if}
           </div>
         {/if}
         <Button
