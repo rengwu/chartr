@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import type { ConfigLayer, TerminalPrefs } from './model'
   import { terminalSettingsSummary } from './terminalsummary'
+  import * as Accordion from './components/ui/accordion'
   import { Terminal as TerminalIcon } from 'phosphor-svelte'
 
   // The Terminal section of the global scope (ticket 08): what the operator's
@@ -35,6 +36,12 @@
   // Re-resolved whenever the prefs change, off the live tokens — so a colour slot
   // the file left unset tracks the app theme exactly as the terminal's own does.
   const groups = $derived(terminalSettingsSummary(prefs))
+
+  // Which sections are expanded. Start with the first open so the panel is never a
+  // wall of headers with nothing showing; the rest collapse away until asked for.
+  // Seeded from a one-off resolve (the titles are fixed, so this never goes stale).
+  // svelte-ignore state_referenced_locally
+  let open = $state<string[]>([terminalSettingsSummary(prefs)[0].title])
 </script>
 
 <section class="flex flex-col gap-2">
@@ -52,15 +59,19 @@
     {@render layerRow(layer)}
   {/if}
 
-  <div class="grid gap-2 sm:grid-cols-2">
-    {#each groups as g (g.title)}
-      <div class="flex flex-col gap-1 rounded-md border border-border px-2.5 py-2">
-        <h3 class="text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+  <section class="flex flex-col gap-1.5 rounded-md border border-border px-2.5 py-2">
+    <h3 class="text-xs font-semibold">Parsed config values</h3>
+    <Accordion.Root type="multiple" bind:value={open}>
+      {#each groups as g (g.title)}
+      <Accordion.Item value={g.title}>
+        <Accordion.Trigger
+          class="text-[0.65rem] font-semibold tracking-wide uppercase"
+        >
           {g.title}
-        </h3>
-        <dl class="flex flex-col gap-0.5">
-          {#each g.rows as r (r.label)}
-            <div class="flex items-baseline justify-between gap-2">
+        </Accordion.Trigger>
+        <Accordion.Content>
+          <dl class="grid grid-cols-[max-content_1fr] items-baseline gap-x-4 gap-y-0.5">
+            {#each g.rows as r (r.label)}
               <dt class="truncate text-[0.7rem] text-muted-foreground">{r.label}</dt>
               <dd class="flex min-w-0 items-center gap-1.5">
                 {#if r.swatch}
@@ -84,10 +95,11 @@
                   {r.value}
                 </span>
               </dd>
-            </div>
-          {/each}
-        </dl>
-      </div>
-    {/each}
-  </div>
+            {/each}
+          </dl>
+        </Accordion.Content>
+      </Accordion.Item>
+      {/each}
+    </Accordion.Root>
+  </section>
 </section>

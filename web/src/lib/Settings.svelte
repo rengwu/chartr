@@ -140,8 +140,8 @@
       {/each}
     </nav>
 
-    <ScrollArea.Root class="min-h-0 flex-1">
-      <div class="flex flex-col gap-5 p-4">
+    <ScrollArea.Root class="min-h-0 min-w-0 flex-1">
+      <div class="mx-auto flex w-full max-w-2xl flex-col gap-5 p-4">
         {#if note}
           <p class="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs">{note}</p>
         {/if}
