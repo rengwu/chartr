@@ -121,6 +121,16 @@ func run(dataDir string) error {
 	w.SetTitle(appName)
 	w.SetSize(1280, 840, webview.HintNone)
 	installNativeMenu(appName)
+
+	// The cockpit's own title bar, where the platform supports one (macOS).
+	// The height is the native strip's, so the window buttons AppKit still draws
+	// land centred in our bar; the cockpit reads it at document start and renders
+	// its bar only when it is there. A plain browser never sees this and keeps
+	// its branding where it has always been.
+	if h := installTitleBar(w); h > 0 {
+		w.Init(fmt.Sprintf("window.__chartrTitleBar=%d;", h))
+	}
+
 	w.Navigate(url)
 
 	// Blocks on the native main loop until the window closes or Terminate fires.

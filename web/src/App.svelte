@@ -27,6 +27,7 @@
     spaceLiveness,
   } from "./lib/attention";
   import { isEditingTarget } from "./lib/keys";
+  import { nativeTitleBarHeight } from "./lib/titlebar";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
   import {
     Plus,
@@ -58,6 +59,12 @@
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
   const control = new ControlSocket();
+
+  // The window's own title bar, when the native shell handed us its top strip
+  // (macOS). Read once at startup — it is a property of the window we booted in,
+  // not state — and zero everywhere else, which is what keeps this out of a
+  // browser tab entirely.
+  const titleBarH = nativeTitleBarHeight();
 
   // The cockpit's one route besides itself: the effective config surface, on a
   // `#/settings` hash prefix (ticket 05). The star deep link (`#s=…`, never a
@@ -357,498 +364,528 @@
 
 <svelte:window onkeydown={onGlobalKey} />
 
-<div class="grid h-full grid-cols-[16rem_minmax(0,1fr)]">
-  <aside
-    class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-  >
-    <!-- Branding: a marked home for the cockpit, above the spaces list. Just the
-         mark and the name — the cockpit-wide way into the config surface (ticket
-         05) sits at the far top-right of the chrome instead, past the stage's
-         Map toggle (SpacePane). -->
-    <div class="cockpit-bar gap-2 bg-transparent">
+<div class="flex h-full min-h-0 flex-col">
+  {#if titleBarH}
+    <!-- The window's title bar, ours to draw (macOS shell only). Its height is
+         the strip the shell freed, so the three native window buttons — still
+         AppKit's, drawn over this — sit centred at the left, and the branding
+         centres in the full window width, clear of them. The whole strip drags
+         the window because AppKit still owns its mouse events; nothing
+         interactive belongs here for that same reason. -->
+    <header
+      class="flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
+      style="height: {titleBarH}px"
+    >
       <span class="flex min-w-0 items-center gap-2">
         <span
-          class="grid size-5 shrink-0 place-items-center rounded-full border border-sidebar-border text-sidebar-foreground"
+          class="grid size-5 shrink-0 place-items-center rounded-full border border-border text-foreground"
         >
           <Compass class="size-3.5" />
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       </span>
-    </div>
+    </header>
+  {/if}
 
-    {#if spaces.length > 0}
-      <div class="cockpit-bar justify-between gap-2 bg-transparent">
-        <Input
-          type="text"
-          class="h-7"
-          placeholder="Filter spaces and sessions…"
-          bind:value={filter}
-          spellcheck="false"
-          autocapitalize="off"
-          autocomplete="off"
-          aria-label="Filter spaces and sessions"
-        />
-      </div>
-    {/if}
+  <div class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]">
+    <aside
+      class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+    >
+      <!-- Branding: a marked home for the cockpit, above the spaces list. Just the
+           mark and the name — the cockpit-wide way into the config surface (ticket
+           05) sits at the far top-right of the chrome instead, past the stage's
+           Map toggle (SpacePane).
 
-    {#if control.model === null}
-      <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
-    {:else if spaces.length === 0}
-      <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
-    {:else}
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-        {#each filtered as space (space.id)}
-          {@const isSelected = selected?.id === space.id}
-          {@const attention = spaceAttention(space)}
-          {@const liveness = spaceLiveness(space)}
-          <!-- One space, a bordered container on the sidebar surface (its own
-               token family — not the bg-card content surface). The whole card is
-               the selection target — clicking anywhere that isn't its own control
-               selects the space — so the identity, its sessions and its actions
-               all read as one object rather than a header you must aim at.
-               Selected emphasis rides --primary, the one emphasis token; the
-               chrome is monochrome. -->
-          <div
-            role="button"
-            tabindex="0"
-            aria-pressed={isSelected}
-            aria-label="Select {space.name}"
-            title={space.path}
-            class={[
-              "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors",
-              isSelected
-                ? "border-primary/60 bg-sidebar-accent/30"
-                : "border-sidebar-border hover:border-primary/30",
-            ]}
-            onclick={() => selectSpace(space.id)}
-            onkeydown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                selectSpace(space.id);
-              }
-            }}
-          >
-            <!-- Identity: the space's name over its branch, with the forget
-                 action pinned top-right. Ambient cross-space attention (ticket
-                 14, story 8) rides on the name line — a wants-you flag (a
-                 session halted) and a liveness dot, both echoing the same
-                 signals the queue pulls and the session cards below already
-                 carry in detail. Neither ever re-sorts the card; muscle memory
-                 over this list holds. -->
-            <div class="flex items-start gap-1">
-              <div class="flex min-w-0 flex-1 flex-col">
-                <span
-                  class="flex min-w-0 items-center gap-1.5 text-xs font-semibold"
-                >
-                  {#if attention === "halt"}
-                    <!-- The flag is also the jump: one click selects the space
-                         and deep-links its halted ticket. Inside a card that is
-                         itself role="button", so the handler stops propagation
-                         the way the forget action does. -->
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
-                      aria-label="a session halted — go to the halted ticket"
-                      title="A session halted, needs a decision — go to it"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        jumpToHalt(space);
-                      }}
-                      onkeydown={(e) => {
-                        // The card handles Enter/Space itself and preventDefaults
-                        // it; let the button's own activation win instead.
-                        if (e.key === "Enter" || e.key === " ")
-                          e.stopPropagation();
-                      }}
-                    >
-                      <Warning />
-                    </Button>
-                  {/if}
-                  {#if liveness === "working"}
-                    <CircleNotch
-                      class="size-3 shrink-0 animate-spin text-primary"
-                      aria-label="a session is working"
-                    />
-                  {:else if liveness === "quiet"}
-                    <CircleNotch
-                      class="size-3 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
-                      aria-label="a session is quiet"
-                    />
-                  {/if}
-                  <span class="truncate">{space.name}</span>
-                </span>
-                {#if space.branch}
-                  <div
-                    class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
-                  >
-                    <GitBranchIcon class="size-3 shrink-0" />
-                    <span class="truncate font-mono" title={space.branch}
-                      >{space.branch}</span
-                    >
-                  </div>
-                {/if}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                class="-mt-0.5 -mr-0.5 hover:text-destructive"
-                aria-label="Remove space"
-                title="Remove from this list (your files stay put)"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  forget(space);
-                }}
-              >
-                <X />
-              </Button>
-            </div>
-
-            <!-- Sessions: the space's open shells, each its own card inside the
-                 space's — identity over status, with its close action pinned the
-                 same way the space's is. Clicking one selects the space *and*
-                 switches to that session, the one click that does both. -->
-            {#if space.terminals.length}
-              <ul class="flex flex-col gap-1.5">
-                {#each space.terminals as t (t.id)}
-                  {@const isActive = isSelected && activeTerm?.id === t.id}
-                  <li>
-                    <div
-                      role="button"
-                      tabindex="0"
-                      aria-pressed={isActive}
-                      class={[
-                        "flex flex-col gap-0.5 rounded-md border px-2 py-1.5 transition-colors",
-                        isActive
-                          ? "border-primary/50 bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "border-sidebar-border hover:bg-sidebar-accent/60",
-                      ]}
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        selectSession(space, t);
-                      }}
-                      onkeydown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          selectSession(space, t);
-                        }
-                      }}
-                    >
-                      <div class="flex items-start gap-1">
-                        <span class="min-w-0 flex-1">
-                          {#if t.session}
-                            <!-- A session: its identity is the ticket it is bound
-                                 to (role · #num) — told apart from an ad-hoc
-                                 shell, which shows its foreground process. -->
-                            <span
-                              class="flex min-w-0 items-center gap-1 text-xs font-medium"
-                            >
-                              <Rocket
-                                class="size-3 shrink-0 text-primary"
-                                aria-hidden="true"
-                              />
-                              <span class="truncate"
-                                >{t.session.role} #{pad(
-                                  t.session.ticketNum,
-                                )}</span
-                              >
-                            </span>
-                          {:else}
-                            <span class="block truncate font-mono text-xs"
-                              >{t.proc}</span
-                            >
-                          {/if}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          class="-mt-0.5 -mr-1 hover:text-destructive"
-                          aria-label="End {t.proc}"
-                          title={t.session
-                            ? "End this session"
-                            : "End this shell"}
-                          onclick={(e) => {
-                            e.stopPropagation();
-                            endShell(space, t);
-                          }}
-                        >
-                          <X />
-                        </Button>
-                      </div>
-
-                      <div class="flex items-center gap-1.5">
-                        <!-- Status indicator. A shell: a spinner while working, a tick
-                             idle, an error mark once it exits. A session on the session
-                             grammar: a spinner working, a slow dimmed crawl when quiet
-                             (a hint, not an alarm), a frozen grey mark once dead. -->
-                        {#if t.status === "working"}
-                          <CircleNotch
-                            class="size-3.5 shrink-0 animate-spin text-primary"
-                            aria-label="working"
-                          />
-                        {:else if t.status === "quiet"}
-                          <CircleNotch
-                            class="size-3.5 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
-                            aria-label="quiet"
-                          />
-                        {:else if t.status === "dead"}
-                          <XCircle
-                            class="size-3.5 shrink-0 text-muted-foreground"
-                            aria-label="dead"
-                          />
-                        {:else if t.status === "exited"}
-                          <XCircle
-                            class="size-3.5 shrink-0 text-destructive"
-                            aria-label="exited"
-                          />
-                        {:else}
-                          <Check
-                            class="size-3.5 shrink-0 text-muted-foreground"
-                            aria-label="idle"
-                          />
-                        {/if}
-                        <span
-                          class="min-w-0 flex-1 truncate text-[0.65rem] text-muted-foreground"
-                        >
-                          {#if t.session}{t.session.agent} · {t.status}{:else}{t.status}{/if}
-                        </span>
-
-                        {#if t.session && !t.alive}
-                          <!-- The death halt: a dead session is pinned to its ticket and
-                               offers exactly three choices — resume it (crash recovery),
-                               respawn a fresh session, or release the claim. chartr
-                               takes none itself. -->
-                          <span
-                            class="-my-0.5 -mr-1 flex shrink-0 items-center"
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              class="hover:text-primary"
-                              aria-label="Resume this session"
-                              title="Resume — same-ticket crash recovery"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                haltAction(space, t, "resume", resumeSession);
-                              }}
-                            >
-                              <Play />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              class="hover:text-primary"
-                              aria-label="Respawn a fresh session"
-                              title="Respawn — a fresh session on the same ticket"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                haltAction(space, t, "respawn", respawnSession);
-                              }}
-                            >
-                              <ArrowClockwise />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              class="hover:text-destructive"
-                              aria-label="Release the claim"
-                              title="Release — clear the claim back to the frontier"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                haltAction(space, t, "release", releaseSession);
-                              }}
-                            >
-                              <ArrowUUpLeft />
-                            </Button>
-                          </span>
-                        {/if}
-                      </div>
-                    </div>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-
-            <!-- Actions: this space's own way into the config surface (ticket 05),
-                 and the two ticketless on-ramps — ideate and a plain shell. -->
-            <div class="flex items-center gap-1">
-              <Button
-                class="-ml-1"
-                variant="ghost"
-                size="icon-xs"
-                aria-label="{space.name}’s settings"
-                title="This space's effective config — bindings, skills, and where each layer lives"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  // Selects the space *and* opens its config — so this sets the
-                  // selection directly rather than going through selectSpace,
-                  // whose job is to leave the settings route we are entering.
-                  selectedId = space.id;
-                  openSettings({ kind: "space", spaceId: space.id });
-                }}
-              >
-                <Gear class="size-3.5" />
-              </Button>
-              <span class="flex-1"></span>
-              <!-- Ideate names its agent (ticket 03). The row's own click just
-                   selects the space, which ideateSpace does anyway, so this one
-                   deliberately does not stop propagation — the dropdown trigger
-                   has no click handler of its own to protect. The agent's name is
-                   in the menu and the tooltip rather than on this label: the
-                   sidebar button has no room for it. -->
-              <AgentSplitButton
-                agents={agentLibrary}
-                lastAgent={space.lastAgent}
-                label="Idea"
-                nameOnLabel={false}
-                disabled={opening}
-                size="xs"
-                ariaLabel="Ideate in {space.name}"
-                title="Ideate in {space.name} — a live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
-                onrun={(agent) => ideateSpace(space, agent)}
-                onregister={() => openSettings({ kind: "user" })}
-              >
-                {#snippet icon()}<Plus />{/snippet}
-              </AgentSplitButton>
-              <Button
-                variant="outline"
-                size="xs"
-                aria-label="Open a shell in {space.name}"
-                title="Open a shell in {space.name}"
-                disabled={opening}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  openShell(space);
-                }}
-              >
-                <Plus /> Shell
-              </Button>
-            </div>
-          </div>
-        {:else}
-          <p class="px-2 py-1.5 text-xs text-muted-foreground">
-            No spaces match “{filter}”.
-          </p>
-        {/each}
-      </div>
-    {/if}
-
-    <!-- The effective config surface (ticket 05) is entered per space — each
-         space card carries its own ⚙ — or with `,`; this stickied footer
-         keeps only what is genuinely cross-space: adding a new one. Always
-         available, even with zero spaces registered — it's the only way in. -->
-    <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
-      <!-- The register outcome lands here, next to the control that caused it:
-           the announced `git init` and every refusal. Dismissible, because it
-           is a report on a finished action and nothing depends on it. -->
-      {#if addNotice || addError}
-        <div
-          class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
-          role={addError ? "alert" : "status"}
-        >
-          <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
-            {addError ?? addNotice}
-          </p>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Dismiss"
-            onclick={() => {
-              addNotice = null;
-              addError = null;
-            }}
-          >
-            <X />
-          </Button>
+           In the macOS shell the window's title bar carries the branding instead,
+           centred over the whole window; repeating it here would be the same mark
+           twice within 40px. -->
+      {#if !titleBarH}
+        <div class="cockpit-bar gap-2 bg-transparent">
+          <span class="flex min-w-0 items-center gap-2">
+            <span
+              class="grid size-5 shrink-0 place-items-center rounded-full border border-sidebar-border text-sidebar-foreground"
+            >
+              <Compass class="size-3.5" />
+            </span>
+            <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
+          </span>
         </div>
       {/if}
-      <Button
-        variant="outline"
-        size="sm"
-        class="w-full"
-        disabled={picking || control.model === null}
-        aria-expanded={nativePicker ? undefined : showAdd}
-        onclick={addSpace}
-      >
-        {#if picking}
-          <CircleNotch class="animate-spin" /> Choosing…
-        {:else if nativePicker}
-          <FolderOpen /> New Space
-        {:else}
-          <Plus /> New Space
-        {/if}
-      </Button>
-    </div>
-  </aside>
 
-  <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
-    {#if spaces.length === 0}
-      <div class="grid h-full place-items-center p-6">
-        <!-- First run is the same add action as the sidebar's, so it is the same
-             chooser — a native picker the operator would only meet on their
-             second space would be a picker they never meet. The typed form is
-             still what a machine with no chooser gets. -->
-        {#if nativePicker}
-          <div class="flex w-full max-w-sm flex-col items-start gap-3">
-            <h1 class="text-lg font-semibold">Register your first space</h1>
-            <p class="text-sm text-muted-foreground">
-              Point chartr at a project folder. If it isn’t a git repository
-              yet, one is initialized there — announced, never silent.
-            </p>
-            <Button disabled={picking} onclick={addSpace}>
-              {#if picking}
-                <CircleNotch class="animate-spin" /> Choosing…
-              {:else}
-                <FolderOpen /> Choose a folder…
-              {/if}
-            </Button>
-            {#if addError}
-              <p class="text-xs text-destructive" role="alert">{addError}</p>
-            {/if}
-          </div>
-        {:else}
-          <RegisterForm
-            variant="first-run"
-            onRegistered={(id) => (selectedId = id)}
+      {#if spaces.length > 0}
+        <div class="cockpit-bar justify-between gap-2 bg-transparent">
+          <Input
+            type="text"
+            class="h-7"
+            placeholder="Filter spaces and sessions…"
+            bind:value={filter}
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            aria-label="Filter spaces and sessions"
           />
-        {/if}
-      </div>
-    {:else if selected}
-      <SpacePane
-        space={selected}
-        agents={agentLibrary}
-        {activeTerm}
-        active={!route.settings}
-        onOpenShell={() => openShell(selected)}
-        onIdeate={(agent) => ideateSpace(selected, agent)}
-        onOpenSettings={() => openSettings()}
-        onRegisterAgent={() => openSettings({ kind: "user" })}
-        onspawned={(id) => (activeTermId = id)}
-      />
-    {/if}
+        </div>
+      {/if}
 
-    <!-- The settings route renders over the space cockpit rather than replacing
-         it in the tree: the terminal and the star-map are imperative islands
-         (ADR 0010), and tearing them down to read config would cost a re-attach
-         and the map's open state. The pane below goes inert while this is up —
-         it takes no keystrokes and stops reflecting itself into the URL, and it
-         is a single isolated stacking context (SpacePane), so this one z-index
-         is all it takes to sit over the whole stage, chrome included. -->
-    {#if route.settings && route.scope}
-      <div class="absolute inset-0 z-30 bg-background">
-        <Settings
-          {spaces}
-          config={configLayers}
-          agents={agentLibrary}
-          {detected}
-          scope={route.scope}
-          onScope={(s) => navigate(settingsHash(s))}
-          onClose={leaveSettings}
-        />
+      {#if control.model === null}
+        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
+      {:else if spaces.length === 0}
+        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
+      {:else}
+        <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+          {#each filtered as space (space.id)}
+            {@const isSelected = selected?.id === space.id}
+            {@const attention = spaceAttention(space)}
+            {@const liveness = spaceLiveness(space)}
+            <!-- One space, a bordered container on the sidebar surface (its own
+                 token family — not the bg-card content surface). The whole card is
+                 the selection target — clicking anywhere that isn't its own control
+                 selects the space — so the identity, its sessions and its actions
+                 all read as one object rather than a header you must aim at.
+                 Selected emphasis rides --primary, the one emphasis token; the
+                 chrome is monochrome. -->
+            <div
+              role="button"
+              tabindex="0"
+              aria-pressed={isSelected}
+              aria-label="Select {space.name}"
+              title={space.path}
+              class={[
+                "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors",
+                isSelected
+                  ? "border-primary/60 bg-sidebar-accent/30"
+                  : "border-sidebar-border hover:border-primary/30",
+              ]}
+              onclick={() => selectSpace(space.id)}
+              onkeydown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  selectSpace(space.id);
+                }
+              }}
+            >
+              <!-- Identity: the space's name over its branch, with the forget
+                   action pinned top-right. Ambient cross-space attention (ticket
+                   14, story 8) rides on the name line — a wants-you flag (a
+                   session halted) and a liveness dot, both echoing the same
+                   signals the queue pulls and the session cards below already
+                   carry in detail. Neither ever re-sorts the card; muscle memory
+                   over this list holds. -->
+              <div class="flex items-start gap-1">
+                <div class="flex min-w-0 flex-1 flex-col">
+                  <span
+                    class="flex min-w-0 items-center gap-1.5 text-xs font-semibold"
+                  >
+                    {#if attention === "halt"}
+                      <!-- The flag is also the jump: one click selects the space
+                           and deep-links its halted ticket. Inside a card that is
+                           itself role="button", so the handler stops propagation
+                           the way the forget action does. -->
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
+                        aria-label="a session halted — go to the halted ticket"
+                        title="A session halted, needs a decision — go to it"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          jumpToHalt(space);
+                        }}
+                        onkeydown={(e) => {
+                          // The card handles Enter/Space itself and preventDefaults
+                          // it; let the button's own activation win instead.
+                          if (e.key === "Enter" || e.key === " ")
+                            e.stopPropagation();
+                        }}
+                      >
+                        <Warning />
+                      </Button>
+                    {/if}
+                    {#if liveness === "working"}
+                      <CircleNotch
+                        class="size-3 shrink-0 animate-spin text-primary"
+                        aria-label="a session is working"
+                      />
+                    {:else if liveness === "quiet"}
+                      <CircleNotch
+                        class="size-3 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
+                        aria-label="a session is quiet"
+                      />
+                    {/if}
+                    <span class="truncate">{space.name}</span>
+                  </span>
+                  {#if space.branch}
+                    <div
+                      class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
+                    >
+                      <GitBranchIcon class="size-3 shrink-0" />
+                      <span class="truncate font-mono" title={space.branch}
+                        >{space.branch}</span
+                      >
+                    </div>
+                  {/if}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  class="-mt-0.5 -mr-0.5 hover:text-destructive"
+                  aria-label="Remove space"
+                  title="Remove from this list (your files stay put)"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    forget(space);
+                  }}
+                >
+                  <X />
+                </Button>
+              </div>
+
+              <!-- Sessions: the space's open shells, each its own card inside the
+                   space's — identity over status, with its close action pinned the
+                   same way the space's is. Clicking one selects the space *and*
+                   switches to that session, the one click that does both. -->
+              {#if space.terminals.length}
+                <ul class="flex flex-col gap-1.5">
+                  {#each space.terminals as t (t.id)}
+                    {@const isActive = isSelected && activeTerm?.id === t.id}
+                    <li>
+                      <div
+                        role="button"
+                        tabindex="0"
+                        aria-pressed={isActive}
+                        class={[
+                          "flex flex-col gap-0.5 rounded-md border px-2 py-1.5 transition-colors",
+                          isActive
+                            ? "border-primary/50 bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "border-sidebar-border hover:bg-sidebar-accent/60",
+                        ]}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          selectSession(space, t);
+                        }}
+                        onkeydown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            selectSession(space, t);
+                          }
+                        }}
+                      >
+                        <div class="flex items-start gap-1">
+                          <span class="min-w-0 flex-1">
+                            {#if t.session}
+                              <!-- A session: its identity is the ticket it is bound
+                                   to (role · #num) — told apart from an ad-hoc
+                                   shell, which shows its foreground process. -->
+                              <span
+                                class="flex min-w-0 items-center gap-1 text-xs font-medium"
+                              >
+                                <Rocket
+                                  class="size-3 shrink-0 text-primary"
+                                  aria-hidden="true"
+                                />
+                                <span class="truncate"
+                                  >{t.session.role} #{pad(
+                                    t.session.ticketNum,
+                                  )}</span
+                                >
+                              </span>
+                            {:else}
+                              <span class="block truncate font-mono text-xs"
+                                >{t.proc}</span
+                              >
+                            {/if}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            class="-mt-0.5 -mr-1 hover:text-destructive"
+                            aria-label="End {t.proc}"
+                            title={t.session
+                              ? "End this session"
+                              : "End this shell"}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              endShell(space, t);
+                            }}
+                          >
+                            <X />
+                          </Button>
+                        </div>
+
+                        <div class="flex items-center gap-1.5">
+                          <!-- Status indicator. A shell: a spinner while working, a tick
+                               idle, an error mark once it exits. A session on the session
+                               grammar: a spinner working, a slow dimmed crawl when quiet
+                               (a hint, not an alarm), a frozen grey mark once dead. -->
+                          {#if t.status === "working"}
+                            <CircleNotch
+                              class="size-3.5 shrink-0 animate-spin text-primary"
+                              aria-label="working"
+                            />
+                          {:else if t.status === "quiet"}
+                            <CircleNotch
+                              class="size-3.5 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
+                              aria-label="quiet"
+                            />
+                          {:else if t.status === "dead"}
+                            <XCircle
+                              class="size-3.5 shrink-0 text-muted-foreground"
+                              aria-label="dead"
+                            />
+                          {:else if t.status === "exited"}
+                            <XCircle
+                              class="size-3.5 shrink-0 text-destructive"
+                              aria-label="exited"
+                            />
+                          {:else}
+                            <Check
+                              class="size-3.5 shrink-0 text-muted-foreground"
+                              aria-label="idle"
+                            />
+                          {/if}
+                          <span
+                            class="min-w-0 flex-1 truncate text-[0.65rem] text-muted-foreground"
+                          >
+                            {#if t.session}{t.session.agent} · {t.status}{:else}{t.status}{/if}
+                          </span>
+
+                          {#if t.session && !t.alive}
+                            <!-- The death halt: a dead session is pinned to its ticket and
+                                 offers exactly three choices — resume it (crash recovery),
+                                 respawn a fresh session, or release the claim. chartr
+                                 takes none itself. -->
+                            <span
+                              class="-my-0.5 -mr-1 flex shrink-0 items-center"
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                class="hover:text-primary"
+                                aria-label="Resume this session"
+                                title="Resume — same-ticket crash recovery"
+                                onclick={(e) => {
+                                  e.stopPropagation();
+                                  haltAction(space, t, "resume", resumeSession);
+                                }}
+                              >
+                                <Play />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                class="hover:text-primary"
+                                aria-label="Respawn a fresh session"
+                                title="Respawn — a fresh session on the same ticket"
+                                onclick={(e) => {
+                                  e.stopPropagation();
+                                  haltAction(space, t, "respawn", respawnSession);
+                                }}
+                              >
+                                <ArrowClockwise />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                class="hover:text-destructive"
+                                aria-label="Release the claim"
+                                title="Release — clear the claim back to the frontier"
+                                onclick={(e) => {
+                                  e.stopPropagation();
+                                  haltAction(space, t, "release", releaseSession);
+                                }}
+                              >
+                                <ArrowUUpLeft />
+                              </Button>
+                            </span>
+                          {/if}
+                        </div>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+
+              <!-- Actions: this space's own way into the config surface (ticket 05),
+                   and the two ticketless on-ramps — ideate and a plain shell. -->
+              <div class="flex items-center gap-1">
+                <Button
+                  class="-ml-1"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="{space.name}’s settings"
+                  title="This space's effective config — bindings, skills, and where each layer lives"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    // Selects the space *and* opens its config — so this sets the
+                    // selection directly rather than going through selectSpace,
+                    // whose job is to leave the settings route we are entering.
+                    selectedId = space.id;
+                    openSettings({ kind: "space", spaceId: space.id });
+                  }}
+                >
+                  <Gear class="size-3.5" />
+                </Button>
+                <span class="flex-1"></span>
+                <!-- Ideate names its agent (ticket 03). The row's own click just
+                     selects the space, which ideateSpace does anyway, so this one
+                     deliberately does not stop propagation — the dropdown trigger
+                     has no click handler of its own to protect. The agent's name is
+                     in the menu and the tooltip rather than on this label: the
+                     sidebar button has no room for it. -->
+                <AgentSplitButton
+                  agents={agentLibrary}
+                  lastAgent={space.lastAgent}
+                  label="Idea"
+                  nameOnLabel={false}
+                  disabled={opening}
+                  size="xs"
+                  ariaLabel="Ideate in {space.name}"
+                  title="Ideate in {space.name} — a live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
+                  onrun={(agent) => ideateSpace(space, agent)}
+                  onregister={() => openSettings({ kind: "user" })}
+                >
+                  {#snippet icon()}<Plus />{/snippet}
+                </AgentSplitButton>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  aria-label="Open a shell in {space.name}"
+                  title="Open a shell in {space.name}"
+                  disabled={opening}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openShell(space);
+                  }}
+                >
+                  <Plus /> Shell
+                </Button>
+              </div>
+            </div>
+          {:else}
+            <p class="px-2 py-1.5 text-xs text-muted-foreground">
+              No spaces match “{filter}”.
+            </p>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- The effective config surface (ticket 05) is entered per space — each
+           space card carries its own ⚙ — or with `,`; this stickied footer
+           keeps only what is genuinely cross-space: adding a new one. Always
+           available, even with zero spaces registered — it's the only way in. -->
+      <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
+        <!-- The register outcome lands here, next to the control that caused it:
+             the announced `git init` and every refusal. Dismissible, because it
+             is a report on a finished action and nothing depends on it. -->
+        {#if addNotice || addError}
+          <div
+            class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
+            role={addError ? "alert" : "status"}
+          >
+            <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
+              {addError ?? addNotice}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss"
+              onclick={() => {
+                addNotice = null;
+                addError = null;
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        {/if}
+        <Button
+          variant="outline"
+          size="sm"
+          class="w-full"
+          disabled={picking || control.model === null}
+          aria-expanded={nativePicker ? undefined : showAdd}
+          onclick={addSpace}
+        >
+          {#if picking}
+            <CircleNotch class="animate-spin" /> Choosing…
+          {:else if nativePicker}
+            <FolderOpen /> New Space
+          {:else}
+            <Plus /> New Space
+          {/if}
+        </Button>
       </div>
-    {/if}
-  </main>
+    </aside>
+
+    <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
+      {#if spaces.length === 0}
+        <div class="grid h-full place-items-center p-6">
+          <!-- First run is the same add action as the sidebar's, so it is the same
+               chooser — a native picker the operator would only meet on their
+               second space would be a picker they never meet. The typed form is
+               still what a machine with no chooser gets. -->
+          {#if nativePicker}
+            <div class="flex w-full max-w-sm flex-col items-start gap-3">
+              <h1 class="text-lg font-semibold">Register your first space</h1>
+              <p class="text-sm text-muted-foreground">
+                Point chartr at a project folder. If it isn’t a git repository
+                yet, one is initialized there — announced, never silent.
+              </p>
+              <Button disabled={picking} onclick={addSpace}>
+                {#if picking}
+                  <CircleNotch class="animate-spin" /> Choosing…
+                {:else}
+                  <FolderOpen /> Choose a folder…
+                {/if}
+              </Button>
+              {#if addError}
+                <p class="text-xs text-destructive" role="alert">{addError}</p>
+              {/if}
+            </div>
+          {:else}
+            <RegisterForm
+              variant="first-run"
+              onRegistered={(id) => (selectedId = id)}
+            />
+          {/if}
+        </div>
+      {:else if selected}
+        <SpacePane
+          space={selected}
+          agents={agentLibrary}
+          {activeTerm}
+          active={!route.settings}
+          onOpenShell={() => openShell(selected)}
+          onIdeate={(agent) => ideateSpace(selected, agent)}
+          onOpenSettings={() => openSettings()}
+          onRegisterAgent={() => openSettings({ kind: "user" })}
+          onspawned={(id) => (activeTermId = id)}
+        />
+      {/if}
+
+      <!-- The settings route renders over the space cockpit rather than replacing
+           it in the tree: the terminal and the star-map are imperative islands
+           (ADR 0010), and tearing them down to read config would cost a re-attach
+           and the map's open state. The pane below goes inert while this is up —
+           it takes no keystrokes and stops reflecting itself into the URL, and it
+           is a single isolated stacking context (SpacePane), so this one z-index
+           is all it takes to sit over the whole stage, chrome included. -->
+      {#if route.settings && route.scope}
+        <div class="absolute inset-0 z-30 bg-background">
+          <Settings
+            {spaces}
+            config={configLayers}
+            agents={agentLibrary}
+            {detected}
+            scope={route.scope}
+            onScope={(s) => navigate(settingsHash(s))}
+            onClose={leaveSettings}
+          />
+        </div>
+      {/if}
+    </main>
+  </div>
 
   <!-- The typed-path modal is now the fallback and nothing else: it opens only on
        a machine with no native folder chooser (Linux without zenity or kdialog,
