@@ -143,6 +143,38 @@ func parseAgents(userTOML []byte) (map[string]rawAgent, []string) {
 	return af.Agents, warnings
 }
 
+// knownAgentCLIs is the curated list the registration surface probes to *suggest*
+// binaries the operator likely means — a hint, never a menu. It is the one place
+// this effort brushes ADR 0002, and it stays on the correct side of the line: the
+// only fact asserted about any name here is "this binary is on your PATH", which
+// is not agent-specific knowledge. chartr claims nothing about what any of these
+// do or what flags they take, any binary at all can be registered whether or not
+// it appears here, and no per-CLI flag UI is built on this list. It exists only so
+// a fresh operator does not have to remember exact spellings.
+var knownAgentCLIs = []string{
+	"claude", "codex", "gemini", "cursor-agent", "aider",
+	"goose", "amp", "opencode", "crush", "qwen",
+}
+
+// DetectAgents reports which of the known agent CLIs are resolvable on PATH, in
+// the curated order, so the surface can render them as helper text beneath the
+// adapter input. It reuses the same LookPath probe a binding presence check does
+// (onPath defaults to LookPath when nil) and asserts nothing beyond existence.
+// The result is advisory: an empty return simply means none of the names it knows
+// are installed, not that nothing can be registered.
+func DetectAgents(onPath func(string) bool) []string {
+	if onPath == nil {
+		onPath = LookPath
+	}
+	var found []string
+	for _, name := range knownAgentCLIs {
+		if onPath(name) {
+			found = append(found, name)
+		}
+	}
+	return found
+}
+
 // ValidAgentName reports whether a name is one the library can hold. The rule is
 // the intersection of what reads well in a picker and what needs no quoting as a
 // TOML key: letters, digits, hyphen, underscore. Refusing here is what keeps the

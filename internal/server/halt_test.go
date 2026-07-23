@@ -371,7 +371,8 @@ func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
 	}
 
 	// The badge is not a gate: a spawn into the dirty tree still proceeds.
-	if code, body := h.Spawn(resp.ID, "widget", 1, "implement"); code != 200 {
+	registerAgent(t, h, "claude", map[string]any{"adapter": "claude"})
+	if code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "claude"); code != 200 {
 		t.Fatalf("spawn into a dirty tree = %d (%s), want 200 — dirty is a badge, not a gate", code, body)
 	}
 	if findSpace(t, h.Snapshot(ctx(t)), resp.ID).Dirty != true {

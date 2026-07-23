@@ -76,7 +76,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusConflict, "this space already has a live session — end it before resuming")
 		return
 	}
-	spec, status, err := launchSpecFor(s.resolve(e), sess.Role, sess.AgentName)
+	spec, status, err := agentSpec(s.resolve(e), sess.AgentName)
 	if err != nil {
 		httpError(w, status, err.Error())
 		return
@@ -154,7 +154,7 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 	// itself, not from re-deciding — and one that has since been deregistered or
 	// fallen off PATH is refused with the message any other absent agent gets,
 	// surfaced rather than silently substituted.
-	spec, status, err := launchSpecFor(s.resolve(e), sess.Role, sess.AgentName)
+	spec, status, err := agentSpec(s.resolve(e), sess.AgentName)
 	if err != nil {
 		httpError(w, status, err.Error())
 		return

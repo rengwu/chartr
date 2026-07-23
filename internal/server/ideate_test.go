@@ -217,3 +217,36 @@ func TestIdeateRefusesAnUnknownOrAbsentAgent(t *testing.T) {
 		t.Errorf("a refused ideate wrote a starter prompt into %s", filepath.Join(repo, ".chartr", "run"))
 	}
 }
+
+// Ideate requires an agent exactly like a spawn (ticket 04): naming none is
+// refused, and with nothing registered at all the refusal is the distinct
+// empty-library message that points at registration — the on-ramp is not a way
+// around the wall a fresh operator has hit. Either way nothing is opened and no
+// starter prompt is written.
+func TestIdeateRefusedWithoutAnAgentAndWhenLibraryEmpty(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	resp := register(t, h, repo)
+
+	// Empty library: the specific "register one" message, not "pick one".
+	code, body := h.IdeateRaw(resp.ID, "")
+	if code != 409 || !strings.Contains(body, "no agents are registered") {
+		t.Errorf("ideate against an empty library = %d (%s), want 409 empty-library", code, body)
+	}
+
+	// With an agent registered, naming none is the "pick one" refusal.
+	chartrtest.StubAgent(t, "some-harness")
+	registerAgent(t, h, "thinker", map[string]any{"adapter": "some-harness"})
+	code, body = h.IdeateRaw(resp.ID, "")
+	if code != 400 || !strings.Contains(body, "an agent is required") {
+		t.Errorf("ideate naming no agent = %d (%s), want 400 an-agent-is-required", code, body)
+	}
+
+	// Nothing was opened and no starter prompt was written by either refusal.
+	if s := findSpace(t, h.Snapshot(ctx(t)), resp.ID); len(s.Terminals) != 0 {
+		t.Errorf("a refused ideate opened a tab: %+v", s.Terminals)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".chartr", "run")); err == nil {
+		t.Errorf("a refused ideate wrote a starter prompt into the run directory")
+	}
+}

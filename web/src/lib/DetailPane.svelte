@@ -33,6 +33,7 @@
     lastAgent,
     agents,
     onclose,
+    onRegisterAgent,
     onspawned,
   }: {
     map: WMap;
@@ -45,6 +46,9 @@
     lastAgent?: string;
     agents: Agent[];
     onclose: () => void;
+    // Where the spawn control routes when the library is empty (ticket 04): agent
+    // registration, rather than a dead button or a spawn the server would refuse.
+    onRegisterAgent: () => void;
     // Called with the new session id after a successful spawn, so the enclosing
     // chrome can make that session's tab active.
     onspawned?: (sessionId: string) => void;
@@ -401,6 +405,7 @@
           variant={r === preferredRole ? "default" : "outline"}
           title="Start a {r} session on #{ticket ? pad(ticket.num) : ''}"
           onrun={(agent) => spawn(r, agent)}
+          onregister={onRegisterAgent}
         >
           {#snippet icon()}
             {#if r === preferredRole}<Rocket />{/if}

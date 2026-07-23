@@ -29,6 +29,7 @@
     onOpenShell,
     onIdeate,
     onOpenSettings,
+    onRegisterAgent,
     onspawned,
   }: {
     space: Space
@@ -52,6 +53,11 @@
     // enclosing App — the route is App's, this pane just carries the control at
     // the right end of its title bar.
     onOpenSettings: () => void
+    // Where an empty-library spawn or ideate control sends the operator: agent
+    // registration (the user scope of the settings surface). Owned by App like the
+    // route above; every AgentSplitButton beneath this pane routes its empty state
+    // here rather than being a dead button (ticket 04).
+    onRegisterAgent: () => void
     // Bubbled from the star-map's detail pane when a session is spawned (ticket
     // 09), so the enclosing App can make the new session's tab active.
     onspawned?: (sessionId: string) => void
@@ -379,6 +385,7 @@
               title="Think an idea through"
               note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
               onrun={onIdeate}
+              onregister={onRegisterAgent}
             >
               {#snippet icon()}<Lightbulb />{/snippet}
             </AgentSplitButton>
@@ -410,6 +417,7 @@
         {floatWidth}
         onclose={dismiss}
         onresizestart={startResize}
+        {onRegisterAgent}
         {onspawned}
       />
     {/if}

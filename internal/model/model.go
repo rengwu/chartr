@@ -33,6 +33,13 @@ type Model struct {
 	// in the operator's own config and is never committed), so it is derived once
 	// here beside the layers that resolve it. Never nil.
 	Agents []Agent `json:"agents"`
+	// Detected are the known agent CLIs found on this machine's PATH, in a curated
+	// order — the advisory hint the registration surface renders beneath the adapter
+	// input so a fresh operator need not recall exact binary names. It is a
+	// suggestion, never a constraint: any binary can be registered whether or not it
+	// is here, and chartr asserts only that each name exists on PATH (ADR 0002).
+	// Never nil on the wire.
+	Detected []string `json:"detected"`
 	// NativePicker is whether this machine can raise an OS folder chooser for
 	// "add a space" — always true on macOS, true on Linux with zenity or kdialog
 	// installed, false otherwise. It is capability, not state, so it never
@@ -307,5 +314,5 @@ type Agent struct {
 // but non-nil slices so the JSON snapshot is always well-formed arrays rather
 // than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}, Agents: []Agent{}}
+	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}, Agents: []Agent{}, Detected: []string{}}
 }

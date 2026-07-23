@@ -55,9 +55,11 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Role string `json:"role"`
 		// Agent names a registered agent from the operator's library — the explicit
-		// "run this session on *that*" the picker sends. Optional here and only
-		// here: while it is absent the role's binding still decides, so nothing that
-		// does not send it changes behaviour. Ticket 04 makes it required.
+		// "run this session on *that*" the picker sends. Required now (ticket 04):
+		// there is no binding to fall back to and no default, so a spawn that names
+		// nothing is refused rather than launching something unchosen. An empty
+		// string is the still-well-formed "I picked nothing" the frontend sends from
+		// the empty-library state, refused here with the message that says so.
 		Agent string `json:"agent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -71,8 +73,8 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 	// The role must name one of the four. *Which* role is never refused (see
 	// below) — but a string that is not a role at all is a malformed request, and
-	// saying so here is what keeps it from arriving at `bindingFor` as a binding
-	// that could not exist and being reported as a 500. The payload preview
+	// saying so here is what keeps a non-role from reaching prompt.Compose (which
+	// selects a skill by role) and being reported as a 500. The payload preview
 	// answers the same input the same way, through prompt.Compose.
 	if !config.IsRole(role) {
 		httpError(w, http.StatusBadRequest, "unknown role "+role)
@@ -107,12 +109,13 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Settle what will actually run, and hard-block an absent binary *here*, before
-	// any write: an unregistered name and a missing CLI are both doorstep
-	// diagnoses, refused in the same place and the same order whether the agent was
-	// named explicitly or inherited from the role's binding (story 40), and neither
-	// blocks anything else.
-	spec, status, err := launchSpecFor(res, role, body.Agent)
+	// Settle what will actually run, and hard-block *here*, before any write: a
+	// spawn that named no agent (an empty library, or a picker never opened), an
+	// unregistered name, and a CLI that has left PATH are all doorstep diagnoses,
+	// refused in one place so a refusal leaves the space untouched (story 33) and
+	// none of them blocks anything else. There is no binding to inherit from any
+	// more — the agent is the whole of what runs this.
+	spec, status, err := agentSpec(res, body.Agent)
 	if err != nil {
 		httpError(w, status, err.Error())
 		return
@@ -173,62 +176,55 @@ type sessionLaunch struct {
 }
 
 // launchSpec is the one thing the launch mechanics need to know about execution:
-// the binary, its flags, how the opener reaches it, and — when the operator chose
-// from the library rather than inheriting a role's binding — the registered name
-// they chose. Both paths converge on it *before* launchSession, so the mechanics
-// below never learn that role bindings exist, and deleting them (ticket 05) is a
-// subtraction rather than a rewrite.
+// the binary, its flags, how the opener reaches it, and the registered name the
+// operator chose. It settles *before* launchSession, so the mechanics below never
+// learn how it was resolved.
 type launchSpec struct {
-	// Name is the registered agent's name, empty on the binding path — a local
-	// name, meaningful only on this machine, which is why the audit trail records
-	// the adapter and args beside it rather than instead of them.
+	// Name is the registered agent's name — a local name, meaningful only on this
+	// machine, which is why the audit trail records the adapter and args beside it
+	// rather than instead of them.
 	Name    string
 	Adapter string
 	Args    []string
 	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
 	// name. Empty leaves the adapter's own default in force.
 	Prompt string
-	// AdapterFrom and ArgsFrom are the config layers the binding path resolved
-	// those fields from, and are empty on the explicit-agent path, which consults
-	// no layers at all. They travel only as far as the claim trailers, and go with
-	// the layers they name in ticket 05.
+	// AdapterFrom and ArgsFrom named the config layers the deleted binding path
+	// resolved those fields from. The explicit-agent path consults no layers, so
+	// they are always empty now and their trailers are omitted; they go with the
+	// binding layer in ticket 05.
 	AdapterFrom config.Layer
 	ArgsFrom    config.Layer
 }
 
-// launchSpecFor settles what a spawn will run. A named agent is resolved against
-// the operator's library — unregistered is a malformed request (400), registered
-// but absent from PATH is a conflict carrying the library's own diagnosis (409),
-// and a stale picker therefore can never launch nothing (story 18). With no name
-// the role's binding decides exactly as it always has, refused the same two ways.
-// Either way it settles before the claim and before any write, so a refusal
-// leaves the space untouched (story 33). The int is the HTTP status to surface
-// alongside a non-nil error.
-func launchSpecFor(res config.Resolution, role, agent string) (launchSpec, int, error) {
-	if agent != "" {
-		return agentSpec(res, agent)
-	}
-
-	binding, ok := bindingFor(res, role)
-	if !ok {
-		return launchSpec{}, http.StatusInternalServerError, errors.New("no binding for role " + role)
-	}
-	if !binding.Present {
-		return launchSpec{}, http.StatusConflict, errors.New(binding.Missing)
-	}
-	return specOf(binding), 0, nil
-}
-
-// agentSpec resolves one registered agent's name into what it launches. It is the
-// whole of the explicit-selection path, shared by every surface that names an
-// agent — spawn, ideate, and the halt actions that relaunch what a dead session
-// ran — so an unregistered name is a malformed request (400) and a registered
-// agent absent from PATH is a conflict carrying the library's own diagnosis (409)
-// in exactly one place, whichever surface asked. An empty name is refused here
-// too: it is the request that named nothing, and no path reaching this function
-// has anything to fall back to (ticket 04 makes that the rule everywhere).
+// agentSpec settles what a spawn will run from the operator's library — the whole
+// of the launch path now that role bindings no longer decide execution. It is
+// shared by every surface that starts something: spawn, ideate, and the halt
+// actions that relaunch what a dead session ran, so all of them refuse the same
+// way and in the same order (ticket 04). The int is the HTTP status to surface
+// alongside a non-nil error; on a nil error it has settled before the claim and
+// any write, so a refusal leaves the space untouched (story 33).
+//
+// The refusals, in order:
+//
+//   - No name given. With nothing registered at all this is the fresh operator who
+//     has hit the wall: the message says the library is empty and that registering
+//     one is the fix (409), distinct from every "unknown agent". With agents
+//     registered it is a picker that was never opened (400).
+//   - A named agent the library does not hold — a malformed request (400).
+//   - A named agent whose binary has left PATH — a conflict carrying the library's
+//     own diagnosis (409), which is what stops a stale picker from launching
+//     nothing (story 18).
+//
+// A named-but-gone agent (a respawn whose agent was deregistered) falls through to
+// the last case and is told *which* agent is gone — even when it was the last one,
+// rather than the generic empty-library message — because the name is what the
+// operator needs to register again.
 func agentSpec(res config.Resolution, agent string) (launchSpec, int, error) {
 	if agent == "" {
+		if len(res.Agents) == 0 {
+			return launchSpec{}, http.StatusConflict, errors.New(emptyLibraryMessage)
+		}
 		return launchSpec{}, http.StatusBadRequest, errors.New("an agent is required — pick one from your library")
 	}
 	for _, a := range res.Agents {
@@ -243,25 +239,11 @@ func agentSpec(res config.Resolution, agent string) (launchSpec, int, error) {
 	return launchSpec{}, http.StatusBadRequest, fmt.Errorf("no agent named %q is registered", agent)
 }
 
-// specOf reads a resolved role binding as a launch spec. A binding assigned to a
-// registered agent keeps that name — it is still a name out of the library, and
-// dropping it would make the trailer poorer for no reason. A binding bound field
-// by field has no name to keep, and one naming an agent the library does not hold
-// is not a registered agent at all, so both carry none.
-func specOf(b config.Resolved) launchSpec {
-	name := b.Agent
-	if b.AgentMissing != "" {
-		name = ""
-	}
-	return launchSpec{
-		Name:        name,
-		Adapter:     b.Adapter,
-		Args:        b.Args,
-		Prompt:      b.Prompt,
-		AdapterFrom: b.AdapterFrom,
-		ArgsFrom:    b.ArgsFrom,
-	}
-}
+// emptyLibraryMessage is the refusal a spawn, ideate, or respawn gives when the
+// operator has registered no agents at all: the one place the wall says both what
+// is wrong and where to fix it, since an empty library is chartr's starting state
+// (ADR 0009) and the frontend renders the same empty state from agentchoice.ts.
+const emptyLibraryMessage = "no agents are registered — register one in settings before you can spawn"
 
 // launchSession runs the spawn mechanics: it composes the payload fresh
 // off disk (the same assembly the preview shows — ADR 0005), writes the claim
@@ -378,16 +360,6 @@ func (s *Server) resolve(e registry.Entry) config.Resolution {
 		UserTOML:      userTOML,
 		SpacePath:     e.Path,
 	})
-}
-
-// bindingFor picks one role's resolved binding out of a resolution.
-func bindingFor(res config.Resolution, role string) (config.Resolved, bool) {
-	for _, b := range res.Bindings {
-		if string(b.Role) == role {
-			return b, true
-		}
-	}
-	return config.Resolved{}, false
 }
 
 // writeSessionPayload writes the composed payload to the gitignored run directory

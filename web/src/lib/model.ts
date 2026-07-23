@@ -198,6 +198,11 @@ export interface Model {
   // roles may be assigned to. Global: it lives in the operator's own config and
   // is never committed, so it is the same list whatever space is in view.
   agents: Agent[]
+  // The known agent CLIs found on this machine's PATH, in a curated order — the
+  // advisory hint the registration surface renders beneath the adapter input so a
+  // fresh operator need not recall exact binary names. A suggestion, never a
+  // constraint: any binary can be registered whether or not it is here.
+  detected: string[]
   // Whether this machine can raise a native OS folder chooser for "add a space".
   // A machine capability, not state: true on macOS, true on Linux with zenity or
   // kdialog, false otherwise — and it is what decides whether New Space opens the

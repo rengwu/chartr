@@ -43,6 +43,7 @@
     floatWidth = 0,
     onclose,
     onresizestart,
+    onRegisterAgent,
     onspawned,
   }: {
     maps: WMap[];
@@ -63,6 +64,9 @@
     floatWidth?: number;
     onclose: () => void;
     onresizestart: (e: MouseEvent) => void;
+    // Where the detail pane's spawn control sends the operator when the library is
+    // empty: agent registration (ticket 04), owned by App and carried through.
+    onRegisterAgent: () => void;
     // Bubbled up from the detail pane's Spawn control (ticket 09) so the chrome can
     // make the new session's tab active.
     onspawned?: (sessionId: string) => void;
@@ -388,6 +392,7 @@
             {lastAgent}
             {agents}
             onclose={closePane}
+            {onRegisterAgent}
             {onspawned}
           />
         </div>

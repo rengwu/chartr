@@ -372,3 +372,29 @@ func TestRetiredModelKeyIsSurfacedNotHonoured(t *testing.T) {
 		t.Errorf("library warnings = %v, want one about the retired key", lib.Warnings)
 	}
 }
+
+// DetectAgents is the advisory PATH probe (ticket 04): it reports which of the
+// curated known CLIs are present, in curated order, and reports nothing when none
+// are — a hint for the registration surface, never a constraint, and it asserts
+// only that a binary exists (ADR 0002). The probe is injected here so the test is
+// hermetic rather than at the mercy of what the machine happens to have installed.
+func TestDetectAgents(t *testing.T) {
+	// Nothing on PATH: the probe finds nothing rather than inventing a default.
+	if got := config.DetectAgents(func(string) bool { return false }); len(got) != 0 {
+		t.Errorf("probe on a bare PATH = %v, want nothing", got)
+	}
+
+	// Exactly the ones present, and nothing it was not asked about — a name that is
+	// not in the curated list is never reported even if it is on PATH.
+	installed := map[string]bool{"claude": true, "goose": true, "totally-unknown-cli": true}
+	got := config.DetectAgents(func(name string) bool { return installed[name] })
+	want := map[string]bool{"claude": true, "goose": true}
+	if len(got) != len(want) {
+		t.Fatalf("probe reported %v, want exactly claude and goose", got)
+	}
+	for _, name := range got {
+		if !want[name] {
+			t.Errorf("probe reported %q, which was not asked to be detected", name)
+		}
+	}
+}

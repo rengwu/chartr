@@ -39,9 +39,18 @@ type spawnResp struct {
 	PayloadSha string   `json:"payloadSha"`
 }
 
+// mustSpawn is the standard spawn for the many tests that care about a role, a
+// ticket, or a session's lifecycle rather than about agent selection. A spawn now
+// names an agent (ticket 04), so it registers a default `claude` agent —
+// reproducing the old built-in default of `claude --model sonnet` — and spawns
+// with it. Tests whose subject *is* the agent (its flags, delivery, or memory)
+// call SpawnWithAgent directly instead. The registration is an idempotent PUT, so
+// calling mustSpawn more than once in a space is harmless; it assumes a `claude`
+// binary is on PATH, which every mustSpawn caller already stubs.
 func mustSpawn(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int, role string) spawnResp {
 	t.Helper()
-	code, body := h.Spawn(spaceID, slug, num, role)
+	registerAgent(t, h, "claude", map[string]any{"adapter": "claude", "args": []string{"--model", "sonnet"}})
+	code, body := h.SpawnWithAgent(spaceID, slug, num, role, "claude")
 	if code != 200 {
 		t.Fatalf("spawn %s #%d as %s = %d, body %s", slug, num, role, code, body)
 	}
@@ -50,6 +59,18 @@ func mustSpawn(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int
 		t.Fatalf("spawn response not JSON: %v (%q)", err, body)
 	}
 	return r
+}
+
+// spawnWithAgent spawns naming a specific registered agent and asserts success —
+// the helper for tests whose subject is the chosen agent (its flags, its audit
+// trailers) rather than the role or lifecycle mustSpawn stands in for.
+func spawnWithAgent(t *testing.T, h *chartrtest.Chartr, spaceID, slug string, num int, role, agent string) spawnResp {
+	t.Helper()
+	code, body := h.SpawnWithAgent(spaceID, slug, num, role, agent)
+	if code != 200 {
+		t.Fatalf("spawn %s #%d as %s with %s = %d, body %s", slug, num, role, agent, code, body)
+	}
+	return decodeSpawn(t, body)
 }
 
 // gitIgnored reports whether git ignores rel within repo (check-ignore exits 0
@@ -96,8 +117,10 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
 	for _, want := range []string{
 		"Session: " + sp.SessionID,
-		// No `Agent:` — this spawn named none, and the role's binding is four
-		// fields rather than a registered agent, so there is no name to record.
+		// The registered name the operator chose, and the binary and flags it
+		// stands for: the name says which of their agents ran, the adapter and args
+		// say what that means on any other machine.
+		"Agent: claude",
 		"Adapter: claude",
 		"Args: --model sonnet",
 		"Role: implement",
@@ -106,14 +129,15 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		// layer won each composed skill, and the hash of the directory it won.
 		"Skill: core=built-in:" + prompt.ShippedHash("core"),
 		"Skill: implement=built-in:" + prompt.ShippedHash("implement"),
-		"Adapter-From: built-in",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("claim commit message missing trailer %q:\n%s", want, msg)
 		}
 	}
-	if strings.Contains(msg, "Agent:") {
-		t.Errorf("claim commit names an agent for a spawn that chose none:\n%s", msg)
+	// No config-layer provenance: the explicit-agent path consults no layers, so
+	// the `*-From` trailers are gone with the binding they described.
+	if strings.Contains(msg, "-From:") {
+		t.Errorf("claim commit carries config-layer provenance for an explicit agent:\n%s", msg)
 	}
 
 	// The ticket now derives `claimed`.
@@ -166,49 +190,89 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	}
 }
 
-// An absent bound agent hard-blocks that one spawn with the specific message —
-// naming the binding, its source layer, and the local-override fix — and blocks
-// nothing else: no claim is written, the ticket stays open, and the space is still
-// fully usable as a plain multiplexer.
-func TestSpawnMissingAgentBlocksOnlyThatSpawn(t *testing.T) {
+// A spawn that names no agent is refused (ticket 04) — there is no binding to fall
+// back to any more — and the refusal blocks nothing else: no claim is written, the
+// ticket stays open with no session tab, and the space is still fully usable as a
+// plain multiplexer. With agents registered the message is the "pick one" of a
+// picker never opened, distinct from the empty-library case below.
+func TestSpawnWithoutAnAgentIsRefusedAndBlocksNothingElse(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	// Bind `implement` to a binary that cannot exist.
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml",
-		"[roles.implement]\nadapter = \"wf-absent-agent-xyz\"\n")
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
+	// An agent exists, so the refusal is "pick one", not "register one".
+	registerAgent(t, h, "claude", map[string]any{"adapter": "claude"})
 
-	code, body := h.Spawn(resp.ID, "widget", 1, "implement")
-	if code != 409 {
-		t.Fatalf("spawn with an absent agent = %d, want 409; body %s", code, body)
+	code, body := h.Spawn(resp.ID, "widget", 1, "implement") // Spawn sends no agent
+	if code != 400 {
+		t.Fatalf("spawn naming no agent = %d, want 400; body %s", code, body)
 	}
-	for _, want := range []string{"wf-absent-agent-xyz", "PATH", "implement", "local override"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("block message missing %q: %s", want, body)
-		}
+	if !strings.Contains(body, "an agent is required") {
+		t.Errorf("refusal does not say an agent must be picked: %s", body)
 	}
 
 	// Nothing was written: no commit (HEAD is still unborn), and the ticket is
 	// still open with no session tab.
 	if _, err := gitHEAD(repo); err == nil {
-		t.Errorf("a blocked spawn should write no claim commit, but HEAD exists")
+		t.Errorf("a refused spawn should write no claim commit, but HEAD exists")
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "open" {
-		t.Errorf("ticket after a blocked spawn = %q, want open", st)
+		t.Errorf("ticket after a refused spawn = %q, want open", st)
 	}
 	if tab := sessionTab(s); tab != nil {
-		t.Errorf("a blocked spawn left a session tab: %+v", tab.Session)
+		t.Errorf("a refused spawn left a session tab: %+v", tab.Session)
 	}
 
 	// Blocks nothing else: the space is still a working multiplexer.
 	termID := h.OpenTerminal(resp.ID)
 	if !hasTerminal(findSpace(t, h.Snapshot(ctx(t)), resp.ID), termID) {
-		t.Errorf("space unusable after a blocked spawn — ad-hoc shell did not open")
+		t.Errorf("space unusable after a refused spawn — ad-hoc shell did not open")
+	}
+}
+
+// With nothing registered at all, a spawn is refused with the distinct
+// empty-library message that names the fix — where the fresh operator hit the
+// wall, not only in settings — and, like every refusal, it leaves the space
+// untouched: no claim, no payload, no tab.
+func TestSpawnRefusedWhenLibraryEmpty(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+
+	resp := register(t, h, repo)
+	// Deliberately register nothing.
+
+	code, body := h.Spawn(resp.ID, "widget", 1, "implement")
+	if code != 409 {
+		t.Fatalf("spawn against an empty library = %d, want 409; body %s", code, body)
+	}
+	// Distinct from "an agent is required" — it says the library is empty and how
+	// to fix it.
+	if !strings.Contains(body, "no agents are registered") || !strings.Contains(body, "register") {
+		t.Errorf("empty-library refusal is not the specific message: %s", body)
+	}
+
+	// The space is exactly as it was: no claim commit, ticket open, no tab, and no
+	// payload dropped into the run directory.
+	if _, err := gitHEAD(repo); err == nil {
+		t.Errorf("a refused spawn wrote a claim commit against an empty library")
+	}
+	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
+	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "open" {
+		t.Errorf("ticket after an empty-library refusal = %q, want open", st)
+	}
+	if tab := sessionTab(s); tab != nil {
+		t.Errorf("an empty-library refusal left a session tab: %+v", tab.Session)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".chartr", "run")); err == nil {
+		t.Errorf("an empty-library refusal wrote a payload into the run directory")
 	}
 }
 
@@ -331,7 +395,9 @@ func TestSpawnOneSessionPerSpace(t *testing.T) {
 	resp := register(t, h, repo)
 
 	mustSpawn(t, h, resp.ID, "widget", 1, "implement")
-	if code, body := h.Spawn(resp.ID, "widget", 2, "implement"); code != 409 || !strings.Contains(body, "already has a live session") {
+	// The second spawn names an agent so it reaches the one-session-per-space gate
+	// rather than being turned away earlier for naming none.
+	if code, body := h.SpawnWithAgent(resp.ID, "widget", 2, "implement", "claude"); code != 409 || !strings.Contains(body, "already has a live session") {
 		t.Fatalf("second spawn = %d (%s), want 409 already-has-a-session", code, body)
 	}
 	// Ticket 2 was never claimed.
@@ -343,17 +409,18 @@ func TestSpawnOneSessionPerSpace(t *testing.T) {
 // Prompt delivery at the process boundary. A known agent is *told on its command
 // line* — the opener is already submitted when the TUI comes up, so nothing waits
 // on a human pressing enter. An operator running a harness that wants keystrokes
-// instead says so in one line of user config, and the same opener arrives on
-// stdin. Both are asserted through the agent process itself, which records how
-// each line reached it.
-func TestSpawnDeliversTheOpenerTheWayTheBindingSays(t *testing.T) {
+// instead registers an agent whose `prompt` says `type`, and the same opener
+// arrives on stdin. Both are asserted through the agent process itself, which
+// records how each line reached it. Delivery is a property of the chosen agent
+// now, not of a role binding.
+func TestSpawnDeliversTheOpenerTheWayTheAgentSays(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		userTOML string
-		want     string // the tagged line the agent must record
+		name   string
+		prompt string
+		want   string // the tagged line the agent must record
 	}{
-		{name: "argv by default", want: "argv: Read the file "},
-		{name: "typed when the binding says so", userTOML: "prompt = \"type\"\n", want: "stdin: Read the file "},
+		{name: "argv by default", prompt: "argv", want: "argv: Read the file "},
+		{name: "typed when the agent says so", prompt: "type", want: "stdin: Read the file "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := chartrtest.Start(t)
@@ -361,14 +428,16 @@ func TestSpawnDeliversTheOpenerTheWayTheBindingSays(t *testing.T) {
 
 			chartrtest.WriteMap(t, repo, "widget", mapBody)
 			chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-			if tc.userTOML != "" {
-				chartrtest.WriteFile(t, h.DataDir, "user.toml",
-					fmt.Sprintf("[spaces.%q.roles.implement]\n%s", repo, tc.userTOML))
-			}
 			delivery := chartrtest.StubAgent(t, "claude")
 
 			resp := register(t, h, repo)
-			sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+			registerAgent(t, h, "runner", map[string]any{"adapter": "claude", "prompt": tc.prompt})
+
+			code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "runner")
+			if code != 200 {
+				t.Fatalf("spawn = %d, body %s", code, body)
+			}
+			sp := decodeSpawn(t, body)
 
 			payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
 			log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
@@ -488,36 +557,6 @@ func TestSpawnWithAnExplicitAgentLaunchesThatAgent(t *testing.T) {
 		if !strings.Contains(msg, w) {
 			t.Errorf("claim commit missing trailer %q:\n%s", w, msg)
 		}
-	}
-}
-
-// Sending no agent is untouched: the role's binding still decides, which is what
-// makes this ticket an addition rather than a migration.
-func TestSpawnWithoutAnAgentStillResolvesTheBinding(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-
-	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	delivery := chartrtest.StubAgent(t, "claude")
-
-	resp := register(t, h, repo)
-	// A registered agent exists and is deliberately *not* named: its presence must
-	// not pull the spawn away from the binding.
-	registerAgent(t, h, "harness-yolo", map[string]any{"adapter": "some-harness"})
-
-	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
-	if sp.Agent != "claude" || sp.AgentName != "" {
-		t.Errorf("spawn ran %q (%q), want claude with no registered name", sp.Agent, sp.AgentName)
-	}
-	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
-	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
-	if !inOrder(log, []string{"argv: --model", "argv: sonnet"}) {
-		t.Errorf("the binding's args did not reach the process:\n%s", log)
-	}
-	// Nothing durable was remembered: there is no name to remember.
-	if got := findSpace(t, h.Snapshot(ctx(t)), resp.ID).LastAgent; got != "" {
-		t.Errorf("space remembered %q after a spawn that named no agent", got)
 	}
 }
 

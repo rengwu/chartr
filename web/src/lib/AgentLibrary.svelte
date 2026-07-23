@@ -23,13 +23,30 @@
   // by the same seam that builds the real argv, so what you read is what runs.
   let {
     agents,
+    detected = [],
     assignmentsOf,
   }: {
     agents: Agent[]
+    // The known agent CLIs found on this machine's PATH (ticket 04) — an advisory
+    // hint, rendered as helper text beneath the adapter input rather than as a
+    // placeholder, which would vanish on the first keystroke exactly when the list
+    // is most useful. A suggestion, never a menu: any binary can be registered
+    // whether or not it appears here (ADR 0002). With none detected the field
+    // falls back to a single generic example instead.
+    detected?: string[]
     // What each agent is currently assigned to, for the delete confirm — a
     // library edit should never silently strand a role.
     assignmentsOf: (name: string) => string[]
   } = $props()
+
+  // The hint under the adapter field: the CLIs actually on PATH, or one generic
+  // example when the probe found none. Kept alongside the input, so it survives
+  // while the operator types (spec, Onboarding).
+  const adapterHint = $derived(
+    detected.length
+      ? `on your PATH: ${detected.join(', ')} — or any other binary you run`
+      : 'e.g. claude — or any other agent CLI on your PATH',
+  )
 
   // One agent being edited, or a fresh registration. Only one at a time: this is
   // a library, not a form-heavy admin screen.
@@ -161,6 +178,10 @@
           draft.original !== '',
         )}
         {@render textField('adapter', draft.adapter, (v) => (draft!.adapter = v), 'the CLI to run')}
+        <!-- The PATH probe's suggestions live here, beside the input, not in its
+             placeholder — a placeholder disappears on the first keystroke, exactly
+             when the list is most useful (spec, Onboarding). A hint, never a menu. -->
+        <p class="-mt-0.5 pl-[3.875rem] text-[0.7rem] text-muted-foreground">{adapterHint}</p>
 
         <div class="flex items-center gap-1.5">
           <span class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground">prompt</span>
@@ -285,8 +306,8 @@
     </ul>
   {:else if !draft}
     <p class="text-xs text-muted-foreground">
-      No agents registered. Roles fall back to their own adapter, model and args until one is
-      assigned.
+      No agents registered yet. Register one to start spawning — every session, and ideate, picks an
+      agent from this library, and there is no default.
     </p>
   {/if}
 </section>

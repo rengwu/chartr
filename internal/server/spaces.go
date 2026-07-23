@@ -119,10 +119,14 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	_, nativePicker := nativePicker(pickStartDir())
 
 	return model.Model{
-		Spaces:       spaces,
-		Config:       s.globalLayers(),
-		Skills:       s.resolvedSkills(""),
-		Agents:       agentLibrary(userTOML),
+		Spaces: spaces,
+		Config: s.globalLayers(),
+		Skills: s.resolvedSkills(""),
+		Agents: agentLibrary(userTOML),
+		// The known-CLI probe is a $PATH check, like the folder chooser above: it is
+		// a property of the machine, resolved fresh on every rebuild so a newly
+		// installed harness shows up without a restart. Never nil for the wire.
+		Detected:     detectedAgents(),
 		NativePicker: nativePicker,
 	}
 }
@@ -241,6 +245,18 @@ func httpError(w http.ResponseWriter, status int, msg string) {
 // command preview. It is deliberately unmistakable for a real path: the preview
 // answers "where does the opener go", not "what will it say".
 const openerPlaceholder = "‹opener›"
+
+// detectedAgents probes the curated list of known agent CLIs against the current
+// PATH, returning those present in curated order for the registration surface's
+// helper text. It never nils: an empty slice is the honest "none of the ones I
+// know are installed", which the surface renders as a generic example instead.
+func detectedAgents() []string {
+	found := config.DetectAgents(nil)
+	if found == nil {
+		return []string{}
+	}
+	return found
+}
 
 // agentLibrary derives the operator's registered agent library for the snapshot.
 // It is resolved from the user config alone — the library is global, the same

@@ -59,15 +59,7 @@ func TestRegisteredAgentDrivesTheSpawn(t *testing.T) {
 		"args":    []string{"-m", "big", "--dangerously-skip-permissions", "--sandbox", "danger-full-access"},
 		"prompt":  "argv",
 	})
-	assignAgent(t, h, resp.ID, "implement", "harness-yolo")
-
-	// The binding now reads as the agent, wholesale.
-	b := binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	if b.Agent != "harness-yolo" || b.Adapter != "some-harness" {
-		t.Fatalf("binding after assignment = %+v", b)
-	}
-
-	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	sp := spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "harness-yolo")
 	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
 	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
 
@@ -117,9 +109,8 @@ func TestNothingIsAddedToTheRegisteredArgv(t *testing.T) {
 		"args":    []string{"--fast"},
 		"prompt":  "argv",
 	})
-	assignAgent(t, h, resp.ID, "implement", "plain")
 
-	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	sp := spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "plain")
 	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
 	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
 	if strings.Contains(log, "--model") {

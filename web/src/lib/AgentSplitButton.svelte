@@ -18,8 +18,10 @@
   //              override, which a successful run then remembers server-side.
   //   unchosen — the primary action opens the list instead of running. There is
   //              no automatic first choice, and no one-click path bypasses it.
-  //   empty    — ticket 04's surface. Until then it falls through to the server's
-  //              own refusal, which is what the caller renders.
+  //   empty    — nothing is registered (ticket 04). The control does not run and
+  //              is not silently disabled: it names the wall ("Register an agent")
+  //              and routes to registration via `onregister`, so the operator is
+  //              sent to the fix from the place they were blocked.
   //
   // The list is every registered agent; one whose binary is absent is disabled
   // with its reason on the row, not hidden behind a hover title.
@@ -45,6 +47,9 @@
     note,
     icon,
     onrun,
+    // Where the empty state sends the operator: the registration surface. Given by
+    // every caller, so a control with an empty library is never a dead button.
+    onregister,
   }: {
     agents: Agent[];
     lastAgent?: string;
@@ -61,6 +66,7 @@
     note?: string;
     icon?: Snippet;
     onrun: (agent: string) => void;
+    onregister?: () => void;
   } = $props();
 
   const choice = $derived<AgentChoice>(chooseAgent(agents, lastAgent));
@@ -68,15 +74,17 @@
 
   const buttonLabel = $derived.by(() => {
     if (busy) return busyLabel;
+    if (choice.kind === "empty") return "Register an agent";
     if (choice.kind === "ready" && nameOnLabel) {
       return `${label} with ${choice.agent.name}`;
     }
     return choice.kind === "ready" ? label : (unchosenLabel ?? label);
   });
 
-  const buttonTitle = $derived(
-    choice.kind === "ready" && title ? `${title} — with ${choice.agent.name}` : title,
-  );
+  const buttonTitle = $derived.by(() => {
+    if (choice.kind === "empty") return "No agent registered — register one to start";
+    return choice.kind === "ready" && title ? `${title} — with ${choice.agent.name}` : title;
+  });
 
   function primary() {
     if (choice.kind === "ready") {
@@ -84,9 +92,9 @@
     } else if (choice.kind === "unchosen") {
       open = true;
     } else {
-      // Empty library: ticket 04 owns this surface. Until then, run with no name
-      // and let the server's refusal be the thing the operator reads.
-      onrun("");
+      // Empty library: send the operator to registration from where they were
+      // blocked, rather than opening a picker onto nothing or dying at the server.
+      onregister?.();
     }
   }
 </script>
@@ -134,8 +142,9 @@
     {/each}
     {#if !agents.length}
       <DropdownMenu.Label class="max-w-64 text-[0.7rem] leading-relaxed font-normal text-wrap text-muted-foreground">
-        No agents registered.
+        No agents registered yet.
       </DropdownMenu.Label>
+      <DropdownMenu.Item onclick={() => onregister?.()}>Register an agent…</DropdownMenu.Item>
     {/if}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

@@ -133,6 +133,10 @@
   // whatever space is in view — so it is read once here and handed to the settings
   // surface, which lists it on the global scope and assigns from it on a space's.
   const agentLibrary = $derived(control.model?.agents ?? []);
+  // The known agent CLIs found on this machine's PATH — the advisory hint the
+  // registration surface renders beneath the adapter input. A machine property,
+  // resolved server-side, so a fresh operator sees real suggestions.
+  const detected = $derived(control.model?.detected ?? []);
 
   let selectedId = $state<string | null>(null);
   // The active shell, lifted here from the pane: the sidebar's session rows are
@@ -719,6 +723,7 @@
                 title="Ideate in {space.name}"
                 note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
                 onrun={(agent) => ideateSpace(space, agent)}
+                onregister={() => openSettings({ kind: "user" })}
               >
                 {#snippet icon()}<Plus />{/snippet}
               </AgentSplitButton>
@@ -833,6 +838,7 @@
         onOpenShell={() => openShell(selected)}
         onIdeate={(agent) => ideateSpace(selected, agent)}
         onOpenSettings={() => openSettings()}
+        onRegisterAgent={() => openSettings({ kind: "user" })}
         onspawned={(id) => (activeTermId = id)}
       />
     {/if}
@@ -851,6 +857,7 @@
           config={configLayers}
           skills={globalSkills}
           agents={agentLibrary}
+          {detected}
           scope={route.scope}
           onScope={(s) => navigate(settingsHash(s))}
           onClose={leaveSettings}

@@ -43,6 +43,7 @@
     config,
     skills,
     agents,
+    detected,
     scope,
     onScope,
     onClose,
@@ -58,6 +59,9 @@
     // every scope: read and edited on the global one, assigned to roles on a
     // space's.
     agents: Agent[]
+    // The known agent CLIs found on this machine's PATH — the advisory hint the
+    // agent library renders beneath the adapter input when registering one.
+    detected: string[]
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
@@ -359,7 +363,7 @@
             {/each}
           </section>
 
-          <AgentLibrary {agents} {assignmentsOf} />
+          <AgentLibrary {agents} {detected} {assignmentsOf} />
 
           <!-- The library itself, not just the roots it lives in: the same skills
                a space resolves, minus any committed layer shadowing them. Reading
