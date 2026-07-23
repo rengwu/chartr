@@ -193,13 +193,40 @@ export interface Model {
 
 // TerminalPrefs mirrors the Go `model.TerminalPrefs`: every field is a pref the
 // `terminal.toml` set, and a field left unset (empty / zero) falls through to the
-// app default at the resolve seam. Ticket 01 carries the spine — font family,
-// size, and the two base theme colours; later tickets widen it.
+// app default at the resolve seam. Ticket 01 carried the spine — font family,
+// size, and the two base theme colours; ticket 02 widens it to a named theme
+// preset plus the full slot set. The resolve seam (`buildTerminalOptions`) layers
+// them as tokens → preset → explicit slots. `preset` is a validated bundled name
+// (server-side); `selection` drives xterm's `selectionBackground`.
 export interface TerminalPrefs {
   fontFamily?: string
   fontSize?: number
+
+  preset?: string
+
   background?: string
   foreground?: string
+  cursor?: string
+  cursorAccent?: string
+  selection?: string
+
+  black?: string
+  red?: string
+  green?: string
+  yellow?: string
+  blue?: string
+  magenta?: string
+  cyan?: string
+  white?: string
+
+  brightBlack?: string
+  brightRed?: string
+  brightGreen?: string
+  brightYellow?: string
+  brightBlue?: string
+  brightMagenta?: string
+  brightCyan?: string
+  brightWhite?: string
 }
 
 // The payload preview (ticket 08): exactly what a session for a ticket and role

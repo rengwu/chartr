@@ -110,4 +110,50 @@ describe('buildTerminalOptions', () => {
     expect(theme.green).toBe('#9cb68c')
     expect(theme.blue).toBe('#82a8c9')
   })
+
+  it('applies a named preset over the token base', () => {
+    seedTokens()
+    const { theme } = buildTerminalOptions({ preset: 'dracula' })
+    // Every slot the preset names replaces the token/ANSI-default base.
+    expect(theme.background).toBe('#282a36')
+    expect(theme.foreground).toBe('#f8f8f2')
+    expect(theme.green).toBe('#50fa7b')
+    expect(theme.selectionBackground).toBe('#44475a')
+  })
+
+  it('lets an explicit slot win over the preset', () => {
+    seedTokens()
+    const { theme } = buildTerminalOptions({
+      preset: 'dracula',
+      background: '#000000',
+      green: '#00ff00',
+      selection: '#111111',
+    })
+    // Explicit slots win; `selection` drives xterm's selectionBackground.
+    expect(theme.background).toBe('#000000')
+    expect(theme.green).toBe('#00ff00')
+    expect(theme.selectionBackground).toBe('#111111')
+    // A slot the file left unset still comes from the preset.
+    expect(theme.blue).toBe('#bd93f9')
+  })
+
+  it('resolves an unset slot to the token/default layer when no preset is set', () => {
+    seedTokens()
+    const { theme } = buildTerminalOptions({ blue: '#123456' })
+    // The one explicit slot wins…
+    expect(theme.blue).toBe('#123456')
+    // …an ANSI slot with no token falls to its default preset layer…
+    expect(theme.green).toBe('#9cb68c')
+    // …and a tokened slot still resolves off the live token.
+    expect(theme.background).toBe('rgb(16, 16, 16)')
+  })
+
+  it('ignores an unknown preset name and keeps the base', () => {
+    // The server drops unknown names before the wire, but the resolve is defensive:
+    // a name with no bundled palette simply leaves the base showing.
+    seedTokens()
+    const { theme } = buildTerminalOptions({ preset: 'not-a-preset' })
+    expect(theme.background).toBe('rgb(16, 16, 16)')
+    expect(theme.green).toBe('#9cb68c')
+  })
 })

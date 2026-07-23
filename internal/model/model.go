@@ -239,13 +239,39 @@ type Terminal struct {
 // per-machine `terminal.toml`. Every field is a pref the file set; a field left at
 // its zero value is *unset*, and the client resolve seam (tokens.ts) falls it
 // through to the app default — a colour to the live design token, the font to the
-// bundled family. Ticket 01 carries the spine (font family, size, the two base
-// colours); later tickets widen it without changing its shape.
+// bundled family. Ticket 01 carried the spine (font family, size, the two base
+// colours); ticket 02 widens it to a named theme preset plus the full slot set
+// (all sixteen ANSI slots and the five base slots), which the client layers as
+// tokens → preset → explicit slots.
 type TerminalPrefs struct {
 	FontFamily string  `json:"fontFamily,omitempty"`
 	FontSize   float64 `json:"fontSize,omitempty"`
-	Background string  `json:"background,omitempty"`
-	Foreground string  `json:"foreground,omitempty"`
+
+	Preset string `json:"preset,omitempty"`
+
+	Background   string `json:"background,omitempty"`
+	Foreground   string `json:"foreground,omitempty"`
+	Cursor       string `json:"cursor,omitempty"`
+	CursorAccent string `json:"cursorAccent,omitempty"`
+	Selection    string `json:"selection,omitempty"`
+
+	Black   string `json:"black,omitempty"`
+	Red     string `json:"red,omitempty"`
+	Green   string `json:"green,omitempty"`
+	Yellow  string `json:"yellow,omitempty"`
+	Blue    string `json:"blue,omitempty"`
+	Magenta string `json:"magenta,omitempty"`
+	Cyan    string `json:"cyan,omitempty"`
+	White   string `json:"white,omitempty"`
+
+	BrightBlack   string `json:"brightBlack,omitempty"`
+	BrightRed     string `json:"brightRed,omitempty"`
+	BrightGreen   string `json:"brightGreen,omitempty"`
+	BrightYellow  string `json:"brightYellow,omitempty"`
+	BrightBlue    string `json:"brightBlue,omitempty"`
+	BrightMagenta string `json:"brightMagenta,omitempty"`
+	BrightCyan    string `json:"brightCyan,omitempty"`
+	BrightWhite   string `json:"brightWhite,omitempty"`
 }
 
 // Session is a session tab's ticket binding on the wire — enough for the sidebar

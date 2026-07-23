@@ -140,13 +140,45 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// a property of the machine, resolved fresh on every rebuild so a newly
 		// installed harness shows up without a restart. Never nil for the wire.
 		Detected:     detectedAgents(),
-		Terminal: model.TerminalPrefs{
-			FontFamily: termPrefs.FontFamily,
-			FontSize:   termPrefs.FontSize,
-			Background: termPrefs.Background,
-			Foreground: termPrefs.Foreground,
-		},
+		Terminal:     modelTerminalPrefs(termPrefs),
 		NativePicker: nativePicker,
+	}
+}
+
+// modelTerminalPrefs converts the resolved config prefs into their wire mirror.
+// The two structs are field-for-field identical by design (the mirror keeps the
+// model package off the config package); this is the one place the fields are
+// copied, so a widened prefs set touches only here.
+func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
+	return model.TerminalPrefs{
+		FontFamily: p.FontFamily,
+		FontSize:   p.FontSize,
+
+		Preset: p.Preset,
+
+		Background:   p.Background,
+		Foreground:   p.Foreground,
+		Cursor:       p.Cursor,
+		CursorAccent: p.CursorAccent,
+		Selection:    p.Selection,
+
+		Black:   p.Black,
+		Red:     p.Red,
+		Green:   p.Green,
+		Yellow:  p.Yellow,
+		Blue:    p.Blue,
+		Magenta: p.Magenta,
+		Cyan:    p.Cyan,
+		White:   p.White,
+
+		BrightBlack:   p.BrightBlack,
+		BrightRed:     p.BrightRed,
+		BrightGreen:   p.BrightGreen,
+		BrightYellow:  p.BrightYellow,
+		BrightBlue:    p.BrightBlue,
+		BrightMagenta: p.BrightMagenta,
+		BrightCyan:    p.BrightCyan,
+		BrightWhite:   p.BrightWhite,
 	}
 }
 

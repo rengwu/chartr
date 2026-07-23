@@ -86,6 +86,61 @@ weight = "bold"
 	}
 }
 
+func TestTerminalPrefsReadsPresetAndSlots(t *testing.T) {
+	// A named preset (case-insensitive) plus a spread of explicit slot overrides:
+	// the preset name normalises to its bundled key and every slot lands, silently.
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[theme]
+preset = "Dracula"
+blue = "#0000ff"
+brightBlack = "#333333"
+selection = "#222222"
+cursor = "#abcdef"
+`))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid preset + slots warned: %v", warnings)
+	}
+	if prefs.Preset != "dracula" {
+		t.Errorf("preset = %q, want the normalised bundled key %q", prefs.Preset, "dracula")
+	}
+	if prefs.Blue != "#0000ff" || prefs.BrightBlack != "#333333" ||
+		prefs.Selection != "#222222" || prefs.Cursor != "#abcdef" {
+		t.Errorf("per-slot overrides did not all land: %+v", prefs)
+	}
+}
+
+func TestTerminalPrefsUnknownPresetWarnsAndFallsBack(t *testing.T) {
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[theme]
+preset = "mauve-dream"
+`))
+	if prefs.Preset != "" {
+		t.Errorf("an unknown preset resolved to %q, want unset (the default theme stands)", prefs.Preset)
+	}
+	if !hasSub(warnings, "mauve-dream") {
+		t.Errorf("an unknown preset produced no naming warning: %v", warnings)
+	}
+}
+
+func TestTerminalPrefsBadSlotColourWarns(t *testing.T) {
+	// A bad colour on a newly-added slot warns and stays unset, exactly like the two
+	// base slots — every slot goes through the same validation.
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[theme]
+green = "chartreuse"
+brightRed = "#00ff00"
+`))
+	if prefs.Green != "" {
+		t.Errorf("a bad slot colour resolved to %q, want the default (unset)", prefs.Green)
+	}
+	if prefs.BrightRed != "#00ff00" {
+		t.Errorf("a good slot beside a bad one was dropped: %+v", prefs)
+	}
+	if !hasSub(warnings, "green") {
+		t.Errorf("a bad slot colour produced no warning naming it: %v", warnings)
+	}
+}
+
 func TestTerminalPrefsMalformedFileWarnsAndDefaults(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte("this is not = = toml"))
 	if prefs != (config.TerminalPrefs{}) {

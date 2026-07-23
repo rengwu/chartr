@@ -54,6 +54,11 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   (Seam 1) folds prefs+warnings onto the snapshot; `buildTerminalOptions` in
   `tokens.ts` (Seam 2) resolves them into xterm options/theme; `Terminal.svelte`
   consumes them and remounts on change. [ticket](tickets/01-prefs-pipeline-spine.md)
+- **02 — Layered theme + named presets.** Prefs widen to a validated `preset` name
+  plus the full slot set (5 base + 16 ANSI); Seam 2 stacks tokens → preset →
+  explicit slots, with five palettes bundled as inline data (Dracula, Nord,
+  Gruvbox, Solarized dark/light). Unknown preset / bad colour warn and fall back;
+  the zero-config look is unchanged. [ticket](tickets/02-layered-theme-presets.md)
 
 ## Not yet specified
 

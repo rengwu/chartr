@@ -100,15 +100,10 @@
   // A stable identity for the current terminal prefs: the terminal island keys its
   // remount on this string, so editing `terminal.toml` (a new snapshot with
   // different prefs) tears the island down and mounts it afresh with the new
-  // options resolved at the seam.
-  const terminalPrefsKey = $derived(
-    JSON.stringify([
-      terminalPrefs?.fontFamily ?? '',
-      terminalPrefs?.fontSize ?? 0,
-      terminalPrefs?.background ?? '',
-      terminalPrefs?.foreground ?? '',
-    ]),
-  )
+  // options resolved at the seam. The whole prefs object goes in — preset, font,
+  // and every colour slot — so any field the file changes forces the remount
+  // without this list having to track the growing slot set.
+  const terminalPrefsKey = $derived(JSON.stringify(terminalPrefs ?? {}))
 
   // A selection belongs to one map: when the open map *changes*, drop it (and any
   // open material) so the island never carries a ticket number from a different
