@@ -185,6 +185,24 @@ func TestIdeateLaunchesTheNamedAgent(t *testing.T) {
 	}
 }
 
+// Ideate remembers the agent it just ran, the same as a real spawn — so the next
+// launch in this space, ideate or spawn, is one click (spawn.go's rule, which
+// ideate did not follow until now).
+func TestIdeateRemembersTheAgent(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.StubAgent(t, "some-harness")
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "thinker", map[string]any{"adapter": "some-harness"})
+
+	h.Ideate(resp.ID, "thinker")
+
+	if got := findSpace(t, h.Snapshot(ctx(t)), resp.ID).LastAgent; got != "thinker" {
+		t.Fatalf("space remembered %q after ideating, want thinker", got)
+	}
+}
+
 // An agent ideate cannot run is refused on the doorstep, the same two ways and in
 // the same order a spawn refuses it — and nothing is opened either way. Ideate
 // writes no claim, so "leaves the space as it was" means no tab and no prompt.

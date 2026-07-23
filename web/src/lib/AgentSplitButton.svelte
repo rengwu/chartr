@@ -42,9 +42,6 @@
     size = "sm",
     title,
     ariaLabel,
-    // What this control opens, said in the interface rather than left to a
-    // source comment (spec story 29). Heads the menu, above the agent list.
-    note,
     icon,
     onrun,
     // Where the empty state sends the operator: the registration surface. Given by
@@ -63,7 +60,6 @@
     size?: ButtonSize;
     title?: string;
     ariaLabel?: string;
-    note?: string;
     icon?: Snippet;
     onrun: (agent: string) => void;
     onregister?: () => void;
@@ -122,12 +118,6 @@
     </DropdownMenu.Trigger>
   </div>
   <DropdownMenu.Content align="end" class="min-w-52 w-auto">
-    {#if note}
-      <DropdownMenu.Label class="max-w-64 text-[0.7rem] leading-relaxed font-normal text-wrap text-muted-foreground">
-        {note}
-      </DropdownMenu.Label>
-      <DropdownMenu.Separator />
-    {/if}
     {#each agents as a (a.name)}
       <DropdownMenu.Item
         class="flex flex-col items-start gap-0.5"

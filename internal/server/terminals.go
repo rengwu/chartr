@@ -84,6 +84,15 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, "opening ideate: "+err.Error())
 		return
 	}
+
+	// The space remembers what it just spawned with, so the next spawn here is one
+	// click — the same rule a real spawn follows (spawn.go), and ideate is not a
+	// special case.
+	if spec.Name != "" {
+		if err := s.reg.SetLastAgent(e.ID, spec.Name); err == nil {
+			s.rebuild()
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})
 }
 

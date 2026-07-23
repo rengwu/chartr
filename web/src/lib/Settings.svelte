@@ -5,7 +5,7 @@
   import AgentLibrary from './AgentLibrary.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
-  import { ArrowSquareOut, Gear, Stack, User, Warning, X } from 'phosphor-svelte'
+  import { ArrowSquareOut, Stack, User, Warning, X } from 'phosphor-svelte'
 
   // The settings surface (ticket 05): the agent library and the paths of the files
   // behind it, each openable in the operator's own editor. There is no committed
@@ -76,12 +76,7 @@
 <div class="flex h-full min-h-0 flex-col">
   <header class="cockpit-bar justify-between">
     <div class="flex min-w-0 items-baseline gap-2">
-      <span class="flex items-center gap-1.5 text-sm font-semibold">
-        <Gear class="size-4" aria-hidden="true" /> Settings
-      </span>
-      <span class="truncate text-[0.7rem] text-muted-foreground">
-        your agents, and where the files behind them live
-      </span>
+      <span class="text-sm font-semibold">Settings</span>
     </div>
     <Button variant="ghost" size="icon-sm" aria-label="Close settings (Esc)" title="Close (Esc)" onclick={onClose}>
       <X />
@@ -92,6 +87,24 @@
     <!-- The scopes: every space, then the one global user file. -->
     <nav class="flex w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border p-2">
       <span class="px-1.5 py-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+        Global
+      </span>
+      <a
+        href={settingsHash({ kind: 'user' })}
+        class={[
+          'flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs',
+          onUser ? 'bg-accent text-accent-foreground font-medium' : 'hover:bg-accent/60',
+        ]}
+        onclick={(e) => {
+          e.preventDefault()
+          onScope({ kind: 'user' })
+        }}
+      >
+        <User class="size-3.5 shrink-0" aria-hidden="true" />
+        <span class="truncate">Your config</span>
+      </a>
+
+      <span class="mt-2 px-1.5 py-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
         Spaces
       </span>
       {#each spaces as s (s.id)}
@@ -112,24 +125,6 @@
           <span class="truncate">{s.name}</span>
         </a>
       {/each}
-
-      <span class="mt-2 px-1.5 py-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
-        Global
-      </span>
-      <a
-        href={settingsHash({ kind: 'user' })}
-        class={[
-          'flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs',
-          onUser ? 'bg-accent text-accent-foreground font-medium' : 'hover:bg-accent/60',
-        ]}
-        onclick={(e) => {
-          e.preventDefault()
-          onScope({ kind: 'user' })
-        }}
-      >
-        <User class="size-3.5 shrink-0" aria-hidden="true" />
-        <span class="truncate">Your config</span>
-      </a>
     </nav>
 
     <ScrollArea.Root class="min-h-0 flex-1">

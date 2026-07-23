@@ -55,14 +55,6 @@
     return n < 10 ? "0" + n : String(n);
   }
 
-  // The control-socket status drives the status-bar dot: on is the neutral "up"
-  // primary, connecting a pulsing muted, closed the one true problem (destructive).
-  const statusDot: Record<string, string> = {
-    open: "bg-primary",
-    connecting: "bg-muted-foreground animate-pulse",
-    closed: "bg-destructive",
-  };
-
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
   const control = new ControlSocket();
@@ -365,9 +357,7 @@
 
 <svelte:window onkeydown={onGlobalKey} />
 
-<div
-  class="grid h-full grid-cols-[16rem_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto]"
->
+<div class="grid h-full grid-cols-[16rem_minmax(0,1fr)]">
   <aside
     class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
   >
@@ -387,7 +377,6 @@
     </div>
 
     <div class="cockpit-bar justify-between gap-2 bg-transparent">
-      <span class="shrink-0 text-xs font-semibold tracking-wide">Spaces</span>
       {#if spaces.length > 0}
         <Input
           type="text"
@@ -716,8 +705,7 @@
                 disabled={opening}
                 size="xs"
                 ariaLabel="Ideate in {space.name}"
-                title="Ideate in {space.name}"
-                note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
+                title="Ideate in {space.name} — a live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
                 onrun={(agent) => ideateSpace(space, agent)}
                 onregister={() => openSettings({ kind: "user" })}
               >
@@ -860,19 +848,6 @@
       </div>
     {/if}
   </main>
-
-  <footer
-    class="col-span-2 row-start-2 flex items-center gap-2 border-t border-border bg-card px-3 py-1.5 text-[0.7rem] text-muted-foreground"
-  >
-    <span
-      class={[
-        "size-2 rounded-full",
-        statusDot[control.status] ?? "bg-muted-foreground",
-      ]}
-      aria-hidden="true"
-    ></span>
-    <span>control socket: {control.status}</span>
-  </footer>
 
   <!-- The typed-path modal is now the fallback and nothing else: it opens only on
        a machine with no native folder chooser (Linux without zenity or kdialog,

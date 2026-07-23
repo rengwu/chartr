@@ -382,8 +382,7 @@
               {agents}
               lastAgent={space.lastAgent}
               label="New Idea"
-              title="Think an idea through"
-              note="A live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
+              title="Think an idea through — a live, ticketless agent tab opened on a starter prompt. Nothing is claimed, nothing is committed, and it ends when you end it."
               onrun={onIdeate}
               onregister={onRegisterAgent}
             >
