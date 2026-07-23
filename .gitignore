@@ -15,19 +15,18 @@
 # the repo root when chartr runs with cwd here — never committed.
 /spaces.toml
 
-# The local user config layer (ticket 02, ADR 0009): per-machine binding
-# overrides and the local-only autopilot flag, keyed by space path. It lands at
-# the data root — the repo root when run with cwd here. Local by definition:
-# execution choices the operator makes are theirs, never committed for everyone
-# who clones.
+# The local user config layer (ticket 02): the operator's agent library and the
+# local-only autopilot flag, keyed by space path. It lands at the data root —
+# the repo root when run with cwd here. Local by definition: execution choices
+# the operator makes are theirs, never committed for everyone who clones. That
+# is now the *whole* execution story — role bindings and the committed execution
+# layer are gone (ADR 0009's execution half is superseded).
 /user.toml
 
 # The materialized skill library is user-config runtime state too: a copy lands
 # under the data root — the repo root when run with cwd here — as the operator's
-# editable copy. Never committed. (A space's *committed* skill overlay lives under
-# .chartr/skills/, which is a different, intentional path.) `/prompts/`
-# is the pre-skills name of the same directory, still ignored so an old checkout's
-# leftovers never surface as a diff.
+# editable copy. Never committed. `/prompts/` is the pre-skills name of the same
+# directory, still ignored so an old checkout's leftovers never surface as a diff.
 /skills/
 /prompts/
 
@@ -42,10 +41,14 @@
 /web/dist/*
 !/web/dist/.gitkeep
 
-# The native shell's single-instance lock (ADR 0013): live runtime state under
-# the data root — the repo root when the shell runs with cwd here. It records a
-# pid and a loopback port, both meaningless to anyone else.
-/.chartr/shell.lock
+# chartr's own directory inside a space: the native shell's single-instance lock
+# (ADR 0013, a pid and a loopback port meaningless to anyone else), the
+# per-spawn payloads under run/, and the skill overlay. The overlay is the one
+# path a project *may* commit, to ship skills to everyone who clones it; this
+# repo does not, so nothing under .chartr/ is shared and the whole directory is
+# ignored wholesale rather than rule by rule. Unanchored, so it catches a space
+# nested below the repo root as well as one at it.
+.chartr/
 
 # macOS
 .DS_Store
