@@ -136,6 +136,15 @@ func run(dataDir string) error {
 		w.Init(fmt.Sprintf("window.__chartrTitleBar=%d;", h))
 	}
 
+	// A link clicked in terminal output goes to the operator's real browser. The
+	// window has no tabs and no back button, so opening it in place would swallow
+	// the cockpit; the page prefers this hook and falls back to a new browser tab
+	// where it is absent — which is what a plain browser tab always does
+	// (web/src/lib/external.ts). Bound before Navigate so the global exists by the
+	// time the first page can call it; a bind failure is not worth refusing to
+	// start over — links simply degrade to that same fallback.
+	_ = w.Bind("__chartrOpenExternal", openExternalURL)
+
 	w.Navigate(url)
 
 	// Blocks on the native main loop until the window closes or Terminate fires.

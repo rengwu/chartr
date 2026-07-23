@@ -4,6 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit'
   import '@xterm/xterm/css/xterm.css'
   import type { Terminal, TerminalPrefs } from './model'
+  import { openExternal } from './external'
   import {
     buildTerminalOptions,
     resolveRenderer,
@@ -92,6 +93,16 @@
         xterm.unicode.activeVersion = '11'
       })
     }
+
+    // Clickable links. The web-links addon spots URLs in output and underlines
+    // them; where a click *goes* is not the island's decision — `openExternal` is
+    // the seam that prefers the native shell's system-browser hook and falls back
+    // to a new browser tab (spec, Links). Bundled and lazily imported like every
+    // other addon (CLAUDE.md — no CDN, no runtime fetch); it carries no pref, so
+    // every terminal gets it.
+    void import('@xterm/addon-web-links').then(({ WebLinksAddon }) => {
+      xterm.loadAddon(new WebLinksAddon((_ev, uri) => openExternal(uri)))
+    })
 
     xterm.open(grid)
     fit.fit()

@@ -84,6 +84,16 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   `addon-ligatures`, the latter needing `allowProposedApi` for its character joiner.
   No network font fetch. Driven live incl. the context-loss fallback.
   [ticket](tickets/05-renderer-ligatures.md)
+- **06 — Clickable links + shell hook.** The bundled `addon-web-links` (own lazy
+  chunk, no pref) routes every click through `openExternal` in the new
+  `web/src/lib/external.ts` — the native-shell seam beside `titlebar.ts`, not the
+  prefs resolve: shell hook when `window.__chartrOpenExternal` is there, a
+  `noopener` new tab when it is not. The shell binds it in `main_webview.go` to
+  `openExternalURL` (`cmd/webview/external.go`, untagged so its guard is tested by
+  the cgo-free build), which hands the URL to `open`/`xdg-open`/`explorer`. Both
+  sides hold an http(s)-only allowlist, because a clicked URL is text an agent
+  printed and `open` would launch an app for `file:` or a custom scheme. Not driven
+  live — no Chrome extension this session. [ticket](tickets/06-links-shell-hook.md)
 
 ## Not yet specified
 
