@@ -1,0 +1,35 @@
+# Grok CLI. Its title carries a blocked signal ("Action Required", the same shape
+# codex uses), and it additionally emits OSC 9;4 progress — the ConEmu/Windows
+# Terminal progress sequence — while it works. The retained progress value is the
+# OSC 9 payload, e.g. "4;1;50": field 1 is the progress state (1 = active,
+# 3 = indeterminate, 0 = cleared).
+#
+# NOTE: as with codex, grok was not captured as a local fixture; the "Action
+# Required" title and the OSC 9;4 progress states come from the described signals
+# and herdr's manifest, not a recording here. Ticket 02's screen regions refine it.
+agent = "grok"
+match = ["grok"]
+
+# Waiting on the operator.
+[[rule]]
+id = "blocked"
+state = "blocked"
+priority = 100
+region = "osc_title"
+contains = ["Action Required"]
+
+# An active progress pulse (state 1 = active, 3 = indeterminate) → working.
+[[rule]]
+id = "working"
+state = "working"
+priority = 60
+region = "osc_progress"
+regex = ['^4;[13]']
+
+# Progress cleared (state 0) → the pulse stopped: a positive idle signal.
+[[rule]]
+id = "idle"
+state = "idle"
+priority = 40
+region = "osc_progress"
+regex = ['^4;0']

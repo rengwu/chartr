@@ -1,0 +1,25 @@
+# Claude Code. Measured on this machine (see .plan/agent-state-detection/assets):
+# Claude sets OSC 0 to "<glyph> <task summary>". A braille frame (U+2800–U+28FF)
+# updates about once a second while it is generating; the ✳ glyph (U+2733) means
+# it is present but not generating. An empty title is idle at the prompt — no rule
+# matches it, so the sampler confirms idle by absence.
+agent = "claude"
+match = ["claude"]
+aliases = ["claude-code"]
+
+# A braille spinner frame in the title → actively generating.
+[[rule]]
+id = "working"
+state = "working"
+priority = 100
+region = "osc_title"
+line_regex = ['[\x{2800}-\x{28FF}]']
+
+# The ✳ marker (U+2733) → present but not generating: a positive idle signal, so
+# it publishes at once rather than waiting on the absence confirmation.
+[[rule]]
+id = "idle"
+state = "idle"
+priority = 50
+region = "osc_title"
+contains = ["✳"]

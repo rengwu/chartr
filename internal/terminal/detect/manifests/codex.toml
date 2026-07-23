@@ -1,0 +1,27 @@
+# Codex CLI. Its title carries state, and — unlike Claude — a blocked signal: it
+# writes "Action Required" while it waits on the operator (an approval it cannot
+# proceed past). While generating it shows a "Working" status. Idle is the absence
+# of both, confirmed by the sampler.
+#
+# NOTE: only claude and kimi were captured as fixtures for this map, so codex's
+# exact title strings are taken from herdr's manifest and codex's documented
+# status line ("Working (Ns • esc to interrupt)") rather than a local recording.
+# Ticket 02's screen regions firm this up; a wrong string here is a data fix.
+agent = "codex"
+match = ["codex"]
+
+# Waiting on the operator — an approval it cannot proceed past.
+[[rule]]
+id = "blocked"
+state = "blocked"
+priority = 100
+region = "osc_title"
+contains = ["Action Required"]
+
+# Actively generating.
+[[rule]]
+id = "working"
+state = "working"
+priority = 60
+region = "osc_title"
+any = ["Working", "Thinking", "Running"]
