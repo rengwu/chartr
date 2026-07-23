@@ -376,8 +376,8 @@
       </span>
     </div>
 
-    <div class="cockpit-bar justify-between gap-2 bg-transparent">
-      {#if spaces.length > 0}
+    {#if spaces.length > 0}
+      <div class="cockpit-bar justify-between gap-2 bg-transparent">
         <Input
           type="text"
           class="h-7"
@@ -388,13 +388,13 @@
           autocomplete="off"
           aria-label="Filter spaces and sessions"
         />
-      {/if}
-    </div>
+      </div>
+    {/if}
 
     {#if control.model === null}
-      <p class="px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
+      <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
     {:else if spaces.length === 0}
-      <p class="px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
+      <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
     {:else}
       <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {#each filtered as space (space.id)}
@@ -732,53 +732,54 @@
           </p>
         {/each}
       </div>
-
-      <!-- The effective config surface (ticket 05) is entered per space — each
-           space card carries its own ⚙ — or with `,`; this stickied footer
-           keeps only what is genuinely cross-space: adding a new one. -->
-      <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
-        <!-- The register outcome lands here, next to the control that caused it:
-             the announced `git init` and every refusal. Dismissible, because it
-             is a report on a finished action and nothing depends on it. -->
-        {#if addNotice || addError}
-          <div
-            class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
-            role={addError ? "alert" : "status"}
-          >
-            <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
-              {addError ?? addNotice}
-            </p>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Dismiss"
-              onclick={() => {
-                addNotice = null;
-                addError = null;
-              }}
-            >
-              <X />
-            </Button>
-          </div>
-        {/if}
-        <Button
-          variant="outline"
-          size="sm"
-          class="w-full"
-          disabled={picking}
-          aria-expanded={nativePicker ? undefined : showAdd}
-          onclick={addSpace}
-        >
-          {#if picking}
-            <CircleNotch class="animate-spin" /> Choosing…
-          {:else if nativePicker}
-            <FolderOpen /> New Space
-          {:else}
-            <Plus /> New Space
-          {/if}
-        </Button>
-      </div>
     {/if}
+
+    <!-- The effective config surface (ticket 05) is entered per space — each
+         space card carries its own ⚙ — or with `,`; this stickied footer
+         keeps only what is genuinely cross-space: adding a new one. Always
+         available, even with zero spaces registered — it's the only way in. -->
+    <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
+      <!-- The register outcome lands here, next to the control that caused it:
+           the announced `git init` and every refusal. Dismissible, because it
+           is a report on a finished action and nothing depends on it. -->
+      {#if addNotice || addError}
+        <div
+          class="flex items-start gap-1.5 text-[0.7rem] leading-snug"
+          role={addError ? "alert" : "status"}
+        >
+          <p class={addError ? "flex-1 text-destructive" : "flex-1 text-muted-foreground"}>
+            {addError ?? addNotice}
+          </p>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Dismiss"
+            onclick={() => {
+              addNotice = null;
+              addError = null;
+            }}
+          >
+            <X />
+          </Button>
+        </div>
+      {/if}
+      <Button
+        variant="outline"
+        size="sm"
+        class="w-full"
+        disabled={picking || control.model === null}
+        aria-expanded={nativePicker ? undefined : showAdd}
+        onclick={addSpace}
+      >
+        {#if picking}
+          <CircleNotch class="animate-spin" /> Choosing…
+        {:else if nativePicker}
+          <FolderOpen /> New Space
+        {:else}
+          <Plus /> New Space
+        {/if}
+      </Button>
+    </div>
   </aside>
 
   <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
