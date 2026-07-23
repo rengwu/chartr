@@ -20,9 +20,11 @@
   import { cn } from "$lib/utils";
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
-  // click. It renders one ticket — question, Done-when, its blockers with their
-  // answers inline, and session history — or, from the map's title, the map's own
-  // material. Content is assembled from the derived model (the inlined bodies) so
+  // click. It renders one ticket — question, Done-when, and its blockers with
+  // their answers inline — or, from the map's title, the map's own material.
+  // Session management is left to the operator: the pane spawns sessions but keeps
+  // no history of them. Content is assembled from the derived model (the inlined
+  // bodies) so
   // the pane needs no second fetch. Whether it docks right or bottom is the
   // parent's responsive decision; this is only the content.
   let {
@@ -361,17 +363,6 @@
               {/each}
             </Accordion.Root>
           {/if}
-        </section>
-
-        <section class="flex flex-col gap-1.5">
-          <h3
-            class="text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase"
-          >
-            Session history
-          </h3>
-          <p class="text-xs text-muted-foreground">
-            No sessions on this ticket yet.
-          </p>
         </section>
       {/if}
     </Card.Content>
