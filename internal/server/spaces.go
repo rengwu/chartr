@@ -85,6 +85,32 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleSetSpaceAgent records the agent a space should spawn with, decoupled from
+// actually spawning. The selector calls it the moment the operator picks, so the
+// choice survives a page reload and the next snapshot reflects it as the space's
+// remembered agent. The name is trusted the same way a spawn's is — the selector
+// only offers registered agents, and an unresolvable name simply reads back as
+// nothing remembered (chooseAgent), so no membership check is enforced here.
+func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Agent string `json:"agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Agent == "" {
+		httpError(w, http.StatusBadRequest, "agent is required")
+		return
+	}
+	if err := s.reg.SetLastAgent(r.PathValue("id"), body.Agent); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rebuild()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // rebuild recomputes the whole derived model from the registry and current
 // config on disk, and pushes it to every browser. It is the one place the
 // registry slice of the model is published, called after every mutating action,

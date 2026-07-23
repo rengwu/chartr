@@ -8,15 +8,17 @@
     type Ticket,
   } from "./model";
   import { renderMarkdown, sectionOf } from "./markdown";
-  import { spawnSession, ActionError } from "./actions";
+  import { spawnSession, setSpaceAgent, ActionError } from "./actions";
+  import { chooseAgent, type AgentChoice } from "./agentchoice";
   import PayloadPreview from "./PayloadPreview.svelte";
-  import AgentSplitButton from "./AgentSplitButton.svelte";
+  import AgentSelector from "./AgentSelector.svelte";
   import * as Accordion from "$lib/components/ui/accordion";
   import * as Card from "$lib/components/ui/card";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as ScrollArea from "$lib/components/ui/scroll-area";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
-  import { Button } from "$lib/components/ui/button";
-  import { Compass, Eye, X, Rocket, Warning } from "phosphor-svelte";
+  import { Button, buttonVariants } from "$lib/components/ui/button";
+  import { Compass, Eye, X, Rocket, Warning, CaretDown } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -72,11 +74,31 @@
   const spawnRoles = $derived<Role[]>(offeredRoles(ticket));
   const canSpawn = $derived(!!spaceId && spawnRoles.length > 0);
 
-  // Every offered role is its own footer action — one click starts it, no
-  // pick-then-confirm step. The role the ticket's own type points at is the
-  // emphasised one, so the obvious move stays obvious.
+  // The role the ticket's own type points at is the emphasised action, surfaced
+  // as the one plain button; the rest live behind "More" so the footer reads as a
+  // single obvious move, not a spread of equal buttons.
   const preferredRole = $derived<Role | null>(
     canSpawn && ticket ? defaultRole(ticket.type) : null,
+  );
+  const otherRoles = $derived<Role[]>(
+    spawnRoles.filter((r) => r !== preferredRole),
+  );
+
+  // The agent every action here spawns with (ticket 02): a per-space choice, not a
+  // per-role one, so it lives on one quiet selector rather than a caret on each
+  // action. `agentOverride` is the operator's pick this session; until they pick,
+  // the space's remembered `lastAgent` stands. A successful spawn is what the
+  // server remembers, so the pick needs no separate persist step.
+  let agentOverride = $state<string | undefined>(undefined);
+  const agentChoice = $derived<AgentChoice>(
+    chooseAgent(agents, agentOverride ?? lastAgent),
+  );
+  // No agent resolved (nothing chosen, or nothing registered) means no one-click
+  // path may spawn — the selector is the deliberate first choice, and the actions
+  // wait on it. `actAgent` is the name they spawn with, empty only while disabled.
+  const canAct = $derived(agentChoice.kind === "ready");
+  const actAgent = $derived(
+    agentChoice.kind === "ready" ? agentChoice.agent.name : "",
   );
 
   // The role currently being spawned — labels its own button and disables the row,
@@ -95,6 +117,17 @@
     }
   });
 
+  // The agent override is a per-space pick; when the pane is reused for a different
+  // space its remembered agent (`lastAgent`) takes over, so a stale override from
+  // the previous space must not shadow it.
+  let lastSpace: string | undefined = undefined;
+  $effect(() => {
+    if (spaceId !== lastSpace) {
+      lastSpace = spaceId;
+      agentOverride = undefined;
+    }
+  });
+
   async function spawn(role: Role, agent: string) {
     if (!spaceId || !ticket || spawningRole) return;
     spawningRole = role;
@@ -108,6 +141,21 @@
       spawnError = e instanceof ActionError ? e.message : (e as Error).message;
     } finally {
       spawningRole = null;
+    }
+  }
+
+  // Persist the operator's agent pick the moment they make it, so it reads as a
+  // saved setting rather than one that only sticks on the next spawn. The override
+  // updates optimistically for instant feedback; the snapshot then echoes it back
+  // as `lastAgent`. A failed persist surfaces on the same footer error line.
+  async function rememberAgent(agent: string) {
+    agentOverride = agent;
+    if (!spaceId) return;
+    spawnError = null;
+    try {
+      await setSpaceAgent(spaceId, agent);
+    } catch (e) {
+      spawnError = e instanceof ActionError ? e.message : (e as Error).message;
     }
   }
 
@@ -370,11 +418,17 @@
 
   <!-- The action footer: every session this ticket can start, surfaced on one bar
        that the content scrolls under rather than buried at the end of the body.
-       Each role is a split control (ticket 02): the primary action spawns with the
-       space's remembered agent and names it, or opens the picker when nothing is
-       remembered; the secondary opens the agent list for a one-off override. -->
+       Two axes (ticket 02): the quiet selector on the left is *who* — the one
+       agent every action spawns with — and the buttons on the right are *what*.
+       The ticket's type picks the emphasised action; the rest live under "More". -->
   {#if canSpawn}
     <div class="flex items-center gap-2 border-t border-border px-3 py-2">
+      <AgentSelector
+        {agents}
+        selected={agentOverride ?? lastAgent}
+        onselect={rememberAgent}
+        onregister={onRegisterAgent}
+      />
       {#if spawnError}
         <p
           class="flex min-w-0 items-start gap-1.5 text-[0.7rem] text-destructive"
@@ -385,24 +439,41 @@
         </p>
       {/if}
       <span class="flex-1"></span>
-      {#each spawnRoles as r (r)}
-        <AgentSplitButton
-          {agents}
-          {lastAgent}
-          label={roleLabel(r)}
-          unchosenLabel="Start {roleLabel(r)}"
-          busy={spawningRole === r}
-          disabled={spawningRole !== null}
-          variant={r === preferredRole ? "default" : "outline"}
-          title="Start a {r} session on #{ticket ? pad(ticket.num) : ''}"
-          onrun={(agent) => spawn(r, agent)}
-          onregister={onRegisterAgent}
+      {#if preferredRole}
+        <Button
+          variant="default"
+          size="sm"
+          class="gap-1.5"
+          disabled={!canAct || spawningRole !== null}
+          title="Start a {preferredRole} session on #{ticket
+            ? pad(ticket.num)
+            : ''}"
+          onclick={() => preferredRole && spawn(preferredRole, actAgent)}
         >
-          {#snippet icon()}
-            {#if r === preferredRole}<Rocket />{/if}
-          {/snippet}
-        </AgentSplitButton>
-      {/each}
+          <Rocket />
+          {spawningRole === preferredRole
+            ? "Starting…"
+            : roleLabel(preferredRole)}
+        </Button>
+      {/if}
+      {#if otherRoles.length}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger
+            class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+            disabled={!canAct || spawningRole !== null}
+            title="Other sessions this ticket can start"
+          >
+            More <CaretDown class="size-3" />
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content align="end" class="min-w-40">
+            {#each otherRoles as r (r)}
+              <DropdownMenu.Item onclick={() => spawn(r, actAgent)}>
+                {roleLabel(r)}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
     </div>
   {/if}
 </Card.Root>

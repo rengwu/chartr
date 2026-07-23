@@ -210,6 +210,33 @@ func TestPinOrdersAhead(t *testing.T) {
 	}
 }
 
+// The agent selector persists the operator's pick immediately, decoupled from a
+// spawn: a PUT records it, the next snapshot reads it back as the space's
+// remembered agent, and it survives without any session ever being launched.
+func TestSetSpaceAgentPersistsWithoutSpawn(t *testing.T) {
+	h := chartrtest.Start(t)
+	sp := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	if got := findSpace(t, h.Snapshot(ctx(t)), sp.ID).LastAgent; got != "" {
+		t.Fatalf("fresh space remembers %q, want nothing", got)
+	}
+
+	if code, body := h.Put("/api/spaces/"+sp.ID+"/agent", map[string]string{"agent": "opus"}); code != 204 {
+		t.Fatalf("set agent = %d, body %s", code, body)
+	}
+	if got := findSpace(t, h.Snapshot(ctx(t)), sp.ID).LastAgent; got != "opus" {
+		t.Errorf("remembered agent after set = %q, want opus", got)
+	}
+
+	// An empty agent is refused rather than silently clearing the memory.
+	if code, _ := h.Put("/api/spaces/"+sp.ID+"/agent", map[string]string{"agent": ""}); code != 400 {
+		t.Errorf("empty agent = %d, want 400", code)
+	}
+	if got := findSpace(t, h.Snapshot(ctx(t)), sp.ID).LastAgent; got != "opus" {
+		t.Errorf("remembered agent after a refused empty set = %q, want opus", got)
+	}
+}
+
 // --- small local assertion helpers ---------------------------------------
 
 func hasSubstring(list []string, sub string) bool {

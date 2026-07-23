@@ -60,6 +60,14 @@ export function setPin(id: string, pinned: boolean): Promise<void> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/pin`, { pinned }) as Promise<void>
 }
 
+// setSpaceAgent records the agent a space should spawn with, without spawning —
+// the action footer's selector persists the operator's pick immediately, so it
+// reads as a saved setting rather than a choice that only sticks once they launch.
+// The remembered agent rides the next model snapshot as `space.lastAgent`.
+export function setSpaceAgent(id: string, agent: string): Promise<void> {
+  return send('PUT', `/api/spaces/${encodeURIComponent(id)}/agent`, { agent }) as Promise<void>
+}
+
 // openTerminal opens an ad-hoc shell in the space's working tree (story 29) and
 // returns its terminal id — the key the terminal socket attaches by. The new tab
 // also arrives over the control socket.
