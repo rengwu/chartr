@@ -387,3 +387,24 @@
     font-family: var(--font-sans);
   }
 }
+
+/* The scrollbar hugs the pane edge, never the padded content. The viewport is
+   xterm's absolutely-positioned scroll overlay, which xterm.css pins to `inset: 0`
+   *inside* the padded grid — so the padding would otherwise push the scrollbar
+   inward, floating it off the edge (the gap you'd see with a right pad set). Pulling
+   those three edges back out by the matching padding lands the scrollbar on the
+   island's own edge while the text (drawn in .xterm-screen) stays inset in the
+   padded grid. Each defaults to 0, so with no padding the viewport sits flush
+   exactly as xterm ships it; the left edge is left untouched (the scrollbar is on
+   the right).
+
+   This rule is deliberately OUTSIDE `@layer base`: app.css is layered but xterm.css
+   ships its `.xterm .xterm-viewport { inset: 0 }` unlayered, and an unlayered rule
+   beats every layered one regardless of selector specificity. So the override has to
+   be unlayered too — then its extra `.xterm` class outranks xterm's own rule and the
+   offsets actually take. (Specificity alone, inside the layer, never gets a vote.) */
+.terminal-island .xterm .xterm-viewport {
+  top: calc(-1 * var(--terminal-padding-top, 0px));
+  right: calc(-1 * var(--terminal-padding-right, 0px));
+  bottom: calc(-1 * var(--terminal-padding-bottom, 0px));
+}
