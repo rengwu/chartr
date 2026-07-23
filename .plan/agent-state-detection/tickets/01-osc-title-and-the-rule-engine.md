@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s308815498edf
+claimed_at: 2026-07-23T19:11:03Z
 ---
 
 # The OSC title and the rule engine
