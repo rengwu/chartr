@@ -120,6 +120,11 @@ func run(dataDir string) error {
 
 	w.SetTitle(appName)
 	w.SetSize(1280, 840, webview.HintNone)
+	// Below this the cockpit's own panes (sidebar, terminal, docked star-map)
+	// can no longer all keep their individual min-widths — the layout starts
+	// squeezing rather than the window scrolling, so the platform enforces the
+	// floor instead of the CSS.
+	w.SetSize(800, 500, webview.HintMin)
 	installNativeMenu(appName)
 
 	// The cockpit's own title bar, where the platform supports one (macOS).

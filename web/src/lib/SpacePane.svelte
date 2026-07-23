@@ -366,7 +366,7 @@
     <!-- The terminal column: no tab strip, no action bar — the sidebar owns
          session selection now, so this simply renders the active shell. -->
     <div
-      class="relative flex min-h-0 min-w-0 flex-1 flex-col"
+      class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
     >
       {#if activeTerm}
@@ -376,7 +376,7 @@
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-center gap-2">
             <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
             <AgentSplitButton
               {agents}
