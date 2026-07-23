@@ -156,4 +156,85 @@ describe('buildTerminalOptions', () => {
     expect(theme.background).toBe('rgb(16, 16, 16)')
     expect(theme.green).toBe('#9cb68c')
   })
+
+  it('resolves a bundled font by name to its clean stack', () => {
+    seedTokens()
+    const { options } = buildTerminalOptions({ fontFamily: 'IBM Plex Mono' })
+    // A bundled name resolves to the guaranteed-offline stack without doubling.
+    expect(options.fontFamily).toBe(
+      "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    )
+  })
+
+  it('stacks a non-bundled family ahead of the system fallback', () => {
+    seedTokens()
+    const { options } = buildTerminalOptions({ fontFamily: 'Cascadia Code' })
+    expect(options.fontFamily).toBe(
+      "Cascadia Code, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    )
+  })
+
+  it('maps the font, cursor, scrolling, and contrast options onto xterm', () => {
+    seedTokens()
+    const { options } = buildTerminalOptions({
+      fontWeight: '300',
+      fontWeightBold: 'bold',
+      lineHeight: 1.4,
+      letterSpacing: -0.5,
+      cursorStyle: 'bar',
+      cursorBlink: false,
+      cursorInactiveStyle: 'none',
+      cursorWidth: 3,
+      scrollback: 8000,
+      scrollSensitivity: 2,
+      fastScrollModifier: 'ctrl',
+      fastScrollSensitivity: 9,
+      smoothScrollDuration: 150,
+      minimumContrastRatio: 4.5,
+    })
+    // A numeric weight becomes a number; a keyword passes through.
+    expect(options.fontWeight).toBe(300)
+    expect(options.fontWeightBold).toBe('bold')
+    expect(options.lineHeight).toBe(1.4)
+    expect(options.letterSpacing).toBe(-0.5)
+    expect(options.cursorStyle).toBe('bar')
+    expect(options.cursorBlink).toBe(false)
+    expect(options.cursorInactiveStyle).toBe('none')
+    expect(options.cursorWidth).toBe(3)
+    expect(options.scrollback).toBe(8000)
+    expect(options.scrollSensitivity).toBe(2)
+    expect(options.fastScrollModifier).toBe('ctrl')
+    expect(options.fastScrollSensitivity).toBe(9)
+    expect(options.smoothScrollDuration).toBe(150)
+    expect(options.minimumContrastRatio).toBe(4.5)
+  })
+
+  it('leaves an unset pass-through option off the options object', () => {
+    // An unset pref never overwrites xterm's own default with undefined — the key is
+    // simply absent, so xterm keeps its built-in value.
+    seedTokens()
+    const { options } = buildTerminalOptions({})
+    expect('fontWeight' in options).toBe(false)
+    expect('cursorStyle' in options).toBe(false)
+    expect('cursorBlink' in options).toBe(false)
+    expect('scrollback' in options).toBe(false)
+    expect('minimumContrastRatio' in options).toBe(false)
+  })
+
+  it('drops values the server would have rejected, defensively', () => {
+    // The seam mirrors the server guards so it is safe on its own: a non-positive
+    // size/line-height/width and an out-of-range contrast ratio leave the option
+    // unset rather than passing a broken value to xterm.
+    seedTokens()
+    const { options } = buildTerminalOptions({
+      lineHeight: 0,
+      cursorWidth: -2,
+      minimumContrastRatio: 30,
+      cursorStyle: 'beam',
+    })
+    expect('lineHeight' in options).toBe(false)
+    expect('cursorWidth' in options).toBe(false)
+    expect('minimumContrastRatio' in options).toBe(false)
+    expect('cursorStyle' in options).toBe(false)
+  })
 })

@@ -194,13 +194,39 @@ export interface Model {
 // TerminalPrefs mirrors the Go `model.TerminalPrefs`: every field is a pref the
 // `terminal.toml` set, and a field left unset (empty / zero) falls through to the
 // app default at the resolve seam. Ticket 01 carried the spine — font family,
-// size, and the two base theme colours; ticket 02 widens it to a named theme
-// preset plus the full slot set. The resolve seam (`buildTerminalOptions`) layers
-// them as tokens → preset → explicit slots. `preset` is a validated bundled name
-// (server-side); `selection` drives xterm's `selectionBackground`.
+// size, and the two base theme colours; ticket 02 widened it to a named theme
+// preset plus the full slot set; ticket 03 adds the pass-through font, cursor,
+// scrolling, contrast, and glyph-width options. The resolve seam
+// (`buildTerminalOptions`) layers the theme as tokens → preset → explicit slots and
+// maps every other option onto the xterm options object. `preset` is a validated
+// bundled name (server-side); `selection` drives xterm's `selectionBackground`.
 export interface TerminalPrefs {
   fontFamily?: string
   fontSize?: number
+  // A normalised weight: 'normal', 'bold', or a numeric string like '600'. The
+  // resolve seam passes a keyword through and a numeric string as a number.
+  fontWeight?: string
+  fontWeightBold?: string
+  lineHeight?: number
+  letterSpacing?: number
+
+  cursorStyle?: string
+  cursorBlink?: boolean
+  cursorInactiveStyle?: string
+  cursorWidth?: number
+
+  scrollback?: number
+  scrollSensitivity?: number
+  fastScrollModifier?: string
+  fastScrollSensitivity?: number
+  smoothScrollDuration?: number
+
+  minimumContrastRatio?: number
+
+  // Gates the unicode11 addon (wide-glyph/emoji widths). The island reads it off
+  // the prefs and lazily imports the addon at mount when set — it is an addon
+  // toggle, not an xterm option, so it is not part of buildTerminalOptions' output.
+  unicode11?: boolean
 
   preset?: string
 

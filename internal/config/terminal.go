@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -40,11 +41,63 @@ import (
 type TerminalPrefs struct {
 	// FontFamily is the CSS font-family string the terminal renders in. Empty
 	// falls through to the bundled default; a non-bundled family is the operator's
-	// own risk (it depends on their OS), so the parse does not police it.
+	// own risk (it depends on their OS), so the parse does not police it. The client
+	// resolve seam knows which families are bundled (tokens.ts BUNDLED_FONTS) and
+	// stacks a custom family ahead of the system fallback.
 	FontFamily string `json:"fontFamily,omitempty"`
 	// FontSize is the cell font size in px. Zero is unset; a non-positive value is
 	// refused with a warning and left unset.
 	FontSize float64 `json:"fontSize,omitempty"`
+	// FontWeight and FontWeightBold are the normal- and bold-weight glyph weights,
+	// each a normalised string: "normal", "bold", or a numeric "100".."900". Empty is
+	// unset; a value that is neither keyword nor an integer in 1..1000 is refused
+	// with a warning. Stored as a string so the numeric and keyword forms share one
+	// wire field; the client passes a keyword straight through and a numeric string
+	// as a number.
+	FontWeight     string `json:"fontWeight,omitempty"`
+	FontWeightBold string `json:"fontWeightBold,omitempty"`
+	// LineHeight multiplies the cell height (1.0 is the default). Zero is unset; a
+	// non-positive value is refused with a warning.
+	LineHeight float64 `json:"lineHeight,omitempty"`
+	// LetterSpacing adds horizontal space between cells in px. Zero is unset and the
+	// xterm default; a negative value (tighter) is legitimate, so the parse accepts
+	// any number.
+	LetterSpacing float64 `json:"letterSpacing,omitempty"`
+
+	// CursorStyle is the active-cursor shape — "block", "bar", or "underline". Empty
+	// is unset; any other value warns. CursorBlink is a tri-state (nil unset, so the
+	// island's alive-gated default stands); an explicit false stops the blink even on
+	// a live shell. CursorInactiveStyle is the shape when the terminal is unfocused —
+	// "outline", "block", "bar", "underline", or "none". CursorWidth is the bar
+	// cursor's width in px; zero is unset, a non-positive value warns.
+	CursorStyle         string  `json:"cursorStyle,omitempty"`
+	CursorBlink         *bool   `json:"cursorBlink,omitempty"`
+	CursorInactiveStyle string  `json:"cursorInactiveStyle,omitempty"`
+	CursorWidth         float64 `json:"cursorWidth,omitempty"`
+
+	// Scrollback is how many lines of history the terminal keeps; zero is unset
+	// (the xterm default stands), a negative value warns. ScrollSensitivity and
+	// FastScrollSensitivity scale a wheel tick and a fast-scroll wheel tick; each is
+	// unset at zero and warns when non-positive. FastScrollModifier is the key that
+	// engages fast scroll — "alt", "ctrl", "shift", or "none"; any other value warns.
+	// SmoothScrollDuration is the smooth-scroll animation length in ms; zero is unset
+	// (no smoothing), a negative value warns.
+	Scrollback            float64 `json:"scrollback,omitempty"`
+	ScrollSensitivity     float64 `json:"scrollSensitivity,omitempty"`
+	FastScrollModifier    string  `json:"fastScrollModifier,omitempty"`
+	FastScrollSensitivity float64 `json:"fastScrollSensitivity,omitempty"`
+	SmoothScrollDuration  float64 `json:"smoothScrollDuration,omitempty"`
+
+	// MinimumContrastRatio nudges low-contrast glyph/background pairs apart until they
+	// clear this ratio (1..21, where 1 is the unset default and does nothing). A value
+	// outside that range warns and stays unset.
+	MinimumContrastRatio float64 `json:"minimumContrastRatio,omitempty"`
+
+	// Unicode11 gates the unicode11 addon, which the island lazily imports and
+	// activates at mount for correct wide-glyph and emoji widths. Tri-state: nil is
+	// unset (the addon stays off, today's behaviour), an explicit value turns it on
+	// or off.
+	Unicode11 *bool `json:"unicode11,omitempty"`
 
 	// Preset is the bundled theme preset the operator named (normalised to its
 	// lower-case key). Empty is unset; an unknown name is refused with a warning and
@@ -84,13 +137,47 @@ type TerminalPrefs struct {
 }
 
 type rawTerminal struct {
-	Font  rawTermFont  `toml:"font"`
-	Theme rawTermTheme `toml:"theme"`
+	Font          rawTermFont          `toml:"font"`
+	Theme         rawTermTheme         `toml:"theme"`
+	Cursor        rawTermCursor        `toml:"cursor"`
+	Scrolling     rawTermScrolling     `toml:"scrolling"`
+	Accessibility rawTermAccessibility `toml:"accessibility"`
+	Glyph         rawTermGlyph         `toml:"glyph"`
 }
 
 type rawTermFont struct {
 	Family string  `toml:"family"`
 	Size   float64 `toml:"size"`
+	// Weight and BoldWeight take either a keyword ("normal"/"bold") or a number, so
+	// they decode as an untyped value the resolve normalises — a single TOML key that
+	// accepts the two natural spellings without a type-mismatch nuking the file.
+	Weight        interface{} `toml:"weight"`
+	BoldWeight    interface{} `toml:"boldWeight"`
+	LineHeight    float64     `toml:"lineHeight"`
+	LetterSpacing float64     `toml:"letterSpacing"`
+}
+
+type rawTermCursor struct {
+	Style         string  `toml:"style"`
+	Blink         *bool   `toml:"blink"`
+	InactiveStyle string  `toml:"inactiveStyle"`
+	Width         float64 `toml:"width"`
+}
+
+type rawTermScrolling struct {
+	Scrollback            float64 `toml:"scrollback"`
+	Sensitivity           float64 `toml:"sensitivity"`
+	FastScrollModifier    string  `toml:"fastScrollModifier"`
+	FastScrollSensitivity float64 `toml:"fastScrollSensitivity"`
+	SmoothScrollDuration  float64 `toml:"smoothScrollDuration"`
+}
+
+type rawTermAccessibility struct {
+	MinimumContrastRatio float64 `toml:"minimumContrastRatio"`
+}
+
+type rawTermGlyph struct {
+	Unicode11 *bool `toml:"unicode11"`
 }
 
 type rawTermTheme struct {
@@ -134,6 +221,15 @@ var terminalPresets = map[string]struct{}{
 	"solarized-light": {},
 }
 
+// The closed enum sets the parse validates a slot against, each mapping the value
+// straight to the xterm option name. An unknown value warns and stays unset so the
+// island's default stands. Keep these in step with xterm's accepted values.
+var (
+	cursorStyles         = []string{"block", "bar", "underline"}
+	cursorInactiveStyles = []string{"outline", "block", "bar", "underline", "none"}
+	fastScrollModifiers  = []string{"alt", "ctrl", "shift", "none"}
+)
+
 // reColor matches the colour strings the theme slots accept — a `#rgb`, `#rrggbb`,
 // or `#rrggbbaa` hex. Named colours and oklch are deliberately out: xterm's theme
 // wants concrete colour strings, and the operator authors the file in hex the way
@@ -163,15 +259,34 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 
 	prefs.FontFamily = strings.TrimSpace(raw.Font.Family)
 
-	switch {
-	case raw.Font.Size == 0:
-		// unset — the client default stands
-	case raw.Font.Size <= 0:
-		warnings = append(warnings, fmt.Sprintf(
-			"terminal font size %g is not a positive number; the default size stands", raw.Font.Size))
-	default:
-		prefs.FontSize = raw.Font.Size
-	}
+	prefs.FontSize = validPositive("font size", raw.Font.Size, &warnings)
+	prefs.FontWeight = validWeight("font weight", raw.Font.Weight, &warnings)
+	prefs.FontWeightBold = validWeight("font boldWeight", raw.Font.BoldWeight, &warnings)
+	prefs.LineHeight = validPositive("font lineHeight", raw.Font.LineHeight, &warnings)
+	// LetterSpacing accepts any number — a negative value tightens the tracking and
+	// is legitimate, so there is nothing to validate; zero is unset.
+	prefs.LetterSpacing = raw.Font.LetterSpacing
+
+	prefs.CursorStyle = validEnum("cursor style", raw.Cursor.Style, cursorStyles, &warnings)
+	prefs.CursorBlink = raw.Cursor.Blink
+	prefs.CursorInactiveStyle = validEnum(
+		"cursor inactiveStyle", raw.Cursor.InactiveStyle, cursorInactiveStyles, &warnings)
+	prefs.CursorWidth = validPositive("cursor width", raw.Cursor.Width, &warnings)
+
+	prefs.Scrollback = validNonNegative("scrolling scrollback", raw.Scrolling.Scrollback, &warnings)
+	prefs.ScrollSensitivity = validPositive(
+		"scrolling sensitivity", raw.Scrolling.Sensitivity, &warnings)
+	prefs.FastScrollModifier = validEnum(
+		"scrolling fastScrollModifier", raw.Scrolling.FastScrollModifier, fastScrollModifiers, &warnings)
+	prefs.FastScrollSensitivity = validPositive(
+		"scrolling fastScrollSensitivity", raw.Scrolling.FastScrollSensitivity, &warnings)
+	prefs.SmoothScrollDuration = validNonNegative(
+		"scrolling smoothScrollDuration", raw.Scrolling.SmoothScrollDuration, &warnings)
+
+	prefs.MinimumContrastRatio = validRange(
+		"accessibility minimumContrastRatio", raw.Accessibility.MinimumContrastRatio, 1, 21, &warnings)
+
+	prefs.Unicode11 = raw.Glyph.Unicode11
 
 	prefs.Preset = validPreset(raw.Theme.Preset, &warnings)
 
@@ -263,4 +378,114 @@ func validColour(key, value string, warnings *[]string) string {
 		return ""
 	}
 	return v
+}
+
+// validEnum keeps a value if it is one of the allowed options (after a trim), and
+// otherwise warns by its key — naming the options — and leaves it unset so the
+// island default stands. An empty value is unset and silent.
+func validEnum(key, value string, allowed []string, warnings *[]string) string {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return ""
+	}
+	for _, a := range allowed {
+		if v == a {
+			return v
+		}
+	}
+	*warnings = append(*warnings, fmt.Sprintf(
+		"terminal %s %q is not one of %s; the default stands", key, v, strings.Join(allowed, ", ")))
+	return ""
+}
+
+// validPositive keeps a number if it is strictly positive; zero is unset (the
+// default stands, silently) and a negative value warns. This is the rule for a
+// size, a line height, a cursor width, and a scroll sensitivity — anything where a
+// non-positive value is meaningless.
+func validPositive(key string, value float64, warnings *[]string) float64 {
+	switch {
+	case value == 0:
+		return 0 // unset
+	case value < 0:
+		*warnings = append(*warnings, fmt.Sprintf(
+			"terminal %s %g is not a positive number; the default stands", key, value))
+		return 0
+	default:
+		return value
+	}
+}
+
+// validNonNegative keeps a number that is zero-or-more; zero is unset (the default
+// stands) and only a negative value warns. This is the rule for a scrollback line
+// count and a smooth-scroll duration, where zero is a legitimate-but-default value.
+func validNonNegative(key string, value float64, warnings *[]string) float64 {
+	if value < 0 {
+		*warnings = append(*warnings, fmt.Sprintf(
+			"terminal %s %g is not zero or more; the default stands", key, value))
+		return 0
+	}
+	return value
+}
+
+// validRange keeps a number inside [lo, hi]; the range's low bound doubles as the
+// unset value (e.g. a minimum-contrast-ratio of 1 does nothing), so a value equal to
+// lo is treated as unset. A value outside the range warns and stays unset.
+func validRange(key string, value, lo, hi float64, warnings *[]string) float64 {
+	if value == 0 || value == lo {
+		return 0 // unset
+	}
+	if value < lo || value > hi {
+		*warnings = append(*warnings, fmt.Sprintf(
+			"terminal %s %g is out of range %g..%g; the default stands", key, value, lo, hi))
+		return 0
+	}
+	return value
+}
+
+// validWeight normalises a font weight that may be written as a keyword ("normal" or
+// "bold") or as a number (an integer 1..1000). It returns the canonical string — the
+// keyword as-is, or the integer rendered back to a string — so the wire carries one
+// field the client can read as a keyword or parse as a number. An out-of-range or
+// unrecognised value warns and stays unset.
+func validWeight(key string, value interface{}, warnings *[]string) string {
+	warn := func(shown string) string {
+		*warnings = append(*warnings, fmt.Sprintf(
+			"terminal %s %q is not \"normal\", \"bold\", or an integer 1..1000; the default stands",
+			key, shown))
+		return ""
+	}
+	switch v := value.(type) {
+	case nil:
+		return "" // unset
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return ""
+		}
+		if s == "normal" || s == "bold" {
+			return s
+		}
+		if n, err := strconv.Atoi(s); err == nil {
+			return validWeightNumber(float64(n), s, key, warnings)
+		}
+		return warn(s)
+	case int64:
+		return validWeightNumber(float64(v), fmt.Sprintf("%d", v), key, warnings)
+	case float64:
+		return validWeightNumber(v, fmt.Sprintf("%g", v), key, warnings)
+	default:
+		return warn(fmt.Sprintf("%v", v))
+	}
+}
+
+// validWeightNumber keeps a numeric weight if it is a whole number in 1..1000,
+// returning it as its integer string; anything else warns through the caller.
+func validWeightNumber(n float64, shown, key string, warnings *[]string) string {
+	if n == float64(int(n)) && n >= 1 && n <= 1000 {
+		return strconv.Itoa(int(n))
+	}
+	*warnings = append(*warnings, fmt.Sprintf(
+		"terminal %s %q is not \"normal\", \"bold\", or an integer 1..1000; the default stands",
+		key, shown))
+	return ""
 }

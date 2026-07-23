@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -76,12 +77,12 @@ func TestTerminalPrefsUnknownKeyWarns(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
 [font]
 family = "IBM Plex Mono"
-weight = "bold"
+kerning = "loose"
 `))
 	if prefs.FontFamily != "IBM Plex Mono" {
 		t.Errorf("a known key beside an unknown one was dropped: %+v", prefs)
 	}
-	if !hasSub(warnings, "weight") {
+	if !hasSub(warnings, "kerning") {
 		t.Errorf("an unknown key produced no warning: %v", warnings)
 	}
 }
@@ -138,6 +139,122 @@ brightRed = "#00ff00"
 	}
 	if !hasSub(warnings, "green") {
 		t.Errorf("a bad slot colour produced no warning naming it: %v", warnings)
+	}
+}
+
+func TestTerminalPrefsReadsFontCursorScrollingOptions(t *testing.T) {
+	// The full ticket-03 spread lands from a valid file, silently: font weight
+	// (keyword and number), line height, letter spacing, the cursor block, the
+	// scrolling block, the contrast floor, and the unicode11 toggle.
+	blinkFalse := false
+	uni := true
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[font]
+weight = "bold"
+boldWeight = 800
+lineHeight = 1.2
+letterSpacing = -0.5
+
+[cursor]
+style = "bar"
+blink = false
+inactiveStyle = "outline"
+width = 2
+
+[scrolling]
+scrollback = 5000
+sensitivity = 2
+fastScrollModifier = "ctrl"
+fastScrollSensitivity = 8
+smoothScrollDuration = 120
+
+[accessibility]
+minimumContrastRatio = 4.5
+
+[glyph]
+unicode11 = true
+`))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid options file warned: %v", warnings)
+	}
+	want := config.TerminalPrefs{
+		FontWeight:            "bold",
+		FontWeightBold:        "800",
+		LineHeight:            1.2,
+		LetterSpacing:         -0.5,
+		CursorStyle:           "bar",
+		CursorBlink:           &blinkFalse,
+		CursorInactiveStyle:   "outline",
+		CursorWidth:           2,
+		Scrollback:            5000,
+		ScrollSensitivity:     2,
+		FastScrollModifier:    "ctrl",
+		FastScrollSensitivity: 8,
+		SmoothScrollDuration:  120,
+		MinimumContrastRatio:  4.5,
+		Unicode11:             &uni,
+	}
+	if !reflect.DeepEqual(prefs, want) {
+		t.Errorf("options resolved to\n%+v\nwant\n%+v", prefs, want)
+	}
+}
+
+func TestTerminalPrefsNumericFontWeight(t *testing.T) {
+	// A numeric weight normalises to its integer string, so the wire carries one
+	// field the client reads as a keyword or parses as a number.
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[font]
+weight = 600
+`))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid numeric weight warned: %v", warnings)
+	}
+	if prefs.FontWeight != "600" {
+		t.Errorf("numeric weight = %q, want the normalised %q", prefs.FontWeight, "600")
+	}
+}
+
+func TestTerminalPrefsOutOfRangeValuesWarnAndDefault(t *testing.T) {
+	// One out-of-range value per rule: a non-positive line height, a contrast ratio
+	// past the [1,21] range, a negative scrollback, and an unrecognised enum. Each
+	// keeps its default (unset) and warns by name.
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[font]
+lineHeight = 0
+weight = 1500
+
+[cursor]
+style = "beam"
+
+[scrolling]
+scrollback = -100
+
+[accessibility]
+minimumContrastRatio = 30
+`))
+	if prefs.LineHeight != 0 {
+		t.Errorf("a zero line height resolved to %v, want unset", prefs.LineHeight)
+	}
+	if prefs.CursorStyle != "" {
+		t.Errorf("an unknown cursor style resolved to %q, want unset", prefs.CursorStyle)
+	}
+	if prefs.Scrollback != 0 {
+		t.Errorf("a negative scrollback resolved to %v, want unset", prefs.Scrollback)
+	}
+	if prefs.MinimumContrastRatio != 0 {
+		t.Errorf("an out-of-range contrast ratio resolved to %v, want unset", prefs.MinimumContrastRatio)
+	}
+	if prefs.FontWeight != "" {
+		t.Errorf("an out-of-range weight resolved to %q, want unset", prefs.FontWeight)
+	}
+	for _, sub := range []string{"scrollback", "style", "minimumContrastRatio", "weight"} {
+		if !hasSub(warnings, sub) {
+			t.Errorf("no warning named %q: %v", sub, warnings)
+		}
+	}
+	// A zero line height is "unset", so it is silent — it is the default, not an error.
+	if hasSub(warnings, "lineHeight") {
+		t.Errorf("a zero (unset) line height warned: %v", warnings)
 	}
 }
 

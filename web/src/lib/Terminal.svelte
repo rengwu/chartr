@@ -32,10 +32,25 @@
     const { options } = buildTerminalOptions(prefs)
     const xterm = new Xterm({
       ...options,
-      cursorBlink: term.alive,
+      // The blink pref (default on) is gated by liveness: a dead shell never
+      // blinks, so a frozen session reads as frozen regardless of the setting.
+      cursorBlink: (options.cursorBlink ?? true) && term.alive,
     })
     const fit = new FitAddon()
     xterm.loadAddon(fit)
+
+    // The unicode11 addon (wide-glyph/emoji widths) is an optional, pref-gated
+    // addon — lazily imported and activated only when the file asks for it, so a
+    // machine that never enables it never pays for the chunk. It is bundled, not
+    // fetched (CLAUDE.md). Because the island fully remounts on any prefs change,
+    // this mount imports exactly what the current prefs want with no hot-swap.
+    if (prefs?.unicode11) {
+      void import('@xterm/addon-unicode11').then(({ Unicode11Addon }) => {
+        xterm.loadAddon(new Unicode11Addon())
+        xterm.unicode.activeVersion = '11'
+      })
+    }
+
     xterm.open(host)
     fit.fit()
 

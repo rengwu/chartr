@@ -59,6 +59,15 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   explicit slots, with five palettes bundled as inline data (Dracula, Nord,
   Gruvbox, Solarized dark/light). Unknown preset / bad colour warn and fall back;
   the zero-config look is unchanged. [ticket](tickets/02-layered-theme-presets.md)
+- **03 — Font, cursor, scrolling & glyph options.** Prefs widen to the remaining
+  pass-through options — font weight/bold-weight/line-height/letter-spacing, the
+  `[cursor]`/`[scrolling]`/`[accessibility]` blocks, and a `[glyph]` unicode11
+  toggle — validated by reusable enum/sign/range guards (weight takes a keyword or a
+  number; `blink`/`unicode11` are tri-state). Seam 2 maps each 1:1 onto xterm via a
+  typed `setOpt` (unset never clobbers a default), and a bundled-vs-custom font
+  family resolves through `BUNDLED_FONTS`. The unicode11 addon lazy-loads into its
+  own bundled chunk at mount when enabled.
+  [ticket](tickets/03-font-cursor-scrolling-options.md)
 
 ## Not yet specified
 

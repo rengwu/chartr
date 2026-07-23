@@ -240,12 +240,33 @@ type Terminal struct {
 // its zero value is *unset*, and the client resolve seam (tokens.ts) falls it
 // through to the app default — a colour to the live design token, the font to the
 // bundled family. Ticket 01 carried the spine (font family, size, the two base
-// colours); ticket 02 widens it to a named theme preset plus the full slot set
+// colours); ticket 02 widened it to a named theme preset plus the full slot set
 // (all sixteen ANSI slots and the five base slots), which the client layers as
-// tokens → preset → explicit slots.
+// tokens → preset → explicit slots; ticket 03 adds the remaining pass-through
+// options — font weight/line-height/letter-spacing, the cursor, scrolling, a
+// minimum-contrast floor, and the unicode11 glyph-width toggle.
 type TerminalPrefs struct {
-	FontFamily string  `json:"fontFamily,omitempty"`
-	FontSize   float64 `json:"fontSize,omitempty"`
+	FontFamily     string  `json:"fontFamily,omitempty"`
+	FontSize       float64 `json:"fontSize,omitempty"`
+	FontWeight     string  `json:"fontWeight,omitempty"`
+	FontWeightBold string  `json:"fontWeightBold,omitempty"`
+	LineHeight     float64 `json:"lineHeight,omitempty"`
+	LetterSpacing  float64 `json:"letterSpacing,omitempty"`
+
+	CursorStyle         string  `json:"cursorStyle,omitempty"`
+	CursorBlink         *bool   `json:"cursorBlink,omitempty"`
+	CursorInactiveStyle string  `json:"cursorInactiveStyle,omitempty"`
+	CursorWidth         float64 `json:"cursorWidth,omitempty"`
+
+	Scrollback            float64 `json:"scrollback,omitempty"`
+	ScrollSensitivity     float64 `json:"scrollSensitivity,omitempty"`
+	FastScrollModifier    string  `json:"fastScrollModifier,omitempty"`
+	FastScrollSensitivity float64 `json:"fastScrollSensitivity,omitempty"`
+	SmoothScrollDuration  float64 `json:"smoothScrollDuration,omitempty"`
+
+	MinimumContrastRatio float64 `json:"minimumContrastRatio,omitempty"`
+
+	Unicode11 *bool `json:"unicode11,omitempty"`
 
 	Preset string `json:"preset,omitempty"`
 

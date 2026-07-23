@@ -75,9 +75,45 @@ export function readTokens<K extends string>(
 const DEFAULT_FONT_STACK =
   "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
+// The curated set of fonts the app actually ships (self-hosted, no CDN — CLAUDE.md),
+// keyed by the lower-case name an operator writes in `font.family`. A bundled name
+// resolves to a clean stack that is guaranteed to render offline; a family that is
+// not here is the operator's own (it depends on their OS) and stacks ahead of the
+// system fallback instead. Only IBM Plex Mono ships today; the ligatures ticket,
+// which needs a bundled font to point its addon at, is what grows this list.
+const BUNDLED_FONTS: Record<string, string> = {
+  'ibm plex mono': DEFAULT_FONT_STACK,
+}
+
 // The default cell size, unchanged from the island's old literal. A pref overrides
 // it; an unset (zero) size falls here.
 const DEFAULT_FONT_SIZE = 13
+
+// Resolve the operator's chosen family into a CSS font-family string. A bundled
+// name (case-insensitive) resolves to its guaranteed-to-render stack; any other
+// family is a custom string that stacks ahead of the system fallback, so a font the
+// operator's OS lacks degrades to fixed-width text rather than a proportional face.
+// Empty is unset — the bundled default stands.
+function resolveFontFamily(family: string | undefined): string {
+  const name = family?.trim()
+  if (!name) return DEFAULT_FONT_STACK
+  const bundled = BUNDLED_FONTS[name.toLowerCase()]
+  if (bundled) return bundled
+  return `${name}, ${DEFAULT_FONT_STACK}`
+}
+
+// A font weight as xterm types it — a keyword or a number. `terminal.toml` carries
+// the weight as a normalised string (server-side); this maps it onto the option,
+// passing a keyword straight through and a numeric string ('600') as a number.
+type FontWeight = NonNullable<ITerminalOptions['fontWeight']>
+
+function resolveWeight(weight: string | undefined): FontWeight | undefined {
+  const w = weight?.trim()
+  if (!w) return undefined
+  if (w === 'normal' || w === 'bold') return w
+  const n = Number(w)
+  return Number.isFinite(n) ? (n as FontWeight) : undefined
+}
 
 // The six ANSI hues the monochrome chrome has no token for — green, yellow, blue,
 // magenta, cyan — as muted values tuned to sit quietly on the token surface. They
@@ -328,12 +364,63 @@ export function buildTerminalOptions(
 
   const theme: ITheme = { ...base, ...preset, ...overrides }
 
-  const family = p.fontFamily?.trim()
   const options: ITerminalOptions = {
-    fontFamily: family ? `${family}, ${DEFAULT_FONT_STACK}` : DEFAULT_FONT_STACK,
+    fontFamily: resolveFontFamily(p.fontFamily),
     fontSize: p.fontSize && p.fontSize > 0 ? p.fontSize : DEFAULT_FONT_SIZE,
     theme,
   }
 
+  // Every remaining pref maps 1:1 onto an xterm option, and is set only when the
+  // file actually carried it — an unset value leaves xterm's own default in place,
+  // so a partial file still behaves like today. The server has already validated
+  // each value (enum, range, sign), so the resolve is a straight pass-through.
+  setOpt(options, 'fontWeight', resolveWeight(p.fontWeight))
+  setOpt(options, 'fontWeightBold', resolveWeight(p.fontWeightBold))
+  setOpt(options, 'lineHeight', positive(p.lineHeight))
+  setOpt(options, 'letterSpacing', p.letterSpacing)
+
+  setOpt(options, 'cursorStyle', enumOpt(p.cursorStyle, ['block', 'bar', 'underline']))
+  setOpt(options, 'cursorBlink', typeof p.cursorBlink === 'boolean' ? p.cursorBlink : undefined)
+  setOpt(
+    options,
+    'cursorInactiveStyle',
+    enumOpt(p.cursorInactiveStyle, ['outline', 'block', 'bar', 'underline', 'none']),
+  )
+  setOpt(options, 'cursorWidth', positive(p.cursorWidth))
+
+  setOpt(options, 'scrollback', positive(p.scrollback))
+  setOpt(options, 'scrollSensitivity', positive(p.scrollSensitivity))
+  setOpt(options, 'fastScrollModifier', enumOpt(p.fastScrollModifier, ['alt', 'ctrl', 'shift', 'none']))
+  setOpt(options, 'fastScrollSensitivity', positive(p.fastScrollSensitivity))
+  setOpt(options, 'smoothScrollDuration', positive(p.smoothScrollDuration))
+
+  setOpt(options, 'minimumContrastRatio', inRange(p.minimumContrastRatio, 1, 21))
+
   return { options, theme }
+}
+
+// setOpt assigns an xterm option only when the resolved value is defined, so an
+// unset pref never overwrites xterm's own default with `undefined`. Typed to the
+// option key so a wrong value type is a compile error.
+function setOpt<K extends keyof ITerminalOptions>(
+  options: ITerminalOptions,
+  key: K,
+  value: ITerminalOptions[K] | undefined,
+): void {
+  if (value !== undefined) options[key] = value
+}
+
+// The numeric guards mirror the server's validation so the resolve is defensive on
+// its own — an unset (zero / undefined) value returns undefined and the option is
+// left at xterm's default. `positive` wants > 0 (a zero scrollback or duration means
+// "the default"), and `inRange` treats the low bound as the unset value.
+function positive(n: number | undefined): number | undefined {
+  return typeof n === 'number' && n > 0 ? n : undefined
+}
+function inRange(n: number | undefined, lo: number, hi: number): number | undefined {
+  return typeof n === 'number' && n > lo && n <= hi ? n : undefined
+}
+function enumOpt<T extends string>(value: string | undefined, allowed: readonly T[]): T | undefined {
+  const v = value?.trim()
+  return v && (allowed as readonly string[]).includes(v) ? (v as T) : undefined
 }

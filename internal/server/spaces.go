@@ -151,8 +151,27 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 // copied, so a widened prefs set touches only here.
 func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 	return model.TerminalPrefs{
-		FontFamily: p.FontFamily,
-		FontSize:   p.FontSize,
+		FontFamily:     p.FontFamily,
+		FontSize:       p.FontSize,
+		FontWeight:     p.FontWeight,
+		FontWeightBold: p.FontWeightBold,
+		LineHeight:     p.LineHeight,
+		LetterSpacing:  p.LetterSpacing,
+
+		CursorStyle:         p.CursorStyle,
+		CursorBlink:         p.CursorBlink,
+		CursorInactiveStyle: p.CursorInactiveStyle,
+		CursorWidth:         p.CursorWidth,
+
+		Scrollback:            p.Scrollback,
+		ScrollSensitivity:     p.ScrollSensitivity,
+		FastScrollModifier:    p.FastScrollModifier,
+		FastScrollSensitivity: p.FastScrollSensitivity,
+		SmoothScrollDuration:  p.SmoothScrollDuration,
+
+		MinimumContrastRatio: p.MinimumContrastRatio,
+
+		Unicode11: p.Unicode11,
 
 		Preset: p.Preset,
 
