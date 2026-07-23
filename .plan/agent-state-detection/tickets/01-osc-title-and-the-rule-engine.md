@@ -88,3 +88,106 @@ the old shell grammar; no tab flickers on a normal turn; `quiet` is gone from th
 Go model, the TypeScript model, the indicator and the star-map grammar; `go vet
 ./...` and `go test ./...` pass; frontend `check`, `build` and `vitest` pass with
 no amber in the built CSS.
+
+## Answer
+
+Built. A tab's indicator now reports what the agent says about itself, and the
+reported bug — an ad-hoc shell running `claude` pinned to `working` forever — is
+gone, asserted at the process boundary.
+
+**What shipped.** Three pieces, in three commits.
+
+`internal/terminal/detect` is the rule engine: per-agent TOML manifests,
+`go:embed`ed, each a list of `{id, state, priority, region, matchers, flags}`.
+Highest priority wins and `skip_state_update` vetoes a sample outright. All six
+matchers are implemented (`contains`, `any`, `all`, `not`, `regex`,
+`line_regex`), ANDed so a rule narrows as fields are added; a rule with no
+matcher at all never matches, so a stray empty rule cannot swallow every sample.
+`Evaluate` is pure. `region()` is the single seam ticket 02 extends — it already
+carries a `screen` case wired to an `Evidence.Screen` field, so ticket 02 adds
+screen regions without touching rule evaluation. `Identify` scores every argv
+token across the whole foreground group, skipping generic runtimes, which is what
+resolves a `node`-launched `claude` to claude.
+
+`internal/terminal/osc.go` is the sniffer: a byte-at-a-time state machine in
+`Terminal.pump` carrying state between reads, retaining the latest OSC 0/2 and
+OSC 9, honouring BEL and ST. The numeric code is parsed as it arrives, so a
+non-title OSC is skipped without ever being buffered — Kimi's ~1000 OSC 8
+hyperlinks a turn cost one state transition each. Retained values are cleared
+when the identified agent changes.
+
+The wiring collapses `sample()`: no more `sampleShell`/`sampleSession` fork. A
+tab resolves to a known agent or to nothing, and a known agent reads the agent
+grammar whether or not the tab carries a `Session`. Publishing is asymmetric
+(`publisher` in `publish.go`) — a positive match lands at once, a bare absence is
+confirmed over three samples, and a ~3s startup grace refuses an absence-derived
+idle while an agent boots. Agent-bearing tabs sample at ~300ms, everything else
+at the old ~900ms.
+
+**Each Done-when clause.** An ad-hoc shell running a stub `claude` that paints a
+title reads `working` then `idle`, asserted through a real PTY in
+`TestAdHocShellRunningAnAgentReadsItsTitle`, and confirmed against the real
+89-second Claude capture in `TestClaudeRecordingReadsWorkingThenIdle`. Codex and
+grok read `blocked` from `Action Required` in the engine table test. A non-agent
+command keeps the old grammar (`TestNonAgentCommandKeepsTheShellGrammar`, plus
+the pre-existing `TestSampleTracksForegroundCommand`, unchanged and passing). No
+flicker: replaying the real recording publishes **seven** transitions across 89
+seconds, never the same state twice running, asserted with a bound in
+`TestClaudeRecordingDoesNotFlicker`. `quiet` is gone from the Go model, the
+TypeScript model, the indicator and the star-map grammar. `go vet ./...`,
+`go test ./...`, and frontend `check`/`build`/`vitest` all pass, with no amber in
+the built CSS.
+
+**Two things a human should look at.**
+
+*Claude reads `idle` during a long tool call.* The map defines `✳` (U+2733) as
+"not-working", so that is what I implemented — but the real capture shows Claude
+sitting on `✳` for 26 seconds mid-turn while a tool ran, and the tab therefore
+reads idle for that stretch. The title glyph appears to mean "not generating
+tokens right now", which is not the same as "not working". This is a finding
+against a settled decision, not a deviation from it: ticket 02's screen evidence
+(which can see the `esc to interrupt` footer) is the natural place to fix it, and
+that is a human's call to make.
+
+*The codex and grok manifests are partly extrapolated.* Only claude and kimi were
+captured as fixtures, so only claude's rules are grounded in recorded bytes. The
+blocked signal for both (`Action Required`) and grok's OSC 9;4 progress come from
+the ticket's own description; codex's working title (`Working`/`Thinking`/
+`Running`) is my inference from its documented status line. herdr's manifests
+turned out not to be extractable — they are compiled into its Rust binary, not
+shipped as loose TOML, and the repo's tree API response truncates before them. I
+flagged this inline in both manifest files. A wrong string there is a data fix,
+which is the point of the manifests being data.
+
+**Deliberately not done.** No veto rule was added to a shipped manifest: the veto
+mechanism is implemented and tested (against an inline synthetic manifest, so the
+test invents no agent behaviour), but a title-only veto would have been fabricated
+— vetoes are for screens, and belong to ticket 02. Kimi, opencode and pi get no
+manifest, per the ticket;
+`TestKimiRecordingCarriesNoTitleState` pins that claim against the real capture,
+so it fails loudly if Kimi ever starts broadcasting state. In the star-map,
+`blocked` inherits the crawl-and-blink channels `quiet` had, and `spaceLiveness`
+keeps its existing precedence, because how `blocked` folds into the attention
+grammar is explicitly left open on the map (*Not yet specified — Notifications*).
+
+**One thing I changed my mind about, with a measurement behind it.** My first
+pass identified a session's agent by inspecting its foreground process group, the
+same way an ad-hoc shell's is. That put a `TIOCGPGRP` ioctl and a `ps` onto
+session PTYs, which had never carried either, and it made `internal/server` flaky
+— the halt tests failed roughly half of all runs, against a baseline that passed
+2/2. It was not a push storm (I counted: ~30 model pushes across the suite) and
+not a slow `ps` (2 invocations across the suite). A session does not need
+inspecting at all: chartr launched the agent and recorded which adapter it ran,
+so the binding *is* the answer. Resolving a session from `Session.Agent` is
+cheaper, steadier, and keeps both syscalls off session PTYs as before. Measured
+after the change: **branch 0/8 failures, baseline 0/8** — parity restored. Two
+smaller correctness bugs fell out of the same hunt and are fixed: an unreadable
+foreground (`pgrp <= 0`) no longer drops the identification and restarts the
+grace on every tick, and a live session with no manifest keeps reading `working`
+rather than the shell grammar's permanently-wrong `idle`.
+
+**Fixtures.** The engine is tested against the recordings already in
+`.plan/agent-state-detection/assets/`, read from there rather than copied into
+`testdata/`, since the assets README designates them as the fixtures both tickets
+use and a copy would drift. `recording_test.go` carries the loader; ticket 02
+extends it.
