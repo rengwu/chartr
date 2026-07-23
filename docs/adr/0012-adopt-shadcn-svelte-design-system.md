@@ -1,5 +1,14 @@
 # Adopt shadcn-svelte + Tailwind v4 on an olive/neutral theme; de-amber the chrome
 
+> **Amended: enforcement is `docs/design-system.md` and the root `CLAUDE.md`,
+> alone.** The committed `implement` skill under `.chartr/skills/` was the third
+> way this standard was held — it carried the rules into the prompt, so a
+> chartr-spawned session inherited them without reading anything. It is removed
+> and `.chartr/` is now ignored wholesale, so that path is gone: a spawned
+> session picks up the rules only by reading `CLAUDE.md`, like any other agent.
+> The decision below stands unchanged; one of the three ways of holding it does
+> not.
+
 The cockpit chrome was hand-rolled CSS — a bespoke `app.css` of one-off `.btn`,
 `.badge`, `.card`, and layout classes carrying an amber accent (`#d9a441`). Every
 new surface re-derived the same buttons and tags by hand, drift-prone and with no
@@ -45,12 +54,13 @@ Three things are decided:
   seam, and exactly two hand-written primitives (`.cockpit-bar`, `.prose-sm`) —
   both token-driven. New chrome composes primitives + utilities; it does not
   hand-roll CSS.
-- There is now an **enforceable standard**: `docs/design-system.md` (the spec),
-  the root `CLAUDE.md` guardrail, and the space's committed `implement` skill
-  (`.chartr/skills/implement/`, a fork of the shipped one carrying the
-  rules — it was `prompts/implement.append.md` before the skill repackaging
-  retired the `.append.md` convention) so chartr-spawned implementation sessions
-  inherit them. New UI styles on tokens + primitives + Phosphor by default.
+- There is now an **enforceable standard**: `docs/design-system.md` (the spec)
+  and the root `CLAUDE.md` guardrail. A committed `implement` skill under
+  `.chartr/skills/` once carried the rules into chartr-spawned sessions as well
+  (a fork of the shipped one; it was `prompts/implement.append.md` before the
+  skill repackaging retired the `.append.md` convention), but it has since been
+  removed — see the banner. New UI styles on tokens + primitives + Phosphor by
+  default.
 - A **raw colour in the chrome is now a defect**, not a choice. If a surface needs
   a colour no token covers, the palette is missing a role — that gets flagged, not
   inlined.
