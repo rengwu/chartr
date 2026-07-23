@@ -1,5 +1,17 @@
 # Config layers: workspace commits shared content and defaults; the local user layer wins for execution
 
+> **Execution half superseded by the `agent-selection` effort (spec at
+> `.plan/agent-selection/spec.md`; implemented in `.plan/agent-selection-impl`,
+> ticket 05).** Role→agent bindings and the committed execution layer are gone.
+> There is no longer a committed execution config, so there is no layering question
+> to answer for it: execution is chosen per spawn from the operator's global,
+> never-committed agent library. **The content half stands unchanged** — skills
+> still resolve space-over-user, "content the project ships wins" still holds, and
+> the committed layer still carries `.chartr/skills/`. The safety property below
+> *strengthens*: with no committed execution config at all, nothing about how an
+> agent runs can arrive by `git pull`. Read every "binding" below as historical;
+> the prompt/skill halves are current.
+
 Two layers of chartr config live in different places for different reasons. **Committed workspace config** sits in the space's repo (the file ADR 0007 already established for map-kind) and is shared, versioned, portable. **Local user config** lives under the operator's home, is never committed, and is per-machine. When both speak to the same thing, which wins is **not uniform** — and that asymmetry is the decision:
 
 - **Role→agent bindings resolve user-over-workspace.** A committed binding names a concrete CLI and model, which is an *execution/environment* fact — it may name an agent the operator never installed, or a model they don't want to pay for. It must yield to local reality, so the user layer wins. This is also what makes the absent-agent case solvable by configuration rather than by editing someone else's committed file.

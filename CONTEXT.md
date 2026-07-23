@@ -32,11 +32,15 @@ The open, unblocked, unclaimed tickets of a map — the edge of the known. Wayfi
 
 **Session**:
 A PTY running an agent CLI against exactly one ticket, wired by a pre-injected prompt.
-_Avoid_: run, job, task, agent, terminal
+_Avoid_: run, job, task, terminal
 
 **Role**:
-What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. Resolves through config to a concrete agent command.
+What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. It selects a skill and shapes the payload; it does not resolve to an agent.
 _Avoid_: mode, kind, job type
+
+**Agent**:
+A registered, named, complete way to run a harness — an adapter, whatever flags it takes (its model among them), and how it receives its opening prompt. Chosen per spawn from the operator's library; it is the whole of what runs a session. Never committed, so a permission-skipping agent is something an operator grants themselves, not something a `git pull` can hand a teammate.
+_Avoid_: binding, agent config, profile, preset
 
 **Adapter**:
 The per-agent shim that knows how to launch one agent CLI, inject its prompt and context, and observe it.
@@ -74,20 +78,20 @@ _Avoid_: pty stream, data channel
 
 ### Configuration
 
-**Role binding**:
-What a role resolves to — an `{adapter, model, args?}` triple. Structured so chartr can reason about it (compare models, probe the binary); the `args` hatch reaches flags the adapter doesn't model, forfeiting that introspection. Resolved by merging workspace and user config; the *effective* binding is what actually runs.
-_Avoid_: mapping, agent config, role config
+**Agent library**:
+The operator's registered agents — the only execution config there is. Global and local: one set in the operator's own uncommitted file, shared by every space. An empty library is the starting state and refuses every spawn, ideate included, until one is registered.
+_Avoid_: agent registry, profiles, presets
 
-**Workspace config**:
-The committed, shared chartr config in a space's repo — role bindings and the committed skills layer — versioned and portable. A space may have none at all. Wins over user config for *content* (skills); yields to it for *execution* (bindings).
-_Avoid_: project config, repo config, settings
+**Committed skills**:
+The versioned skill overlays a space carries in `.chartr/skills/` — shared, portable, and winning over user skills for *content*. It is the only chartr config a space commits: there is no committed *execution* config, so nothing about how an agent runs is ever versioned into a repository.
+_Avoid_: workspace config, project config, repo config
 
 **User config**:
-The operator's local, uncommitted chartr config under `~/.config/chartr/`, keyed by space. Overrides workspace bindings for execution choices.
+The operator's local, uncommitted chartr config under the state root. It carries the agent library and is keyed to this machine, never a space's repository.
 _Avoid_: local settings, preferences, overrides
 
-**Effective config surface**:
-The global settings route showing every value the three layers resolve, with the layer it came from and the file that layer lives in. Edits exactly one thing — a role binding, into the user layer; everything else is read-value-plus-open-file. Never a second config store.
+**Settings surface**:
+The global settings route: the agent library and the paths of the files behind it, each openable in the operator's editor. Read-value-plus-open-file, never a second config store — there is nothing left to explain about layers.
 _Avoid_: settings screen, preferences, config panel, options
 
 ### Ticket lifecycle

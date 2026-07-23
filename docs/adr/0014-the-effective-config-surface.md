@@ -1,5 +1,18 @@
 # One global settings route shows what the layers resolve, and edits only role bindings into the user layer
 
+> **Superseded by the `agent-selection` effort (spec at
+> `.plan/agent-selection/spec.md`; implemented in `.plan/agent-selection-impl`,
+> ticket 05).** This surface was built on per-field provenance across three
+> layers, which no longer exists: role bindings and the committed execution layer
+> are gone, and execution is chosen per spawn from the operator's agent library
+> (ADR 0009's execution half is superseded alongside this). What replaces the
+> surface is smaller and needs no ADR — the agent library plus the paths of the
+> files behind it, each openable in the editor. Of the machinery below, only the
+> named-layer open action survives, now resolving skill directories and the
+> agent-library file alone; the read-of-bindings, the inline binding editor
+> (`config.SetUserBinding`), and the layer/provenance badges are all removed. The
+> account below is retained as the record of what the surface used to be.
+
 chartr's configuration resolves through three documented layers that nobody could see. The **effective config surface** is the answer: a single global route — the cockpit's first real route — that renders every value the layers resolve, with the layer it came from and the file that layer lives in. Its governing constraint is **legibility first**: it explains the config that already exists and **never becomes a second config store**.
 
 **The route is a hash prefix, not a router.** `App.svelte` reads `#/settings` in one `$derived` (`web/src/lib/route.ts` is a parser and its inverse), with `#/settings/s=<spaceId>` and `#/settings/user` as the two scopes. The star deep-link scheme (`#s=<id>&m=<slug>&t=<num>`) has no leading slash, so the two schemes are disjoint by construction and neither has to know about the other. Entry is a ⚙ in the sidebar header or `,`; exit is Esc, the ⚙ again, or selecting a space. Rejected: a routing library for one route; and keeping *both* a per-space drawer and a global screen — `SpacePane`'s bindings button now navigates here, so config has one home.
