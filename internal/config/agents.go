@@ -114,7 +114,11 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 		}
 		r.Present = onPath(r.Adapter)
 		if !r.Present {
-			r.Missing = fmt.Sprintf("%q isn't on your PATH; install it or point this agent at a binary that is", r.Adapter)
+			// The full path is named because it always works and nothing else the
+			// operator can see says so: exec.LookPath consults PATH only for a bare
+			// name, and takes any name containing a separator as the binary itself.
+			// It is the one answer that does not depend on how chartr was launched.
+			r.Missing = fmt.Sprintf("%q isn't on your PATH; install it, or give this agent the binary's full path", r.Adapter)
 		}
 		out = append(out, r)
 	}

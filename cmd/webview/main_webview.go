@@ -16,6 +16,7 @@ import (
 
 	webview "github.com/webview/webview_go"
 
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/server"
 )
 
@@ -55,6 +56,13 @@ func main() {
 // lifetime is joined to the server's: closing the window cancels the same
 // context signal.NotifyContext cancels today, and the server dies with it.
 func run(dataDir string) error {
+	// Adopt the operator's login-shell PATH before anything can resolve a binary.
+	// The shell needs this more than the supported binary does: launched from
+	// Finder or the Dock it inherits launchd's PATH, which carries neither
+	// /opt/homebrew/bin nor ~/.local/bin, so without this no agent installed the
+	// ordinary way is findable at all.
+	env.HydratePATH()
+
 	srv, err := server.New(server.Options{DataDir: dataDir})
 	if err != nil {
 		return err

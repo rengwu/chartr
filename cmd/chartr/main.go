@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/server"
 )
 
@@ -46,6 +47,12 @@ func main() {
 }
 
 func run(addr, dataDir string) error {
+	// Adopt the operator's login-shell PATH before anything can resolve a binary,
+	// so an agent they can run in their terminal is one chartr can find. It must
+	// happen here rather than inside server.New: it mutates process-global state,
+	// which is a main's business and not a constructor's.
+	env.HydratePATH()
+
 	srv, err := server.New(server.Options{DataDir: dataDir})
 	if err != nil {
 		return err
