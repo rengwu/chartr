@@ -40,6 +40,14 @@ type Model struct {
 	// is here, and chartr asserts only that each name exists on PATH (ADR 0002).
 	// Never nil on the wire.
 	Detected []string `json:"detected"`
+	// Terminal is the operator's resolved terminal customization — the per-machine
+	// `terminal.toml` beside the agent library, parsed once (server Seam 1) and
+	// carried here so every terminal island reads the same settings the way it
+	// reads the rest of the model. Global rather than per space: the file is
+	// per-machine and never committed. Its zero value is "all defaults" — today's
+	// look — so a machine with no file rides an empty struct. Any parse warnings
+	// surface on the spaces beside the agent-library warnings, not here.
+	Terminal TerminalPrefs `json:"terminal"`
 	// NativePicker is whether this machine can raise an OS folder chooser for
 	// "add a space" — always true on macOS, true on Linux with zenity or kdialog
 	// installed, false otherwise. It is capability, not state, so it never
@@ -224,6 +232,20 @@ type Terminal struct {
 	// and the resolved agent and model. Absent on an ad-hoc shell, which is
 	// deliberately not a session; the chrome tells the two apart by its presence.
 	Session *Session `json:"session,omitempty"`
+}
+
+// TerminalPrefs is the operator's resolved terminal customization on the wire —
+// the mirror of config.TerminalPrefs the server converts once it has resolved the
+// per-machine `terminal.toml`. Every field is a pref the file set; a field left at
+// its zero value is *unset*, and the client resolve seam (tokens.ts) falls it
+// through to the app default — a colour to the live design token, the font to the
+// bundled family. Ticket 01 carries the spine (font family, size, the two base
+// colours); later tickets widen it without changing its shape.
+type TerminalPrefs struct {
+	FontFamily string  `json:"fontFamily,omitempty"`
+	FontSize   float64 `json:"fontSize,omitempty"`
+	Background string  `json:"background,omitempty"`
+	Foreground string  `json:"foreground,omitempty"`
 }
 
 // Session is a session tab's ticket binding on the wire — enough for the sidebar

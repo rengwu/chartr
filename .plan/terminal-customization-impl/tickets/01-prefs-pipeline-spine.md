@@ -37,3 +37,30 @@ colour falls to token default) land red first, mirroring the existing
 Done when: a font/size/colour set in `terminal.toml` shows in every open terminal;
 a missing file leaves today's look unchanged; both seam tests are green; frontend
 `check`/`build`/`vitest` and `go vet`/`go test` pass.
+
+## Answer
+
+The vertical spine is standing. An operator sets `font.family`, `font.size`, and
+`theme.background`/`theme.foreground` in a per-machine `terminal.toml` (beside
+`user.toml` under the state root), and every open terminal island picks it up.
+
+- **Seam 1 (server, `internal/config/terminal.go`):** `ResolveTerminalPrefs([]byte)
+  → (TerminalPrefs, []string)` — pure. Missing file → all defaults, no warnings; a
+  malformed file → all defaults + one warning; a non-positive size / non-`#hex`
+  colour / unknown key each keeps its default and warns. `buildModelFor` resolves
+  it once and folds the prefs onto `Model.Terminal` (a wire-local
+  `model.TerminalPrefs`), routing the warnings onto each space beside the
+  agent-library warnings. Table-tested in `terminal_test.go`, and the
+  parse-folded-with-snapshot in `internal/server/terminalprefs_test.go`.
+- **Seam 2 (client, `web/src/lib/tokens.ts`):** `buildTerminalOptions(prefs)`
+  turns `TerminalPrefs` into the xterm options + `ITheme`, resolving every unset
+  colour off the live design tokens exactly as the old `buildTheme` did, stacking a
+  pref font ahead of the bundled default, and carrying the six ANSI hues as the
+  default preset layer. Table-tested in `tokens.test.ts`.
+- **Island (`Terminal.svelte`):** consumes the resolved options via a `prefs`
+  prop instead of its hard-coded literals; `SpacePane` remounts it through a
+  `{#key}` that includes a prefs identity, so editing the file re-applies (the
+  terminal socket replays scrollback on re-attach — nothing lost).
+
+Both seam tests green; frontend `check`/`build`/`vitest` (94) and
+`go vet`/`go test ./...` pass; no amber in the built CSS.

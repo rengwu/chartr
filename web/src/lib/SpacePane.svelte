@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
-  import type { Agent, Space, Terminal as Term, Map as WMap } from './model'
+  import type { Agent, Space, Terminal as Term, TerminalPrefs, Map as WMap } from './model'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import AgentSplitButton from './AgentSplitButton.svelte'
@@ -25,6 +25,7 @@
     space,
     agents,
     activeTerm,
+    terminalPrefs,
     active = true,
     onOpenShell,
     onIdeate,
@@ -38,6 +39,10 @@
     // pick the agent it will run.
     agents: Agent[]
     activeTerm: Term | null
+    // The operator's resolved terminal customization off the model snapshot —
+    // global (per-machine `terminal.toml`), fed into the terminal island at the
+    // token seam. A change to it remounts the island (see the `{#key}` below).
+    terminalPrefs?: TerminalPrefs
     // False while the settings route covers the stage (ticket 05). The pane stays
     // mounted — its terminal and star-map are imperative islands worth keeping
     // alive — but goes inert: it takes no keystrokes and stops reflecting its
@@ -91,6 +96,19 @@
 
   const warnings = $derived<string[]>(space.warnings ?? [])
   const maps = $derived<WMap[]>(space.maps ?? [])
+
+  // A stable identity for the current terminal prefs: the terminal island keys its
+  // remount on this string, so editing `terminal.toml` (a new snapshot with
+  // different prefs) tears the island down and mounts it afresh with the new
+  // options resolved at the seam.
+  const terminalPrefsKey = $derived(
+    JSON.stringify([
+      terminalPrefs?.fontFamily ?? '',
+      terminalPrefs?.fontSize ?? 0,
+      terminalPrefs?.background ?? '',
+      terminalPrefs?.foreground ?? '',
+    ]),
+  )
 
   // A selection belongs to one map: when the open map *changes*, drop it (and any
   // open material) so the island never carries a ticket number from a different
@@ -370,8 +388,13 @@
       style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
     >
       {#if activeTerm}
-        {#key activeTerm.id}
-          <Terminal term={activeTerm} />
+        <!-- Remount the island on a terminal switch *or* a prefs change: the
+             terminal customization is fed in at mount (tokens.ts resolve seam), so
+             editing `terminal.toml` re-applies by tearing down and re-mounting,
+             and the terminal socket replays scrollback on re-attach — nothing is
+             lost (spec, Island reactivity — remount on change). -->
+        {#key `${activeTerm.id} ${terminalPrefsKey}`}
+          <Terminal term={activeTerm} prefs={terminalPrefs} />
         {/key}
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">

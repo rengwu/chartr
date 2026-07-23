@@ -50,6 +50,11 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- **01 — Prefs pipeline spine.** `terminal.toml` → pure Go `ResolveTerminalPrefs`
+  (Seam 1) folds prefs+warnings onto the snapshot; `buildTerminalOptions` in
+  `tokens.ts` (Seam 2) resolves them into xterm options/theme; `Terminal.svelte`
+  consumes them and remounts on change. [ticket](tickets/01-prefs-pipeline-spine.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the spec — it does not open fog here. -->

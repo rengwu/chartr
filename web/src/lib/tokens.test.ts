@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { readColor, readToken, readTokens, resolveColor } from './tokens'
+import {
+  buildTerminalOptions,
+  readColor,
+  readToken,
+  readTokens,
+  resolveColor,
+} from './tokens'
 
 // The bridge reads live custom properties off the document. Under jsdom we set
 // tokens as inline styles on the root and assert the reader returns them; jsdom
@@ -51,5 +57,57 @@ describe('readTokens', () => {
       bg: '#000000',
       fg: '#ffffff',
     })
+  })
+})
+
+// Seam 2 — the pure resolve of TerminalPrefs into xterm options + theme. Under
+// jsdom the tokens are inline hex on the root (no oklch maths), so the base
+// colours resolve to rgb; a pref colour is used verbatim, and an unset slot falls
+// through to the token default.
+describe('buildTerminalOptions', () => {
+  // The base theme slots that resolve off live tokens; set them so the resolve
+  // has something concrete to read, mirroring the reskin's real token names.
+  function seedTokens() {
+    const root = document.documentElement.style
+    root.setProperty('--background', '#101010')
+    root.setProperty('--foreground', '#f0f0f0')
+    root.setProperty('--muted-foreground', '#808080')
+    root.setProperty('--muted', '#303030')
+    root.setProperty('--ring', '#00ff00')
+    root.setProperty('--destructive', '#ff0000')
+  }
+
+  it('resolves unset colours against the live design tokens', () => {
+    seedTokens()
+    const { theme, options } = buildTerminalOptions(undefined)
+    expect(theme.background).toBe('rgb(16, 16, 16)')
+    expect(theme.foreground).toBe('rgb(240, 240, 240)')
+    expect(theme.cursor).toBe('rgb(0, 255, 0)')
+    // An unset font/size falls to the bundled default.
+    expect(options.fontFamily).toContain('IBM Plex Mono')
+    expect(options.fontSize).toBe(13)
+  })
+
+  it('uses a pref colour verbatim and stacks a pref font ahead of the default', () => {
+    seedTokens()
+    const { theme, options } = buildTerminalOptions({
+      background: '#1e2530',
+      fontFamily: 'Fira Code',
+      fontSize: 16,
+    })
+    expect(theme.background).toBe('#1e2530')
+    // Foreground was left unset, so it still resolves off the token.
+    expect(theme.foreground).toBe('rgb(240, 240, 240)')
+    expect(options.fontFamily).toBe(
+      "Fira Code, 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    )
+    expect(options.fontSize).toBe(16)
+  })
+
+  it('carries the default ANSI hues the monochrome chrome has no token for', () => {
+    seedTokens()
+    const { theme } = buildTerminalOptions({})
+    expect(theme.green).toBe('#9cb68c')
+    expect(theme.blue).toBe('#82a8c9')
   })
 })

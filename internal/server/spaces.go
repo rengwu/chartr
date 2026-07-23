@@ -19,6 +19,11 @@ import (
 // there is, and never committed.
 const userConfigName = "user.toml"
 
+// terminalConfigName is the operator's per-machine terminal customization, beside
+// the agent library under the same state root. Never committed, never per space —
+// the single source of truth for every terminal island's look and feel.
+const terminalConfigName = "terminal.toml"
+
 // handleRegister registers a folder as a space. Registration is a plain HTTP
 // action so its outcome — including an announced `git init` — surfaces in the
 // response (ADR 0010, story 2), and the new space also lands in the pushed
@@ -105,9 +110,17 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// library; a missing or unreadable file resolves as "no agents registered".
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
 
+	// Terminal customization is its own per-machine file beside the agent library,
+	// resolved once (server Seam 1). A missing file is all defaults and no
+	// warnings — today's look, unchanged. The resolved prefs ride the snapshot
+	// globally; the parse warnings surface on each space beside the agent-library
+	// warnings, through the same config-warnings surface (spec, Warnings surface).
+	termTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, terminalConfigName))
+	termPrefs, termWarnings := config.ResolveTerminalPrefs(termTOML)
+
 	spaces := make([]model.Space, 0, len(entries))
 	for _, e := range entries {
-		spaces = append(spaces, s.deriveSpace(e, userTOML))
+		spaces = append(spaces, s.deriveSpace(e, userTOML, termWarnings))
 	}
 	// The global skill library resolves with no repo in play, so it is the same
 	// answer whether or not a space is registered — which is exactly what the
@@ -127,11 +140,17 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// a property of the machine, resolved fresh on every rebuild so a newly
 		// installed harness shows up without a restart. Never nil for the wire.
 		Detected:     detectedAgents(),
+		Terminal: model.TerminalPrefs{
+			FontFamily: termPrefs.FontFamily,
+			FontSize:   termPrefs.FontSize,
+			Background: termPrefs.Background,
+			Foreground: termPrefs.Foreground,
+		},
 		NativePicker: nativePicker,
 	}
 }
 
-func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
+func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []string) model.Space {
 	// The agent library is global, but its live warnings — an agent with no
 	// adapter, an unreadable prompt delivery — surface where the operator is, so
 	// they ride each space's warnings the way the binding resolver's used to.
@@ -174,6 +193,9 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 	// surfaced on the space without the operator opening settings.
 	warnings := append([]string{}, agentWarnings...)
 	warnings = append(warnings, prompt.LibraryWarnings(s.skillRoots(e.Path))...)
+	// The terminal.toml parse warnings are global (the file is per-machine), but
+	// they surface where the operator is, the way the agent-library warnings do.
+	warnings = append(warnings, termWarnings...)
 
 	return model.Space{
 		ID:        e.ID,

@@ -876,6 +876,7 @@
           space={selected}
           agents={agentLibrary}
           {activeTerm}
+          terminalPrefs={control.model?.terminal}
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
           onIdeate={(agent) => ideateSpace(selected, agent)}

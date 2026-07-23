@@ -182,6 +182,24 @@ export interface Model {
   // kdialog, false otherwise — and it is what decides whether New Space opens the
   // operator's own chooser or falls back to asking them to paste a path.
   nativePicker: boolean
+  // The operator's resolved terminal customization — the per-machine
+  // `terminal.toml` parsed server-side (Seam 1) and carried here so every terminal
+  // island reads the same settings. Global: the file is per-machine and never
+  // committed. Absent / all-empty means all defaults — today's look. The client
+  // resolve seam (`buildTerminalOptions` in tokens.ts) turns it into the concrete
+  // xterm options and theme, falling every unset slot through to the design token.
+  terminal?: TerminalPrefs
+}
+
+// TerminalPrefs mirrors the Go `model.TerminalPrefs`: every field is a pref the
+// `terminal.toml` set, and a field left unset (empty / zero) falls through to the
+// app default at the resolve seam. Ticket 01 carries the spine — font family,
+// size, and the two base theme colours; later tickets widen it.
+export interface TerminalPrefs {
+  fontFamily?: string
+  fontSize?: number
+  background?: string
+  foreground?: string
 }
 
 // The payload preview (ticket 08): exactly what a session for a ticket and role
