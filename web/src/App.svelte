@@ -900,6 +900,7 @@
             config={configLayers}
             agents={agentLibrary}
             {detected}
+            terminalPrefs={control.model?.terminal}
             scope={route.scope}
             onScope={(s) => navigate(settingsHash(s))}
             onClose={leaveSettings}

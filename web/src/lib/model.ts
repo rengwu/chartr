@@ -150,11 +150,12 @@ export interface ResolvedSkill {
 
 // ConfigLayer is one file or directory the operator's config lives in. `name` is
 // the server-side token the open action resolves — the client never sends a path.
-// `holds` is what the file carries: the agent library or skills.
+// `holds` is what the file carries: the agent library, skills, or the per-machine
+// terminal customization.
 export interface ConfigLayer {
   name: string
   layer: Layer
-  holds: 'agents' | 'skills'
+  holds: 'agents' | 'skills' | 'terminal'
   path: string
   exists: boolean
 }

@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
@@ -98,5 +100,50 @@ background = "not-a-colour"
 	s := findSpace(t, snap, resp.ID)
 	if !hasSubstring(s.Warnings, "background") {
 		t.Errorf("a bad terminal colour did not surface on the space: %v", s.Warnings)
+	}
+}
+
+// The Settings surface's half of the file (ticket 08): `terminal.toml` is a named
+// layer like every other file the operator's config lives in, so the Terminal
+// section can show its path and open it in the operator's own editor through the
+// space-less open action — read-value-plus-open-file, never a second config store.
+func TestTerminalConfigIsAnOpenableGlobalLayer(t *testing.T) {
+	h := chartrtest.Start(t)
+	chartrtest.WriteFile(t, h.DataDir, "terminal.toml", "[font]\nsize = 15\n")
+	// Nudge a rebuild so the freshly written file is on the snapshot.
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	snap := h.Snapshot(ctx(t))
+	l := layer(t, snap.Config, "terminal-config")
+	if want := filepath.Join(h.DataDir, "terminal.toml"); l.Path != want {
+		t.Errorf("terminal config path = %q, want %q", l.Path, want)
+	}
+	if l.Holds != "terminal" || !l.Exists {
+		t.Errorf("terminal config layer = %+v, want it holding terminal and existing", l)
+	}
+
+	record := stubEditor(t)
+	code, body := h.Post("/api/config/open", map[string]string{"layer": "terminal-config"})
+	if code != 200 {
+		t.Fatalf("open terminal-config = %d, body %s", code, body)
+	}
+	if got := waitForFile(t, record); !strings.Contains(got, l.Path) {
+		t.Errorf("the editor was handed %q, want the server-resolved %q", got, l.Path)
+	}
+}
+
+// A machine with no terminal.toml still lists the layer: the surface says where
+// the file *would* go, and a read-shaped action creates nothing.
+func TestTerminalConfigLayerListedWhenAbsent(t *testing.T) {
+	h := chartrtest.Start(t)
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	l := layer(t, h.Snapshot(ctx(t)).Config, "terminal-config")
+	if l.Exists {
+		t.Errorf("terminal config layer = %+v, want it absent", l)
+	}
+	code, body := h.Post("/api/config/open", map[string]string{"layer": "terminal-config"})
+	if code != 200 || !strings.Contains(body, `"exists":false`) {
+		t.Errorf("open of an absent terminal.toml = %d %s, want it surfaced as absent", code, body)
 	}
 }

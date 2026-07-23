@@ -104,6 +104,16 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   decorations use `registerDecoration` (xterm proposed API), so `allowProposedApi` is
   now on for every terminal, not gated to ligatures. Driven live.
   [ticket](tickets/07-in-terminal-find.md)
+- **08 — Settings "Terminal" section.** `terminal.toml` is now a named config layer
+  (`terminal-config`, `holds: "terminal"`), so the Global scope opens it through the
+  same space-less named-layer action as the agent library — and lists it there rather
+  than twice. Beside the open row, eight token-and-primitive groups render the
+  *effective* settings from `terminalsummary.ts`, a pure formatter over the same Seam
+  2 resolve the island mounts with; a value the file set is emphasised, an unset one
+  still shows the default in force, and a colour row carries the resolved swatch. No
+  write-back control. Driven live, including the editor launch; the drive also caught
+  that `terminal.toml` was never gitignored.
+  [ticket](tickets/08-settings-terminal-section.md)
 
 ## Not yet specified
 

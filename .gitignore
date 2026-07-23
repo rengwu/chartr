@@ -23,6 +23,11 @@
 # layer are gone (ADR 0009's execution half is superseded).
 /user.toml
 
+# Terminal customization is the same shape of file: per-machine, landing at the
+# data root — the repo root when run with cwd here. Cosmetic and personal by
+# definition, so nobody who clones inherits someone else's font and theme.
+/terminal.toml
+
 # The materialized skill library is user-config runtime state too: a copy lands
 # under the data root — the repo root when run with cwd here — as the operator's
 # editable copy. Never committed. `/prompts/` is the pre-skills name of the same

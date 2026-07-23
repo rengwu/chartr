@@ -27,6 +27,7 @@ import (
 // winning directory of one resolved skill.
 const (
 	layerUserConfig      = "user-config"
+	layerTerminalConfig  = "terminal-config"
 	layerBuiltinSkills   = "builtin-skills"
 	layerUserSkills      = "user-skills"
 	layerWorkspaceSkills = "workspace-skills"
@@ -41,11 +42,18 @@ const (
 // chartr state root (`<dataDir>/user.toml`) while the *user skill layer* lives
 // under the operator's config root (`<configDir>/skills/`) — two files, shown as
 // two paths rather than implying a single one.
+//
+// `terminal.toml` is the third of them: per-machine terminal customization, read
+// on every rebuild into the snapshot's resolved prefs. It is listed here so the
+// Settings surface can open it in the operator's editor through exactly the same
+// named-layer action — read-value-plus-open-file, never a second config store.
 func (s *Server) globalLayers() []model.ConfigLayer {
 	roots := prompt.RootsFor(s.opts.DataDir, s.opts.ConfigDir, "")
 	return []model.ConfigLayer{
 		layerAt(layerBuiltinSkills, "built-in", "skills", roots.Builtin),
 		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.DataDir, userConfigName)),
+		layerAt(layerTerminalConfig, "user", "terminal",
+			filepath.Join(s.opts.DataDir, terminalConfigName)),
 		layerAt(layerUserSkills, "user", "skills", roots.User),
 	}
 }

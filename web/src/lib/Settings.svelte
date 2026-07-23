@@ -1,8 +1,9 @@
 <script lang="ts">
-  import type { Agent, ConfigLayer, Space } from './model'
+  import type { Agent, ConfigLayer, Space, TerminalPrefs } from './model'
   import { settingsHash, type SettingsScope } from './route'
   import { openConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
+  import TerminalSettings from './TerminalSettings.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
   import { ArrowSquareOut, Stack, User, Warning, X } from 'phosphor-svelte'
@@ -17,19 +18,25 @@
     config,
     agents,
     detected,
+    terminalPrefs,
     scope,
     onScope,
     onClose,
   }: {
     spaces: Space[]
     // The files the operator's config lives in, shared by every space — the agent
-    // library and the two skill libraries that are not a space's own.
+    // library, `terminal.toml`, and the two skill libraries that are not a space's
+    // own.
     config: ConfigLayer[]
     // The operator's registered agent library — global, edited on the global scope.
     agents: Agent[]
     // The known agent CLIs found on this machine's PATH — the advisory hint the
     // agent library renders beneath the adapter input when registering one.
     detected: string[]
+    // The operator's resolved terminal customization off the snapshot — read-only
+    // here, rendered by the Terminal section on the global scope. Per-machine
+    // cosmetic settings belong beside the user config, not under a space.
+    terminalPrefs?: TerminalPrefs
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
@@ -44,8 +51,14 @@
   )
   const onUser = $derived(scope.kind === 'user')
 
+  // `terminal.toml` is a shared file like the rest, but it is shown by the Terminal
+  // section rather than in the generic list — it comes with the settings it holds,
+  // and listing it twice would be two rows for one file.
+  const terminalLayer = $derived(config.find((l) => l.holds === 'terminal'))
+  const files = $derived(config.filter((l) => l.holds !== 'terminal'))
+
   // The files a space carries in its own repository sit beside the shared ones.
-  const layers = $derived<ConfigLayer[]>(space ? [...config, ...space.layers] : config)
+  const layers = $derived<ConfigLayer[]>(space ? [...files, ...space.layers] : files)
 
   let busy = $state<string | null>(null)
   let note = $state<string | null>(null)
@@ -138,13 +151,17 @@
                is — and the files it lives among, openable in the operator's editor. -->
           <AgentLibrary {agents} {detected} />
 
+          <!-- Per-machine cosmetics, beside the user config rather than under a
+               space: what terminal.toml has in force, and the file itself. -->
+          <TerminalSettings prefs={terminalPrefs} layer={terminalLayer} {layerRow} />
+
           <section class="flex flex-col gap-2">
             <h2 class="text-xs font-semibold">Files on disk</h2>
             <p class="text-xs leading-relaxed text-muted-foreground">
               Where your config lives. All local, never committed, and per-machine — your agent
               library sits in one file, your skill forks in a second root.
             </p>
-            {#each config as l (l.name)}
+            {#each files as l (l.name)}
               {@render layerRow(l)}
             {/each}
           </section>
@@ -188,7 +205,7 @@
 {#snippet layerRow(l: ConfigLayer)}
   <div class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
     <span class="flex min-w-0 flex-1 flex-col">
-      <span class="text-xs font-medium">{l.holds === 'agents' ? 'agents' : 'skills'}</span>
+      <span class="text-xs font-medium">{l.holds}</span>
       <code class="truncate font-mono text-[0.65rem] text-muted-foreground" title={l.path}>{l.path}</code>
     </span>
     {#if !l.exists}
