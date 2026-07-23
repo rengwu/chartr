@@ -336,12 +336,12 @@
                        in this row would top-align the badge against the caret;
                        no-underline keeps the hover off the title and badge. -->
                   <Accordion.Trigger
-                    class="items-center gap-1.5 p-2 text-xs hover:no-underline"
+                    class="min-w-0 items-center gap-1.5 p-2 text-xs hover:no-underline"
                   >
                     <span class="font-mono text-muted-foreground"
                       >#{pad(b.num)}</span
                     >
-                    <span class="flex-1 truncate text-left font-medium"
+                    <span class="min-w-0 flex-1 truncate text-left font-medium"
                       >{b.title}</span
                     >
                     <Badge variant={statusVariant[b.status] ?? "outline"}
