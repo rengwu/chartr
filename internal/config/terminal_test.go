@@ -374,3 +374,27 @@ func hasSub(warnings []string, sub string) bool {
 	}
 	return false
 }
+
+// The built-in default baked into the binary (config.DefaultTerminalTOML) is the
+// fallback the server resolves when the operator has no terminal.toml of their
+// own. It must parse cleanly — no warnings — and carry the intended default look
+// (a set font, padding, and the dracula preset), since it now stands in for a
+// missing file rather than the bare zero-value prefs.
+func TestDefaultTerminalTOMLResolvesCleanly(t *testing.T) {
+	if len(config.DefaultTerminalTOML) == 0 {
+		t.Fatal("DefaultTerminalTOML is empty; the embedded default failed to bake in")
+	}
+	prefs, warnings := config.ResolveTerminalPrefs(config.DefaultTerminalTOML)
+	if len(warnings) != 0 {
+		t.Errorf("the built-in default warned: %v", warnings)
+	}
+	if prefs == (config.TerminalPrefs{}) {
+		t.Fatal("the built-in default resolved to zero prefs; it set nothing")
+	}
+	if prefs.FontFamily == "" {
+		t.Error("the built-in default set no font family")
+	}
+	if prefs.PaddingTop == 0 {
+		t.Error("the built-in default set no padding")
+	}
+}

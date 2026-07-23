@@ -63,7 +63,7 @@ copyOnSelect = true
 	}
 }
 
-func TestSnapshotMissingTerminalFileIsAllDefaults(t *testing.T) {
+func TestSnapshotMissingTerminalFileFallsBackToBuiltinDefault(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
@@ -72,12 +72,15 @@ func TestSnapshotMissingTerminalFileIsAllDefaults(t *testing.T) {
 	resp := register(t, h, repo)
 	snap := h.Snapshot(ctx(t))
 
-	if (snap.Terminal.FontFamily != "" || snap.Terminal.FontSize != 0 ||
-		snap.Terminal.Background != "" || snap.Terminal.Foreground != "") {
-		t.Errorf("a machine with no terminal.toml carried %+v, want all defaults", snap.Terminal)
+	// With no per-machine terminal.toml, the server resolves the built-in default
+	// baked into the binary rather than the bare zero-value prefs, so a fresh
+	// machine gets the intended default look.
+	if snap.Terminal.FontFamily == "" || snap.Terminal.PaddingTop == 0 {
+		t.Errorf("a machine with no terminal.toml carried %+v, want the built-in default", snap.Terminal)
 	}
+	// The built-in default is valid, so it still resolves silently.
 	if s := findSpace(t, snap, resp.ID); len(s.Warnings) != 0 {
-		t.Errorf("a missing terminal.toml warned: %v", s.Warnings)
+		t.Errorf("the built-in terminal default warned: %v", s.Warnings)
 	}
 }
 

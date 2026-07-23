@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"regexp"
 	"sort"
@@ -9,6 +10,16 @@ import (
 
 	"github.com/BurntSushi/toml"
 )
+
+// DefaultTerminalTOML is the built-in terminal customization baked into the
+// binary. It is the fallback the server resolves when the operator has no
+// per-machine `terminal.toml` of their own: a missing file no longer means
+// "today's bare look" but this default. An operator who writes their own file
+// still takes full control — the file is the single source of truth (spec), so
+// their file replaces this default wholesale rather than layering over it.
+//
+//go:embed terminal.default.toml
+var DefaultTerminalTOML []byte
 
 // Terminal customization: a single per-machine `terminal.toml`, beside the agent
 // library in the operator's own config, that fully customizes every terminal

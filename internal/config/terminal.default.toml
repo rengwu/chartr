@@ -1,0 +1,28 @@
+# terminal.default.toml — the built-in terminal defaults baked into the binary.
+#
+# This is the canonical default the cockpit resolves when a machine has no
+# per-machine terminal.toml of its own. Every key here is a value that is
+# actually set; anything not listed is left unset and falls through to the app
+# default at the client resolve seam (a colour to the live olive/neutral design
+# token, the font to the bundled family).
+#
+# An operator's own terminal.toml (beside the agent library in their chartr data
+# dir) replaces this file wholesale — it is the single source of truth, so it
+# does not layer over these values. Colours are `#rgb` / `#rrggbb` / `#rrggbbaa`
+# hex; a bad value is dropped with a warning and its default stands.
+
+[font]
+family = "Menlo"  # a custom family stacks ahead of the system fallback
+weight = 400      # normal-glyph weight: "normal", "bold", or 1..1000
+boldWeight = 500  # bold-glyph weight: "normal", "bold", or 1..1000
+size = 14         # cell font size in px
+
+[scrolling]
+sensitivity = 3   # wheel-tick scale
+
+[padding]
+# Padding around the terminal grid, per side in px.
+top = 8
+right = 8
+bottom = 8
+left = 8

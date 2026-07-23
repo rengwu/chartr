@@ -137,11 +137,16 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
 
 	// Terminal customization is its own per-machine file beside the agent library,
-	// resolved once (server Seam 1). A missing file is all defaults and no
-	// warnings — today's look, unchanged. The resolved prefs ride the snapshot
-	// globally; the parse warnings surface on each space beside the agent-library
-	// warnings, through the same config-warnings surface (spec, Warnings surface).
+	// resolved once (server Seam 1). A missing file falls back to the built-in
+	// default baked into the binary (config.DefaultTerminalTOML), so a fresh
+	// machine gets the default look rather than a bare terminal; an operator's own
+	// file replaces it wholesale. The resolved prefs ride the snapshot globally;
+	// the parse warnings surface on each space beside the agent-library warnings,
+	// through the same config-warnings surface (spec, Warnings surface).
 	termTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, terminalConfigName))
+	if len(termTOML) == 0 {
+		termTOML = config.DefaultTerminalTOML
+	}
 	termPrefs, termWarnings := config.ResolveTerminalPrefs(termTOML)
 
 	spaces := make([]model.Space, 0, len(entries))
