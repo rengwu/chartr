@@ -5,6 +5,7 @@ import {
   readToken,
   readTokens,
   resolveColor,
+  resolveRenderer,
   terminalKeyAction,
 } from './tokens'
 
@@ -330,5 +331,40 @@ describe('terminalKeyAction', () => {
     expect(terminalKeyAction(key({ key: 'a' }))).toBe('default')
     // The matching keyup must not write the newline a second time.
     expect(terminalKeyAction(key({ type: 'keyup', shiftKey: true }))).toBe('default')
+  })
+})
+
+describe('resolveRenderer', () => {
+  it('defaults to WebGL with no ligatures', () => {
+    expect(resolveRenderer(undefined)).toEqual({ renderer: 'webgl', ligatures: false })
+    expect(resolveRenderer({})).toEqual({ renderer: 'webgl', ligatures: false })
+  })
+
+  it('forces canvas and enables ligatures when the pref is on and the font is bundled', () => {
+    // An unset family is bundled — it falls through to the default IBM Plex Mono.
+    expect(resolveRenderer({ ligatures: true })).toEqual({ renderer: 'canvas', ligatures: true })
+    expect(resolveRenderer({ ligatures: true, fontFamily: 'IBM Plex Mono' })).toEqual({
+      renderer: 'canvas',
+      ligatures: true,
+    })
+    // The bundled lookup is case-insensitive, matching resolveFontFamily.
+    expect(resolveRenderer({ ligatures: true, fontFamily: '  ibm plex mono  ' })).toEqual({
+      renderer: 'canvas',
+      ligatures: true,
+    })
+  })
+
+  it('suppresses ligatures for a non-bundled family and stays on WebGL', () => {
+    expect(resolveRenderer({ ligatures: true, fontFamily: 'Fira Code' })).toEqual({
+      renderer: 'webgl',
+      ligatures: false,
+    })
+  })
+
+  it('stays on WebGL when ligatures are explicitly off', () => {
+    expect(resolveRenderer({ ligatures: false, fontFamily: 'IBM Plex Mono' })).toEqual({
+      renderer: 'webgl',
+      ligatures: false,
+    })
   })
 })

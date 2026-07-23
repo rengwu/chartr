@@ -246,7 +246,8 @@ type Terminal struct {
 // options — font weight/line-height/letter-spacing, the cursor, scrolling, a
 // minimum-contrast floor, and the unicode11 glyph-width toggle; ticket 04 adds the
 // scrollbar and padding (CSS custom properties at the seam, not xterm options) and
-// the keybinding/selection behaviours.
+// the keybinding/selection behaviours; ticket 05 adds the ligatures toggle, which
+// the client resolves into the renderer choice (WebGL default vs. canvas).
 type TerminalPrefs struct {
 	FontFamily     string  `json:"fontFamily,omitempty"`
 	FontSize       float64 `json:"fontSize,omitempty"`
@@ -254,6 +255,10 @@ type TerminalPrefs struct {
 	FontWeightBold string  `json:"fontWeightBold,omitempty"`
 	LineHeight     float64 `json:"lineHeight,omitempty"`
 	LetterSpacing  float64 `json:"letterSpacing,omitempty"`
+
+	// Ligatures forces this terminal onto the canvas renderer (WebGL off) when on,
+	// and the client suppresses it for a non-bundled font. Unset (nil) is off.
+	Ligatures *bool `json:"ligatures,omitempty"`
 
 	CursorStyle         string  `json:"cursorStyle,omitempty"`
 	CursorBlink         *bool   `json:"cursorBlink,omitempty"`

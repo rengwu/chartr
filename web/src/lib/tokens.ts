@@ -102,6 +102,54 @@ function resolveFontFamily(family: string | undefined): string {
   return `${name}, ${DEFAULT_FONT_STACK}`
 }
 
+// Whether the operator's chosen family is one the app bundles. An unset family is
+// bundled — it falls through to the default (IBM Plex Mono), which ships with the
+// binary. This gates ligatures: the addon reads its ligature data from the font,
+// so a family the app does not bundle has no asset to point it at.
+function isBundledFont(family: string | undefined): boolean {
+  const name = family?.trim()
+  if (!name) return true
+  return name.toLowerCase() in BUNDLED_FONTS
+}
+
+// The terminal's renderer, and whether ligatures are active on it — the pure
+// decision the island mounts from (Seam 2). It is one code path because the two are
+// coupled: the WebGL renderer is the default, but the ligatures addon and WebGL
+// cannot coexist, so switching ligatures on is exactly what forces the terminal onto
+// the canvas renderer.
+export type TerminalRenderer = 'webgl' | 'canvas'
+
+export interface RendererChoice {
+  // 'webgl' is the GPU default; 'canvas' is what ligatures force. The DOM renderer
+  // is not chosen here — it is the runtime fallback the island drops to on a WebGL
+  // context loss, off this same 'webgl' choice.
+  renderer: TerminalRenderer
+  // Whether to load the ligatures addon at mount. True only when the pref is on
+  // *and* the resolved font is bundled; a non-bundled family suppresses it (and so
+  // leaves the terminal on WebGL).
+  ligatures: boolean
+}
+
+/**
+ * Resolve `TerminalPrefs` into the renderer/ligatures choice the terminal island
+ * mounts with. Pure over the prefs alone (no tokens, no DOM):
+ *
+ *   - **default** — WebGL, no ligatures. This is the zero-config terminal.
+ *   - **ligatures on, bundled font** — canvas + ligatures. The addon and WebGL
+ *     cannot coexist, so enabling ligatures forces the canvas renderer.
+ *   - **ligatures on, non-bundled font** — WebGL, no ligatures. Ligatures need a
+ *     bundled font to read their data from, so they are suppressed and the terminal
+ *     stays on the GPU renderer as if they were off.
+ *
+ * Because the island fully remounts on any prefs change, this is decided once per
+ * mount from the current prefs — there is no hot-swap between renderers.
+ */
+export function resolveRenderer(prefs: TerminalPrefs | undefined): RendererChoice {
+  const p = prefs ?? {}
+  const ligatures = p.ligatures === true && isBundledFont(p.fontFamily)
+  return { renderer: ligatures ? 'canvas' : 'webgl', ligatures }
+}
+
 // A font weight as xterm types it — a keyword or a number. `terminal.toml` carries
 // the weight as a normalised string (server-side); this maps it onto the option,
 // passing a keyword straight through and a numeric string ('600') as a number.

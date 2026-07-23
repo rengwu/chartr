@@ -64,6 +64,15 @@ type TerminalPrefs struct {
 	// any number.
 	LetterSpacing float64 `json:"letterSpacing,omitempty"`
 
+	// Ligatures enables the ligatures addon on this terminal. Tri-state: nil is unset
+	// (off — today's behaviour), an explicit value turns it on or off. Turning it on
+	// forces that terminal off the GPU (WebGL) renderer and onto the canvas renderer,
+	// because the ligatures addon and WebGL cannot coexist; the client also suppresses
+	// it unless the resolved font family is a bundled one (a non-bundled family has no
+	// asset to read ligature data from). Both of those decisions live at the resolve
+	// seam — this side only carries the flag.
+	Ligatures *bool `json:"ligatures,omitempty"`
+
 	// CursorStyle is the active-cursor shape — "block", "bar", or "underline". Empty
 	// is unset; any other value warns. CursorBlink is a tri-state (nil unset, so the
 	// island's alive-gated default stands); an explicit false stops the blink even on
@@ -195,6 +204,7 @@ type rawTermFont struct {
 	BoldWeight    interface{} `toml:"boldWeight"`
 	LineHeight    float64     `toml:"lineHeight"`
 	LetterSpacing float64     `toml:"letterSpacing"`
+	Ligatures     *bool       `toml:"ligatures"`
 }
 
 type rawTermCursor struct {
@@ -330,6 +340,9 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 	// LetterSpacing accepts any number — a negative value tightens the tracking and
 	// is legitimate, so there is nothing to validate; zero is unset.
 	prefs.LetterSpacing = raw.Font.LetterSpacing
+	// Ligatures is a boolean TOML rejects a non-boolean for, and an absent key stays
+	// nil (unset); the renderer/font gating it drives lives on the client.
+	prefs.Ligatures = raw.Font.Ligatures
 
 	prefs.CursorStyle = validEnum("cursor style", raw.Cursor.Style, cursorStyles, &warnings)
 	prefs.CursorBlink = raw.Cursor.Blink

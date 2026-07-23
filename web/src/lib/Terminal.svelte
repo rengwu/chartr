@@ -4,7 +4,12 @@
   import { FitAddon } from '@xterm/addon-fit'
   import '@xterm/xterm/css/xterm.css'
   import type { Terminal, TerminalPrefs } from './model'
-  import { buildTerminalOptions, terminalKeyAction, TERMINAL_NEWLINE } from './tokens'
+  import {
+    buildTerminalOptions,
+    resolveRenderer,
+    terminalKeyAction,
+    TERMINAL_NEWLINE,
+  } from './tokens'
 
   // The terminal is an imperative island: the Svelte chrome hosts it but never
   // reaches inside (ADR 0010). It owns one xterm.js instance and one binary
@@ -48,11 +53,20 @@
     // shell reflows to the column count it really has (spec, Scrollbar & padding).
     for (const [prop, value] of Object.entries(css)) host.style.setProperty(prop, value)
 
+    // The renderer/ligatures choice is decided once at the seam (spec, Renderer & the
+    // ligatures conflict) and read here before the terminal is constructed, because
+    // ligatures need a constructor option: the addon joins glyphs through xterm's
+    // `registerCharacterJoiner`, which is proposed API gated behind `allowProposedApi`.
+    // We only open that gate when ligatures are actually on, so the default terminal
+    // keeps the stable API surface.
+    const { renderer, ligatures } = resolveRenderer(prefs)
+
     const xterm = new Xterm({
       ...options,
       // The blink pref (default on) is gated by liveness: a dead shell never
       // blinks, so a frozen session reads as frozen regardless of the setting.
       cursorBlink: (options.cursorBlink ?? true) && term.alive,
+      allowProposedApi: ligatures,
     })
     const fit = new FitAddon()
     xterm.loadAddon(fit)
@@ -81,6 +95,38 @@
 
     xterm.open(grid)
     fit.fit()
+
+    // Renderer selection, decided once at the seam (spec, Renderer & the ligatures
+    // conflict). The WebGL (GPU) renderer is the default; enabling ligatures forces
+    // this terminal onto the canvas renderer instead, because the ligatures addon and
+    // WebGL cannot coexist. All three are bundled, lazily imported chunks (CLAUDE.md —
+    // no CDN, no runtime fetch), and loaded *after* open() so they attach to a live
+    // screen. The choice (`renderer`/`ligatures`) was resolved above, before the
+    // terminal was constructed; because the island fully remounts on any prefs change,
+    // it is made fresh at each mount with no hot-swap.
+    if (renderer === 'canvas') {
+      void import('@xterm/addon-canvas').then(({ CanvasAddon }) => {
+        xterm.loadAddon(new CanvasAddon())
+      })
+      // Ligatures ride the canvas renderer. The addon reads its ligature data from the
+      // local (bundled) font — it never fetches a font over the network — and the seam
+      // only asks for it when the resolved family is a bundled one.
+      if (ligatures) {
+        void import('@xterm/addon-ligatures').then(({ LigaturesAddon }) => {
+          xterm.loadAddon(new LigaturesAddon())
+        })
+      }
+    } else {
+      // WebGL by default. Wire the GPU context-loss event to dispose the addon, which
+      // drops xterm back to its built-in DOM renderer — so a backgrounded tab or a
+      // driver reset never leaves the terminal blank. Disposing the terminal disposes
+      // the addon with it, so cleanup needs no separate handle.
+      void import('@xterm/addon-webgl').then(({ WebglAddon }) => {
+        const webgl = new WebglAddon()
+        webgl.onContextLoss(() => webgl.dispose())
+        xterm.loadAddon(webgl)
+      })
+    }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(

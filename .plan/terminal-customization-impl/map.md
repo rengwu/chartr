@@ -76,6 +76,14 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   padding, an unpadded `.terminal-grid` is what xterm mounts into — because the fit
   addon measures its parent's *border*-box width, so a padded host would overflow
   instead of refitting. [ticket](tickets/04-scrollbar-padding-keybindings.md)
+- **05 — Renderer + ligatures.** `font.ligatures` (tri-state) drives one pure
+  Seam 2 decision, `resolveRenderer`: WebGL by default, canvas + ligatures when the
+  pref is on and the font is bundled, suppressed to WebGL for a non-bundled family.
+  The island lazily imports three bundled addons off that choice — `addon-webgl`
+  (with `onContextLoss` → dispose → DOM fallback) or `addon-canvas` +
+  `addon-ligatures`, the latter needing `allowProposedApi` for its character joiner.
+  No network font fetch. Driven live incl. the context-loss fallback.
+  [ticket](tickets/05-renderer-ligatures.md)
 
 ## Not yet specified
 

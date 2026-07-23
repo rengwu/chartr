@@ -334,6 +334,28 @@ left = 10
 	}
 }
 
+func TestTerminalPrefsReadsLigatures(t *testing.T) {
+	// The ticket-05 flag: `font.ligatures` is a tri-state boolean that lands verbatim
+	// and silently. The renderer/font gating it drives lives on the client — the parse
+	// only carries the flag.
+	yes := true
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[font]
+ligatures = true
+`))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid ligatures file warned: %v", warnings)
+	}
+	if !reflect.DeepEqual(prefs.Ligatures, &yes) {
+		t.Errorf("ligatures resolved to %v, want &true", prefs.Ligatures)
+	}
+	// Absent stays nil (unset — off), distinguishable from an explicit false.
+	none, _ := config.ResolveTerminalPrefs([]byte("[font]\nsize = 13\n"))
+	if none.Ligatures != nil {
+		t.Errorf("an absent ligatures key resolved to %v, want nil", none.Ligatures)
+	}
+}
+
 func TestTerminalPrefsMalformedFileWarnsAndDefaults(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte("this is not = = toml"))
 	if prefs != (config.TerminalPrefs{}) {

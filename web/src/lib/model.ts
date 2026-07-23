@@ -197,7 +197,8 @@ export interface Model {
 // size, and the two base theme colours; ticket 02 widened it to a named theme
 // preset plus the full slot set; ticket 03 adds the pass-through font, cursor,
 // scrolling, contrast, and glyph-width options; ticket 04 adds the scrollbar,
-// padding, and the keybinding/selection behaviours. The resolve seam
+// padding, and the keybinding/selection behaviours; ticket 05 adds the ligatures
+// toggle, which the resolve seam turns into the renderer choice. The resolve seam
 // (`buildTerminalOptions`) layers the theme as tokens → preset → explicit slots and
 // maps every other option onto the xterm options object. `preset` is a validated
 // bundled name (server-side); `selection` drives xterm's `selectionBackground`.
@@ -210,6 +211,12 @@ export interface TerminalPrefs {
   fontWeightBold?: string
   lineHeight?: number
   letterSpacing?: number
+
+  // Enables the ligatures addon. `resolveRenderer` turns it on only for a bundled
+  // font and forces that terminal onto the canvas renderer (WebGL off) — the
+  // ligatures addon and WebGL cannot coexist. It is an addon/renderer toggle, not
+  // an xterm option, so it is not part of buildTerminalOptions' output.
+  ligatures?: boolean
 
   cursorStyle?: string
   cursorBlink?: boolean

@@ -157,6 +157,7 @@ func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 		FontWeightBold: p.FontWeightBold,
 		LineHeight:     p.LineHeight,
 		LetterSpacing:  p.LetterSpacing,
+		Ligatures:      p.Ligatures,
 
 		CursorStyle:         p.CursorStyle,
 		CursorBlink:         p.CursorBlink,
