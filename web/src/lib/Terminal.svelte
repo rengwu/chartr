@@ -4,12 +4,15 @@
   import { FitAddon } from '@xterm/addon-fit'
   import '@xterm/xterm/css/xterm.css'
   import type { Terminal, TerminalPrefs } from './model'
+  import type { SearchAddon, ISearchOptions } from '@xterm/addon-search'
   import { openExternal } from './external'
+  import TerminalFind from './TerminalFind.svelte'
   import {
     buildTerminalOptions,
     resolveRenderer,
     terminalKeyAction,
     TERMINAL_NEWLINE,
+    terminalSearchDecorations,
   } from './tokens'
 
   // The terminal is an imperative island: the Svelte chrome hosts it but never
@@ -40,12 +43,75 @@
   let host: HTMLDivElement
   let grid: HTMLDivElement
 
+  // In-terminal find (ticket 07). The search addon lives inside the island; the find
+  // widget below in `.terminal-island` is chrome. These are the seam between them:
+  // the widget calls the handlers, they drive the addon, and the addon's result event
+  // flows back into the count/index the widget reads — the widget never touches the
+  // renderer (ADR 0010). All of it is transient UI, not config: the island fully
+  // remounts on any prefs/term change, so a fresh mount always starts closed.
+  let xtermRef: Xterm | undefined
+  let searchAddon: SearchAddon | undefined
+  let searchDecorations: NonNullable<ISearchOptions['decorations']> | undefined
+  let findOpen = $state(false)
+  let findQuery = $state('')
+  let findCase = $state(false)
+  let findCount = $state(0)
+  let findIndex = $state(-1)
+
+  // A findNext with `incremental` grows the current selection while the operator is
+  // still extending the same term; a plain findNext/findPrevious steps to the next
+  // hit. Every call carries the token-resolved decorations, because the addon only
+  // emits its result count (into `onDidChangeResults` below) when decorations are on.
+  function runFind(incremental: boolean) {
+    if (!searchAddon) return
+    if (!findQuery) {
+      searchAddon.clearDecorations()
+      findCount = 0
+      findIndex = -1
+      return
+    }
+    searchAddon.findNext(findQuery, {
+      caseSensitive: findCase,
+      incremental,
+      decorations: searchDecorations,
+    })
+  }
+  function onFindQuery(q: string) {
+    findQuery = q
+    runFind(true)
+  }
+  function findNext() {
+    if (searchAddon && findQuery)
+      searchAddon.findNext(findQuery, { caseSensitive: findCase, decorations: searchDecorations })
+  }
+  function findPrev() {
+    if (searchAddon && findQuery)
+      searchAddon.findPrevious(findQuery, {
+        caseSensitive: findCase,
+        decorations: searchDecorations,
+      })
+  }
+  function toggleFindCase() {
+    findCase = !findCase
+    runFind(true)
+  }
+  function closeFind() {
+    findOpen = false
+    searchAddon?.clearDecorations()
+    xtermRef?.focus()
+  }
+
   onMount(() => {
     // The resolve seam owns the theme and options; the island just hands the
     // result to xterm at mount. Green/yellow/blue/magenta/cyan have no chrome
     // token (the theme is otherwise monochrome plus `--destructive`), so those
     // ANSI slots come from the seam's default preset rather than any token.
     const { options, css } = buildTerminalOptions(prefs)
+
+    // The find widget's match-highlight colours, resolved from the design tokens once
+    // at the seam (no raw colour in the chrome; ADR 0012) and handed to the search
+    // addon on every query.
+    searchDecorations = terminalSearchDecorations()
 
     // The scrollbar and the padding have no xterm option, so they arrive as CSS
     // custom properties and land on the host — the chrome styling its own wrapper,
@@ -55,11 +121,7 @@
     for (const [prop, value] of Object.entries(css)) host.style.setProperty(prop, value)
 
     // The renderer/ligatures choice is decided once at the seam (spec, Renderer & the
-    // ligatures conflict) and read here before the terminal is constructed, because
-    // ligatures need a constructor option: the addon joins glyphs through xterm's
-    // `registerCharacterJoiner`, which is proposed API gated behind `allowProposedApi`.
-    // We only open that gate when ligatures are actually on, so the default terminal
-    // keeps the stable API surface.
+    // ligatures conflict) and read here before the terminal is constructed.
     const { renderer, ligatures } = resolveRenderer(prefs)
 
     const xterm = new Xterm({
@@ -67,8 +129,13 @@
       // The blink pref (default on) is gated by liveness: a dead shell never
       // blinks, so a frozen session reads as frozen regardless of the setting.
       cursorBlink: (options.cursorBlink ?? true) && term.alive,
-      allowProposedApi: ligatures,
+      // Proposed API is on for every terminal: two features need it — the find
+      // widget's match decorations (`registerDecoration`, ticket 07) on every
+      // terminal, and the ligatures addon's character joiner (`registerCharacterJoiner`,
+      // ticket 05) when ligatures are on. Find is universal, so this cannot be gated.
+      allowProposedApi: true,
     })
+    xtermRef = xterm
     const fit = new FitAddon()
     xterm.loadAddon(fit)
 
@@ -77,6 +144,19 @@
     // the island only obeys it — `input()` puts the bytes through the same onData
     // path a typed key takes, and returning false stops xterm submitting the line.
     xterm.attachCustomKeyEventHandler((ev) => {
+      // Cmd+F opens the find widget (ticket 07). Meta only — Ctrl+F is readline's
+      // forward-char in the shell, never ours to take — and returning false keeps
+      // the browser's own find bar from opening over the chrome.
+      if (
+        ev.type === 'keydown' &&
+        ev.metaKey &&
+        !ev.ctrlKey &&
+        !ev.altKey &&
+        (ev.key === 'f' || ev.key === 'F')
+      ) {
+        findOpen = true
+        return false
+      }
       if (terminalKeyAction(ev, prefs) !== 'newline') return true
       xterm.input(TERMINAL_NEWLINE)
       return false
@@ -102,6 +182,21 @@
     // every terminal gets it.
     void import('@xterm/addon-web-links').then(({ WebLinksAddon }) => {
       xterm.loadAddon(new WebLinksAddon((_ev, uri) => openExternal(uri)))
+    })
+
+    // The search addon behind the find widget (ticket 07): lazily imported and
+    // bundled like every other. It stays quiet until the operator opens find (Cmd+F,
+    // handled above); its result event feeds the widget's live count. If they opened
+    // find and typed before this chunk landed, run that pending query now.
+    void import('@xterm/addon-search').then(({ SearchAddon }) => {
+      const s = new SearchAddon()
+      xterm.loadAddon(s)
+      s.onDidChangeResults(({ resultIndex, resultCount }) => {
+        findIndex = resultIndex
+        findCount = resultCount
+      })
+      searchAddon = s
+      if (findOpen && findQuery) runFind(true)
     })
 
     xterm.open(grid)
@@ -200,4 +295,16 @@
 
 <div class="terminal-island" bind:this={host}>
   <div class="terminal-grid" bind:this={grid}></div>
+  {#if findOpen}
+    <TerminalFind
+      count={findCount}
+      index={findIndex}
+      caseSensitive={findCase}
+      onquery={onFindQuery}
+      onnext={findNext}
+      onprev={findPrev}
+      ontogglecase={toggleFindCase}
+      onclose={closeFind}
+    />
+  {/if}
 </div>

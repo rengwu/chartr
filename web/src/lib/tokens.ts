@@ -1,4 +1,5 @@
 import type { ITheme, ITerminalOptions } from '@xterm/xterm'
+import type { ISearchOptions } from '@xterm/addon-search'
 import type { TerminalPrefs } from './model'
 
 // Token bridge — the seam between the design-system CSS tokens and the two
@@ -508,6 +509,32 @@ const PADDING_SIDES: ReadonlyArray<readonly [keyof TerminalPrefs, string]> = [
   ['paddingBottom', 'bottom'],
   ['paddingLeft', 'left'],
 ]
+
+/**
+ * The colours the in-terminal find widget paints its match decorations with,
+ * resolved from the design tokens at the seam (Seam 2's colour bridge) — never
+ * inlined into the search addon as raw hex (no raw colour in the chrome; ADR 0012).
+ * The active match rides `--primary`, the emphasis token, so the current hit stands
+ * out from the muted highlight every other match carries; borders and the overview
+ * ruler track the same two tones. Concrete colours are read off the live document so
+ * the highlight tracks the current theme exactly as the ITheme resolve does (ADR
+ * 0010). The search addon owns the highlight overlay; this only hands it colour.
+ */
+export function terminalSearchDecorations(
+  el: Element = document.documentElement,
+): NonNullable<ISearchOptions['decorations']> {
+  const primary = readColor('--primary', el)
+  const ring = readColor('--ring', el)
+  const muted = readColor('--muted-foreground', el)
+  return {
+    matchBackground: readColor('--muted', el),
+    matchBorder: muted,
+    matchOverviewRuler: muted,
+    activeMatchBackground: primary,
+    activeMatchBorder: ring,
+    activeMatchColorOverviewRuler: primary,
+  }
+}
 
 /**
  * What a key event means to the terminal — the pure `event → action` half of the

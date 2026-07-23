@@ -94,6 +94,16 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   sides hold an http(s)-only allowlist, because a clicked URL is text an agent
   printed and `open` would launch an app for `file:` or a custom scheme. Not driven
   live — no Chrome extension this session. [ticket](tickets/06-links-shell-hook.md)
+- **07 — In-terminal find (Cmd+F).** Frontend-only (find is transient UI, not
+  config). A bundled, lazily imported search addon behind `TerminalFind.svelte` — a
+  token + primitive + Phosphor widget floating at the island's top-right that owns
+  only its input and drives the addon through `Terminal.svelte` (ADR 0010).
+  Cmd+F opens/focuses (meta only), Enter/Shift+Enter cycle, "Aa" toggles case, Esc
+  closes and clears; the live count/index ride `onDidChangeResults`, and the match
+  colours resolve from tokens at the seam (`terminalSearchDecorations`). The match
+  decorations use `registerDecoration` (xterm proposed API), so `allowProposedApi` is
+  now on for every terminal, not gated to ligatures. Driven live.
+  [ticket](tickets/07-in-terminal-find.md)
 
 ## Not yet specified
 
