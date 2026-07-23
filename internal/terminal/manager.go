@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/terminal/detect"
 )
 
 // ErrNoTerminal is returned when an id names no live terminal — it never
@@ -34,32 +35,36 @@ type Manager struct {
 	seq      int
 	onChange func()
 
-	// quietAfter is how long a session's PTY may stay silent before the sampler
-	// marks it quiet (ticket 10). Held here so the whole manager samples on one
-	// threshold; the server sets it (short in tests, a calm default in production).
-	quietAfter time.Duration
-
 	stop     chan struct{}
 	stopOnce sync.Once
 }
 
-// sampleInterval is how often the manager re-reads each live shell's foreground
-// process and activity. Fast enough that a shell going busy or idle refreshes
-// the sidebar promptly, slow enough that the poll — one ioctl per shell, and a
-// `ps` only when a new command takes the foreground — costs nothing noticeable.
-const sampleInterval = 900 * time.Millisecond
+// The sampler's two cadences. A tab with a known agent in its foreground is the
+// demanding one: it wants roughly three samples inside the second so the
+// publishing hysteresis can confirm an idle without the indicator feeling
+// sluggish. A tab without one is answering the same question it always did — is a
+// command in the foreground — and re-reading that three times a second buys
+// nothing while costing every open tab a wakeup, so it keeps the old cadence.
+//
+// The loop ticks at the fast rate and samples the slow tabs every shellSampleEvery
+// ticks. The cost of the split is identification latency: a shell that has just
+// launched an agent is noticed within one slow tick, and sampled fast from then on.
+const (
+	sampleInterval   = 300 * time.Millisecond
+	shellSampleEvery = 3 // 300ms × 3 ≈ the 900ms cadence shells have always had
+)
+
+// agentEngine is the parsed set of shipped agent manifests, built once for the
+// whole process. The manifests are embedded and static, so this cannot fail at
+// runtime.
+var agentEngine = detect.Builtin()
 
 // NewManager builds an empty Manager. onChange is called after a terminal is
-// opened or ends, and whenever a live shell's activity changes; a nil onChange
+// opened or ends, and whenever a live tab's activity changes; a nil onChange
 // is tolerated (the manager is usable without a push, as in a focused unit
 // test) and, with no one to notify, the background sampler is not started.
-// quietAfter is the session silence threshold; a non-positive value falls back to
-// defaultQuietAfter so a zero value is never mistaken for "quiet immediately".
-func NewManager(onChange func(), quietAfter time.Duration) *Manager {
-	if quietAfter <= 0 {
-		quietAfter = defaultQuietAfter
-	}
-	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange, quietAfter: quietAfter}
+func NewManager(onChange func()) *Manager {
+	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange}
 	if onChange != nil {
 		m.stop = make(chan struct{})
 		go m.sampleLoop()
@@ -67,32 +72,28 @@ func NewManager(onChange func(), quietAfter time.Duration) *Manager {
 	return m
 }
 
-// defaultQuietAfter is the silence a session may keep before the sampler marks it
-// quiet when the server names no other threshold. Long enough that an agent
-// thinking, compiling, or waiting on a slow tool is not dressed as stuck; the hint
-// is a nudge, never an alarm, and never enacted (ticket 10).
-const defaultQuietAfter = 45 * time.Second
-
 // sampleLoop re-samples every live shell on a fixed cadence and pushes a fresh
 // model only when something changed, so a shell going busy or idle drives the
 // sidebar with no filesystem or socket event behind it. It runs until Shutdown.
 func (m *Manager) sampleLoop() {
 	tick := time.NewTicker(sampleInterval)
 	defer tick.Stop()
-	for {
+	for n := uint64(0); ; n++ {
 		select {
 		case <-m.stop:
 			return
 		case <-tick.C:
-			m.sampleOnce()
+			m.sampleOnce(n%shellSampleEvery == 0)
 		}
 	}
 }
 
-// sampleOnce samples every current terminal off the manager lock (sampling may
+// sampleOnce samples the current terminals off the manager lock (sampling may
 // exec to resolve a process name, which must not block Open/Close/ForSpace) and
-// pushes once if any shell's activity changed.
-func (m *Manager) sampleOnce() {
+// pushes once if any tab's activity changed. slowTick says whether this is one of
+// the ticks on which tabs with no identified agent are sampled too; agent-bearing
+// tabs are sampled on every tick.
+func (m *Manager) sampleOnce(slowTick bool) {
 	m.mu.Lock()
 	terms := make([]*Terminal, 0, len(m.terms))
 	for _, id := range m.order {
@@ -104,7 +105,10 @@ func (m *Manager) sampleOnce() {
 
 	changed := false
 	for _, t := range terms {
-		if t.sample(m.quietAfter) {
+		if !slowTick && !t.hasAgent() {
+			continue
+		}
+		if t.sample(agentEngine) {
 			changed = true
 		}
 	}
@@ -192,10 +196,11 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 // seated as a plain tab under spaceID — the ideate on-ramp (ticket 15). It shares
 // OpenSession's launch and opener mechanics but carries no Session: the ideate
 // on-ramp is deliberately not a session (spec, State model — "ticketless, live,
-// sharing only the adapter's spawn primitive"), so this tab reads
-// exactly like an ad-hoc shell — idle/working/exited, never the session grammar's
-// quiet hint — and never counts toward the one-live-session-per-space limit
-// OpenSession enforces. id is chosen by the caller, matching OpenSession's style,
+// sharing only the adapter's spawn primitive"), so it never counts toward the
+// one-live-session-per-space limit OpenSession enforces and never freezes dead the
+// way a session does. Its activity reads like any other tab's: the agent grammar
+// if a known agent holds the foreground (it usually does), the shell grammar
+// otherwise. id is chosen by the caller, matching OpenSession's style,
 // so the tab and the gitignored prompt file it points at share one identity.
 func (m *Manager) OpenIdeate(spaceID, cwd, id, name string, args []string, opener string) (*Terminal, error) {
 	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, title: "ideate"})
@@ -310,9 +315,9 @@ func (m *Manager) Lookup(id string) (Info, bool) {
 // Info is one terminal's public shape on the pushed model: enough for a session
 // row — its tab title, the process in its foreground, its activity, and its
 // liveness — never the PTY itself. Session is set when the tab is a session (a
-// PTY bound to a ticket), nil for an ad-hoc shell. Silent is the sampler's raw
-// silence verdict for a live session (quiet past the threshold); the server, which
-// alone knows the role's AFK-ness, turns it into the tab's final quiet reading.
+// PTY bound to a ticket), nil for an ad-hoc shell. Status is the sampler's final
+// word: the agent grammar's reading where an agent holds the foreground, the shell
+// grammar's otherwise, with nothing left for the server to fold in.
 type Info struct {
 	ID      string
 	SpaceID string
@@ -320,14 +325,13 @@ type Info struct {
 	Proc    string
 	Status  string
 	Alive   bool
-	Silent  bool
 	Session *Session
 }
 
 // info snapshots one terminal's public shape under its own lock.
 func (t *Terminal) info() Info {
 	t.mu.Lock()
-	alive, proc, state, silent := t.alive, t.proc, t.state, t.silent
+	alive, proc, state := t.alive, t.proc, t.state
 	t.mu.Unlock()
 	if proc == "" {
 		proc = t.Title
@@ -335,7 +339,7 @@ func (t *Terminal) info() Info {
 	if state == "" {
 		state = model.TerminalIdle
 	}
-	return Info{ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Silent: silent, Session: t.session}
+	return Info{ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Session: t.session}
 }
 
 // ForSpace returns the space's terminals in creation order, so sessions seat top

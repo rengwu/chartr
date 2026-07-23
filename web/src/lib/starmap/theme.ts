@@ -8,7 +8,7 @@
 // ticket is open, claimed, resolved, or out_of_scope, with a `frontier` flag
 // splitting open into the takeable edge and the still-blocked interior. That is
 // exactly five visual states, and this module maps the derived status onto them.
-// Session liveness (working / quiet / dead) is a strictly-additive overlay a
+// Session liveness (working / blocked / dead) is a strictly-additive overlay a
 // later ticket layers on top — this palette is only the base star.
 
 import type { Ticket } from '../model'

@@ -71,10 +71,17 @@ export function spaceHaltTarget(space: Space): { mapSlug: string; ticketNum: num
 // at one) — a weaker signal than `spaceAttention`, and independent of it: a
 // session can be working on one ticket while another sits halted, so both may
 // be true for the same space at once.
-export type Liveness = 'working' | 'quiet' | null
+//
+// `blocked` — the agent has stopped on a permission prompt and is waiting on its
+// human — takes the slot the old `quiet` hint held, which measured PTY silence and
+// never fired for the TUI agents it was written for. The precedence is left exactly
+// as it was: how `blocked` folds into the attention grammar, and whether it
+// outranks a working session, is deliberately not decided here (map, Not yet
+// specified — Notifications).
+export type Liveness = 'working' | 'blocked' | null
 
 export function spaceLiveness(space: Space): Liveness {
   if (space.terminals.some((t) => t.session && t.status === 'working')) return 'working'
-  if (space.terminals.some((t) => t.session && t.status === 'quiet')) return 'quiet'
+  if (space.terminals.some((t) => t.session && t.status === 'blocked')) return 'blocked'
   return null
 }

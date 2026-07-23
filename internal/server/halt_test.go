@@ -43,10 +43,15 @@ func decodeResume(t *testing.T, body string) struct {
 // agent that dies on cue, chartr detects the death, pins the dead session to
 // its ticket with scrollback intact, and does nothing on its own — the operator
 // resolves it exactly three ways (resume, respawn, release), each an HTTP action,
-// so the absence of autonomous action is asserted, not assumed. Separately: the
-// "quiet" hint appears only for an AFK session silent past the threshold, and a
+// so the absence of autonomous action is asserted, not assumed. Separately: a
 // dirtied tree badges while a spawn still proceeds. Every
 // assertion is on what the design makes public — snapshots, the filesystem, git.
+//
+// The "quiet" hint this file used to assert is gone (agent-state-detection ticket
+// 01): it measured PTY silence, which any cursor blink resets, so it never fired
+// for the TUI agents it was written for. A tab's activity now comes from the
+// evidence the agent broadcasts about itself, asserted where that lives — the
+// engine table test and the process-boundary test in internal/terminal.
 
 // commitCount is the number of commits reachable from HEAD — one after a claim,
 // two once a release or a re-claim appends its own commit.
@@ -302,46 +307,11 @@ func TestHaltRefusesLiveSession(t *testing.T) {
 	}
 }
 
-// Quiet is a hint for the AFK case only: an implement (AFK) session silent past
-// the threshold reads quiet, while a grill (HITL) session — supposed to sit idle
-// waiting on its human — never does.
-func TestQuietOnlyForAFKPastThreshold(t *testing.T) {
-	h := chartrtest.Start(t, chartrtest.WithQuietAfter(150*time.Millisecond))
-
-	// One shared stub `claude` on PATH — the adapter both grill and implement bind
-	// to — that stays live and silent.
-	chartrtest.StubAgent(t, "claude")
-
-	// AFK space: an implementation map, spawn implement.
-	afk := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteMap(t, afk, "widget", mapBody)
-	chartrtest.WriteTicket(t, afk, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	afkID := register(t, h, afk).ID
-
-	// HITL space: a planning map, spawn grill.
-	hitl := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteMap(t, hitl, "plan", mapBody)
-	chartrtest.WriteTicket(t, hitl, "plan", "01-q.md", ticket(1, "Q", "[]", "question", ""))
-	hitlID := register(t, h, hitl).ID
-
-	mustSpawn(t, h, afkID, "widget", 1, "implement")
-	mustSpawn(t, h, hitlID, "plan", 1, "grill")
-
-	c, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	// The AFK session crosses into quiet once it is silent past the threshold.
-	h.SnapshotUntil(c, func(m model.Model) bool {
-		tab := sessionTab(findSpace(t, m, afkID))
-		return tab != nil && tab.Status == model.TerminalQuiet
-	})
-
-	// The HITL session, silent the same while, shows nothing — never quiet.
-	if tab := sessionTab(findSpace(t, h.Snapshot(ctx(t)), hitlID)); tab == nil || tab.Status == model.TerminalQuiet {
-		t.Errorf("idle grilling (HITL) session wrongly reads quiet: %+v", tab)
-	}
-
-}
+// The `quiet` hint this file used to assert is gone (agent-state-detection ticket
+// 01). It measured PTY silence, which any cursor blink resets, so it never fired
+// for the TUI agents it was written for; a tab's activity now comes from the
+// evidence the agent broadcasts about itself, and is asserted where that lives —
+// the engine table test and the process-boundary test in internal/terminal.
 
 // A dirtied working tree — debris a session or an ad-hoc shell left behind — is a
 // badge, never a spawn gate: the space reports dirty, and a spawn into it still

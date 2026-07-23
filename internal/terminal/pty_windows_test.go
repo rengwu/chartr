@@ -21,7 +21,7 @@ import (
 // the go-pty ConPTY binding, the pump loop, or the broadcast fan-out all surface
 // here.
 func TestConPTYRoundTrip(t *testing.T) {
-	m := NewManager(nil, 0) // nil onChange: no background sampler; we only need the round-trip.
+	m := NewManager(nil) // nil onChange: no background sampler; we only need the round-trip.
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)

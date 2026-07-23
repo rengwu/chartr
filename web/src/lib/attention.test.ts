@@ -154,8 +154,8 @@ describe('the sidebar echo', () => {
     expect(spaceLiveness(s)).toBe('working')
   })
 
-  it('prefers working over quiet, and is null with no live session', () => {
-    expect(spaceLiveness(space('s', { terminals: [workingTerminal('m', 1, 'quiet')] }))).toBe('quiet')
+  it('prefers working over blocked, and is null with no live session', () => {
+    expect(spaceLiveness(space('s', { terminals: [workingTerminal('m', 1, 'blocked')] }))).toBe('blocked')
     expect(spaceLiveness(space('s', { terminals: [] }))).toBe(null)
   })
 })

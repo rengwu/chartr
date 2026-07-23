@@ -199,9 +199,9 @@ const SESSION_LIFECYCLE: Array<{
     sessions: { 3: 'implementing' },
   },
   {
-    what: 'quiet',
+    what: 'blocked',
     tickets: beat({ 1: 'resolved', 2: 'resolved', 3: 'claimed' }),
-    sessions: { 3: 'quiet' },
+    sessions: { 3: 'blocked' },
   },
   {
     what: 'dead',
@@ -253,7 +253,7 @@ describe('the session overlay on the seam', () => {
 
     sm.setModel(SESSION_LIFECYCLE[1].tickets, SESSION_LIFECYCLE[1].sessions)
     expect(sm.ticker()).toContain('#03')
-    expect(sm.ticker()).toContain('quiet')
+    expect(sm.ticker()).toContain('blocked')
 
     // A push that changes nothing says nothing — the map goes calm again.
     const held = sm.ticker()

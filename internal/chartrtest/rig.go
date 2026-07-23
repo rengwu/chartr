@@ -60,14 +60,6 @@ func WithConfigDir(dir string) Option {
 	return func(o *server.Options) { o.ConfigDir = dir }
 }
 
-// WithQuietAfter sets the session silence threshold (ticket 10). Tests set it
-// short so an AFK session's "quiet" hint is crossable within a test rather than
-// after the calm production default. It is the real config knob, tuned down — not
-// a test-only seam.
-func WithQuietAfter(d time.Duration) Option {
-	return func(o *server.Options) { o.QuietAfter = d }
-}
-
 // Start launches chartr on a random loopback port and registers cleanup that
 // shuts it down when the test ends. It fails the test on any startup error.
 func Start(t testing.TB, opts ...Option) *Chartr {

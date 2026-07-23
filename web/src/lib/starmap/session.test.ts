@@ -31,10 +31,10 @@ describe('deriving the session overlay from a pushed snapshot', () => {
     const m = map(ticket(1, 'claimed'), ticket(2, 'claimed'), ticket(3, 'claimed'))
     const states = sessionStates(m, [
       tab(1, 'implement', 'working', true),
-      tab(2, 'implement', 'quiet', true),
+      tab(2, 'implement', 'blocked', true),
       tab(3, 'implement', 'dead', false),
     ])
-    expect(states).toEqual({ 1: 'implementing', 2: 'quiet', 3: 'dead' })
+    expect(states).toEqual({ 1: 'implementing', 2: 'blocked', 3: 'dead' })
   })
 
   it('says nothing about a ticket no session holds', () => {
@@ -61,7 +61,7 @@ describe('deriving the session overlay from a pushed snapshot', () => {
 })
 
 describe('the grammar', () => {
-  const ALL: SessionState[] = ['implementing', 'quiet', 'dead']
+  const ALL: SessionState[] = ['implementing', 'blocked', 'dead']
 
   it('carries a non-colour channel for every state', () => {
     // Motion or shape, never colour alone: each state names at least one, and no

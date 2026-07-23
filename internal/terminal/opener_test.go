@@ -27,7 +27,7 @@ func TestTypedOpenerSubmitsWithCarriageReturn(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
 	agent := rawModeAgent(t, log)
 
-	m := NewManager(nil, time.Second)
+	m := NewManager(nil)
 	defer m.Shutdown()
 
 	const opener = "Read the file /tmp/payload.md in full"
@@ -54,7 +54,7 @@ func TestEmptyOpenerTypesNothing(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
 	agent := rawModeAgent(t, log)
 
-	m := NewManager(nil, time.Second)
+	m := NewManager(nil)
 	defer m.Shutdown()
 
 	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, "", Session{

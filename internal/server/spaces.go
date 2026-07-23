@@ -275,13 +275,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []s
 				Role:      info.Session.Role,
 				Agent:     info.Session.Agent,
 			}
-			// The quiet hint is the server's call, not the terminal's: the sampler
-			// reports raw silence, and here — where the role is in hand — that silence
-			// becomes "quiet" only for an AFK role. An idle grilling session shows
-			// nothing (spec, Sessions and adapters; stories 34–35).
-			if info.Silent && config.RoleIsAFK(info.Session.Role) {
-				term.Status = model.TerminalQuiet
-			}
 		}
 		terminals = append(terminals, term)
 	}

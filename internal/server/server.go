@@ -34,10 +34,6 @@ type Options struct {
 	// library (ADR 0009's content half). Defaults to the OS user config dir; tests
 	// point it at a temp dir so a developer's own library never leaks into a run.
 	ConfigDir string
-	// QuietAfter is how long a session's PTY may stay silent before an AFK session
-	// reads quiet (ticket 10). Zero takes the manager's calm default; tests set it
-	// short so the threshold is crossable within a test.
-	QuietAfter time.Duration
 }
 
 // Server is a single operator's chartr backend. Construct with New, then run
@@ -95,7 +91,7 @@ func New(opts Options) (*Server, error) {
 	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
-	s.terms = terminal.NewManager(s.rebuild, opts.QuietAfter)
+	s.terms = terminal.NewManager(s.rebuild)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)

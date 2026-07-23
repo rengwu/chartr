@@ -11,3 +11,8 @@ import "github.com/aymanbagabas/go-pty"
 func foreground(p pty.Pty) int { return 0 }
 
 func procName(pid int) string { return "" }
+
+// With no foreground-process-group notion there is no group to enumerate, so
+// agent identification finds nothing and every Windows tab reads the shell
+// grammar — the same Unix-only refinement foreground/procName already are.
+func procGroupNames(pgid int) []string { return nil }

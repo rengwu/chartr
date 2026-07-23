@@ -730,7 +730,7 @@ export class StarMap {
     }
 
     const moonCol = frozen ? SESSION_HUE.dead : SESSION_HUE.session
-    // Quiet blinks: the moon fades in and out as it crawls, so the hint reads
+    // A blocked session blinks: the moon fades in and out as it crawls, so it reads
     // even where the crawl is too slow to see.
     const moonA = gm.marks.includes('blink') ? 0.35 + 0.3 * Math.sin(t * 1.2) : frozen ? 0.9 : 0.95
     g.fillStyle = hexA(moonCol, moonA)

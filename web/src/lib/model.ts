@@ -64,14 +64,19 @@ export interface Map {
   malformations?: string[]
 }
 
-// A terminal's live activity (mirrors the Go model.Terminal* states). An ad-hoc
-// shell reads idle at the prompt (a tick), working while a foreground command runs
-// (a spinner), or exited once the shell is gone. A session tab reads the session
-// grammar instead (ticket 10): working while live and producing, quiet when an AFK
-// session has fallen silent past the threshold with no answer written yet (a hint,
-// never an alarm), and dead once its process exits — a dead session freezes pinned
-// to its ticket rather than vanishing, awaiting the operator's halt choice.
-export type TerminalStatus = 'idle' | 'working' | 'exited' | 'quiet' | 'dead'
+// A terminal's live activity (mirrors the Go model.Terminal* states). Which
+// grammar a tab reads on follows what holds its PTY's foreground, not whether it
+// is a session.
+//
+// A tab with no known agent in front reads the shell grammar: idle at the prompt
+// (a tick), working while a foreground command runs (a spinner), exited once the
+// process is gone. A tab with a known agent reads that agent's own broadcast
+// state: idle when it is present but not generating, working while it is, and
+// blocked when it has stopped on a permission prompt and is waiting on its human —
+// the one state worth an operator's attention. `dead` belongs to sessions: a dead
+// session freezes pinned to its ticket rather than vanishing, awaiting the
+// operator's halt choice.
+export type TerminalStatus = 'idle' | 'working' | 'exited' | 'blocked' | 'dead'
 
 // Session is a tab's ticket binding when it is a session — a PTY running an agent
 // against exactly one ticket (ticket 09) — rather than an ad-hoc shell. It names

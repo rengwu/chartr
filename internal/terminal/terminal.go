@@ -23,6 +23,7 @@ import (
 	"github.com/aymanbagabas/go-pty"
 
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/terminal/detect"
 )
 
 // scrollbackCap bounds the server-side replay buffer per terminal. Raw PTY bytes
@@ -96,25 +97,36 @@ type Terminal struct {
 	// operator to resume/respawn/release, but a session the operator closed — like
 	// any ad-hoc shell — drops from the model (ticket 10).
 	killed bool
-	// lastActivity is when this PTY last produced output. Silence past a threshold
-	// is what earns an AFK session the "quiet" hint (ticket 10); it is refreshed on
-	// every chunk broadcast, so any agent output — even a spinner redraw — resets it.
+	// lastActivity is when this PTY last produced output, refreshed on every chunk
+	// broadcast. It is no longer an activity signal — a TUI repaints its cursor
+	// forever, which is why the silence heuristic was retired — but awaitReady still
+	// reads it to tell a TUI that has finished painting from one still coming up.
 	lastActivity time.Time
 	// spoke records that this PTY has produced at least one byte. lastActivity is
-	// seeded at launch (so silence is measured from there), which makes it unable to
-	// tell "has drawn nothing yet" from "has been quiet a while" — the distinction
-	// awaitReady needs to know a TUI is up rather than merely slow to start.
+	// seeded at launch, which makes it unable to tell "has drawn nothing yet" from
+	// "has been still a while" — the distinction awaitReady needs to know a TUI is
+	// up rather than merely slow to start.
 	spoke bool
 	// proc/state are the last sampled foreground process and activity (one of the
-	// model.Terminal* states); lastPgrp caches the foreground group so a name is
-	// only re-resolved when the foreground actually changes. silent is the last
-	// sampled silence verdict for a session (alive and quiet past the threshold),
-	// which the server folds together with the role to decide whether the tab
-	// actually reads quiet.
+	// model.Terminal* states); lastPgrp caches the foreground group so the group is
+	// only re-read when the foreground actually changes.
 	proc     string
 	state    string
 	lastPgrp int
-	silent   bool
+
+	// The agent grammar's state, all guarded by mu.
+	//
+	// oscTitle/oscProgress are the latest OSC values the read loop sniffed out of
+	// the PTY — the evidence the agent broadcasts about itself. They are cleared
+	// whenever the foreground agent changes, so one agent never inherits another's.
+	//
+	// agent is the identified foreground agent ("" when none), and pub carries that
+	// agent's publishing hysteresis. Both are reseated when the identified agent
+	// changes.
+	oscTitle    string
+	oscProgress string
+	agent       string
+	pub         *publisher
 }
 
 // subscriber is one attached terminal socket. Down-frames are delivered through
@@ -191,12 +203,15 @@ func (t *Terminal) awaitReady(settle, grace time.Duration) bool {
 	deadline := time.Now().Add(grace)
 	for {
 		t.mu.Lock()
-		alive, spoke, quiet := t.alive, t.spoke, time.Since(t.lastActivity)
+		// `still` is how long this PTY has drawn nothing. It is a readiness signal
+		// only — not the retired silence heuristic, which tried to read *activity*
+		// off the same clock and could not, because a TUI repaints forever.
+		alive, spoke, still := t.alive, t.spoke, time.Since(t.lastActivity)
 		t.mu.Unlock()
 		switch {
 		case !alive:
 			return false
-		case spoke && quiet >= settle, time.Now().After(deadline):
+		case spoke && still >= settle, time.Now().After(deadline):
 			return true
 		}
 		time.Sleep(poll)
@@ -232,12 +247,19 @@ func (t *Terminal) broadcast(chunk []byte) {
 // the shell exits, then reaps the process and runs cleanup: it marks the
 // terminal dead, wakes every attached socket, closes the PTY, and calls done
 // (which drops the terminal from its Manager and pushes a fresh model).
+//
+// It is also where OSC sniffing happens, on the one goroutine that already sees
+// every byte. The scanner lives across iterations because a title genuinely splits
+// across two Reads, and it retains only the latest value of each — the sampler
+// reads those, not the stream.
 func (t *Terminal) pump(done func()) {
 	buf := make([]byte, 4096)
+	var osc oscScanner
 	for {
 		n, err := t.pty.Read(buf)
 		if n > 0 {
 			t.broadcast(buf[:n])
+			osc.scan(buf[:n], t.setOSCTitle, t.setOSCProgress)
 		}
 		if err != nil {
 			break
@@ -368,9 +390,10 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	}
 	state := model.TerminalIdle
 	if spec.session != nil {
-		// A session reads the session grammar, not a shell's idle/working: seat it
-		// as working until the first sample decides otherwise, so a just-spawned
-		// session orbits rather than flashing a spurious idle tick.
+		// Seat a session as working until the first sample decides otherwise, so a
+		// just-spawned session orbits rather than flashing a spurious idle tick while
+		// its agent boots. The agent grammar's startup grace holds the same line once
+		// the agent is identified.
 		state = model.TerminalWorking
 	}
 	return &Terminal{
@@ -384,8 +407,8 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		subs:     make(map[*subscriber]struct{}),
 		alive:    true,
 		done:     make(chan struct{}),
-		// Seed silence from launch, so an AFK session that never emits a byte still
-		// crosses into quiet once the threshold elapses.
+		// Seed from launch so awaitReady measures stillness from the moment the
+		// process started rather than from an unset zero time.
 		lastActivity: time.Now(),
 		// Seat the initial view under the tab's own name before the first sample.
 		proc:  title,
@@ -402,64 +425,195 @@ func newTerminal(id, spaceID, cwd string) (*Terminal, error) {
 // start begins the read loop; cleanup runs once the shell exits.
 func (t *Terminal) start(cleanup func()) { go t.pump(cleanup) }
 
-// sample recomputes a tab's activity, returning whether it changed since the last
-// sample. The manager's sampler loop calls it off the manager lock, and a change
-// is what triggers a fresh model push — so a shell going busy, or an AFK session
-// falling silent, updates the sidebar on its own with no filesystem or socket
-// event behind it. A session reads on output silence (its agent holds the PTY's
-// foreground for its whole life, so a shell's foreground-group signal says
-// nothing); an ad-hoc shell reads on its foreground group as before.
-func (t *Terminal) sample(quietAfter time.Duration) bool {
-	if t.session != nil {
-		return t.sampleSession(quietAfter)
-	}
-	return t.sampleShell()
-}
-
-// sampleSession recomputes a session tab: dead once its process exits, otherwise
-// working, with a silence verdict (alive and quiet past the threshold) the server
-// folds together with the role to decide whether it actually reads quiet. The
-// quiet decision is deliberately not made here — the terminal knows the silence
-// but not the role's AFK-ness — so a threshold crossing still pushes, and the
-// server has the last word.
-func (t *Terminal) sampleSession(quietAfter time.Duration) bool {
+// hasAgent reports whether a known agent currently holds this tab's foreground —
+// the one bit the sampler needs to decide which cadence this tab is on, cheap
+// enough to ask on every tick.
+func (t *Terminal) hasAgent() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	state, silent := model.TerminalWorking, false
-	if !t.alive {
-		state = model.TerminalDead
-	} else {
-		silent = time.Since(t.lastActivity) > quietAfter
-	}
-	if state == t.state && silent == t.silent {
-		return false
-	}
-	t.state, t.silent = state, silent
-	return true
+	return t.agent != ""
 }
 
-// sampleShell recomputes an ad-hoc shell's foreground process and activity. The
-// exec that resolves a process name happens outside the terminal lock, and only
-// when the foreground group actually changes, so a busy shell doesn't pay for it
-// every tick.
-func (t *Terminal) sampleShell() bool {
+// setOSCTitle / setOSCProgress retain the latest OSC value the read loop sniffed.
+// They are the only writers; the sampler reads them under the same lock.
+func (t *Terminal) setOSCTitle(s string) {
 	t.mu.Lock()
-	alive := t.alive
-	prevPgrp := t.lastPgrp
-	prevProc := t.proc
+	t.oscTitle = s
+	t.mu.Unlock()
+}
+
+func (t *Terminal) setOSCProgress(s string) {
+	t.mu.Lock()
+	t.oscProgress = s
+	t.mu.Unlock()
+}
+
+// sample recomputes a tab's activity, returning whether it changed since the last
+// sample. The manager's sampler loop calls it off the manager lock, and a change
+// is what triggers a fresh model push — so a tab going busy or idle updates the
+// sidebar on its own with no filesystem or socket event behind it.
+//
+// There is one grammar, not two. A tab is resolved to a known agent or to nothing,
+// and a known agent reads the *agent* grammar — its own broadcast evidence, through
+// the rule engine and the publishing hysteresis — whether or not the tab carries a
+// Session. The reported bug was an ad-hoc shell running `claude`, which is exactly
+// the case a session-only grammar could not reach.
+//
+// Only *how* a tab is resolved differs, and only because the answer is already
+// known for one of them: a session's agent comes from the binding chartr recorded
+// when it launched it, while an ad-hoc shell's has to be read off whatever holds
+// the PTY's foreground. Everything downstream of the resolution is shared.
+func (t *Terminal) sample(eng *detect.Engine) bool {
+	t.mu.Lock()
+	alive, isSession := t.alive, t.session != nil
+	prevPgrp, prevAgent := t.lastPgrp, t.agent
 	t.mu.Unlock()
 
 	if !alive {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		if t.state == model.TerminalExited {
-			return false
-		}
-		t.state, t.proc = model.TerminalExited, t.Title
-		return true
+		return t.sampleGone(isSession)
 	}
 
+	// A session does not need to be identified by inspection: chartr launched its
+	// agent and recorded which adapter it ran, so the binding *is* the answer. That
+	// is both cheaper and steadier than reading the PTY — and it keeps the ioctl and
+	// the `ps` off session PTYs entirely, as they always were.
+	if isSession {
+		agent := ""
+		if a := t.session.Agent; eng.Known(a) {
+			agent = a
+		}
+		t.seatAgent(agent, prevAgent)
+		if agent != "" {
+			return t.sampleAgent(agent, eng)
+		}
+		// A session running an agent we ship no manifest for (kimi, opencode and pi
+		// are ticket 02's) is still an agent tab. The shell grammar cannot speak for
+		// it — a session's root process *is* the agent, so it holds the foreground
+		// for its whole life and the foreground-group signal would read a permanent,
+		// wrong "idle". It keeps what it has always read: working while alive.
+		return t.sampleUnknownSession()
+	}
+
+	// An ad-hoc shell is the case that has to be inspected: the operator typed
+	// something, and whatever holds the foreground decides which grammar the tab
+	// reads. The group is re-read only when the foreground actually changes, so a
+	// busy shell does not exec `ps` every tick.
+	//
+	// A non-positive pgrp means the platform could not tell us — not that the
+	// foreground went away. Treating it as "no agent" would drop the identification
+	// and reseat the hysteresis (restarting the startup grace) on every unreadable
+	// tick, which strobes. An unreadable foreground changes nothing instead.
 	pgrp := foreground(t.pty)
+	agent := prevAgent
+	if pgrp > 0 && pgrp != prevPgrp {
+		agent = eng.Identify(procGroupNames(pgrp))
+	}
+	t.seatAgent(agent, prevAgent)
+
+	if pgrp > 0 {
+		t.mu.Lock()
+		t.lastPgrp = pgrp
+		t.mu.Unlock()
+	}
+
+	if agent != "" {
+		return t.sampleAgent(agent, eng)
+	}
+	return t.sampleShell(pgrp, prevPgrp)
+}
+
+// seatAgent records a change of identified agent: it drops the retained OSC
+// evidence so a new agent never inherits the old one's title, and reseats the
+// publishing hysteresis (restarting its startup grace). A no-op when the agent is
+// the same as last sample, which is the common case.
+func (t *Terminal) seatAgent(agent, prev string) {
+	if agent == prev {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.oscTitle, t.oscProgress = "", ""
+	t.agent = agent
+	if agent == "" {
+		t.pub = nil
+		return
+	}
+	t.pub = newPublisher(time.Now())
+}
+
+// sampleUnknownSession is the fallback for a live session running an agent chartr
+// has no manifest for: working, exactly as every session read before detection
+// existed.
+func (t *Terminal) sampleUnknownSession() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.state == model.TerminalWorking {
+		return false
+	}
+	t.state = model.TerminalWorking
+	return true
+}
+
+// sampleGone settles a tab whose process is over. A session freezes dead — pinned
+// to its ticket for the operator to resume, respawn, or release (ticket 10) — and
+// an ad-hoc shell reads exited. Neither is touched by agent detection.
+func (t *Terminal) sampleGone(isSession bool) bool {
+	want := model.TerminalExited
+	if isSession {
+		want = model.TerminalDead
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.state == want {
+		return false
+	}
+	t.state = want
+	if !isSession {
+		t.proc = t.Title
+	}
+	return true
+}
+
+// sampleAgent reads the agent grammar: the rule engine's verdict on the evidence
+// the agent broadcast about itself, folded through the publishing hysteresis so a
+// positive signal lands at once and a bare absence is confirmed before it moves
+// anything. The tab's process name reads as the agent, which is what the operator
+// is actually looking at.
+func (t *Terminal) sampleAgent(agent string, eng *detect.Engine) bool {
+	t.mu.Lock()
+	ev := detect.Evidence{Title: t.oscTitle, Progress: t.oscProgress}
+	pub := t.pub
+	if pub == nil { // an agent is always seated with its hysteresis; belt and braces
+		pub = newPublisher(time.Now())
+		t.pub = pub
+	}
+	t.mu.Unlock()
+
+	res := eng.Evaluate(agent, ev)
+	now := time.Now()
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	state, changed := pub.update(res, now)
+	if t.proc != agent {
+		t.proc, changed = agent, true
+	}
+	if t.state != state {
+		t.state, changed = state, true
+	}
+	return changed
+}
+
+// sampleShell recomputes a tab with no known agent in its foreground: today's
+// grammar unchanged — idle while the shell sits at its prompt, working under the
+// name of whatever command holds the foreground. The exec that resolves that name
+// happens outside the terminal lock, and only when the foreground group actually
+// changes, so a busy shell doesn't pay for it every tick.
+func (t *Terminal) sampleShell(pgrp, prevPgrp int) bool {
+	t.mu.Lock()
+	prevProc := t.proc
+	t.mu.Unlock()
+
 	state, proc := model.TerminalIdle, t.Title
 	if pgrp > 0 && pgrp != t.shellPID {
 		state = model.TerminalWorking
@@ -475,7 +629,6 @@ func (t *Terminal) sampleShell() bool {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.lastPgrp = pgrp
 	if state == t.state && proc == t.proc {
 		return false
 	}

@@ -65,22 +65,6 @@ func RoleForTicketType(t wayfinder.Type) Role {
 	}
 }
 
-// RoleIsAFK reports whether a session in this role runs unattended — the operator
-// kicks it off and walks away — as opposed to a human-in-the-loop role that is
-// *supposed* to sit idle waiting on its human. Only this split earns a session the
-// "quiet" hint: an AFK session silent past a threshold may be stuck, while an idle
-// HITL session is simply waiting and must show nothing (spec, Sessions and
-// adapters; stories 34–35).
-//
-// `grill` is the human-in-the-loop role — a grilling session is a dialogue, and
-// story 35 names it as the one that must never wear a quiet badge. Every other
-// role (prototype, research, implement) runs to completion on its own, so
-// silence from one is a signal worth surfacing. An unrecognised name is treated as
-// AFK: a stray session shows the hint rather than swallowing a possible stall.
-func RoleIsAFK(role string) bool {
-	return role != string(RoleGrill)
-}
-
 // LookPath reports whether a binary is resolvable on the current PATH.
 func LookPath(binary string) bool {
 	_, err := exec.LookPath(binary)

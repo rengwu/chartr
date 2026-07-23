@@ -216,11 +216,12 @@ type Terminal struct {
 	// shell itself while it sits at its prompt, or the command it is running (an
 	// agent, an editor). Falls back to Title where the platform can't report it.
 	Proc string `json:"proc"`
-	// Status is the tab's live activity. An ad-hoc shell reads TerminalIdle at the
-	// prompt, TerminalWorking while a foreground command runs, TerminalExited once
-	// the process is gone. A session tab reads the session grammar instead
-	// (TerminalWorking / TerminalQuiet / TerminalDead — ticket 10). It drives the
-	// sidebar's per-tab status indicator.
+	// Status is the tab's live activity. A tab with no known agent in its foreground
+	// reads TerminalIdle at the prompt, TerminalWorking while a command runs, and
+	// TerminalExited once the process is gone. A tab with a known agent reads the
+	// agent's own broadcast state instead — TerminalIdle / TerminalWorking /
+	// TerminalBlocked — and a session whose process died reads TerminalDead. It
+	// drives the sidebar's per-tab status indicator.
 	Status string `json:"status"`
 	// Alive is false the instant the process exits. A dead ad-hoc shell drops from
 	// the model; a dead session stays pinned (Alive false, Status TerminalDead) so
@@ -335,18 +336,25 @@ type Session struct {
 }
 
 // A terminal's activity states, uniform across the wire and the sidebar's status
-// indicator. An ad-hoc shell is idle at the prompt (a tick), working while a
-// foreground command runs (a spinner), or exited once the shell is gone. A session
-// tab reads on the session grammar instead (ticket 10): working while it is live
-// and producing, quiet when an AFK session has fallen silent past the threshold
-// (a hint, never an alarm), and dead once its process exits — a dead session
-// freezes in place rather than vanishing, pinned to its ticket until the
-// operator resumes, respawns, or releases it.
+// indicator. Which grammar a tab reads on is decided by what holds its PTY's
+// foreground, not by whether it is a session.
+//
+// A tab with no known agent in the foreground reads the shell grammar: idle at
+// the prompt (a tick), working while a foreground command runs (a spinner),
+// exited once the process is gone.
+//
+// A tab with a known agent reads the agent grammar, from the evidence the agent
+// broadcasts about itself: idle when it is present but not generating, working
+// while it is, and blocked when it has stopped on a permission prompt and is
+// waiting on its human — the state worth an operator's attention. `dead` is
+// unchanged and belongs to sessions: a session whose process exits freezes in
+// place rather than vanishing, pinned to its ticket until the operator resumes,
+// respawns, or releases it.
 const (
 	TerminalIdle    = "idle"
 	TerminalWorking = "working"
 	TerminalExited  = "exited"
-	TerminalQuiet   = "quiet"
+	TerminalBlocked = "blocked"
 	TerminalDead    = "dead"
 )
 

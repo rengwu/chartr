@@ -45,6 +45,7 @@
     ArrowUUpLeft,
     Gear,
     Warning,
+    PauseCircle,
     GitBranchIcon,
     GitDiffIcon,
     FolderOpen,
@@ -508,10 +509,10 @@
                         class="size-3 shrink-0 animate-spin text-primary"
                         aria-label="a session is working"
                       />
-                    {:else if liveness === "quiet"}
-                      <CircleNotch
-                        class="size-3 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
-                        aria-label="a session is quiet"
+                    {:else if liveness === "blocked"}
+                      <PauseCircle
+                        class="size-3 shrink-0 text-primary"
+                        aria-label="a session is blocked"
                       />
                     {/if}
                     <span class="truncate">{space.name}</span>
@@ -616,19 +617,21 @@
                         </div>
 
                         <div class="flex items-center gap-1.5">
-                          <!-- Status indicator. A shell: a spinner while working, a tick
-                               idle, an error mark once it exits. A session on the session
-                               grammar: a spinner working, a slow dimmed crawl when quiet
-                               (a hint, not an alarm), a frozen grey mark once dead. -->
+                          <!-- Status indicator. A tab with no known agent in front: a
+                               spinner while working, a tick idle, an error mark once it
+                               exits. A tab with a known agent reads the agent's own
+                               broadcast state — the same spinner and tick, plus a held
+                               pause mark when it is blocked waiting on its human. A dead
+                               session freezes under a grey mark. -->
                           {#if t.status === "working"}
                             <CircleNotch
                               class="size-3.5 shrink-0 animate-spin text-primary"
                               aria-label="working"
                             />
-                          {:else if t.status === "quiet"}
-                            <CircleNotch
-                              class="size-3.5 shrink-0 animate-spin text-muted-foreground [animation-duration:3s]"
-                              aria-label="quiet"
+                          {:else if t.status === "blocked"}
+                            <PauseCircle
+                              class="size-3.5 shrink-0 text-primary"
+                              aria-label="blocked"
                             />
                           {:else if t.status === "dead"}
                             <XCircle

@@ -14,8 +14,8 @@ import type { Map as WMap, Terminal } from '../model'
 import { SESSION_HUE } from './theme'
 
 export type SessionState =
-  | 'implementing' // a live session, its PTY producing
-  | 'quiet' // an AFK session silent past the threshold, no answer yet (a hint)
+  | 'implementing' // a live session, its agent working
+  | 'blocked' // the agent has stopped on a permission prompt, waiting on its human
   | 'dead' // the PTY exited mid-ticket; the claim stands, the star halts to you
 
 // How the moon carries each state. `motion` and `marks` are the non-colour
@@ -32,9 +32,13 @@ export interface Grammar {
   marks: readonly ('trail' | 'blink' | 'halo')[]
 }
 
+// `blocked` keeps the channels the old `quiet` hint carried — a crawl that blinks
+// — because how a blocked session folds into the attention grammar (and whether it
+// earns a louder mark, or a notification) is deliberately left open on the map.
+// What changes here is what the state *means*, not yet how loudly it speaks.
 export const GRAMMAR: Record<SessionState, Grammar> = {
   implementing: { hue: SESSION_HUE.session, motion: 'orbit', moon: 'orbiting', marks: ['trail'] },
-  quiet: { hue: SESSION_HUE.session, motion: 'crawl', moon: 'orbiting', marks: ['blink'] },
+  blocked: { hue: SESSION_HUE.session, motion: 'crawl', moon: 'orbiting', marks: ['blink'] },
   dead: { hue: SESSION_HUE.dead, motion: 'still', moon: 'frozen', marks: ['halo'] },
 }
 
@@ -46,11 +50,10 @@ export function nonColorSignature(s: SessionState): string {
 
 // Derive each ticket's session state from one pushed snapshot: the map's derived
 // ticket statuses (ADR 0004) plus the space's terminals, whose sessions name the
-// map and ticket they are claimed on (ticket 09) and carry the liveness the
-// server already decided (ticket 10 — `quiet` is surfaced only for an AFK role
-// with no answer written yet, so an idling HITL grilling deliberately shows
-// nothing here). Nothing new is stored — the state is a pure function of the
-// snapshot.
+// map and ticket they are claimed on (ticket 09) and carry the liveness the server
+// already decided — now read from the evidence the agent broadcasts about itself
+// rather than from PTY silence. Nothing new is stored: the state is a pure function
+// of the snapshot.
 export function sessionStates(map: WMap, terminals: Terminal[]): Record<number, SessionState> {
   const out: Record<number, SessionState> = {}
   const onTicket = new Map<number, Terminal[]>()
@@ -74,6 +77,6 @@ function stateOf(tabs: Terminal[]): SessionState | null {
   const live = tabs.find((t) => t.alive) ?? tabs[0]
   if (!live) return null
   if (!live.alive || live.status === 'dead') return 'dead'
-  if (live.status === 'quiet') return 'quiet'
+  if (live.status === 'blocked') return 'blocked'
   return 'implementing'
 }
