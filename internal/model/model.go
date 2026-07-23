@@ -244,7 +244,9 @@ type Terminal struct {
 // (all sixteen ANSI slots and the five base slots), which the client layers as
 // tokens → preset → explicit slots; ticket 03 adds the remaining pass-through
 // options — font weight/line-height/letter-spacing, the cursor, scrolling, a
-// minimum-contrast floor, and the unicode11 glyph-width toggle.
+// minimum-contrast floor, and the unicode11 glyph-width toggle; ticket 04 adds the
+// scrollbar and padding (CSS custom properties at the seam, not xterm options) and
+// the keybinding/selection behaviours.
 type TerminalPrefs struct {
 	FontFamily     string  `json:"fontFamily,omitempty"`
 	FontSize       float64 `json:"fontSize,omitempty"`
@@ -267,6 +269,27 @@ type TerminalPrefs struct {
 	MinimumContrastRatio float64 `json:"minimumContrastRatio,omitempty"`
 
 	Unicode11 *bool `json:"unicode11,omitempty"`
+
+	// The scrollbar and the padding are CSS, not xterm options: the client resolve
+	// seam turns them into custom properties on the island host (xterm exposes no
+	// options for either), and a padding change is followed by a refit.
+	ScrollbarWidth    float64 `json:"scrollbarWidth,omitempty"`
+	ScrollbarThumb    string  `json:"scrollbarThumb,omitempty"`
+	ScrollbarTrack    string  `json:"scrollbarTrack,omitempty"`
+	ScrollbarAutoHide *bool   `json:"scrollbarAutoHide,omitempty"`
+
+	PaddingTop    float64 `json:"paddingTop,omitempty"`
+	PaddingRight  float64 `json:"paddingRight,omitempty"`
+	PaddingBottom float64 `json:"paddingBottom,omitempty"`
+	PaddingLeft   float64 `json:"paddingLeft,omitempty"`
+
+	// The keybinding and selection behaviours. ShiftEnterNewline is unset-means-on
+	// (the Ghostty-style newline is the default the cockpit ships); the other three
+	// are unset-means-off, matching xterm's own defaults.
+	ShiftEnterNewline     *bool `json:"shiftEnterNewline,omitempty"`
+	CopyOnSelect          *bool `json:"copyOnSelect,omitempty"`
+	RightClickSelectsWord *bool `json:"rightClickSelectsWord,omitempty"`
+	MacOptionIsMeta       *bool `json:"macOptionIsMeta,omitempty"`
 
 	Preset string `json:"preset,omitempty"`
 

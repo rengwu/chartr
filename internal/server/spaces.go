@@ -173,6 +173,21 @@ func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 
 		Unicode11: p.Unicode11,
 
+		ScrollbarWidth:    p.ScrollbarWidth,
+		ScrollbarThumb:    p.ScrollbarThumb,
+		ScrollbarTrack:    p.ScrollbarTrack,
+		ScrollbarAutoHide: p.ScrollbarAutoHide,
+
+		PaddingTop:    p.PaddingTop,
+		PaddingRight:  p.PaddingRight,
+		PaddingBottom: p.PaddingBottom,
+		PaddingLeft:   p.PaddingLeft,
+
+		ShiftEnterNewline:     p.ShiftEnterNewline,
+		CopyOnSelect:          p.CopyOnSelect,
+		RightClickSelectsWord: p.RightClickSelectsWord,
+		MacOptionIsMeta:       p.MacOptionIsMeta,
+
 		Preset: p.Preset,
 
 		Background:   p.Background,

@@ -5,6 +5,7 @@ import {
   readToken,
   readTokens,
   resolveColor,
+  terminalKeyAction,
 } from './tokens'
 
 // The bridge reads live custom properties off the document. Under jsdom we set
@@ -221,6 +222,64 @@ describe('buildTerminalOptions', () => {
     expect('minimumContrastRatio' in options).toBe(false)
   })
 
+  it('emits the scrollbar and padding as CSS custom properties', () => {
+    seedTokens()
+    const { css, options } = buildTerminalOptions({
+      scrollbarWidth: 6,
+      scrollbarThumb: '#3a4034',
+      scrollbarTrack: '#00000000',
+      scrollbarAutoHide: true,
+      paddingTop: 8,
+      paddingRight: 12,
+      paddingBottom: 8,
+      paddingLeft: 12,
+    })
+    expect(css).toEqual({
+      '--terminal-scrollbar-width': '6px',
+      '--terminal-scrollbar-thumb': '#3a4034',
+      '--terminal-scrollbar-track': '#00000000',
+      // Auto-hide is the thumb's colour *at rest*: transparent until hover.
+      '--terminal-scrollbar-thumb-idle': 'transparent',
+      '--terminal-padding-top': '8px',
+      '--terminal-padding-right': '12px',
+      '--terminal-padding-bottom': '8px',
+      '--terminal-padding-left': '12px',
+      // A padded island has a frame outside the grid, so the chrome fills it with
+      // the terminal's own resolved background.
+      '--terminal-background': 'rgb(16, 16, 16)',
+    })
+    // Neither is an xterm option — they leave only as CSS.
+    expect('scrollbarWidth' in options).toBe(false)
+  })
+
+  it('emits no CSS property for an unset scrollbar or padding', () => {
+    // Nothing set means nothing emitted, so app.css keeps its `var(…, fallback)`
+    // defaults: the chrome's own scrollbar and a grid flush to the pane edge.
+    seedTokens()
+    expect(buildTerminalOptions({}).css).toEqual({})
+    // A zero padding side is the default, and auto-hide off leaves the thumb alone.
+    expect(buildTerminalOptions({ paddingTop: 0, scrollbarAutoHide: false }).css).toEqual({})
+  })
+
+  it('paints the padded frame with the theme background, preset included', () => {
+    seedTokens()
+    const { css } = buildTerminalOptions({ paddingLeft: 12, preset: 'dracula' })
+    expect(css['--terminal-background']).toBe('#282a36')
+  })
+
+  it('passes the selection and key options xterm owns straight through', () => {
+    seedTokens()
+    const { options } = buildTerminalOptions({
+      rightClickSelectsWord: true,
+      macOptionIsMeta: true,
+      // copyOnSelect is an island behaviour, not an xterm option.
+      copyOnSelect: true,
+    })
+    expect(options.rightClickSelectsWord).toBe(true)
+    expect(options.macOptionIsMeta).toBe(true)
+    expect('copyOnSelect' in options).toBe(false)
+  })
+
   it('drops values the server would have rejected, defensively', () => {
     // The seam mirrors the server guards so it is safe on its own: a non-positive
     // size/line-height/width and an out-of-range contrast ratio leave the option
@@ -236,5 +295,40 @@ describe('buildTerminalOptions', () => {
     expect('cursorWidth' in options).toBe(false)
     expect('minimumContrastRatio' in options).toBe(false)
     expect('cursorStyle' in options).toBe(false)
+  })
+})
+
+// The other half of Seam 2: what a keystroke *means* to the terminal, decided
+// purely from the event and the prefs so the island only has to obey it.
+describe('terminalKeyAction', () => {
+  function key(over: Partial<KeyboardEvent> = {}) {
+    return {
+      type: 'keydown',
+      key: 'Enter',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      ...over,
+    }
+  }
+
+  it('maps Shift+Enter to a newline and a plain Enter to submit', () => {
+    expect(terminalKeyAction(key({ shiftKey: true }))).toBe('newline')
+    expect(terminalKeyAction(key())).toBe('submit')
+  })
+
+  it('restores plain submit when the pref is off', () => {
+    expect(terminalKeyAction(key({ shiftKey: true }), { shiftEnterNewline: false })).toBe('submit')
+    // Unset means on — the Ghostty behaviour is what the cockpit ships.
+    expect(terminalKeyAction(key({ shiftKey: true }), {})).toBe('newline')
+  })
+
+  it('never intercepts another modifier, another key, or the keyup', () => {
+    expect(terminalKeyAction(key({ shiftKey: true, altKey: true }))).toBe('default')
+    expect(terminalKeyAction(key({ shiftKey: true, ctrlKey: true }))).toBe('default')
+    expect(terminalKeyAction(key({ key: 'a' }))).toBe('default')
+    // The matching keyup must not write the newline a second time.
+    expect(terminalKeyAction(key({ type: 'keyup', shiftKey: true }))).toBe('default')
   })
 })

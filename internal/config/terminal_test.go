@@ -258,6 +258,82 @@ minimumContrastRatio = 30
 	}
 }
 
+func TestTerminalPrefsReadsScrollbarPaddingAndKeys(t *testing.T) {
+	// The ticket-04 spread: the scrollbar block, the four padding sides, and the four
+	// key/selection behaviours — all landing from a valid file, silently.
+	yes := true
+	no := false
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[scrollbar]
+width = 6
+thumb = "#3a4034"
+track = "#00000000"
+autoHide = true
+
+[padding]
+top = 8
+right = 12
+bottom = 8
+left = 12
+
+[keys]
+shiftEnterNewline = false
+copyOnSelect = true
+rightClickSelectsWord = true
+macOptionIsMeta = true
+`))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid scrollbar/padding/keys file warned: %v", warnings)
+	}
+	want := config.TerminalPrefs{
+		ScrollbarWidth:        6,
+		ScrollbarThumb:        "#3a4034",
+		ScrollbarTrack:        "#00000000",
+		ScrollbarAutoHide:     &yes,
+		PaddingTop:            8,
+		PaddingRight:          12,
+		PaddingBottom:         8,
+		PaddingLeft:           12,
+		ShiftEnterNewline:     &no,
+		CopyOnSelect:          &yes,
+		RightClickSelectsWord: &yes,
+		MacOptionIsMeta:       &yes,
+	}
+	if !reflect.DeepEqual(prefs, want) {
+		t.Errorf("scrollbar/padding/keys resolved to\n%+v\nwant\n%+v", prefs, want)
+	}
+}
+
+func TestTerminalPrefsBadScrollbarAndPaddingWarn(t *testing.T) {
+	// A non-colour thumb, a non-positive scrollbar width, and a negative padding side
+	// each keep the default and warn; a good side beside a bad one still lands. Zero
+	// padding is the default, so it is silent.
+	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
+[scrollbar]
+width = -4
+thumb = "olive"
+
+[padding]
+top = -2
+bottom = 0
+left = 10
+`))
+	if prefs.ScrollbarWidth != 0 || prefs.ScrollbarThumb != "" || prefs.PaddingTop != 0 {
+		t.Errorf("bad scrollbar/padding values survived: %+v", prefs)
+	}
+	if prefs.PaddingLeft != 10 {
+		t.Errorf("a good padding side beside a bad one was dropped: %+v", prefs)
+	}
+	for _, sub := range []string{"scrollbar width", "scrollbar.thumb", "padding top"} {
+		if !hasSub(warnings, sub) {
+			t.Errorf("no warning named %q: %v", sub, warnings)
+		}
+	}
+	if hasSub(warnings, "padding bottom") {
+		t.Errorf("a zero (default) padding side warned: %v", warnings)
+	}
+}
+
 func TestTerminalPrefsMalformedFileWarnsAndDefaults(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte("this is not = = toml"))
 	if prefs != (config.TerminalPrefs{}) {

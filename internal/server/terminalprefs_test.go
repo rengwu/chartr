@@ -21,6 +21,12 @@ size = 15
 
 [theme]
 background = "#1e2530"
+
+[padding]
+left = 12
+
+[keys]
+copyOnSelect = true
 `)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
@@ -37,9 +43,21 @@ background = "#1e2530"
 	if snap.Terminal.Background != "#1e2530" {
 		t.Errorf("snapshot background = %q, want the set value", snap.Terminal.Background)
 	}
+	// The CSS-only settings and the tri-state key behaviours ride the same snapshot.
+	if snap.Terminal.PaddingLeft != 12 {
+		t.Errorf("snapshot padding left = %v, want 12", snap.Terminal.PaddingLeft)
+	}
+	if snap.Terminal.CopyOnSelect == nil || !*snap.Terminal.CopyOnSelect {
+		t.Errorf("snapshot copyOnSelect = %v, want the set value", snap.Terminal.CopyOnSelect)
+	}
 	// An unset slot stays empty for the client to fall through to a token default.
 	if snap.Terminal.Foreground != "" {
 		t.Errorf("snapshot foreground = %q, want empty (unset)", snap.Terminal.Foreground)
+	}
+	// An unset tri-state stays nil so the client applies its own default (Shift+Enter
+	// is on unless the file says otherwise).
+	if snap.Terminal.ShiftEnterNewline != nil {
+		t.Errorf("snapshot shiftEnterNewline = %v, want nil (unset)", *snap.Terminal.ShiftEnterNewline)
 	}
 }
 

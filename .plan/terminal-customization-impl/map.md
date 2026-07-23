@@ -68,6 +68,14 @@ append `## Answer` with what shipped plus a gist + link under Decisions so far.
   family resolves through `BUNDLED_FONTS`. The unicode11 addon lazy-loads into its
   own bundled chunk at mount when enabled.
   [ticket](tickets/03-font-cursor-scrolling-options.md)
+- **04 — Scrollbar, padding & keybindings.** Three new blocks (`[scrollbar]`,
+  `[padding]` per side, `[keys]`) resolve through the existing guards; Seam 2 grew a
+  `css` return carrying them as CSS custom properties (xterm has no option for
+  either), plus `terminalKeyAction`, the pure keydown predicate behind Shift+Enter →
+  newline (unset means *on*). The island split in two — `.terminal-island` holds the
+  padding, an unpadded `.terminal-grid` is what xterm mounts into — because the fit
+  addon measures its parent's *border*-box width, so a padded host would overflow
+  instead of refitting. [ticket](tickets/04-scrollbar-padding-keybindings.md)
 
 ## Not yet specified
 

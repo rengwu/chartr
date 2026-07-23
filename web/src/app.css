@@ -321,29 +321,62 @@
 
   /* The terminal island fills the chrome pane that hosts it — the wrapper is
      sized here, at the seam, while the xterm renderer inside owns everything else
-     (ADR 0010). The star-map island is sized in StarMap.svelte, its own surface. */
+     (ADR 0010). The star-map island is sized in StarMap.svelte, its own surface.
+
+     The padding around the grid is an operator pref (`[padding]` in terminal.toml):
+     the island sets the four custom properties from the resolve seam and this rule
+     spends them, each defaulting to 0 — flush to the pane edge, today's look. The
+     padded frame is painted with the terminal's *own* resolved background (also fed
+     in at the seam) so it reads as part of the terminal rather than as a gap in it;
+     with no padding set there is no frame and the property goes unused.
+
+     The padding sits on the island, never on the grid inside it: the fit addon
+     measures its parent's computed width, and a browser reports a border-box
+     element's computed width as the *border* box — so a padded parent would measure
+     as the whole pane and the grid would overflow the padding instead of reflowing
+     inside it. `.terminal-grid` is that unpadded box, and measuring it is what makes
+     a padding change refit correctly. */
   .terminal-island {
+    height: 100%;
+    width: 100%;
+    padding: var(--terminal-padding-top, 0) var(--terminal-padding-right, 0)
+      var(--terminal-padding-bottom, 0) var(--terminal-padding-left, 0);
+    background-color: var(--terminal-background, transparent);
+  }
+  .terminal-grid {
     height: 100%;
     width: 100%;
   }
 
-  /* xterm sets .xterm-viewport's background inline from the ITheme (ticket 04),
-     so it already tracks --background; only the browser's own scrollbar chrome
-     needs a nudge so its track doesn't paint a mismatched default over that
-     surface. Track transparent (the token background shows through), thumb on
-     the same subtle --border tone the rest of the chrome uses. */
+  /* xterm sets .xterm-viewport's background inline from the ITheme, so it already
+     tracks the resolved theme; only the browser's own scrollbar chrome needs a
+     nudge so its track doesn't paint a mismatched default over that surface. The
+     defaults below are the chrome's: track transparent (the background shows
+     through), thumb on the same subtle --border tone the rest of the chrome uses.
+
+     Each is overridable per machine from `[scrollbar]` in terminal.toml, fed in as
+     custom properties by the resolve seam. Auto-hide works through
+     --terminal-scrollbar-thumb-idle — the thumb's colour *at rest*, which the pref
+     sets transparent so the thumb only appears while the island is hovered.
+     (`scrollbar-color` covers Firefox, which has no ::-webkit- pseudo-elements and
+     takes no pixel width; the webviews this ships in are all Chromium/WebKit.) */
   .terminal-island .xterm-viewport {
-    scrollbar-color: var(--border) transparent;
+    scrollbar-color: var(--terminal-scrollbar-thumb, var(--border))
+      var(--terminal-scrollbar-track, transparent);
   }
   .terminal-island .xterm-viewport::-webkit-scrollbar {
-    width: 10px;
+    width: var(--terminal-scrollbar-width, 10px);
   }
   .terminal-island .xterm-viewport::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--terminal-scrollbar-track, transparent);
   }
   .terminal-island .xterm-viewport::-webkit-scrollbar-thumb {
-    background-color: var(--border);
+    background-color: var(--terminal-scrollbar-thumb-idle, var(--terminal-scrollbar-thumb, var(--border)));
     border-radius: var(--radius-sm);
+    transition: background-color 120ms ease;
+  }
+  .terminal-island:hover .xterm-viewport::-webkit-scrollbar-thumb {
+    background-color: var(--terminal-scrollbar-thumb, var(--border));
   }
 
   body {

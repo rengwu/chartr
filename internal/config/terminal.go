@@ -99,6 +99,43 @@ type TerminalPrefs struct {
 	// or off.
 	Unicode11 *bool `json:"unicode11,omitempty"`
 
+	// The scrollbar. xterm exposes no options for its viewport scrollbar, so these
+	// ride to the client as CSS custom properties on the island host rather than as
+	// xterm options — the parse's job is only to validate them. ScrollbarWidth is in
+	// px (zero unset, non-positive warns); Thumb and Track are `#hex` (empty unset,
+	// falling through to the chrome's own scrollbar styling); AutoHide is a tri-state
+	// that fades the thumb out until the island is hovered.
+	ScrollbarWidth    float64 `json:"scrollbarWidth,omitempty"`
+	ScrollbarThumb    string  `json:"scrollbarThumb,omitempty"`
+	ScrollbarTrack    string  `json:"scrollbarTrack,omitempty"`
+	ScrollbarAutoHide *bool   `json:"scrollbarAutoHide,omitempty"`
+
+	// Padding around the terminal grid, per side in px. Like the scrollbar this is
+	// CSS, not an xterm option: it lands on the island host, and the island refits so
+	// the shell reflows to the column count the padded box actually holds. Zero is
+	// unset *and* the default (today's look is flush to the pane edge), so only a
+	// negative value warns.
+	PaddingTop    float64 `json:"paddingTop,omitempty"`
+	PaddingRight  float64 `json:"paddingRight,omitempty"`
+	PaddingBottom float64 `json:"paddingBottom,omitempty"`
+	PaddingLeft   float64 `json:"paddingLeft,omitempty"`
+
+	// The keybinding and selection behaviours, each a tri-state so an explicit
+	// `false` is distinguishable from unset.
+	//
+	// ShiftEnterNewline is the Ghostty-style binding: Shift+Enter writes a literal
+	// newline into the shell instead of submitting the line (story 14). Unset means
+	// *on* — it is the capability this file exists to deliver, and every agent CLI a
+	// session runs wants it — so `shiftEnterNewline = false` is how an operator gets
+	// the plain-terminal behaviour back. The other three are unset-means-off, matching
+	// xterm's own defaults: CopyOnSelect copies a selection to the clipboard as it is
+	// made (an island behaviour — xterm has no such option), while
+	// RightClickSelectsWord and MacOptionIsMeta pass straight through as xterm options.
+	ShiftEnterNewline     *bool `json:"shiftEnterNewline,omitempty"`
+	CopyOnSelect          *bool `json:"copyOnSelect,omitempty"`
+	RightClickSelectsWord *bool `json:"rightClickSelectsWord,omitempty"`
+	MacOptionIsMeta       *bool `json:"macOptionIsMeta,omitempty"`
+
 	// Preset is the bundled theme preset the operator named (normalised to its
 	// lower-case key). Empty is unset; an unknown name is refused with a warning and
 	// left unset so the default theme stands. The palette it selects is resolved on
@@ -141,6 +178,9 @@ type rawTerminal struct {
 	Theme         rawTermTheme         `toml:"theme"`
 	Cursor        rawTermCursor        `toml:"cursor"`
 	Scrolling     rawTermScrolling     `toml:"scrolling"`
+	Scrollbar     rawTermScrollbar     `toml:"scrollbar"`
+	Padding       rawTermPadding       `toml:"padding"`
+	Keys          rawTermKeys          `toml:"keys"`
 	Accessibility rawTermAccessibility `toml:"accessibility"`
 	Glyph         rawTermGlyph         `toml:"glyph"`
 }
@@ -170,6 +210,30 @@ type rawTermScrolling struct {
 	FastScrollModifier    string  `toml:"fastScrollModifier"`
 	FastScrollSensitivity float64 `toml:"fastScrollSensitivity"`
 	SmoothScrollDuration  float64 `toml:"smoothScrollDuration"`
+}
+
+type rawTermScrollbar struct {
+	Width    float64 `toml:"width"`
+	Thumb    string  `toml:"thumb"`
+	Track    string  `toml:"track"`
+	AutoHide *bool   `toml:"autoHide"`
+}
+
+// Padding is written per side rather than as a shorthand: each side is
+// independently unset-at-zero, which a `all = 8` base would muddle (an explicit
+// `top = 0` would be indistinguishable from "inherit the base").
+type rawTermPadding struct {
+	Top    float64 `toml:"top"`
+	Right  float64 `toml:"right"`
+	Bottom float64 `toml:"bottom"`
+	Left   float64 `toml:"left"`
+}
+
+type rawTermKeys struct {
+	ShiftEnterNewline     *bool `toml:"shiftEnterNewline"`
+	CopyOnSelect          *bool `toml:"copyOnSelect"`
+	RightClickSelectsWord *bool `toml:"rightClickSelectsWord"`
+	MacOptionIsMeta       *bool `toml:"macOptionIsMeta"`
 }
 
 type rawTermAccessibility struct {
@@ -282,6 +346,25 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 		"scrolling fastScrollSensitivity", raw.Scrolling.FastScrollSensitivity, &warnings)
 	prefs.SmoothScrollDuration = validNonNegative(
 		"scrolling smoothScrollDuration", raw.Scrolling.SmoothScrollDuration, &warnings)
+
+	prefs.ScrollbarWidth = validPositive("scrollbar width", raw.Scrollbar.Width, &warnings)
+	prefs.ScrollbarThumb = validColour("scrollbar.thumb", raw.Scrollbar.Thumb, &warnings)
+	prefs.ScrollbarTrack = validColour("scrollbar.track", raw.Scrollbar.Track, &warnings)
+	prefs.ScrollbarAutoHide = raw.Scrollbar.AutoHide
+
+	// Zero padding is both "unset" and the default, so only a negative side warns.
+	prefs.PaddingTop = validNonNegative("padding top", raw.Padding.Top, &warnings)
+	prefs.PaddingRight = validNonNegative("padding right", raw.Padding.Right, &warnings)
+	prefs.PaddingBottom = validNonNegative("padding bottom", raw.Padding.Bottom, &warnings)
+	prefs.PaddingLeft = validNonNegative("padding left", raw.Padding.Left, &warnings)
+
+	// The key and selection behaviours are booleans: TOML's own decode rejects a
+	// non-boolean, and an absent key stays nil (unset), so there is nothing left to
+	// validate here.
+	prefs.ShiftEnterNewline = raw.Keys.ShiftEnterNewline
+	prefs.CopyOnSelect = raw.Keys.CopyOnSelect
+	prefs.RightClickSelectsWord = raw.Keys.RightClickSelectsWord
+	prefs.MacOptionIsMeta = raw.Keys.MacOptionIsMeta
 
 	prefs.MinimumContrastRatio = validRange(
 		"accessibility minimumContrastRatio", raw.Accessibility.MinimumContrastRatio, 1, 21, &warnings)

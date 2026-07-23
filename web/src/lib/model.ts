@@ -196,7 +196,8 @@ export interface Model {
 // app default at the resolve seam. Ticket 01 carried the spine — font family,
 // size, and the two base theme colours; ticket 02 widened it to a named theme
 // preset plus the full slot set; ticket 03 adds the pass-through font, cursor,
-// scrolling, contrast, and glyph-width options. The resolve seam
+// scrolling, contrast, and glyph-width options; ticket 04 adds the scrollbar,
+// padding, and the keybinding/selection behaviours. The resolve seam
 // (`buildTerminalOptions`) layers the theme as tokens → preset → explicit slots and
 // maps every other option onto the xterm options object. `preset` is a validated
 // bundled name (server-side); `selection` drives xterm's `selectionBackground`.
@@ -227,6 +228,29 @@ export interface TerminalPrefs {
   // the prefs and lazily imports the addon at mount when set — it is an addon
   // toggle, not an xterm option, so it is not part of buildTerminalOptions' output.
   unicode11?: boolean
+
+  // The scrollbar and the padding are CSS, not xterm options — xterm exposes no
+  // options for either, so the resolve seam emits them as custom properties the
+  // island sets on its host (`buildTerminalOptions().css`).
+  scrollbarWidth?: number
+  scrollbarThumb?: string
+  scrollbarTrack?: string
+  scrollbarAutoHide?: boolean
+
+  paddingTop?: number
+  paddingRight?: number
+  paddingBottom?: number
+  paddingLeft?: number
+
+  // The keybinding and selection behaviours. `shiftEnterNewline` is unset-means-*on*
+  // (the Ghostty-style newline is what the cockpit ships; set it false for plain
+  // submit-on-Shift+Enter); the other three are unset-means-off, matching xterm.
+  // `copyOnSelect` is an island behaviour (xterm has no such option); the other two
+  // pass through as xterm options.
+  shiftEnterNewline?: boolean
+  copyOnSelect?: boolean
+  rightClickSelectsWord?: boolean
+  macOptionIsMeta?: boolean
 
   preset?: string
 

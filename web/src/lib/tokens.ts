@@ -134,6 +134,12 @@ const ANSI_DEFAULTS = {
   brightCyan: '#99c7c0',
 } as const
 
+// The CSS custom properties the resolve hands the island for the settings xterm
+// has no option for — the scrollbar's width and colours, and the padding around
+// the grid. Keyed by the full property name (`--terminal-padding-top`) so the
+// island's only job is to set each one on its host.
+export type TerminalCss = Record<string, string>
+
 // A single colour slot on xterm's ITheme — every key but `extendedAnsi`, which is
 // a `string[]` we never drive from a pref.
 type ThemeColorKey = Exclude<keyof ITheme, 'extendedAnsi'>
@@ -330,11 +336,16 @@ function explicitSlots(p: TerminalPrefs): Partial<ITheme> {
  *
  * An unset font or size falls to the bundled default; a pref colour is a concrete
  * `#hex` (validated server-side) used verbatim.
+ *
+ * The third return, `css`, is the scrollbar and padding half of the resolve: xterm
+ * has no options for either, so they leave here as CSS custom properties the island
+ * sets on its own host element and `app.css` consumes (still the seam — the chrome
+ * styles its wrapper, never the renderer inside it; ADR 0010).
  */
 export function buildTerminalOptions(
   prefs: TerminalPrefs | undefined,
   el: Element = document.documentElement,
-): { options: ITerminalOptions; theme: ITheme } {
+): { options: ITerminalOptions; theme: ITheme; css: TerminalCss } {
   const p = prefs ?? {}
 
   const background = readColor('--background', el)
@@ -396,7 +407,97 @@ export function buildTerminalOptions(
 
   setOpt(options, 'minimumContrastRatio', inRange(p.minimumContrastRatio, 1, 21))
 
-  return { options, theme }
+  // The two selection/key behaviours xterm *does* own. Copy-on-select is not among
+  // them — xterm has no such option, so the island wires it to `onSelectionChange`
+  // off the pref directly, and Shift+Enter is the pure predicate below.
+  setOpt(options, 'rightClickSelectsWord', p.rightClickSelectsWord)
+  setOpt(options, 'macOptionIsMeta', p.macOptionIsMeta)
+
+  return { options, theme, css: buildTerminalCss(p, theme) }
+}
+
+/**
+ * The CSS custom properties the island sets on its host — the scrollbar and the
+ * padding, neither of which xterm exposes an option for. Only a property the file
+ * actually set appears: every rule in `app.css` reads these through a `var(…, …)`
+ * fallback, so an unset pref leaves the chrome's own scrollbar styling and the
+ * flush-to-the-edge grid exactly as they are today.
+ *
+ * Auto-hide rides `--terminal-scrollbar-thumb-idle`: it is the thumb's colour at
+ * rest, so setting it transparent hides the thumb until `.terminal-island:hover`
+ * paints it back with the real thumb colour.
+ */
+function buildTerminalCss(p: TerminalPrefs, theme: ITheme): TerminalCss {
+  const css: TerminalCss = {}
+
+  const width = positive(p.scrollbarWidth)
+  if (width !== undefined) css['--terminal-scrollbar-width'] = `${width}px`
+  if (p.scrollbarThumb?.trim()) css['--terminal-scrollbar-thumb'] = p.scrollbarThumb.trim()
+  if (p.scrollbarTrack?.trim()) css['--terminal-scrollbar-track'] = p.scrollbarTrack.trim()
+  if (p.scrollbarAutoHide) css['--terminal-scrollbar-thumb-idle'] = 'transparent'
+
+  let padded = false
+  for (const [prefKey, side] of PADDING_SIDES) {
+    const v = p[prefKey]
+    // Zero is unset *and* the default (flush to the edge), so it need not be emitted.
+    if (typeof v === 'number' && v > 0) {
+      css[`--terminal-padding-${side}`] = `${v}px`
+      padded = true
+    }
+  }
+  // The padded frame is outside the grid xterm paints, so it is the chrome that has
+  // to fill it — with the terminal's own resolved background, or a Dracula terminal
+  // would sit in a token-coloured surround. Only a padded island has a frame at all.
+  if (padded && theme.background) css['--terminal-background'] = theme.background
+
+  return css
+}
+
+// The padding prefs and the custom-property suffix each drives.
+const PADDING_SIDES: ReadonlyArray<readonly [keyof TerminalPrefs, string]> = [
+  ['paddingTop', 'top'],
+  ['paddingRight', 'right'],
+  ['paddingBottom', 'bottom'],
+  ['paddingLeft', 'left'],
+]
+
+/**
+ * What a key event means to the terminal — the pure `event → action` half of the
+ * keybindings pref, decided here at the seam so the island only has to obey it.
+ *
+ * - `newline` — Shift+Enter with the pref on: the shell gets a literal newline
+ *   (`TERMINAL_NEWLINE`) instead of submitting, the Ghostty behaviour every agent
+ *   CLI wants for composing multi-line input (story 14).
+ * - `submit` — an Enter we do not intercept, including Shift+Enter with the pref
+ *   off: xterm's own handling stands and the line goes.
+ * - `default` — everything else, including an Enter carrying another modifier
+ *   (Ctrl/Alt/Meta already mean something to the shell and are never intercepted).
+ *
+ * `shiftEnterNewline` is unset-means-*on*; `false` is what restores plain submit.
+ * Only a keydown acts — the matching keyup must stay `default` or the newline
+ * would be written twice.
+ */
+export type TerminalKeyAction = 'newline' | 'submit' | 'default'
+
+// What a `newline` action writes to the shell: a literal LF, the same bytes
+// Ghostty's `shift+enter=text:\n` sends.
+export const TERMINAL_NEWLINE = '\n'
+
+// The slice of a KeyboardEvent the decision actually reads, so the predicate is
+// callable from a test with a plain object and never needs a real event.
+export type TerminalKeyEvent = Pick<
+  KeyboardEvent,
+  'type' | 'key' | 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'
+>
+
+export function terminalKeyAction(
+  ev: TerminalKeyEvent,
+  prefs: TerminalPrefs | undefined = undefined,
+): TerminalKeyAction {
+  if (ev.type !== 'keydown' || ev.key !== 'Enter') return 'default'
+  if (ev.ctrlKey || ev.altKey || ev.metaKey) return 'default'
+  if (ev.shiftKey && prefs?.shiftEnterNewline !== false) return 'newline'
+  return 'submit'
 }
 
 // setOpt assigns an xterm option only when the resolved value is defined, so an
