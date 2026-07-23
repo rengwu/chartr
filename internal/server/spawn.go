@@ -32,10 +32,11 @@ import (
 const sessionRunDir = ".chartr/run"
 
 // handleSpawn is the product's tracer bullet (ticket 09): from a frontier ticket
-// it wires the whole chain — resolve the role's binding, hard-block a missing
-// agent, compose the payload, write the claim commit, drop the gitignored payload
-// and its archived copy, and launch the agent's own TUI with the read-this-file
-// opener typed in. The session seats as a tab bound to exactly one ticket.
+// it wires the whole chain — settle the chosen agent, hard-block a missing or
+// unregistered one, compose the payload, write the claim commit, drop the
+// gitignored payload and its archived copy, and launch the agent's own TUI with
+// the read-this-file opener typed in. The session seats as a tab bound to exactly
+// one ticket.
 //
 // Every step that can fail does so *before* anything launches, so a refused spawn
 // leaves the space exactly as it was — except the claim, which by ADR 0008 stands
@@ -189,12 +190,6 @@ type launchSpec struct {
 	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
 	// name. Empty leaves the adapter's own default in force.
 	Prompt string
-	// AdapterFrom and ArgsFrom named the config layers the deleted binding path
-	// resolved those fields from. The explicit-agent path consults no layers, so
-	// they are always empty now and their trailers are omitted; they go with the
-	// binding layer in ticket 05.
-	AdapterFrom config.Layer
-	ArgsFrom    config.Layer
 }
 
 // agentSpec settles what a spawn will run from the operator's library — the whole
@@ -280,19 +275,17 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	}
 
 	// The claim commit — chartr's one write here (ADR 0008), pathspec-limited
-	// to the ticket file and carrying the binding and payload-hash trailers. On a
+	// to the ticket file and carrying the agent and payload-hash trailers. On a
 	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
 	// the new session id supersedes the dead one.
 	if err := writeClaimCommit(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
-		SessionID:   in.sessionID,
-		Role:        in.role,
-		Agent:       in.spec.Name,
-		Adapter:     in.spec.Adapter,
-		Args:        in.spec.Args,
-		PayloadSHA:  payloadSHA,
-		Skills:      payload.Skills,
-		AdapterFrom: in.spec.AdapterFrom,
-		ArgsFrom:    in.spec.ArgsFrom,
+		SessionID:  in.sessionID,
+		Role:       in.role,
+		Agent:      in.spec.Name,
+		Adapter:    in.spec.Adapter,
+		Args:       in.spec.Args,
+		PayloadSHA: payloadSHA,
+		Skills:     payload.Skills,
 	}); err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim commit: %w", err)
 	}
@@ -305,8 +298,8 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		return nil, http.StatusInternalServerError, fmt.Errorf("archiving the session payload: %w", err)
 	}
 
-	// Resolve the binding — and the read-this-file opener — onto this agent's
-	// command line (ADR 0002) and launch its TUI in a PTY. Whether the opener rides
+	// Resolve the agent — and the read-this-file opener — onto its command line
+	// (ADR 0002) and launch its TUI in a PTY. Whether the opener rides
 	// the argv or gets typed in is the adapter's call, so the spawn path hands over
 	// the same line either way.
 	launch := adapter.Command(adapter.Spawn{
@@ -349,17 +342,16 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	}, http.StatusOK, nil
 }
 
-// resolve resolves a space's whole config — the role bindings — across the three
-// layers, exactly as the pushed model renders it, so the spawn path reads a
-// binding and its PATH presence from what the operator sees.
-func (s *Server) resolve(e registry.Entry) config.Resolution {
+// resolve resolves the operator's registered agent library and its PATH presence —
+// the whole of what a spawn consults now that execution is chosen per spawn. The
+// library is global, so this reads the operator's own config alone and takes no
+// space; the argument is kept for symmetry with the surfaces that call it. It is
+// the same list the pushed model renders, so the spawn path refuses exactly what
+// the operator sees.
+func (s *Server) resolve(registry.Entry) config.Resolution {
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
-	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, config.WorkspaceConfigName))
-	return config.Resolve(config.Input{
-		WorkspaceTOML: workspaceTOML,
-		UserTOML:      userTOML,
-		SpacePath:     e.Path,
-	})
+	agents, warnings := config.ResolveAgents(userTOML, nil)
+	return config.Resolution{Agents: agents, Warnings: warnings}
 }
 
 // writeSessionPayload writes the composed payload to the gitignored run directory

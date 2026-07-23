@@ -15,7 +15,8 @@ import (
 )
 
 // userConfigName is the operator's local, uncommitted config under the chartr
-// state root, keyed by space path. It carries per-machine binding overrides.
+// state root. It carries the global agent library — the only execution config
+// there is, and never committed.
 const userConfigName = "user.toml"
 
 // handleRegister registers a folder as a space. Registration is a plain HTTP
@@ -96,13 +97,12 @@ func (s *Server) rebuild() {
 }
 
 // buildModelFor derives the model from the given registry entries (already in
-// sidebar order): each space with its role bindings resolved fresh across the
-// three config layers and its maps discovered live from `.plan/`. Config and
-// maps are read from disk on every rebuild, so the snapshot reflects the files
-// as of this moment.
+// sidebar order): each space with its maps discovered live from `.plan/`, and the
+// operator's global agent library resolved once. Config and maps are read from
+// disk on every rebuild, so the snapshot reflects the files as of this moment.
 func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
-	// The user layer is one file for all spaces, keyed by space path; read it
-	// once. A missing or unreadable file resolves as "no local overrides".
+	// The operator's config is one file, read once. It carries the global agent
+	// library; a missing or unreadable file resolves as "no agents registered".
 	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
 
 	spaces := make([]model.Space, 0, len(entries))
@@ -132,30 +132,10 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
-	workspaceTOML, _ := os.ReadFile(filepath.Join(e.Path, config.WorkspaceConfigName))
-
-	res := config.Resolve(config.Input{
-		WorkspaceTOML: workspaceTOML,
-		UserTOML:      userTOML,
-		SpacePath:     e.Path,
-	})
-
-	bindings := make([]model.RoleBinding, 0, len(res.Bindings))
-	for _, b := range res.Bindings {
-		bindings = append(bindings, model.RoleBinding{
-			Role:         string(b.Role),
-			Adapter:      b.Adapter,
-			Args:         b.Args,
-			Prompt:       b.Prompt,
-			AdapterFrom:  string(b.AdapterFrom),
-			ArgsFrom:     string(b.ArgsFrom),
-			PromptFrom:   string(b.PromptFrom),
-			Agent:        b.Agent,
-			AgentMissing: b.AgentMissing,
-			Present:      b.Present,
-			Missing:      b.Missing,
-		})
-	}
+	// The agent library is global, but its live warnings — an agent with no
+	// adapter, an unreadable prompt delivery — surface where the operator is, so
+	// they ride each space's warnings the way the binding resolver's used to.
+	_, agentWarnings := config.ResolveAgents(userTOML, nil)
 
 	maps := mapscan.Discover(e.Path)
 
@@ -190,9 +170,9 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 	}
 
 	// Fold in the skill library's own notices — a fork behind the shipped default
-	// (story 23) — so a stale fork is surfaced on the space without the operator
-	// opening every role in the preview.
-	warnings := append([]string{}, res.Warnings...)
+	// (story 23) — beside the agent-library warnings, so both live problems are
+	// surfaced on the space without the operator opening settings.
+	warnings := append([]string{}, agentWarnings...)
 	warnings = append(warnings, prompt.LibraryWarnings(s.skillRoots(e.Path))...)
 
 	return model.Space{
@@ -202,7 +182,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte) model.Space {
 		Branch:    gitBranch(e.Path),
 		Pinned:    e.Pinned,
 		Dirty:     gitDirty(e.Path),
-		Bindings:  bindings,
 		LastAgent: e.LastAgent,
 		Skills:    s.resolvedSkills(e.Path),
 		Layers:    s.spaceLayers(e.Path),

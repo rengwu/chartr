@@ -10,16 +10,16 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 )
 
-// The effective config surface (ticket 05, ADR 0014): the read half derives every
-// participating layer with its path so the settings route can show where each
-// value lives, and the write half edits exactly one thing — a role binding, into
-// the user layer — and opens everything else in the operator's editor.
+// The settings surface: the agent library (agents.go) and the paths of the files
+// behind it, each openable in the operator's own editor. There is no committed
+// execution layer and no per-field provenance to render — ADR 0014's effective
+// config surface is superseded (ticket 05). What is left is a read of where each
+// file lives and a named-layer open action.
 
 // The layer names the client may ask about. A name is a token the server
 // resolves to a path; the client never sends a path, so a local server can never
@@ -29,37 +29,33 @@ const (
 	layerUserConfig      = "user-config"
 	layerBuiltinSkills   = "builtin-skills"
 	layerUserSkills      = "user-skills"
-	layerWorkspaceConfig = "workspace-config"
 	layerWorkspaceSkills = "workspace-skills"
 	layerSkillPrefix     = "skill:"
 )
 
-// globalLayers are the config layers every space resolves through: the
-// operator's local binding overrides and the two skill libraries that are not a
-// space's own. They are derived once per rebuild rather than repeated under each
-// space.
+// globalLayers are the files the operator's config lives in, shared by every
+// space: the agent library and the two skill libraries that are not a space's own.
+// They are derived once per rebuild rather than repeated under each space.
 //
-// Note the split the surface has to tell honestly: bindings live in the chartr
-// state root (`<dataDir>/user.toml`) while the *user skill layer* lives under the
-// operator's config root (`<configDir>/skills/`). One "user layer" in ADR 0009's
-// sense, two files, because the two halves were adopted a ticket apart — the
-// surface shows both paths rather than implying a single file.
+// Note the split the surface has to tell honestly: the agent library lives in the
+// chartr state root (`<dataDir>/user.toml`) while the *user skill layer* lives
+// under the operator's config root (`<configDir>/skills/`) — two files, shown as
+// two paths rather than implying a single one.
 func (s *Server) globalLayers() []model.ConfigLayer {
 	roots := prompt.RootsFor(s.opts.DataDir, s.opts.ConfigDir, "")
 	return []model.ConfigLayer{
-		layerAt(layerBuiltinSkills, string(config.LayerBuiltin), "skills", roots.Builtin),
-		layerAt(layerUserConfig, string(config.LayerUser), "bindings", filepath.Join(s.opts.DataDir, userConfigName)),
-		layerAt(layerUserSkills, string(config.LayerUser), "skills", roots.User),
+		layerAt(layerBuiltinSkills, "built-in", "skills", roots.Builtin),
+		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.DataDir, userConfigName)),
+		layerAt(layerUserSkills, "user", "skills", roots.User),
 	}
 }
 
-// spaceLayers are the layers a space carries in its own repository — committed,
-// shared, and versioned (ADR 0009).
+// spaceLayers are the layers a space carries in its own repository. Execution is
+// no longer among them — there is no committed config file (ticket 05) — so what
+// remains is the space's committed skill library (ADR 0009's content half).
 func (s *Server) spaceLayers(repoDir string) []model.ConfigLayer {
 	return []model.ConfigLayer{
-		layerAt(layerWorkspaceConfig, string(config.LayerWorkspace), "bindings",
-			filepath.Join(repoDir, config.WorkspaceConfigName)),
-		layerAt(layerWorkspaceSkills, string(config.LayerWorkspace), "skills",
+		layerAt(layerWorkspaceSkills, "workspace", "skills",
 			s.skillRoots(repoDir).Workspace),
 	}
 }
@@ -134,75 +130,6 @@ func (s *Server) resolvedSkills(repoDir string) []model.ResolvedSkill {
 		})
 	}
 	return out
-}
-
-// handleSetBinding edits one field of one role binding — the one high-churn
-// setting the surface edits inline (story 39). It writes **only** the user layer
-// (ADR 0009 as amended): bindings resolve user-over-workspace, so that is their
-// home, and a local UI never writes a space's committed config on a teammate's
-// behalf. Clearing a field reveals the layer beneath it, so the edit is
-// reversible rather than a one-way ratchet.
-//
-// The write is surgical and comment-preserving (config.SetUserBinding), and it is
-// followed by the same rebuild every mutating action triggers, so the new value
-// and its new provenance reflect straight back over the control socket with no
-// optimistic client state (story 43).
-func (s *Server) handleSetBinding(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
-	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
-		return
-	}
-
-	var body struct {
-		Role  string `json:"role"`
-		Field string `json:"field"`
-		// Value is the new value: a string for adapter, model, prompt and agent, an
-		// array of strings for args, and null to clear the override.
-		Value json.RawMessage `json:"value"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httpError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	edit := config.BindingEdit{SpacePath: e.Path, Role: body.Role, Field: body.Field}
-	switch {
-	case len(body.Value) == 0 || string(body.Value) == "null":
-		edit.Clear = true
-	case body.Field == config.FieldArgs:
-		if err := json.Unmarshal(body.Value, &edit.Args); err != nil {
-			httpError(w, http.StatusBadRequest, "args must be a list of strings")
-			return
-		}
-	default:
-		if err := json.Unmarshal(body.Value, &edit.Value); err != nil {
-			httpError(w, http.StatusBadRequest, "value must be a string")
-			return
-		}
-	}
-
-	path, existing, err := s.readUserConfig()
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, "reading user config: "+err.Error())
-		return
-	}
-	next, err := config.SetUserBinding(existing, edit)
-	if err != nil {
-		// An unknown role or field, or a shape the editor will not rewrite — the
-		// operator's to fix, never something to guess at.
-		httpError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := writeFileAtomic(path, next); err != nil {
-		httpError(w, http.StatusInternalServerError, "writing user config: "+err.Error())
-		return
-	}
-	s.rebuild()
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"role": edit.Role, "field": edit.Field, "cleared": edit.Clear, "path": path,
-	})
 }
 
 // handleOpenLayer opens a config layer in the operator's editor — the escape

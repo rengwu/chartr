@@ -115,10 +115,6 @@ type Space struct {
 	// decides whether the debris is harmless, and chartr spawns into it all
 	// the same. A label, not a guarantee — empty on a tree it cannot read.
 	Dirty bool `json:"dirty"`
-	// Bindings are the space's effective, fully-resolved role bindings in role
-	// order, each carrying per-field provenance and PATH presence so the
-	// operator sees what will actually run (stories 39, 40).
-	Bindings []RoleBinding `json:"bindings"`
 	// LastAgent is the registered agent this space last spawned with — the
 	// remembered choice the next spawn reuses (stories 12, 13, 20). It is state,
 	// not config: nothing edits it, and it is reported exactly as the registry
@@ -127,13 +123,11 @@ type Space struct {
 	// substituting something (story 19). Empty until the first spawn.
 	LastAgent string `json:"lastAgent,omitempty"`
 	// Skills are the space's resolved skill library — every skill with the layer
-	// that won its whole directory and its stale-fork state (ticket 05). Derived
-	// beside Bindings so the settings route reads content provenance and execution
-	// provenance out of the same push. Never nil on the wire.
+	// that won its whole directory and its stale-fork state. Never nil on the wire.
 	Skills []ResolvedSkill `json:"skills"`
-	// Layers are this space's own config files — its committed workspace config
-	// and committed skill library — each with its path. The layers it shares with
-	// every other space live on Model.Config.
+	// Layers are this space's own config files — its committed skill library — each
+	// with its path. The layers it shares with every other space live on
+	// Model.Config.
 	Layers []ConfigLayer `json:"layers"`
 	// Maps are the space's discovered wayfinder maps (ticket 03), derived live
 	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
@@ -258,32 +252,6 @@ const (
 	TerminalQuiet   = "quiet"
 	TerminalDead    = "dead"
 )
-
-// RoleBinding is one role's effective binding on the wire: which adapter runs
-// with which args, where each field was inherited from, and whether the adapter's
-// binary is actually present on the operator's PATH.
-type RoleBinding struct {
-	Role    string   `json:"role"`
-	Adapter string   `json:"adapter"`
-	Args    []string `json:"args,omitempty"`
-	// Prompt is how the opener reaches this agent — argv, type, or a flag name.
-	// Empty means the adapter's own default stands.
-	Prompt      string `json:"prompt,omitempty"`
-	AdapterFrom string `json:"adapterFrom"`
-	ArgsFrom    string `json:"argsFrom"`
-	PromptFrom  string `json:"promptFrom"`
-	// Agent is the registered agent this role is assigned to, empty when the role
-	// is bound field by field. When set and registered it supplied every field
-	// above, so the surface renders one name rather than four provenances.
-	// AgentMissing says the name resolved to nothing and the fields beneath it are
-	// what actually runs.
-	Agent        string `json:"agent,omitempty"`
-	AgentMissing string `json:"agentMissing,omitempty"`
-	// Present is whether the adapter binary was found on PATH; when false,
-	// Missing is the absence badge naming the binding, its source, and the fix.
-	Present bool   `json:"present"`
-	Missing string `json:"missing,omitempty"`
-}
 
 // Agent is one entry of the operator's registered agent library on the wire: a
 // named, complete way to run a harness — the binary, whatever flags that harness

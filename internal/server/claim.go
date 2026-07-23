@@ -9,36 +9,30 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // claim is everything a claim commit records: the session it claims for, the
-// resolved binding driving it, the hash of the exact payload that session was
-// told, and the skills composed into it. The layer provenance travels too, so the
-// audit trail answers not just which agent ran but where in the config stack that
-// choice was made — and, for content, which layer won each skill.
+// agent driving it, the hash of the exact payload that session was told, and the
+// skills composed into it (with which layer won each).
 //
-// The binding is recorded as the *argv* rather than an agent-and-model pair: a
+// Execution is recorded as the *argv* rather than an agent-and-model pair: a
 // model is a flag like any other, and the flags are what actually ran. `Args:`
-// therefore says strictly more than the `Model:` trailer it replaces — it carries
-// the model where one was asked for, and the permission and sandbox flags beside
-// it, which is exactly what an audit trail is read for.
+// therefore says strictly more than a `Model:` trailer would — it carries the
+// model where one was asked for, and the permission and sandbox flags beside it,
+// which is exactly what an audit trail is read for.
 type claim struct {
 	SessionID string
 	Role      string
-	// Agent is the *registered agent's name* the operator chose, and is empty when
-	// the role's binding decided instead. Adapter is the binary that actually ran.
-	// Both travel: a local name says which of the operator's agents was picked but
-	// means nothing on a teammate's machine, while the adapter and args are what
-	// the trailer means anywhere (stories 30, 31).
-	Agent       string
-	Adapter     string
-	Args        []string
-	PayloadSHA  string
-	Skills      []prompt.Skill
-	AdapterFrom config.Layer
-	ArgsFrom    config.Layer
+	// Agent is the *registered agent's name* the operator chose. Adapter is the
+	// binary that actually ran. Both travel: a local name says which of the
+	// operator's agents was picked but means nothing on a teammate's machine, while
+	// the adapter and args are what the trailer means anywhere (stories 30, 31).
+	Agent      string
+	Adapter    string
+	Args       []string
+	PayloadSHA string
+	Skills     []prompt.Skill
 }
 
 // writeClaimCommit is chartr's one lifecycle write at spawn (ADR 0008): it
@@ -48,7 +42,7 @@ type claim struct {
 // one path, so whatever else sits staged in the operator's index (their own work,
 // a live session's edits) can never be swept into chartr's claim. It handles
 // a not-yet-tracked ticket (a freshly charted map) and an unborn HEAD (a first
-// commit); the caller has already resolved the binding and composed the payload,
+// commit); the caller has already settled the agent and composed the payload,
 // so this only records them.
 //
 // It never rewrites history and never pushes (ADR 0008): the claim is a new
@@ -180,24 +174,24 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 
 // claimMessage renders the claim commit's message: a human subject naming the
 // ticket, then the trailer block ADR 0008 makes git the audit trail with —
-// session, agent, model, role, the payload content hash, one `Skill:` line per
-// composed skill (`<name>=<layer>:<hash>`, the provenance re-keyed from prompt
-// parts to skills), and the layer each binding field resolved from. The trailers
-// are a contiguous `Key: value` block so `git interpret-trailers` and
-// `%(trailers)` parse them; a repeated key is legal and reads as a list.
+// session, agent, adapter, args, role, the payload content hash, and one `Skill:`
+// line per composed skill (`<name>=<layer>:<hash>`, the provenance re-keyed from
+// prompt parts to skills). The trailers are a contiguous `Key: value` block so
+// `git interpret-trailers` and `%(trailers)` parse them; a repeated key is legal
+// and reads as a list.
 func claimMessage(rel string, c claim) string {
 	var b strings.Builder
-	// The subject names what the operator chose where they chose one, and falls
-	// back to the binary when nothing was named — never a blank pair of brackets.
+	// The subject names what the operator chose. An agent is required to spawn, so
+	// a name is always present; the binary is the fallback for defence in depth,
+	// never a blank pair of brackets.
 	subject := c.Agent
 	if subject == "" {
 		subject = c.Adapter
 	}
 	fmt.Fprintf(&b, "Claim %s for %s (%s)\n\n", rel, c.Role, subject)
 	fmt.Fprintf(&b, "Session: %s\n", c.SessionID)
-	// On the binding path there is no registered name, so `Agent:` is omitted
-	// rather than written blank: a trailer with nothing after it would read as a
-	// nameless agent instead of as no name at all.
+	// A local name says which of the operator's agents was picked; the adapter and
+	// args say what that means on any machine, so all three travel.
 	if c.Agent != "" {
 		fmt.Fprintf(&b, "Agent: %s\n", c.Agent)
 	}
@@ -209,16 +203,6 @@ func claimMessage(rel string, c claim) string {
 	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
 	for _, sk := range c.Skills {
 		fmt.Fprintf(&b, "Skill: %s=%s:%s\n", sk.Name, sk.Layer, sk.Hash)
-	}
-	// The layer provenance is a fact about role bindings, so it is written only
-	// when a binding decided. An explicit agent consulted no layers, and claiming
-	// one resolved from `built-in` would be a lie. Ticket 05 removes these with the
-	// layers they name.
-	if c.AdapterFrom != "" {
-		fmt.Fprintf(&b, "Adapter-From: %s\n", c.AdapterFrom)
-	}
-	if c.ArgsFrom != "" {
-		fmt.Fprintf(&b, "Args-From: %s\n", c.ArgsFrom)
 	}
 	fmt.Fprintf(&b, "Chartr-Write: true")
 	return b.String()

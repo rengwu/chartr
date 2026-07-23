@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,11 +10,10 @@ import (
 	"github.com/rengwu/chartr/internal/model"
 )
 
-// The agent library at the process boundary (registering agents from the surface,
-// assigning them to roles, spawning through one). The assertions that matter are
-// the ones a curated flag list could never make: whatever the operator typed
-// reaches the launched process verbatim, in order, whether or not this repository
-// has ever heard of the flag.
+// The agent library at the process boundary: registering agents from the surface
+// and spawning through one. The assertions that matter are the ones a curated flag
+// list could never make — whatever the operator typed reaches the launched process
+// verbatim, in order, whether or not this repository has ever heard of the flag.
 
 func agents(t *testing.T, h *chartrtest.Chartr) []model.Agent {
 	t.Helper()
@@ -26,15 +24,6 @@ func registerAgent(t *testing.T, h *chartrtest.Chartr, name string, body map[str
 	t.Helper()
 	if code, resp := h.Put("/api/config/agents/"+name, body); code != 200 {
 		t.Fatalf("registering agent %s = %d, body %s", name, code, resp)
-	}
-}
-
-func assignAgent(t *testing.T, h *chartrtest.Chartr, spaceID, role string, name any) {
-	t.Helper()
-	code, resp := h.Put("/api/spaces/"+spaceID+"/config/binding",
-		map[string]any{"role": role, "field": "agent", "value": name})
-	if code != 200 {
-		t.Fatalf("assigning %s to %v = %d, body %s", role, name, code, resp)
 	}
 }
 
@@ -121,31 +110,25 @@ func TestNothingIsAddedToTheRegisteredArgv(t *testing.T) {
 	}
 }
 
-// The library is global: one registration serves every space, and each space
-// assigns independently. This is the whole reason the library does not live in a
-// repository — and the reason assignment does.
+// The library is global: one registration is the same list on every space, and it
+// lives in the operator's own config — never a repository — so a teammate cannot
+// be handed a permission-skipping agent by pulling.
 func TestOneLibraryServesEverySpace(t *testing.T) {
 	h := chartrtest.Start(t)
 	repoA, repoB := chartrtest.NewSpaceRepo(t), chartrtest.NewSpaceRepo(t)
-	a, b := register(t, h, repoA), register(t, h, repoB)
+	register(t, h, repoA)
+	register(t, h, repoB)
 
 	registerAgent(t, h, "shared", map[string]any{"adapter": "claude", "args": []string{"--model", "opus"}})
-	assignAgent(t, h, a.ID, "implement", "shared")
 
+	// The library rides the model, not a space: it is the same one entry regardless
+	// of which space reads the snapshot.
 	snap := h.Snapshot(ctx(t))
 	if len(snap.Agents) != 1 || snap.Agents[0].Name != "shared" {
 		t.Fatalf("library = %+v, want one shared agent", snap.Agents)
 	}
-	if got := binding(t, findSpace(t, snap, a.ID), "implement").Agent; got != "shared" {
-		t.Errorf("space A implement.agent = %q, want shared", got)
-	}
-	if got := binding(t, findSpace(t, snap, b.ID), "implement").Agent; got != "" {
-		t.Errorf("assigning in space A also assigned space B (%q) — assignment is per space", got)
-	}
 
-	// Nothing was written into either repository: the library and its assignments
-	// are the operator's, and a teammate cannot be handed a permission-skipping
-	// agent by pulling.
+	// Nothing was written into either repository: the library is the operator's.
 	for _, repo := range []string{repoA, repoB} {
 		if _, err := gitHEAD(repo); err == nil {
 			t.Errorf("%s grew a commit from a library edit", repo)
@@ -186,47 +169,13 @@ func TestLibraryRoundTripsThroughTheSnapshot(t *testing.T) {
 		t.Errorf("typed agent = %q / command %q, want the opener off the command line", got.Delivery, got.Command)
 	}
 
-	// Delete reports what it stranded, and empties the library.
+	// Delete empties the library.
 	code, body := h.Delete("/api/config/agents/claude-yolo")
 	if code != 200 {
 		t.Fatalf("delete = %d, body %s", code, body)
 	}
 	if len(agents(t, h)) != 0 {
 		t.Errorf("library survived the delete: %+v", agents(t, h))
-	}
-}
-
-// Deleting an agent a role is assigned to names the assignment rather than
-// quietly rewriting it, and the stranded role keeps spawning off its own fields.
-func TestDeletingAnAssignedAgentReportsAndStrands(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	resp := register(t, h, repo)
-
-	registerAgent(t, h, "doomed", map[string]any{"adapter": "claude", "args": []string{"--model", "opus"}})
-	assignAgent(t, h, resp.ID, "implement", "doomed")
-
-	code, body := h.Delete("/api/config/agents/doomed")
-	if code != 200 {
-		t.Fatalf("delete = %d, body %s", code, body)
-	}
-	var out struct {
-		Assigned []string `json:"assigned"`
-	}
-	if err := json.Unmarshal([]byte(body), &out); err != nil {
-		t.Fatalf("delete response not JSON: %v (%s)", err, body)
-	}
-	if len(out.Assigned) != 1 || !strings.Contains(out.Assigned[0], "implement") {
-		t.Errorf("delete reported assignments %v, want the one implement assignment", out.Assigned)
-	}
-
-	// The role still resolves — visibly stranded, never blocked.
-	b := binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	if b.AgentMissing == "" {
-		t.Errorf("stranded role carries no explanation: %+v", b)
-	}
-	if b.Adapter != "claude" || strings.Join(b.Args, " ") != "--model sonnet" {
-		t.Errorf("stranded role did not fall back to its own fields: %+v", b)
 	}
 }
 

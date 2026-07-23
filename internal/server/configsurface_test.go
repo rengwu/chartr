@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,12 +12,11 @@ import (
 	"github.com/rengwu/chartr/internal/model"
 )
 
-// Ticket 05 at the process boundary: the effective config surface. The read half
-// is asserted through the pushed snapshot — every resolved value with the layer
-// it came from and the file that layer lives in. The write half is asserted
-// through the files on disk and the re-derived snapshot: a binding edit lands in
-// the user layer and nowhere else, clearing it reveals the layer beneath, and the
-// open action resolves only names the server knows.
+// The settings surface at the process boundary (ticket 05): the agent library and
+// the paths of the files behind it, each openable in the operator's editor. There
+// is no committed execution layer and no per-field provenance any more — ADR 0014
+// is superseded — so what is asserted is the library, the file paths, and the
+// named-layer open action that refuses anything it does not itself resolve.
 
 func layer(t *testing.T, layers []model.ConfigLayer, name string) model.ConfigLayer {
 	t.Helper()
@@ -42,34 +40,30 @@ func skill(t *testing.T, s model.Space, name string) model.ResolvedSkill {
 	return model.ResolvedSkill{}
 }
 
-func setBinding(t *testing.T, h *chartrtest.Chartr, spaceID string, body map[string]any) (int, string) {
-	t.Helper()
-	return h.Put("/api/spaces/"+spaceID+"/config/binding", body)
-}
-
-// The pushed model carries the whole surface: bindings with per-field provenance
-// and PATH presence, the resolved skill library with the layer that won each
-// directory, and the path of every participating layer (stories 33–37). The
-// fixture's config still carries a `[maps.*]` table from before the kind cut,
-// which must cost a real checkout nothing.
-func TestSnapshotCarriesTheEffectiveConfigSurface(t *testing.T) {
+// The pushed model carries the surface: the operator's registered agent library,
+// and the path of every file behind it. A repository that still carries a
+// pre-cut `.chartr/config.toml` (old role bindings and a stale `[maps.*]` table)
+// must cost a real checkout nothing — it is neither read, warned about, nor an
+// error (story 36).
+func TestSnapshotCarriesTheAgentLibraryAndPaths(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 
+	// A leftover committed config from before this cut. Nothing reads it now.
 	chartrtest.WriteFile(t, repo, ".chartr/config.toml", `
 [roles.implement]
+adapter = "codex"
 args = ["--model", "sonnet-ws"]
 
 [maps."widget"]
 kind = "implementation"
 `)
-	chartrtest.WriteFile(t, h.DataDir, "user.toml", fmt.Sprintf(`
-[spaces.%q.roles.implement]
-adapter = "codex"
-`, repo))
-	// A workspace fork of one skill: the committed layer wins its whole directory.
-	chartrtest.WriteFile(t, repo, ".chartr/skills/implement/SKILL.md",
-		"---\nname: implement\ndescription: this space's own\n---\n\nHouse rules.\n")
+	// The agent library lives in the operator's own config.
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", `
+[agents.house]
+adapter = "claude"
+args = ["--model", "opus"]
+`)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 
@@ -77,53 +71,44 @@ adapter = "codex"
 	snap := h.Snapshot(ctx(t))
 	s := findSpace(t, snap, resp.ID)
 
-	// Bindings: per-field provenance and the PATH probe.
-	impl := binding(t, s, "implement")
-	assertField(t, "implement.adapter", impl.Adapter, "codex", impl.AdapterFrom, "user")
-	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model sonnet-ws", impl.ArgsFrom, "workspace")
-
-	// Skills: the winning layer per whole directory, positively stated.
-	if got := skill(t, s, "implement").Layer; got != "workspace" {
-		t.Errorf("implement skill resolves from %q, want workspace", got)
-	}
-	if got := skill(t, s, "grill").Layer; got != "built-in" {
-		t.Errorf("grill skill resolves from %q, want built-in", got)
-	}
-	if got := skill(t, s, "implement").Dir; got != filepath.Join(repo, ".chartr/skills/implement") {
-		t.Errorf("implement skill dir = %q, want the workspace copy", got)
+	// The library is on the snapshot, resolved from the operator's config alone.
+	if len(snap.Agents) != 1 || snap.Agents[0].Name != "house" {
+		t.Fatalf("library = %+v, want the one registered agent", snap.Agents)
 	}
 
-	// The leftover [maps."widget"] table is ignored outright: it is neither an
-	// error nor a warning, so a teammate's checkout written before the kind cut
-	// still resolves clean.
+	// The leftover config.toml is inert: neither read nor warned about.
 	if len(s.Warnings) != 0 {
-		t.Errorf("a config carrying a stale [maps.*] table warned: %v", s.Warnings)
+		t.Errorf("a space carrying a stale .chartr/config.toml warned: %v", s.Warnings)
 	}
 
-	// Every participating layer names where it lives — the space's own on the
-	// space, the shared ones on the model.
-	if got, want := layer(t, s.Layers, "workspace-config").Path, filepath.Join(repo, ".chartr/config.toml"); got != want {
-		t.Errorf("workspace config path = %q, want %q", got, want)
-	}
-	if !layer(t, s.Layers, "workspace-config").Exists {
-		t.Error("workspace config exists on disk but the surface says it does not")
-	}
+	// Every file behind the library names where it lives — the shared ones on the
+	// model, the space's committed skill library on the space.
 	if got, want := layer(t, snap.Config, "user-config").Path, filepath.Join(h.DataDir, "user.toml"); got != want {
 		t.Errorf("user config path = %q, want %q", got, want)
 	}
-	// The split the surface has to tell honestly: user bindings and user skills
-	// are two different roots.
+	if got := layer(t, snap.Config, "user-config").Holds; got != "agents" {
+		t.Errorf("user config holds %q, want agents", got)
+	}
 	if got, want := layer(t, snap.Config, "user-skills").Path, filepath.Join(h.ConfigDir, "skills"); got != want {
 		t.Errorf("user skills path = %q, want %q", got, want)
 	}
 	if got, want := layer(t, snap.Config, "builtin-skills").Path, filepath.Join(h.DataDir, "skills"); got != want {
 		t.Errorf("built-in skills path = %q, want %q", got, want)
 	}
+	if got, want := layer(t, s.Layers, "workspace-skills").Path, filepath.Join(repo, ".chartr/skills"); got != want {
+		t.Errorf("workspace skills path = %q, want %q", got, want)
+	}
+	// Execution is no longer a committed layer: the space carries no config file.
+	for _, l := range s.Layers {
+		if l.Name == "workspace-config" {
+			t.Errorf("the surface still lists a committed workspace-config layer: %+v", l)
+		}
+	}
 }
 
 // A fork whose recorded `forked_from` no longer matches the shipped default is
-// carried on the skill itself, not only as a warning — the surface states the
-// stale-fork condition where it renders the skill (story 34).
+// carried on the skill itself and surfaced as a warning — skill resolution is the
+// content half of the config story, untouched by this cut (story 34).
 func TestResolvedSkillCarriesStaleFork(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -145,118 +130,26 @@ func TestResolvedSkillCarriesStaleFork(t *testing.T) {
 	}
 }
 
-// Editing a binding writes the user layer and only the user layer, leaves the
-// operator's bytes around it intact, and re-derives so the new value and its new
-// provenance reflect straight back (stories 39–41, 43).
-func TestBindingEditWritesOnlyTheUserLayer(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-
-	const workspaceCfg = `# committed, shared, and not the UI's to write
-[roles.implement]
-adapter = "claude"
-args = ["--model", "sonnet-ws"]
-`
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", workspaceCfg)
-	chartrtest.WriteFile(t, h.DataDir, "user.toml", "# my machine\n")
-
-	resp := register(t, h, repo)
-
-	if code, body := setBinding(t, h, resp.ID, map[string]any{
-		"role": "implement", "field": "args", "value": []string{"--model", "opus"},
-	}); code != 200 {
-		t.Fatalf("set binding = %d, body %s", code, body)
-	}
-
-	// The value and its provenance are back over the socket with no reload.
-	impl := binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model opus", impl.ArgsFrom, "user")
-	assertField(t, "implement.adapter", impl.Adapter, "claude", impl.AdapterFrom, "workspace")
-
-	// The committed workspace config is untouched, byte for byte.
-	if got := readFile(t, filepath.Join(repo, ".chartr/config.toml")); got != workspaceCfg {
-		t.Errorf("the UI wrote committed workspace config:\n%s", got)
-	}
-	// The user file kept the operator's comment and gained the override.
-	user := readFile(t, filepath.Join(h.DataDir, "user.toml"))
-	if !strings.HasPrefix(user, "# my machine\n") {
-		t.Errorf("the binding edit rewrote the user file's head:\n%s", user)
-	}
-	if !strings.Contains(user, `args = ["--model", "opus"]`) {
-		t.Errorf("the override is not in the user file:\n%s", user)
-	}
-
-	// Clearing it reveals the layer beneath — the edit is reversible.
-	if code, body := setBinding(t, h, resp.ID, map[string]any{
-		"role": "implement", "field": "args", "value": nil,
-	}); code != 200 {
-		t.Fatalf("clear binding = %d, body %s", code, body)
-	}
-	impl = binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "implement")
-	assertField(t, "implement.args", strings.Join(impl.Args, " "), "--model sonnet-ws", impl.ArgsFrom, "workspace")
-}
-
-// args round-trips as a list, and the surface refuses what it cannot honour —
-// an unknown role or field, an unknown space — rather than writing anything.
-func TestBindingEditArgsAndRefusals(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	resp := register(t, h, repo)
-
-	if code, body := setBinding(t, h, resp.ID, map[string]any{
-		"role": "grill", "field": "args", "value": []string{"--verbose", "-p"},
-	}); code != 200 {
-		t.Fatalf("set args = %d, body %s", code, body)
-	}
-	grill := binding(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "grill")
-	if len(grill.Args) != 2 || grill.Args[0] != "--verbose" || grill.ArgsFrom != "user" {
-		t.Errorf("args resolved %v from %q, want [--verbose -p] from user", grill.Args, grill.ArgsFrom)
-	}
-
-	for name, body := range map[string]map[string]any{
-		"unknown role":  {"role": "review", "field": "adapter", "value": "x"},
-		"unknown field": {"role": "implement", "field": "colour", "value": "olive"},
-		"empty value":   {"role": "implement", "field": "adapter", "value": ""},
-		"retired field": {"role": "implement", "field": "model", "value": "opus"},
-	} {
-		if code, resp2 := setBinding(t, h, resp.ID, body); code != 400 {
-			t.Errorf("%s: set binding = %d, want 400 (body %s)", name, code, resp2)
-		}
-	}
-	if code, _ := h.Put("/api/spaces/no-such-space/config/binding", map[string]any{
-		"role": "implement", "field": "adapter", "value": "x",
-	}); code != 404 {
-		t.Errorf("set binding on a missing space = %d, want 404", code)
-	}
-}
-
 // The open action resolves a *named* layer server-side and refuses anything
-// else, so a client-supplied path can never reach the editor (story 45).
+// else, so a client-supplied path can never reach the editor (story 45). The name
+// a committed config layer used to have is now simply unknown, and refused.
 func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, repo, ".chartr/config.toml", "[roles.implement]\nadapter = \"x\"\n")
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
 	resp := register(t, h, repo)
 
 	// A stub editor on $VISUAL records what it was handed, so the test asserts the
 	// path the *server* resolved rather than one it supplied.
 	record := stubEditor(t)
 
-	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "workspace-config"})
+	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "user-config"})
 	if code != 200 {
-		t.Fatalf("open workspace-config = %d, body %s", code, body)
+		t.Fatalf("open user-config = %d, body %s", code, body)
 	}
-	var opened struct {
-		Path   string `json:"path"`
-		Opened string `json:"opened"`
-		Exists bool   `json:"exists"`
-	}
-	if err := json.Unmarshal([]byte(body), &opened); err != nil {
-		t.Fatalf("open response not JSON: %v (%q)", err, body)
-	}
-	want := filepath.Join(repo, ".chartr/config.toml")
-	if opened.Path != want || !opened.Exists || opened.Opened != "editor" {
-		t.Errorf("open = %+v, want %q opened in the editor", opened, want)
+	want := filepath.Join(h.DataDir, "user.toml")
+	if !strings.Contains(body, `"opened":"editor"`) || !strings.Contains(body, want) {
+		t.Errorf("open user-config = %s, want %q opened in the editor", body, want)
 	}
 	if got := waitForFile(t, record); !strings.Contains(got, want) {
 		t.Errorf("the editor was handed %q, want the server-resolved %q", got, want)
@@ -271,12 +164,14 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 		t.Errorf("skill:implement resolved to %s, want the materialized built-in copy", body)
 	}
 
-	// Anything not a name the server knows is refused — including a path.
+	// Anything not a name the server knows is refused — including a path and the
+	// name the retired committed-config layer used to answer to.
 	for _, bad := range []string{
 		"/etc/passwd",
 		"../../../../etc/passwd",
 		"skill:../../etc/passwd",
 		"skill:no-such-skill",
+		"workspace-config",
 		"",
 	} {
 		if code, _ := h.Post("/api/spaces/"+resp.ID+"/config/open",
@@ -293,42 +188,46 @@ func TestOpenAbsentLayerSurfacesThePath(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
-	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "workspace-config"})
+	// The space's committed skill library does not exist yet.
+	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "workspace-skills"})
 	if code != 200 {
-		t.Fatalf("open absent workspace-config = %d, body %s", code, body)
+		t.Fatalf("open absent workspace-skills = %d, body %s", code, body)
 	}
 	if !strings.Contains(body, `"exists":false`) || !strings.Contains(body, `"opened":"none"`) {
 		t.Errorf("open of an absent layer = %s, want it surfaced as absent", body)
 	}
-	if !strings.Contains(body, filepath.Join(repo, ".chartr/config.toml")) {
+	want := filepath.Join(repo, ".chartr/skills")
+	if !strings.Contains(body, want) {
 		t.Errorf("open of an absent layer did not surface its path: %s", body)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".chartr/config.toml")); !os.IsNotExist(err) {
-		t.Error("opening an absent layer created the file")
+	if _, err := os.Stat(want); !os.IsNotExist(err) {
+		t.Error("opening an absent layer created the directory")
 	}
 }
 
-// The global half of the surface stands on its own: the skill library resolves
-// with no space in play, so "what are my skills and where do they live" is
-// answerable with nothing registered — and the open action for those layers is
-// reachable without borrowing a space id.
-func TestGlobalSkillsResolveWithoutASpace(t *testing.T) {
-	// A user fork shadows one whole directory; everything else stands on the
+// The global half of the surface stands on its own: the agent library and the
+// skill library both resolve with no space in play, so "what are my agents and
+// skills and where do they live" is answerable with nothing registered — and the
+// open action for those layers is reachable without borrowing a space id.
+func TestGlobalLayersResolveWithoutASpace(t *testing.T) {
+	// A user fork shadows one whole skill directory; everything else stands on the
 	// shipped floor. It is in place before the server starts, since nothing but a
 	// registered space would prompt a rebuild here.
 	configDir := t.TempDir()
 	chartrtest.WriteFile(t, filepath.Join(configDir, "skills"), "grill/SKILL.md",
 		"---\nname: grill\ndescription: mine\n---\n\nMy grill.\n")
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	chartrtest.WriteFile(t, h.DataDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
+	// Nudge a rebuild so the freshly written library is on the snapshot.
+	register(t, h, chartrtest.NewSpaceRepo(t))
 
 	snap := h.Snapshot(ctx(t))
-	if len(snap.Spaces) != 0 {
-		t.Fatalf("expected no registered spaces, got %d", len(snap.Spaces))
+	if len(snap.Agents) != 1 || snap.Agents[0].Name != "house" {
+		t.Fatalf("global library = %+v, want the one registered agent", snap.Agents)
 	}
 	if len(snap.Skills) == 0 {
 		t.Fatal("the global scope lists no skills; it should never take a space to read the library")
 	}
-
 	global := func(name string) model.ResolvedSkill {
 		t.Helper()
 		for _, sk := range snap.Skills {
@@ -342,17 +241,8 @@ func TestGlobalSkillsResolveWithoutASpace(t *testing.T) {
 	if got, want := global("grill").Layer, "user"; got != want {
 		t.Errorf("forked grill resolves from %q, want %q", got, want)
 	}
-	if got, want := global("grill").Dir, filepath.Join(h.ConfigDir, "skills", "grill"); got != want {
-		t.Errorf("grill dir = %q, want %q", got, want)
-	}
 	if got, want := global("core").Layer, "built-in"; got != want {
 		t.Errorf("core resolves from %q, want %q", got, want)
-	}
-	// The method skills ship in the same library and resolve space-less too.
-	for _, name := range []string{"wayfinder", "domain-modeling", "to-spec", "to-tickets"} {
-		if got, want := global(name).Layer, "built-in"; got != want {
-			t.Errorf("%s resolves from %q, want %q", name, got, want)
-		}
 	}
 
 	// The space-less open resolves the same named layers, and refuses everything
@@ -369,7 +259,7 @@ func TestGlobalSkillsResolveWithoutASpace(t *testing.T) {
 	if got := waitForFile(t, record); !strings.Contains(got, want) {
 		t.Errorf("the editor was handed %q, want the server-resolved %q", got, want)
 	}
-	for _, bad := range []string{"/etc/passwd", "skill:../../etc/passwd", "workspace-config", ""} {
+	for _, bad := range []string{"/etc/passwd", "skill:../../etc/passwd", "workspace-config", "workspace-skills", ""} {
 		if code, _ := h.Post("/api/config/open", map[string]string{"layer": bad}); code != 400 {
 			t.Errorf("global open %q = %d, want 400 — only global names resolve here", bad, code)
 		}

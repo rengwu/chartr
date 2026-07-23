@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// The write half of the agent library. It shares SetUserBinding's stance and its
-// TOML line surgery (userbinding.go): the operator's file is *theirs* — comments,
+// The write half of the agent library. It works through the comment-preserving
+// TOML line surgery in tomlsurgery.go: the operator's file is *theirs* — comments,
 // key order, spacing, and unrelated tables survive every edit — and a shape this
 // editor does not understand is refused with a pointer at a hand edit rather than
 // rewritten blind.
@@ -51,12 +51,10 @@ func SetUserAgent(existing []byte, name string, a Agent) ([]byte, error) {
 	return []byte(strings.Join(lines, eol)), nil
 }
 
-// DeleteUserAgent removes one agent's table entirely. Roles still assigned to it
-// are deliberately left alone: the assignment lives in a different table (and, for
-// a different space, possibly a different part of the file), and rewriting other
-// people's config on a delete is exactly the kind of quiet action this surface
-// avoids. A dangling assignment resolves to a visible warning and falls back to
-// the role's own fields.
+// DeleteUserAgent removes one agent's table entirely, and touches nothing else in
+// the operator's file — no other table is rewritten as a side effect of a delete.
+// A space that last spawned with this agent simply reads it as nothing remembered
+// on its next snapshot and reopens the picker.
 func DeleteUserAgent(existing []byte, name string) ([]byte, error) {
 	if err := ValidAgentName(name); err != nil {
 		return nil, err
@@ -74,26 +72,6 @@ func DeleteUserAgent(existing []byte, name string) ([]byte, error) {
 	return []byte(strings.Join(append(lines[:start:start], lines[end:]...), eol)), nil
 }
 
-// AssignedRoles reports every space and role in the user config currently
-// assigned to an agent — what the surface warns about before a delete, so the
-// operator sees what they are about to leave dangling.
-func AssignedRoles(existing []byte, name string) []string {
-	var uf userFile
-	if len(existing) == 0 || !decodeTOML(existing, &uf) {
-		return nil
-	}
-	var out []string
-	for path, sp := range uf.Spaces {
-		for role, b := range sp.Roles {
-			if b.Agent != nil && *b.Agent == name {
-				out = append(out, path+" › "+role)
-			}
-		}
-	}
-	sortStrings(out)
-	return out
-}
-
 // agentField is one key of an agent's table, with the line that renders it and
 // whether this agent sets it at all.
 type agentField struct {
@@ -107,10 +85,6 @@ func agentFields(a Agent) []agentField {
 		{key: "adapter", render: "adapter = " + strconv.Quote(a.Adapter), set: true},
 		{key: "prompt", render: "prompt = " + strconv.Quote(a.Prompt), set: a.Prompt != ""},
 		{key: "args", render: renderArgs(a.Args), set: len(a.Args) > 0},
-		// `model` is retired. It is listed with set=false so rewriting an agent that
-		// still carries one *removes* the dead key rather than leaving it to warn
-		// forever — the edit is what retires it on disk.
-		{key: "model", render: "", set: false},
 	}
 }
 

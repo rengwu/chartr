@@ -119,20 +119,17 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	// The effective config surface (ticket 05, ADR 0014). The read half rides the
 	// per-space model push; these are the two writes it is allowed. Editing a role
-	// binding is a PUT because it sets one named field to one value; it lands in
-	// the user layer and nowhere else. Opening a layer file is a POST because it
-	// launches a process, and it resolves a *named* layer server-side — never a
-	// path from the client.
-	s.mux.HandleFunc("PUT /api/spaces/{id}/config/binding", s.handleSetBinding)
+	// Opening a layer file is a POST because it launches a process, and it resolves
+	// a *named* layer server-side — never a path from the client.
 	s.mux.HandleFunc("POST /api/spaces/{id}/config/open", s.handleOpenLayer)
 	// The same open, for the layers that belong to no space — the operator's own
 	// config file and the global skill library. The global scope is reachable with
 	// nothing registered, so it cannot borrow a space id to open its own files.
 	s.mux.HandleFunc("POST /api/config/open", s.handleOpenGlobalLayer)
-	// The agent library: named launch specs the operator registers once and assigns
-	// to roles in any space. Global, like the config surface above it — the library
-	// lives in the operator's own file and is never committed — so these routes take
-	// no space id and work with nothing registered at all.
+	// The agent library: named launch specs the operator registers once and picks
+	// from at the gate. Global — the library lives in the operator's own file and is
+	// never committed — so these routes take no space id and work with nothing
+	// registered at all.
 	s.mux.HandleFunc("PUT /api/config/agents/{name}", s.handleSetAgent)
 	s.mux.HandleFunc("DELETE /api/config/agents/{name}", s.handleDeleteAgent)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
@@ -140,11 +137,11 @@ func New(opts Options) (*Server, error) {
 	// the composition reads the library and the map fresh off disk each time.
 	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
 	// Spawn a session (ticket 09): the tracer bullet. From a frontier ticket, the
-	// chartr writes the claim commit, composes and archives the payload, resolves
-	// the role binding, and launches the agent's own TUI with the opener typed in —
-	// or hard-blocks the one spawn when the bound agent is absent. A plain HTTP
-	// action so a refusal (missing agent, a ticket off the frontier) surfaces as a
-	// response.
+	// chartr writes the claim commit, composes and archives the payload, settles the
+	// chosen agent, and launches the agent's own TUI with the opener typed in — or
+	// hard-blocks the one spawn when the chosen agent is unregistered or absent. A
+	// plain HTTP action so a refusal (missing agent, a ticket off the frontier)
+	// surfaces as a response.
 	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/spawn", s.handleSpawn)
 	// The death halt (ticket 10): a session that died stays pinned to its ticket,
 	// and the operator resolves it one of exactly three ways — resume it (same-

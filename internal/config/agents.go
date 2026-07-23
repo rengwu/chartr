@@ -10,8 +10,9 @@ import (
 	"github.com/rengwu/chartr/internal/adapter"
 )
 
-// The agent library: named launch specs the operator registers once and assigns
-// to roles (ADR 0009 as amended).
+// The agent library: named launch specs the operator registers once and picks
+// from at the moment of spawning. It is the *only* execution config — there are
+// no role bindings and no committed layer (ADR 0009 as superseded).
 //
 // An agent is a *complete, self-describing way to run a harness* — the binary,
 // whatever flags that harness wants, and how it takes its opening prompt. Nothing
@@ -23,15 +24,11 @@ import (
 // everything else: it is a flag, and it was never anything more.
 //
 // The library is **global and local**: one `[agents.<name>]` table set in the
-// operator's own config, shared by every space, and never committed. Assignment
-// stays per space — a role names an agent, and that name is the whole binding.
-// The split is deliberate: which agents exist on this machine is a property of the
-// machine (its PATH, its logins, how much rope its operator wants), while which
-// role runs which agent is a property of the work. Nothing in a repository can
-// therefore hand a teammate a permission-skipping agent on `git pull`.
-//
-// A role that names no agent resolves exactly as it always has, field by field
-// across the three layers. The library is an addition, never a migration.
+// operator's own config, shared by every space, and never committed. Which agents
+// exist on this machine is a property of the machine (its PATH, its logins, how
+// much rope its operator wants), so nothing in a repository can hand a teammate a
+// permission-skipping agent on `git pull`. An empty library is the starting state,
+// not an error, and refuses every spawn until the operator registers one.
 
 // Agent is one registered launch spec. Adapter is the only required field:
 // everything a harness wants beyond its own name is Args.
@@ -45,13 +42,24 @@ type Agent struct {
 }
 
 // ResolvedAgent is a registered agent as the surface renders it: the spec, its
-// name, and whether its binary is actually on PATH — the same absence badge a
-// binding carries, answered once for the library rather than per role.
+// name, and whether its binary is actually on PATH — the absence badge answered
+// once for the library.
 type ResolvedAgent struct {
 	Name string `json:"name"`
 	Agent
 	Present bool   `json:"present"`
 	Missing string `json:"missing,omitempty"`
+}
+
+// Resolution is the resolved agent library for one machine plus any warnings —
+// what every spawn surface consults to settle and refuse a launch (the library
+// is global, so this is the same answer for every space and for none at all).
+type Resolution struct {
+	// Agents is the operator's registered library in name order.
+	Agents []ResolvedAgent
+	// Warnings are live problems worth surfacing — an agent with no adapter, an
+	// unreadable prompt delivery. Surface, never enforce.
+	Warnings []string
 }
 
 // agentsFile is the global half of the operator's config: the agent library,
@@ -64,10 +72,6 @@ type rawAgent struct {
 	Adapter string   `toml:"adapter"`
 	Args    []string `toml:"args"`
 	Prompt  string   `toml:"prompt"`
-	// Model is retired — it is a flag, and it lives in Args. Still decoded so an
-	// agent registered before that change is told it stopped taking effect rather
-	// than quietly launching without it.
-	Model string `toml:"model"`
 }
 
 // ResolveAgents reads the operator's agent library, in name order, with each
@@ -102,11 +106,6 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 			warnings = append(warnings, fmt.Sprintf(
 				"agent %q has an unreadable prompt delivery: %s; the adapter's default stands", name, err))
 			a.Prompt = ""
-		}
-		if a.Model != "" {
-			warnings = append(warnings, fmt.Sprintf(
-				"agent %q sets model = %q, which chartr no longer reads; move it into args (for example args = [\"--model\", %q])",
-				name, a.Model, a.Model))
 		}
 		r := ResolvedAgent{
 			Name:  name,
@@ -225,6 +224,3 @@ func decodeTOML(data []byte, v any) bool {
 	_, err := toml.Decode(string(data), v)
 	return err == nil
 }
-
-// sortStrings is sort.Strings, named here so the writers do not each import sort.
-func sortStrings(s []string) { sort.Strings(s) }

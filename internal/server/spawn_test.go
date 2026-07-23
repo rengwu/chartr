@@ -450,15 +450,18 @@ func TestSpawnDeliversTheOpenerTheWayTheAgentSays(t *testing.T) {
 
 // A prompt delivery the adapter seam cannot read never reaches the command line:
 // the agent's own default stands and the operator is told, rather than the spawn
-// dying or the CLI being handed a flag it will refuse.
+// dying or the CLI being handed a flag it will refuse. The library's own writer
+// refuses such a delivery at the gate, so the case that survives is a hand-written
+// agent whose delivery ResolveAgents drops on the way through.
 func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	// Hand-written, since the registration surface would refuse "stdin" outright.
 	chartrtest.WriteFile(t, h.DataDir, "user.toml",
-		fmt.Sprintf("[spaces.%q.roles.implement]\nprompt = \"stdin\"\n", repo))
+		"[agents.runner]\nadapter = \"claude\"\nprompt = \"stdin\"\n")
 	delivery := chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
@@ -467,7 +470,7 @@ func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
 		t.Errorf("no warning for an unreadable prompt delivery: %v", s.Warnings)
 	}
 
-	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	sp := spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "runner")
 	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
 	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
 	if !strings.Contains(log, "argv: Read the file ") {

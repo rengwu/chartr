@@ -69,13 +69,14 @@ const (
 	TicketsSkill   = "to-tickets"
 )
 
-// Segment layer tags. The three skill layers reuse config's names so provenance
-// reads the same everywhere; "context" tags a context-bundle part, which is
-// assembled rather than resolved through the layers.
+// Segment layer tags. The three skill layers name where a skill resolved from —
+// shipped floor, the operator's own fork, or a space's committed library; "context"
+// tags a context-bundle part, which is assembled rather than resolved through the
+// layers.
 const (
-	LayerBuiltin   = string(config.LayerBuiltin)
-	LayerUser      = string(config.LayerUser)
-	LayerWorkspace = string(config.LayerWorkspace)
+	LayerBuiltin   = "built-in"
+	LayerUser      = "user"
+	LayerWorkspace = "workspace"
 	LayerContext   = "context"
 )
 

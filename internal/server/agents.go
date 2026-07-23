@@ -10,10 +10,9 @@ import (
 )
 
 // The agent library's write surface. Registering an agent is the operator saying
-// "this is a way I am willing to run a harness on this machine" — a binary, an
-// optional model, whatever flags that harness takes, and how it wants its opening
-// prompt. Roles then assign to it by name through the ordinary binding editor
-// (`field: "agent"`), so one library serves every space.
+// "this is a way I am willing to run a harness on this machine" — a binary,
+// whatever flags that harness takes, and how it wants its opening prompt. One
+// library serves every space, and a spawn picks from it at the gate.
 //
 // Both routes write **only the operator's own config** and never a repository's
 // committed one, which is what keeps a permission-skipping agent something you
@@ -57,12 +56,9 @@ func (s *Server) handleSetAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"name": r.PathValue("name"), "path": path})
 }
 
-// handleDeleteAgent removes one agent from the library. Roles assigned to it are
-// deliberately left as they are — the response names them, so the surface can say
-// what was left dangling, and each dangling assignment resolves to a visible
-// warning with the role falling back to its own fields. Rewriting a space's
-// bindings as a side effect of a delete would be exactly the kind of quiet action
-// this surface exists to avoid.
+// handleDeleteAgent removes one agent from the library, and touches nothing else.
+// A space that last spawned with it simply reads nothing remembered on its next
+// snapshot and reopens the picker — there is no assignment to strand.
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	path, existing, err := s.readUserConfig()
@@ -70,7 +66,6 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, "reading user config: "+err.Error())
 		return
 	}
-	assigned := config.AssignedRoles(existing, name)
 	next, err := config.DeleteUserAgent(existing, name)
 	if err != nil {
 		httpError(w, http.StatusBadRequest, err.Error())
@@ -82,7 +77,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.rebuild()
 
-	writeJSON(w, http.StatusOK, map[string]any{"name": name, "path": path, "assigned": assigned})
+	writeJSON(w, http.StatusOK, map[string]any{"name": name, "path": path})
 }
 
 // readUserConfig returns the operator's config path and its current bytes, with
