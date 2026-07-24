@@ -5,7 +5,7 @@
 //
 // Two rules shape it. Discovery is layout-agnostic — it reads wherever wayfinder
 // writes, finding a map by the presence of its map.md rather than by a
-// hard-coded path, so both the current `.plan/<slug>/` layout and the eventual
+// hard-coded path, so both the flat `.plan/<slug>/` layout and the nested
 // `.plan/maps/<slug>/` one are found without either being wired in (story 12).
 // And a malformed map is rendered as-is with its malformation surfaced, never
 // refused (story 17): a ticket that will not parse becomes a surfaced defect and

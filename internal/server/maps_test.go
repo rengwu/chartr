@@ -61,8 +61,8 @@ func hasMap(s model.Space, slug string) bool {
 
 // A map dropped into a registered space from outside — a hosted shell, an
 // external terminal, a `git pull` — appears in the snapshot with no refresh
-// action (story 11), under both the current `.plan/<slug>/` layout and the
-// tolerated `.plan/maps/<slug>/` one (story 12). The test dials the control
+// action (story 11), under both the flat `.plan/<slug>/` layout and the
+// nested `.plan/maps/<slug>/` one (story 12). The test dials the control
 // socket before dropping anything and waits for the pushes to arrive on their
 // own: discovery is by notice.
 func TestMapAppearsByNoticeBothLayouts(t *testing.T) {

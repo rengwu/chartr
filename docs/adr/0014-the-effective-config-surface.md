@@ -1,7 +1,7 @@
 # One global settings route shows what the layers resolve, and edits only role bindings into the user layer
 
 > **Superseded by the `agent-selection` effort (spec at
-> `.plan/agent-selection/spec.md`; implemented in `.plan/agent-selection-impl`,
+> `.plan/maps/agent-selection/spec.md`; implemented in `.plan/maps/agent-selection-impl`,
 > ticket 05).** This surface was built on per-field provenance across three
 > layers, which no longer exists: role bindings and the committed execution layer
 > are gone, and execution is chosen per spawn from the operator's agent library

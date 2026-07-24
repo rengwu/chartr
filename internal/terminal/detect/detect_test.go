@@ -20,7 +20,7 @@ func TestShippedManifestRules(t *testing.T) {
 	}
 
 	// Representative reconstructed screens, structured like the real captures
-	// (see .plan/agent-state-detection/assets and the recording-driven tests in the
+	// (see .plan/maps/agent-state-detection/assets and the recording-driven tests in the
 	// terminal package): flat rules frame the panels, the spinner leads its own line.
 	rule := strings.Repeat("─", 40)
 	claudeBlocked := strings.Join([]string{

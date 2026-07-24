@@ -17,7 +17,7 @@ import (
 // The engine is tested against recorded agent bytes rather than hand-written
 // strings, because hand-written strings encode what we *think* an agent draws;
 // these are what Claude Code actually emitted. Ticket 02 extends the same set.
-const recordingsDir = "../../.plan/agent-state-detection/assets"
+const recordingsDir = "../../.plan/maps/agent-state-detection/assets"
 
 // chunk is one recorded PTY read: when it arrived, and the bytes.
 type chunk struct {

@@ -4,7 +4,7 @@ Guidance for Claude Code sessions working in this repo.
 
 ## Wayfinder maps in this repo
 
-This repo plans with wayfinder maps under `.plan/`, and it is a space chartr
+This repo plans with wayfinder maps under `.plan/maps/`, and it is a space chartr
 watches. The maps are plain local-markdown — the vendored `tracker-convention`
 skill's adapter, with nothing added on top. Chart with `/wayfinder` and graduate
 with `/to-tickets` exactly as you would anywhere else; chartr notices the new

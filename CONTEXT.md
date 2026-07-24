@@ -11,7 +11,7 @@ A git repository chartr drives, registered once and switched between. It owns ex
 _Avoid_: project, workspace, repo, folder
 
 **Map**:
-A wayfinder effort — a `map.md` and its tickets under `.plan/<slug>/`. Always either a planning map or an implementation map.
+A wayfinder effort — a `map.md` and its tickets under `.plan/maps/<slug>/`. Always either a planning map or an implementation map.
 _Avoid_: plan, effort, graph, board
 
 **Planning map**:

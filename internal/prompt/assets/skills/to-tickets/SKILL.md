@@ -1,13 +1,13 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into tracer-bullet implementation tickets, written as a wayfinder map — one file per ticket under `.plan/<slug>-impl/`, so chartr can track implementation progress.
+description: Break a plan, spec, or the current conversation into tracer-bullet implementation tickets, written as a wayfinder map — one file per ticket under `.plan/maps/<slug>-impl/`, so chartr can track implementation progress.
 ---
 
 # To Tickets
 
 Break a plan, spec, or conversation into a set of **tickets** — tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The output is a **wayfinder implementation map**: a real wayfinder map in the tracker convention's format, not a flat checklist. One `map.md` plus one file per ticket, under `.plan/<slug>-impl/`. This is what lets chartr render the tickets as a star-map and track progress against it — the same tool that reads a planning map reads this one, because it *is* a planning map, one whose Notes carry execution rather than decisions.
+The output is a **wayfinder implementation map**: a real wayfinder map in the tracker convention's format, not a flat checklist. One `map.md` plus one file per ticket, under `.plan/maps/<slug>-impl/`. This is what lets chartr render the tickets as a star-map and track progress against it — the same tool that reads a planning map reads this one, because it *is* a planning map, one whose Notes carry execution rather than decisions.
 
 **Read the `tracker-convention` skill before writing anything.** It is the format contract: where files live, what frontmatter carries structure, how status is derived, and what to verify before committing. Everything below defers to it — this skill only says how an *implementation* map differs from a planning one. The format is never invented here.
 
@@ -25,7 +25,7 @@ Everything else — file layout, numeric `blocked_by` edges, derived status, cla
 
 ### 1. Gather context
 
-Work from whatever is already in the conversation context. If the user passes a reference (a spec path such as `.plan/<slug>/spec.md`, or any other document) as an argument, fetch it and read it in full — it is the source of truth the map executes.
+Work from whatever is already in the conversation context. If the user passes a reference (a spec path such as `.plan/maps/<slug>/spec.md`, or any other document) as an argument, fetch it and read it in full — it is the source of truth the map executes.
 
 ### 2. Explore the codebase (optional)
 
@@ -68,7 +68,7 @@ Iterate until the user approves the breakdown. Only once approved do you assign 
 
 ### 5. Write the implementation map
 
-Write to `.plan/<slug>-impl/`, a **sibling** of the spec's directory. `<slug>` is the spec's own slug: if the tickets came from `.plan/<slug>/spec.md`, write to `.plan/<slug>-impl/` so the plan and its implementation sit side by side. Create the directory if needed; `.plan/` is committed to version control. Tell the user the path.
+Write to `.plan/maps/<slug>-impl/`, a **sibling** of the spec's directory. `<slug>` is the spec's own slug: if the tickets came from `.plan/maps/<slug>/spec.md`, write to `.plan/maps/<slug>-impl/` so the plan and its implementation sit side by side. Create the directory if needed; `.plan/` is committed to version control. Tell the user the path.
 
 Do **not** modify or delete the source spec or planning map — the implementation map references them.
 

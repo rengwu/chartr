@@ -1,7 +1,7 @@
 # Config layers: workspace commits shared content and defaults; the local user layer wins for execution
 
 > **Execution half superseded by the `agent-selection` effort (spec at
-> `.plan/agent-selection/spec.md`; implemented in `.plan/agent-selection-impl`,
+> `.plan/maps/agent-selection/spec.md`; implemented in `.plan/maps/agent-selection-impl`,
 > ticket 05).** Role→agent bindings and the committed execution layer are gone.
 > There is no longer a committed execution config, so there is no layering question
 > to answer for it: execution is chosen per spawn from the operator's global,

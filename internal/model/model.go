@@ -154,7 +154,7 @@ type Space struct {
 
 // Map is one discovered wayfinder map beneath a space: its body material and its
 // tickets with their derived status. It is read wherever wayfinder writes — the
-// `.plan/<slug>/` layout or the `.plan/maps/<slug>/` one — and rendered as-is: a
+// flat `.plan/<slug>/` layout or the nested `.plan/maps/<slug>/` one — and rendered as-is: a
 // malformed map is never refused, only surfaced through Malformations (story
 // 17). A discovered map is live: it opens and offers session actions the moment
 // it is found, with no classification step in between.

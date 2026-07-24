@@ -1,11 +1,12 @@
 ---
 name: tracker-convention
-description: The wayfinder map format chartr reads — the files under .plan/, a ticket's frontmatter and sections, and the status derived from them. Restates the convention; it does not change it.
+description: The wayfinder map format chartr reads — the files under .plan/maps/, a ticket's frontmatter and sections, and the status derived from them. Restates the convention; it does not change it.
 ---
 
 # The wayfinder tracker convention
 
-A wayfinder effort — a **map** — is a directory of markdown under `.plan/`. There
+A wayfinder effort — a **map** — is a directory of markdown under
+`.plan/maps/`. There
 is no database and no status field: everything a reader needs is in the files,
 and a ticket's state is *derived* from what the ticket already says. This skill
 restates that format so a session (or any other tool) reads a map the same way
@@ -15,7 +16,7 @@ vocabulary lives alongside this file in [`glossary.md`](glossary.md).
 ## Layout
 
 ```
-.plan/<slug>/
+.plan/maps/<slug>/
   map.md                    the effort: destination, notes, decisions, scope
   tickets/
     01-the-first-question.md
