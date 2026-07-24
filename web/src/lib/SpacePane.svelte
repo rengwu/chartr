@@ -5,6 +5,7 @@
   import MapCard from './MapCard.svelte'
   import SkillLauncher from './SkillLauncher.svelte'
   import TrackerAdapterBanner from './TrackerAdapterBanner.svelte'
+  import AsciiFlow from './AsciiFlow.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
@@ -401,7 +402,14 @@
           <Terminal term={activeTerm} prefs={terminalPrefs} />
         {/key}
       {:else}
-        <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+        <!-- `isolate` makes this empty state its own stacking context, so the
+             flow field at -z-10 sits under the copy and the controls while still
+             painting over the pane behind it. The island reads the pointer off
+             this region — the canvas itself is inert. -->
+        <div
+          class="relative isolate flex h-full flex-col items-center justify-center gap-2 overflow-hidden p-6 text-center"
+        >
+          <AsciiFlow class="-z-10" />
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
           <div class="flex flex-wrap items-center justify-center gap-2">
             <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
