@@ -373,12 +373,18 @@
     </div>
   </header>
 
-  <!-- chartr's offer to install its tracker adapter into this space, caught right
-       where the operator lands after registering it. Space-scoped and
-       snapshot-gated: it mounts only while `space.trackerAdapter` rides the wire,
-       and each action clears it by the next snapshot (ADR 0010). -->
-  {#if space.trackerAdapter}
-    <TrackerAdapterBanner spaceId={space.id} offer={space.trackerAdapter} />
+  <!-- chartr's offer about this space's tracker adapter. The maintenance states —
+       stale (a refresh) and foreign (a file in the way) — surface as a chrome
+       banner under the header, where they can coexist with a space that already
+       has maps. The clean first-write offer (absent) instead lives in the maps
+       pane's empty picker, right where its "let chartr write maps here" belongs
+       (that space has no maps yet, so there's nothing else there). Space-scoped
+       and snapshot-gated either way: each action clears the offer by the next
+       snapshot (ADR 0010). -->
+  {#if space.trackerAdapter && space.trackerAdapter.state !== 'absent'}
+    <div class="mx-3 mt-2">
+      <TrackerAdapterBanner spaceId={space.id} offer={space.trackerAdapter} />
+    </div>
   {/if}
 
   <!-- The panes row: the terminal column and, over it, the star-map card. It is
@@ -442,6 +448,7 @@
       <MapCard
         {maps}
         spaceId={space.id}
+        trackerAdapter={space.trackerAdapter}
         lastAgent={space.lastAgent}
         {agents}
         terminals={space.terminals ?? []}

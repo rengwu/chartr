@@ -43,7 +43,6 @@
     Play,
     ArrowClockwise,
     ArrowUUpLeft,
-    Gear,
     Warning,
     PauseCircle,
     GitBranchIcon,
@@ -465,67 +464,55 @@
                 }
               }}
             >
-              <!-- Identity: the space's name over its branch, with the forget
-                   action pinned top-right. Ambient cross-space attention (ticket
-                   14, story 8) rides on the name line — a wants-you flag (a
-                   session halted) and a liveness dot, both echoing the same
-                   signals the queue pulls and the session cards below already
-                   carry in detail. Neither ever re-sorts the card; muscle memory
-                   over this list holds. -->
+              <!-- Identity: the space's name, with the forget action pinned
+                   top-right (the branch rides the action row below). Ambient
+                   cross-space attention (ticket 14, story 8) rides on the name
+                   line — a wants-you flag (a session halted) and a liveness dot,
+                   both echoing the same signals the queue pulls and the session
+                   cards below already carry in detail. Neither ever re-sorts the
+                   card; muscle memory over this list holds. -->
               <div class="flex items-start gap-1">
-                <div class="flex min-w-0 flex-1 flex-col">
-                  <span
-                    class="flex min-w-0 items-center gap-1.5 text-xs font-semibold"
-                  >
-                    {#if attention === "halt"}
-                      <!-- The flag is also the jump: one click selects the space
-                           and deep-links its halted ticket. Inside a card that is
-                           itself role="button", so the handler stops propagation
-                           the way the forget action does. -->
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
-                        aria-label="a session halted — go to the halted ticket"
-                        title="A session halted, needs a decision — go to it"
-                        onclick={(e) => {
+                <span
+                  class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
+                >
+                  {#if attention === "halt"}
+                    <!-- The flag is also the jump: one click selects the space
+                         and deep-links its halted ticket. Inside a card that is
+                         itself role="button", so the handler stops propagation
+                         the way the forget action does. -->
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
+                      aria-label="a session halted — go to the halted ticket"
+                      title="A session halted, needs a decision — go to it"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        jumpToHalt(space);
+                      }}
+                      onkeydown={(e) => {
+                        // The card handles Enter/Space itself and preventDefaults
+                        // it; let the button's own activation win instead.
+                        if (e.key === "Enter" || e.key === " ")
                           e.stopPropagation();
-                          jumpToHalt(space);
-                        }}
-                        onkeydown={(e) => {
-                          // The card handles Enter/Space itself and preventDefaults
-                          // it; let the button's own activation win instead.
-                          if (e.key === "Enter" || e.key === " ")
-                            e.stopPropagation();
-                        }}
-                      >
-                        <Warning />
-                      </Button>
-                    {/if}
-                    {#if liveness === "working"}
-                      <CircleNotch
-                        class="size-3 shrink-0 animate-spin text-primary"
-                        aria-label="a session is working"
-                      />
-                    {:else if liveness === "blocked"}
-                      <PauseCircle
-                        class="size-3 shrink-0 text-primary"
-                        aria-label="a session is blocked"
-                      />
-                    {/if}
-                    <span class="truncate">{space.name}</span>
-                  </span>
-                  {#if space.branch}
-                    <div
-                      class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
+                      }}
                     >
-                      <GitBranchIcon class="size-3 shrink-0" />
-                      <span class="truncate font-mono" title={space.branch}
-                        >{space.branch}</span
-                      >
-                    </div>
+                      <Warning />
+                    </Button>
                   {/if}
-                </div>
+                  {#if liveness === "working"}
+                    <CircleNotch
+                      class="size-3 shrink-0 animate-spin text-primary"
+                      aria-label="a session is working"
+                    />
+                  {:else if liveness === "blocked"}
+                    <PauseCircle
+                      class="size-3 shrink-0 text-primary"
+                      aria-label="a session is blocked"
+                    />
+                  {/if}
+                  <span class="truncate">{space.name}</span>
+                </span>
                 <Button
                   variant="ghost"
                   size="icon-xs"
@@ -709,27 +696,20 @@
                 </ul>
               {/if}
 
-              <!-- Actions: this space's own way into the config surface (ticket 05),
-                   and the two ticketless on-ramps — ideate and a plain shell. -->
+              <!-- Actions: the two ticketless on-ramps — ideate and a plain
+                   shell — sharing their row with the branch, which doubles as
+                   the spacer that pushes them right. -->
               <div class="flex items-center gap-1">
-                <Button
-                  class="-ml-1"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="{space.name}’s settings"
-                  title="This space's effective config — bindings, skills, and where each layer lives"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    // Selects the space *and* opens its config — so this sets the
-                    // selection directly rather than going through selectSpace,
-                    // whose job is to leave the settings route we are entering.
-                    selectedId = space.id;
-                    openSettings({ kind: "space", spaceId: space.id });
-                  }}
+                <span
+                  class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
                 >
-                  <Gear class="size-3.5" />
-                </Button>
-                <span class="flex-1"></span>
+                  {#if space.branch}
+                    <GitBranchIcon class="size-3 shrink-0" />
+                    <span class="truncate font-mono" title={space.branch}
+                      >{space.branch}</span
+                    >
+                  {/if}
+                </span>
                 <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
                      the agent picker over the on-ramp skills. The row's own click
                      just selects the space, which launchSpace does anyway, so this
