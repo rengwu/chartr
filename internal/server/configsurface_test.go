@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 )
 
@@ -262,6 +263,90 @@ func TestGlobalLayersResolveWithoutASpace(t *testing.T) {
 	for _, bad := range []string{"/etc/passwd", "skill:../../etc/passwd", "workspace-config", "workspace-skills", ""} {
 		if code, _ := h.Post("/api/config/open", map[string]string{"layer": bad}); code != 400 {
 			t.Errorf("global open %q = %d, want 400 — only global names resolve here", bad, code)
+		}
+	}
+}
+
+// The create action is the companion to open for a layer that does not exist yet:
+// it stamps the file from its bundled defaults template so there is something to
+// open. It writes only a layer that carries a template, never clobbers an existing
+// file, and the freshly-created file shows up as existing on the next snapshot.
+func TestCreateStampsTerminalConfigFromDefaults(t *testing.T) {
+	h := chartrtest.Start(t)
+	// A registered space so a rebuild pushes a fresh snapshot after the create.
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	path := filepath.Join(h.ConfigDir, "terminal.toml")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("terminal.toml already present before create: %v", err)
+	}
+	// The surface shows the layer as not-yet-created before the action.
+	if layer(t, h.Snapshot(ctx(t)).Config, "terminal-config").Exists {
+		t.Fatal("terminal-config reported existing before it was created")
+	}
+
+	code, body := h.Post("/api/config/create", map[string]string{"layer": "terminal-config"})
+	if code != 200 {
+		t.Fatalf("create terminal-config = %d, body %s", code, body)
+	}
+	if !strings.Contains(body, `"created":true`) || !strings.Contains(body, path) {
+		t.Errorf("create terminal-config = %s, want created at %q", body, path)
+	}
+
+	// The file is on disk with the scaffold's exact bytes, and the surface now shows
+	// the layer as existing (and thus openable).
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading created terminal.toml: %v", err)
+	}
+	if string(b) != string(config.ScaffoldTerminalTOML) {
+		t.Error("created terminal.toml is not the defaults scaffold verbatim")
+	}
+	if !layer(t, h.Snapshot(ctx(t)).Config, "terminal-config").Exists {
+		t.Error("terminal-config still reported missing after it was created")
+	}
+}
+
+// Create never clobbers: a layer already on disk is refused with a conflict, its
+// bytes untouched, so the button can only ever fill in the file the surface says
+// is missing.
+func TestCreateRefusesToClobberExistingFile(t *testing.T) {
+	h := chartrtest.Start(t)
+	register(t, h, chartrtest.NewSpaceRepo(t))
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", "[font]\nsize = 20\n")
+
+	code, body := h.Post("/api/config/create", map[string]string{"layer": "terminal-config"})
+	if code != 409 {
+		t.Fatalf("create over an existing file = %d, want 409; body %s", code, body)
+	}
+	b, err := os.ReadFile(filepath.Join(h.ConfigDir, "terminal.toml"))
+	if err != nil {
+		t.Fatalf("reading terminal.toml: %v", err)
+	}
+	if !strings.Contains(string(b), "size = 20") {
+		t.Errorf("the operator's terminal.toml was overwritten: %s", b)
+	}
+}
+
+// Create only offers layers with a bundled template, and resolves the name
+// server-side exactly as open does — an unknown name, a path, or a layer with no
+// template (the agent library, a skill root) is refused rather than stamped.
+func TestCreateRefusesLayersWithoutATemplate(t *testing.T) {
+	h := chartrtest.Start(t)
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	for _, bad := range []string{
+		"user-config",      // a real layer, but nothing stamps the agent library
+		"user-skills",      // likewise a skill root
+		"builtin-skills",   //
+		"workspace-config", // the retired committed layer
+		"/etc/passwd",
+		"skill:grill",
+		"",
+	} {
+		code, _ := h.Post("/api/config/create", map[string]string{"layer": bad})
+		if code != 400 {
+			t.Errorf("create %q = %d, want 400 — only templated layers create", bad, code)
 		}
 	}
 }

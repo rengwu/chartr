@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { Agent, ConfigLayer, Space, TerminalPrefs } from './model'
   import { settingsHash, type SettingsScope } from './route'
-  import { openConfigLayer, openGlobalLayer } from './actions'
+  import { createConfigLayer, openConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
-  import { ArrowSquareOut, Stack, User, Warning, X } from 'phosphor-svelte'
+  import { ArrowSquareOut, FilePlus, Stack, User, Warning, X } from 'phosphor-svelte'
 
   // The settings surface (ticket 05): the agent library and the paths of the files
   // behind it, each openable in the operator's own editor. There is no committed
@@ -63,6 +63,16 @@
   let busy = $state<string | null>(null)
   let note = $state<string | null>(null)
 
+  // The layers that can be stamped from a defaults template rather than only
+  // opened. A layer that does not exist yet has nothing for the editor to open, so
+  // for these the row offers a Create action that writes the self-documenting
+  // starter (all keys at their defaults) and then hands off to the same open. Kept
+  // as a set the server is the real authority on — it refuses a name with no
+  // template — so this only governs which rows show the button. Today that is the
+  // per-machine terminal config alone; the agent library and skill roots grow by
+  // their own edits, not from a stamped file.
+  const creatable = new Set(['terminal-config'])
+
   // The escape hatch: the server resolves the *named* layer and launches the
   // operator's editor. Where it cannot, the path itself is the answer, surfaced
   // here. On the global scope there is no space to resolve through — and there may
@@ -75,6 +85,23 @@
         r.opened === 'editor' || r.opened === 'os' ? null
         : r.exists ? `Nothing to open it with — it lives at ${r.path}`
         : `Nothing there yet — it would live at ${r.path}`
+    } catch (e) {
+      note = (e as Error).message
+    } finally {
+      busy = null
+    }
+  }
+
+  // Stamp a layer's file from its defaults template, for a layer that has nothing
+  // on disk to open yet. The server writes the starter and rebuilds; the fresh
+  // snapshot arrives over the control socket and flips the row to existing, so
+  // there is no optimistic state to unwind — a refusal (an already-present file, a
+  // name with no template) surfaces as the note like every other action.
+  async function create(layerName: string) {
+    busy = layerName
+    try {
+      const r = await createConfigLayer(layerName)
+      note = `Created ${r.path} from defaults — open it to tweak.`
     } catch (e) {
       note = (e as Error).message
     } finally {
@@ -211,15 +238,32 @@
     {#if !l.exists}
       <span class="shrink-0 text-[0.65rem] text-muted-foreground">not created yet</span>
     {/if}
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label="Open {l.path}"
-      title="Open in your editor ($VISUAL / $EDITOR)"
-      disabled={busy !== null}
-      onclick={() => open(l.name)}
-    >
-      <ArrowSquareOut />
-    </Button>
+    {#if !l.exists && creatable.has(l.name)}
+      <!-- A missing templated layer has nothing to open, so it offers Create
+           instead: the server stamps the self-documenting defaults file, and the
+           row flips to openable on the next snapshot. -->
+      <Button
+        variant="outline"
+        size="xs"
+        class="shrink-0"
+        title="Create {l.path} from its default values"
+        disabled={busy !== null}
+        onclick={() => create(l.name)}
+      >
+        <FilePlus data-icon="inline-start" />
+        Create from defaults
+      </Button>
+    {:else}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Open {l.path}"
+        title="Open in your editor ($VISUAL / $EDITOR)"
+        disabled={busy !== null}
+        onclick={() => open(l.name)}
+      >
+        <ArrowSquareOut />
+      </Button>
+    {/if}
   </div>
 {/snippet}

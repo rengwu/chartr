@@ -21,6 +21,18 @@ import (
 //go:embed terminal.default.toml
 var DefaultTerminalTOML []byte
 
+// ScaffoldTerminalTOML is the self-documenting starter the Settings surface
+// writes when the operator asks to create their `terminal.toml` from defaults.
+// Unlike DefaultTerminalTOML — the minimal canon the binary resolves against — it
+// spells out *every* key with its default value: the handful that make up today's
+// look sit uncommented (so creating the file changes nothing), and the rest are
+// commented with their own defaults for the operator to uncomment and tweak. Its
+// uncommented keys resolve to the same prefs as DefaultTerminalTOML, which
+// TestScaffoldMatchesDefault pins so the two cannot drift.
+//
+//go:embed terminal.scaffold.toml
+var ScaffoldTerminalTOML []byte
+
 // Terminal customization: a single per-machine `terminal.toml`, beside the agent
 // library in the operator's own config, that fully customizes every terminal
 // island. It is the single source of truth — never committed, never per space —

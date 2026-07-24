@@ -128,6 +128,12 @@ func New(opts Options) (*Server, error) {
 	// config file and the global skill library. The global scope is reachable with
 	// nothing registered, so it cannot borrow a space id to open its own files.
 	s.mux.HandleFunc("POST /api/config/open", s.handleOpenGlobalLayer)
+	// Stamp a global config file from its defaults template — the companion to the
+	// open action for a layer that does not exist yet. Named-layer resolution and a
+	// bundled template server-side, so the client sends a name, never a path or
+	// contents; only a layer with a template can be created, and an existing file is
+	// never clobbered.
+	s.mux.HandleFunc("POST /api/config/create", s.handleCreateGlobalLayer)
 	// The agent library: named launch specs the operator registers once and picks
 	// from at the gate. Global — the library lives in the operator's own file and is
 	// never committed — so these routes take no space id and work with nothing

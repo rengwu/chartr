@@ -25,6 +25,23 @@ func TestTerminalPrefsMissingFileIsAllDefaults(t *testing.T) {
 	}
 }
 
+// The self-documenting scaffold the Settings surface stamps must reproduce the
+// built-in canon exactly: its uncommented keys resolve to the same prefs as
+// DefaultTerminalTOML, so creating the file changes nothing until the operator
+// tweaks it. This pins the two together — a default that moves in one file and not
+// the other is a drift this catches. The scaffold must also parse with no warnings
+// (its commented example values are inert, so an out-of-date comment never fires).
+func TestScaffoldMatchesDefault(t *testing.T) {
+	scaffold, scaffoldWarnings := config.ResolveTerminalPrefs(config.ScaffoldTerminalTOML)
+	if len(scaffoldWarnings) != 0 {
+		t.Errorf("the defaults scaffold warned on its own bytes: %v", scaffoldWarnings)
+	}
+	canon, _ := config.ResolveTerminalPrefs(config.DefaultTerminalTOML)
+	if !reflect.DeepEqual(scaffold, canon) {
+		t.Errorf("scaffold resolves to %+v, want the canon default %+v — the two have drifted", scaffold, canon)
+	}
+}
+
 func TestTerminalPrefsReadsFontAndColours(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte(`
 [font]

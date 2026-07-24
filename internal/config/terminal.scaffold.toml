@@ -1,0 +1,106 @@
+# terminal.toml — per-machine terminal customization for the cockpit.
+#
+# One file, beside the agent library in your chartr config dir (next to
+# user.toml). Never committed, never per-space: it fully customizes every
+# terminal island on this machine, replacing the built-in defaults wholesale. It
+# is read on every rebuild into the model snapshot; a bad value is dropped with a
+# warning and its default stands, so the terminal never breaks on a typo.
+#
+# The uncommented keys below reproduce the built-in canon defaults exactly — this
+# is what the cockpit already looks like, so creating this file changes nothing
+# until you tweak it. Every other key is shown commented with its own default;
+# uncomment one only to change it. Any key you leave unset falls through to the
+# app default at the client resolve seam (a colour to the live olive/neutral
+# design token, the font to the bundled family). Colours are `#rgb` / `#rrggbb` /
+# `#rrggbbaa` hex (named colours and oklch are not accepted). Booleans are
+# tri-state: leaving a key out is distinct from `false`.
+
+[font]
+family = "Menlo"               # a custom family stacks ahead of the system
+                               # fallback and is your own OS's risk. The one
+                               # bundled family is "IBM Plex Mono".
+weight = 400                   # normal-glyph weight: "normal", "bold", or 1..1000.
+boldWeight = 500               # bold-glyph weight: "normal", "bold", or 1..1000.
+size = 14                      # cell font size in px. Must be > 0.
+# lineHeight = 1.0             # cell-height multiplier. Must be > 0.
+# letterSpacing = 0            # extra px between cells; a negative value tightens.
+# ligatures = false            # forces this terminal off the GPU renderer and onto
+                               # canvas, and needs a bundled font to read from.
+
+[cursor]
+# style        = "block"       # active-cursor shape: "block", "bar", "underline".
+# blink        = false         # leave unset for the island's alive-gated default;
+                               # explicit false stops the blink even on a live shell.
+# inactiveStyle = "outline"    # unfocused shape: "outline", "block", "bar",
+                               # "underline", "none".
+# width        = 1             # bar-cursor width in px. Must be > 0.
+
+[scrolling]
+sensitivity = 3                # wheel-tick scale. Must be > 0.
+# scrollback           = 1000  # lines of history kept. 0 is unset. Must be >= 0.
+# fastScrollModifier   = "alt" # fast-scroll key: "alt", "ctrl", "shift", "none".
+# fastScrollSensitivity = 5    # fast-scroll wheel-tick scale. Must be > 0.
+# smoothScrollDuration = 0     # smooth-scroll animation in ms; 0 is no smoothing.
+
+[scrollbar]
+# The viewport scrollbar rides to the client as CSS, not xterm options. An unset
+# thumb/track falls through to the chrome's own scrollbar styling.
+# width    = 10                # scrollbar width in px. Must be > 0.
+# thumb    = "#000000"         # thumb colour (#hex).
+# track    = "#000000"         # track colour (#hex).
+# autoHide = false             # fade the thumb out until the island is hovered.
+
+[padding]
+# Padding around the terminal grid, per side in px (CSS on the island host; the
+# grid refits). 0 is both unset and flush to the pane edge.
+top = 8
+right = 8
+bottom = 8
+left = 8
+
+[keys]
+# shiftEnterNewline     = true  # Shift+Enter writes a literal newline instead of
+                                # submitting. This is UNSET-MEANS-ON — set it to
+                                # false to get plain-terminal submit back.
+# copyOnSelect          = false # copy a selection to the clipboard as it is made.
+# rightClickSelectsWord = false # right-click selects the word under the pointer.
+# macOptionIsMeta       = false # treat the macOS Option key as Meta.
+
+[accessibility]
+# minimumContrastRatio = 1      # nudge low-contrast glyph/background pairs apart
+                                # until they clear this ratio. 1..21; 1 does nothing.
+
+[glyph]
+# unicode11 = false             # activate the unicode11 addon for correct wide-glyph
+                                # and emoji widths.
+
+[theme]
+# A bundled preset lays a whole palette down; explicit slots below override it, and
+# any slot left unset falls through to the live olive/neutral design tokens.
+# preset = "dracula"            # "dracula", "nord", "gruvbox",
+                                # "solarized-dark", or "solarized-light".
+
+# The five base slots and the sixteen ANSI slots. Each is a #hex colour; unset
+# means the preset (then the token-derived default) stands.
+# background   = "#000000"
+# foreground   = "#000000"
+# cursor       = "#000000"
+# cursorAccent = "#000000"
+# selection    = "#000000"
+
+# black         = "#000000"
+# red           = "#000000"
+# green         = "#000000"
+# yellow        = "#000000"
+# blue          = "#000000"
+# magenta       = "#000000"
+# cyan          = "#000000"
+# white         = "#000000"
+# brightBlack   = "#000000"
+# brightRed     = "#000000"
+# brightGreen   = "#000000"
+# brightYellow  = "#000000"
+# brightBlue    = "#000000"
+# brightMagenta = "#000000"
+# brightCyan    = "#000000"
+# brightWhite   = "#000000"

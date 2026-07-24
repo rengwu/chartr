@@ -198,6 +198,19 @@ export function openGlobalLayer(layer: string): Promise<OpenLayerResult> {
   return send('POST', '/api/config/open', { layer }) as Promise<OpenLayerResult>
 }
 
+// createConfigLayer stamps a config file from its defaults template — the
+// companion to opening a layer that does not exist yet. `layer` is a *name* the
+// server resolves and only creates when it carries a bundled template (today just
+// `terminal-config`); an already-present file is refused rather than clobbered.
+// The freshly-created file rides the next model snapshot over the control socket,
+// so the row flips from "not created yet" to openable with no optimistic state.
+export function createConfigLayer(layer: string): Promise<{ path: string; created: boolean }> {
+  return send('POST', '/api/config/create', { layer }) as Promise<{
+    path: string
+    created: boolean
+  }>
+}
+
 // setAgent registers or updates one agent of the operator's library. It is a PUT
 // because the body is the agent's whole spec: what is sent is what the agent
 // becomes, so a flag removed here is removed on disk rather than merged back in.

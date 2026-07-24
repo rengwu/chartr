@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
@@ -191,6 +192,70 @@ func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	openResolved(w, path)
+}
+
+// layerTemplates maps a creatable layer name to the starter bytes written when
+// the operator asks to scaffold it from defaults. Only layers with an entry here
+// can be created through handleCreateGlobalLayer; a name with no template is
+// refused, the same shape as an unknown layer. Today that is `terminal.toml`
+// alone — the agent library and skill roots are grown by their own edits, not
+// stamped from a defaults file — but the map is the seam a second templated file
+// would slot into.
+var layerTemplates = map[string][]byte{
+	layerTerminalConfig: config.ScaffoldTerminalTOML,
+}
+
+// handleCreateGlobalLayer stamps a config file from its defaults template — the
+// companion to the open action for a layer that does not exist yet. The open
+// action deliberately creates nothing (a read-shaped action), so a file the
+// operator has never written can only be opened once it exists; this is how it
+// comes to exist. It writes **only the operator's own config**, never a
+// repository's committed one, and only a layer that carries a bundled template.
+//
+// It never clobbers: a layer already on disk is refused with a conflict rather
+// than overwritten, so the button can only ever create the file the surface says
+// is missing and can never wipe an operator's real customization. On success it
+// runs the same rebuild every other config edit triggers, so the freshly-created
+// file — and the values it now puts in force — reflect back over the control
+// socket with no optimistic client state.
+func (s *Server) handleCreateGlobalLayer(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Layer string `json:"layer"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	template, ok := layerTemplates[body.Layer]
+	if !ok {
+		// Either an unknown layer or one with nothing to stamp from — both are the
+		// operator asking for something the server does not offer, refused the same way.
+		httpError(w, http.StatusBadRequest, fmt.Sprintf("config layer %q cannot be created from a template", body.Layer))
+		return
+	}
+
+	path, err := s.resolveGlobalLayerPath(body.Layer)
+	if err != nil {
+		httpError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		httpError(w, http.StatusConflict, fmt.Sprintf("%s already exists; open it to edit", path))
+		return
+	} else if !os.IsNotExist(err) {
+		httpError(w, http.StatusInternalServerError, "checking config path: "+err.Error())
+		return
+	}
+
+	if err := writeFileAtomic(path, template); err != nil {
+		httpError(w, http.StatusInternalServerError, "writing config: "+err.Error())
+		return
+	}
+	s.rebuild()
+
+	writeJSON(w, http.StatusOK, map[string]any{"path": path, "created": true})
 }
 
 // openResolved runs the editor ladder on an already-resolved path and reports how
