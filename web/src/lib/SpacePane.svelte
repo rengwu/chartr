@@ -4,6 +4,7 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import AgentSplitButton from './AgentSplitButton.svelte'
+  import TrackerAdapterBanner from './TrackerAdapterBanner.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
@@ -370,6 +371,14 @@
       </Button>
     </div>
   </header>
+
+  <!-- chartr's offer to install its tracker adapter into this space, caught right
+       where the operator lands after registering it. Space-scoped and
+       snapshot-gated: it mounts only while `space.trackerAdapter` rides the wire,
+       and each action clears it by the next snapshot (ADR 0010). -->
+  {#if space.trackerAdapter}
+    <TrackerAdapterBanner spaceId={space.id} offer={space.trackerAdapter} />
+  {/if}
 
   <!-- The panes row: the terminal column and, over it, the star-map card. It is
        the positioning context for a floating card (relative), and a flex row for

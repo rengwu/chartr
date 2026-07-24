@@ -134,6 +134,28 @@ export interface Space {
   maps: Map[]
   terminals: Terminal[]
   warnings?: string[]
+  // chartr's standing offer to write its own tracker adapter
+  // (docs/agents/issue-tracker.md) into this space, redirecting a vanilla
+  // wayfinder skill's map reads to .plan/maps/ in chartr's format. Present only
+  // when there is something to act on and the operator hasn't dismissed it — an
+  // up-to-date or dismissed adapter never rides the wire — so "show the prompt iff
+  // space.trackerAdapter exists" is the whole gating rule.
+  trackerAdapter?: TrackerAdapterOffer
+}
+
+// TrackerAdapterOffer is chartr's live read of a space's tracker adapter, on the
+// snapshot only while it wants the operator's hand. The three states name the one
+// action each earns:
+//   - absent  → Install (a clean first write)
+//   - stale   → Refresh (chartr's own copy drifted — a template bump or an edit)
+//   - foreign → Replace or Leave (a non-chartr file is in the way)
+export interface TrackerAdapterOffer {
+  state: 'absent' | 'stale' | 'foreign'
+  // Absolute path of the docs/agents/issue-tracker.md the action writes.
+  path: string
+  // A cosmetic guess at what foreign file is in the way ('gh'|'glab'|'linear'),
+  // for phrasing only; absent on the non-foreign states.
+  remoteHint?: string
 }
 
 // ResolvedSkill is one skill of the library as it resolves for a space: which

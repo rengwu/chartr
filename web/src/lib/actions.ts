@@ -211,6 +211,29 @@ export function createConfigLayer(layer: string): Promise<{ path: string; create
   }>
 }
 
+// installTrackerAdapter writes chartr's tracker adapter into a space — the one
+// endpoint behind Install (absent), Refresh (stale), and Replace (foreign): the
+// operator acting on the offer is the consent, so it is a single write with no
+// separate confirm on the wire. Returns the path it wrote; the next snapshot drops
+// the offer, the adapter now being up-to-date. A refused write (e.g. a foreign file
+// the server won't clobber) throws ActionError carrying chartr's own message.
+export function installTrackerAdapter(id: string): Promise<{ path: string }> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/tracker-adapter`) as Promise<{
+    path: string
+  }>
+}
+
+// dismissTrackerAdapter silences the offer for good (persisted per-space) and
+// writes nothing to the repo — the Dismiss (×) on every state and the Leave that
+// declines a foreign replace. Returns 204 → null; the offer is gone from the next
+// snapshot.
+export function dismissTrackerAdapter(id: string): Promise<void> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(id)}/tracker-adapter/dismiss`,
+  ) as Promise<void>
+}
+
 // setAgent registers or updates one agent of the operator's library. It is a PUT
 // because the body is the agent's whole spec: what is sent is what the agent
 // becomes, so a flag removed here is removed on disk rather than merged back in.
