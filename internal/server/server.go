@@ -125,6 +125,12 @@ func New(opts Options) (*Server, error) {
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/agent", s.handleSetSpaceAgent)
+
+	// The tracker-adapter offer: install/refresh/replace writes chartr's adapter
+	// into the repo (with the operator acting on the offer as consent); dismiss
+	// silences the prompt without touching the repo.
+	s.mux.HandleFunc("POST /api/spaces/{id}/tracker-adapter", s.handleInstallTrackerAdapter)
+	s.mux.HandleFunc("POST /api/spaces/{id}/tracker-adapter/dismiss", s.handleDismissTrackerAdapter)
 	// The effective config surface (ticket 05, ADR 0014). The read half rides the
 	// per-space model push; these are the two writes it is allowed. Editing a role
 	// Opening a layer file is a POST because it launches a process, and it resolves

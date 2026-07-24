@@ -150,6 +150,32 @@ type Space struct {
 	// Warnings are non-fatal notices surfaced against the space — an unknown
 	// role in config, a malformed config file. Surface, never enforce.
 	Warnings []string `json:"warnings,omitempty"`
+	// TrackerAdapter is the standing offer to install chartr's tracker adapter
+	// (docs/agents/issue-tracker.md) into this repo, present only when there is
+	// something to act on — the file is absent, chartr's own copy has drifted, or a
+	// foreign one is in the way — and the operator has not dismissed it. Absent
+	// (nil) when the adapter is already current or the offer was dismissed, so the
+	// prompt shows once and stays gone. chartr never writes the file without the
+	// operator acting on this offer.
+	TrackerAdapter *TrackerAdapterOffer `json:"trackerAdapter,omitempty"`
+}
+
+// TrackerAdapterOffer is a live invitation to install or reconcile chartr's
+// tracker adapter in a space. The client turns State into the action it offers:
+// `absent` → install, `stale` → refresh, `foreign` → replace-or-leave.
+type TrackerAdapterOffer struct {
+	// State is the classification of what sits at the adapter path right now:
+	// `absent`, `stale` (chartr's, drifted), or `foreign` (not chartr's — never
+	// overwritten without an explicit replace). `up-to-date` never reaches the
+	// wire; it simply means no offer.
+	State string `json:"state"`
+	// Path is the absolute adapter path, shown so the operator knows exactly what
+	// would be written or replaced.
+	Path string `json:"path"`
+	// RemoteHint is a best-effort guess at which remote tracker a foreign file
+	// configures (`gh`, `glab`, `linear`), to phrase the message — never a reason
+	// to act differently. Empty unless State is `foreign` and a guess was possible.
+	RemoteHint string `json:"remoteHint,omitempty"`
 }
 
 // Map is one discovered wayfinder map beneath a space: its body material and its

@@ -42,6 +42,12 @@ type Entry struct {
 	// as it stands and read as nothing remembered, so deleting an agent costs no
 	// registry surgery.
 	LastAgent string `toml:"last_agent,omitempty"`
+	// TrackerDismissed records that the operator waved off the offer to install
+	// chartr's tracker adapter for this space, so the prompt is not shown again.
+	// Like the rest of the entry it is local, per-machine, chartr-owned state:
+	// installing the adapter never sets it (an installed adapter simply reads as
+	// up-to-date), so only an explicit "leave it" lands here.
+	TrackerDismissed bool `toml:"tracker_dismissed,omitempty"`
 }
 
 // Registry is the in-memory registry backed by <dataDir>/spaces.toml. It is
@@ -152,6 +158,21 @@ func (r *Registry) SetPin(id string, pinned bool) error {
 		return nil
 	}
 	e.Pinned = pinned
+	r.entries[id] = e
+	return r.saveLocked()
+}
+
+// SetTrackerDismissed records whether the operator waved off the tracker-adapter
+// offer for a space, so it is not shown again. Setting it on an unknown ID, or to
+// the value already held, is a no-op.
+func (r *Registry) SetTrackerDismissed(id string, dismissed bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok || e.TrackerDismissed == dismissed {
+		return nil
+	}
+	e.TrackerDismissed = dismissed
 	r.entries[id] = e
 	return r.saveLocked()
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/tracker"
 )
 
 // userConfigName is the operator's local, uncommitted config under the chartr
@@ -104,6 +105,40 @@ func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.reg.SetLastAgent(r.PathValue("id"), body.Agent); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rebuild()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleInstallTrackerAdapter writes chartr's tracker adapter to
+// docs/agents/issue-tracker.md in the space — a first install, a refresh of
+// chartr's own drifted copy, or a consented replace of a foreign file, all the
+// same write. The operator acting on the offer is the consent this authorizes;
+// chartr writes the file only, leaving the commit to them. The path is returned
+// and the next snapshot shows the now up-to-date adapter, so the offer clears
+// itself.
+func (s *Server) handleInstallTrackerAdapter(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+	path, err := tracker.Install(e.Path, prompt.TrackerAdapter())
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rebuild()
+	writeJSON(w, http.StatusOK, map[string]any{"path": path})
+}
+
+// handleDismissTrackerAdapter records that the operator waved off the tracker
+// adapter offer for a space, so it leaves the next snapshot and is not shown
+// again. It silences the prompt only — it writes nothing to the repo.
+func (s *Server) handleDismissTrackerAdapter(w http.ResponseWriter, r *http.Request) {
+	if err := s.reg.SetTrackerDismissed(r.PathValue("id"), true); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -288,19 +323,38 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []s
 	// they surface where the operator is, the way the agent-library warnings do.
 	warnings = append(warnings, termWarnings...)
 
+	// The standing offer to install chartr's tracker adapter, surfaced only when
+	// there is something to act on and the operator has not dismissed it — so the
+	// prompt shows once. A classify error (an unreadable docs/agents/) is swallowed
+	// rather than surfaced as a space warning: a missing adapter is not a defect.
+	var trackerOffer *model.TrackerAdapterOffer
+	if !e.TrackerDismissed {
+		if res, err := tracker.Classify(e.Path, prompt.TrackerAdapter()); err == nil {
+			switch res.State {
+			case tracker.Absent, tracker.Stale, tracker.Foreign:
+				trackerOffer = &model.TrackerAdapterOffer{
+					State:      res.State.String(),
+					Path:       res.Path,
+					RemoteHint: res.RemoteHint,
+				}
+			}
+		}
+	}
+
 	return model.Space{
-		ID:        e.ID,
-		Name:      filepath.Base(e.Path),
-		Path:      e.Path,
-		Branch:    gitBranch(e.Path),
-		Pinned:    e.Pinned,
-		Dirty:     gitDirty(e.Path),
-		LastAgent: e.LastAgent,
-		Skills:    s.resolvedSkills(e.Path),
-		Layers:    s.spaceLayers(e.Path),
-		Maps:      maps,
-		Terminals: terminals,
-		Warnings:  warnings,
+		ID:             e.ID,
+		Name:           filepath.Base(e.Path),
+		Path:           e.Path,
+		Branch:         gitBranch(e.Path),
+		Pinned:         e.Pinned,
+		Dirty:          gitDirty(e.Path),
+		LastAgent:      e.LastAgent,
+		Skills:         s.resolvedSkills(e.Path),
+		Layers:         s.spaceLayers(e.Path),
+		Maps:           maps,
+		Terminals:      terminals,
+		Warnings:       warnings,
+		TrackerAdapter: trackerOffer,
 	}
 }
 
