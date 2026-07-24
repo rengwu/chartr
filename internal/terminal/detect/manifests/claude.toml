@@ -23,3 +23,32 @@ state = "idle"
 priority = 50
 region = "osc_title"
 contains = ["✳"]
+
+# --- Screen rules (ticket 02, measured against rec-claude.jsonl) ---
+
+# Blocked never reaches the title: a permission prompt reads as ✳, byte-identical to
+# idle. It comes from the screen. Claude frames the dialog with a flat rule above its
+# body and none below, so after_last_horizontal_rule isolates the structural lines —
+# "Do you want to proceed?", the "❯ 1. Yes" option, and the "Tab to amend / ctrl+e to
+# explain" footer — from the transcript above the rule. (The design deliberately
+# matches structure, not prose: vt garbles the long "Yes, and always allow…" option
+# but renders these cleanly.) Priority 200 so a ✳ idle title can never overrule a
+# screen that is plainly sitting on a permission prompt.
+[[rule]]
+id = "blocked"
+state = "blocked"
+priority = 200
+region = "after_last_horizontal_rule"
+all = ["Do you want to proceed?", "❯ 1. Yes"]
+any = ["Tab to amend", "ctrl+e to explain"]
+
+# Idle from the screen: the `❯` prompt box, the input line claude frames between two
+# flat rules while it waits at the prompt. prompt_box_body is empty on the one-rule
+# permission dialog, so this positive idle cannot fire there, and it ranks below
+# blocked regardless. It is a screen-grounded companion to the ✳ title idle above.
+[[rule]]
+id = "idle-screen"
+state = "idle"
+priority = 40
+region = "prompt_box_body"
+line_regex = ['^\s*❯']

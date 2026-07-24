@@ -1,0 +1,33 @@
+# Kimi Code 0.29.0. Measured on this machine (see .plan/agent-state-detection/assets:
+# rec-kimi-0.29.0.jsonl carries the ⠋ thinking spinner and the ▶ Run this command?
+# approval panel). Kimi writes nothing useful to its title — two title writes for a
+# whole 319-second session — so every state comes from the screen it draws.
+agent = "kimi"
+match = ["kimi"]
+aliases = ["kimi-code"]
+
+# Blocked: the approval panel kimi frames with a flat rule above and below — the
+# "▶ Run this command?" header, numbered Approve/Reject options, and the
+# "1/2/3/4 choose · ↵ confirm" footer. Scoped to prompt_box_body (the body between
+# the last two flat rules) so it fires only while the live panel is up, never on the
+# transcript's "Approved: Running…" echo above it. Outranks working: while the panel
+# is up the spinner has stopped, but priority makes the intent explicit.
+[[rule]]
+id = "blocked"
+state = "blocked"
+priority = 200
+region = "prompt_box_body"
+all = ["Run this command?", " choose", "confirm"]
+any = ["Approve", "Reject"]
+
+# Working: the live "⠋ thinking..." spinner. The braille-frame anchor is essential —
+# kimi's status bar reads "K2.7 Coding thinking  ~" on every screen, so an unanchored
+# "thinking" is always true. The line anchor requires a braille spinner frame at the
+# start of the line, which only the live spinner has; this is the trap the
+# region-and-anchor design exists to avoid.
+[[rule]]
+id = "working"
+state = "working"
+priority = 100
+region = "whole_recent"
+line_regex = ['^\s*[\x{2800}-\x{28FF}]+\s*(thinking\.\.\.|working\.\.\.|using )']

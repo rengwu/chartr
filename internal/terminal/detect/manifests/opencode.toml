@@ -1,0 +1,23 @@
+# opencode.
+#
+# NOTE: opencode was NOT captured as a fixture for this map — only claude and kimi
+# were (see .plan/agent-state-detection/assets) — and opencode writes nothing to its
+# title, so working-vs-idle must come from the screen. The working rule below is
+# extrapolated from the braille-spinner pattern the captured agents share (claude's
+# title spinner, kimi's "⠋ thinking..." line): a live spinner frame at the head of a
+# line near the foot of the screen. It is not verified against recorded opencode
+# bytes. A wrong pattern here is a data fix — the point of manifests being data — and
+# a captured opencode turn is what would firm it up. Idle is the absence of the
+# spinner, confirmed by the sampler's hysteresis.
+agent = "opencode"
+match = ["opencode"]
+
+# Working: a braille spinner frame leading a recent line. Scoped to the bottom of the
+# screen (live chrome, not scrolled-off transcript) and line-anchored so only a
+# spinner at the start of a line counts.
+[[rule]]
+id = "working"
+state = "working"
+priority = 100
+region = "bottom_non_empty_lines(6)"
+line_regex = ['^\s*[\x{2800}-\x{28FF}]']

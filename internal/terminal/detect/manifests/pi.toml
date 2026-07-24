@@ -1,0 +1,21 @@
+# pi.
+#
+# NOTE: pi was NOT captured as a fixture for this map — only claude and kimi were
+# (see .plan/agent-state-detection/assets). pi additionally ships a real herdr
+# lifecycle extension that reports its state over a socket — authoritative where it
+# exists — but that hook path is left as fog on the map until the screen path is real
+# (Not yet specified — Hook-reported state), so here pi reads the same screen fallback
+# as everything else. The working rule is extrapolated from the shared braille-spinner
+# pattern, not verified against recorded pi bytes; a wrong pattern is a data fix.
+# Idle is the absence of the spinner, confirmed by the sampler's hysteresis.
+agent = "pi"
+match = ["pi"]
+
+# Working: a braille spinner frame leading a recent line, scoped to the foot of the
+# screen and line-anchored (see opencode.toml — the same extrapolated shape).
+[[rule]]
+id = "working"
+state = "working"
+priority = 100
+region = "bottom_non_empty_lines(6)"
+line_regex = ['^\s*[\x{2800}-\x{28FF}]']

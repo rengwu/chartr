@@ -1,6 +1,7 @@
 package detect
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -12,11 +13,51 @@ import (
 func TestShippedManifestRules(t *testing.T) {
 	e := Builtin()
 
-	for _, agent := range []string{"claude", "codex", "grok"} {
+	for _, agent := range []string{"claude", "codex", "grok", "kimi", "opencode", "pi"} {
 		if !e.Known(agent) {
 			t.Fatalf("no manifest shipped for %q", agent)
 		}
 	}
+
+	// Representative reconstructed screens, structured like the real captures
+	// (see .plan/agent-state-detection/assets and the recording-driven tests in the
+	// terminal package): flat rules frame the panels, the spinner leads its own line.
+	rule := strings.Repeat("─", 40)
+	claudeBlocked := strings.Join([]string{
+		rule,
+		" Bash command",
+		"   rm -rf /tmp/x",
+		" Do you want to proceed?",
+		" ❯ 1. Yes",
+		"   2. Yes, and always allow",
+		"   3. No",
+		" Esc to cancel · Tab to amend · ctrl+e to explain",
+	}, "\n")
+	claudeIdle := strings.Join([]string{rule, "❯ count to 100 slowly", rule, "  ⏸ manual mode on"}, "\n")
+	kimiWorking := strings.Join([]string{
+		"● Ran a command",
+		"⠦ thinking...",
+		"  reasoning about the next step",
+		"╭─────────────────────────────────────╮",
+		"│ >                                   │",
+		"╰─────────────────────────────────────╯",
+		"K2.7 Coding thinking  ~",
+	}, "\n")
+	kimiBlocked := strings.Join([]string{
+		"● Ran a command",
+		"  Approved: Running: curl earlier", // the transcript echo the region must not read as live
+		rule,
+		"  ▶ Run this command?",
+		"  cwd: /Users/rengwu",
+		"  $ curl -sL https://example.com",
+		"  ▶ 1. Approve once",
+		"    2. Approve for this session",
+		"    3. Reject",
+		"  ↑/↓ select · 1/2/3/4 choose · ↵ confirm",
+		rule,
+		"K2.7 Coding thinking  ~",
+	}, "\n")
+	spinnerScreen := strings.Join([]string{"⠋ Working (12s · esc to interrupt)", "  building the answer"}, "\n")
 
 	for _, tc := range []struct {
 		name     string
@@ -50,6 +91,30 @@ func TestShippedManifestRules(t *testing.T) {
 			Evidence{Title: "Action Required", Progress: "4;1;40"}, "blocked", false},
 		{"grok no evidence matches nothing", "grok", Evidence{}, "", false},
 
+		// Claude's screen rules (ticket 02). Blocked comes off the screen because the
+		// title cannot carry it (a permission prompt paints ✳, byte-identical to idle),
+		// and it must win over that idle title.
+		{"claude blocked from the permission dialog", "claude", Evidence{Screen: claudeBlocked}, "blocked", false},
+		{"claude blocked wins over an idle ✳ title", "claude",
+			Evidence{Title: "✳ working", Screen: claudeBlocked}, "blocked", false},
+		{"claude idle from the ❯ prompt box", "claude", Evidence{Screen: claudeIdle}, "idle", false},
+		{"claude working title still wins over an idle prompt box", "claude",
+			Evidence{Title: "⠂ counting", Screen: claudeIdle}, "working", false},
+
+		// Kimi reads entirely off the screen — it writes nothing to its title.
+		{"kimi working from the ⠋ spinner", "kimi", Evidence{Screen: kimiWorking}, "working", false},
+		{"kimi blocked from the approval panel", "kimi", Evidence{Screen: kimiBlocked}, "blocked", false},
+		{"kimi status bar alone is not working", "kimi",
+			Evidence{Screen: "K2.7 Coding thinking  ~\ncontext: 15%"}, "", false},
+		{"kimi empty screen matches nothing", "kimi", Evidence{}, "", false},
+
+		// opencode and pi have no title either; a braille spinner near the foot of the
+		// screen reads working, its absence reads nothing (idle by absence).
+		{"opencode working from a spinner", "opencode", Evidence{Screen: spinnerScreen}, "working", false},
+		{"opencode idle has no spinner", "opencode", Evidence{Screen: "❯ ready\n(no spinner here)"}, "", false},
+		{"pi working from a spinner", "pi", Evidence{Screen: spinnerScreen}, "working", false},
+		{"pi idle has no spinner", "pi", Evidence{Screen: "❯ ready"}, "", false},
+
 		// An agent with no manifest is nobody's business: the caller falls back to
 		// the shell grammar.
 		{"unknown agent matches nothing", "nosuch", Evidence{Title: "⠂ working"}, "", false},
@@ -64,20 +129,108 @@ func TestShippedManifestRules(t *testing.T) {
 	}
 }
 
-// The regions this ticket serves are the retained OSC values and nothing else. A
-// rule pointed at a region the engine does not know reads empty rather than
-// throwing — which is what lets ticket 02 add screen regions at the one seam
-// without any rule needing to change.
+// The OSC regions serve the retained title/progress values; the screen regions
+// slice the reconstructed grid. A rule pointed at a region the engine does not know
+// reads empty rather than throwing — which is what lets a manifest name a region at
+// the one seam without any rule evaluation needing to change.
 func TestRegionsAreTheOnlySeam(t *testing.T) {
 	ev := Evidence{Title: "t", Progress: "p", Screen: "s"}
 	for _, tc := range []struct{ region, want string }{
 		{"osc_title", "t"},
 		{"osc_progress", "p"},
 		{"screen", "s"},
+		{"whole_recent", "s"},
 		{"no_such_region", ""},
 	} {
 		if got := region(tc.region, ev); got != tc.want {
 			t.Errorf("region(%q) = %q, want %q", tc.region, got, tc.want)
+		}
+	}
+}
+
+// The screen regions (ticket 02) slice a reconstructed viewport structurally: the
+// recent foot of the screen, the body below the last flat rule, and the body framed
+// between the last two flat rules. The distinction that makes them reliable is that
+// a flat rule (a run of U+2500) is not a cornered box border, so a rounded input box
+// is never mistaken for framing.
+func TestScreenRegions(t *testing.T) {
+	rule := strings.Repeat("─", 20)
+	screen := strings.Join([]string{
+		"transcript line one",
+		"transcript line two",
+		rule,
+		"Do you want to proceed?",
+		"❯ 1. Yes",
+		"3. No",
+	}, "\n")
+
+	t.Run("bottom_non_empty_lines keeps the last n non-blank rows in order", func(t *testing.T) {
+		got := region("bottom_non_empty_lines(2)", Evidence{Screen: screen})
+		if want := "❯ 1. Yes\n3. No"; got != want {
+			t.Errorf("bottom_non_empty_lines(2) = %q, want %q", got, want)
+		}
+	})
+	t.Run("bottom_non_empty_lines skips blank rows", func(t *testing.T) {
+		got := region("bottom_non_empty_lines(1)", Evidence{Screen: "a\n\n\n  \nb\n\n"})
+		if got != "b" {
+			t.Errorf("bottom_non_empty_lines(1) over trailing blanks = %q, want %q", got, "b")
+		}
+	})
+	t.Run("after_last_horizontal_rule isolates the dialog below the rule", func(t *testing.T) {
+		got := region("after_last_horizontal_rule", Evidence{Screen: screen})
+		if want := "Do you want to proceed?\n❯ 1. Yes\n3. No"; got != want {
+			t.Errorf("after_last_horizontal_rule = %q, want %q", got, want)
+		}
+	})
+	t.Run("after_last_horizontal_rule is empty without a rule", func(t *testing.T) {
+		if got := region("after_last_horizontal_rule", Evidence{Screen: "no rules here\njust prose"}); got != "" {
+			t.Errorf("after_last_horizontal_rule with no rule = %q, want empty", got)
+		}
+	})
+	t.Run("prompt_box_body reads the body between the last two rules", func(t *testing.T) {
+		box := strings.Join([]string{"scrolled off", rule, "❯ type here", rule, " status bar"}, "\n")
+		if got := region("prompt_box_body", Evidence{Screen: box}); got != "❯ type here" {
+			t.Errorf("prompt_box_body = %q, want %q", got, "❯ type here")
+		}
+	})
+	t.Run("prompt_box_body is empty with only one rule", func(t *testing.T) {
+		if got := region("prompt_box_body", Evidence{Screen: screen}); got != "" {
+			t.Errorf("prompt_box_body with one rule = %q, want empty", got)
+		}
+	})
+	t.Run("a cornered box border is not a flat rule", func(t *testing.T) {
+		// The rounded box kimi draws its idle input in must not read as framing, or
+		// its body would be mistaken for a prompt/approval panel.
+		rounded := "╭" + strings.Repeat("─", 18) + "╮\n│ >                │\n╰" + strings.Repeat("─", 18) + "╯"
+		if got := region("prompt_box_body", Evidence{Screen: rounded}); got != "" {
+			t.Errorf("prompt_box_body over a rounded box = %q, want empty (corners are not flat rules)", got)
+		}
+	})
+	t.Run("a short dash run in prose is not a rule", func(t *testing.T) {
+		if got := region("after_last_horizontal_rule", Evidence{Screen: "a ── b\nc"}); got != "" {
+			t.Errorf("a two-dash run counted as a rule: after = %q, want empty", got)
+		}
+	})
+}
+
+// parseRegion splits an optional integer argument off a region name, so a manifest
+// can write bottom_non_empty_lines(6) and the engine reads the 6.
+func TestParseRegion(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		fn   string
+		narg int
+	}{
+		{"screen", "screen", 0},
+		{"bottom_non_empty_lines(6)", "bottom_non_empty_lines", 6},
+		{"bottom_non_empty_lines( 3 )", "bottom_non_empty_lines", 3},
+		{"after_last_horizontal_rule", "after_last_horizontal_rule", 0},
+		{"weird(", "weird(", 0},
+		{"weird(x)", "weird", 0},
+	} {
+		fn, narg := parseRegion(tc.in)
+		if fn != tc.fn || narg != tc.narg {
+			t.Errorf("parseRegion(%q) = (%q, %d), want (%q, %d)", tc.in, fn, narg, tc.fn, tc.narg)
 		}
 	}
 }

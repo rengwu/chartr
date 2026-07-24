@@ -24,6 +24,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -222,20 +223,129 @@ func (e *Engine) Evaluate(agent string, ev Evidence) Result {
 // Known reports whether the engine ships a manifest for agent.
 func (e *Engine) Known(agent string) bool { return e.manifests[agent] != nil }
 
-// region is the single seam between a region name and the evidence it reads. This
-// ticket serves osc_title and osc_progress from the retained OSC values; ticket 02
-// adds screen regions here, and nothing in rule evaluation changes.
+// region is the single seam between a region name and the evidence it reads. The
+// OSC regions serve the retained title/progress values; the screen regions slice
+// the reconstructed grid (ev.Screen) structurally, which is what keeps a keyword in
+// transcript prose from being read as live chrome. A region may carry an integer
+// argument in parentheses, e.g. bottom_non_empty_lines(6). An unknown name reads
+// empty rather than throwing, so a manifest can name a region the engine does not
+// know without breaking evaluation.
 func region(name string, ev Evidence) string {
-	switch name {
+	fn, arg := parseRegion(name)
+	switch fn {
 	case "osc_title":
 		return ev.Title
 	case "osc_progress":
 		return ev.Progress
-	case "screen":
+	case "screen", "whole_recent":
 		return ev.Screen
+	case "bottom_non_empty_lines":
+		return bottomNonEmptyLines(ev.Screen, arg)
+	case "after_last_horizontal_rule":
+		return afterLastHorizontalRule(ev.Screen)
+	case "prompt_box_body":
+		return promptBoxBody(ev.Screen)
 	default:
 		return ""
 	}
+}
+
+// parseRegion splits a region name into its function and an optional integer
+// argument: "bottom_non_empty_lines(6)" → ("bottom_non_empty_lines", 6), and a
+// bare "screen" → ("screen", 0). A malformed argument reads as 0.
+func parseRegion(name string) (string, int) {
+	open := strings.IndexByte(name, '(')
+	if open < 0 || !strings.HasSuffix(name, ")") {
+		return name, 0
+	}
+	arg, _ := strconv.Atoi(strings.TrimSpace(name[open+1 : len(name)-1]))
+	return name[:open], arg
+}
+
+// hRuleGlyph is the light horizontal box-drawing character (U+2500) that claude and
+// kimi rule a full-width line with to frame a region. hRuleMin is how many of them
+// a line needs to count as a rule — enough to exclude a stray "──" inside prose.
+const (
+	hRuleGlyph = '─'
+	hRuleMin   = 10
+)
+
+// isHorizontalRule reports whether a rendered line is one of the flat horizontal
+// rules a TUI draws to frame a region: a run of U+2500 padded only by spaces. It
+// deliberately rejects rounded, cornered box borders (╭ ╮ ╰ ╯ with │ sides), so
+// kimi's bordered input box is not read as a rule while the flat rules both agents
+// frame their prompt and permission/approval panels with are.
+func isHorizontalRule(line string) bool {
+	n := 0
+	for _, r := range line {
+		switch {
+		case r == hRuleGlyph:
+			n++
+		case r == ' ' || r == '\t':
+		default:
+			return false
+		}
+	}
+	return n >= hRuleMin
+}
+
+// bottomNonEmptyLines returns the last n non-blank lines of the screen, in
+// top-to-bottom order — the coarse "recent activity" region, the live chrome an
+// agent keeps at the foot of the screen without the scrolled-off transcript above.
+func bottomNonEmptyLines(screen string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	lines := strings.Split(screen, "\n")
+	var kept []string
+	for i := len(lines) - 1; i >= 0 && len(kept) < n; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			kept = append(kept, lines[i])
+		}
+	}
+	for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
+		kept[i], kept[j] = kept[j], kept[i]
+	}
+	return strings.Join(kept, "\n")
+}
+
+// afterLastHorizontalRule returns the lines below the last flat horizontal rule on
+// the screen. Claude frames a permission dialog with a rule above its body and
+// nothing below, so this isolates the dialog's numbered options and footer hints
+// from the transcript above the rule. Empty when the screen carries no rule.
+func afterLastHorizontalRule(screen string) string {
+	lines := strings.Split(screen, "\n")
+	last := -1
+	for i, l := range lines {
+		if isHorizontalRule(l) {
+			last = i
+		}
+	}
+	if last < 0 {
+		return ""
+	}
+	return strings.Join(lines[last+1:], "\n")
+}
+
+// promptBoxBody returns the lines between the last two flat horizontal rules — the
+// body a TUI frames with a rule above and below. It is claude's input box at the
+// prompt (a `❯` line between two rules) and kimi's approval panel (the whole menu
+// between two rules); a rounded, cornered box is not framed by flat rules, so an
+// idle kimi input box yields nothing here. Empty when fewer than two rules are
+// present, which is the case on claude's one-rule permission dialog.
+func promptBoxBody(screen string) string {
+	lines := strings.Split(screen, "\n")
+	var rules []int
+	for i, l := range lines {
+		if isHorizontalRule(l) {
+			rules = append(rules, i)
+		}
+	}
+	if len(rules) < 2 {
+		return ""
+	}
+	top, bottom := rules[len(rules)-2], rules[len(rules)-1]
+	return strings.Join(lines[top+1:bottom], "\n")
 }
 
 // matches reports whether every set matcher on the rule passes against text. An
