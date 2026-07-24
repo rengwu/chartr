@@ -127,6 +127,12 @@ type Terminal struct {
 	oscProgress string
 	agent       string
 	pub         *publisher
+
+	// grid reconstructs the terminal's visible screen server-side from the same
+	// PTY bytes the browser renders, read by the sampler for detection only (never
+	// replayed back — ADR 0010). It has its own lock, so it is reached directly
+	// rather than under mu.
+	grid *grid
 }
 
 // subscriber is one attached terminal socket. Down-frames are delivered through
@@ -219,8 +225,16 @@ func (t *Terminal) awaitReady(settle, grace time.Duration) bool {
 }
 
 // Resize sets the PTY window size (columns, rows) so the shell reflows to the
-// browser's terminal geometry.
-func (t *Terminal) Resize(cols, rows int) error { return t.pty.Resize(cols, rows) }
+// browser's terminal geometry, and follows the reconstruction grid to the same
+// size so a region anchored to the bottom of the screen stays meaningful.
+func (t *Terminal) Resize(cols, rows int) error {
+	t.grid.resize(cols, rows)
+	return t.pty.Resize(cols, rows)
+}
+
+// detectionText returns the reconstructed screen the rule engine reads. It is read
+// for detection only and never replayed to the browser (ADR 0010).
+func (t *Terminal) detectionText() string { return t.grid.text() }
 
 // broadcast appends a chunk to scrollback and fans it out to every attached
 // socket. A socket whose buffer is full is a slow consumer: it is killed and
@@ -260,6 +274,9 @@ func (t *Terminal) pump(done func()) {
 		if n > 0 {
 			t.broadcast(buf[:n])
 			osc.scan(buf[:n], t.setOSCTitle, t.setOSCProgress)
+			// Feed the same bytes to the screen reconstruction. It is read only for
+			// detection; the browser still renders from the raw scrollback (ADR 0010).
+			t.grid.write(buf[:n])
 		}
 		if err != nil {
 			break
@@ -277,6 +294,7 @@ func (t *Terminal) pump(done func()) {
 	t.subs = map[*subscriber]struct{}{}
 	t.mu.Unlock()
 
+	t.grid.close()
 	_ = t.pty.Close()
 	done()
 }
@@ -413,6 +431,9 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		// Seat the initial view under the tab's own name before the first sample.
 		proc:  title,
 		state: state,
+		// The screen reconstruction starts at the PTY's launch geometry and follows
+		// it on every browser resize.
+		grid: newGrid(gridDefaultCols, gridDefaultRows),
 	}, nil
 }
 
@@ -580,8 +601,12 @@ func (t *Terminal) sampleGone(isSession bool) bool {
 // anything. The tab's process name reads as the agent, which is what the operator
 // is actually looking at.
 func (t *Terminal) sampleAgent(agent string, eng *detect.Engine) bool {
+	// The screen is read off the grid's own lock, before taking t.mu — the two
+	// locks never nest.
+	screen := t.detectionText()
+
 	t.mu.Lock()
-	ev := detect.Evidence{Title: t.oscTitle, Progress: t.oscProgress}
+	ev := detect.Evidence{Title: t.oscTitle, Progress: t.oscProgress, Screen: screen}
 	pub := t.pub
 	if pub == nil { // an agent is always seated with its hysteresis; belt and braces
 		pub = newPublisher(time.Now())
