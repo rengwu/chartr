@@ -98,6 +98,20 @@ const (
 //go:embed assets/skills
 var assets embed.FS
 
+// trackerAdapterTemplate is the `docs/agents/issue-tracker.md` chartr installs
+// into a watched repo so a vanilla wayfinder-family skill writes maps in chartr's
+// convention (local markdown under `.plan/maps/`) rather than its own `.scratch/`
+// default. It restates the same format the `tracker-convention` skill carries;
+// the two must stay in lockstep.
+//
+//go:embed assets/issue-tracker.md
+var trackerAdapterTemplate string
+
+// TrackerAdapter returns the tracker-adapter template chartr writes to
+// `docs/agents/issue-tracker.md` in a registered space. It is the seam
+// Matt-Pocock-family skills read to discover this repo's tracker.
+func TrackerAdapter() string { return trackerAdapterTemplate }
+
 // Roots are the three skill-library roots resolution walks, lowest precedence
 // first. Any of them may be empty, which simply means that layer defines nothing.
 type Roots struct {
