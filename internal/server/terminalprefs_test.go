@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // Seam 1, folded with snapshot assembly (spec, Testing Decisions): the parse of
@@ -104,6 +105,31 @@ background = "not-a-colour"
 	if !hasSubstring(s.Warnings, "background") {
 		t.Errorf("a bad terminal colour did not surface on the space: %v", s.Warnings)
 	}
+}
+
+// The surface opens `terminal.toml` rather than editing it, so every real edit
+// happens in the operator's own editor and outside chartr entirely. That makes an
+// edit to it exactly the discovery-by-notice case a map write is (story 11): the
+// config root is watched, so a saved font size reaches the pushed snapshot — and
+// with it every live terminal — on its own, with no refresh and no unrelated
+// action to nudge a rebuild.
+func TestTerminalPrefsRereadByNotice(t *testing.T) {
+	h := chartrtest.Start(t)
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", "[font]\nsize = 13\n")
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	if got := h.Snapshot(ctx(t)).Terminal.FontSize; got != 13 {
+		t.Fatalf("font size starts at %v, want 13", got)
+	}
+
+	// Dial before the edit, then save the file from outside and wait: nothing here
+	// asks the server to rebuild.
+	cc := h.DialControl(ctx(t))
+	defer cc.Close()
+	cc.ReadSnapshot(ctx(t)) // drain the initial snapshot
+
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", "[font]\nsize = 22\n")
+	cc.WaitFor(ctx(t), func(m model.Model) bool { return m.Terminal.FontSize == 22 })
 }
 
 // The Settings surface's half of the file (ticket 08): `terminal.toml` is a named

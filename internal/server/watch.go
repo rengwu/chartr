@@ -29,21 +29,32 @@ const planDirName = ".plan"
 // directory a beat later is noticed too. A watch that cannot be established
 // degrades to no live discovery for that path — operator actions still rebuild —
 // rather than failing chartr.
+//
+// Alongside the spaces it also pins the operator's config root, which belongs to
+// no space and never changes for a server's lifetime. Every file under it
+// (`user.toml`, `terminal.toml`) is re-read on each rebuild, so an edit made in
+// the operator's own editor is worth exactly the same notice a map edit gets:
+// without it, a saved `terminal.toml` would sit unread until some unrelated
+// action happened to rebuild.
 type watcher struct {
 	fsw      *fsnotify.Watcher
 	onChange func()
+	// pinned is watched for as long as the watcher lives, regardless of which
+	// spaces are registered — the config root is not a space's to claim or drop.
+	pinned string
 
 	mu      sync.Mutex
 	watched map[string]bool // directories currently under an fsnotify watch
 	timer   *time.Timer
 }
 
-// newWatcher starts a watcher whose events fire onChange (debounced). If the OS
-// watcher cannot be created, it returns a watcher that watches nothing: the
-// cockpit stays fully usable and maps still appear on every operator action,
-// only unattended notice is lost.
-func newWatcher(onChange func()) *watcher {
-	w := &watcher{onChange: onChange, watched: map[string]bool{}}
+// newWatcher starts a watcher whose events fire onChange (debounced), watching
+// the spaces reconciled through setRoots plus `pinned` for as long as it lives.
+// If the OS watcher cannot be created, it returns a watcher that watches
+// nothing: the cockpit stays fully usable and maps still appear on every
+// operator action, only unattended notice is lost.
+func newWatcher(onChange func(), pinned string) *watcher {
+	w := &watcher{onChange: onChange, pinned: pinned, watched: map[string]bool{}}
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return w
@@ -53,15 +64,25 @@ func newWatcher(onChange func()) *watcher {
 	return w
 }
 
-// setRoots reconciles the watch set to cover each root's repo directory and
-// every directory under its `.plan/` tree, dropping watches on paths no root
-// still claims. It is called on every rebuild, so registering and forgetting
-// spaces move their watches with them.
+// setRoots reconciles the watch set to cover the pinned config root, each root's
+// repo directory, and every directory under its `.plan/` tree, dropping watches
+// on paths no root still claims. It is called on every rebuild, so registering
+// and forgetting spaces move their watches with them — and a pinned directory
+// that did not exist yet (a fresh machine's config root, before the first file
+// is written into it) gets another attempt on each rebuild.
+//
+// The config root is watched as a *directory*, never as a single file, because
+// that is the only way an editor's write-then-rename save is noticed: an atomic
+// save replaces the inode a file watch is holding, and the directory watch sees
+// the rename that a file watch would miss.
 func (w *watcher) setRoots(roots []string) {
 	if w.fsw == nil {
 		return
 	}
 	want := map[string]bool{}
+	if w.pinned != "" {
+		want[w.pinned] = true
+	}
 	for _, root := range roots {
 		want[root] = true
 		collectDirs(want, filepath.Join(root, planDirName))

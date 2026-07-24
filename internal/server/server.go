@@ -89,7 +89,13 @@ func New(opts Options) (*Server, error) {
 	// whenever a space's `.plan/` changes, so a map created outside chartr
 	// appears on its own. rebuild also reconciles the watch set, so this starts
 	// covering whatever the persisted registry already holds.
-	s.watch = newWatcher(s.rebuild)
+	//
+	// The config root is pinned into the same watch. It is nobody's space, but
+	// every rebuild re-reads `user.toml` and `terminal.toml` out of it, so an
+	// operator saving a config edit in their own editor — the only way those files
+	// are ever edited, since the surface opens rather than edits them — is the same
+	// kind of notice a map write is, and reaches live terminals without a refresh.
+	s.watch = newWatcher(s.rebuild, opts.ConfigDir)
 	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
