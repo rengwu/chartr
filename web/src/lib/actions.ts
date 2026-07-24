@@ -103,6 +103,26 @@ export function ideate(id: string, agent = ''): Promise<{ id: string }> {
   }>
 }
 
+// launch is the skill launcher's spine (skill-launcher ticket 01/02): it runs one
+// *on-ramp* skill on a chosen agent as a live, ticketless tab — the generalisation
+// of `ideate`, which is just the `skill=ideate` case. It names its agent like every
+// spawn, and passes an optional line of `context` for a skill that offers one (03);
+// bare is valid and correct for the self-driving skills. The server refuses any
+// skill the resolved library does not mark on-ramp — the pushed library is the
+// allowlist — and remembers the agent, not the skill.
+export function launch(
+  id: string,
+  agent: string,
+  skill: string,
+  context = '',
+): Promise<{ id: string }> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/launch`, {
+    agent,
+    skill,
+    context,
+  }) as Promise<{ id: string }>
+}
+
 // previewPayload composes what a session for one ticket and role would be told
 // (ticket 08) — the resolved skills and the context bundle — with per-part
 // provenance. Read-only inspection, so a GET; the

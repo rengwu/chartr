@@ -9,7 +9,7 @@
     resumeSession,
     respawnSession,
     releaseSession,
-    ideate,
+    launch,
     pickFolder,
     registerSpace,
     ActionError,
@@ -17,7 +17,7 @@
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
   import Settings from "./lib/Settings.svelte";
-  import AgentSplitButton from "./lib/AgentSplitButton.svelte";
+  import SkillLauncher from "./lib/SkillLauncher.svelte";
   import Modal from "./lib/Modal.svelte";
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
@@ -271,22 +271,20 @@
     }
   }
 
-  // The ideate on-ramp (ticket 15): the one opinionated nudge toward charting. A
-  // live, ticketless agent tab typed the starter prompt on open — shares only the
-  // spawn primitive with a real session, so it opens exactly like a shell (no
-  // role picker, no ticket, nothing to gate on).
-  //
-  // It does name the agent that runs it (ticket 03). The control is the same
-  // split button the action bar uses, so the space's remembered agent runs it in
-  // one click and the picker opens when there is nothing remembered.
-  async function ideateSpace(space: Space, agent: string) {
+  // The skill launcher (skill-launcher map): the space card's on-ramp control runs
+  // any self-driving skill on a chosen agent as a live, ticketless tab — shares
+  // only the spawn primitive with a real session, so it opens exactly like a shell
+  // (no role picker, no ticket, nothing to gate on). ideate is now just the
+  // `skill=ideate` case of this one launch. It names the agent that runs it
+  // (ticket 03) and passes no context — the optional context box is 03's next step.
+  async function launchSpace(space: Space, agent: string, skill: string) {
     selectSpace(space.id);
     opening = true;
     try {
-      const { id } = await ideate(space.id, agent);
+      const { id } = await launch(space.id, agent, skill);
       activeTermId = id;
     } catch (e) {
-      actionError = `Couldn’t start ideating: ${(e as Error).message}`;
+      actionError = `Couldn’t launch ${skill}: ${(e as Error).message}`;
     } finally {
       opening = false;
     }
@@ -732,26 +730,27 @@
                   <Gear class="size-3.5" />
                 </Button>
                 <span class="flex-1"></span>
-                <!-- Ideate names its agent (ticket 03). The row's own click just
-                     selects the space, which ideateSpace does anyway, so this one
-                     deliberately does not stop propagation — the dropdown trigger
-                     has no click handler of its own to protect. The agent's name is
-                     in the menu and the tooltip rather than on this label: the
-                     sidebar button has no room for it. -->
-                <AgentSplitButton
+                <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
+                     the agent picker over the on-ramp skills. The row's own click
+                     just selects the space, which launchSpace does anyway, so this
+                     one deliberately does not stop propagation — the dropdown
+                     trigger has no click handler of its own to protect. The agent's
+                     model and the skill name live in the menu, not on this cramped
+                     label. -->
+                <SkillLauncher
                   agents={agentLibrary}
                   lastAgent={space.lastAgent}
-                  label="Idea"
-                  nameOnLabel={false}
+                  skills={space.skills}
+                  label="Skills"
                   disabled={opening}
                   size="xs"
-                  ariaLabel="Ideate in {space.name}"
-                  title="Ideate in {space.name} — a live, ticketless agent tab opened on a starter prompt for thinking an idea through. Nothing is claimed, nothing is committed, and it ends when you end it."
-                  onrun={(agent) => ideateSpace(space, agent)}
+                  ariaLabel="Launch a skill in {space.name}"
+                  title="Launch a self-driving skill in {space.name} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
+                  onrun={(agent, skill) => launchSpace(space, agent, skill)}
                   onregister={() => openSettings({ kind: "user" })}
                 >
                   {#snippet icon()}<Plus />{/snippet}
-                </AgentSplitButton>
+                </SkillLauncher>
                 <Button
                   variant="outline"
                   size="xs"
@@ -882,7 +881,7 @@
           terminalPrefs={control.model?.terminal}
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
-          onIdeate={(agent) => ideateSpace(selected, agent)}
+          onLaunch={(agent, skill) => launchSpace(selected, agent, skill)}
           onOpenSettings={() => openSettings()}
           onRegisterAgent={() => openSettings({ kind: "user" })}
           onspawned={(id) => (activeTermId = id)}

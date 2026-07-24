@@ -52,3 +52,41 @@ remembered agent), clicking any on-ramp skill launches it on the selected agent 
 `/launch`, and both the sidebar and empty-stage mounts drive the `(agent, skill)`
 callback; `check` / `build` / `vitest` and `go vet` / `go test` pass; no amber in
 the built CSS.
+
+## Answer
+
+Shipped the launcher as a single dropdown, driving 01's `/launch`.
+
+**Selection logic (`launchmenu.ts`, unit-tested).** `launchMenu(agents, lastAgent,
+skills, selected?)` is the launcher analogue of `chooseAgent`: it offers every
+registered agent, the on-ramp skills (`skills.filter(s => s.onRamp)`), and the
+effective agent a skill click runs on — the operator's in-menu pick this open, else
+the remembered agent, resolved through `chooseAgent` (so `empty` routes to
+registration and `unchosen` means "pick one first", exactly as elsewhere).
+`launchClick(menu, skill)` returns the `(agent, skill)` a click fires or `null` when
+no agent is ready. `agentModel(agent)` surfaces decision (b)'s label by reading the
+`--model` / `-m` value out of the agent's already-resolved `command` — no new model
+field, just what the agent carries.
+
+**The control (`SkillLauncher.svelte`).** Built on the vendored `DropdownMenu`
+primitives, not a split button. One `Skills ▾` trigger opens two sections: a
+`RadioGroup` agent selector (each present row labelled by its model,
+`closeOnSelect={false}` so picking an agent keeps the menu open, opening checked on
+the remembered agent) over a divider and the on-ramp skills. A skill click *is* the
+launch; skills sit disabled until an agent is chosen, and the empty-library state
+routes to `onregister` — never a dead button. Callback is `onrun(agent, skill)`.
+
+**Both mounts + the action.** `actions.ts` gained `launch(id, agent, skill,
+context='')` beside `ideate`. `App.svelte`'s `ideateSpace` became `launchSpace(space,
+agent, skill)`; the sidebar card and `SpacePane`'s empty-stage on-ramp both mount
+`SkillLauncher` and thread the `(agent, skill)` callback (`SpacePane`'s `onIdeate`
+prop is now `onLaunch`). Every launch is bare (no context — that is 03's box).
+
+**Notes.** Dropped the old `nameOnLabel` knob — it toggled the *agent name* on the
+split button's label, but the launcher always keeps agent/skill detail in the menu,
+so it was meaningless; the sidebar stays compact via `size="xs"`. `AgentSplitButton`
+is deleted — both its mounts moved to `SkillLauncher` and nothing else used it, so
+leaving the duplicate picker would be dead code against the design system. Frontend
+`check` (0/0), `vitest` (141 pass, incl. the new `launchmenu.test.ts`), and `build`
+are green with no amber in the built CSS; `go vet ./...` and `go test ./...` pass
+(the embed test compiled against the fresh `dist/`).

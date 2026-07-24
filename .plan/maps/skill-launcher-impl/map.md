@@ -80,6 +80,19 @@ under Decisions so far.
   threads context into the payload, remembers the agent (no remembered skill).
   `/ideate` stays as the `skill=ideate` delegate. [01](tickets/01-on-ramp-metadata-and-launch-spine.md)
 
+- **02 — the sidebar picker.** The space card's on-ramp is one `Skills ▾` dropdown
+  (`SkillLauncher.svelte`, on the vendored `DropdownMenu` primitives — the split
+  `AgentSplitButton` is deleted). A `RadioGroup` agent selector, each row labelled by
+  the model the agent already carries (parsed from its resolved `command`; no new
+  model field), sits over a divider and the on-ramp skills; picking an agent keeps
+  the menu open, a skill click *is* the launch on the selected agent via the new
+  `launch` action, and skills disable until an agent is chosen (empty library →
+  registration, never a dead button). Pure logic in `launchmenu.ts`
+  (`launchMenu` / `launchClick` / `agentModel`, unit-tested); both the sidebar and
+  `SpacePane`'s empty-stage mount drive `onrun(agent, skill)`. Launches are bare —
+  the optional context box is 03.
+  [02](tickets/02-the-sidebar-skill-picker.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled above; this map only executes it. A ticket

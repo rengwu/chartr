@@ -3,7 +3,7 @@
   import type { Agent, Space, Terminal as Term, TerminalPrefs, Map as WMap } from './model'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
-  import AgentSplitButton from './AgentSplitButton.svelte'
+  import SkillLauncher from './SkillLauncher.svelte'
   import TrackerAdapterBanner from './TrackerAdapterBanner.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
@@ -29,7 +29,7 @@
     terminalPrefs,
     active = true,
     onOpenShell,
-    onIdeate,
+    onLaunch,
     onOpenSettings,
     onRegisterAgent,
     onspawned,
@@ -50,18 +50,18 @@
     // selection into the URL, which the settings route owns while it is up.
     active?: boolean
     onOpenShell: () => void
-    // The ideate on-ramp (ticket 15): a live, ticketless chat, the one
-    // opinionated nudge toward charting for a space with no map to spawn onto.
-    // It names the agent that runs it (ticket 03), so the control here picks one
-    // and hands it up.
-    onIdeate: (agent: string) => void
+    // The skill launcher (skill-launcher map): a live, ticketless on-ramp for a
+    // space with no shell open, running any self-driving skill on a chosen agent.
+    // The control here picks the agent and the skill and hands both up; the launch
+    // is bare (no context — that is 03's box).
+    onLaunch: (agent: string, skill: string) => void
     // The cockpit-wide way into the config surface (ticket 05), owned by the
     // enclosing App — the route is App's, this pane just carries the control at
     // the right end of its title bar.
     onOpenSettings: () => void
-    // Where an empty-library spawn or ideate control sends the operator: agent
+    // Where an empty-library spawn or launch control sends the operator: agent
     // registration (the user scope of the settings surface). Owned by App like the
-    // route above; every AgentSplitButton beneath this pane routes its empty state
+    // route above; every agent picker beneath this pane routes its empty state
     // here rather than being a dead button (ticket 04).
     onRegisterAgent: () => void
     // Bubbled from the star-map's detail pane when a session is spawned (ticket
@@ -405,16 +405,17 @@
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
           <div class="flex flex-wrap items-center justify-center gap-2">
             <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
-            <AgentSplitButton
+            <SkillLauncher
               {agents}
               lastAgent={space.lastAgent}
-              label="New Idea"
-              title="Think an idea through — a live, ticketless agent tab opened on a starter prompt. Nothing is claimed, nothing is committed, and it ends when you end it."
-              onrun={onIdeate}
+              skills={space.skills}
+              label="Skills"
+              title="Launch a self-driving skill — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
+              onrun={onLaunch}
               onregister={onRegisterAgent}
             >
               {#snippet icon()}<Lightbulb />{/snippet}
-            </AgentSplitButton>
+            </SkillLauncher>
             <Button
               variant="outline"
               size="sm"
