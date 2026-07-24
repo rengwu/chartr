@@ -60,6 +60,26 @@ func loadRecording(t *testing.T, name string) []chunk {
 	return out
 }
 
+// recordingGeometry reads the {"cols":N,"rows":M} header of a capture. The screen
+// reconstruction must be sized from it — both agents lay out against the reported
+// width, so replaying at a different size would not reproduce the recorded screens.
+func recordingGeometry(t *testing.T, name string) (cols, rows int) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(recordingsDir, name))
+	if err != nil {
+		t.Fatalf("reading recording %s: %v", name, err)
+	}
+	line0 := strings.SplitN(strings.TrimSpace(string(raw)), "\n", 2)[0]
+	var hdr struct {
+		Cols int `json:"cols"`
+		Rows int `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(line0), &hdr); err != nil || hdr.Cols <= 0 || hdr.Rows <= 0 {
+		t.Fatalf("recording %s: bad geometry header %q: %v", name, line0, err)
+	}
+	return hdr.Cols, hdr.Rows
+}
+
 // transition is one published change while replaying a recording. positive records
 // whether the engine matched a rule for the sample that published it, as opposed
 // to publishing off a confirmed absence — the two halves of the hysteresis.
@@ -104,6 +124,95 @@ func replay(t *testing.T, agent string, chunks []chunk) []transition {
 	return out
 }
 
+// replayScreen is replay's screen-aware sibling: it additionally feeds every chunk
+// through the real grid emulator and hands the reconstructed screen to the engine
+// alongside the OSC evidence. This is the whole ticket-02 detection path end to end
+// — the scanner, the grid, the rule engine's screen regions, and the hysteresis —
+// driven by the bytes an agent really wrote, at the size it wrote them.
+func replayScreen(t *testing.T, agent, name string) []transition {
+	t.Helper()
+	cols, rows := recordingGeometry(t, name)
+	chunks := loadRecording(t, name)
+
+	g := newGrid(cols, rows)
+	defer g.close()
+
+	var scanner oscScanner
+	var title, progress string
+	store := func(dst *string) func(string) { return func(v string) { *dst = v } }
+
+	pub := newPublisher(time.Time{})
+	var out []transition
+	next := 0
+	end := chunks[len(chunks)-1].at
+
+	for now := time.Duration(0); now <= end+sampleInterval; now += sampleInterval {
+		for next < len(chunks) && chunks[next].at <= now {
+			scanner.scan(chunks[next].data, store(&title), store(&progress))
+			g.write(chunks[next].data)
+			next++
+		}
+		ev := detect.Evidence{Title: title, Progress: progress, Screen: g.text()}
+		res := agentEngine.Evaluate(agent, ev)
+		if state, changed := pub.update(res, time.Time{}.Add(now)); changed {
+			out = append(out, transition{at: now, state: state, positive: res.State != ""})
+		}
+	}
+	return out
+}
+
+func sawState(trs []transition, state string) bool {
+	for _, tr := range trs {
+		if tr.state == state {
+			return true
+		}
+	}
+	return false
+}
+
+// Kimi reads its whole grammar off the screen: it writes nothing to its title, so
+// working (the ⠋ thinking spinner) and blocked (the ▶ Run this command? approval
+// panel) both come from the reconstructed grid. Replaying the real 319-second turn
+// must surface both — the states the map says the screen is where they arrive.
+func TestKimiRecordingReadsWorkingAndBlockedFromScreen(t *testing.T) {
+	got := replayScreen(t, "kimi", "rec-kimi-0.29.0.jsonl")
+	if len(got) == 0 {
+		t.Fatal("replaying the Kimi recording with the screen published nothing at all")
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; the ⠋ spinner did not fire. published %v", got)
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked; the ▶ Run this command? approval panel did not fire. published %v", got)
+	}
+	// The blocked panel is a real, discrete event, not a permanent state: kimi must
+	// leave it again (it approved the command and kept working). So blocked is not
+	// the last thing published.
+	if last := got[len(got)-1]; last.state == model.TerminalBlocked {
+		t.Errorf("settled on blocked at the end of the recording; the panel should have cleared")
+	}
+}
+
+// Kimi's status bar reads "K2.7 Coding thinking  ~" on every single screen — the
+// trap the region-and-anchor design exists to defuse. A screen carrying the status
+// bar and the idle prompt box but *no* live spinner must not read as working; only
+// a braille frame at the head of a line does. This is the regression the ticket
+// names, pinned against a line lifted from the real capture.
+func TestKimiStatusBarThinkingIsNotWorking(t *testing.T) {
+	// The always-present status bar plus a rounded (cornered, non-flat-ruled) idle
+	// input box — exactly what kimi draws while waiting, minus any spinner.
+	idle := strings.Join([]string{
+		"╭─────────────────────────────────────╮",
+		"│ >                                   │",
+		"╰─────────────────────────────────────╯",
+		"K2.7 Coding thinking  ~                          /model: switch model",
+		"                                       context: 15% (37.7k/256k)",
+	}, "\n")
+	if res := agentEngine.Evaluate("kimi", detect.Evidence{Screen: idle}); res.State != "" {
+		t.Errorf("kimi idle screen with the ever-present 'thinking' status bar read as %q; want no state", res.State)
+	}
+}
+
 // The reported bug, gone — read off real Claude Code bytes. The capture is an idle
 // prompt, a turn, and a permission prompt left on screen; replaying it must show
 // the tab working during the turn and idle at the prompt, rather than pinned to
@@ -143,6 +252,41 @@ func TestClaudeRecordingReadsWorkingThenIdle(t *testing.T) {
 		if tr.at < agentStartupGrace && tr.state == model.TerminalIdle && !tr.positive {
 			t.Errorf("published an absence-derived idle at %s, inside the %s startup grace",
 				tr.at, agentStartupGrace)
+		}
+	}
+}
+
+// Claude's blocked never reaches its title — a permission prompt paints ✳, byte-
+// identical to idle — so it is the screen that has to carry it. Replaying the real
+// capture with the grid, claude must read blocked while it sits on the Bash
+// permission dialog and leave it once the turn moves on, which is the state the
+// title alone could never see. This is the finding ticket 01 flagged, resolved by
+// ticket 02's screen evidence exactly where it said it would be.
+func TestClaudeRecordingReadsBlockedFromScreen(t *testing.T) {
+	got := replayScreen(t, "claude", "rec-claude.jsonl")
+	if len(got) == 0 {
+		t.Fatal("replaying the Claude recording with the screen published nothing at all")
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; published %v", got)
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked while sitting on the permission dialog; published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	// blocked is a discrete event, not the resting state: the capture ends past the
+	// dialog, so it must not be the last thing published.
+	if last := got[len(got)-1]; last.state == model.TerminalBlocked {
+		t.Errorf("settled on blocked at the end of the recording, want the dialog cleared; published %v", got)
+	}
+	// blocked must come after working (the turn ran, then the dialog appeared), and a
+	// blocked reading must never be an absence-derived guess — the screen positively
+	// showed the dialog.
+	for _, tr := range got {
+		if tr.state == model.TerminalBlocked && !tr.positive {
+			t.Errorf("published an absence-derived blocked at %s — blocked must be a positive screen match", tr.at)
 		}
 	}
 }
