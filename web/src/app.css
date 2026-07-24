@@ -309,6 +309,18 @@
     border-color: var(--border);
   }
 
+  /* No rubber-band, anywhere. WebKit bounces a scroll container past its own end,
+     and in a fixed-viewport cockpit that has nowhere to scroll to that reads as the
+     chrome coming unstuck from the window frame. Declared universally rather than on
+     `html` alone: the window is only the most visible offender, and every pane, list,
+     and viewport inside it bounces on its own too. The property is inert on anything
+     that does not scroll, so the universal selector costs nothing and means a new
+     scrolling pane never has to remember. It also stops a pane that has hit its end
+     from chaining the rest of the gesture up to the document behind it. */
+  * {
+    overscroll-behavior: none;
+  }
+
   html {
     color-scheme: dark;
   }
