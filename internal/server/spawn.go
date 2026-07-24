@@ -349,7 +349,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 // the same list the pushed model renders, so the spawn path refuses exactly what
 // the operator sees.
 func (s *Server) resolve(registry.Entry) config.Resolution {
-	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
+	userTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, userConfigName))
 	agents, warnings := config.ResolveAgents(userTOML, nil)
 	return config.Resolution{Agents: agents, Warnings: warnings}
 }

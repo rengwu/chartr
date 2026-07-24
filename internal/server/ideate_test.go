@@ -59,7 +59,7 @@ func TestIdeateOpensLiveTicketlessTab(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ideate prompt not written: %v", err)
 	}
-	if want := prompt.Ideate(prompt.RootsFor(h.DataDir, h.ConfigDir, repo)); string(got) != want {
+	if want := prompt.Ideate(prompt.RootsFor(h.ConfigDir, repo)); string(got) != want {
 		t.Errorf("ideate prompt on disk does not match the composed starter prompt:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 
@@ -127,7 +127,7 @@ func TestIdeateStarterPromptIsEditable(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 	ideateAgent(t, h)
 
-	materialized := filepath.Join(h.DataDir, "skills", "ideate", "SKILL.md")
+	materialized := filepath.Join(h.ConfigDir, "builtin-skills", "ideate", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
 		t.Fatalf("ideate skill was not materialized: %v", err)
 	}

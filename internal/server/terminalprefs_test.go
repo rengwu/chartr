@@ -16,7 +16,7 @@ import (
 func TestSnapshotCarriesTerminalPrefs(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, h.DataDir, "terminal.toml", `
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", `
 [font]
 family = "IBM Plex Mono"
 size = 15
@@ -87,7 +87,7 @@ func TestSnapshotMissingTerminalFileFallsBackToBuiltinDefault(t *testing.T) {
 func TestSnapshotTerminalBadValueWarnsOnSpace(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, h.DataDir, "terminal.toml", `
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", `
 [theme]
 background = "not-a-colour"
 `)
@@ -112,13 +112,13 @@ background = "not-a-colour"
 // space-less open action — read-value-plus-open-file, never a second config store.
 func TestTerminalConfigIsAnOpenableGlobalLayer(t *testing.T) {
 	h := chartrtest.Start(t)
-	chartrtest.WriteFile(t, h.DataDir, "terminal.toml", "[font]\nsize = 15\n")
+	chartrtest.WriteFile(t, h.ConfigDir, "terminal.toml", "[font]\nsize = 15\n")
 	// Nudge a rebuild so the freshly written file is on the snapshot.
 	register(t, h, chartrtest.NewSpaceRepo(t))
 
 	snap := h.Snapshot(ctx(t))
 	l := layer(t, snap.Config, "terminal-config")
-	if want := filepath.Join(h.DataDir, "terminal.toml"); l.Path != want {
+	if want := filepath.Join(h.ConfigDir, "terminal.toml"); l.Path != want {
 		t.Errorf("terminal config path = %q, want %q", l.Path, want)
 	}
 	if l.Holds != "terminal" || !l.Exists {

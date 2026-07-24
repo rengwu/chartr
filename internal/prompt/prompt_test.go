@@ -338,11 +338,11 @@ func TestMaterializePreservesEdits(t *testing.T) {
 	if err := prompt.Materialize(data); err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
-	skill := filepath.Join(data, "skills", "implement", "SKILL.md")
+	skill := filepath.Join(data, "builtin-skills", "implement", "SKILL.md")
 	if _, err := os.Stat(skill); err != nil {
 		t.Fatalf("library was not materialized: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(data, "skills", "tracker-convention", "glossary.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(data, "builtin-skills", "tracker-convention", "glossary.md")); err != nil {
 		t.Errorf("supporting files were not materialized: %v", err)
 	}
 
@@ -358,7 +358,7 @@ func TestMaterializePreservesEdits(t *testing.T) {
 	}
 
 	// And the edit composes: the materialized directory is the built-in layer.
-	r := prompt.RootsFor(data, "", "")
+	r := prompt.RootsFor(data, "")
 	if got := resolve(t, "implement", r); got.Body != "EDITED" || got.Layer != "built-in" {
 		t.Errorf("materialized edit did not compose: %q/%q", got.Layer, got.Body)
 	}

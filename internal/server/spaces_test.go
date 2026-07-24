@@ -146,27 +146,27 @@ func TestForgetNotDestroy(t *testing.T) {
 }
 
 // The registry is a rebuildable index: deleting it costs re-adding folders,
-// never work. chartr started against a data dir whose spaces.toml is gone
+// never work. chartr started against a config dir whose spaces.toml is gone
 // shows no spaces, and re-registering the untouched repo restores it.
 func TestRegistryLossIsRebuildable(t *testing.T) {
-	dataDir := t.TempDir()
+	configDir := t.TempDir()
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteFile(t, repo, "keep.txt", "authoritative work lives in the repo\n")
 	chartrtest.Git(t, repo, "add", "-A")
 	chartrtest.Git(t, repo, "commit", "-qm", "work")
 	head := chartrtest.Git(t, repo, "rev-parse", "HEAD")
 
-	first := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	first := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	resp := register(t, first, repo)
 	if len(first.Snapshot(ctx(t)).Spaces) != 1 {
 		t.Fatal("space not registered on the first chartr")
 	}
 
-	// Lose the registry, then bring a fresh chartr up on the same data dir.
-	if err := os.Remove(filepath.Join(dataDir, "spaces.toml")); err != nil {
+	// Lose the registry, then bring a fresh chartr up on the same config dir.
+	if err := os.Remove(filepath.Join(configDir, "spaces.toml")); err != nil {
 		t.Fatalf("removing registry: %v", err)
 	}
-	second := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	second := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	if got := len(second.Snapshot(ctx(t)).Spaces); got != 0 {
 		t.Fatalf("after registry loss, snapshot has %d spaces, want 0", got)
 	}

@@ -349,7 +349,7 @@ func TestMaterializedLibraryEditsCompose(t *testing.T) {
 	resp := register(t, h, repo)
 
 	// The library was materialized on start; edit a role skill in place.
-	materialized := filepath.Join(h.DataDir, "skills", "research", "SKILL.md")
+	materialized := filepath.Join(h.ConfigDir, "builtin-skills", "research", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
 		t.Fatalf("library was not materialized: %v", err)
 	}

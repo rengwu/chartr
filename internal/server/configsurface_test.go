@@ -59,7 +59,7 @@ args = ["--model", "sonnet-ws"]
 kind = "implementation"
 `)
 	// The agent library lives in the operator's own config.
-	chartrtest.WriteFile(t, h.DataDir, "user.toml", `
+	chartrtest.WriteFile(t, h.ConfigDir, "user.toml", `
 [agents.house]
 adapter = "claude"
 args = ["--model", "opus"]
@@ -83,7 +83,7 @@ args = ["--model", "opus"]
 
 	// Every file behind the library names where it lives — the shared ones on the
 	// model, the space's committed skill library on the space.
-	if got, want := layer(t, snap.Config, "user-config").Path, filepath.Join(h.DataDir, "user.toml"); got != want {
+	if got, want := layer(t, snap.Config, "user-config").Path, filepath.Join(h.ConfigDir, "user.toml"); got != want {
 		t.Errorf("user config path = %q, want %q", got, want)
 	}
 	if got := layer(t, snap.Config, "user-config").Holds; got != "agents" {
@@ -92,7 +92,7 @@ args = ["--model", "opus"]
 	if got, want := layer(t, snap.Config, "user-skills").Path, filepath.Join(h.ConfigDir, "skills"); got != want {
 		t.Errorf("user skills path = %q, want %q", got, want)
 	}
-	if got, want := layer(t, snap.Config, "builtin-skills").Path, filepath.Join(h.DataDir, "skills"); got != want {
+	if got, want := layer(t, snap.Config, "builtin-skills").Path, filepath.Join(h.ConfigDir, "builtin-skills"); got != want {
 		t.Errorf("built-in skills path = %q, want %q", got, want)
 	}
 	if got, want := layer(t, s.Layers, "workspace-skills").Path, filepath.Join(repo, ".chartr/skills"); got != want {
@@ -136,7 +136,7 @@ func TestResolvedSkillCarriesStaleFork(t *testing.T) {
 func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, h.DataDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
+	chartrtest.WriteFile(t, h.ConfigDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
 	resp := register(t, h, repo)
 
 	// A stub editor on $VISUAL records what it was handed, so the test asserts the
@@ -147,7 +147,7 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("open user-config = %d, body %s", code, body)
 	}
-	want := filepath.Join(h.DataDir, "user.toml")
+	want := filepath.Join(h.ConfigDir, "user.toml")
 	if !strings.Contains(body, `"opened":"editor"`) || !strings.Contains(body, want) {
 		t.Errorf("open user-config = %s, want %q opened in the editor", body, want)
 	}
@@ -160,7 +160,7 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("open skill:implement = %d, body %s", code, body)
 	}
-	if !strings.Contains(body, filepath.Join(h.DataDir, "skills", "implement")) {
+	if !strings.Contains(body, filepath.Join(h.ConfigDir, "builtin-skills", "implement")) {
 		t.Errorf("skill:implement resolved to %s, want the materialized built-in copy", body)
 	}
 
@@ -217,7 +217,7 @@ func TestGlobalLayersResolveWithoutASpace(t *testing.T) {
 	chartrtest.WriteFile(t, filepath.Join(configDir, "skills"), "grill/SKILL.md",
 		"---\nname: grill\ndescription: mine\n---\n\nMy grill.\n")
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
-	chartrtest.WriteFile(t, h.DataDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
+	chartrtest.WriteFile(t, h.ConfigDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
 	// Nudge a rebuild so the freshly written library is on the snapshot.
 	register(t, h, chartrtest.NewSpaceRepo(t))
 

@@ -25,14 +25,18 @@ import (
 
 // Options configures a Server.
 type Options struct {
-	// DataDir is the chartr-owned state root (registry, per-session payload
-	// archives, scrollback). The skeleton only holds it; ticket 02 onward reads
-	// and writes beneath it. Defaults to the current directory when empty.
+	// DataDir is the chartr-owned runtime root — per-session payload archives and
+	// scrollback under `sessions/`. It is per-workspace state, not config, and
+	// defaults to the current directory when empty.
 	DataDir string
-	// ConfigDir is the operator's local config root — `~/.config/chartr`
-	// on most systems — whose `skills/` directory is the user layer of the skill
-	// library (ADR 0009's content half). Defaults to the OS user config dir; tests
-	// point it at a temp dir so a developer's own library never leaks into a run.
+	// ConfigDir is the operator's local config root — `~/.config/chartr` on every
+	// platform (honouring `XDG_CONFIG_HOME`) — and the single home for every
+	// user-scoped setting: the space
+	// registry (`spaces.toml`), the agent library (`user.toml`), terminal
+	// customization (`terminal.toml`), the operator's own skills (`skills/`), and
+	// the materialized built-in library (`builtin-skills/`). Defaults to the OS
+	// user config dir; tests point it at a temp dir so a developer's own config
+	// never leaks into a run.
 	ConfigDir string
 }
 
@@ -58,22 +62,20 @@ func New(opts Options) (*Server, error) {
 		opts.DataDir = "."
 	}
 	if opts.ConfigDir == "" {
-		if dir, err := os.UserConfigDir(); err == nil {
-			opts.ConfigDir = filepath.Join(dir, "chartr")
-		}
+		opts.ConfigDir = userConfigRoot(opts.DataDir)
 	}
 	dist, err := web.Dist()
 	if err != nil {
 		return nil, err
 	}
-	reg, err := registry.Load(opts.DataDir)
+	reg, err := registry.Load(opts.ConfigDir)
 	if err != nil {
 		return nil, err
 	}
 	// Materialize the skill library to disk so the operator can read and edit
 	// exactly what a session is told (ticket 08, story 45). Existing files are
 	// preserved, so edits survive a restart and compose on the next preview.
-	if err := prompt.Materialize(opts.DataDir); err != nil {
+	if err := prompt.Materialize(opts.ConfigDir); err != nil {
 		return nil, err
 	}
 
@@ -169,6 +171,21 @@ func New(opts Options) (*Server, error) {
 	s.rebuild()
 
 	return s, nil
+}
+
+// userConfigRoot resolves chartr's config root to `~/.config/chartr`, honouring
+// `XDG_CONFIG_HOME` when it is set. This is deliberately *not* os.UserConfigDir:
+// that returns `~/Library/Application Support` on macOS, and we want one path an
+// operator can reason about on every platform. It falls back to the runtime root
+// only when there is no home directory to anchor to (a stripped-down environment).
+func userConfigRoot(fallback string) string {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "chartr")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".config", "chartr")
+	}
+	return fallback
 }
 
 // Serve runs the HTTP server on ln until ctx is cancelled, then drains

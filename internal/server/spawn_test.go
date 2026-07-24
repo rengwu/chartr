@@ -460,7 +460,7 @@ func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	// Hand-written, since the registration surface would refuse "stdin" outright.
-	chartrtest.WriteFile(t, h.DataDir, "user.toml",
+	chartrtest.WriteFile(t, h.ConfigDir, "user.toml",
 		"[agents.runner]\nadapter = \"claude\"\nprompt = \"stdin\"\n")
 	delivery := chartrtest.StubAgent(t, "claude")
 
@@ -611,10 +611,10 @@ func TestSpawnRefusesAnUnknownOrAbsentAgentWithoutClaiming(t *testing.T) {
 // The space remembers what it last spawned with: the name appears in the pushed
 // model, a refused spawn does not disturb it, and it is a property of the space
 // rather than of the running process — it survives restarting the server against
-// the same data root (stories 12, 20).
+// the same config root (stories 12, 20).
 func TestSpaceRemembersTheAgentItSpawnedWith(t *testing.T) {
-	dataDir := t.TempDir()
-	h := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	configDir := t.TempDir()
+	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
@@ -642,9 +642,9 @@ func TestSpaceRemembersTheAgentItSpawnedWith(t *testing.T) {
 		t.Errorf("a refused spawn changed the remembered agent to %q", got)
 	}
 
-	// A second server over the same data root reads the same memory: it is state
+	// A second server over the same config root reads the same memory: it is state
 	// on the space, not on the tab.
-	h2 := chartrtest.Start(t, chartrtest.WithDataDir(dataDir))
+	h2 := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	if got := findSpace(t, h2.Snapshot(ctx(t)), resp.ID).LastAgent; got != "harness-yolo" {
 		t.Errorf("remembered agent after restart = %q, want harness-yolo", got)
 	}

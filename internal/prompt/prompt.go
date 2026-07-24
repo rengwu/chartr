@@ -81,10 +81,14 @@ const (
 )
 
 const (
-	// libDirName is the skill library directory under the data root, the user
-	// config root, and (below dotDirName) a space's repo.
+	// libDirName is the operator's own skill library directory under the config
+	// root and (below dotDirName) a space's repo.
 	libDirName = "skills"
-	dotDirName = ".chartr"
+	// builtinLibDirName is where the shipped library is materialized under the
+	// config root — a sibling of libDirName so the operator's own skills and the
+	// editable built-in defaults never share a directory.
+	builtinLibDirName = "builtin-skills"
+	dotDirName        = ".chartr"
 	// skillFile is the standard entry point of a skill directory.
 	skillFile = "SKILL.md"
 	// embedRoot is where the shipped library sits inside the binary.
@@ -97,10 +101,10 @@ var assets embed.FS
 // Roots are the three skill-library roots resolution walks, lowest precedence
 // first. Any of them may be empty, which simply means that layer defines nothing.
 type Roots struct {
-	// Builtin is where the shipped library is materialized (`<dataDir>/skills`).
-	// When a skill is absent from it — a fresh install, a directory the operator
-	// deleted — resolution falls back to the copy embedded in the binary, so the
-	// built-in layer is never missing.
+	// Builtin is where the shipped library is materialized
+	// (`<configDir>/builtin-skills`). When a skill is absent from it — a fresh
+	// install, a directory the operator deleted — resolution falls back to the
+	// copy embedded in the binary, so the built-in layer is never missing.
 	Builtin string
 	// User is the operator's local library (`<configDir>/skills`): uncommitted,
 	// machine-local forks.
@@ -110,15 +114,14 @@ type Roots struct {
 	Workspace string
 }
 
-// RootsFor derives the three roots from chartr's data root, the operator's
-// config root, and a space's repo. Callers pass "" for a root that does not
-// apply (the ideate on-ramp, for instance, resolves with no space).
-func RootsFor(dataDir, configDir, repoDir string) Roots {
+// RootsFor derives the three roots from the operator's config root and a space's
+// repo. The built-in and user libraries both live under the config root; callers
+// pass "" for a root that does not apply (the ideate on-ramp, for instance,
+// resolves with no space).
+func RootsFor(configDir, repoDir string) Roots {
 	var r Roots
-	if dataDir != "" {
-		r.Builtin = filepath.Join(dataDir, libDirName)
-	}
 	if configDir != "" {
+		r.Builtin = filepath.Join(configDir, builtinLibDirName)
 		r.User = filepath.Join(configDir, libDirName)
 	}
 	if repoDir != "" {
@@ -384,16 +387,16 @@ func LibraryWarnings(roots Roots) []string {
 	return w
 }
 
-// Materialize writes the embedded skill library to <dataDir>/skills as plain
-// `SKILL.md` directories so the operator can read and edit exactly what a session
-// receives, and drops a README recording the source and the layering model.
-// Existing files are never overwritten — an operator's edits are the point, and
-// they compose on the next preview.
-func Materialize(dataDir string) error {
-	if dataDir == "" {
+// Materialize writes the embedded skill library to <configDir>/builtin-skills as
+// plain `SKILL.md` directories so the operator can read and edit exactly what a
+// session receives, and drops a README recording the source and the layering
+// model. Existing files are never overwritten — an operator's edits are the
+// point, and they compose on the next preview.
+func Materialize(configDir string) error {
+	if configDir == "" {
 		return nil
 	}
-	root := filepath.Join(dataDir, libDirName)
+	root := filepath.Join(configDir, builtinLibDirName)
 	for _, name := range Names() {
 		files, ok := embeddedFiles(name)
 		if !ok {

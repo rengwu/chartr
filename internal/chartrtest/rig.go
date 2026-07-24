@@ -34,13 +34,15 @@ type Chartr struct {
 	// BaseURL is the http origin the server is listening on, e.g.
 	// http://127.0.0.1:54321.
 	BaseURL string
-	// DataDir is the chartr-owned state root the server was given (a temp dir
-	// unless overridden).
+	// DataDir is the chartr-owned runtime root the server was given (a temp dir
+	// unless overridden) — `sessions/` and nothing else.
 	DataDir string
 	// ConfigDir is the operator's local config root the server was given (a temp
-	// dir unless overridden), whose `skills/` is the user layer of the skill
-	// library. It is a temp dir by default so a run never reads — or is coloured
-	// by — the developer's own library.
+	// dir unless overridden): the registry (`spaces.toml`), agent library
+	// (`user.toml`), terminal customization (`terminal.toml`), the operator's own
+	// skills (`skills/`), and the materialized built-in library
+	// (`builtin-skills/`). It is a temp dir by default so a run never reads — or is
+	// coloured by — the developer's own config.
 	ConfigDir string
 
 	t testing.TB

@@ -33,7 +33,7 @@ var (
 const appName = "chartr"
 
 func main() {
-	dataDir := flag.String("data-dir", "", "chartr-owned state root (defaults to the current directory)")
+	dataDir := flag.String("data-dir", "", "chartr session/runtime root (defaults to the current directory); user config lives under ~/.config/chartr")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 

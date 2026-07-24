@@ -38,22 +38,23 @@ const (
 // space: the agent library and the two skill libraries that are not a space's own.
 // They are derived once per rebuild rather than repeated under each space.
 //
-// Note the split the surface has to tell honestly: the agent library lives in the
-// chartr state root (`<dataDir>/user.toml`) while the *user skill layer* lives
-// under the operator's config root (`<configDir>/skills/`) — two files, shown as
-// two paths rather than implying a single one.
+// Every user-scoped layer lives under one roof — the operator's config root
+// (`~/.config/chartr`): the agent library (`user.toml`), terminal customization
+// (`terminal.toml`), the operator's own skills (`skills/`), and the materialized
+// built-in library (`builtin-skills/`). The surface lists each as its own path so
+// the operator can open exactly the file a layer resolves from.
 //
-// `terminal.toml` is the third of them: per-machine terminal customization, read
-// on every rebuild into the snapshot's resolved prefs. It is listed here so the
-// Settings surface can open it in the operator's editor through exactly the same
-// named-layer action — read-value-plus-open-file, never a second config store.
+// `terminal.toml` is per-machine terminal customization, read on every rebuild
+// into the snapshot's resolved prefs. It is listed here so the Settings surface
+// can open it in the operator's editor through exactly the same named-layer
+// action — read-value-plus-open-file, never a second config store.
 func (s *Server) globalLayers() []model.ConfigLayer {
-	roots := prompt.RootsFor(s.opts.DataDir, s.opts.ConfigDir, "")
+	roots := prompt.RootsFor(s.opts.ConfigDir, "")
 	return []model.ConfigLayer{
 		layerAt(layerBuiltinSkills, "built-in", "skills", roots.Builtin),
-		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.DataDir, userConfigName)),
+		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.ConfigDir, userConfigName)),
 		layerAt(layerTerminalConfig, "user", "terminal",
-			filepath.Join(s.opts.DataDir, terminalConfigName)),
+			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
 		layerAt(layerUserSkills, "user", "skills", roots.User),
 	}
 }

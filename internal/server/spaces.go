@@ -15,12 +15,12 @@ import (
 )
 
 // userConfigName is the operator's local, uncommitted config under the chartr
-// state root. It carries the global agent library — the only execution config
+// config root. It carries the global agent library — the only execution config
 // there is, and never committed.
 const userConfigName = "user.toml"
 
 // terminalConfigName is the operator's per-machine terminal customization, beside
-// the agent library under the same state root. Never committed, never per space —
+// the agent library under the same config root. Never committed, never per space —
 // the single source of truth for every terminal island's look and feel.
 const terminalConfigName = "terminal.toml"
 
@@ -134,7 +134,7 @@ func (s *Server) rebuild() {
 func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// The operator's config is one file, read once. It carries the global agent
 	// library; a missing or unreadable file resolves as "no agents registered".
-	userTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, userConfigName))
+	userTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, userConfigName))
 
 	// Terminal customization is its own per-machine file beside the agent library,
 	// resolved once (server Seam 1). A missing file falls back to the built-in
@@ -143,7 +143,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// file replaces it wholesale. The resolved prefs ride the snapshot globally;
 	// the parse warnings surface on each space beside the agent-library warnings,
 	// through the same config-warnings surface (spec, Warnings surface).
-	termTOML, _ := os.ReadFile(filepath.Join(s.opts.DataDir, terminalConfigName))
+	termTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, terminalConfigName))
 	if len(termTOML) == 0 {
 		termTOML = config.DefaultTerminalTOML
 	}

@@ -85,7 +85,7 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 // there now", and a first registration on a machine with no config yet is the
 // ordinary case, not an error.
 func (s *Server) readUserConfig() (string, []byte, error) {
-	path := filepath.Join(s.opts.DataDir, userConfigName)
+	path := filepath.Join(s.opts.ConfigDir, userConfigName)
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return path, nil, err

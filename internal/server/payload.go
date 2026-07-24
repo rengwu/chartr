@@ -77,7 +77,7 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 // composition and every library read goes through it, so the layering is fixed
 // once rather than reassembled per call site.
 func (s *Server) skillRoots(repoDir string) prompt.Roots {
-	return prompt.RootsFor(s.opts.DataDir, s.opts.ConfigDir, repoDir)
+	return prompt.RootsFor(s.opts.ConfigDir, repoDir)
 }
 
 // blockersOf gathers a ticket's blockers with their answers pulled inline from
