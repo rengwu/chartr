@@ -87,3 +87,97 @@ answered; opencode and pi read working-vs-idle; the emulator survives a full
 session without wedging (the OSC-query drain is tested, not assumed); a tab with
 no known agent still reads the shell grammar; `go vet ./...` and `go test ./...`
 pass; frontend `check`, `build` and `vitest` pass with no amber in the built CSS.
+
+## Answer
+
+Built. The states that never reached the title — claude's `blocked`, and kimi's
+whole grammar — now arrive off a server-side screen reconstruction, and the rules
+that read them slice the screen structurally rather than grepping it.
+
+**What shipped.** Three commits.
+
+`internal/terminal/grid.go` is the screen: a `github.com/charmbracelet/x/vt`
+`Emulator` fed the same PTY bytes the browser renders, in `Terminal.pump` alongside
+the scrollback append and the OSC scan. `detectionText()` hands its rendered
+viewport to the sampler. It is read for detection only — the browser still renders
+through xterm.js from the raw scrollback (ADR 0010) — and the grid follows the PTY
+on resize so a bottom-anchored region stays meaningful. The emulator answers
+terminal queries (claude opens with `OSC 11;?` asking the background colour) by
+writing the reply into an internal pipe; unread, that write blocks forever and
+wedges the emulator mid-stream, so a goroutine drains it. I stop the drain by
+closing the reply pipe rather than calling `Emulator.Close`, whose internal
+`closed` flag races the drain's `Read` under `-race`; closing the pipe (an
+`io.Pipe`, safe for concurrent Read/Close) is race-free. The grid carries its own
+lock and its off-screen scrollback is capped small, since detection reads only the
+viewport.
+
+The region seam (`detect.region`) gained four screen regions behind the same
+one-case shape ticket 01 left for it: `whole_recent`, `bottom_non_empty_lines(n)`,
+`after_last_horizontal_rule`, `prompt_box_body`. A region name may now carry an
+integer argument. They all turn on one measured distinction — a flat rule (a run of
+U+2500) is not a cornered box border (`╭ ╮ ╰ ╯` with `│` sides) — which is what lets
+`prompt_box_body` frame claude's flat-ruled input box and kimi's flat-ruled approval
+panel while ignoring kimi's rounded idle box. Rule *evaluation* did not change.
+
+Manifests: kimi, opencode, pi shipped; claude gained its screen rules. Every rule is
+anchored on structure, never prose (the ticket's warning is real — vt garbles the
+long "Yes, and always allow…" option in claude's dialog but renders the rule, the
+numbered options and the footer hints cleanly, all verified against the recording).
+
+**Each Done-when clause.**
+
+- *kimi reads idle/working/blocked through a real turn.* `working` off its anchored
+  `⠋ thinking...` spinner, `blocked` off the `▶ Run this command?` panel framed
+  between two flat rules, idle by absence. Asserted end-to-end against the real
+  319-second capture in `TestKimiRecordingReadsWorkingAndBlockedFromScreen` (screen
+  reconstructed at the recording's own geometry), and per-rule in the engine table.
+- *claude reads blocked on the permission prompt and idle once answered.* `blocked`
+  is `after_last_horizontal_rule` matching "Do you want to proceed?" + "❯ 1. Yes" +
+  the footer, at priority 200 so a ✳ idle *title* can never overrule a screen plainly
+  on a permission prompt; `idle-screen` reads the `❯` prompt box below it.
+  `TestClaudeRecordingReadsBlockedFromScreen` drives it off the real capture; the
+  live `TestAdHocShellAgentReadsBlockedFromScreen` paints a permission screen in a
+  real PTY while holding the title on ✳ — a pass proves the reading came from the
+  grid, not the title — and reads `idle` again once answered.
+- *opencode and pi read working-vs-idle.* A braille spinner near the foot of the
+  screen reads `working`, its absence idle. See the caveat below.
+- *the emulator survives without wedging; the drain is tested.* `TestGridDrainsTerminalQueryReplies`
+  feeds an `OSC 11;?` under a deadlock guard; and the claude capture carries a real
+  `OSC 11;?`, so every screen replay exercises the drain unwedged.
+- *a tab with no known agent still reads the shell grammar.*
+  `TestNonAgentCommandKeepsTheShellGrammar` and `TestSampleTracksForegroundCommand`
+  are unchanged and pass.
+- *vet/test/frontend.* `go vet ./...` clean; `go build`/`go test` green. The
+  `internal/terminal` and `internal/terminal/detect` packages pass 5/5 repeated and
+  under `-race`. Frontend `check` (0 errors), `build`, and `vitest` (127/127) pass,
+  no `amber` in the built CSS. I made no frontend changes — ticket 01 already retired
+  `quiet` and folded in `blocked`.
+
+**Two things a human should look at.**
+
+*opencode and pi are unverified extrapolations.* Only claude and kimi were captured
+(the ticket says so), and both put nothing in the title, so their working-vs-idle
+must come from the screen — but I had no recorded screen to ground it. Their working
+rule (a braille spinner in the recent lines) is the shared pattern claude and kimi
+use, extrapolated and flagged inline in both manifests, exactly as ticket 01 handled
+codex/grok. The engine table asserts the rule fires on a plausible spinner and stays
+silent without one, but "correct through a real turn" cannot be *verified* for these
+two until someone captures a fixture. This is the #1 place a wrong string would hide;
+being a data fix is the point of the manifests being data.
+
+*The grid's initial geometry is a default, not the PTY's.* go-pty exposes `Resize`
+but no getter, so a new grid starts at 80×24 and only learns the real width when a
+browser attaches and resizes it (the PTY and grid resize together from then on). For
+a title-based agent this is irrelevant; for a screen-based one (kimi/opencode/pi)
+running headless with no browser ever attached, reconstruction could be off until an
+attach. In practice the cockpit attaches; I flag it rather than hide it.
+
+**Deliberately not done.** I did not fix claude reading `idle` during a long tool
+call (ticket 01's flagged finding — the ✳ title means "not generating now"). Ticket
+02's Done-when does not ask for it, and a screen-based *working* rule for claude
+(off the `esc to interrupt` footer) is a new decision for a human on the planning
+map, not this ticket's scope. I added no veto rule to a shipped manifest (still no
+grounded screen that warrants one). The pre-existing `internal/server` halt-test
+flakiness is unchanged by this work: measured on this machine, `main` fails ~2/5 and
+this branch ~1/6, a different halt lifecycle test each time — load-sensitive timing,
+not a regression (the terminal package it exercises is deterministic here).
