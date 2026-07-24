@@ -371,12 +371,16 @@
      custom properties by the resolve seam. Auto-hide works through
      --terminal-scrollbar-thumb-idle — the thumb's colour *at rest*, which the pref
      sets transparent so the thumb only appears while the island is hovered.
-     (`scrollbar-color` covers Firefox, which has no ::-webkit- pseudo-elements and
-     takes no pixel width; the webviews this ships in are all Chromium/WebKit.) */
-  .terminal-island .xterm-viewport {
-    scrollbar-color: var(--terminal-scrollbar-thumb, var(--border))
-      var(--terminal-scrollbar-track, transparent);
-  }
+
+     The styling is the ::-webkit- pseudo-elements alone, and deliberately so: the
+     standard `scrollbar-color` must NOT be set alongside them. WebKit treats the
+     property's mere presence as a vote for the native scrollbar and drops the whole
+     custom-scrollbar path — including the thumb colour below — so the macOS overlay
+     thumb paints instead, which under `color-scheme: dark` is near-white. That is a
+     WebKit-only fault: Chromium honours the pseudo-elements over `scrollbar-color`,
+     so the browser looks right while the shipped WKWebView shell shows a white bar
+     down every terminal. `scrollbar-color` would only have bought Firefox support,
+     and the app ships as a Chromium/WebKit webview. */
   .terminal-island .xterm-viewport::-webkit-scrollbar {
     width: var(--terminal-scrollbar-width, 10px);
   }
