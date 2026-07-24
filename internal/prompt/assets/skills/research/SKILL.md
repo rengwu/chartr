@@ -1,6 +1,8 @@
 ---
 name: research
 description: Research an open question on a planning map and land grounded, cited knowledge the map can build on.
+on-ramp: true
+needs-context: true
 ---
 
 # Role: research

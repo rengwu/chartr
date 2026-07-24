@@ -192,18 +192,19 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 	return t, nil
 }
 
-// OpenIdeate launches an agent in a PTY in cwd with a starter prompt typed in,
-// seated as a plain tab under spaceID — the ideate on-ramp (ticket 15). It shares
-// OpenSession's launch and opener mechanics but carries no Session: the ideate
-// on-ramp is deliberately not a session (spec, State model — "ticketless, live,
+// OpenOnRamp launches an agent in a PTY in cwd with an on-ramp skill's starter
+// prompt typed in, seated as a plain tab under spaceID titled by the skill — the
+// launcher's spine, of which ideate is one skill (ticket 15). It shares
+// OpenSession's launch and opener mechanics but carries no Session: an on-ramp
+// launch is deliberately not a session (spec, State model — "ticketless, live,
 // sharing only the adapter's spawn primitive"), so it never counts toward the
 // one-live-session-per-space limit OpenSession enforces and never freezes dead the
 // way a session does. Its activity reads like any other tab's: the agent grammar
 // if a known agent holds the foreground (it usually does), the shell grammar
 // otherwise. id is chosen by the caller, matching OpenSession's style,
 // so the tab and the gitignored prompt file it points at share one identity.
-func (m *Manager) OpenIdeate(spaceID, cwd, id, name string, args []string, opener string) (*Terminal, error) {
-	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, title: "ideate"})
+func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args []string, opener, title string) (*Terminal, error) {
+	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, title: title})
 	if err != nil {
 		return nil, err
 	}

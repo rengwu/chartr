@@ -98,6 +98,14 @@ type ResolvedSkill struct {
 	// stale fork is surfaced, never auto-merged.
 	ForkedFrom string `json:"forkedFrom,omitempty"`
 	Stale      bool   `json:"stale,omitempty"`
+	// OnRamp marks a self-driving skill the sidebar launcher may open cold;
+	// NeedsContext marks one that offers the optional one-line context box first.
+	// Both are declared in the skill's own frontmatter (`on-ramp` / `needs-context`)
+	// and ride whole-skill shadowing, so an operator's own on-ramp skill shows up in
+	// the picker with no chartr-side change — which skills are launchable travels to
+	// the browser on the snapshot, no separate list endpoint.
+	OnRamp       bool `json:"onRamp,omitempty"`
+	NeedsContext bool `json:"needsContext,omitempty"`
 }
 
 // Space is a registered git repository chartr drives. Ticket 02 fills in

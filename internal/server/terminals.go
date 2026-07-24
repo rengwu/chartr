@@ -9,6 +9,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
 )
 
 // handleOpenTerminal opens an ad-hoc shell in the space's working tree (story
@@ -31,18 +32,39 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})
 }
 
-// handleIdeate spawns the ideate on-ramp (ticket 15): a live, ticketless agent
-// tab opened with the on-disk starter prompt typed in. It is the one opinionated
-// nudge toward charting (planning ticket 07) — an operator affordance, not a
-// sixth role — so it shares only the adapter's spawn primitive with a real
-// session: no map or ticket is looked up, no claim is written, and the tab it
-// seats carries no Session, so it reads and ends exactly like an ad-hoc shell
-// (never the session grammar, never the death halt).
-//
-// It names its agent explicitly, exactly as a session does (ticket 03). It used
-// to borrow the `grill` binding — an indirection that appeared on no surface and
-// was documented only here — so an operator could not see, and could not choose,
-// what their on-ramp ran. The ideate control now says both.
+// handleLaunch is the skill launcher's endpoint: it runs any *on-ramp* skill on a
+// chosen agent as a live, ticketless tab, with an optional line of context. It
+// generalises the ideate on-ramp (ticket 15) rather than adding a parallel path —
+// ideate is just the `skill=ideate` case, and `handleIdeate` below delegates
+// here. It is the one opinionated nudge toward charting grown into a picker: an
+// operator affordance, not a role, so it shares only the adapter's spawn primitive
+// with a real session — no map or ticket is looked up, no claim is written, and
+// the tab it seats carries no Session, so it reads and ends exactly like an ad-hoc
+// shell (never the session grammar, never the death halt).
+func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+	// The picker sends the agent, the on-ramp skill it chose, and — for a skill
+	// that offers it — an optional line of context. An empty context is valid and
+	// launches the skill bare.
+	var body struct {
+		Agent   string `json:"agent"`
+		Skill   string `json:"skill"`
+		Context string `json:"context"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	s.launchOnRamp(w, e, body.Agent, body.Skill, body.Context)
+}
+
+// handleIdeate keeps the `/ideate` route working as a thin delegate to the launch
+// spine with `skill=ideate` and no context, so nothing mid-flight breaks while the
+// frontend moves to `/launch`. It names its agent explicitly, exactly as a session
+// does (ticket 03) — the operator sees and chooses what their on-ramp runs.
 func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.reg.Get(r.PathValue("id"))
 	if !ok {
@@ -57,19 +79,39 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
+	s.launchOnRamp(w, e, body.Agent, prompt.IdeateSkill, "")
+}
 
-	// The same doorstep, the same refusals, in the same order a spawn gives them:
-	// nothing here is a special case any more.
-	spec, status, err := agentSpec(s.resolve(e), body.Agent)
+// launchOnRamp is the shared launch spine: settle the chosen agent, refuse a skill
+// the resolved library does not mark on-ramp, compose that skill's payload alone
+// (with the optional context riding inside it), write it to the gitignored run
+// directory, launch the agent's TUI with the read-this-file opener, and remember
+// the agent. It is the generalisation of the old ideate handler — every refusal is
+// the same one a spawn gives, in the same order (ticket 04), and a refusal opens
+// nothing and writes nothing.
+func (s *Server) launchOnRamp(w http.ResponseWriter, e registry.Entry, agent, skill, context string) {
+	// The same doorstep, the same refusals, in the same order a spawn gives them.
+	spec, status, err := agentSpec(s.resolve(e), agent)
 	if err != nil {
 		httpError(w, status, err.Error())
 		return
 	}
 
+	// The pushed library is the allowlist: the server launches only a skill it
+	// resolves as `on-ramp`, never one the client merely named (as spawn refuses a
+	// non-role). This is what keeps an augmentative or second-step skill — core,
+	// to-tickets, implement — off the launcher even if a stale client asks for it.
+	roots := s.skillRoots(e.Path)
+	sk, ok := prompt.Resolve(skill, roots)
+	if !ok || !sk.OnRamp {
+		httpError(w, http.StatusBadRequest, "skill "+skill+" is not an on-ramp skill")
+		return
+	}
+
 	id := newSessionID()
-	promptPath, err := s.writeSessionPayload(e.Path, id, prompt.Ideate(s.skillRoots(e.Path)))
+	promptPath, err := s.writeSessionPayload(e.Path, id, string(prompt.Launch(roots, skill, context)))
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the ideate prompt: "+err.Error())
+		httpError(w, http.StatusInternalServerError, "writing the launch prompt: "+err.Error())
 		return
 	}
 
@@ -79,15 +121,15 @@ func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
 		Prompt:  adapter.Opener(promptPath),
 		Deliver: spec.Prompt,
 	})
-	t, err := s.terms.OpenIdeate(e.ID, e.Path, id, launch.Name, launch.Args, launch.TypeIn)
+	t, err := s.terms.OpenOnRamp(e.ID, e.Path, id, launch.Name, launch.Args, launch.TypeIn, skill)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "opening ideate: "+err.Error())
+		httpError(w, http.StatusInternalServerError, "opening the launch tab: "+err.Error())
 		return
 	}
 
-	// The space remembers what it just spawned with, so the next spawn here is one
-	// click — the same rule a real spawn follows (spawn.go), and ideate is not a
-	// special case.
+	// The space remembers what it just spawned with, so the next launch or spawn
+	// here is one click — the same rule a real spawn follows (spawn.go). There is no
+	// remembered *skill*: the launcher is always a dropdown the operator picks from.
 	if spec.Name != "" {
 		if err := s.reg.SetLastAgent(e.ID, spec.Name); err == nil {
 			s.rebuild()

@@ -1,6 +1,7 @@
 ---
 name: ideate
 description: Think out loud with a human in a ticketless, mapless conversation before anything is decided, and suggest charting a map when the idea earns one.
+on-ramp: true
 ---
 
 # Ideate

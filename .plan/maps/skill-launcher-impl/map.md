@@ -70,7 +70,15 @@ under Decisions so far.
 
 ## Decisions so far
 
-<!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
+- **01 — the launch spine.** Skills declare `on-ramp` / `needs-context` in their own
+  frontmatter (rides whole-skill shadowing); the flags reach the browser on the
+  resolved-library snapshot. `prompt.Launch(roots, skill, context)` composes an
+  on-ramp skill's body alone, appending an optional `## Your task` trailer only when
+  context is present (`Ideate` is now `Launch(…, ideate, "")`). `POST /launch`
+  generalises `handleIdeate`: same agent doorstep, refuses any skill the resolved
+  library does not mark on-ramp (400 — the pushed library is the allowlist),
+  threads context into the payload, remembers the agent (no remembered skill).
+  `/ideate` stays as the `skill=ideate` delegate. [01](tickets/01-on-ramp-metadata-and-launch-spine.md)
 
 ## Not yet specified
 

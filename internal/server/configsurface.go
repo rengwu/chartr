@@ -131,12 +131,14 @@ func (s *Server) resolvedSkills(repoDir string) []model.ResolvedSkill {
 	out := make([]model.ResolvedSkill, 0, len(lib))
 	for _, sk := range lib {
 		out = append(out, model.ResolvedSkill{
-			Name:        sk.Name,
-			Layer:       sk.Layer,
-			Dir:         sk.Dir,
-			Description: sk.Description,
-			ForkedFrom:  sk.ForkedFrom,
-			Stale:       sk.Stale,
+			Name:         sk.Name,
+			Layer:        sk.Layer,
+			Dir:          sk.Dir,
+			Description:  sk.Description,
+			ForkedFrom:   sk.ForkedFrom,
+			Stale:        sk.Stale,
+			OnRamp:       sk.OnRamp,
+			NeedsContext: sk.NeedsContext,
 		})
 	}
 	return out

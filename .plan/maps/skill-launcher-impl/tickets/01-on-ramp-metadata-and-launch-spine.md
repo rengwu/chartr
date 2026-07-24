@@ -68,3 +68,41 @@ snapshot; `POST /launch` runs any on-ramp skill on a named agent, refuses the re
 carries the optional context into the payload, and remembers the agent;
 `/ideate` still works; `go vet ./...` / `go test ./...` and the frontend gates are
 green.
+
+## Answer
+
+Shipped the whole backend spine; the frontend picker (02) has its seam.
+
+**Metadata (`internal/prompt`).** `splitFrontmatter`'s output now feeds two new
+`Skill` fields, `OnRamp` and `NeedsContext`, parsed from the `on-ramp` /
+`needs-context` frontmatter keys (tolerant `parseBool`: true/yes/1). They ride
+whole-skill shadowing unchanged — a shadowing layer's `SKILL.md` sets its own. The
+shipped self-drivers are tagged: **ideate, wayfinder** (`on-ramp`, open cold) and
+**grill, research, prototype** (`on-ramp` + `needs-context`). core,
+tracker-convention, domain-modeling, to-spec, to-tickets, implement stay untagged.
+
+**Snapshot.** `model.ResolvedSkill` (Go and `web/src/lib/model.ts`) gained
+`onRamp` / `needsContext`; `resolvedSkills` copies them through, so the library the
+config surface already pushes now tells the browser which skills are launchable and
+which want context — no new list endpoint.
+
+**Launch spine.** `prompt.Launch(roots, skill, context) []byte` composes the named
+skill's resolved body **alone** (no core, no context bundle), appending the
+optional context under a `## Your task` trailer only when it is non-empty;
+`prompt.Ideate` is now `Launch(roots, ideate, "")`. `POST /api/spaces/{id}/launch`
+`{agent, skill, context?}` is the generalised handler: the same `agentSpec`
+doorstep and refusals, plus a refusal of any skill the **resolved library does not
+mark `on-ramp`** (400 — the pushed library is the allowlist, so the server never
+launches a skill the client merely named), the optional context threaded into the
+written payload, and the agent remembered (`SetLastAgent`) with **no** remembered
+skill. `handleIdeate` and `handleLaunch` both delegate to a shared `launchOnRamp`;
+the terminal seam `OpenIdeate` generalised to `OpenOnRamp(…, title)`, titled by the
+skill. `/ideate` stays a thin `skill=ideate` delegate and is unchanged end to end.
+
+**Tests.** `prompt_test.go`: flags parse and survive shadowing, `Launch` composes
+alone and appends the trailer only with context, the shipped library tags exactly
+the five on-ramp skills. `launch_test.go` (beside the unchanged `ideate_test.go`):
+`/launch` opens a Session-less on-ramp tab byte-matching `Launch`, threads context
+into the payload, refuses non-on-ramp and unknown/absent-agent requests opening
+nothing, and remembers the agent. `go vet ./...`, `go test ./...`, and the frontend
+`check` / `build` / `vitest` gates are green; no amber in the built CSS.

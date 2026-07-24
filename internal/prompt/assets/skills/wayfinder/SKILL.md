@@ -1,6 +1,7 @@
 ---
 name: wayfinder
 description: Plan a huge chunk of work — more than one agent session can hold — as a shared map of tickets, and resolve them one at a time until the way to the destination is clear.
+on-ramp: true
 ---
 
 A loose idea has arrived — too big for one agent session, and wrapped in fog: the way from here to the **destination** isn't visible yet. Wayfinding is about finding that way, not charging at the destination. This skill charts the way as a **shared map**, then works its tickets one at a time until the route is clear.

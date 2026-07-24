@@ -131,7 +131,11 @@ func TestIdeateStarterPromptIsEditable(t *testing.T) {
 	if _, err := os.Stat(materialized); err != nil {
 		t.Fatalf("ideate skill was not materialized: %v", err)
 	}
-	if err := os.WriteFile(materialized, []byte("EDITED-IDEATE-STARTER on disk."), 0o644); err != nil {
+	// Keep its frontmatter's on-ramp flag — a skill declares itself launchable
+	// there, so an edit that dropped it would (correctly) drop ideate from the
+	// launcher. What this test proves is that a body edit reaches the next session.
+	edited := "---\nname: ideate\non-ramp: true\n---\n\nEDITED-IDEATE-STARTER on disk."
+	if err := os.WriteFile(materialized, []byte(edited), 0o644); err != nil {
 		t.Fatalf("editing the materialized ideate skill: %v", err)
 	}
 

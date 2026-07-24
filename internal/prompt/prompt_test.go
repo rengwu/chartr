@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -361,6 +362,102 @@ func TestMaterializePreservesEdits(t *testing.T) {
 	r := prompt.RootsFor(data, "")
 	if got := resolve(t, "implement", r); got.Body != "EDITED" || got.Layer != "built-in" {
 		t.Errorf("materialized edit did not compose: %q/%q", got.Layer, got.Body)
+	}
+}
+
+// The launcher metadata: `on-ramp` and `needs-context` parse off a skill's own
+// frontmatter, and — because they ride whole-skill shadowing — a shadowing layer
+// declares its own, so an operator's fork sets its own launch status rather than
+// inheriting the shipped default's. (This is the payoff the hackable library was
+// built for: a user skill appears in the picker with no chartr-side change.)
+func TestOnRampFlagsParseAndShadow(t *testing.T) {
+	r := roots(t)
+
+	// A built-in skill that opts in and wants context.
+	writeSkill(t, r.Builtin, "explore", "on-ramp: true\nneeds-context: true\n", "explore body", nil)
+	s := resolve(t, "explore", r)
+	if !s.OnRamp || !s.NeedsContext {
+		t.Errorf("explore built-in: onRamp=%v needsContext=%v, want both true", s.OnRamp, s.NeedsContext)
+	}
+
+	// A user layer shadows it and declares itself on-ramp but *not* needs-context —
+	// the shadow's own flags win the whole directory, they are not merged.
+	writeSkill(t, r.User, "explore", "on-ramp: true\n", "user explore body", nil)
+	s = resolve(t, "explore", r)
+	if s.Layer != "user" || s.Body != "user explore body" {
+		t.Fatalf("shadow did not win: %+v", s)
+	}
+	if !s.OnRamp || s.NeedsContext {
+		t.Errorf("user shadow: onRamp=%v needsContext=%v, want on-ramp only", s.OnRamp, s.NeedsContext)
+	}
+
+	// A skill that declares nothing is not on the launcher — the flag is opt-in.
+	writeSkill(t, r.Builtin, "quiet", "", "quiet body", nil)
+	if q := resolve(t, "quiet", r); q.OnRamp || q.NeedsContext {
+		t.Errorf("quiet: onRamp=%v needsContext=%v, want both false", q.OnRamp, q.NeedsContext)
+	}
+}
+
+// Launch composes the named skill's body alone — no core, no context bundle — and
+// appends the optional context under a `## Your task` trailer only when it is
+// present. An empty (or whitespace) context writes the body unchanged, so a
+// self-driving skill launches bare exactly as ideate does.
+func TestLaunchComposesSkillAloneWithOptionalContext(t *testing.T) {
+	r := roots(t)
+	writeSkill(t, r.Builtin, "explore", "on-ramp: true\n", "EXPLORE BODY", nil)
+
+	bare := string(prompt.Launch(r, "explore", ""))
+	if bare != "EXPLORE BODY" {
+		t.Errorf("bare launch = %q, want just the body", bare)
+	}
+	if string(prompt.Launch(r, "explore", "   \n  ")) != "EXPLORE BODY" {
+		t.Errorf("whitespace context should launch bare")
+	}
+
+	withCtx := string(prompt.Launch(r, "explore", "settle the widget question"))
+	if !strings.HasPrefix(withCtx, "EXPLORE BODY") {
+		t.Errorf("context launch dropped the body:\n%s", withCtx)
+	}
+	if !strings.Contains(withCtx, "## Your task") || !strings.Contains(withCtx, "settle the widget question") {
+		t.Errorf("context did not ride in the payload under a trailer:\n%s", withCtx)
+	}
+
+	// A skill that resolves in no layer launches nothing.
+	if got := prompt.Launch(r, "no-such-skill", "x"); got != nil {
+		t.Errorf("Launch of an unresolved skill = %q, want nil", got)
+	}
+}
+
+// The shipped library tags exactly the five self-driving on-ramp skills, and marks
+// needs-context on the three that read a subject — ideate and wayfinder open cold.
+// The augmentative and second-step skills stay off the launcher.
+func TestShippedOnRampTagging(t *testing.T) {
+	onRamp := map[string]bool{}
+	needsContext := map[string]bool{}
+	for _, s := range prompt.Library(prompt.Roots{}) {
+		if s.OnRamp {
+			onRamp[s.Name] = true
+		}
+		if s.NeedsContext {
+			needsContext[s.Name] = true
+		}
+	}
+
+	wantOnRamp := map[string]bool{"ideate": true, "wayfinder": true, "grill": true, "research": true, "prototype": true}
+	if !reflect.DeepEqual(onRamp, wantOnRamp) {
+		t.Errorf("on-ramp skills = %v, want %v", onRamp, wantOnRamp)
+	}
+	wantNeedsContext := map[string]bool{"grill": true, "research": true, "prototype": true}
+	if !reflect.DeepEqual(needsContext, wantNeedsContext) {
+		t.Errorf("needs-context skills = %v, want %v", needsContext, wantNeedsContext)
+	}
+
+	// needs-context is meaningless off the launcher: nothing carries it without
+	// on-ramp too.
+	for name := range needsContext {
+		if !onRamp[name] {
+			t.Errorf("%s marks needs-context but not on-ramp", name)
+		}
 	}
 }
 

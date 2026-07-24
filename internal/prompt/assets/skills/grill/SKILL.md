@@ -1,6 +1,8 @@
 ---
 name: grill
 description: Grill an open question on a planning map until one decision survives its own weaknesses, and write it up as the ticket's Answer.
+on-ramp: true
+needs-context: true
 ---
 
 # Role: grill

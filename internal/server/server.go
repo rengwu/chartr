@@ -176,10 +176,13 @@ func New(opts Options) (*Server, error) {
 	// response (ADR 0010); the shell itself lives on the terminal socket.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals", s.handleOpenTerminal)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}", s.handleCloseTerminal)
-	// The ideate on-ramp (ticket 15): the one opinionated nudge toward charting.
-	// A live, ticketless agent tab opened with the on-disk starter prompt typed
-	// in — no map or ticket lookup, no claim, no lifecycle, ended only by the
-	// human, exactly like an ad-hoc shell.
+	// The skill launcher: run any on-ramp skill on a chosen agent as a live,
+	// ticketless tab with an optional line of context — no map or ticket lookup, no
+	// claim, no lifecycle, ended only by the human, exactly like an ad-hoc shell.
+	s.mux.HandleFunc("POST /api/spaces/{id}/launch", s.handleLaunch)
+	// The ideate on-ramp (ticket 15) is the `skill=ideate` case of the launcher,
+	// kept as its own thin route so nothing mid-flight breaks while the frontend
+	// moves to `/launch`.
 	s.mux.HandleFunc("POST /api/spaces/{id}/ideate", s.handleIdeate)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))

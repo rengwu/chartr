@@ -173,6 +173,12 @@ export interface ResolvedSkill {
   // whether the shipped default has since moved past it.
   forkedFrom?: string
   stale?: boolean
+  // Whether the sidebar launcher may open this skill cold (`on-ramp: true`), and
+  // whether it offers the optional one-line context box first (`needs-context:
+  // true`). Declared in the skill's own frontmatter, so an operator's own on-ramp
+  // skill appears in the picker with no chartr-side change.
+  onRamp?: boolean
+  needsContext?: boolean
 }
 
 // ConfigLayer is one file or directory the operator's config lives in. `name` is

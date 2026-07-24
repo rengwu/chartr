@@ -1,6 +1,8 @@
 ---
 name: prototype
 description: Build the throwaway slice that settles one doubt on a planning map, and report the finding rather than the code.
+on-ramp: true
+needs-context: true
 ---
 
 # Role: prototype

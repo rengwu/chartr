@@ -157,6 +157,15 @@ type Skill struct {
 	Hash        string `json:"hash"`
 	Stale       bool   `json:"stale,omitempty"`
 
+	// OnRamp marks a self-driving skill the launcher may open cold from the
+	// sidebar (`on-ramp: true` in its frontmatter). NeedsContext marks one that
+	// offers an optional one-line context box before it launches
+	// (`needs-context: true`). Both ride whole-skill shadowing: a shadowing
+	// layer's SKILL.md declares its own flags, so a user or workspace skill sets
+	// its own on-ramp status.
+	OnRamp       bool `json:"onRamp,omitempty"`
+	NeedsContext bool `json:"needsContext,omitempty"`
+
 	Body string `json:"-"`
 }
 
@@ -336,13 +345,15 @@ func joinSkill(root, name string) string {
 func newSkill(name, layer, dir string, files map[string][]byte) Skill {
 	meta, body := splitFrontmatter(string(files[skillFile]))
 	s := Skill{
-		Name:        name,
-		Layer:       layer,
-		Dir:         dir,
-		Description: meta["description"],
-		ForkedFrom:  strings.ToLower(meta["forked_from"]),
-		Hash:        hashFiles(files),
-		Body:        strings.TrimSpace(body),
+		Name:         name,
+		Layer:        layer,
+		Dir:          dir,
+		Description:  meta["description"],
+		ForkedFrom:   strings.ToLower(meta["forked_from"]),
+		Hash:         hashFiles(files),
+		OnRamp:       parseBool(meta["on-ramp"]),
+		NeedsContext: parseBool(meta["needs-context"]),
+		Body:         strings.TrimSpace(body),
 	}
 	s.Stale = s.ForkedFrom != "" && s.ForkedFrom != ShippedHash(name)
 	return s
@@ -438,17 +449,43 @@ func Materialize(configDir string) error {
 	return nil
 }
 
-// Ideate returns the ideate on-ramp's resolved body. Unlike Compose it resolves a
-// single skill with no core, no role, and no context bundle — the ideate session
-// is ticketless and mapless by design, so there is no ticket or map to inject.
-// Editing the resolved `ideate` skill changes what the very next ideate session
-// reads.
-func Ideate(roots Roots) string {
-	s, ok := Resolve(IdeateSkill, roots)
+// Launch composes an on-ramp skill's payload: the named skill's resolved body
+// **alone** — no core, no role, no context bundle — exactly as the ideate on-ramp
+// is composed, because an on-ramp launch is ticketless and mapless by design
+// (there is no ticket or map to inject). When context is non-empty it rides in the
+// same payload under a short `## Your task` trailer, so the agent reads its brief
+// from the one on-disk file it already opens rather than a fragile typed-in second
+// line; an empty context writes the body unchanged. Returns nil when the named
+// skill resolves in no layer. Editing the resolved skill changes what the very
+// next launch reads.
+func Launch(roots Roots, skill, context string) []byte {
+	s, ok := Resolve(skill, roots)
 	if !ok {
-		return ""
+		return nil
 	}
-	return s.Body
+	body := s.Body
+	if c := strings.TrimSpace(context); c != "" {
+		body += "\n\n---\n\n## Your task\n\n" + c
+	}
+	return []byte(body)
+}
+
+// Ideate returns the ideate on-ramp's resolved body — Launch pinned to the ideate
+// skill with no context, kept so the `/ideate` route and its callers read
+// unchanged while the launcher generalises the same spine to any on-ramp skill.
+func Ideate(roots Roots) string {
+	return string(Launch(roots, IdeateSkill, ""))
+}
+
+// parseBool reads a frontmatter boolean flag tolerantly (true/false, yes/1, and
+// their casings); anything it cannot read as true is false, so an absent or
+// malformed flag simply leaves the skill off the launcher.
+func parseBool(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "yes", "1":
+		return true
+	}
+	return false
 }
 
 // splitFrontmatter peels a leading `---` delimited block off a SKILL.md, returning

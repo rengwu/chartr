@@ -223,6 +223,32 @@ func (h *Chartr) IdeateRaw(spaceID, agent string) (int, string) {
 	return h.Post("/api/spaces/"+spaceID+"/ideate", map[string]string{"agent": agent})
 }
 
+// Launch opens an on-ramp skill in the space on a named agent, with an optional
+// line of context, and returns its tab id (ticket 01). It fails the test on a
+// non-200; LaunchRaw is the way to assert a refusal — a non-on-ramp skill, or an
+// agent the library cannot run.
+func (h *Chartr) Launch(spaceID, agent, skill, context string) string {
+	h.t.Helper()
+	code, body := h.LaunchRaw(spaceID, agent, skill, context)
+	if code != 200 {
+		h.t.Fatalf("chartrtest: launch %q in %s with %q = %d, body %s", skill, spaceID, agent, code, body)
+	}
+	var r struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &r); err != nil {
+		h.t.Fatalf("chartrtest: launch response not JSON: %v (%q)", err, body)
+	}
+	return r.ID
+}
+
+// LaunchRaw posts the launch action and returns the status code and body.
+func (h *Chartr) LaunchRaw(spaceID, agent, skill, context string) (int, string) {
+	h.t.Helper()
+	return h.Post("/api/spaces/"+spaceID+"/launch",
+		map[string]string{"agent": agent, "skill": skill, "context": context})
+}
+
 // Spawn posts a spawn action for a ticket and role and returns the status code
 // and body — the operator's one-click "start work here" (ticket 09). A test drives
 // it directly so it can assert the whole chain the response kicks off: the claim
