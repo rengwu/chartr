@@ -7,6 +7,7 @@
   import { Button, buttonVariants } from "$lib/components/ui/button";
   import type { ButtonVariant, ButtonSize } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
+  import * as Tooltip from "$lib/components/ui/tooltip";
   import { CaretDown } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
@@ -20,12 +21,15 @@
   //
   //   empty    — nothing is registered. The menu does not launch onto nothing: it
   //              names the wall and routes to registration via `onregister`.
-  //   unchosen — agents exist but none is remembered. The agent section is checked
-  //              at nothing and the skills sit disabled until the operator picks
-  //              one — the actionable path is right there, so it is not a dead
-  //              control (there is no automatic first choice, per the agent spec).
-  //   ready    — the remembered agent opens checked; clicking any on-ramp skill
-  //              launches it on that agent, and the server remembers the agent.
+  //   unchosen — agents exist but none of them is launchable (every one absent
+  //              from PATH), or the remembered agent no longer resolves. The agent
+  //              section is checked at nothing and the skills sit disabled until
+  //              the operator picks one — the actionable path is right there, so it
+  //              is not a dead control.
+  //   ready    — the remembered agent opens checked, or, with nothing remembered,
+  //              the first present one (`launchMenu`'s default — a menu of disabled
+  //              skills reads as broken). Clicking any on-ramp skill launches it on
+  //              that agent, and the server remembers the agent.
   //
   // Two sections: the agent selector (each row labelled by the model the agent
   // already carries — decision (b), no new model axis), then a divider, then the
@@ -128,7 +132,7 @@
        pull focus back to the trigger — the box's field is where the operator is
        going. -->
   <DropdownMenu.Content
-    align="end"
+    align="start"
     class="min-w-52 w-auto"
     onCloseAutoFocus={(e) => { if (pending) e.preventDefault(); }}
   >
@@ -172,20 +176,33 @@
         {#if menu.choice.kind === "ready"}Launch a skill{:else}Pick an agent to launch a skill{/if}
       </DropdownMenu.Label>
       {#if menu.skills.length}
-        {#each menu.skills as s (s.name)}
-          <DropdownMenu.Item
-            class="flex flex-col items-start gap-0.5"
-            disabled={menu.choice.kind !== "ready"}
-            onclick={() => run(s)}
-          >
-            <span class="font-medium">{s.name}</span>
-            {#if s.description}
-              <span class="max-w-64 text-[0.65rem] text-wrap text-muted-foreground">
-                {s.description}
-              </span>
-            {/if}
-          </DropdownMenu.Item>
-        {/each}
+        <!-- One line per skill: the name alone. A skill's description is a
+             paragraph — three of them stacked turn the menu into a wall of prose
+             to read past, so the description hangs off hover as a tooltip beside
+             the row instead of sitting under it. -->
+        <Tooltip.Provider delayDuration={250}>
+          {#each menu.skills as s (s.name)}
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <DropdownMenu.Item
+                    {...props}
+                    class="font-medium"
+                    disabled={menu.choice.kind !== "ready"}
+                    onclick={() => run(s)}
+                  >
+                    {s.name}
+                  </DropdownMenu.Item>
+                {/snippet}
+              </Tooltip.Trigger>
+              {#if s.description}
+                <Tooltip.Content side="right" sideOffset={6} class="max-w-64 text-wrap">
+                  {s.description}
+                </Tooltip.Content>
+              {/if}
+            </Tooltip.Root>
+          {/each}
+        </Tooltip.Provider>
       {:else}
         <DropdownMenu.Label
           class="max-w-64 text-[0.7rem] leading-relaxed font-normal text-wrap text-muted-foreground"

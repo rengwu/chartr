@@ -44,8 +44,20 @@ describe('launchMenu', () => {
     expect(menu.choice).toEqual({ kind: 'ready', agent: agents[1] })
   })
 
-  it('is unchosen when nothing is remembered — the operator must pick', () => {
-    const menu = launchMenu([agent({ name: 'claude' })], undefined, library)
+  it('opens on the first present agent when nothing is remembered', () => {
+    const agents = [agent({ name: 'claude' }), agent({ name: 'kimi' })]
+    const menu = launchMenu(agents, undefined, library)
+    expect(menu.choice).toEqual({ kind: 'ready', agent: agents[0] })
+  })
+
+  it('skips an absent agent when defaulting — the default must be launchable', () => {
+    const agents = [agent({ name: 'kimi', present: false }), agent({ name: 'claude' })]
+    const menu = launchMenu(agents, undefined, library)
+    expect(menu.choice).toEqual({ kind: 'ready', agent: agents[1] })
+  })
+
+  it('is unchosen when nothing is remembered and no agent is present', () => {
+    const menu = launchMenu([agent({ name: 'kimi', present: false })], undefined, library)
     expect(menu.choice).toEqual({ kind: 'unchosen' })
   })
 
@@ -90,13 +102,15 @@ describe('launchClick', () => {
     })
   })
 
+  // Nothing remembered now opens on the first *present* agent, so an unchosen
+  // menu is one where no agent is launchable at all.
   it('does not launch while no agent is chosen', () => {
-    const menu = launchMenu([agent({ name: 'claude' })], undefined, library)
+    const menu = launchMenu([agent({ name: 'claude', present: false })], undefined, library)
     expect(launchClick(menu, library[0])).toBeNull()
   })
 
   it('does not open the box while no agent is chosen either', () => {
-    const menu = launchMenu([agent({ name: 'claude' })], undefined, library)
+    const menu = launchMenu([agent({ name: 'claude', present: false })], undefined, library)
     expect(launchClick(menu, library[2])).toBeNull()
   })
 

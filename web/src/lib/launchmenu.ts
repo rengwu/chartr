@@ -36,6 +36,14 @@ export interface LaunchMenu {
  * any — it overrides the remembered `lastAgent` without persisting, exactly the
  * one-off override the split button offered. When absent, the menu opens on the
  * remembered agent so it is one line to confirm and rarely changed.
+ *
+ * With *no* agent named at all — nothing picked this open and nothing remembered
+ * — the launcher opens on the first agent that is present rather than on nothing.
+ * This is the one place that departs from `chooseAgent`'s no-automatic-first-choice
+ * rule: a menu whose skills are all disabled until a separate pick reads as a dead
+ * control, and the pick is right above them and never hidden. A *named* agent that
+ * does not resolve (or is absent from PATH) still leaves the menu unchosen — the
+ * fallback fills a blank, it never swaps one agent for another.
  */
 export function launchMenu(
   agents: Agent[],
@@ -43,10 +51,12 @@ export function launchMenu(
   skills: ResolvedSkill[],
   selected?: string,
 ): LaunchMenu {
+  const named = selected ?? lastAgent
+  const first = agents.find((a) => a.present)
   return {
     agents,
     skills: skills.filter((s) => s.onRamp),
-    choice: chooseAgent(agents, selected ?? lastAgent),
+    choice: !named && first ? { kind: 'ready', agent: first } : chooseAgent(agents, named),
   }
 }
 
