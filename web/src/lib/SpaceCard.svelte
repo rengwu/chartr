@@ -16,7 +16,6 @@
     PauseCircle,
     GitBranchIcon,
     Plus,
-    Copy,
     PlusIcon,
   } from "phosphor-svelte";
 
@@ -81,20 +80,18 @@
   const attention = $derived(spaceAttention(space));
   const liveness = $derived(spaceLiveness(space));
 
-  // Copy-to-clipboard for the card's two identity strings. The card sets
-  // `select-none` — it is a click target, and drag-selecting inside one is noise
-  // — so these buttons are the *only* way those strings leave the UI, not a
-  // shortcut alongside manual selection. That is why the failure is shown rather
-  // than swallowed the way the terminal's copy-on-select swallows it: there,
-  // a denied clipboard still leaves you a selection to ⌘C; here it would leave
-  // nothing at all. `navigator.clipboard` needs a secure context, so a harness
-  // opened over plain http on a LAN address lands in exactly that case.
-  //
-  // The feedback is per card, so the key is just which of the two strings it was.
-  let copied = $state<{ key: "path" | "branch"; ok: boolean } | null>(null);
+  // Copy-to-clipboard for the branch chip. The card sets `select-none` — it is a
+  // click target, and drag-selecting inside one is noise — so this button is the
+  // *only* way the branch name leaves the UI, not a shortcut alongside manual
+  // selection. That is why the failure is shown rather than swallowed the way the
+  // terminal's copy-on-select swallows it: there, a denied clipboard still leaves
+  // you a selection to ⌘C; here it would leave nothing at all.
+  // `navigator.clipboard` needs a secure context, so a harness opened over plain
+  // http on a LAN address lands in exactly that case.
+  let copied = $state<{ ok: boolean } | null>(null);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
-  async function copyToClipboard(key: "path" | "branch", text: string) {
+  async function copyToClipboard(text: string) {
     let ok = false;
     try {
       await navigator.clipboard.writeText(text);
@@ -102,7 +99,7 @@
     } catch {
       ok = false;
     }
-    copied = { key, ok };
+    copied = { ok };
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => {
       copied = null;
@@ -118,9 +115,9 @@
      Selected emphasis rides --primary, the one emphasis token; the
      chrome is monochrome. Because the whole card is a click target,
      it is `select-none` throughout — name, sessions, branch. Dragging
-     a selection across a thing you click is noise, and the two
-     strings actually worth lifting (the path and the branch) have
-     their own copy buttons instead. -->
+     a selection across a thing you click is noise, and the branch —
+     the one string actually worth lifting — has its own copy button
+     instead. The path stays the card's tooltip. -->
 <div
   role="button"
   tabindex="0"
@@ -189,35 +186,6 @@
       {/if}
       <span class="truncate">{space.name}</span>
     </span>
-    <!-- The path only ever existed as the card's tooltip; this lifts
-         it onto the clipboard, which is the form you actually want it
-         in (to `cd` there). Sits beside the forget action and stops
-         propagation the same way. -->
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      class="-mt-0.5 shrink-0 hover:text-primary"
-      aria-label="Copy path"
-      title={copied?.key === "path"
-        ? copied.ok
-          ? "Copied"
-          : "Couldn’t copy — clipboard unavailable"
-        : `Copy path — ${space.path}`}
-      onclick={(e) => {
-        e.stopPropagation();
-        void copyToClipboard("path", space.path);
-      }}
-    >
-      {#if copied?.key === "path"}
-        {#if copied.ok}
-          <Check class="text-primary" />
-        {:else}
-          <Warning class="text-destructive" />
-        {/if}
-      {:else}
-        <Copy />
-      {/if}
-    </Button>
     <Button
       variant="ghost"
       size="icon-xs"
@@ -411,17 +379,17 @@
           variant="ghost"
           class="-mx-1 h-auto min-w-0 shrink justify-start gap-1.5 rounded-sm px-1 py-0.5 text-[0.6rem] font-normal text-muted-foreground hover:text-foreground [&_svg:not([class*='size-'])]:size-3"
           aria-label="Copy branch name"
-          title={copied?.key === "branch"
+          title={copied
             ? copied.ok
               ? "Copied"
               : "Couldn’t copy — clipboard unavailable"
             : `Copy branch — ${space.branch}`}
           onclick={(e) => {
             e.stopPropagation();
-            void copyToClipboard("branch", space.branch ?? "");
+            void copyToClipboard(space.branch ?? "");
           }}
         >
-          {#if copied?.key === "branch"}
+          {#if copied}
             {#if copied.ok}
               <Check class="text-primary" />
             {:else}
