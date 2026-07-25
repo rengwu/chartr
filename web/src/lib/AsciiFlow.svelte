@@ -11,6 +11,15 @@
   // here the pointer contributes velocity alone, and what you see is the murk
   // being disturbed and slowly closing over again.
   //
+  // Under the clear water there is a *bed* of settled silt — a second noise
+  // field, invisible at rest, lying wherever the surface haze is thin, which is
+  // most of the pane. Scuffing it lifts it, so a stroke through an empty patch
+  // is not a stroke through nothing; it clouds. The scuff is narrow and the wake
+  // it stirs is wide, which is the shape of the whole effect: a close silt
+  // ribbon inside a broad disturbance. This is still not painting: how much
+  // comes up is the bed's business, not the cursor's — the field decides, and
+  // RELAX settles it back where it was.
+  //
   // This is an imperative island in the ADR 0010 sense: the chrome hosts it and
   // never reaches inside. Its one colour arrives resolved at the seam
   // (tokens.ts → readColor), never as a literal.
@@ -35,10 +44,12 @@
   //     so the tick rate also sets the pace: halving it halves how fast the
   //     water moves and heals, which is why this and the constants below are
   //     tuned together.
-  //   · **The noise field is deterministic and anchored in pixel space**, so a
-  //     resize reveals more of the same water instead of rolling a new field —
-  //     and reallocation is debounced, so dragging the splitter does no work at
-  //     all until it settles.
+  //   · **The noise field is anchored in pixel space and seeded once per pane**,
+  //     so a resize reveals more of the same water instead of rolling a new
+  //     field — and reallocation is debounced, so dragging the splitter does no
+  //     work at all until it settles. The seed is random per pane, so no two
+  //     openings give the same murk or the same silt underneath, but it is
+  //     frozen for the pane's life: random *which* field, never random *when*.
   //   · The loop stops dead once the water is still, leaving the resting picture
   //     on the canvas. A pane nobody is pointing at schedules nothing.
   //   · Reduced motion draws the resting field once and never animates.
@@ -67,6 +78,26 @@
   const STILL = 0.012; // below this the water counts as settled
   const HEALED = 0.02; // ink this close to the resting field counts as healed
 
+  // Dust lifted off the bed. The lift has its own kernel rather than reading the
+  // wake's velocity, because the wake is deliberately broad (R=6, a soft
+  // falloff) and its speed clears any sane threshold well out into the tail —
+  // driving the lift off it clouded a band wider than the stroke. Silt gets
+  // scuffed up close to where the pointer actually passed; the wake it stirs
+  // spreads much further. Two separate widths, two separate kernels.
+  const SWEEP_R = 3; // cells — the lift's reach, half the wake's
+  const SWEEP_FALLOFF = 2.5; // tight: the ribbon is a few cells, not a dozen
+  const SWEEP_AMP = 0.5; // per substep, so a flick scuffs less than a full drag
+  // These two are tuned together and against INK_FLOOR. The scuff is a ceiling
+  // that collapses while the ink is still climbing toward it, so the silt only
+  // ever reaches a fraction of what the bed holds — decay sets how long the
+  // ceiling lasts, rate how fast the ink chases it, and between them they decide
+  // both how much comes up *and* how long it stays. Because the fade is
+  // exponential down to INK_FLOOR, lifting the peak buys visible time cheaply:
+  // .55/.25 peaked at 31% of the bed and lasted 0.3s, .72/.34 peaks at 44% and
+  // lasts 0.8s. The ribbon's width is unaffected — that is SWEEP_FALLOFF's job.
+  const SWEEP_DECAY = 0.72; // per tick — the ribbon closes behind the pointer
+  const LIFT_RATE = 0.34; // fraction of the way to the lifted level, per tick
+
   // The intensity ramp, by tier. Tiers 2–4 are directional: the glyph comes from
   // the cell's own velocity, so disturbed water reads as flow against the dashes
   // of the water at rest.
@@ -83,6 +114,13 @@
   const G_BIG_O = 10;
   const GLYPHS = ["_", "-", ">", "<", "^", "v", "»", "«", "o", "0", "O"];
 
+  // Which water this pane got. Rolled once, here, in the component's own scope —
+  // so it is per pane and per page load, and crucially *not* re-rolled by
+  // buildAmbient, which runs again on every resize. A stable seed is what lets a
+  // resize extend the field instead of replacing it; a random one just decides
+  // which field is being extended.
+  const SEED = (Math.random() * 0x7fffffff) | 0;
+
   let host: HTMLDivElement;
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
@@ -90,6 +128,8 @@
   let cols = 0;
   let rows = 0;
   let ambient = new Float32Array(0);
+  let bed = new Float32Array(0); // dust under the clear water, invisible at rest
+  let sweep = new Float32Array(0); // where the pointer has just scuffed the bed
   let ink = new Float32Array(0);
   let scratch = new Float32Array(0);
   let vx = new Float32Array(0);
@@ -150,12 +190,17 @@
     atlas = a;
   }
 
-  // Deterministic value noise. Anchored to *pixel* coordinates with a fixed
-  // seed, which is what makes a resize reveal more of the same water instead of
-  // rolling an entirely new field — the bug that made dragging the splitter
-  // look like static.
+  // Deterministic value noise. Anchored to *pixel* coordinates, and to a seed
+  // held fixed for the life of the pane — that is what makes a resize reveal
+  // more of the same water instead of rolling an entirely new field, the bug
+  // that made dragging the splitter look like static. Which water you get is
+  // decided once, at open (see SEED); after that it never moves under you.
+  //
+  // The seed term goes through imul because SEED is a full 32-bit value: plain
+  // `seed * 1274126177` would overflow the 53 bits a double carries exactly and
+  // quantise the result, correlating the octaves.
   function hash(ix: number, iy: number, seed: number): number {
-    let h = (ix * 374761393 + iy * 668265263 + seed * 1274126177) | 0;
+    let h = (ix * 374761393 + iy * 668265263 + Math.imul(seed, 1274126177)) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
   }
@@ -184,20 +229,43 @@
     return top + (bot - top) * sy;
   }
 
-  // The water at rest: two octaves, cut and squared so most of the pane is empty
-  // and the remainder reads as a soft haze with a few denser cores. Sampled at
-  // pixel positions, so it is stable across resizes and cell-size changes.
+  // The water at rest: two octaves, cut and squared so nearly all of the pane is
+  // empty and the remainder reads as a thin haze with a few denser cores. The
+  // cut is deliberately high — the pane at rest should be quiet, and the dust a
+  // sweep raises is what carries the effect. Sampled at pixel positions, so it
+  // is stable across resizes and cell-size changes.
+  //
+  // The bed is built in the same pass, off its own seeds, and cut low: silt lies
+  // under most of the pane, so a stroke almost anywhere raises something. The
+  // noise still decides *how much* — the cut sets coverage, not depth, since the
+  // ramp normalises against it and tops out at BED_MAX either way. It is faded
+  // out wherever the haze above it is already dense: dust settles where the
+  // water is clear, and sweeping a murky spot should not make it murkier.
   function buildAmbient() {
-    ambient = new Float32Array(cols * rows);
-    const CUT = 0.47;
+    const count = cols * rows;
+    ambient = new Float32Array(count);
+    bed = new Float32Array(count);
+    const CUT = 0.55; // ~5% of cells carry visible haze; the rest is clear water
+    const BED_CUT = 0.3; // but ~80% of it has silt under it, waiting to be lifted
+    const BED_MAX = 0.34;
     for (let j = 0; j < rows; j++) {
       const py = j * cell;
       for (let i = 0; i < cols; i++) {
         const px = i * cell;
-        const n = octave(px, py, 84, 1) * 0.34 + octave(px, py, 204, 2) * 0.22;
+        const k = j * cols + i;
+        const n =
+          octave(px, py, 84, SEED + 1) * 0.34 +
+          octave(px, py, 204, SEED + 2) * 0.22;
         const v = n / 0.56 - CUT;
-        ambient[j * cols + i] =
-          v > 0 ? ((v / (1 - CUT)) * 0.56) ** 2 * 1.15 : 0;
+        const amb = v > 0 ? ((v / (1 - CUT)) * 0.56) ** 2 * 1.15 : 0;
+        ambient[k] = amb;
+        const b =
+          octave(px, py, 61, SEED + 5) * 0.6 +
+          octave(px, py, 148, SEED + 6) * 0.4;
+        const bv = b - BED_CUT;
+        if (bv > 0 && amb < 0.24) {
+          bed[k] = ((bv / (1 - BED_CUT)) * BED_MAX * (0.24 - amb)) / 0.24;
+        }
       }
     }
   }
@@ -220,6 +288,7 @@
     scratch = new Float32Array(n);
     vx = new Float32Array(n);
     vy = new Float32Array(n);
+    sweep = new Float32Array(n);
     buildAmbient();
     ink.set(ambient); // the water is already there when the pane opens
     x0 = 1;
@@ -343,11 +412,19 @@
         for (let i = i0; i <= i1; i++) {
           const ex = i + 0.5 - ci;
           const ey = j + 0.5 - cj;
-          const f = Math.exp(-(ex * ex + ey * ey) / 14);
+          const d2 = ex * ex + ey * ey;
+          const f = Math.exp(-d2 / 14);
           if (f < 0.02) continue;
           const k = j * cols + i;
           vx[k] += ivx * f;
           vy[k] += ivy * f;
+          // The scuff, on the same pass but its own much tighter falloff. It
+          // saturates: dragging back and forth over one spot cannot lift more
+          // than the bed there holds.
+          if (d2 < SWEEP_R * SWEEP_R) {
+            const s = sweep[k] + SWEEP_AMP * Math.exp(-d2 / SWEEP_FALLOFF);
+            sweep[k] = s > 1 ? 1 : s;
+          }
         }
       }
     }
@@ -382,7 +459,20 @@
         const carried = sample(scratch, i - ux * ADVECT, j - uy * ADVECT);
         // Heal toward the resting field rather than decaying to nothing: the
         // murk is permanent, only the disturbance is temporary.
-        ink[k] = carried + (ambient[k] - carried) * RELAX;
+        let v = carried + (ambient[k] - carried) * RELAX;
+        // A scuff raises the cell's ceiling from the resting field to the
+        // resting field plus whatever the bed holds under it, and the ink
+        // climbs toward that. The scuff fades fast, so the ceiling drops back to
+        // the resting field on its own — the RELAX above then settles the silt.
+        const sc = sweep[k];
+        if (sc > 0) {
+          if (bed[k] > 0) {
+            const want = ambient[k] + bed[k] * sc;
+            if (want > v) v += (want - v) * LIFT_RATE;
+          }
+          sweep[k] = sc * SWEEP_DECAY;
+        }
+        ink[k] = v > MAX_INK ? MAX_INK : v;
         vx[k] = ux * VEL_DECAY;
         vy[k] = uy * VEL_DECAY;
         motion += (ux < 0 ? -ux : ux) + (uy < 0 ? -uy : uy);
@@ -529,6 +619,7 @@
           ink.set(ambient.subarray(row + x0, row + x1 + 1), row + x0);
           vx.fill(0, row + x0, row + x1 + 1);
           vy.fill(0, row + x0, row + x1 + 1);
+          sweep.fill(0, row + x0, row + x1 + 1);
         }
         x0 = 1;
         x1 = 0;
