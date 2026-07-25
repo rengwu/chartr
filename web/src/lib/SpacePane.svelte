@@ -58,8 +58,11 @@
     onLaunch: (agent: string, skill: string) => void
     // The cockpit-wide way into the config surface (ticket 05), owned by the
     // enclosing App — the route is App's, this pane just carries the control at
-    // the right end of its title bar.
-    onOpenSettings: () => void
+    // the right end of its title bar. Absent in the macOS shell, where the
+    // window's own title bar carries the gear at its far-right corner instead
+    // (App.svelte); a plain browser tab has no such bar, so the control lands
+    // here.
+    onOpenSettings?: () => void
     // Where an empty-library spawn or launch control sends the operator: agent
     // registration (the user scope of the settings surface). Owned by App like the
     // route above; every agent picker beneath this pane routes its empty state
@@ -336,9 +339,10 @@
 
     <!-- The stage-level controls, right-aligned: any surfaced warnings, the one
          star-map show/hide toggle — lifted here now that the terminal has no
-         action bar — and, at the far right corner of the chrome, the
-         cockpit-wide gear into the config surface (each space card keeps its
-         own ⚙ for that space's scope). -->
+         action bar — and, in a plain browser tab, the cockpit-wide gear into the
+         config surface (each space card keeps its own ⚙ for that space's scope).
+         The macOS shell carries that gear in the window's title bar instead, so
+         onOpenSettings is absent and the button below does not render. -->
     <div class="flex items-center gap-1.5">
       {#if warnings.length}
         <span
@@ -361,15 +365,17 @@
       >
         <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
       </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Config"
-        title="Your agents, and where the files behind them live (,)"
-        onclick={onOpenSettings}
-      >
-        <Gear />
-      </Button>
+      {#if onOpenSettings}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Config"
+          title="Your agents, and where the files behind them live (,)"
+          onclick={onOpenSettings}
+        >
+          <Gear />
+        </Button>
+      {/if}
     </div>
   </header>
 

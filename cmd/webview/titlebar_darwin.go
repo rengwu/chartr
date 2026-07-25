@@ -22,10 +22,34 @@ package main
 // AppKit's own title-bar drag loop, so snapping, Spaces, window tiling and
 // full-screen edges behave exactly as they do on any other window — none of
 // which a hand-rolled "follow the mouse" loop would get right.
+//
+// The one carve-out is a no-drag zone at the strip's right corner, where the
+// cockpit pins its config gear: hitTest: returns nil there so the click falls
+// through to the WKWebView (the HTML button) instead of starting a window drag.
+// The zone is a fixed width from the right edge — wide enough for the icon
+// button and its padding, far from the centred branding — because the drag view
+// has no knowledge of the page's layout beyond "the gear lives in that corner".
 @interface WFDragView : NSView
 @end
 
+// The right-corner passthrough for the cockpit's config gear, in points. Sized
+// flush to the gear's footprint in App.svelte: an icon-sm button (size-6, 24px)
+// inset 6px from the right edge, so its left edge lands 30px in. Anything wider
+// would needlessly steal draggable strip beside the button.
+static const CGFloat kWFRightNoDragZone = 30.0;
+
 @implementation WFDragView
+
+// Let the config gear pinned to the far-right corner take its own click: for a
+// point in that zone, pass through (return nil) so hit-testing continues down to
+// the WKWebView and the page's button. Everywhere else the strip drags.
+- (NSView *)hitTest:(NSPoint)point {
+  NSView *hit = [super hitTest:point];
+  if (hit == self && point.x >= NSMaxX([self frame]) - kWFRightNoDragZone) {
+    return nil;
+  }
+  return hit;
+}
 
 - (void)mouseDown:(NSEvent *)event {
   NSWindow *win = [self window];

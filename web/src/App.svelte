@@ -36,6 +36,7 @@
     XCircle,
     CircleNotch,
     Compass,
+    Gear,
     GitBranch,
     GitDiff,
     Rocket,
@@ -74,6 +75,15 @@
   const route = $derived(parseRoute(hash));
 
   // Navigation is a hash assignment; the hashchange listener below catches every
+  // The last settings scope the operator was on, remembered across leaving the
+  // surface (the hash is cleared on exit, so the scope would otherwise be lost).
+  // The cockpit-wide gear reopens onto this, so a click lands you back where you
+  // were rather than forcing any particular submenu. Null until the first visit.
+  let lastSettingsScope = $state<SettingsScope | null>(null);
+  $effect(() => {
+    if (route.settings && route.scope) lastSettingsScope = route.scope;
+  });
+
   // other way the bar changes (manual edits, back/forward). The local state is
   // set here too, synchronously: hashchange is delivered a task later, and until
   // it lands `route` would still read the *old* hash. That stale window is real —
@@ -370,8 +380,13 @@
          the strip the shell freed, so the three native window buttons — still
          AppKit's, drawn over this — sit centred at the left, and the branding
          centres in the full window width, clear of them. The whole strip drags
-         the window because AppKit still owns its mouse events; nothing
-         interactive belongs here for that same reason. -->
+         the window because AppKit still owns its mouse events (WFDragView).
+
+         The one exception is the config gear pinned to the far-right corner: the
+         native drag view carves a no-drag zone there (titlebar_darwin.go) so the
+         click falls through to this button instead of moving the window. It is
+         the cockpit-wide way into settings, which in a plain browser tab (no
+         title bar) rides the space stage's header instead. -->
     <header
       class="flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
       style="height: {titleBarH}px"
@@ -413,6 +428,21 @@
       {/if}
 
       {#if spaces.length > 0}
+      <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
+           the button's own press state nudges it with `translate-y-px`, and
+           Tailwind composes both through one translate variable, so a centring
+           transform would be clobbered on mousedown and the gear would jump. -->
+      <div class="absolute inset-y-0 right-1.5 flex items-center">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Config"
+          title="Your agents, and where the files behind them live (,)"
+          onclick={() => openSettings(lastSettingsScope ?? { kind: "default" })}
+        >
+          <Gear />
+        </Button>
+      </div>
         <div class="cockpit-bar justify-between gap-2 bg-transparent">
           <Input
             type="text"
@@ -862,7 +892,9 @@
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
           onLaunch={(agent, skill) => launchSpace(selected, agent, skill)}
-          onOpenSettings={() => openSettings()}
+          onOpenSettings={titleBarH
+            ? undefined
+            : () => openSettings(lastSettingsScope ?? { kind: "default" })}
           onRegisterAgent={() => openSettings({ kind: "user" })}
           onspawned={(id) => (activeTermId = id)}
         />
