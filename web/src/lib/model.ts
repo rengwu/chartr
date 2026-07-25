@@ -358,9 +358,9 @@ export const ROLES = ['grill', 'prototype', 'research', 'implement'] as const
 export type Role = (typeof ROLES)[number]
 
 // The role a ticket's own type points at (mirrors config.RoleForTicketType) —
-// shared by the detail pane, the action station (ticket 14) and the payload
-// preview so a one-click spawn always lands on the same default no matter which
-// surface triggered it. The type says exactly which role the ticket is; nothing
+// shared by the detail pane and the payload preview so a one-click spawn always
+// lands on the same default no matter which surface triggered it. The type says
+// exactly which role the ticket is; nothing
 // clamps it, and every ticket offers all four roles for the operator to pick
 // from at the gate.
 export function defaultRole(type: string): Role {
@@ -371,10 +371,4 @@ export function defaultRole(type: string): Role {
       : type === 'grilling'
         ? 'grill'
         : 'implement'
-}
-
-// Zero-padded ticket number (#04, #12) — the id format used everywhere a
-// ticket is named in the chrome.
-export function padTicket(n: number): string {
-  return n < 10 ? '0' + n : String(n)
 }

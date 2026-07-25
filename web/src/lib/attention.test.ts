@@ -1,17 +1,9 @@
-// Attention (ticket 14): the action station's ranking, and the sidebar's
-// ambient echo with the halt flag's jump target — all pure derivations
-// over a snapshot, tested the same way ticket 13's session.test.ts tests
-// `sessionStates`: tiny fixture builders, no DOM.
+// Attention (ticket 14): the sidebar's ambient echo with the halt flag's jump
+// target — all pure derivations over a snapshot, tested the same way ticket
+// 13's session.test.ts tests `sessionStates`: tiny fixture builders, no DOM.
 
 import { describe, it, expect } from 'vitest'
-import {
-  mapActionItems,
-  mapActionCount,
-  spaceActionCount,
-  spaceAttention,
-  spaceHaltTarget,
-  spaceLiveness,
-} from './attention'
+import { spaceAttention, spaceHaltTarget, spaceLiveness } from './attention'
 import type { Map as WMap, Space, Terminal, Ticket } from './model'
 
 function ticket(num: number, extra: Partial<Ticket> = {}): Ticket {
@@ -67,44 +59,6 @@ function workingTerminal(mapSlug: string, ticketNum: number, status: Terminal['s
     session: { mapSlug, ticketNum, role: 'implement', agent: 'claude' },
   }
 }
-
-describe('mapActionItems', () => {
-  it('ranks the frontier by unblock count, ties by ticket number', () => {
-    // 1 blocks 2 and 3 (unblocks 2); 4 blocks nothing (unblocks 0); both are
-    // frontier. 2 and 3 are blocked, so neither is actionable.
-    const m = map(
-      'impl',
-      ticket(1, { frontier: true }),
-      ticket(2, { blockedBy: [1] }),
-      ticket(3, { blockedBy: [1] }),
-      ticket(4, { frontier: true }),
-    )
-    const items = mapActionItems(m)
-    expect(items.map((i) => [i.ticket.num, i.unblockCount])).toEqual([
-      [1, 2],
-      [4, 0],
-    ])
-  })
-
-  it('breaks an unblock-count tie by ticket number', () => {
-    const m = map('impl', ticket(1, { frontier: true }), ticket(2, { frontier: true }))
-    const items = mapActionItems(m)
-    expect(items.map((i) => i.ticket.num)).toEqual([1, 2])
-  })
-
-  it('offers nothing on a map with no frontier ticket', () => {
-    const m = map('none', ticket(1), ticket(2, { blockedBy: [1] }))
-    expect(mapActionItems(m)).toEqual([])
-  })
-
-  it('counts mirror the item list, summed across a space', () => {
-    const a = map('a', ticket(1, { frontier: true }))
-    const b = map('b', ticket(2, { frontier: true }), ticket(3, { frontier: true }))
-    expect(mapActionCount(a)).toBe(1)
-    expect(mapActionCount(b)).toBe(2)
-    expect(spaceActionCount(space('s', { maps: [a, b] }))).toBe(3)
-  })
-})
 
 describe('spaceHaltTarget', () => {
   it('names the halted session’s ticket — where the flag’s click lands', () => {
