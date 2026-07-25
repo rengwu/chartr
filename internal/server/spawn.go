@@ -62,6 +62,11 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		// string is the still-well-formed "I picked nothing" the frontend sends from
 		// the empty-library state, refused here with the message that says so.
 		Agent string `json:"agent"`
+		// Force carries the operator's answer to the concurrency warning: this space
+		// already has a live session and they want the second one anyway (ADR 0003 as
+		// amended). It overrules exactly that one gate — every other refusal below is
+		// a refusal of fact and ignores it.
+		Force bool `json:"force"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httpError(w, http.StatusBadRequest, "invalid request body")
@@ -122,11 +127,15 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// One session per space at a time (spec, State model). Check before writing the
-	// claim so we never claim a ticket we cannot then seat; OpenSession re-checks
-	// under its own lock to close the race.
-	if s.terms.HasLiveSession(e.ID) {
-		httpError(w, http.StatusConflict, "this space already has a live session — end it before spawning another")
+	// One session per space is the default, not a hard rule (ADR 0003 as amended).
+	// Unforced, this is a 409 the surface turns into a warning the operator can
+	// confirm; the confirmed retry arrives with force and passes straight through to
+	// OpenSession, which re-checks under its own lock to close the race. Either way
+	// the decision lands *before* the claim is written, so a refusal never claims a
+	// ticket it cannot then seat.
+	if !body.Force && s.terms.HasLiveSession(e.ID) {
+		httpErrorCode(w, http.StatusConflict, codeLiveSession,
+			"this space already has a live session — two agents will share one working tree")
 		return
 	}
 
@@ -141,6 +150,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		role:      role,
 		spec:      spec,
 		sessionID: newSessionID(),
+		force:     body.Force,
 	})
 	if err != nil {
 		httpError(w, status, err.Error())
@@ -174,6 +184,11 @@ type sessionLaunch struct {
 	role      string
 	spec      launchSpec
 	sessionID string
+	// force seats the session even though the space already has a live one — the
+	// operator confirmed the concurrency at the gate (ADR 0003 as amended). The
+	// mechanics below are identical either way: a forced session is an ordinary
+	// session, and nothing downstream can tell.
+	force bool
 }
 
 // launchSpec is the one thing the launch mechanics need to know about execution:
@@ -322,7 +337,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 			// relaunches the agent this session actually ran, rather than re-deciding
 			// it (ticket 03).
 			AgentName: in.spec.Name,
-		}); err != nil {
+		}, in.force); err != nil {
 		// The claim already stands (ADR 0008: it is not rolled back). A live-session
 		// race is a conflict; a launch failure after a present-on-PATH check is an
 		// environment fault the death halt (ticket 10) picks up.

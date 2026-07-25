@@ -8,10 +8,11 @@
     type Ticket,
   } from "./model";
   import { renderMarkdown, sectionOf } from "./markdown";
-  import { spawnSession, setSpaceAgent, ActionError } from "./actions";
+  import { spawnSession, setSpaceAgent, ActionError, LIVE_SESSION } from "./actions";
   import { chooseAgent, type AgentChoice } from "./agentchoice";
   import PayloadPreview from "./PayloadPreview.svelte";
   import AgentSelector from "./AgentSelector.svelte";
+  import Modal from "./Modal.svelte";
   import * as Accordion from "$lib/components/ui/accordion";
   import * as Card from "$lib/components/ui/card";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
@@ -107,13 +108,16 @@
   let spawnError = $state<string | null>(null);
 
   // A single DetailPane instance is reused as the selection changes ticket, so a
-  // block message the operator saw on one ticket must not linger onto the next.
+  // block message the operator saw on one ticket must not linger onto the next —
+  // and neither must an unanswered concurrency warning, which names a role on the
+  // ticket that raised it and would otherwise confirm a spawn onto a different one.
   let lastNum: number | undefined = undefined;
   $effect(() => {
     const n = ticket?.num;
     if (n !== lastNum) {
       lastNum = n;
       spawnError = null;
+      pendingSpawn = null;
     }
   });
 
@@ -128,17 +132,30 @@
     }
   });
 
-  async function spawn(role: Role, agent: string) {
+  // The spawn the operator has been warned about and not yet answered: the space
+  // already has a live session, and this is the {role, agent} they asked for
+  // (ADR 0003 as amended). Held rather than retried immediately, because the
+  // decision — two agents in one working tree — is only the operator's to make.
+  let pendingSpawn = $state<{ role: Role; agent: string } | null>(null);
+
+  async function spawn(role: Role, agent: string, force = false) {
     if (!spaceId || !ticket || spawningRole) return;
     spawningRole = role;
     spawnError = null;
     try {
-      const res = await spawnSession(spaceId, map.slug, ticket.num, role, agent);
+      const res = await spawnSession(spaceId, map.slug, ticket.num, role, agent, force);
+      pendingSpawn = null;
       onspawned?.(res.sessionId);
     } catch (e) {
-      // A blocked spawn (absent agent, held ticket) carries chartr's specific
-      // message — surface it inline rather than as a silent no-op.
-      spawnError = e instanceof ActionError ? e.message : (e as Error).message;
+      // One refusal is the operator's to overrule — a space that already has a live
+      // session — so it opens the warning rather than landing as an error. Every
+      // other blocked spawn (absent agent, held ticket) is a refusal of fact and
+      // carries chartr's specific message inline.
+      if (e instanceof ActionError && e.code === LIVE_SESSION) {
+        pendingSpawn = { role, agent };
+      } else {
+        spawnError = e instanceof ActionError ? e.message : (e as Error).message;
+      }
     } finally {
       spawningRole = null;
     }
@@ -491,3 +508,41 @@
     onClose={() => (showPreview = false)}
   />
 {/if}
+
+<!-- The concurrency warning (ADR 0003 as amended). One session per space is the
+     default because a space is one git working tree with no branch and no
+     worktree behind it, so a second agent edits the same files as the first. That
+     is a judgement only the operator can make — they know whether these two
+     tickets touch the same code — so the gate warns and names the cost rather
+     than refusing. Confirming re-sends the same spawn with `force`. -->
+<Modal
+  open={pendingSpawn !== null}
+  title="This space already has a live session"
+  onClose={() => (pendingSpawn = null)}
+>
+  <div class="space-y-4 text-sm">
+    <p class="text-muted-foreground">
+      Spawning a second session runs both agents in
+      <strong class="font-medium text-foreground">the same working tree</strong>. There is no
+      branch or worktree between them, so they can overwrite each other's uncommitted edits
+      with no conflict to resolve.
+    </p>
+    <p class="text-muted-foreground">
+      Safe when the two tickets touch different files. Risky when they don't.
+    </p>
+    <div class="flex justify-end gap-2">
+      <Button variant="ghost" size="sm" onclick={() => (pendingSpawn = null)}>Cancel</Button>
+      <Button
+        variant="default"
+        size="sm"
+        disabled={spawningRole !== null}
+        onclick={() => {
+          const p = pendingSpawn;
+          if (p) spawn(p.role, p.agent, true);
+        }}
+      >
+        Spawn anyway
+      </Button>
+    </div>
+  </div>
+</Modal>

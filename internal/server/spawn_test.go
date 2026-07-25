@@ -382,8 +382,11 @@ func TestSpawnRefusesNonFrontier(t *testing.T) {
 	}
 }
 
-// One session per space at a time: a second spawn while a session is live is
-// refused, and the refusal writes no second claim.
+// One session per space is the default: an unforced second spawn while a session
+// is live is refused, and the refusal writes no second claim. It is a warning the
+// operator can overrule, not a hard rule, so the refusal carries the code the
+// surface branches on (ADR 0003 as amended) — TestSpawnForcedSeatsASecondSession
+// covers the confirmed retry.
 func TestSpawnOneSessionPerSpace(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -397,12 +400,56 @@ func TestSpawnOneSessionPerSpace(t *testing.T) {
 	mustSpawn(t, h, resp.ID, "widget", 1, "implement")
 	// The second spawn names an agent so it reaches the one-session-per-space gate
 	// rather than being turned away earlier for naming none.
-	if code, body := h.SpawnWithAgent(resp.ID, "widget", 2, "implement", "claude"); code != 409 || !strings.Contains(body, "already has a live session") {
+	code, body := h.SpawnWithAgent(resp.ID, "widget", 2, "implement", "claude")
+	if code != 409 || !strings.Contains(body, "already has a live session") {
 		t.Fatalf("second spawn = %d (%s), want 409 already-has-a-session", code, body)
+	}
+	// The refusal is machine-readably the overridable one. Without this the surface
+	// cannot tell it from a held ticket or a missing agent, both of which are 409s no
+	// confirmation can turn into a spawn.
+	if !strings.Contains(body, `"code":"live_session_exists"`) {
+		t.Errorf("refusal body = %s, want the live_session_exists code", body)
 	}
 	// Ticket 2 was never claimed.
 	if st := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 2).Status; st != "open" {
 		t.Errorf("ticket 2 after a refused second spawn = %q, want open", st)
+	}
+}
+
+// The other side of that gate: the operator confirms the warning and the second
+// session is seated anyway (ADR 0003 as amended). A forced session is an ordinary
+// session — it claims its ticket and lands as a live tab exactly as the first did,
+// so the override changes the gate and nothing downstream of it.
+func TestSpawnForcedSeatsASecondSession(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-a.md", ticket(1, "A", "[]", "task", ""))
+	chartrtest.WriteTicket(t, repo, "widget", "02-b.md", ticket(2, "B", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
+	resp := register(t, h, repo)
+
+	mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	if code, body := h.SpawnForced(resp.ID, "widget", 2, "implement", "claude"); code != 200 {
+		t.Fatalf("forced second spawn = %d (%s), want 200", code, body)
+	}
+
+	// Both tickets are claimed and both sessions are live in the one space.
+	m := findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget")
+	for _, num := range []int{1, 2} {
+		if st := findTicket(t, m, num).Status; st != "claimed" {
+			t.Errorf("ticket %d after the forced spawn = %q, want claimed", num, st)
+		}
+	}
+	live := 0
+	for _, term := range findSpace(t, h.Snapshot(ctx(t)), resp.ID).Terminals {
+		if term.Session != nil && term.Alive {
+			live++
+		}
+	}
+	if live != 2 {
+		t.Errorf("live sessions after the forced spawn = %d, want 2", live)
 	}
 }
 

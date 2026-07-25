@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -30,6 +31,21 @@ import (
 // Each requires the session to be dead first: a death halts to the human, and
 // these are the human's answers to it. A live session is refused — the operator
 // ends it (by typing into its TUI) before choosing.
+
+// forceRequested reads the operator's answer to the concurrency warning off a halt
+// action's body (ADR 0003 as amended). These actions are named entirely by their
+// URL, so the body is optional and stays optional: an absent, empty, or unparseable
+// one is simply "not forced". A halt action is never refused for a malformed body —
+// the only thing it could have said is yes.
+func forceRequested(r *http.Request) bool {
+	var body struct {
+		Force bool `json:"force"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return false
+	}
+	return body.Force
+}
 
 // haltTarget resolves the {space, session-tab} a halt action names, writing the
 // error response and returning ok=false when it cannot: an unknown space or
@@ -72,8 +88,10 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := *info.Session
 
-	if s.terms.HasLiveSession(e.ID) {
-		httpError(w, http.StatusConflict, "this space already has a live session — end it before resuming")
+	force := forceRequested(r)
+	if !force && s.terms.HasLiveSession(e.ID) {
+		httpErrorCode(w, http.StatusConflict, codeLiveSession,
+			"this space already has a live session — two agents will share one working tree")
 		return
 	}
 	spec, status, err := agentSpec(s.resolve(e), sess.AgentName)
@@ -104,7 +122,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 			Role:      sess.Role,
 			Agent:     spec.Adapter,
 			AgentName: spec.Name,
-		}); err != nil {
+		}, force); err != nil {
 		if errors.Is(err, terminal.ErrSessionExists) {
 			httpError(w, http.StatusConflict, "this space already has a live session")
 			return
@@ -134,8 +152,10 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := *info.Session
 
-	if s.terms.HasLiveSession(e.ID) {
-		httpError(w, http.StatusConflict, "this space already has a live session — end it before respawning")
+	force := forceRequested(r)
+	if !force && s.terms.HasLiveSession(e.ID) {
+		httpErrorCode(w, http.StatusConflict, codeLiveSession,
+			"this space already has a live session — two agents will share one working tree")
 		return
 	}
 
@@ -168,6 +188,7 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 		role:      sess.Role,
 		spec:      spec,
 		sessionID: newSessionID(),
+		force:     force,
 	})
 	if err != nil {
 		httpError(w, status, err.Error())

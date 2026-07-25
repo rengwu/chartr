@@ -16,10 +16,15 @@ import (
 var ErrNoTerminal = errors.New("terminal: no such terminal")
 
 // ErrSessionExists is returned when a space already has a live session and one
-// more is asked for. One session per space at a time is the invariant (spec,
-// State model): parallelism is many spaces, never many sessions in one working
-// tree. Ad-hoc shells do not count — a space may carry any number of those
-// alongside its one session.
+// more is asked for without the operator's override. One session per space is the
+// default (spec, State model): parallelism is meant to be many spaces, never many
+// sessions in one working tree. Ad-hoc shells do not count — a space may carry any
+// number of those alongside its one session.
+//
+// It is a default rather than a hard rule (ADR 0003 as amended): OpenSession's
+// force argument seats a second session anyway, because only the operator can know
+// whether two agents will actually collide in the tree. Everything downstream of
+// the gate is unchanged — a forced session is an ordinary session.
 var ErrSessionExists = errors.New("terminal: the space already has a live session")
 
 // Manager owns every ad-hoc terminal in the chartr process, keyed by id and
@@ -153,19 +158,24 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 // caller (the same id the claim commit and payload archive are keyed by), so the
 // whole spawn refers to one session everywhere.
 //
-// It refuses with ErrSessionExists if the space already has a live session — one
-// session per space at a time. A launch failure leaves nothing seated; the caller,
-// having already written the claim, surfaces it (the stale claim stands until the
-// human acts, ADR 0008).
-func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string, opener string, s Session) (*Terminal, error) {
-	m.mu.Lock()
-	for _, tid := range m.order {
-		if t := m.terms[tid]; t != nil && t.SpaceID == spaceID && t.isLiveSession() {
-			m.mu.Unlock()
-			return nil, ErrSessionExists
+// It refuses with ErrSessionExists if the space already has a live session, unless
+// force says the operator confirmed the concurrency at the gate (ADR 0003 as
+// amended). The check runs under the lock so it is the one that closes the race:
+// the server's earlier HasLiveSession is only there to refuse before a claim is
+// written, and two spawns that pass it together still serialise here. A launch
+// failure leaves nothing seated; the caller, having already written the claim,
+// surfaces it (the stale claim stands until the human acts, ADR 0008).
+func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string, opener string, s Session, force bool) (*Terminal, error) {
+	if !force {
+		m.mu.Lock()
+		for _, tid := range m.order {
+			if t := m.terms[tid]; t != nil && t.SpaceID == spaceID && t.isLiveSession() {
+				m.mu.Unlock()
+				return nil, ErrSessionExists
+			}
 		}
+		m.mu.Unlock()
 	}
-	m.mu.Unlock()
 
 	sess := s
 	t, err := newProc(id, spaceID, cwd, launchSpec{
@@ -378,7 +388,10 @@ func sessionTitle(s Session) string {
 
 // HasLiveSession reports whether spaceID already has a live session — the
 // one-session-per-space precondition the spawn path checks before it writes a
-// claim, so it never claims a ticket it cannot then seat.
+// claim, so it never claims a ticket it cannot then seat. It is also what the
+// spawn path asks to decide whether the operator needs to confirm concurrency
+// (ADR 0003 as amended); the confirmed spawn passes force through to OpenSession
+// and this answer stops mattering.
 func (m *Manager) HasLiveSession(spaceID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

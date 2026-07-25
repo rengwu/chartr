@@ -3,7 +3,24 @@
 // resulting state arrives separately over the control socket as a fresh whole
 // snapshot, so these helpers return only the action's own result (or throw).
 
-export class ActionError extends Error {}
+// ActionError carries chartr's own message for a refused action, and — for the
+// refusals chartr tags — a stable `code` the surface can branch on. Only one
+// refusal is tagged today (LIVE_SESSION), because only one is the operator's to
+// overrule; everything else stays a message to show.
+export class ActionError extends Error {
+  readonly code?: string
+  constructor(message: string, code?: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+// LIVE_SESSION marks the one refusal a confirmation can turn into a spawn: the
+// space already has a live session (ADR 0003 as amended). Every other 409 — a held
+// ticket, a missing agent — is a refusal of fact, so the surface must not offer to
+// override it, and matching on the code rather than the message is what keeps the
+// copy editable without silently re-classifying a refusal.
+export const LIVE_SESSION = 'live_session_exists'
 
 async function send(method: string, path: string, body?: unknown): Promise<unknown> {
   const res = await fetch(path, {
@@ -13,13 +30,15 @@ async function send(method: string, path: string, body?: unknown): Promise<unkno
   })
   if (!res.ok) {
     let msg = `${method} ${path} failed (${res.status})`
+    let code: string | undefined
     try {
-      const data = (await res.json()) as { error?: string }
+      const data = (await res.json()) as { error?: string; code?: string }
       if (data?.error) msg = data.error
+      code = data?.code
     } catch {
       // Non-JSON error body; keep the status-line message.
     }
-    throw new ActionError(msg)
+    throw new ActionError(msg, code)
   }
   if (res.status === 204) return null
   const text = await res.text()
@@ -152,17 +171,23 @@ export interface SpawnResult {
 // chosen agent's TUI with the read-this-file opener typed in. A blocked spawn — an
 // absent agent, a held ticket — surfaces as a thrown ActionError carrying the
 // chartr's specific message, whatever chartr's reason was.
+//
+// `force` is the operator's answer to the concurrency warning, sent only on the
+// retry after they confirm it: it overrules the one-live-session-per-space gate and
+// nothing else (ADR 0003 as amended). The first call always goes unforced, so the
+// warning is the operator's to see rather than something the surface skips.
 export function spawnSession(
   id: string,
   slug: string,
   num: number,
   role: string,
   agent = '',
+  force = false,
 ): Promise<SpawnResult> {
   return send(
     'POST',
     `/api/spaces/${encodeURIComponent(id)}/maps/${encodeURIComponent(slug)}/tickets/${num}/spawn`,
-    { role, agent },
+    { role, agent, force },
   ) as Promise<SpawnResult>
 }
 
@@ -174,12 +199,24 @@ export function spawnSession(
 // the stale one); releaseSession clears the claim back to the frontier. The
 // resulting state — a live tab again, or the ticket back on the frontier — arrives
 // over the control socket; a refusal surfaces as a thrown ActionError.
-export function resumeSession(spaceId: string, sessionId: string): Promise<unknown> {
-  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/resume`)
+//
+// Resume and respawn seat a session, so both meet the same one-live-session gate a
+// fresh spawn does and both take the same `force` the operator's confirmation
+// sends. Release clears a claim and seats nothing, so it has no such gate.
+export function resumeSession(spaceId: string, sessionId: string, force = false): Promise<unknown> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/resume`,
+    { force },
+  )
 }
 
-export function respawnSession(spaceId: string, sessionId: string): Promise<unknown> {
-  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/respawn`)
+export function respawnSession(spaceId: string, sessionId: string, force = false): Promise<unknown> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/respawn`,
+    { force },
+  )
 }
 
 export function releaseSession(spaceId: string, sessionId: string): Promise<unknown> {

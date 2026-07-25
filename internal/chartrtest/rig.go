@@ -265,6 +265,16 @@ func (h *Chartr) SpawnWithAgent(spaceID, slug string, num int, role, agent strin
 		map[string]string{"role": role, "agent": agent})
 }
 
+// SpawnForced posts the spawn the operator sends after confirming the concurrency
+// warning: the same request as SpawnWithAgent, plus the force that overrules the
+// one-live-session-per-space gate (ADR 0003 as amended). It is its own helper for
+// the same reason SpawnWithAgent is — a test says which shape of request it makes.
+func (h *Chartr) SpawnForced(spaceID, slug string, num int, role, agent string) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/spawn", spaceID, slug, num),
+		map[string]any{"role": role, "agent": agent, "force": true})
+}
+
 // Resume, Respawn, and Release drive the three death-halt choices for a pinned
 // dead session (ticket 10). Each is a plain HTTP action so a test asserts that the
 // halt takes none of them on its own and that each does exactly its one thing.

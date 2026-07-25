@@ -13,6 +13,7 @@
     pickFolder,
     registerSpace,
     ActionError,
+    LIVE_SESSION,
   } from "./lib/actions";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpaceCard from "./lib/SpaceCard.svelte";
@@ -301,18 +302,37 @@
     release: releaseSession,
   } as const;
 
+  // The halt choice the operator has been warned about and not yet answered:
+  // resuming or respawning would seat a second live session in a space that already
+  // has one (ADR 0003 as amended). Release never appears here — it clears a claim
+  // and seats nothing, so it meets no such gate.
+  let pendingHalt = $state<{
+    space: Space;
+    t: Terminal;
+    verb: string;
+    run: (spaceId: string, sessionId: string, force?: boolean) => Promise<unknown>;
+  } | null>(null);
+
   async function haltAction(
     space: Space,
     t: Terminal,
     verb: string,
-    run: (spaceId: string, sessionId: string) => Promise<unknown>,
+    run: (spaceId: string, sessionId: string, force?: boolean) => Promise<unknown>,
+    force = false,
   ) {
     selectSpace(space.id);
     activeTermId = t.id;
     try {
-      await run(space.id, t.id);
+      await run(space.id, t.id, force);
+      pendingHalt = null;
     } catch (e) {
-      actionError = `Couldn’t ${verb} this session: ${(e as Error).message}`;
+      // The one refusal the operator can overrule opens the warning; everything else
+      // is a refusal of fact and lands as an error.
+      if (e instanceof ActionError && e.code === LIVE_SESSION) {
+        pendingHalt = { space, t, verb, run };
+      } else {
+        actionError = `Couldn’t ${verb} this session: ${(e as Error).message}`;
+      }
     }
   }
 
@@ -671,6 +691,37 @@
       <Button variant="outline" size="sm" onclick={() => (actionError = null)}>
         Close
       </Button>
+    </div>
+  </Modal>
+
+  <!-- Resuming or respawning into a space that already has a live session runs
+       both agents in one working tree (ADR 0003 as amended). Same warning the
+       spawn path shows, at the halt's own gate. -->
+  <Modal
+    open={pendingHalt !== null}
+    title="This space already has a live session"
+    onClose={() => (pendingHalt = null)}
+  >
+    <div class="space-y-4 text-sm">
+      <p class="text-muted-foreground">
+        {pendingHalt ? `To ${pendingHalt.verb} this session` : "This"} would run two agents in
+        <strong class="font-medium text-foreground">the same working tree</strong>. There is no
+        branch or worktree between them, so they can overwrite each other's uncommitted
+        edits with no conflict to resolve.
+      </p>
+      <div class="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onclick={() => (pendingHalt = null)}>Cancel</Button>
+        <Button
+          variant="default"
+          size="sm"
+          onclick={() => {
+            const p = pendingHalt;
+            if (p) haltAction(p.space, p.t, p.verb, p.run, true);
+          }}
+        >
+          {pendingHalt ? `${pendingHalt.verb[0].toUpperCase()}${pendingHalt.verb.slice(1)} anyway` : "Continue"}
+        </Button>
+      </div>
     </div>
   </Modal>
 </div>

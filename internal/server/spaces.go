@@ -387,6 +387,18 @@ func httpError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// codeLiveSession tags the one refusal the operator is allowed to overrule: a
+// space that already has a live session (ADR 0003 as amended). The surface needs
+// to tell it apart from every other 409 — a held ticket, a missing agent — which
+// are refusals of fact and no confirmation can turn into a spawn. Only that
+// distinction is machine-readable; the message stays the human's copy.
+const codeLiveSession = "live_session_exists"
+
+// httpErrorCode is httpError plus a stable code the surface can branch on.
+func httpErrorCode(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
 // openerPlaceholder stands in for the read-this-file opener in the library's
 // command preview. It is deliberately unmistakable for a real path: the preview
 // answers "where does the opener go", not "what will it say".
