@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s51c44cb5d513
+claimed_at: 2026-07-25T03:31:19Z
 ---
 
 # The OSC sniffer misreads a UTF-8 byte as a C1 control
