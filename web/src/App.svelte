@@ -49,6 +49,7 @@
     GitBranchIcon,
     GitDiffIcon,
     FolderOpen,
+    Copy,
   } from "phosphor-svelte";
 
   // Zero-pad a ticket number for a session row's label (#01), matching the detail
@@ -251,6 +252,32 @@
     } catch (e) {
       actionError = `Couldn’t remove “${space.name}”: ${(e as Error).message}`;
     }
+  }
+
+  // Copy-to-clipboard for the space card's two identity strings. The card sets
+  // `select-none` — it is a click target, and drag-selecting inside one is noise
+  // — so these buttons are the *only* way those strings leave the UI, not a
+  // shortcut alongside manual selection. That is why the failure is shown rather
+  // than swallowed the way the terminal's copy-on-select swallows it: there,
+  // a denied clipboard still leaves you a selection to ⌘C; here it would leave
+  // nothing at all. `navigator.clipboard` needs a secure context, so a harness
+  // opened over plain http on a LAN address lands in exactly that case.
+  let copied = $state<{ key: string; ok: boolean } | null>(null);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function copyToClipboard(key: string, text: string) {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    copied = { key, ok };
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => {
+      copied = null;
+    }, 1200);
   }
 
   // Selecting a space is also how you leave the settings route — it is a place
@@ -469,13 +496,18 @@
             {@const isSelected = selected?.id === space.id}
             {@const attention = spaceAttention(space)}
             {@const liveness = spaceLiveness(space)}
+            {@const pathKey = `${space.id}:path`}
             <!-- One space, a bordered container on the sidebar surface (its own
                  token family — not the bg-card content surface). The whole card is
                  the selection target — clicking anywhere that isn't its own control
                  selects the space — so the identity, its sessions and its actions
                  all read as one object rather than a header you must aim at.
                  Selected emphasis rides --primary, the one emphasis token; the
-                 chrome is monochrome. -->
+                 chrome is monochrome. Because the whole card is a click target,
+                 it is `select-none` throughout — name, sessions, branch. Dragging
+                 a selection across a thing you click is noise, and the two
+                 strings actually worth lifting (the path and the branch) have
+                 their own copy buttons instead. -->
             <div
               role="button"
               tabindex="0"
@@ -483,7 +515,7 @@
               aria-label="Select {space.name}"
               title={space.path}
               class={[
-                "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors",
+                "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
                 isSelected
                   ? "border-primary/60 bg-sidebar-accent/30"
                   : "border-sidebar-border hover:border-primary/30",
@@ -545,6 +577,35 @@
                   {/if}
                   <span class="truncate">{space.name}</span>
                 </span>
+                <!-- The path only ever existed as the card's tooltip; this lifts
+                     it onto the clipboard, which is the form you actually want it
+                     in (to `cd` there). Sits beside the forget action and stops
+                     propagation the same way. -->
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  class="-mt-0.5 shrink-0 hover:text-primary"
+                  aria-label="Copy path"
+                  title={copied?.key === pathKey
+                    ? copied.ok
+                      ? "Copied"
+                      : "Couldn’t copy — clipboard unavailable"
+                    : `Copy path — ${space.path}`}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    void copyToClipboard(pathKey, space.path);
+                  }}
+                >
+                  {#if copied?.key === pathKey}
+                    {#if copied.ok}
+                      <Check class="text-primary" />
+                    {:else}
+                      <Warning class="text-destructive" />
+                    {/if}
+                  {:else}
+                    <Copy />
+                  {/if}
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-xs"
@@ -730,16 +791,44 @@
 
               <!-- Actions: the two ticketless on-ramps — ideate and a plain
                    shell — sharing their row with the branch, which doubles as
-                   the spacer that pushes them right. -->
+                   the spacer that pushes them right. The branch is a real ghost
+                   Button rather than a bare span with a handler: it is a control
+                   inside a control, so it earns the same hover, focus ring and
+                   keyboard reach every other action in this row has. The size
+                   variants all set a fixed height and `shrink-0`, so this one
+                   overrides both — it still has to truncate and still has to be
+                   the spacer. -->
               <div class="flex items-center gap-1">
                 <span
                   class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
                 >
                   {#if space.branch}
-                    <GitBranchIcon class="size-3 shrink-0" />
-                    <span class="truncate font-mono" title={space.branch}
-                      >{space.branch}</span
+                    {@const branchKey = `${space.id}:branch`}
+                    <Button
+                      variant="ghost"
+                      class="-mx-1 h-auto min-w-0 shrink justify-start gap-1.5 rounded-sm px-1 py-0.5 text-[0.6rem] font-normal text-muted-foreground hover:text-foreground [&_svg:not([class*='size-'])]:size-3"
+                      aria-label="Copy branch name"
+                      title={copied?.key === branchKey
+                        ? copied.ok
+                          ? "Copied"
+                          : "Couldn’t copy — clipboard unavailable"
+                        : `Copy branch — ${space.branch}`}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        void copyToClipboard(branchKey, space.branch ?? "");
+                      }}
                     >
+                      {#if copied?.key === branchKey}
+                        {#if copied.ok}
+                          <Check class="text-primary" />
+                        {:else}
+                          <Warning class="text-destructive" />
+                        {/if}
+                      {:else}
+                        <GitBranchIcon />
+                      {/if}
+                      <span class="truncate font-mono">{space.branch}</span>
+                    </Button>
                   {/if}
                 </span>
                 <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
