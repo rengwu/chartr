@@ -42,3 +42,45 @@ that launches with the typed context (or bare when empty), picking a self-drivin
 skill launches with no box, the context reaches the agent through `/launch` and its
 payload, and Esc dismisses cleanly; `check` / `build` / `vitest` and `go vet` /
 `go test` pass; no amber in the built CSS.
+
+## Answer
+
+Shipped the optional box. Frontend only — 01's `/launch` already took `context`
+and already wrote the `## Your task` trailer, so this ticket just gave the
+operator a way to type the line.
+
+**The decision, in `launchmenu.ts` (unit-tested).** `launchClick` no longer
+returns a bare `(agent, skill)`; it returns a `LaunchStep` — `{kind: 'context',
+agent, skill}` when the picked skill's snapshot flag is `needsContext`,
+`{kind: 'launch', agent, skill}` otherwise, and still `null` when no agent is
+ready (an unchosen agent opens no box either). `launchPayload(agent, skill, line)`
+assembles the call: the trimmed line rides as `context`, and a blank or
+whitespace-only line **omits the key entirely**, so an empty box is a real launch
+that opens the skill bare. There is no validation gate anywhere on the path.
+`contextHint(skill)` is the placeholder — `What should grill work on?`, named from
+the skill that will read it; the skill's `description` says what the skill *does*
+rather than what the line should say, so it stays on the menu row above and the
+field asks the question instead.
+
+**The box (`SkillLauncher.svelte`).** A vendored `Popover` (added with
+`npx shadcn-svelte@latest add popover`; no lucide, no new dependency — bits-ui was
+already there), not a `Dialog`: this is a quick line, not a task. The dropdown has
+closed by the time it opens, so it hangs off the same trigger via `customAnchor`,
+with the menu's `onCloseAutoFocus` suppressed while a launch is pending so the
+closing menu does not pull focus back off the field. One `Input` in a `<form>`
+with a `Launch` submit — Enter launches for free, Esc closes on the escape layer
+without launching, and clicking away is the same dismissal. Autofocus is
+`onOpenAutoFocus` preventDefault + focus. Tokens and primitives throughout.
+Deliberately *outside* the `DropdownMenu` content: a menu's typeahead and roving
+focus would eat the keystrokes and steal focus on pointer-move.
+
+**Both mounts.** `onrun` / `onLaunch` / `launchSpace` gained a trailing optional
+`context`, threaded into the existing `launch()` action. Nothing else moved.
+
+**Verified on the real binary** (isolated `XDG_CONFIG_HOME` + data dir, a scratch
+space, an `echo` agent): `research` opened the autofocused box, a typed line
+landed under `## Your task` in the written payload; `grill` with an empty box
+launched a payload with no trailer; `ideate` launched on the click with no box;
+Esc dismissed opening nothing. Frontend `check` (0/0), `vitest` (148 pass), and
+`build` are green with no amber in the built CSS; `go vet ./...` and
+`go test ./...` pass.

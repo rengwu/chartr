@@ -53,9 +53,10 @@
     onOpenShell: () => void
     // The skill launcher (skill-launcher map): a live, ticketless on-ramp for a
     // space with no shell open, running any self-driving skill on a chosen agent.
-    // The control here picks the agent and the skill and hands both up; the launch
-    // is bare (no context — that is 03's box).
-    onLaunch: (agent: string, skill: string) => void
+    // The control here picks the agent and the skill and hands both up, along with
+    // the optional one line a `needs-context` skill asked for — absent when the
+    // launch is bare, which is every self-driving one.
+    onLaunch: (agent: string, skill: string, context?: string) => void
     // The cockpit-wide way into the config surface (ticket 05), owned by the
     // enclosing App — the route is App's, this pane just carries the control at
     // the right end of its title bar. Absent in the macOS shell, where the

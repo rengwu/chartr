@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentModel, launchClick, launchMenu } from './launchmenu'
+import { agentModel, contextHint, launchClick, launchMenu, launchPayload } from './launchmenu'
 import type { Agent, ResolvedSkill } from './model'
 
 function agent(overrides?: Partial<Agent>): Agent {
@@ -72,9 +72,22 @@ describe('launchMenu', () => {
 })
 
 describe('launchClick', () => {
-  it('launches the clicked skill on the ready agent', () => {
+  it('launches a self-driving skill straight away — no box', () => {
     const menu = launchMenu([agent({ name: 'claude' })], 'claude', library)
-    expect(launchClick(menu, library[1])).toEqual({ agent: 'claude', skill: 'wayfinder' })
+    expect(launchClick(menu, library[1])).toEqual({
+      kind: 'launch',
+      agent: 'claude',
+      skill: 'wayfinder',
+    })
+  })
+
+  it('offers the box first for a needs-context skill', () => {
+    const menu = launchMenu([agent({ name: 'claude' })], 'claude', library)
+    expect(launchClick(menu, library[2])).toEqual({
+      kind: 'context',
+      agent: 'claude',
+      skill: library[2],
+    })
   })
 
   it('does not launch while no agent is chosen', () => {
@@ -82,9 +95,44 @@ describe('launchClick', () => {
     expect(launchClick(menu, library[0])).toBeNull()
   })
 
+  it('does not open the box while no agent is chosen either', () => {
+    const menu = launchMenu([agent({ name: 'claude' })], undefined, library)
+    expect(launchClick(menu, library[2])).toBeNull()
+  })
+
   it('does not launch when the library is empty', () => {
     const menu = launchMenu([], undefined, library)
     expect(launchClick(menu, library[0])).toBeNull()
+  })
+})
+
+describe('launchPayload', () => {
+  it('carries a typed line as the context', () => {
+    expect(launchPayload('claude', 'grill', 'the retry budget')).toEqual({
+      agent: 'claude',
+      skill: 'grill',
+      context: 'the retry budget',
+    })
+  })
+
+  it('omits the context entirely when the line is empty — an empty box is a valid launch', () => {
+    expect(launchPayload('claude', 'grill', '')).toEqual({ agent: 'claude', skill: 'grill' })
+  })
+
+  it('treats a whitespace-only line as empty', () => {
+    expect(launchPayload('claude', 'grill', '   \t ')).toEqual({ agent: 'claude', skill: 'grill' })
+  })
+
+  it('trims the line it does carry', () => {
+    expect(launchPayload('claude', 'research', '  bits-ui popovers  ').context).toBe(
+      'bits-ui popovers',
+    )
+  })
+})
+
+describe('contextHint', () => {
+  it('names the skill that will read the line', () => {
+    expect(contextHint(library[2])).toBe('What should grill work on?')
   })
 })
 

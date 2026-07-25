@@ -285,12 +285,14 @@
   // only the spawn primitive with a real session, so it opens exactly like a shell
   // (no role picker, no ticket, nothing to gate on). ideate is now just the
   // `skill=ideate` case of this one launch. It names the agent that runs it
-  // (ticket 03) and passes no context — the optional context box is 03's next step.
-  async function launchSpace(space: Space, agent: string, skill: string) {
+  // (agent-selection ticket 03), and carries the optional one line a
+  // `needs-context` skill asked for — absent for every bare launch, which is the
+  // whole of the self-driving ones.
+  async function launchSpace(space: Space, agent: string, skill: string, context?: string) {
     selectSpace(space.id);
     opening = true;
     try {
-      const { id } = await launch(space.id, agent, skill);
+      const { id } = await launch(space.id, agent, skill, context);
       activeTermId = id;
     } catch (e) {
       actionError = `Couldn’t launch ${skill}: ${(e as Error).message}`;
@@ -756,7 +758,7 @@
                   size="xs"
                   ariaLabel="Launch a skill in {space.name}"
                   title="Launch a self-driving skill in {space.name} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
-                  onrun={(agent, skill) => launchSpace(space, agent, skill)}
+                  onrun={(agent, skill, context) => launchSpace(space, agent, skill, context)}
                   onregister={() => openSettings({ kind: "user" })}
                 >
                   {#snippet icon()}<Plus />{/snippet}
@@ -891,7 +893,7 @@
           terminalPrefs={control.model?.terminal}
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
-          onLaunch={(agent, skill) => launchSpace(selected, agent, skill)}
+          onLaunch={(agent, skill, context) => launchSpace(selected, agent, skill, context)}
           onOpenSettings={titleBarH
             ? undefined
             : () => openSettings(lastSettingsScope ?? { kind: "default" })}

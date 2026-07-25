@@ -93,6 +93,20 @@ under Decisions so far.
   the optional context box is 03.
   [02](tickets/02-the-sidebar-skill-picker.md)
 
+- **03 — the optional context box.** A `needsContext` skill's click opens a one-line
+  box instead of launching; everything else launches on the click as before.
+  `launchClick` now returns a `LaunchStep` (`context` vs `launch`), and
+  `launchPayload` omits `context` entirely for a blank line — an empty box is a real
+  launch that opens the skill bare, and nothing on the path validates. The box is a
+  vendored `Popover` (not a `Dialog`) hung off the launcher's own trigger by
+  `customAnchor`, holding one `Input` in a form: autofocused, Enter or `Launch`
+  fires, Esc dismisses launching nothing. It sits outside the `DropdownMenu` content
+  on purpose — a menu's typeahead and roving focus would eat the keystrokes. The
+  placeholder is named from the skill (`What should grill work on?`), since a
+  `description` says what the skill does, not what the line should say. Frontend
+  only: 01's `/launch` already carried `context` into the payload trailer.
+  [03](tickets/03-optional-context-for-needs-context-skills.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled above; this map only executes it. A ticket

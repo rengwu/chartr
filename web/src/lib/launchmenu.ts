@@ -5,7 +5,9 @@
 // `chooseAgent` ranks, each labelled by the model it already carries) over the
 // on-ramp skills the library marks launchable. A skill click *is* the launch, on
 // the currently-selected agent — there is no primary-action button and no
-// remembered skill.
+// remembered skill. The one exception is a skill that reads a subject
+// (`needs-context: true`), which earns an optional one-line box between the click
+// and the launch (ticket 03).
 
 import type { Agent, ResolvedSkill } from './model'
 import { chooseAgent, type AgentChoice } from './agentchoice'
@@ -48,18 +50,59 @@ export function launchMenu(
   }
 }
 
+// The `/launch` call a skill click assembles. `context` is the operator's optional
+// one line, and it is *present only when they typed one* — an empty box is a valid
+// launch that opens the skill bare (ticket 03).
+export interface LaunchPayload {
+  agent: string
+  skill: string
+  context?: string
+}
+
+// What a skill click does next. A skill that reads a subject
+// (`needs-context: true`) earns the optional one-line box before it runs; a
+// self-driving one launches on the click, exactly as 02 already did.
+export type LaunchStep =
+  // Offer the box. Carries the agent the launch will run on (so the box can name
+  // it) and the skill itself (for its hint), not a payload — nothing launches
+  // until the operator confirms.
+  | { kind: 'context'; agent: string; skill: ResolvedSkill }
+  // Launch now, bare.
+  | { kind: 'launch'; agent: string; skill: string }
+
 /**
- * What a click on `skill` launches: the `(agent, skill)` pair the callback fires,
- * or `null` when no agent is ready yet (no library, or nothing chosen). A null
- * result is not a dead click — the agent section above is the actionable path, and
- * the skill row renders disabled until an agent is chosen.
+ * What a click on `skill` does: launch it on the ready agent, offer the context
+ * box first when the skill asks for one, or nothing (`null`) when no agent is
+ * ready yet (no library, or nothing chosen). A null result is not a dead click —
+ * the agent section above is the actionable path, and the skill row renders
+ * disabled until an agent is chosen.
  */
-export function launchClick(
-  menu: LaunchMenu,
-  skill: ResolvedSkill,
-): { agent: string; skill: string } | null {
+export function launchClick(menu: LaunchMenu, skill: ResolvedSkill): LaunchStep | null {
   if (menu.choice.kind !== 'ready') return null
-  return { agent: menu.choice.agent.name, skill: skill.name }
+  const agent = menu.choice.agent.name
+  if (skill.needsContext) return { kind: 'context', agent, skill }
+  return { kind: 'launch', agent, skill: skill.name }
+}
+
+/**
+ * The `/launch` call the context box fires for `line`. Optional means optional:
+ * a blank (or whitespace-only) line carries no `context` at all, so the skill
+ * opens bare — the payload is its body unchanged, per 01. There is no validation
+ * gate; both spellings are a real launch.
+ */
+export function launchPayload(agent: string, skill: string, line: string): LaunchPayload {
+  const context = line.trim()
+  return context ? { agent, skill, context } : { agent, skill }
+}
+
+/**
+ * The box's placeholder, taken from the skill that will read the line — `grill`
+ * wants to know *what* to grill, `research` *what* to research. The skill's
+ * `description` says what the skill does rather than what the line should say, so
+ * it stays on the menu row above and the field asks the question instead.
+ */
+export function contextHint(skill: ResolvedSkill): string {
+  return `What should ${skill.name} work on?`
 }
 
 /**
