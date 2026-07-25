@@ -74,7 +74,6 @@
   let hash = $state(typeof location === "undefined" ? "" : location.hash);
   const route = $derived(parseRoute(hash));
 
-  // Navigation is a hash assignment; the hashchange listener below catches every
   // The last settings scope the operator was on, remembered across leaving the
   // surface (the hash is cleared on exit, so the scope would otherwise be lost).
   // The cockpit-wide gear reopens onto this, so a click lands you back where you
@@ -84,6 +83,7 @@
     if (route.settings && route.scope) lastSettingsScope = route.scope;
   });
 
+  // Navigation is a hash assignment; the hashchange listener below catches every
   // other way the bar changes (manual edits, back/forward). The local state is
   // set here too, synchronously: hashchange is delivered a task later, and until
   // it lands `route` would still read the *old* hash. That stale window is real —
@@ -390,7 +390,7 @@
          the cockpit-wide way into settings, which in a plain browser tab (no
          title bar) rides the space stage's header instead. -->
     <header
-      class="flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
+      class="relative flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
       style="height: {titleBarH}px"
     >
       <span class="flex min-w-0 items-center gap-2">
@@ -401,6 +401,21 @@
         </span>
         <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       </span>
+      <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
+           the button's own press state nudges it with `translate-y-px`, and
+           Tailwind composes both through one translate variable, so a centring
+           transform would be clobbered on mousedown and the gear would jump. -->
+      <div class="absolute inset-y-0 right-1.5 flex items-center">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Config"
+          title="Your agents, and where the files behind them live (,)"
+          onclick={() => openSettings(lastSettingsScope ?? { kind: "default" })}
+        >
+          <Gear />
+        </Button>
+      </div>
     </header>
   {/if}
 
@@ -430,21 +445,6 @@
       {/if}
 
       {#if spaces.length > 0}
-      <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
-           the button's own press state nudges it with `translate-y-px`, and
-           Tailwind composes both through one translate variable, so a centring
-           transform would be clobbered on mousedown and the gear would jump. -->
-      <div class="absolute inset-y-0 right-1.5 flex items-center">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Config"
-          title="Your agents, and where the files behind them live (,)"
-          onclick={() => openSettings(lastSettingsScope ?? { kind: "default" })}
-        >
-          <Gear />
-        </Button>
-      </div>
         <div class="cockpit-bar justify-between gap-2 bg-transparent">
           <Input
             type="text"
