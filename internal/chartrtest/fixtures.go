@@ -58,12 +58,16 @@ func WriteTicket(t testing.TB, repo, slug, filename, body string) string {
 // StubAgent installs a fake agent CLI named `name` on PATH for the rest of the
 // test — the "stub agent CLI on PATH" the spawn tests drive against (spec, Testing
 // Decisions). The stub is a real executable chartr launches in a PTY: it
-// appends every argument it was launched with, and then every line it reads on
-// stdin, to one record file, and blocks reading more so the session stays live.
-// The returned path is that record file, so a test asserts the opener reached the
-// agent by reading it back — through *either* delivery, since an adapter may put
-// the opener on the argv or type it in, and a test asserting the agent was told
-// should not care which.
+// appends every argument it was launched with, then its whole environment, and
+// then every line it reads on stdin, to one record file, and blocks reading more
+// so the session stays live. The returned path is that record file, so a test
+// asserts the opener reached the agent by reading it back — through *either*
+// delivery, since an adapter may put the opener on the argv or type it in, and a
+// test asserting the agent was told should not care which.
+//
+// The environment is recorded because it is launch input exactly as argv is: an
+// agent registered with `env` is asking for variables to be set on the process,
+// and the only honest place to assert that is the process itself.
 //
 // It prepends a fresh bin directory to PATH (so the stub shadows any real CLI of
 // the same name) via t.Setenv, which forbids parallel tests — the spawn tests are
@@ -77,14 +81,15 @@ func StubAgent(t testing.TB, name string) (recordPath string) {
 	binDir := t.TempDir()
 	recordPath = filepath.Join(t.TempDir(), name+"-delivery.log")
 
-	// Argv first, one argument per line, then a line-buffered stdin recorder: read a
-	// line, append it (reopening the file each iteration flushes it to disk), loop.
-	// The read blocks on an open PTY, so the stub stays alive as a live TUI would —
-	// exactly what the "lands on a live tab" assertion needs.
-	// Each line is tagged with how it arrived, so a test can assert not just that
-	// the opener reached the agent but which delivery carried it.
+	// Argv first, one argument per line, then the environment, then a line-buffered
+	// stdin recorder: read a line, append it (reopening the file each iteration
+	// flushes it to disk), loop. The read blocks on an open PTY, so the stub stays
+	// alive as a live TUI would — exactly what the "lands on a live tab" assertion
+	// needs. Each line is tagged with how it arrived, so a test can assert not just
+	// that the opener reached the agent but which delivery carried it.
 	script := fmt.Sprintf(
 		"#!/bin/sh\nfor a in \"$@\"; do printf 'argv: %%s\\n' \"$a\" >> %[1]q; done\n"+
+			"env | sed 's/^/env: /' >> %[1]q\n"+
 			"while IFS= read -r line; do printf 'stdin: %%s\\n' \"$line\" >> %[1]q; done\n", recordPath)
 	stub := filepath.Join(binDir, name)
 	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {

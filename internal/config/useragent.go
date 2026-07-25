@@ -84,16 +84,21 @@ func agentFields(a Agent) []agentField {
 	return []agentField{
 		{key: "adapter", render: "adapter = " + strconv.Quote(a.Adapter), set: true},
 		{key: "prompt", render: "prompt = " + strconv.Quote(a.Prompt), set: a.Prompt != ""},
-		{key: "args", render: renderArgs(a.Args), set: len(a.Args) > 0},
+		{key: "args", render: renderList("args", a.Args), set: len(a.Args) > 0},
+		// The environment is written exactly as the operator typed it, tilde and all:
+		// expansion happens on the way out (agentenv.go), so their file keeps reading
+		// as the shell line they had in mind rather than as a machine-specific
+		// absolute path they never wrote.
+		{key: "env", render: renderList("env", a.Env), set: len(a.Env) > 0},
 	}
 }
 
-func renderArgs(args []string) string {
-	parts := make([]string, 0, len(args))
-	for _, s := range args {
+func renderList(key string, values []string) string {
+	parts := make([]string, 0, len(values))
+	for _, s := range values {
 		parts = append(parts, strconv.Quote(s))
 	}
-	return "args = [" + strings.Join(parts, ", ") + "]"
+	return key + " = [" + strings.Join(parts, ", ") + "]"
 }
 
 // setKeyInTable sets, replaces, or removes one key inside an already-located

@@ -377,8 +377,13 @@ func shellTitle(name string) string {
 // adapter and carries a Session plus an explicit title (the agent name is not the
 // tab's identity — the ticket it is bound to is).
 type launchSpec struct {
-	name    string
-	args    []string
+	name string
+	args []string
+	// env is what this launch adds to the inherited environment, as `KEY=VALUE`
+	// entries. Empty for an ad-hoc shell, which wants the operator's environment
+	// exactly as chartr received it; a session or an on-ramp carries whatever its
+	// registered agent asked for.
+	env     []string
 	title   string
 	session *Session
 }
@@ -396,7 +401,15 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	}
 	c := p.Command(spec.name, spec.args...)
 	c.Dir = cwd
+	// The agent's own variables go last, so an agent registered with a variable the
+	// cockpit's own environment also carries wins — later entries take precedence in
+	// every exec implementation, and the operator naming a variable on an agent is
+	// the more specific statement of intent. It cannot redirect which binary runs:
+	// that is resolved out of this process's PATH before the child environment is
+	// ever consulted (the env package), which is what keeps the registration probe
+	// and the spawn agreeing.
 	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	c.Env = append(c.Env, spec.env...)
 	if err := c.Start(); err != nil {
 		_ = p.Close()
 		return nil, fmt.Errorf("starting %s: %w", spec.name, err)

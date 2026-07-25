@@ -31,10 +31,15 @@ import (
 // not an error, and refuses every spawn until the operator registers one.
 
 // Agent is one registered launch spec. Adapter is the only required field:
-// everything a harness wants beyond its own name is Args.
+// everything a harness wants beyond its own name is Args and Env.
 type Agent struct {
 	Adapter string   `json:"adapter"`
 	Args    []string `json:"args,omitempty"`
+	// Env is the environment set on the launch, as `KEY=VALUE` entries — the half
+	// of "how I run this harness" that is not expressible as a flag, because the
+	// CLI reads it rather than parsing it (agentenv.go). As opaque as Args, but for
+	// a leading `~/` in a value, which expands on resolve.
+	Env []string `json:"env,omitempty"`
 	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
 	// name like `--prompt` (adapter.ParseDelivery). Empty leaves the adapter's own
 	// default in force.
@@ -47,8 +52,15 @@ type Agent struct {
 type ResolvedAgent struct {
 	Name string `json:"name"`
 	Agent
-	Present bool   `json:"present"`
-	Missing string `json:"missing,omitempty"`
+	// LaunchEnv is the environment a spawn actually hands the process: the embedded
+	// Agent.Env with its tildes expanded. The two are kept apart deliberately. The
+	// spec's Env is what the operator typed and what the editing surface must round
+	// trip — an edit that saved the expanded form back would quietly replace their
+	// `~/.claude2` with one machine's absolute path — while this is what only the
+	// launch and the command preview may read.
+	LaunchEnv []string `json:"launchEnv,omitempty"`
+	Present   bool     `json:"present"`
+	Missing   string   `json:"missing,omitempty"`
 }
 
 // Resolution is the resolved agent library for one machine plus any warnings —
@@ -71,6 +83,7 @@ type agentsFile struct {
 type rawAgent struct {
 	Adapter string   `toml:"adapter"`
 	Args    []string `toml:"args"`
+	Env     []string `toml:"env"`
 	Prompt  string   `toml:"prompt"`
 }
 
@@ -87,6 +100,7 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 		onPath = LookPath
 	}
 	raw, warnings := parseAgents(userTOML)
+	home := homeDir()
 
 	names := make([]string, 0, len(raw))
 	for name := range raw {
@@ -107,9 +121,15 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 				"agent %q has an unreadable prompt delivery: %s; the adapter's default stands", name, err))
 			a.Prompt = ""
 		}
+		// The environment resolves here, tildes expanded, and lands beside the spec
+		// rather than inside it: the launch and the command preview read the expanded
+		// form, the editing surface reads what the operator typed.
+		env, envWarnings := resolveEnv(name, a.Env, home)
+		warnings = append(warnings, envWarnings...)
 		r := ResolvedAgent{
-			Name:  name,
-			Agent: Agent{Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt},
+			Name:      name,
+			Agent:     Agent{Adapter: a.Adapter, Args: a.Args, Env: a.Env, Prompt: a.Prompt},
+			LaunchEnv: env,
 		}
 		r.Present = onPath(r.Adapter)
 		if !r.Present {
@@ -199,11 +219,12 @@ func ValidAgentName(name string) error {
 	return nil
 }
 
-// ValidAgent checks a spec the surface is about to write: an adapter to launch,
-// and a prompt delivery the adapter seam can read. Everything else — which flags
-// a harness wants, whether it has a model at all — is the operator's business and
-// deliberately unchecked. A flag this package has never heard of is the normal
-// case, not an error.
+// ValidAgent checks a spec the surface is about to write: an adapter to launch, a
+// prompt delivery the adapter seam can read, and an environment shaped like an
+// environment. Everything else — which flags a harness wants, whether it has a
+// model at all, what any variable means to it — is the operator's business and
+// deliberately unchecked. A flag or a variable this package has never heard of is
+// the normal case, not an error.
 func ValidAgent(a Agent) error {
 	if strings.TrimSpace(a.Adapter) == "" {
 		return fmt.Errorf("an agent needs an adapter — the CLI to launch")
@@ -214,7 +235,7 @@ func ValidAgent(a Agent) error {
 	if _, err := adapter.ParseDelivery(a.Prompt); err != nil {
 		return err
 	}
-	return nil
+	return ValidAgentEnv(a.Env)
 }
 
 // decodeTOML decodes into v, reporting success. A file too malformed to decode

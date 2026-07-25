@@ -187,6 +187,10 @@ type launchSpec struct {
 	Name    string
 	Adapter string
 	Args    []string
+	// Env is the environment the launch adds, as resolved `KEY=VALUE` entries with
+	// tildes already expanded. It never reaches the adapter seam: an environment is
+	// not argv, so it rides straight through to the PTY.
+	Env []string
 	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
 	// name. Empty leaves the adapter's own default in force.
 	Prompt string
@@ -229,7 +233,7 @@ func agentSpec(res config.Resolution, agent string) (launchSpec, int, error) {
 		if !a.Present {
 			return launchSpec{}, http.StatusConflict, errors.New(a.Missing)
 		}
-		return launchSpec{Name: a.Name, Adapter: a.Adapter, Args: a.Args, Prompt: a.Prompt}, 0, nil
+		return launchSpec{Name: a.Name, Adapter: a.Adapter, Args: a.Args, Env: a.LaunchEnv, Prompt: a.Prompt}, 0, nil
 	}
 	return launchSpec{}, http.StatusBadRequest, fmt.Errorf("no agent named %q is registered", agent)
 }
@@ -309,7 +313,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		Deliver: in.spec.Prompt,
 	})
 	if _, err := s.terms.OpenSession(in.entry.ID, in.entry.Path, in.sessionID, launch.Name, launch.Args,
-		launch.TypeIn, terminal.Session{
+		in.spec.Env, launch.TypeIn, terminal.Session{
 			MapSlug:   in.slug,
 			TicketNum: in.tk.Num,
 			Role:      in.role,

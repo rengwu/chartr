@@ -27,6 +27,7 @@ func (s *Server) handleSetAgent(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Adapter string   `json:"adapter"`
 		Args    []string `json:"args"`
+		Env     []string `json:"env"`
 		Prompt  string   `json:"prompt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -34,7 +35,7 @@ func (s *Server) handleSetAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent := config.Agent{Adapter: body.Adapter, Args: body.Args, Prompt: body.Prompt}
+	agent := config.Agent{Adapter: body.Adapter, Args: body.Args, Env: body.Env, Prompt: body.Prompt}
 	path, existing, err := s.readUserConfig()
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "reading user config: "+err.Error())

@@ -179,6 +179,88 @@ func TestLibraryRoundTripsThroughTheSnapshot(t *testing.T) {
 	}
 }
 
+// An agent's environment reaches the launched process, expanded — the whole point
+// of the field, and the assertion no unit test can make on chartr's behalf. The
+// motivating case is `CLAUDE_CONFIG_DIR=~/.claude2 claude`: a second config root,
+// which is not expressible as a flag because the CLI reads it rather than parsing
+// it.
+//
+// The tilde is what makes this an end-to-end test rather than a unit one. Nothing
+// between the config file and the PTY is a shell, so an unexpanded `~/.claude2`
+// would reach the agent literally and have it create a directory named `~` inside
+// the space — a failure that looks exactly like a working launch from the outside.
+func TestAgentEnvReachesTheProcessExpanded(t *testing.T) {
+	// A home the test owns, so the expansion is checkable. Git identity in the test
+	// repos is set per-repository, so moving HOME cannot disturb the claim commit.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	delivery := chartrtest.StubAgent(t, "env-harness")
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "harness-alt", map[string]any{
+		"adapter": "env-harness",
+		"args":    []string{"--fast"},
+		// Two variables chartr knows nothing about: one carrying a tilde it must
+		// expand, one it must pass through untouched.
+		"env":    []string{"CLAUDE_CONFIG_DIR=~/.claude2", "ANTHROPIC_BASE_URL=https://proxy.internal"},
+		"prompt": "argv",
+	})
+
+	// The library preview shows the expanded value, because it is the one place the
+	// expansion is visible before a launch — while the config keeps the tilde.
+	lib := agents(t, h)
+	if len(lib) != 1 {
+		t.Fatalf("library = %+v, want one agent", lib)
+	}
+	wantPreview := "CLAUDE_CONFIG_DIR=" + home + "/.claude2 ANTHROPIC_BASE_URL=https://proxy.internal env-harness --fast ‹opener›"
+	if got := strings.Join(lib[0].Command, " "); got != wantPreview {
+		t.Errorf("command preview = %q, want %q", got, wantPreview)
+	}
+	if got := strings.Join(lib[0].Env, " "); got != "CLAUDE_CONFIG_DIR=~/.claude2 ANTHROPIC_BASE_URL=https://proxy.internal" {
+		t.Errorf("wire env = %q, want it as typed so an edit cannot rewrite the operator's tilde", got)
+	}
+
+	sp := spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "harness-alt")
+	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
+	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
+
+	for _, want := range []string{
+		"env: CLAUDE_CONFIG_DIR=" + home + "/.claude2",
+		"env: ANTHROPIC_BASE_URL=https://proxy.internal",
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("the launched process never got %q:\n%s", want, log)
+		}
+	}
+	if strings.Contains(log, "env: CLAUDE_CONFIG_DIR=~/") {
+		t.Errorf("the tilde reached the agent unexpanded — it would create a directory named `~`:\n%s", log)
+	}
+	// The environment is not argv: it must not have been added to the command line
+	// as a shell prefix would appear.
+	if strings.Contains(log, "argv: CLAUDE_CONFIG_DIR=") {
+		t.Errorf("an environment entry was passed as an argument:\n%s", log)
+	}
+
+	// The claim commit records the argv but never the environment. That trailer is
+	// committed to the operator's repository, and an environment is where a token
+	// would be — the one place in this feature where less is recorded on purpose.
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
+	if !strings.Contains(msg, "Args: --fast") {
+		t.Errorf("claim commit lost the argv it always recorded:\n%s", msg)
+	}
+	for _, leak := range []string{"CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "proxy.internal"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("the claim commit recorded the agent's environment (%q) into the repository:\n%s", leak, msg)
+		}
+	}
+}
+
 // The surface refuses what it cannot hold, with the reason, rather than writing
 // something the resolver would then have to ignore.
 func TestAgentSurfaceRefusals(t *testing.T) {
@@ -188,6 +270,7 @@ func TestAgentSurfaceRefusals(t *testing.T) {
 		"no adapter":           {"args": []string{"-m", "x"}},
 		"bad delivery":         {"adapter": "claude", "prompt": "stdin"},
 		"flags in the adapter": {"adapter": "claude --yolo"},
+		"malformed env":        {"adapter": "claude", "env": []string{"JUST_A_WORD"}},
 	} {
 		if code, resp := h.Put("/api/config/agents/x", body); code != 400 {
 			t.Errorf("%s: PUT = %d (%s), want 400", name, code, resp)

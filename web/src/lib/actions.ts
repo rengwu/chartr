@@ -261,7 +261,7 @@ export function dismissTrackerAdapter(id: string): Promise<void> {
 // registered at all.
 export function setAgent(
   name: string,
-  agent: { adapter: string; args?: string[]; prompt?: string },
+  agent: { adapter: string; args?: string[]; env?: string[]; prompt?: string },
 ): Promise<{ name: string; path: string }> {
   return send('PUT', `/api/config/agents/${encodeURIComponent(name)}`, agent) as Promise<{
     name: string

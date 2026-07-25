@@ -98,7 +98,7 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		Deliver: spec.Prompt,
 	})
 	if _, err := s.terms.OpenSession(e.ID, e.Path, info.ID, launch.Name, launch.Args,
-		launch.TypeIn, terminal.Session{
+		spec.Env, launch.TypeIn, terminal.Session{
 			MapSlug:   sess.MapSlug,
 			TicketNum: sess.TicketNum,
 			Role:      sess.Role,

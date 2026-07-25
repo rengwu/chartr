@@ -157,7 +157,7 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 // session per space at a time. A launch failure leaves nothing seated; the caller,
 // having already written the claim, surfaces it (the stale claim stands until the
 // human acts, ADR 0008).
-func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, opener string, s Session) (*Terminal, error) {
+func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string, opener string, s Session) (*Terminal, error) {
 	m.mu.Lock()
 	for _, tid := range m.order {
 		if t := m.terms[tid]; t != nil && t.SpaceID == spaceID && t.isLiveSession() {
@@ -171,6 +171,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 	t, err := newProc(id, spaceID, cwd, launchSpec{
 		name:    name,
 		args:    args,
+		env:     env,
 		title:   sessionTitle(s),
 		session: &sess,
 	})
@@ -203,8 +204,8 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args []string, open
 // if a known agent holds the foreground (it usually does), the shell grammar
 // otherwise. id is chosen by the caller, matching OpenSession's style,
 // so the tab and the gitignored prompt file it points at share one identity.
-func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args []string, opener, title string) (*Terminal, error) {
-	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, title: title})
+func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args, env []string, opener, title string) (*Terminal, error) {
+	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, env: env, title: title})
 	if err != nil {
 		return nil, err
 	}

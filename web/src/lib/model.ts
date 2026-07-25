@@ -16,6 +16,10 @@ export interface Agent {
   name: string
   adapter: string
   args?: string[]
+  // The environment this agent launches with, as `KEY=VALUE` entries — resolved
+  // server-side, so a `~/` the operator typed arrives here already expanded to the
+  // path the process will actually be given.
+  env?: string[]
   prompt?: string
   // What `prompt` resolves to once the adapter's own default is taken into
   // account — `argv`, `type`, or a flag name. Resolved server-side, so the

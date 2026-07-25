@@ -421,13 +421,19 @@ func agentLibrary(userTOML []byte) []model.Agent {
 			Prompt:  openerPlaceholder,
 			Deliver: a.Prompt,
 		})
+		// The environment leads the preview the way it leads a shell line, and reads
+		// resolved: an operator who typed `~/.claude2` sees the absolute path their
+		// agent will actually be given, which is the only place that expansion is
+		// visible before a launch.
+		command := append(append([]string{}, a.LaunchEnv...), launch.Name)
 		out = append(out, model.Agent{
 			Name:     a.Name,
 			Adapter:  a.Adapter,
 			Args:     a.Args,
+			Env:      a.Env,
 			Prompt:   a.Prompt,
 			Delivery: adapter.DeliveryFor(a.Adapter, a.Prompt).String(),
-			Command:  append([]string{launch.Name}, launch.Args...),
+			Command:  append(command, launch.Args...),
 			Present:  a.Present,
 			Missing:  a.Missing,
 		})

@@ -401,15 +401,22 @@ type Agent struct {
 	Name    string   `json:"name"`
 	Adapter string   `json:"adapter"`
 	Args    []string `json:"args,omitempty"`
-	Prompt  string   `json:"prompt,omitempty"`
+	// Env is the environment this agent launches with, as `KEY=VALUE` entries
+	// exactly as the operator typed them — tilde and all. It is what the editing
+	// surface round trips; the *expanded* values appear in Command, which is where
+	// "what will actually run" is answered.
+	Env    []string `json:"env,omitempty"`
+	Prompt string   `json:"prompt,omitempty"`
 	// Delivery is what Prompt actually resolves to once the adapter's own default
 	// is taken into account — `argv`, `type`, or a flag name. Resolved server-side
 	// so the surface renders how a harness is told what to do as a fact, rather
 	// than re-deriving the adapter table in the browser and drifting from it.
 	Delivery string `json:"delivery"`
-	// Command is the argv this agent would actually launch, with a placeholder
-	// standing in for the opener. It is built by the same seam that builds the real
-	// one, so what the operator reads in the library is what will run.
+	// Command is the command line this agent would actually launch, with a
+	// placeholder standing in for the opener: the environment first, in the shell's
+	// own `KEY=VALUE binary args` order, then the argv built by the same seam that
+	// builds the real one. So what the operator reads in the library is what will
+	// run — including the expansion, which is the only way to see it happened.
 	Command []string `json:"command"`
 	// Present is whether the adapter binary was found on PATH; Missing is the
 	// absence badge when it was not.

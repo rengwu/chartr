@@ -121,7 +121,7 @@ func (s *Server) launchOnRamp(w http.ResponseWriter, e registry.Entry, agent, sk
 		Prompt:  adapter.Opener(promptPath),
 		Deliver: spec.Prompt,
 	})
-	t, err := s.terms.OpenOnRamp(e.ID, e.Path, id, launch.Name, launch.Args, launch.TypeIn, skill)
+	t, err := s.terms.OpenOnRamp(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, skill)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "opening the launch tab: "+err.Error())
 		return

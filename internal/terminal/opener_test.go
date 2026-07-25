@@ -31,7 +31,7 @@ func TestTypedOpenerSubmitsWithCarriageReturn(t *testing.T) {
 	defer m.Shutdown()
 
 	const opener = "Read the file /tmp/payload.md in full"
-	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, opener, Session{
+	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, nil, opener, Session{
 		MapSlug: "m", TicketNum: 1, Role: "implement", Agent: "stub",
 	}); err != nil {
 		t.Fatalf("opening the session: %v", err)
@@ -57,7 +57,7 @@ func TestEmptyOpenerTypesNothing(t *testing.T) {
 	m := NewManager(nil)
 	defer m.Shutdown()
 
-	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, "", Session{
+	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, nil, "", Session{
 		MapSlug: "m", TicketNum: 1, Role: "implement", Agent: "stub",
 	}); err != nil {
 		t.Fatalf("opening the session: %v", err)
