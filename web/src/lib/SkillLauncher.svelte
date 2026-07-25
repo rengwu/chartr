@@ -3,7 +3,7 @@
   import type { Agent, ResolvedSkill } from "./model";
   import { launchMenu, launchClick, launchPayload, contextHint, agentModel } from "./launchmenu";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import * as Popover from "$lib/components/ui/popover";
+  import Modal from "./Modal.svelte";
   import { Button, buttonVariants } from "$lib/components/ui/button";
   import type { ButtonVariant, ButtonSize } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -35,8 +35,10 @@
   // The one step between a click and a launch is the **optional context box**
   // (ticket 03): a skill the library marks `needs-context` reads a subject —
   // `grill` wants to know *what* to grill — so its click opens a roomy multi-line
-  // box hung off this control's own trigger instead of launching. Optional means
-  // optional: an empty box launches the skill bare, exactly as a self-driving
+  // box instead of launching. The box is a modal over the whole cockpit, not a
+  // popover hung off this trigger: drafting a brief is a paragraph of typing, and
+  // an anchored panel that vanishes on any click away is too easy to lose. Optional
+  // means optional: an empty box launches the skill bare, exactly as a self-driving
   // one does, and Esc dismisses without launching. A skill without the flag never
   // sees the box.
   let {
@@ -79,14 +81,10 @@
 
   // The pending context box: the `needs-context` skill the operator clicked and the
   // agent it will run on, held while they type (or don't). `null` is the box shut —
-  // it is also the popover's open state, so dismissing it clears the pending launch.
+  // it is also the modal's open state, so dismissing it clears the pending launch.
   let pending = $state<{ agent: string; skill: ResolvedSkill } | null>(null);
   let line = $state("");
   let field = $state<HTMLTextAreaElement | null>(null);
-  // This control's own trigger, which the box anchors to: the dropdown has closed
-  // by the time the box opens, so the popover needs the button as a custom anchor
-  // to hang off the same spot the menu came from.
-  let trigger = $state<HTMLElement | null>(null);
 
   const menu = $derived(launchMenu(agents, lastAgent, skills, picked));
   // The agent row that renders checked: the effective choice when one is ready,
@@ -116,7 +114,6 @@
 
 <DropdownMenu.Root onOpenChange={(open) => { if (!open) picked = undefined; }}>
   <DropdownMenu.Trigger
-    bind:ref={trigger}
     class={cn(buttonVariants({ variant, size }), "gap-1")}
     {disabled}
     aria-label={ariaLabel}
@@ -200,50 +197,50 @@
   </DropdownMenu.Content>
 </DropdownMenu.Root>
 
-<!-- The optional context box (ticket 03). A popover rather than a dialog: this is
-     a brief the operator drafts, not a task — it hangs off the trigger the menu
-     came from (`customAnchor`, since the menu that opened it has closed),
-     autofocuses its field, and dismisses on Esc or a click away without
-     launching. A roomy multi-line box: the brief can run to a paragraph, so the
-     field is a textarea and ⌘/Ctrl+Enter launches (plain Enter is a newline).
-     Nothing here validates: an empty box opens the skill bare either way. -->
-<Popover.Root open={pending !== null} onOpenChange={(open) => { if (!open) pending = null; }}>
-  {#if pending}
-    {@const skill = pending.skill}
-    <Popover.Content
-      customAnchor={trigger}
-      align="end"
-      class="w-96 gap-2 p-3"
-      onOpenAutoFocus={(e) => { e.preventDefault(); field?.focus(); }}
-    >
-      <Popover.Header>
-        <Popover.Title class="text-xs">
-          {skill.name}
-          <span class="font-normal text-muted-foreground">on {pending.agent}</span>
-        </Popover.Title>
-      </Popover.Header>
-      <form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); fire(); }}>
-        <Textarea
-          bind:ref={field}
-          bind:value={line}
-          rows={6}
-          class="min-h-32 text-xs"
-          placeholder={contextHint(skill)}
-          aria-label="Optional context for {skill.name}"
-          onkeydown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              fire();
-            }
-          }}
-        />
-        <div class="flex items-center justify-between gap-2">
-          <Popover.Description class="text-[0.65rem]">
-            Optional — ⌘↵ launches, Esc cancels. An empty box opens {skill.name} bare.
-          </Popover.Description>
+<!-- The optional context box (ticket 03). A modal on the shared `Modal` — the same
+     dialog the payload preview uses — so it dims and sits over the whole cockpit
+     with focus trapped in the field: a brief is a paragraph of typing, and an
+     anchored panel that closes on any stray click is too easy to lose. It
+     autofocuses the field, and Esc, the close button, or Cancel dismiss it without
+     launching. ⌘/Ctrl+Enter launches (plain Enter is a newline). Nothing here
+     validates: an empty box opens the skill bare either way. -->
+{#if pending}
+  {@const skill = pending.skill}
+  <Modal
+    open
+    title="Context for {skill.name}"
+    onClose={() => (pending = null)}
+    onOpenAutoFocus={(e) => { e.preventDefault(); field?.focus(); }}
+  >
+    <form class="flex flex-col gap-3" onsubmit={(e) => { e.preventDefault(); fire(); }}>
+      <p class="text-muted-foreground">
+        What should <span class="font-medium text-foreground">{skill.name}</span> work on? It runs on
+        <span class="font-medium text-foreground">{pending.agent}</span>. Optional — an empty box
+        opens the skill bare.
+      </p>
+      <Textarea
+        bind:ref={field}
+        bind:value={line}
+        rows={8}
+        class="min-h-40 text-xs"
+        placeholder={contextHint(skill)}
+        aria-label="Optional context for {skill.name}"
+        onkeydown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            fire();
+          }
+        }}
+      />
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[0.65rem] text-muted-foreground">⌘↵ launches, Esc cancels.</span>
+        <div class="flex items-center gap-2">
+          <Button type="button" variant="ghost" size="sm" onclick={() => (pending = null)}>
+            Cancel
+          </Button>
           <Button type="submit" size="sm">Launch</Button>
         </div>
-      </form>
-    </Popover.Content>
-  {/if}
-</Popover.Root>
+      </div>
+    </form>
+  </Modal>
+{/if}

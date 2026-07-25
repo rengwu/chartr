@@ -12,6 +12,7 @@
     title,
     onClose,
     wide = false,
+    onOpenAutoFocus,
     children,
   }: {
     open: boolean
@@ -20,6 +21,10 @@
     // A wider card with a scrollable body, for content-heavy modals like the
     // payload preview; the default stays the compact form the forms use.
     wide?: boolean
+    // Opt out of the primitive's opening focus to put the caret somewhere of the
+    // caller's choosing — a modal built around one field wants that field, not
+    // the dialog shell.
+    onOpenAutoFocus?: (e: Event) => void
     children: Snippet
   } = $props()
 
@@ -29,7 +34,10 @@
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
-  <Dialog.Content class={cn('flex max-h-[85vh] flex-col overflow-hidden', wide ? 'sm:max-w-2xl' : 'sm:max-w-sm')}>
+  <Dialog.Content
+    class={cn('flex max-h-[85vh] flex-col overflow-hidden', wide ? 'sm:max-w-2xl' : 'sm:max-w-sm')}
+    {onOpenAutoFocus}
+  >
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>
     </Dialog.Header>
