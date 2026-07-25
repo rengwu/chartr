@@ -126,6 +126,8 @@ func run(dataDir string) error {
 	// floor instead of the CSS.
 	w.SetSize(800, 500, webview.HintMin)
 	installNativeMenu(appName)
+	// After the window, because the NSApplication it dresses is created with it.
+	applyAppIcon()
 
 	// The cockpit's own title bar, where the platform supports one (macOS).
 	// The height is the native strip's, so the window buttons AppKit still draws

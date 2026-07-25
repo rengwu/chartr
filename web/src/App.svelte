@@ -26,14 +26,7 @@
   import { isEditingTarget } from "./lib/keys";
   import { nativeTitleBarHeight } from "./lib/titlebar";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
-  import {
-    Plus,
-    X,
-    CircleNotch,
-    Compass,
-    Gear,
-    FolderOpen,
-  } from "phosphor-svelte";
+  import { Plus, X, CircleNotch, Gear, FolderOpen } from "phosphor-svelte";
 
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
@@ -400,14 +393,7 @@
       class="relative flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
       style="height: {titleBarH}px"
     >
-      <span class="flex min-w-0 items-center gap-2">
-        <span
-          class="grid size-5 shrink-0 place-items-center rounded-full border border-border text-foreground"
-        >
-          <Compass class="size-3.5" />
-        </span>
-        <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
-      </span>
+      <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
            the button's own press state nudges it with `translate-y-px`, and
            Tailwind composes both through one translate variable, so a centring
@@ -430,24 +416,18 @@
     <aside
       class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
     >
-      <!-- Branding: a marked home for the cockpit, above the spaces list. Just the
-           mark and the name — the cockpit-wide way into the config surface (ticket
-           05) sits at the far top-right of the chrome instead, past the stage's
-           Map toggle (SpacePane).
+      <!-- Branding: a home for the cockpit, above the spaces list. The wordmark
+           alone — the logo's star is left to the surfaces with room for it
+           (favicon, Dock), and the cockpit-wide way into the config surface
+           (ticket 05) sits at the far top-right of the chrome instead, past the
+           stage's Map toggle (SpacePane).
 
            In the macOS shell the window's title bar carries the branding instead,
-           centred over the whole window; repeating it here would be the same mark
+           centred over the whole window; repeating it here would be the same name
            twice within 40px. -->
       {#if !titleBarH}
         <div class="cockpit-bar gap-2 bg-transparent">
-          <span class="flex min-w-0 items-center gap-2">
-            <span
-              class="grid size-5 shrink-0 place-items-center rounded-full border border-sidebar-border text-sidebar-foreground"
-            >
-              <Compass class="size-3.5" />
-            </span>
-            <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
-          </span>
+          <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
         </div>
       {/if}
 

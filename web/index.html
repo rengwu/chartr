@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>chartr</title>
+
+    <!-- Icons live in web/public, which Vite copies to the dist root the Go
+         binary embeds (ADR 0010) — so they ship offline with everything else,
+         no CDN and no runtime fetch. The masters are docs/assets; these are
+         copies of that set. favicon.svg is preferred by browsers that take it
+         and scales to any size; favicon.ico carries native 16/32/48 frames for
+         the ones that don't. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#0C0C09" />
   </head>
   <body>
     <div id="app"></div>
