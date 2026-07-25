@@ -56,10 +56,6 @@ export function deregisterSpace(id: string): Promise<void> {
   return send('DELETE', `/api/spaces/${encodeURIComponent(id)}`) as Promise<void>
 }
 
-export function setPin(id: string, pinned: boolean): Promise<void> {
-  return send('POST', `/api/spaces/${encodeURIComponent(id)}/pin`, { pinned }) as Promise<void>
-}
-
 // setSpaceAgent records the agent a space should spawn with, without spawning —
 // the action footer's selector persists the operator's pick immediately, so it
 // reads as a saved setting rather than a choice that only sticks once they launch.

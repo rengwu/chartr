@@ -51,11 +51,6 @@ type Chartr struct {
 // Option configures Start.
 type Option func(*server.Options)
 
-// WithDataDir overrides the chartr state root (default: a fresh temp dir).
-func WithDataDir(dir string) Option {
-	return func(o *server.Options) { o.DataDir = dir }
-}
-
 // WithConfigDir overrides the operator's config root (default: a fresh temp
 // dir), whose `skills/` is the user layer of the skill library.
 func WithConfigDir(dir string) Option {

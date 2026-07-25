@@ -154,16 +154,6 @@ func (e *Effort) Frontier() []*Ticket {
 	return out
 }
 
-func (e *Effort) Count(s Status) int {
-	n := 0
-	for _, t := range e.Tickets {
-		if t.Status == s {
-			n++
-		}
-	}
-	return n
-}
-
 var (
 	reLegacyKey = regexp.MustCompile(`(?m)^(Type|Status|Blocked by):[ \t]*(.*)$`)
 	reFilename  = regexp.MustCompile(`^(\d+)-(.+)\.md$`)
