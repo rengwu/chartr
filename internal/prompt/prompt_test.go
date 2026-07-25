@@ -429,7 +429,7 @@ func TestLaunchComposesSkillAloneWithOptionalContext(t *testing.T) {
 }
 
 // The shipped library tags exactly the five self-driving on-ramp skills, and marks
-// needs-context on the three that read a subject — ideate and wayfinder open cold.
+// needs-context on the four that read a subject — ideate opens cold.
 // The augmentative and second-step skills stay off the launcher.
 func TestShippedOnRampTagging(t *testing.T) {
 	onRamp := map[string]bool{}
@@ -447,7 +447,7 @@ func TestShippedOnRampTagging(t *testing.T) {
 	if !reflect.DeepEqual(onRamp, wantOnRamp) {
 		t.Errorf("on-ramp skills = %v, want %v", onRamp, wantOnRamp)
 	}
-	wantNeedsContext := map[string]bool{"grill": true, "research": true, "prototype": true}
+	wantNeedsContext := map[string]bool{"wayfinder": true, "grill": true, "research": true, "prototype": true}
 	if !reflect.DeepEqual(needsContext, wantNeedsContext) {
 		t.Errorf("needs-context skills = %v, want %v", needsContext, wantNeedsContext)
 	}
