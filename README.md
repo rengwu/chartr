@@ -16,7 +16,8 @@ CLIs in tabs.
 
 <br clear="right">
 
-![The chartr cockpit](./docs/assets/screenshot.png)
+<img width="1221" height="883" alt="The chartr cockpit" src="https://github.com/user-attachments/assets/4c1e4e13-e1fb-4bdd-a834-6e2d07415912" />
+
 
 ## Key features
 
@@ -119,3 +120,7 @@ driven daily, so **WSL2 is the sure path**.
 - [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
 - [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — my read-only map CLI and viewer; where the star-map started
 - [mattpocock/skills](https://github.com/mattpocock/skills) — the original `/wayfinder` skill and the method the maps side drives
+
+## Demonstration
+
+https://github.com/user-attachments/assets/60c335bb-5d9d-44c6-9798-654b1c70c626
