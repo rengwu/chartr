@@ -7,7 +7,7 @@
 BIN := bin/chartr
 
 .PHONY: build web go-build dev-backend dev-web check test vet clean \
-        webview bundle snapshot release
+        webview bundle dmg snapshot release
 
 ## build: frontend then the self-contained binary with the SPA embedded.
 build: web go-build
@@ -177,6 +177,92 @@ bundle:
 	codesign --force --sign - --identifier "$(MACAPP_ID)" "$$app"; \
 	codesign --verify --strict "$$app"; \
 	echo "built $$app (version $$short, build $(WEBVIEW_VERSION), darwin/$$goarch, macOS $$minos+, ad-hoc signed)"
+
+## dmg: stage the assembled bundle into the one file an operator downloads — a
+## read-only disk image in build/macapp, with a per-asset .sha256 sidecar.
+##
+## The staged layout is the customary one: the app, a symlink to /Applications as
+## the drag target, and a plain-text file carrying the Gatekeeper instructions.
+## There is deliberately NO styled window — background art with positioned icons
+## means scripting the Finder and committing a window-state file, which is
+## cosmetics on a tier that ships with a "your Mac will block this" note in the
+## box (ADR 0016).
+##
+## The architecture in the image's name is load-bearing, not decoration: the
+## bundle is one slice (cgo does not cross-compile), so the name is what tells an
+## operator whether the image is theirs, and what lets a second architecture
+## appear beside it later without renaming this one.
+##
+## The sidecar is per-asset for the same reason `make webview` writes one: the
+## supported release owns checksums.txt, and a best-effort artifact never mutates
+## that manifest.
+##
+## Off macOS this prints a line and succeeds, like the bundle target it builds on.
+dmg:
+	@set -e; \
+	goos=$$(go env GOOS); \
+	if [ "$$goos" != "darwin" ]; then \
+		echo "the macOS disk image is only built on macOS (this is $$goos); nothing to package"; \
+		exit 0; \
+	fi; \
+	$(MAKE) bundle WEBVIEW_VERSION=$(WEBVIEW_VERSION) \
+		WEBVIEW_COMMIT=$(WEBVIEW_COMMIT) WEBVIEW_DATE=$(WEBVIEW_DATE); \
+	goarch=$$(go env GOARCH); \
+	name="chartr_$(WEBVIEW_VERSION)_darwin_$${goarch}"; \
+	app="build/macapp/$$name/chartr.app"; \
+	out="build/macapp/$$name.dmg"; \
+	stage="build/macapp/.dmg-root"; \
+	short=$$(plutil -extract CFBundleShortVersionString raw "$$app/Contents/Info.plist"); \
+	echo "staging $$out"; \
+	rm -rf "$$stage" "$$out"; \
+	mkdir -p "$$stage"; \
+	ditto "$$app" "$$stage/chartr.app"; \
+	ln -s /Applications "$$stage/Applications"; \
+	printf '%s\n' \
+		'chartr for macOS' \
+		'================' \
+		'' \
+		'chartr is signed ad-hoc and is NOT notarized: this project has no Apple' \
+		'Developer account. So macOS blocks the first launch. That is expected, and' \
+		'the steps below are the whole of it.' \
+		'' \
+		'Install' \
+		'-------' \
+		'1. Drag chartr onto the Applications folder in this window.' \
+		'2. Eject this disk image.' \
+		'' \
+		'First launch (the one macOS blocks)' \
+		'-----------------------------------' \
+		'3. Open chartr from Launchpad or the Applications folder. macOS puts up a' \
+		'   dialog: "chartr" Not Opened - Apple could not verify "chartr" is free of' \
+		'   malware that may harm your Mac or compromise your privacy.' \
+		'   Click Done. Do NOT click Move to Trash, which is the highlighted button.' \
+		'4. Open System Settings > Privacy & Security and scroll down to Security.' \
+		'   Under the line "chartr" was blocked to protect your Mac, click' \
+		'   Open Anyway. Authenticate with Touch ID or your password, then click' \
+		'   Open Anyway once more in the dialog that follows.' \
+		'' \
+		'chartr opens, and every later launch opens with no prompt at all.' \
+		'' \
+		'These steps were verified on macOS 27.0. Right-clicking the app and choosing' \
+		'Open does NOT clear this any more, whatever older advice says - use step 4.' \
+		'' \
+		'From a terminal instead, if you prefer:' \
+		'    xattr -d com.apple.quarantine /Applications/chartr.app' \
+		'That removes the quarantine attribute macOS attaches to downloads. Run it' \
+		'only if you trust this download.' \
+		'' \
+		'What is in this image' \
+		'---------------------' \
+		"chartr $$short (build $(WEBVIEW_VERSION)), for $$goarch Macs only." \
+		'Verify the download against the sidecar published beside it:' \
+		"    shasum -a 256 -c $$name.dmg.sha256" \
+		> "$$stage/READ ME FIRST.txt"; \
+	hdiutil create -quiet -volname "chartr $$short" -srcfolder "$$stage" \
+		-fs HFS+ -format UDZO -ov "$$out"; \
+	rm -rf "$$stage"; \
+	( cd build/macapp && shasum -a 256 "$$name.dmg" > "$$name.dmg.sha256" ); \
+	echo "built $$out (+ .sha256) — chartr $$short, darwin/$$goarch, unsigned and un-notarized"
 
 clean:
 	rm -rf $(BIN) build/
