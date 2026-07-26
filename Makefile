@@ -7,7 +7,7 @@
 BIN := bin/chartr
 
 .PHONY: build web go-build dev-backend dev-web check test vet clean \
-        webview snapshot release
+        webview bundle snapshot release
 
 ## build: frontend then the self-contained binary with the SPA embedded.
 build: web go-build
@@ -87,6 +87,96 @@ webview:
 		shasum -a 256 "$$name" > "$$name.sha256"; \
 	fi; \
 	echo "built build/shell/$$name"
+
+# The bundle's reverse-DNS identifier, read off the repo rather than invented.
+MACAPP_ID    := io.github.rengwu.chartr
+# The oldest macOS the bundle claims to run on, used only if the executable turns
+# out not to declare one. LSMinimumSystemVersion is otherwise read off the linked
+# binary's own LC_BUILD_VERSION: the floor is whatever the runner's toolchain
+# targeted, not a number we picked, and claiming an older one would only promise
+# an operator a launch the loader then refuses.
+MACAPP_MACOS := 12.0
+# The mark the cockpit already ships (Vite copies web/public to the dist root, so
+# this is the same file the PWA fetches and the runtime Dock icon reads). The
+# .icns is downscaled from it at build time rather than committed, which is what
+# makes drift between the two impossible.
+MACAPP_MARK  := web/public/icon-512.png
+
+## bundle: assemble the best-effort macOS app bundle — the shell executable, an
+## Info.plist and a generated icon — into build/macapp, ad-hoc signed.
+##
+## This is `make webview` plus packaging, not a new kind of build: it packages the
+## shell that target just built, with the same stamp, for the host's own
+## architecture (cgo does not cross-compile) — which is in the staged directory's
+## name, so an operator can see what they are getting and a second architecture
+## can appear beside it later without renaming this one. Run `make web` first: the
+## shell serves the cockpit out of the embedded dist, exactly as the loose one does.
+##
+## The signature is ad-hoc (`-`), which is the minimum that makes the app launch —
+## Apple Silicon refuses to execute a binary carrying no signature at all. It is
+## NOT a Developer ID signature and the app is not notarized, so Gatekeeper blocks
+## the first launch of a downloaded copy; that is a stated cost (ADR 0016), not a
+## bug. Signing is last, after the property list and the icon are in place: the Go
+## linker signs the executable it produces, but nothing signs the bundle around it.
+##
+## Off macOS this prints a line and succeeds, like the webview target it builds
+## on, which is what lets the shells job stay green on every runner.
+bundle:
+	@set -e; \
+	goos=$$(go env GOOS); \
+	if [ "$$goos" != "darwin" ]; then \
+		echo "the macOS app bundle is only assembled on macOS (this is $$goos); nothing to package"; \
+		exit 0; \
+	fi; \
+	$(MAKE) webview WEBVIEW_VERSION=$(WEBVIEW_VERSION) \
+		WEBVIEW_COMMIT=$(WEBVIEW_COMMIT) WEBVIEW_DATE=$(WEBVIEW_DATE); \
+	goarch=$$(go env GOARCH); \
+	exe="build/shell/chartr-shell_$(WEBVIEW_VERSION)_darwin_$${goarch}"; \
+	stage="build/macapp/chartr_$(WEBVIEW_VERSION)_darwin_$${goarch}"; \
+	app="$$stage/chartr.app"; \
+	echo "assembling $$app"; \
+	rm -rf "$$stage"; \
+	mkdir -p "$$app/Contents/MacOS" "$$app/Contents/Resources"; \
+	cp "$$exe" "$$app/Contents/MacOS/chartr"; \
+	iconset="$$stage/chartr.iconset"; \
+	mkdir -p "$$iconset"; \
+	for spec in "16 icon_16x16" "32 icon_16x16@2x" "32 icon_32x32" \
+	            "64 icon_32x32@2x" "128 icon_128x128" "256 icon_128x128@2x" \
+	            "256 icon_256x256" "512 icon_256x256@2x" "512 icon_512x512"; do \
+		set -- $$spec; \
+		sips -z "$$1" "$$1" $(MACAPP_MARK) --out "$$iconset/$$2.png" >/dev/null; \
+	done; \
+	iconutil -c icns "$$iconset" -o "$$app/Contents/Resources/chartr.icns"; \
+	rm -rf "$$iconset"; \
+	short=$$(printf '%s' '$(WEBVIEW_VERSION)' \
+		| sed -n 's/^v\{0,1\}\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,2\}\)\([-+].*\)\{0,1\}$$/\1/p'); \
+	[ -n "$$short" ] || short=0.0.0; \
+	minos=$$(otool -l "$$app/Contents/MacOS/chartr" 2>/dev/null \
+		| awk '/minos/ { print $$2; exit }'); \
+	[ -n "$$minos" ] || minos=$(MACAPP_MACOS); \
+	printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0">' \
+		'<dict>' \
+		'	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>' \
+		'	<key>CFBundlePackageType</key><string>APPL</string>' \
+		'	<key>CFBundleName</key><string>chartr</string>' \
+		'	<key>CFBundleDisplayName</key><string>chartr</string>' \
+		'	<key>CFBundleIdentifier</key><string>$(MACAPP_ID)</string>' \
+		'	<key>CFBundleExecutable</key><string>chartr</string>' \
+		'	<key>CFBundleIconFile</key><string>chartr</string>' \
+		"	<key>CFBundleShortVersionString</key><string>$$short</string>" \
+		'	<key>CFBundleVersion</key><string>$(WEBVIEW_VERSION)</string>' \
+		"	<key>LSMinimumSystemVersion</key><string>$$minos</string>" \
+		'	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>' \
+		'	<key>NSHighResolutionCapable</key><true/>' \
+		'</dict>' \
+		'</plist>' \
+		> "$$app/Contents/Info.plist"; \
+	codesign --force --sign - --identifier "$(MACAPP_ID)" "$$app"; \
+	codesign --verify --strict "$$app"; \
+	echo "built $$app (version $$short, build $(WEBVIEW_VERSION), darwin/$$goarch, macOS $$minos+, ad-hoc signed)"
 
 clean:
 	rm -rf $(BIN) build/

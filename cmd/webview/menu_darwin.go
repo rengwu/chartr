@@ -63,18 +63,22 @@ static void wfInstallMenu(const char *cname) {
   [app setMainMenu:bar];
 }
 
-// wfSetAppName names the process. The shell is a bare binary, not a .app
-// bundle, so macOS titles the app menu from the process name — "webview" —
-// and ignores the menu's own title; naming the process is the only way a
-// non-bundled app gets its own name up there. It must run before NSApplication
-// is created, which is why it is separate from wfInstallMenu.
+// wfSetAppName names the process. Launched loose the shell is a bare binary with
+// no .app bundle, so macOS titles the app menu from the process name — "webview"
+// — and ignores the menu's own title; naming the process is the only way that
+// build gets its own name up there. It must run before NSApplication is created,
+// which is why it is separate from wfInstallMenu.
+//
+// Inside the chartr.app `make bundle` assembles (ADR 0016) the property list
+// already carries CFBundleName, so this writes the same name a second time and
+// changes nothing. The loose shell is still a shipped artifact, so it stays.
 static void wfSetAppName(const char *cname) {
   NSString *name = [NSString stringWithUTF8String:cname];
   [[NSProcessInfo processInfo] setProcessName:name];
   // AppKit reads the app-menu title out of the main bundle's info dictionary,
-  // which for a bare binary has no CFBundleName at all. The dictionary AppKit
-  // hands back is mutable; seeding the key is the standard way a non-bundled
-  // app names itself.
+  // which for a bare binary has no CFBundleName at all (a bundled launch reads
+  // its own, which already says chartr). The dictionary AppKit hands back is
+  // mutable; seeding the key is the standard way a non-bundled app names itself.
   id info = [[NSBundle mainBundle] infoDictionary];
   if ([info respondsToSelector:@selector(setObject:forKey:)]) {
     [(NSMutableDictionary *)info setObject:name forKey:@"CFBundleName"];

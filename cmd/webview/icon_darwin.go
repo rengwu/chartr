@@ -10,11 +10,16 @@ package main
 
 // wfSetAppIcon points the Dock tile at the chartr mark.
 //
-// A bare binary has no bundle, so there is no CFBundleIconFile for AppKit to
-// read and no icon in Finder — setApplicationIconImage: is the only surface a
-// non-bundled app can dress, and it dresses the Dock tile for the life of the
-// process. Handing the shell a real .app is a packaging change (ADR 0011 keeps
-// this tier best-effort and unbundled), not something this can reach.
+// This is the LOOSE shell's only surface for it. A bare binary has no bundle, so
+// there is no CFBundleIconFile for AppKit to read and no icon in Finder at all;
+// setApplicationIconImage: dresses the Dock tile for the life of the process and
+// nothing beyond it.
+//
+// `make bundle` now assembles a real chartr.app whose property list points at an
+// .icns downscaled from this very same PNG (ADR 0016), so inside the bundle
+// Finder, the Dock and the app switcher are already dressed before this runs and
+// the call is a no-op over identical artwork. The loose shell is still a shipped
+// artifact, so this stays.
 //
 // It must run after the NSApplication exists, which is why the Go side calls it
 // beside installNativeMenu rather than beside setAppName.

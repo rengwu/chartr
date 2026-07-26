@@ -11,7 +11,9 @@ import (
 // appIconPath is the icon's name inside the embedded SPA. Vite copies web/public
 // to the dist root, so the file the browser fetches as the PWA icon and the file
 // the Dock shows are the same bytes — the shell carries no second copy of the
-// artwork, and the two can never drift apart.
+// artwork, and the two can never drift apart. `make bundle` downscales that same
+// source into the bundle's .icns for the same reason (ADR 0016), so all three
+// surfaces show one mark.
 const appIconPath = "icon-512.png"
 
 // applyAppIcon dresses the running app in the chartr mark, where the platform
