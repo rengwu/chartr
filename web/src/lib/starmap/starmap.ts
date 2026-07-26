@@ -663,17 +663,37 @@ export class StarMap {
     }
   }
 
+  // A resize re-frames the viewport; it does not re-plan the camera. So the pose
+  // is carried across rather than re-fit: the world point that sat at the centre
+  // of the free rect stays at the centre of the new one, at the same zoom. Two
+  // reasons it works this way. Re-fitting would silently spend the operator's own
+  // pan and zoom every time the seam twitched. And it would make this the second
+  // writer aiming #goal during a pane drag, racing setInsets — which eases toward
+  // a *seated star* and does not touch scale — through two ResizeObservers and an
+  // effect flush, in an order neither controls. One writer, and the seam glides.
   #onResize(): void {
     const w = this.#w,
       h = this.#h
+    const before = this.#freeRect()
     this.#measure()
     // A ResizeObserver delivers one callback the moment it starts observing,
-    // reporting the size mount already measured. Refitting on that would throw
-    // away the pose the chrome restored a tick earlier, so only an actual
-    // change in the viewport re-fits.
+    // reporting the size mount already measured. Acting on that would throw away
+    // the pose the chrome restored a tick earlier, so only an actual change in
+    // the viewport moves anything.
     if (this.#w === w && this.#h === h) return
-    this.#labelEpoch++
-    this.#refit(false)
+    const after = this.#freeRect()
+    const s = this.#goal.s
+    const wx = (before.cx - this.#goal.x) / s
+    const wy = (before.cy - this.#goal.y) / s
+    this.#goal.x = after.cx - wx * s
+    this.#goal.y = after.cy - wy * s
+    // Snapped, not eased: a dragged seam moves every frame and outruns any ease,
+    // so easing here reads as the map rubber-banding behind the operator's hand.
+    this.#cam = { ...this.#goal }
+    // The label cache is keyed on the camera pose, which the pin above already
+    // moved — so the solve re-runs on its own, and #labelEpoch is left to mean
+    // only what it says it means: the text or the colours moved.
+    this.#draw()
   }
 
   // Fit the whole constellation into the viewport. `snap` sets the camera
@@ -805,10 +825,12 @@ export class StarMap {
   }
 
   // --- render loop ----------------------------------------------------------
+  // One frame: carry the world forward by the time that actually passed, then
+  // paint it. The two halves are split because only this one may move the clock —
+  // see #draw.
   #render = (): void => {
     this.#raf = requestAnimationFrame(this.#render)
-    const g = this.#ctx
-    if (!g) return
+    if (!this.#ctx) return
     const t = now()
     let dt = t - this.#last
     if (dt < 0 || dt > 0.1) dt = 0.016
@@ -822,7 +844,18 @@ export class StarMap {
       if (n.flare > 0) n.flare = Math.max(0, n.flare - dt / 1.1)
     }
     this.#easeCamera(dt)
+    this.#draw()
+  }
 
+  // Paint the state as it currently stands, advancing nothing. Holding no time
+  // of its own is what lets anything call this out of band without stealing a
+  // frame's worth of wobble or flare decay from the loop — which #onResize does,
+  // because resizing the backing store empties it and a ResizeObserver runs
+  // after the loop has already painted, so the frame would otherwise reach the
+  // compositor blank.
+  #draw(): void {
+    const g = this.#ctx
+    if (!g) return
     g.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0)
     g.fillStyle = this.#bg
     g.fillRect(0, 0, this.#w, this.#h)
@@ -1084,12 +1117,19 @@ export class StarMap {
   // differently, and only the newest answer is ever held.
   #drawLabels(g: CanvasRenderingContext2D): void {
     if (this.#cam.s < 0.22) return
+    // The viewport belongs in the key alongside the pose: the solve culls to it
+    // (see `vis` below), so a resize that happened to leave the camera where it
+    // was would otherwise keep placing labels against the old edges.
     const key =
       this.#cam.x.toFixed(2) +
       '|' +
       this.#cam.y.toFixed(2) +
       '|' +
       this.#cam.s.toFixed(4) +
+      '|' +
+      this.#w +
+      'x' +
+      this.#h +
       '|' +
       this.#labelEpoch
     let cache = this.#labelCache
