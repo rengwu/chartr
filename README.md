@@ -11,7 +11,7 @@ renders as a star-map; take a ticket off the frontier, pick an agent, and the
 session opens with the map, the ticket, and its blockers' answers already in the
 buffer.
 
-Without a map it is a plain multiplexer: repos in a sidebar, shells and agent
+Without a map it is a plain multiplexer: projects in a sidebar, shells and agent
 CLIs in tabs.
 
 <br clear="right">
@@ -40,64 +40,40 @@ CLIs in tabs.
 
 ## Installation
 
-GitHub releases only — no `go install`, no Homebrew tap, no marketplace entry.
 Grab your platform's archive from the
-[releases page](https://github.com/rengwu/chartr/releases), check it against
-`checksums.txt`, run it:
+[releases page](https://github.com/rengwu/chartr/releases) and run it:
 
 ```
 chartr                 # http://127.0.0.1:8787
 chartr -addr :9000
 chartr -data-dir ~/w   # session root (default: cwd)
-chartr -version
 ```
 
-User config lives under `~/.config/chartr`. Agent CLIs are yours to install;
-chartr ships none, and the empty agent library refuses every spawn until you
-register one.
+Install your own agent CLIs; chartr ships none.
 
 ### macOS first launch
 
-The `.dmg` is unsigned and not notarized — no Apple Developer account here — so
-macOS blocks the first launch. Verified on macOS 27:
+The `.dmg` is unsigned, so macOS blocks it once:
 
-1. Open chartr. On **"chartr" Not Opened**, click **Done** — _not_ **Move to Trash**, the highlighted button.
-2. **System Settings → Privacy & Security → Security** → **Open Anyway**, authenticate, **Open Anyway** again.
+1. Open chartr, click **Done** (_not_ **Move to Trash**).
+2. **System Settings → Privacy & Security → Security → Open Anyway**.
 
-Every later launch opens clean. Right-click → Open no longer works for this,
-whatever older advice says. Or:
-`xattr -d com.apple.quarantine /Applications/chartr.app`.
-
-Bounces with no window? Run
-`/Applications/chartr.app/Contents/MacOS/chartr` for the error Finder swallows.
+Or `xattr -d com.apple.quarantine /Applications/chartr.app`.
 
 ### From source
 
 Go 1.26+, Node 22+.
 
 ```
-make build     # web/dist, then bin/chartr
-make check     # go vet + svelte-check
+make build     # → bin/chartr
+make check
 make test
-make dmg       # the macOS app (macOS only)
+make dmg       # the macOS app
 ```
 
 ## Documentation
 
-- [CONTEXT.md](CONTEXT.md) — the glossary. Space, map, ticket, frontier, session,
-  role, agent, adapter, context bundle: what each word means here and what it
-  deliberately isn't.
-- [docs/adr/](docs/adr/) — sixteen decision records, amendments included. Why the
-  adapters are agent-agnostic ([0002](docs/adr/0002-agent-agnostic-adapters.md)),
-  why there are no worktrees ([0003](docs/adr/0003-serialise-per-space-no-worktrees.md)),
-  why state is derived ([0004](docs/adr/0004-derived-ticket-state-and-proposed-answer.md)),
-  why nothing accumulates ([0005](docs/adr/0005-assembled-context-no-agent-memory.md)),
-  and where the human gate went ([0015](docs/adr/0015-map-kind-removed-role-comes-from-the-ticket.md)).
-- [skills/README.md](skills/README.md) — the shipped skill library and how the
-  three layers resolve.
-- [docs/skill-sync.md](docs/skill-sync.md) — re-fitting upstream skill changes
-  onto the vendored copies.
-- [docs/design-system.md](docs/design-system.md) — read before touching the UI.
+(coming soon)
 
 ## Project status
 
@@ -118,20 +94,25 @@ Not planned: a hosted service, an account, anything that phones home.
 ## Platform support
 
 One **supported** artifact: the cgo-free binary that serves the cockpit in your
-browser, green on all three OSes before a tag ships. The native webview shells
-need cgo and system webview libs, build in a non-blocking CI lane, and attach only
-where their toolchains succeeded ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
+browser, green on all three OSes before a tag ships. The desktop app is a native
+webview shell around that same server, which needs cgo and system webview libs,
+so it is a best-effort tier that may simply be absent
+([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
 
-| Platform                  | Binary | Desktop app                                     |
-| ------------------------- | ------ | ----------------------------------------------- |
-| macOS `arm64`             | ✅     | `.dmg` + shell, [unsigned](#macos-first-launch) |
-| macOS `amd64`             | ✅     | — (cgo won't cross-compile)                     |
-| Linux `amd64` / `arm64`   | ✅     | shell, needs WebKitGTK                          |
-| Windows `amd64` / `arm64` | ✅     | shell via `go-webview2`                         |
+| Platform                  | Binary | Desktop app                             |
+| ------------------------- | ------ | --------------------------------------- |
+| macOS `arm64`             | ✅     | `.dmg`, [unsigned](#macos-first-launch) |
+| macOS `amd64`             | ✅     | none (cgo won't cross-compile)          |
+| Linux `amd64` / `arm64`   | ✅     | none yet, **planned**                   |
+| Windows `amd64` / `arm64` | ✅     | none                                    |
+
+macOS is the only platform with a packaged app today. A Linux release is planned;
+Windows has none and none is scheduled. Either can be built locally with
+`make webview`, which needs WebKitGTK on Linux and go-webview2 on Windows
+([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
 
 Windows is built and its ConPTY layer is smoke-tested every change, but it isn't
-driven daily — **WSL2 is the sure path**. Build a shell yourself with `make webview`
-([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
+driven daily, so **WSL2 is the sure path**.
 
 ## Related projects
 
