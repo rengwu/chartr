@@ -16,8 +16,7 @@ CLIs in tabs.
 
 <br clear="right">
 
-<img width="1221" height="883" alt="The chartr cockpit" src="https://github.com/user-attachments/assets/4c1e4e13-e1fb-4bdd-a834-6e2d07415912" />
-
+<img alt="The chartr cockpit" src="https://github.com/user-attachments/assets/4c1e4e13-e1fb-4bdd-a834-6e2d07415912" />
 
 ## Key features
 
