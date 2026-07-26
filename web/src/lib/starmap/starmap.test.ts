@@ -6,7 +6,7 @@
 // island runs headless, so no 2D context is required.
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { StarMap } from './starmap'
+import { StarMap, titleBudget, clipTitle } from './starmap'
 import { computeLayout, structureSignature } from './layout'
 import { GRAMMAR, nonColorSignature, type SessionState } from './session'
 import type { Ticket } from '../model'
@@ -318,6 +318,204 @@ describe('painting the overlay', () => {
     }
     // The ticker line the last change wrote is on the canvas.
     expect(texts.some((t) => t.startsWith('▸'))).toBe(true)
+  })
+})
+
+// Zoomed out, stars crowd and the same words need more room than exists, so a
+// label's title is rationed before the label itself is given up.
+describe('rationing the title as the camera pulls back', () => {
+  it('ramps the budget with scale, and clamps at both ends', () => {
+    const wide = titleBudget(2)
+    const tight = titleBudget(0.42)
+    expect(tight).toBeLessThan(wide)
+    // Monotonic across the ramp — no band where pulling back buys more title.
+    let prev = 0
+    for (let s = 0.42; s <= 1.2; s += 0.02) {
+      const b = titleBudget(s)
+      expect(b).toBeGreaterThanOrEqual(prev)
+      prev = b
+    }
+    // Clamped: past the top of the ramp the budget stops growing.
+    expect(titleBudget(10)).toBe(wide)
+    expect(titleBudget(0.1)).toBe(tight)
+  })
+
+  it('clips on a word boundary when one is near the cut', () => {
+    expect(clipTitle('The agent adapter contract', 12)).toBe('The agent…')
+    // No usable boundary near the cut — fall back to a hard slice.
+    expect(clipTitle('Supercalifragilistic', 12)).toBe('Supercalifra…')
+    // Inside budget, the title is left exactly alone.
+    expect(clipTitle('Short one', 12)).toBe('Short one')
+  })
+
+  it('never exceeds its budget by more than the ellipsis', () => {
+    const titles = [
+      'The filtering seam and the streaming CSV download',
+      'Per-date historical conversion and rate backfill',
+      'Docs and architecture catch up with what shipped',
+    ]
+    for (const t of titles) {
+      for (let b = 8; b <= 60; b++) {
+        expect(clipTitle(t, b).length).toBeLessThanOrEqual(b + 1)
+      }
+    }
+  })
+})
+
+// Label placement is the one part of the drawing the eye judges but arithmetic
+// can pin: a label may not sit on a star, and two labels may not sit on each
+// other. The solver is allowed to drop a label it cannot fit — what it is not
+// allowed to do is draw one on top of something.
+describe('label placement', () => {
+  const realGetContext = HTMLCanvasElement.prototype.getContext
+  const realRaf = globalThis.requestAnimationFrame
+
+  // A wide fan-out on one root: every child lands at a similar rank with a long
+  // title, which is exactly where a vertical-only stack runs out of slots and
+  // starts dropping labels onto stars.
+  const CROWDED: Ticket[] = [
+    { num: 1, slug: '1', title: 'The root everything hangs from', type: 'task', status: 'open', blockedBy: [], frontier: true },
+    ...Array.from({ length: 12 }, (_, i) => ({
+      num: i + 2,
+      slug: `${i + 2}`,
+      title: `A dependent with a fairly long title ${i + 2}`,
+      type: 'task',
+      status: 'open' as const,
+      blockedBy: [1],
+      frontier: false,
+    })),
+  ]
+
+  // Like stubContext, but recording where each string landed and how it was
+  // aligned, so the drawn boxes can be reconstructed.
+  function recordingContext() {
+    const drawn: { text: string; x: number; y: number; align: string; font: string }[] = []
+    const ctx: Record<string, unknown> = {
+      textAlign: 'center',
+      font: '',
+      createRadialGradient: () => ({ addColorStop: () => {} }),
+      measureText: (s: string) => ({ width: s.length * 6 }),
+      fillText(this: Record<string, unknown>, text: string, x: number, y: number) {
+        drawn.push({
+          text,
+          x,
+          y,
+          align: this.textAlign as string,
+          font: this.font as string,
+        })
+      },
+    }
+    for (const m of [
+      'setTransform', 'fillRect', 'beginPath', 'arc', 'fill', 'stroke', 'moveTo', 'lineTo',
+      'closePath', 'quadraticCurveTo', 'setLineDash', 'save', 'restore', 'translate', 'scale', 'rotate',
+    ]) {
+      ctx[m] = () => {}
+    }
+    return { ctx, drawn }
+  }
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = realGetContext
+    globalThis.requestAnimationFrame = realRaf
+  })
+
+  function place(tickets: Ticket[], sessions: Record<number, SessionState> = {}) {
+    const { ctx, drawn } = recordingContext()
+    let frames: FrameRequestCallback[] = []
+    HTMLCanvasElement.prototype.getContext = (() => ctx) as never
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    }) as never
+    globalThis.cancelAnimationFrame = (() => {}) as never
+
+    const { sm } = mounted()
+    sm.setModel(tickets, sessions)
+    const cb = frames.pop()
+    frames = []
+    cb?.(0)
+
+    // The ticker writes through the same fillText; it is chrome, not a label.
+    const labels = drawn.filter((d) => !d.text.startsWith('▸'))
+    const fs = parseFloat(labels[0]?.font ?? '11')
+    const boxes = labels.map((d) => {
+      const w = d.text.length * 6
+      const left = d.align === 'center' ? d.x - w / 2 : d.align === 'left' ? d.x : d.x - w
+      return {
+        text: d.text,
+        x0: left,
+        y0: d.y - fs * 0.82,
+        x1: left + w,
+        y1: d.y + fs * 0.22,
+      }
+    })
+    return { sm, labels, boxes }
+  }
+
+  const overlaps = (a: { x0: number; y0: number; x1: number; y1: number },
+                    b: { x0: number; y0: number; x1: number; y1: number }) =>
+    a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+
+  it('never draws a label across a star', () => {
+    const tickets = CROWDED
+    const { sm, boxes } = place(tickets)
+    expect(boxes.length).toBeGreaterThan(0)
+
+    // Reconstruct each star's screen disc from the seam, at the scale the
+    // camera settled on.
+    const p = sm.positions()
+    const sa = sm.screenOf(1)!,
+      sb = sm.screenOf(5)!
+    const world = Math.hypot(p[5].x - p[1].x, p[5].y - p[1].y)
+    const s = Math.hypot(sb.x - sa.x, sb.y - sa.y) / world
+
+    for (const t of tickets) {
+      const c = sm.screenOf(t.num)!
+      // The smallest core radius in the palette — a conservative disc, so the
+      // assertion cannot pass by claiming the star is tiny.
+      const r = 4.5 * s
+      const star = { x0: c.x - r, y0: c.y - r, x1: c.x + r, y1: c.y + r }
+      for (const b of boxes) {
+        expect(overlaps(b, star), `label "${b.text}" sits on star #${t.num}`).toBe(false)
+      }
+    }
+  })
+
+  it('never draws two labels across each other', () => {
+    const { boxes } = place(CROWDED)
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        expect(
+          overlaps(boxes[i], boxes[j]),
+          `"${boxes[i].text}" overlaps "${boxes[j].text}"`,
+        ).toBe(false)
+      }
+    }
+  })
+
+  it('keeps the selected star labelled when the map is crowded', () => {
+    const { ctx, drawn } = recordingContext()
+    let frames: FrameRequestCallback[] = []
+    HTMLCanvasElement.prototype.getContext = (() => ctx) as never
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    }) as never
+    globalThis.cancelAnimationFrame = (() => {}) as never
+
+    const { sm, host } = mounted()
+    sm.setModel(CROWDED)
+    const canvas = host.querySelector('canvas')!
+    const at = sm.screenOf(7)!
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: at.x, clientY: at.y, bubbles: true }))
+    canvas.dispatchEvent(new MouseEvent('mouseup', { clientX: at.x, clientY: at.y, bubbles: true }))
+    drawn.length = 0
+    const cb = frames.pop()
+    frames = []
+    cb?.(0)
+
+    // Crowding may cost some labels, but never the one the operator picked.
+    expect(drawn.some((d) => d.text.startsWith('07'))).toBe(true)
   })
 })
 

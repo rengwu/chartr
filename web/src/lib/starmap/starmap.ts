@@ -52,6 +52,82 @@ interface LabelDraw {
   fill: string
 }
 
+// A screen-space rectangle. Both stars and already-placed labels become one of
+// these, so the solver has a single kind of thing to test against.
+interface Box {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+function hits(a: Box, b: Box): boolean {
+  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
+}
+
+// Who gets first pick of the good slots. A contested slot should go to the star
+// the operator is most likely to be reading — the selected one, then the bright
+// actionable states — rather than to whichever ticket happens to be numbered
+// lowest, which is what array order gave us.
+const LABEL_PRIORITY: Record<VisualState, number> = {
+  frontier: 0,
+  claimed: 1,
+  resolved: 2,
+  blocked: 3,
+  out_of_scope: 4,
+}
+
+// A star just off-screen can still own a label that reaches back on-screen, so
+// the viewport cull keeps a generous skirt around the canvas.
+const CULL_MARGIN = 140
+
+// How much title a label may carry, as the camera pulls back. Zoomed out, stars
+// crowd together and the same words need far more room than there is — so the
+// title is rationed rather than the label dropped. Below TITLE_MIN_SCALE only
+// the number survives; from there the budget ramps to full by TITLE_FULL_SCALE.
+//
+// The ceiling is set from real ticket titles across this repo's maps, whose
+// lengths run median 30 / p90 60 / max 75. 60 spends the width where it buys
+// nine titles in ten whole; the long tail past that is a handful of unusually
+// wordy tickets, and a label wide enough for them would be pushing 500px —
+// half the pane — which costs its neighbours more than it is worth.
+//
+// The top of the ramp sits well above the scale a map fits at, so the extra
+// length arrives as the operator zooms *in* on a region and the stars have
+// spread out to make room. Around s≈0.9 the budget still lands near 30, which
+// is what the mid-zoom map showed before the ceiling moved.
+// The ramp is eased rather than linear. A straight line spends its budget
+// evenly across the whole zoom range, which means it is already deep into
+// truncating at scales where the map is still visibly open — the label gets
+// short well before the room to hold it runs out. The exponent keeps the two
+// anchors (a bare number at the bottom, the full title at the top) and lifts
+// everything between them, so the title only shortens sharply once the stars
+// have genuinely closed up.
+const TITLE_MIN_SCALE = 0.42
+const TITLE_FULL_SCALE = 1.6
+const TITLE_MIN_CHARS = 12
+const TITLE_MAX_CHARS = 60
+const TITLE_RAMP_EASE = 0.7
+
+// How many characters of title a label may carry at this camera scale. Exported
+// for the tests: the ramp is arithmetic, and pinning it end-to-end through the
+// camera only ever pins the number-only cliff underneath it.
+export function titleBudget(scale: number): number {
+  const u = clamp((scale - TITLE_MIN_SCALE) / (TITLE_FULL_SCALE - TITLE_MIN_SCALE), 0, 1)
+  return Math.round(
+    TITLE_MIN_CHARS + Math.pow(u, TITLE_RAMP_EASE) * (TITLE_MAX_CHARS - TITLE_MIN_CHARS),
+  )
+}
+
+// Clip a title to `budget`, preferring a word boundary near the cut. At the
+// short end of the ramp "The agent a…" is a worse label than "The agent…", and
+// the difference costs one lastIndexOf.
+export function clipTitle(title: string, budget: number): string {
+  if (title.length <= budget) return title
+  const cut = title.slice(0, budget)
+  const sp = cut.lastIndexOf(' ')
+  return (sp >= budget - 6 && sp > 0 ? cut.slice(0, sp) : cut.trimEnd()) + '…'
+}
+
 // How long one ticker line lingers before it fades out, and how long the fade
 // takes — the live map's answer to "what just changed under me?" is one glance,
 // then calm again.
@@ -934,47 +1010,104 @@ export class StarMap {
     g.shadowBlur = 0
   }
 
+  // Greedy point-feature label placement. Three rules do the work:
+  //
+  //   1. Stars are obstacles, not just other labels. The old solver only ever
+  //      tested a label against labels, so one pushed aside to dodge its
+  //      neighbour would happily land on top of a star.
+  //   2. A label can climb above the star, not only hang below it. Eight
+  //      candidates, alternating below/above at four distances. Placement stays
+  //      strictly vertical and always centred on its own star: a sideways slot
+  //      would buy room in a cluster, but a label that drifts laterally reads as
+  //      belonging to whichever star it drifted toward.
+  //   3. A label that fits nowhere is dropped rather than drawn over something.
+  //      Which is survivable only because placement runs in priority order, so
+  //      what gets dropped is the dimmest star present, never the selected one.
+  //
+  // Cost is ~16·N² box tests for N visible stars, run once per camera pose (the
+  // cache above), which at map scale is microseconds.
   #solveLabels(
     g: CanvasRenderingContext2D,
     key: string,
   ): { key: string; fs: number; items: LabelDraw[] } {
-    const numOnly = this.#cam.s < 0.42
+    const numOnly = this.#cam.s < TITLE_MIN_SCALE
+    const budget = titleBudget(this.#cam.s)
     const fs = clamp(11 * Math.pow(this.#cam.s, 0.3), 8, 13)
     // measureText reads the context's current font, so set it before measuring.
     g.font = fs.toFixed(1) + 'px ui-sans-serif,system-ui,sans-serif'
-    const items: LabelDraw[] = []
-    const placed: { x: number; y: number; w: number }[] = []
-    const h = fs + 2,
-      step = h + 2,
-      tries = [0, step, -step, 2 * step, -2 * step, 3 * step]
+    const s = this.#cam.s
+    const gap = 4
+    const step = fs + 4
+
+    // Everything on screen, with the clearance each star wants kept around it:
+    // the core, plus the session overlay's orbit and moon-halo when one is
+    // riding it, plus the selection ring. The soft glow (`gr`, up to 49px) is
+    // deliberately *not* cleared — it is far too wide to treat as solid, and
+    // text over the faint outer falloff reads fine.
+    const vis: { n: Node; sx: number; sy: number; rad: number }[] = []
     for (const n of this.#nodes) {
-      const sx = n.x * this.#cam.s + this.#cam.x
-      const sy = n.y * this.#cam.s + this.#cam.y
+      const sx = n.x * s + this.#cam.x
+      const sy = n.y * s + this.#cam.y
+      if (sx < -CULL_MARGIN || sx > this.#w + CULL_MARGIN) continue
+      if (sy < -CULL_MARGIN || sy > this.#h + CULL_MARGIN) continue
       const c = STAR[n.vstate]
-      let label = (n.num < 10 ? '0' : '') + n.num
-      if (!numOnly) {
-        const t2 = n.title.length > 30 ? n.title.slice(0, 29) + '…' : n.title
-        label += '  ' + t2
+      let r = c.r + 2
+      if (n.sstate) r = c.r + 15
+      if (this.#selected === n.num) r = Math.max(r, c.r + 14)
+      vis.push({ n, sx, sy, rad: r * s })
+    }
+
+    const obstacles: Box[] = vis.map((v) => ({
+      x0: v.sx - v.rad,
+      y0: v.sy - v.rad,
+      x1: v.sx + v.rad,
+      y1: v.sy + v.rad,
+    }))
+
+    const order = [...vis].sort((a, b) => {
+      const pa = this.#selected === a.n.num ? -1 : LABEL_PRIORITY[a.n.vstate]
+      const pb = this.#selected === b.n.num ? -1 : LABEL_PRIORITY[b.n.vstate]
+      return pa - pb || a.n.num - b.n.num
+    })
+
+    const items: LabelDraw[] = []
+    for (const v of order) {
+      let text = (v.n.num < 10 ? '0' : '') + v.n.num
+      if (!numOnly) text += '  ' + clipTitle(v.n.title, budget)
+      const w = g.measureText(text).width
+
+      // Every candidate is centred on the star and differs only in how far above
+      // or below it sits. A label always reads as hanging off its own star, and
+      // never drifts sideways toward a neighbour's.
+      const below = (k: number) => v.sy + v.rad + gap + fs * 0.82 + k * step
+      const above = (k: number) => v.sy - v.rad - gap - fs * 0.22 - k * step
+      const cands: number[] = []
+      for (let k = 0; k <= 3; k++) {
+        cands.push(below(k), above(k))
       }
-      const w = g.measureText(label).width
-      const cy = sy + c.r * this.#cam.s + fs + 3
-      let fy = cy
-      for (const off of tries) {
-        const ty = cy + off
+
+      const left = v.sx - w / 2
+      for (const cy of cands) {
+        const box: Box = {
+          x0: left - 3,
+          y0: cy - fs * 0.82 - 2,
+          x1: left + w + 3,
+          y1: cy + fs * 0.22 + 2,
+        }
         let ok = true
-        for (const p of placed) {
-          if (Math.abs(sx - p.x) < (w + p.w) / 2 + 4 && Math.abs(ty - p.y) < h + 2) {
+        for (const o of obstacles) {
+          if (hits(box, o)) {
             ok = false
             break
           }
         }
-        if (ok) {
-          fy = ty
-          break
-        }
+        if (!ok) continue
+        obstacles.push(box)
+        items.push({ text, x: v.sx, y: cy, fill: LABEL[v.n.vstate] })
+        break
       }
-      placed.push({ x: sx, y: fy, w })
-      items.push({ text: label, x: sx, y: fy, fill: LABEL[n.vstate] })
+      // No candidate cleared: the label is dropped. It comes back as soon as the
+      // operator zooms in and the cluster opens up.
     }
     return { key, fs, items }
   }
