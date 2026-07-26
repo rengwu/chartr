@@ -188,7 +188,14 @@
     spawningRole = role;
     actionError = null;
     try {
-      const res = await spawnSession(spaceId, map.slug, ticket.num, role, agent, force);
+      const res = await spawnSession(
+        spaceId,
+        map.slug,
+        ticket.num,
+        role,
+        agent,
+        force,
+      );
       pendingSpawn = null;
       onspawned?.(res.sessionId);
     } catch (e) {
@@ -199,7 +206,8 @@
       if (e instanceof ActionError && e.code === LIVE_SESSION) {
         pendingSpawn = { role, agent };
       } else {
-        actionError = e instanceof ActionError ? e.message : (e as Error).message;
+        actionError =
+          e instanceof ActionError ? e.message : (e as Error).message;
       }
     } finally {
       spawningRole = null;
@@ -325,12 +333,18 @@
 
 <!-- The pane is a flush panel, not a floating card: it shares a seam with the map
      (the parent's drag border) rather than hovering inset over it, so it drops the
-     card's radius and ring and takes a single border on the seam edge. -->
+     card's radius and ring and takes a single border on the seam edge.
+
+     Its surface is the card token over a backdrop blur, so the
+     constellation stays faintly present behind the reading column rather than
+     being cut away — the pane reads as laid over the map it came from. The camera
+     still treats the footprint as taken (the parent's insets), so no star is left
+     relying on that translucency to be seen. -->
 <Card.Root
   role="complementary"
   aria-label={isMap ? "Map material" : "Ticket detail"}
   class={cn(
-    "h-full min-h-0 flex-col gap-0 overflow-hidden rounded-none py-0 ring-0",
+    "h-full min-h-0 flex-col gap-0 overflow-hidden rounded-none bg-card/50 py-0 ring-0 backdrop-blur-[8px]",
     dock === "bottom"
       ? "border-t border-border"
       : "border-l border-border border-t",
@@ -403,7 +417,11 @@
           >
         {/if}
       {/if}
-      {#if !isMap && spaceId}
+      <!-- Only where a spawn is actually takeable. The payload is what a session
+           on this ticket *would be told*, so on a ticket that offers no session to
+           start it previews a briefing nobody can be given — a button whose answer
+           is hypothetical. It rides the same condition as the footer's actions. -->
+      {#if canSpawn}
         <Button
           variant="outline"
           size="xs"
@@ -573,7 +591,10 @@
       {#if otherRoles.length}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger
-            class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+            class={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "gap-1.5",
+            )}
             disabled={!canAct || spawningRole !== null}
             title="Other sessions this ticket can start"
           >
@@ -620,15 +641,17 @@
   <div class="space-y-4 text-sm">
     <p class="text-muted-foreground">
       Spawning a second session runs both agents in
-      <strong class="font-medium text-foreground">the same working tree</strong>. There is no
-      branch or worktree between them, so they can overwrite each other's uncommitted edits
-      with no conflict to resolve.
+      <strong class="font-medium text-foreground">the same working tree</strong
+      >. There is no branch or worktree between them, so they can overwrite each
+      other's uncommitted edits with no conflict to resolve.
     </p>
     <p class="text-muted-foreground">
       Safe when the two tickets touch different files. Risky when they don't.
     </p>
     <div class="flex justify-end gap-2">
-      <Button variant="ghost" size="sm" onclick={() => (pendingSpawn = null)}>Cancel</Button>
+      <Button variant="ghost" size="sm" onclick={() => (pendingSpawn = null)}
+        >Cancel</Button
+      >
       <Button
         variant="default"
         size="sm"

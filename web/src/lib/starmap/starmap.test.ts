@@ -241,6 +241,48 @@ describe('the camera pose on the seam', () => {
     expect(sm.screenOf(3)).not.toEqual(where)
   })
 
+  it('keeps the operator’s pose when the pane closes, and still clears room when one opens', () => {
+    const { sm, host } = mounted()
+    sm.setModel(fixture())
+    sm.setInsets({ top: 52, right: 420, bottom: 16, left: 16 })
+    sm.select(3)
+    // Where the operator left the map: their own pan over the seat.
+    pan(host, 120, 80)
+    const pose = sm.camera()
+    const where = sm.screenOf(3)!
+
+    // Closing the pane hands the space back — nothing selected, and no re-fit.
+    sm.select(null)
+    sm.setInsets({ top: 52, right: 16, bottom: 16, left: 16 })
+    expect(sm.camera()).toEqual(pose)
+    expect(sm.screenOf(3)).toEqual(where)
+
+    // A pane opening onto no selection (the map-material pane) still claims its
+    // room, easing the constellation into what is left.
+    sm.setInsets({ top: 52, right: 420, bottom: 16, left: 16 })
+    expect(sm.camera()).not.toEqual(pose)
+  })
+
+  it('frames the whole map on request, in the free area the pane leaves', () => {
+    const { sm, host } = mounted()
+    sm.setModel(fixture())
+    const whole = sm.camera()
+
+    // Wherever the operator has taken the map, fit() is the way back.
+    pan(host, 260, -180)
+    expect(sm.camera()).not.toEqual(whole)
+    sm.fit()
+    expect(sm.camera()).toEqual(whole)
+
+    // And it frames into the free rect, not the raw viewport: with the pane
+    // holding the right edge, the whole constellation sits clear of it.
+    sm.setInsets({ top: 52, right: 420, bottom: 16, left: 16 })
+    sm.fit()
+    for (const num of Object.keys(sm.positions()).map(Number)) {
+      expect(sm.screenOf(num)!.x).toBeLessThan(1000 - 420)
+    }
+  })
+
   it('refuses a pose it cannot paint, and clamps one past the zoom stops', () => {
     const { sm } = mounted()
     sm.setModel(fixture())

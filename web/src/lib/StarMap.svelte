@@ -75,6 +75,13 @@
     if (insets) island?.setInsets(insets)
   })
 
+  // The one imperative call out to the island the chrome is allowed: frame the
+  // whole map. Reached through `bind:this` on this wrapper, so the chrome's
+  // recentre button still never touches the renderer itself.
+  export function fit(): void {
+    island?.fit()
+  }
+
   // Put the remembered pose back — declared last so it runs last in the mount
   // flush, after the fit, the restored star's seat and the pane's insets have
   // each moved the camera. Every one of those is the island working out where a

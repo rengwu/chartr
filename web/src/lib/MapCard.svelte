@@ -15,7 +15,13 @@
   import { cameraKey } from "./mapstate";
   import { Button } from "./components/ui/button";
   import * as ScrollArea from "./components/ui/scroll-area";
-  import { CaretLeft, Columns, CornersOut, X } from "phosphor-svelte";
+  import {
+    CaretLeft,
+    Columns,
+    CornersOut,
+    GpsFix,
+    X,
+  } from "phosphor-svelte";
 
   // The star-map panel presented as a card over the terminal (spec, The
   // interface): summoned, never toggled by switching spaces or maps. It carries
@@ -93,6 +99,18 @@
   // map opens — $state so the measuring effects below re-run when they appear.
   let bodyEl = $state<HTMLDivElement | null>(null);
   let paneEl = $state<HTMLDivElement | null>(null);
+  // The island wrapper, for the one call the chrome makes into it: recentre.
+  let island = $state<ReturnType<typeof StarMap> | null>(null);
+
+  // The map screen's controls float directly over the canvas rather than on a
+  // bar, so the ones that read as solid chips lift themselves off the starfield
+  // with a faint blur — enough that a glyph stays readable over a dense
+  // constellation, well short of a frosted panel. Only the chips: the ghosted
+  // title and close are meant to sit *in* the field, and blurring a control with
+  // no surface of its own just prints its rectangle onto the map. Only the map
+  // screen, too — on the picker the same chrome sits on an opaque card, where
+  // there is nothing behind it to blur.
+  const OVER_MAP = "backdrop-blur-[2px]";
   let bodyWidth = $state(0);
   let bodyHeight = $state(0);
   let paneSize = $state({ w: 0, h: 0 });
@@ -258,11 +276,13 @@
 
   <!-- The dock/close chrome is shared by both screens: dock toggles the whole
        panel between the terminal-priority split and floating over the terminal;
-       close dismisses it. -->
-  {#snippet chrome()}
+       close dismisses it. `extra` is how the map screen puts its over-the-canvas
+       blur on the dock chip without the picker's copy taking it. -->
+  {#snippet chrome(extra: string = "")}
     <Button
       variant="outline"
       size="icon-sm"
+      class={extra}
       aria-pressed={dock}
       title={dock
         ? "Float over the terminal"
@@ -294,7 +314,14 @@
            has to be in it — on the key alone, switching between them would show
            one map's stars under the other's camera. -->
       {#key camera}
-        <StarMap {map} {terminals} {insets} cameraKey={camera} bind:selected />
+        <StarMap
+          {map}
+          {terminals}
+          {insets}
+          cameraKey={camera}
+          bind:selected
+          bind:this={island}
+        />
       {/key}
 
       <div
@@ -303,6 +330,7 @@
         <Button
           variant="outline"
           size="sm"
+          class={OVER_MAP}
           title="Back to all maps"
           onclick={back}
         >
@@ -323,15 +351,36 @@
           <span class="min-w-0 flex-1 truncate text-left">{map.name}</span>
         </Button>
         <div class="ml-auto flex items-center gap-1">
-          {@render chrome()}
+          {@render chrome(OVER_MAP)}
         </div>
       </div>
+
+      <!-- Recentre. Closing the pane leaves the camera where the operator put it,
+           so this is the way back to the whole constellation. Only offered with
+           the pane closed: with one open the camera belongs to the selected star,
+           and a bottom-docked pane would sit on top of this corner anyway. -->
+      {#if !paneOpen}
+        <div class="absolute bottom-2 left-2 z-30">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            class={OVER_MAP}
+            aria-label="Recenter map"
+            title="Recenter map"
+            onclick={() => island?.fit()}
+          >
+            <GpsFix />
+          </Button>
+        </div>
+      {/if}
 
       {#if paneOpen}
         <!-- Full-height on the right (below the floating chrome) by default,
              half-height along the bottom when the card is narrow or tall. It sits
              flush to the card's edges — a panel sharing a draggable seam with the
-             map, not a card floating over it — and its bg occludes the stars. -->
+             map, not a card floating over it. Its surface is translucent (see
+             DetailPane), so the stars behind it stay faintly visible; the camera
+             still keeps them clear of the footprint. -->
         <div
           class={[
             "absolute z-10",

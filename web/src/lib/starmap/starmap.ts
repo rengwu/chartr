@@ -399,10 +399,23 @@ export class StarMap {
     this.#applySelection(num)
   }
 
+  // Frame the whole constellation in the free area, easing there rather than
+  // snapping. Since a closing pane no longer re-fits, this is the operator's way
+  // back to the whole map after they have panned and zoomed around in it — the
+  // chrome's recentre button, and nothing else in the island calls it.
+  fit(): void {
+    this.#labelEpoch++
+    this.#refit(false)
+    this.#settleIfHeadless()
+  }
+
   // The detail pane's measured footprint. Updating it re-eases the camera: a
   // selected star re-seats into the new free rect (so a responsive right→bottom
-  // re-dock re-seats it), and with nothing selected the whole map eases to fit
-  // the free area — which is how the map-material pane clears room for itself.
+  // re-dock re-seats it), and with nothing selected a pane *claiming* space eases
+  // the map to fit what is left — which is how the map-material pane clears room
+  // for itself. A pane only giving space back (closing) moves nothing: the
+  // operator's pan and zoom are theirs, and a closed pane is not a reason to
+  // throw them away and re-fit the whole constellation.
   setInsets(insets: Partial<{ top: number; right: number; bottom: number; left: number }>): void {
     const next = { ...this.#insets, ...insets }
     // The wrapper re-derives this object on every measurement, so the same four
@@ -417,10 +430,17 @@ export class StarMap {
     ) {
       return
     }
+    // Does the pane want *more* room than it had on some edge? That is the only
+    // case an unselected map has to answer, by fitting into what is left.
+    const claiming =
+      next.top > this.#insets.top ||
+      next.right > this.#insets.right ||
+      next.bottom > this.#insets.bottom ||
+      next.left > this.#insets.left
     this.#insets = next
     if (this.#selected !== null && this.#byNum.has(this.#selected)) {
       this.#seat(this.#selected)
-    } else {
+    } else if (claiming) {
       this.#refit(false)
       this.#settleIfHeadless()
     }
