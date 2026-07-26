@@ -100,3 +100,9 @@ release:
     platforms whose cgo/webview toolchains built in CI. A missing shell asset for
     a platform means its toolchain did not build this release; the supported
     binary for that platform is unaffected. See the README's support tiers.
+
+    **Best-effort, macOS** — `chartr_<version>_darwin_<arch>.dmg`: that same
+    shell as a `chartr.app` to drag into `/Applications`, for the one
+    architecture named in its filename (Apple Silicon), unsigned and **not
+    notarized** — so macOS blocks the first launch, and the disk image and the
+    README both carry the steps that unblock it.

@@ -3,10 +3,11 @@
 #   * the ONE supported artifact — the pure-Go, cgo-free binary that serves the
 #     cockpit in a browser — built and checksummed by goreleaser for macOS,
 #     Linux and Windows from a single cgo-free job (the `release` job below); and
-#   * best-effort native webview shells, built in a separate matrix job that is
-#     `continue-on-error` and depends on the release already being published, so
-#     a shell toolchain failure attaches nothing and CANNOT fail the supported
-#     release (the `shells` job below).
+#   * best-effort native webview shells — and, on macOS, the `chartr.app` disk
+#     image packaged from that shell (ADR 0016) — built in a separate matrix job
+#     that is `continue-on-error` and depends on the release already being
+#     published, so a shell or packaging failure attaches nothing and CANNOT fail
+#     the supported release (the `shells` job below).
 #
 # Distribution is GitHub releases only: no `go install`, no Homebrew, no plugin
 # marketplace (ADR 0011).
@@ -128,9 +129,23 @@ jobs:
         run: make webview GOOS=${{ matrix.goos }} WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
         shell: bash
 
+      # macOS only: the same shell, packaged as `chartr.app` inside a `.dmg`
+      # (ADR 0016). `make dmg` re-runs `make bundle` → `make webview` with the same
+      # stamp, so the app carries exactly the executable the step above built. This
+      # runs INSIDE this continue-on-error job, which already `needs` the published
+      # release — so packaging cannot fail or alter the supported release, and a
+      # packaging failure attaches nothing at all. That is the tiering guarantee;
+      # do not lift this into its own job or make it gating.
+      - name: Package the macOS app bundle and disk image
+        if: matrix.goos == 'darwin' && steps.build_shell.outcome == 'success'
+        run: make dmg WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
+        shell: bash
+
       # Upload only if the target actually produced a shell binary. `make webview`
       # exits 0 with no output when the host cannot build the shell (the tier is
-      # genuinely optional), so a missing artifact is not an error here.
+      # genuinely optional), so a missing artifact is not an error here. The macOS
+      # disk image and its per-asset sidecar ride along the same way; the supported
+      # `checksums.txt` is never touched.
       - name: Attach shell to the release
         if: steps.build_shell.outcome == 'success'
         env:
@@ -138,7 +153,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          assets=(build/shell/*)
+          assets=(build/shell/* build/macapp/*.dmg build/macapp/*.dmg.sha256)
           if [ ${#assets[@]} -eq 0 ]; then
             echo "no webview shell built for ${{ matrix.goos }} — best-effort tier, nothing to attach"
             exit 0

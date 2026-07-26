@@ -52,6 +52,47 @@ each with its own `.sha256` sidecar rather than an entry in the supported
 not build that release — the supported binary for that platform is unaffected. A
 shell build failure never fails a release.
 
+### Best-effort — the macOS app in a disk image
+
+On macOS that shell is also packaged as a real application:
+`chartr_<version>_darwin_<arch>.dmg`, attached to a release beside the loose
+shells with its own `.sha256` sidecar. Open it, drag chartr onto
+`/Applications`, and launch it from Launchpad ([ADR 0016](docs/adr/0016-unsigned-macos-app-bundle.md)).
+Build it yourself with `make dmg` (or `make bundle` for just the `.app`).
+
+Two things to know before you download it.
+
+**It is unsigned and not notarized.** The bundle carries an ad-hoc signature
+only — the minimum Apple Silicon needs to execute a binary at all — because this
+project has no Apple Developer account. So **macOS blocks the first launch**.
+The steps below are shipped in the disk image too, and were verified on
+macOS 27.0:
+
+1. Open chartr from Launchpad or the Applications folder. macOS puts up
+   **"chartr" Not Opened** — *Apple could not verify "chartr" is free of malware
+   that may harm your Mac or compromise your privacy.* Click **Done**. Do **not**
+   click **Move to Trash**, which is the highlighted button.
+2. Open **System Settings → Privacy & Security** and scroll to **Security**.
+   Under the line **"chartr" was blocked to protect your Mac.**, click
+   **Open Anyway**, authenticate with Touch ID or your password, then click
+   **Open Anyway** once more in the dialog that follows.
+
+chartr opens, and every later launch opens with no prompt at all.
+Right-clicking the app and choosing Open does **not** clear this any more,
+whatever older advice says. From a terminal instead, if you prefer:
+`xattr -d com.apple.quarantine /Applications/chartr.app` — which removes the
+quarantine attribute macOS attaches to downloads, so run it only if you trust
+the download.
+
+**It carries one architecture.** cgo does not cross-compile, so the image holds
+the CI runner's own slice — **Apple Silicon (`arm64`)** — and the filename says
+so. On an Intel Mac, use the supported binary.
+
+If a launch bounces with no window and nothing to show for it, run the bundled
+executable straight from a terminal —
+`/Applications/chartr.app/Contents/MacOS/chartr` — which prints the startup
+error Finder discards.
+
 ### Windows: native is best-effort, WSL2 is the sure path
 
 Native Windows is a **best-effort tier by decision**, not an afterthought: the
