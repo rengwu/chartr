@@ -1,153 +1,140 @@
 # chartr
 
-A cockpit for driving [wayfinder](https://github.com/) maps to completion: switch
-between project spaces, read a map as a star-map, and spawn agent sessions against
-its frontier — with implementation work gated behind review.
+<img src="./docs/assets/v4/icon-mac-1024.png" width="34%" align="right">
 
-chartr runs as one self-contained binary that serves its interface in your
-browser. Point it at a directory of git repositories, open the cockpit, and drive
-maps to done.
+**Agent multiplexer with a map of the work.**
+
+[Download macOS app](https://github.com/rengwu/chartr/releases/latest)
+
+Chart a wayfinder map inside chartr, then drive it to completion. The plan
+renders as a star-map; take a ticket off the frontier, pick an agent, and the
+session opens with the map, the ticket, and its blockers' answers already in the
+buffer.
+
+Without a map it is a plain multiplexer: repos in a sidebar, shells and agent
+CLIs in tabs.
+
+<br clear="right">
+
+![The chartr cockpit](./docs/assets/screenshot.png)
+
+## Key features
+
+- **Chart the map without leaving.** Launch a planning agent from the sidebar and
+  whatever it writes to `.plan/maps/` draws as a star-map the moment it hits disk.
+- **Spawn off the frontier.** Take an unblocked ticket, pick a role and an agent,
+  and the session opens in that agent's own TUI with full context already
+  submitted.
+- **Whatever CLI you run.** The adapter models one thing, how a binary takes its
+  opening line, so anything on `PATH` registers and claude, codex, opencode,
+  kimi, grok and pi are detected for you.
+- **Tells blocked from thinking.** Tab status comes from what an agent broadcasts
+  and draws, so the sidebar flags whichever space is waiting on you.
+- **The map on disk is the state.** A ticket resolves when its `## Answer`
+  appears, and chartr's only writes are the claim and release commits on the
+  ticket file.
+- **Skills are files.** Plain `SKILL.md` directories you can shadow per repo or
+  per machine, and your own launchable skill shows up in the sidebar.
+- **Terminal in one TOML.** Presets, 21 colour slots, font, cursor, padding,
+  keybindings.
+
+## Installation
+
+GitHub releases only — no `go install`, no Homebrew tap, no marketplace entry.
+Grab your platform's archive from the
+[releases page](https://github.com/rengwu/chartr/releases), check it against
+`checksums.txt`, run it:
 
 ```
-chartr            # serves the cockpit on http://127.0.0.1:8787
+chartr                 # http://127.0.0.1:8787
 chartr -addr :9000
+chartr -data-dir ~/w   # session root (default: cwd)
 chartr -version
 ```
 
-## What you get: the support tiers
+User config lives under `~/.config/chartr`. Agent CLIs are yours to install;
+chartr ships none, and the empty agent library refuses every spawn until you
+register one.
 
-chartr ships **one supported artifact**, and everything else is a
-**best-effort tier** that may be absent without anything being wrong. This is a
-deliberate boundary ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)),
-not an accident of what happened to build.
+### macOS first launch
 
-### Supported — the browser-serving binary
+The `.dmg` is unsigned and not notarized — no Apple Developer account here — so
+macOS blocks the first launch. Verified on macOS 27:
 
-The one supported artifact is the **pure-Go binary that serves the browser
-frontend** from its embedded frontend build. It is cross-compiled for **macOS,
-Linux, and Windows** from a single **cgo-free** CI job — nothing in it requires
-cgo — and every release is **checksummed** (`checksums.txt`, SHA-256).
+1. Open chartr. On **"chartr" Not Opened**, click **Done** — _not_ **Move to Trash**, the highlighted button.
+2. **System Settings → Privacy & Security → Security** → **Open Anyway**, authenticate, **Open Anyway** again.
 
-"Supported" means: this is the artifact the release pipeline must produce,
-green, for all three operating systems before a tag ships. If you want
-chartr, this is what you download.
+Every later launch opens clean. Right-click → Open no longer works for this,
+whatever older advice says. Or:
+`xattr -d com.apple.quarantine /Applications/chartr.app`.
 
-### Best-effort — the native webview shells
+Bounces with no window? Run
+`/Applications/chartr.app/Contents/MacOS/chartr` for the error Finder swallows.
 
-Each platform can also have a **native webview shell** — a desktop window around
-the same cockpit instead of a browser tab (cgo + WebKitGTK on Linux, cgo on
-macOS, cgo-free `go-webview2` on Windows). It is a second binary,
-`chartr-shell_<version>_<os>_<arch>`, that runs the same server
-in-process on a random loopback port and points a real window at it: a dock icon,
-a minimal native menu (Quit, Reload, the edit items), and one window per
-`--data-dir` — a second launch raises the running one. If the native runtime is
-missing it says so and points you back at `chartr`; it never silently opens a
-browser. Build it yourself with `make webview`
-([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
+### From source
 
-These are **best-effort**: they are built in a separate, non-blocking CI lane and
-**attached to a release only for the platforms whose toolchains built them**,
-each with its own `.sha256` sidecar rather than an entry in the supported
-`checksums.txt`. A missing shell asset for your platform means its toolchain did
-not build that release — the supported binary for that platform is unaffected. A
-shell build failure never fails a release.
-
-### Best-effort — the macOS app in a disk image
-
-On macOS that shell is also packaged as a real application:
-`chartr_<version>_darwin_<arch>.dmg`, attached to a release beside the loose
-shells with its own `.sha256` sidecar. Open it, drag chartr onto
-`/Applications`, and launch it from Launchpad ([ADR 0016](docs/adr/0016-unsigned-macos-app-bundle.md)).
-Build it yourself with `make dmg` (or `make bundle` for just the `.app`).
-
-Two things to know before you download it.
-
-**It is unsigned and not notarized.** The bundle carries an ad-hoc signature
-only — the minimum Apple Silicon needs to execute a binary at all — because this
-project has no Apple Developer account. So **macOS blocks the first launch**.
-The steps below are shipped in the disk image too, and were verified on
-macOS 27.0:
-
-1. Open chartr from Launchpad or the Applications folder. macOS puts up
-   **"chartr" Not Opened** — *Apple could not verify "chartr" is free of malware
-   that may harm your Mac or compromise your privacy.* Click **Done**. Do **not**
-   click **Move to Trash**, which is the highlighted button.
-2. Open **System Settings → Privacy & Security** and scroll to **Security**.
-   Under the line **"chartr" was blocked to protect your Mac.**, click
-   **Open Anyway**, authenticate with Touch ID or your password, then click
-   **Open Anyway** once more in the dialog that follows.
-
-chartr opens, and every later launch opens with no prompt at all.
-Right-clicking the app and choosing Open does **not** clear this any more,
-whatever older advice says. From a terminal instead, if you prefer:
-`xattr -d com.apple.quarantine /Applications/chartr.app` — which removes the
-quarantine attribute macOS attaches to downloads, so run it only if you trust
-the download.
-
-**It carries one architecture.** cgo does not cross-compile, so the image holds
-the CI runner's own slice — **Apple Silicon (`arm64`)** — and the filename says
-so. On an Intel Mac, use the supported binary.
-
-If a launch bounces with no window and nothing to show for it, run the bundled
-executable straight from a terminal —
-`/Applications/chartr.app/Contents/MacOS/chartr` — which prints the startup
-error Finder discards.
-
-### Windows: native is best-effort, WSL2 is the sure path
-
-Native Windows is a **best-effort tier by decision**, not an afterthought: the
-supported binary is built for Windows and its ConPTY-backed PTY layer is
-smoke-tested in CI on every change ([ADR 0006](docs/adr/0006-go-xtermjs-canvas-browser-first.md)
-as amended), but native Windows is not driven daily. **WSL2 is the documented
-sure path** — if you want the smoothest Windows experience, run the Linux binary
-under WSL2.
-
-## Distribution
-
-**GitHub releases only.** Download the checksummed binary for your platform from
-the [releases page](https://github.com/rengwu/chartr/releases), verify
-it against `checksums.txt`, and run it.
-
-There is deliberately **no `go install`, no Homebrew tap, and no plugin
-marketplace entry** — the last declined on purpose: this is an agent-agnostic
-tool, not something distributed through one agent's storefront. These channels
-stay cheap to add later once tagged releases exist; declining them now forecloses
-nothing.
-
-## Cold start: what works with nothing installed
-
-A fresh download with **zero agent CLIs installed works everywhere except one
-thing: spawning a session.** You can register spaces, browse maps as star-maps,
-read tickets, open ad-hoc shells, and drive the review hub — all of it works cold.
-
-The agent CLIs (Claude Code, Codex, and friends) are **not chartr's to
-ship.** When you try to spawn a session against a role whose agent is not
-installed, chartr **hard-blocks at spawn time with a message that names
-exactly what is missing** — and that block message doubles as your installer's
-to-do list. There is **no separate doctor command**: the environment diagnosis is
-the registry badge and the spawn-time block, surfaced at the moment of need
-rather than as ceremony off to the side.
-
-## Building from source
-
-You need Go 1.26+ and Node 22+.
+Go 1.26+, Node 22+.
 
 ```
-make build     # builds web/dist, then the self-contained binary → bin/chartr
+make build     # web/dist, then bin/chartr
 make check     # go vet + svelte-check
-make test      # the Go process-boundary suite
-make snapshot  # build the supported release binaries locally (goreleaser, no publish)
+make test
+make dmg       # the macOS app (macOS only)
 ```
-
-The frontend is a Svelte SPA ([ADR 0010](docs/adr/0010-svelte-chrome-imperative-islands.md))
-built by Vite and `go:embed`ed into the binary, so the shipped artifact is one
-offline file with no CDN and no runtime fetch. See
-[docs/design-system.md](docs/design-system.md) before touching any UI.
 
 ## Documentation
 
-- [CONTEXT.md](CONTEXT.md) — the glossary and the concepts the cockpit is built on
-- [docs/adr/](docs/adr/) — the architecture decision records, including
-  [ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md) on the
-  release tiers this README states
-- [docs/design-system.md](docs/design-system.md) — the frontend design system
+- [CONTEXT.md](CONTEXT.md) — the glossary. Space, map, ticket, frontier, session,
+  role, agent, adapter, context bundle: what each word means here and what it
+  deliberately isn't.
+- [docs/adr/](docs/adr/) — sixteen decision records, amendments included. Why the
+  adapters are agent-agnostic ([0002](docs/adr/0002-agent-agnostic-adapters.md)),
+  why there are no worktrees ([0003](docs/adr/0003-serialise-per-space-no-worktrees.md)),
+  why state is derived ([0004](docs/adr/0004-derived-ticket-state-and-proposed-answer.md)),
+  why nothing accumulates ([0005](docs/adr/0005-assembled-context-no-agent-memory.md)),
+  and where the human gate went ([0015](docs/adr/0015-map-kind-removed-role-comes-from-the-ticket.md)).
+- [skills/README.md](skills/README.md) — the shipped skill library and how the
+  three layers resolve.
+- [docs/skill-sync.md](docs/skill-sync.md) — re-fitting upstream skill changes
+  onto the vendored copies.
+- [docs/design-system.md](docs/design-system.md) — read before touching the UI.
+
+## Project status
+
+**Pre-release.** Nothing is tagged, so the releases page is empty until the first
+cut — build from source for now. chartr is used to build chartr, but the shape
+still moves and breaking changes are expected before 1.0.
+
+Blockers for `v0.1.0`:
+
+- [x] Spaces, tabs, activity detection
+- [x] Maps: star-map, spawn, claim/release
+- [x] Release pipeline — checksummed binaries, best-effort shells, macOS `.dmg`
+- [ ] Tag it
+- [ ] Getting started, written against a fresh machine
+
+Not planned: a hosted service, an account, anything that phones home.
+
+## Platform support
+
+One **supported** artifact: the cgo-free binary that serves the cockpit in your
+browser, green on all three OSes before a tag ships. The native webview shells
+need cgo and system webview libs, build in a non-blocking CI lane, and attach only
+where their toolchains succeeded ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
+
+| Platform                  | Binary | Desktop app                                     |
+| ------------------------- | ------ | ----------------------------------------------- |
+| macOS `arm64`             | ✅     | `.dmg` + shell, [unsigned](#macos-first-launch) |
+| macOS `amd64`             | ✅     | — (cgo won't cross-compile)                     |
+| Linux `amd64` / `arm64`   | ✅     | shell, needs WebKitGTK                          |
+| Windows `amd64` / `arm64` | ✅     | shell via `go-webview2`                         |
+
+Windows is built and its ConPTY layer is smoke-tested every change, but it isn't
+driven daily — **WSL2 is the sure path**. Build a shell yourself with `make webview`
+([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
+
+## Related projects
+
+- [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
+- [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — my read-only map CLI and viewer; where the star-map started
+- [mattpocock/skills](https://github.com/mattpocock/skills) — the original `/wayfinder` skill and the method the maps side drives
