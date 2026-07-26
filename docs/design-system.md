@@ -200,6 +200,25 @@ carries every state on motion or shape as well as colour
 new hue. None of this leaks past the island
 seam: the chrome around the canvas stays monochrome.
 
+### Brandmark exemption
+
+The header's brandmark (`web/public/brandmark.svg`, beside the *chartr* wordmark
+in both header sites in `App.svelte`) is the product logo: a blue star on a navy
+plate. It is **artwork, not chrome** — the same drawing the favicon and the Dock
+tile carry — and is therefore exempt from the monochrome rule.
+
+The exemption is narrow and deliberate. It buys **one 20×20 image element** and
+nothing else: no token takes a colour from it, no chrome element is tinted to
+match it, and the wordmark beside it stays `--foreground` like any other text.
+Ship it as an `<img>` pointing at the published asset, never inlined and
+re-coloured, so the mark cannot drift from the icon set.
+
+The file is the 20px drawing from `docs/assets/v2`. The icon set is **redrawn per
+size band** rather than scaled from one master, and the 20px band is the one that
+survives at header scale — the v1 artwork had no such band and did not
+interpolate down cleanly, which is why the header carried the wordmark alone
+until the v2 set landed.
+
 ## Do / Don't
 
 **Do**
@@ -221,7 +240,8 @@ seam: the chrome around the canvas stays monochrome.
 - Write a **raw hex / rgb / named colour** in the chrome — if no token fits, flag
   the missing role instead of inlining one.
 - Re-introduce **amber** (or any chroma) into the chrome. The only chroma is
-  `--destructive`; the only amber is the star-map's `claimed` star.
+  `--destructive`, the star-map's status hues, and the header brandmark; the only
+  amber is the star-map's `claimed` star.
 - Reach **inside an island's renderer** to re-theme it (ADR 0010) — go through the
   seam.
 - Add fonts or icons over the network — everything is self-hosted and bundled.

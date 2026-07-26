@@ -1,0 +1,26 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="0.5" y="0.5" width="19" height="19" rx="3.5" fill="url(#plate)" stroke="#C3C3C3"/>
+<mask id="plateMask" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="1" y="1" width="19" height="19">
+<rect x="1.51929" y="1.5116" width="17.0284" height="17.0029" fill="#FFFFFF" stroke="#FFFFFF"/>
+</mask>
+<g mask="url(#plateMask)">
+<g clip-path="url(#starKnotClip)"><g transform="matrix(-0.0018054 -0.0073644 0.0073644 -0.00180539 7.42957 7.82386)"><rect width="1131.88" height="1131.88" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(1 -1)" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(-1 1)" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(-1)" fill="url(#star)" shape-rendering="crispEdges"/></g></g>
+<g clip-path="url(#starPointsClip)"><g transform="matrix(-0.0018054 -0.0073644 0.0073644 -0.00180539 7.42957 7.82386)"><rect width="1131.88" height="1131.88" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(1 -1)" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(-1 1)" fill="url(#star)" shape-rendering="crispEdges"/><rect width="1131.88" height="1131.88" transform="scale(-1)" fill="url(#star)" shape-rendering="crispEdges"/></g></g>
+<path d="M19.7313 13.5683L15.7224 14.644L14.256 18.6526L11.4208 10.44L19.7313 13.5683Z" fill="black"/>
+<path d="M19.7313 13.5683L19.8609 14.0512L21.3629 13.6482L19.9075 13.1004L19.7313 13.5683ZM15.7224 14.644L15.5928 14.161L15.342 14.2283L15.2528 14.4722L15.7224 14.644ZM14.256 18.6526L13.7834 18.8158L14.2424 20.1453L14.7256 18.8244L14.256 18.6526ZM11.4208 10.44L11.597 9.97207L10.6009 9.59711L10.9482 10.6032L11.4208 10.44ZM19.7313 13.5683L19.6018 13.0854L15.5928 14.161L15.7224 14.644L15.852 15.1269L19.8609 14.0512L19.7313 13.5683ZM15.7224 14.644L15.2528 14.4722L13.7864 18.4808L14.256 18.6526L14.7256 18.8244L16.192 14.8157L15.7224 14.644ZM14.256 18.6526L14.7286 18.4895L11.8935 10.2769L11.4208 10.44L10.9482 10.6032L13.7834 18.8158L14.256 18.6526ZM11.4208 10.44L11.2447 10.908L19.5552 14.0362L19.7313 13.5683L19.9075 13.1004L11.597 9.97207L11.4208 10.44Z" fill="url(#cursorStroke)"/>
+</g>
+<defs>
+<clipPath id="starKnotClip"><path d="M9.07305 9.58447C9.11051 10.881 7.35315 11.3118 6.78672 10.145V10.145C6.57988 9.71887 6.14241 9.45367 5.66896 9.46735V9.46735C4.37247 9.50481 3.94165 7.74744 5.10847 7.18102V7.18102C5.53456 6.97417 5.79976 6.5367 5.78608 6.06326V6.06326C5.74862 4.76676 7.50599 4.33594 8.07241 5.50276V5.50276C8.27926 5.92885 8.71672 6.19406 9.19017 6.18038V6.18038C10.4867 6.14292 10.9175 7.90028 9.75067 8.46671V8.46671C9.32458 8.67355 9.05937 9.11102 9.07305 9.58447V9.58447Z"/></clipPath><clipPath id="starPointsClip"><path d="M9.23496 15.1883L6.44686 9.44487L0.0651631 9.62926L5.80856 6.84116L5.62417 0.459459L8.41227 6.20286L14.794 6.01847L9.05057 8.80657L9.23496 15.1883Z"/></clipPath><linearGradient id="plate" x1="0.87002" y1="0.916821" x2="18.9264" y2="20" gradientUnits="userSpaceOnUse">
+<stop stop-color="#243056"/>
+<stop offset="1" stop-color="#0C111B"/>
+</linearGradient>
+<linearGradient id="star" x1="0" y1="0" x2="500" y2="500" gradientUnits="userSpaceOnUse">
+<stop stop-color="#478ECC"/>
+<stop offset="1" stop-color="#99D0FF"/>
+</linearGradient>
+<linearGradient id="cursorStroke" x1="10.3111" y1="14.9205" x2="20.6687" y2="14.1104" gradientUnits="userSpaceOnUse">
+<stop stop-color="#EAEAEA"/>
+<stop offset="0.927885" stop-color="#D8D8D8"/>
+</linearGradient>
+</defs>
+</svg>

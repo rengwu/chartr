@@ -397,7 +397,16 @@
       class="relative flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
       style="height: {titleBarH}px"
     >
-      <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
+      <span class="flex min-w-0 items-center gap-2">
+        <img
+          src="/brandmark.svg"
+          alt=""
+          width="20"
+          height="20"
+          class="size-5 shrink-0"
+        />
+        <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
+      </span>
       <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
            the button's own press state nudges it with `translate-y-px`, and
            Tailwind composes both through one translate variable, so a centring
@@ -420,17 +429,23 @@
     <aside
       class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
     >
-      <!-- Branding: a home for the cockpit, above the spaces list. The wordmark
-           alone — the logo's star is left to the surfaces with room for it
-           (favicon, Dock), and the cockpit-wide way into the config surface
-           (ticket 05) sits at the far top-right of the chrome instead, past the
-           stage's Map toggle (SpacePane).
+      <!-- Branding: a home for the cockpit, above the spaces list. The mark and
+           the name — the cockpit-wide way into the config surface (ticket 05)
+           sits at the far top-right of the chrome instead, past the stage's Map
+           toggle (SpacePane).
 
            In the macOS shell the window's title bar carries the branding instead,
            centred over the whole window; repeating it here would be the same name
            twice within 40px. -->
       {#if !titleBarH}
         <div class="cockpit-bar gap-2 bg-transparent">
+          <img
+            src="/brandmark.svg"
+            alt=""
+            width="20"
+            height="20"
+            class="size-5 shrink-0"
+          />
           <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
         </div>
       {/if}

@@ -7,10 +7,11 @@
 
     <!-- Icons live in web/public, which Vite copies to the dist root the Go
          binary embeds (ADR 0010) — so they ship offline with everything else,
-         no CDN and no runtime fetch. The masters are docs/assets; these are
+         no CDN and no runtime fetch. The masters are docs/assets/v2; these are
          copies of that set. favicon.svg is preferred by browsers that take it
          and scales to any size; favicon.ico carries native 16/32/48 frames for
-         the ones that don't. -->
+         the ones that don't. brandmark.svg is the 20px drawing the chrome's
+         header shows beside the wordmark (App.svelte). -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
