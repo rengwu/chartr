@@ -439,7 +439,11 @@
       </div>
     </header>
 
-    <ScrollArea.Root class="min-h-0 flex-1">
+    <!-- `auto`, not the default `hover`: a space with more maps than fit is the
+         normal case here, and the grid gives no other hint that it runs on past
+         the fold — so the bar stands while the content overflows rather than
+         appearing only once the pointer is already inside. -->
+    <ScrollArea.Root type="auto" class="min-h-0 flex-1">
       {#if maps.length}
         <div class="flex min-h-full flex-col gap-3 p-3">
           <div
