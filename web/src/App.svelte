@@ -398,12 +398,15 @@
       style="height: {titleBarH}px"
     >
       <span class="flex min-w-0 items-center gap-2">
+        <!-- `grayscale` desaturates the mark in CSS rather than shipping a second
+             drawing: brandmark.svg is the coloured product mark (favicon, app
+             icon), and the chrome it sits in is monochrome. -->
         <img
           src="/brandmark.svg"
           alt=""
           width="20"
           height="20"
-          class="size-5 shrink-0"
+          class="size-5 shrink-0 grayscale"
         />
         <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
       </span>
@@ -444,7 +447,7 @@
             alt=""
             width="20"
             height="20"
-            class="size-5 shrink-0"
+            class="size-5 shrink-0 grayscale"
           />
           <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
         </div>
