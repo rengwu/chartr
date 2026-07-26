@@ -423,29 +423,37 @@
           class="relative isolate flex h-full flex-col items-center justify-center gap-2 overflow-hidden p-6 text-center"
         >
           <AsciiFlow class="-z-10" />
-          <p class="text-sm text-muted-foreground">No shell open in this space.</p>
-          <div class="flex flex-wrap items-center justify-center gap-2">
-            <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
-            <SkillLauncher
-              {agents}
-              lastAgent={space.lastAgent}
-              skills={space.skills}
-              label="Skills"
-              title="Launch a self-driving skill — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
-              onrun={onLaunch}
-              onregister={onRegisterAgent}
-            >
-              {#snippet icon()}<Lightbulb />{/snippet}
-            </SkillLauncher>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-pressed={mapShown}
-              onclick={toggleMap}
-            >
-              <Sparkle weight={mapShown ? 'fill' : 'regular'} />
-              {mapShown ? 'Hide Maps' : 'View Maps'}
-            </Button>
+          <!-- The copy and its controls ride on a plate of the pane's own
+               background: the flow field runs behind the plate, never under the
+               text, so the legibility of the empty state never depends on where
+               the water happens to be. -->
+          <div
+            class="relative flex flex-col items-center gap-2 rounded-lg bg-background px-6 py-4"
+          >
+            <p class="text-sm text-muted-foreground">No shell open in this space.</p>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
+              <SkillLauncher
+                {agents}
+                lastAgent={space.lastAgent}
+                skills={space.skills}
+                label="Skills"
+                title="Launch a self-driving skill — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
+                onrun={onLaunch}
+                onregister={onRegisterAgent}
+              >
+                {#snippet icon()}<Lightbulb />{/snippet}
+              </SkillLauncher>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-pressed={mapShown}
+                onclick={toggleMap}
+              >
+                <Sparkle weight={mapShown ? 'fill' : 'regular'} />
+                {mapShown ? 'Hide Maps' : 'View Maps'}
+              </Button>
+            </div>
           </div>
         </div>
       {/if}
