@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: sbbd6d7cf6a8a
+claimed_at: 2026-07-26T07:05:34Z
 ---
 
 # Rescan on control-socket connect, so a degraded watch still discovers
