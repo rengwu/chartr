@@ -146,11 +146,19 @@ export function clipTitle(title: string, budget: number): string {
 const TICKER_HOLD = 4.2
 const TICKER_FADE = 0.5
 
-interface Cam {
+/**
+ * A camera pose: the world→screen transform the island paints through. Exported
+ * because the chrome carries one across a remount — the island is torn down when
+ * the operator switches space and rebuilt when they come back, and handing the
+ * pose back is what makes that a return rather than a fresh arrival.
+ */
+export interface Camera {
   x: number
   y: number
   s: number
 }
+
+type Cam = Camera
 
 // --- camera feel ------------------------------------------------------------
 // Every camera move — a drag, a zoom, seating a star, a refit — sets a goal, and
@@ -396,13 +404,48 @@ export class StarMap {
   // re-dock re-seats it), and with nothing selected the whole map eases to fit
   // the free area — which is how the map-material pane clears room for itself.
   setInsets(insets: Partial<{ top: number; right: number; bottom: number; left: number }>): void {
-    this.#insets = { ...this.#insets, ...insets }
+    const next = { ...this.#insets, ...insets }
+    // The wrapper re-derives this object on every measurement, so the same four
+    // numbers arrive again and again. Only a real change may move the camera —
+    // otherwise a pane that merely re-measured would re-seat the star out from
+    // under a pose the operator (or a restore) had just set.
+    if (
+      next.top === this.#insets.top &&
+      next.right === this.#insets.right &&
+      next.bottom === this.#insets.bottom &&
+      next.left === this.#insets.left
+    ) {
+      return
+    }
+    this.#insets = next
     if (this.#selected !== null && this.#byNum.has(this.#selected)) {
       this.#seat(this.#selected)
     } else {
       this.#refit(false)
       this.#settleIfHeadless()
     }
+  }
+
+  // --- seam: camera pose -----------------------------------------------------
+  // Where the camera is *going*, not where it currently is: a pose read mid-ease
+  // must name the place the operator sent it, or a map read a frame after a drag
+  // would come back somewhere they never chose.
+  camera(): Camera {
+    return { ...this.#goal }
+  }
+
+  // Put a pose back — the chrome's half of surviving a remount. Both the live
+  // camera and its goal are set, so the map opens *at* where it was left rather
+  // than flying there from the fit. Call it last: a fit, a seat, or an insets
+  // change arriving afterwards is a newer instruction and rightly wins.
+  restoreCamera(cam: Camera): void {
+    if (!isFinite(cam.x) || !isFinite(cam.y) || !(cam.s > 0)) return
+    const s = clamp(cam.s, MIN_SCALE, MAX_SCALE)
+    this.#goal = { x: cam.x, y: cam.y, s }
+    this.#cam = { ...this.#goal }
+    // The labels are solved against the camera pose; the cached solve was for
+    // the fit this just replaced.
+    this.#labelEpoch++
   }
 
   // --- seam: palette ---------------------------------------------------------
@@ -601,8 +644,15 @@ export class StarMap {
   }
 
   #onResize(): void {
-    this.#labelEpoch++
+    const w = this.#w,
+      h = this.#h
     this.#measure()
+    // A ResizeObserver delivers one callback the moment it starts observing,
+    // reporting the size mount already measured. Refitting on that would throw
+    // away the pose the chrome restored a tick earlier, so only an actual
+    // change in the viewport re-fits.
+    if (this.#w === w && this.#h === h) return
+    this.#labelEpoch++
     this.#refit(false)
   }
 

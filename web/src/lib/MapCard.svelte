@@ -12,6 +12,7 @@
   import MapPickerCard from "./MapPickerCard.svelte";
   import TrackerAdapterBanner from "./TrackerAdapterBanner.svelte";
   import { decideDock, type Dock } from "./starmap/dock";
+  import { cameraKey } from "./mapstate";
   import { Button } from "./components/ui/button";
   import * as ScrollArea from "./components/ui/scroll-area";
   import { CaretLeft, Columns, CornersOut, X } from "phosphor-svelte";
@@ -81,6 +82,11 @@
   const map = $derived<WMap | null>(
     slug ? (maps.find((m) => m.slug === slug) ?? null) : null,
   );
+
+  // This island's identity across its lifetimes (mapstate.ts): the handle its
+  // camera pose is filed under when the island is torn down, and the key it is
+  // rebuilt on.
+  const camera = $derived(map ? cameraKey(spaceId, map.slug) : "");
 
   // Both are bound inside the map screen's `{#if map}`, so they mount only when a
   // map opens — $state so the measuring effects below re-run when they appear.
@@ -281,8 +287,13 @@
          chrome; the camera (insets) eases the selected star into the space it
          leaves free. -->
     <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
-      {#key map.slug}
-        <StarMap {map} {terminals} {insets} bind:selected />
+      <!-- Keyed on space *and* map: the island is rebuilt when either changes,
+           and the same string is the key its camera pose is remembered under
+           while it is gone. Two spaces can hold maps of one name, so the space
+           has to be in it — on the key alone, switching between them would show
+           one map's stars under the other's camera. -->
+      {#key camera}
+        <StarMap {map} {terminals} {insets} cameraKey={camera} bind:selected />
       {/key}
 
       <div

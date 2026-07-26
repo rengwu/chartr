@@ -8,6 +8,7 @@
   import AsciiFlow from './AsciiFlow.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
+  import { openingFor, paneState, rememberPane } from './mapstate'
   import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
@@ -89,13 +90,28 @@
   // read deliberate (this must not react to later space switches).
   const bootApplies = !boot.s || boot.s === untrack(() => space.id)
 
-  // Star-map card state (persists across space switches by design). `openSlug`
-  // names the open map, or is null for the picker screen.
+  // What this space's pane last had open, from the store that outlives these
+  // components (mapstate.ts). On the first run of a sitting only the map survives
+  // — the selection and the camera belong to the sitting that made them — so this
+  // is a whole restore on a space switch and a slug on a cold start, through the
+  // one path. A deep link outranks it: it named a map explicitly.
+  const remembered = untrack(() => openingFor(paneState(space.id), space.maps ?? []))
+
+  // Star-map card state. Which map, which star, and (inside the island) where the
+  // camera sits are all per space, held in the store above across a switch; the
+  // panel's own visibility and docking are the operator's standing preference for
+  // the whole cockpit, so they simply live here and never reset.
+  //
+  // A boot link that names anything about the map owns the whole opening state;
+  // one that names only the space (or none at all) leaves it to the store.
+  const linked = bootApplies && (!!boot.m || !!boot.t || !!boot.mat || !!boot.maps)
   let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat || !!boot.maps))
   let dock = $state(true)
-  let openSlug = $state<string | null>(bootApplies ? boot.m : null)
-  let selectedTicket = $state<number | null>(bootApplies && boot.t ? Number(boot.t) : null)
-  let showMaterial = $state(bootApplies && !!boot.mat)
+  let openSlug = $state<string | null>(linked ? boot.m : remembered.slug)
+  let selectedTicket = $state<number | null>(
+    linked ? (boot.t ? Number(boot.t) : null) : remembered.selected,
+  )
+  let showMaterial = $state(linked ? !!boot.mat : remembered.showMaterial)
   let dockTermWidth = $state(0)
   let floatWidth = $state(0)
   let bodyEl: HTMLDivElement
@@ -130,20 +146,39 @@
     }
   })
 
-  // Switching spaces while the panel is open: an open slug from the previous
-  // space won't match here. Fall to this space's picker — or straight into its
-  // one map, the same auto-open a fresh summon does — and drop any stale
-  // selection. Guarded on an actual space change so the back button (which nulls
-  // openSlug within a space) still lands on, and stays on, the picker.
+  // Switching spaces while the panel is open: the state on show belongs to the
+  // space we are leaving, so swap in the arriving space's own (the effect below
+  // has been keeping it filed as it changed). A space never opened before, or one
+  // whose remembered map has since been deleted, gets what a fresh summon gets:
+  // its one map, or the picker. Guarded on an actual space change so the back
+  // button (which nulls openSlug within a space) still lands on, and stays on,
+  // the picker.
   let lastSpaceId = untrack(() => space.id)
   $effect(() => {
     if (space.id === lastSpaceId) return
     lastSpaceId = space.id
-    if (!maps.some((m) => m.slug === openSlug)) {
-      openSlug = maps.length === 1 ? (maps[0]?.slug ?? null) : null
-      selectedTicket = null
-      showMaterial = false
-    }
+    const opening = openingFor(paneState(space.id), maps)
+    openSlug = opening.slug
+    selectedTicket = opening.selected
+    showMaterial = opening.showMaterial
+    // The restored star arrived *with* its slug, so mark the slug as already
+    // seen: the drop-on-map-change guard above must not read this as a map
+    // switch and clear what we just put back (the same exemption a link gets).
+    lastOpen = openSlug
+  })
+
+  // Keep the store current for whichever space is on show, so the swap above
+  // always has something faithful to hand back — and so the open map is on disk
+  // for the next run. Declared after the swap: on a space change both are dirty
+  // in one flush and effects run in declaration order, so this writes the
+  // arriving space's state under the arriving space's id, never the outgoing
+  // pane's under the newcomer's name.
+  $effect(() => {
+    rememberPane(space.id, {
+      slug: openSlug,
+      selected: selectedTicket,
+      showMaterial,
+    })
   })
 
   // Apply whatever star link the hash currently names to this pane. Shared by

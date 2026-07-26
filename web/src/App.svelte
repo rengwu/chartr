@@ -24,6 +24,7 @@
   import { Input } from "./lib/components/ui/input";
   import { spaceHaltTarget } from "./lib/attention";
   import { isEditingTarget } from "./lib/keys";
+  import { forgetSpace } from "./lib/mapstate";
   import { nativeTitleBarHeight } from "./lib/titlebar";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
   import { Plus, X, CircleNotch, Gear, FolderOpen } from "phosphor-svelte";
@@ -217,6 +218,9 @@
     pendingForget = null;
     if (!space) return;
     if (selectedId === space.id) selectedId = null;
+    // Its star-map pane state goes with it — nothing should be held, or written
+    // to storage, for a space the cockpit no longer knows.
+    forgetSpace(space.id);
     try {
       await deregisterSpace(space.id);
     } catch (e) {

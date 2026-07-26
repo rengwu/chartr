@@ -185,6 +185,77 @@ describe('the island seam', () => {
   })
 })
 
+// The camera pose crossing the seam. The island dies whenever the operator
+// switches space and is rebuilt when they come back, so "where I had the map" is
+// only theirs to keep if it can be read out and handed back — and handed back
+// *last*, over the fit the rebuilt island computes for itself.
+describe('the camera pose on the seam', () => {
+  it('reads back where the operator put the map, and puts a new island there', () => {
+    const first = mounted()
+    first.sm.setModel(fixture())
+    pan(first.host, 140, -60)
+    const pose = first.sm.camera()
+    const where = first.sm.screenOf(3)!
+
+    // A second island is the same map after a space switch: it fits on its own,
+    // then takes the pose.
+    const second = mounted()
+    second.sm.setModel(fixture())
+    expect(second.sm.screenOf(3)).not.toEqual(where)
+    second.sm.restoreCamera(pose)
+    expect(second.sm.screenOf(3)).toEqual(where)
+    expect(second.sm.camera()).toEqual(pose)
+  })
+
+  it('reports where the camera is going, not where it happens to be mid-flight', () => {
+    // Headless the camera settles at once, so the two agree; what this pins is
+    // that the pose read is the goal — a map read a frame after a drag comes
+    // back where the drag sent it, never short of it.
+    const { sm, host } = mounted()
+    sm.setModel(fixture())
+    pan(host, 90, 30)
+    const p = sm.camera()
+    expect(sm.screenOf(1)).toEqual({
+      x: sm.positions()[1].x * p.s + p.x,
+      y: sm.positions()[1].y * p.s + p.y,
+    })
+  })
+
+  it('holds the restored pose against a pane that only re-measures', () => {
+    const { sm, host } = mounted()
+    sm.setModel(fixture())
+    sm.setInsets({ top: 52, right: 420, bottom: 16, left: 16 })
+    sm.select(3)
+    // The operator pushes the map somewhere of their own after the seat.
+    pan(host, 120, 80)
+    const where = sm.screenOf(3)!
+
+    // The wrapper re-derives its insets object on every measurement; the same
+    // four numbers arriving again must not re-seat the star.
+    sm.setInsets({ top: 52, right: 420, bottom: 16, left: 16 })
+    expect(sm.screenOf(3)).toEqual(where)
+
+    // A real change still moves the camera — the guard is about sameness, not
+    // about ignoring the pane.
+    sm.setInsets({ top: 52, right: 16, bottom: 300, left: 16 })
+    expect(sm.screenOf(3)).not.toEqual(where)
+  })
+
+  it('refuses a pose it cannot paint, and clamps one past the zoom stops', () => {
+    const { sm } = mounted()
+    sm.setModel(fixture())
+    const fit = sm.camera()
+
+    sm.restoreCamera({ x: NaN, y: 0, s: 1 })
+    sm.restoreCamera({ x: 0, y: 0, s: 0 })
+    expect(sm.camera()).toEqual(fit)
+
+    sm.restoreCamera({ x: 10, y: 10, s: 900 })
+    expect(sm.camera().s).toBeLessThanOrEqual(3)
+    expect(sm.camera().s).toBeGreaterThan(fit.s)
+  })
+})
+
 // The session overlay (ticket 13): the whole lifecycle scripted as pushed models,
 // with the two guarantees of ticket 06 still holding underneath it — a session
 // state is appearance, never position.
