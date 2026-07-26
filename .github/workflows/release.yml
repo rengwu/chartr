@@ -136,10 +136,25 @@ jobs:
       # release — so packaging cannot fail or alter the supported release, and a
       # packaging failure attaches nothing at all. That is the tiering guarantee;
       # do not lift this into its own job or make it gating.
+      # The versioned image is the archival asset; the unversioned copy beside it
+      # is the one a link can name in advance. `/releases/latest/download/<asset>`
+      # needs an exact filename, so the README's download link is only a download
+      # link if some asset carries a name that does not move release to release.
+      # The architecture stays in that name — a second slice gets its own alias
+      # rather than overwriting this one — and the sidecar is regenerated so the
+      # checksum it lists matches the file the operator actually pulled.
       - name: Package the macOS app bundle and disk image
         if: matrix.goos == 'darwin' && steps.build_shell.outcome == 'success'
-        run: make dmg WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
         shell: bash
+        run: |
+          set -e
+          make dmg WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
+          goarch=$(go env GOARCH)
+          versioned="build/macapp/chartr_${GITHUB_REF_NAME#v}_darwin_${goarch}.dmg"
+          alias="chartr_darwin_${goarch}.dmg"
+          cp "$versioned" "build/macapp/$alias"
+          ( cd build/macapp && shasum -a 256 "$alias" > "$alias.sha256" )
+          echo "aliased $versioned as $alias"
 
       # Upload only if the target actually produced a shell binary. `make webview`
       # exits 0 with no output when the host cannot build the shell (the tier is
