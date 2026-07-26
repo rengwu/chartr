@@ -43,6 +43,15 @@ interface Node {
   flare: number
 }
 
+// One label, already solved: where it goes and what it says. Held in the cache so
+// a resting map re-uses the solve instead of redoing it 60 times a second.
+interface LabelDraw {
+  text: string
+  x: number
+  y: number
+  fill: string
+}
+
 // How long one ticker line lingers before it fades out, and how long the fade
 // takes — the live map's answer to "what just changed under me?" is one glance,
 // then calm again.
@@ -166,6 +175,11 @@ export class StarMap {
   #tickerAt = -1e9
 
   #starfield = makeStarfield()
+  // The solved label layout, held between frames. Rebuilt only when its inputs
+  // change (see #drawLabels); `#labelEpoch` is what a model push bumps to say the
+  // text or the colours moved under it.
+  #labelCache: { key: string; fs: number; items: LabelDraw[] } | null = null
+  #labelEpoch = 0
   #bg = DEFAULT_BG
   #onSelect: SelectHandler = () => {}
   #ro: ResizeObserver | null = null
@@ -207,6 +221,9 @@ export class StarMap {
   // tickets rather than through a second seam call, so one push is one visual
   // beat: a state change flares its star once and writes one fading ticker line.
   setModel(tickets: Ticket[], sessions: Record<number, SessionState> = {}): void {
+    // Titles and statuses can both move under a push, and both feed the label
+    // solve — retire the cached one either way.
+    this.#labelEpoch++
     const sig = structureSignature(tickets)
     this.#resolved = new Set(tickets.filter((t) => t.status === 'resolved').map((t) => t.num))
 
@@ -484,6 +501,7 @@ export class StarMap {
   }
 
   #onResize(): void {
+    this.#labelEpoch++
     this.#measure()
     this.#refit(false)
   }
@@ -880,21 +898,58 @@ export class StarMap {
     g.shadowBlur = 0
   }
 
+  // Labels are anchored to a star's *settled* position (n.x/n.y), never to the
+  // drifting render position (n._x/n._y). The drift is only ±2.4 world units, but
+  // feeding it into a greedy first-fit solver made the solve unstable: two labels
+  // sitting near the overlap threshold would swap slots frame to frame and snap a
+  // whole line-height apart. Solving against a position that does not move makes
+  // the answer identical every frame, so the stars breathe and the labels hold
+  // still.
+  //
+  // That also makes the solve a pure function of camera + model, so it is cached
+  // and only redone when one of those actually changes.
   #drawLabels(g: CanvasRenderingContext2D): void {
     if (this.#cam.s < 0.22) return
-    const numOnly = this.#cam.s < 0.42
-    const fs = clamp(11 * Math.pow(this.#cam.s, 0.3), 8, 13)
+    const key =
+      this.#cam.x.toFixed(2) +
+      '|' +
+      this.#cam.y.toFixed(2) +
+      '|' +
+      this.#cam.s.toFixed(4) +
+      '|' +
+      this.#labelEpoch
+    let cache = this.#labelCache
+    if (!cache || cache.key !== key) {
+      cache = this.#solveLabels(g, key)
+      this.#labelCache = cache
+    }
     g.textAlign = 'center'
-    g.font = fs.toFixed(1) + 'px ui-sans-serif,system-ui,sans-serif'
+    g.font = cache.fs.toFixed(1) + 'px ui-sans-serif,system-ui,sans-serif'
     g.shadowColor = 'rgba(0,0,0,0.85)'
     g.shadowBlur = 4
+    for (const it of cache.items) {
+      g.fillStyle = it.fill
+      g.fillText(it.text, it.x, it.y)
+    }
+    g.shadowBlur = 0
+  }
+
+  #solveLabels(
+    g: CanvasRenderingContext2D,
+    key: string,
+  ): { key: string; fs: number; items: LabelDraw[] } {
+    const numOnly = this.#cam.s < 0.42
+    const fs = clamp(11 * Math.pow(this.#cam.s, 0.3), 8, 13)
+    // measureText reads the context's current font, so set it before measuring.
+    g.font = fs.toFixed(1) + 'px ui-sans-serif,system-ui,sans-serif'
+    const items: LabelDraw[] = []
     const placed: { x: number; y: number; w: number }[] = []
     const h = fs + 2,
       step = h + 2,
       tries = [0, step, -step, 2 * step, -2 * step, 3 * step]
     for (const n of this.#nodes) {
-      const sx = n._x * this.#cam.s + this.#cam.x
-      const sy = n._y * this.#cam.s + this.#cam.y
+      const sx = n.x * this.#cam.s + this.#cam.x
+      const sy = n.y * this.#cam.s + this.#cam.y
       const c = STAR[n.vstate]
       let label = (n.num < 10 ? '0' : '') + n.num
       if (!numOnly) {
@@ -919,10 +974,9 @@ export class StarMap {
         }
       }
       placed.push({ x: sx, y: fy, w })
-      g.fillStyle = LABEL[n.vstate]
-      g.fillText(label, sx, fy)
+      items.push({ text: label, x: sx, y: fy, fill: LABEL[n.vstate] })
     }
-    g.shadowBlur = 0
+    return { key, fs, items }
   }
 }
 
