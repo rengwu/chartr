@@ -344,7 +344,7 @@
   role="complementary"
   aria-label={isMap ? "Map material" : "Ticket detail"}
   class={cn(
-    "h-full min-h-0 flex-col gap-0 overflow-hidden rounded-none bg-card/50 py-0 ring-0 backdrop-blur-[8px]",
+    "h-full min-h-0 flex-col gap-0 overflow-hidden rounded-none bg-card/80 py-0 ring-0 backdrop-blur-sm",
     dock === "bottom"
       ? "border-t border-border"
       : "border-l border-border border-t",
