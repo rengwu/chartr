@@ -1,14 +1,23 @@
 <script lang="ts">
   import {
     defaultRole,
+    heldLive,
+    sinceLabel,
     ROLES,
     type Agent,
     type Map as WMap,
     type Role,
+    type Terminal,
     type Ticket,
   } from "./model";
   import { renderMarkdown, sectionOf } from "./markdown";
-  import { spawnSession, setSpaceAgent, ActionError, LIVE_SESSION } from "./actions";
+  import {
+    spawnSession,
+    setSpaceAgent,
+    releaseTicket,
+    ActionError,
+    LIVE_SESSION,
+  } from "./actions";
   import { chooseAgent, type AgentChoice } from "./agentchoice";
   import PayloadPreview from "./PayloadPreview.svelte";
   import AgentSelector from "./AgentSelector.svelte";
@@ -19,7 +28,15 @@
   import * as ScrollArea from "$lib/components/ui/scroll-area";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
   import { Button, buttonVariants } from "$lib/components/ui/button";
-  import { Compass, Eye, X, Rocket, Warning, CaretDown } from "phosphor-svelte";
+  import {
+    ArrowUUpLeft,
+    Compass,
+    Eye,
+    X,
+    Rocket,
+    Warning,
+    CaretDown,
+  } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
   // The detail pane (ticket 07): from looking at a star to reading it in one
@@ -37,6 +54,7 @@
     spaceId,
     lastAgent,
     agents,
+    terminals = [],
     onclose,
     onRegisterAgent,
     onspawned,
@@ -46,6 +64,10 @@
     dock?: "right" | "bottom";
     // The space the ticket belongs to — the key the payload preview fetches by.
     spaceId?: string;
+    // The space's open tabs — read only to tell whether a live session is working
+    // this ticket, which is what separates a claim being honoured from one left
+    // behind by a session that is gone.
+    terminals?: Terminal[];
     // The space's remembered agent and the global library (ticket 02): the spawn
     // buttons name and pick from these.
     lastAgent?: string;
@@ -74,6 +96,27 @@
   }
   const spawnRoles = $derived<Role[]>(offeredRoles(ticket));
   const canSpawn = $derived(!!spaceId && spawnRoles.length > 0);
+
+  // Release: the one way back off a claimed ticket. A claim keeps the ticket off
+  // the frontier, so a session that died without answering — or one whose tab this
+  // chartr lost to a restart — leaves the ticket held by nobody and takeable by
+  // nobody. The dead tab's own release covers it only while that tab exists; this
+  // one is addressed to the ticket, so it survives the tab.
+  //
+  // It is offered while no *live* session holds the ticket. A dead pinned tab is
+  // deliberately included: both its own release and this one clear the same claim,
+  // and the operator should not have to find the tab to do it.
+  const claimHeldLive = $derived(
+    !!ticket && heldLive(terminals, map.slug, ticket.num),
+  );
+  const canRelease = $derived(
+    !!spaceId && ticket?.status === "claimed" && !claimHeldLive,
+  );
+  // The claim line, shown on any claimed ticket: how long it has been held, and
+  // whether anything here is actually holding it. An old claim with no session is
+  // precisely the stuck ticket, and naming it is what makes the button findable.
+  const claimAge = $derived(sinceLabel(ticket?.claimedAt));
+  let releasing = $state(false);
 
   // The role the ticket's own type points at is the emphasised action, surfaced
   // as the one plain button; the rest live behind "More" so the footer reads as a
@@ -105,7 +148,9 @@
   // The role currently being spawned — labels its own button and disables the row,
   // so two clicks can't race two sessions onto one ticket.
   let spawningRole = $state<Role | null>(null);
-  let spawnError = $state<string | null>(null);
+  // One error line for the footer, shared by every action on it: whichever the
+  // operator just took is the one whose refusal they are reading.
+  let actionError = $state<string | null>(null);
 
   // A single DetailPane instance is reused as the selection changes ticket, so a
   // block message the operator saw on one ticket must not linger onto the next —
@@ -116,7 +161,7 @@
     const n = ticket?.num;
     if (n !== lastNum) {
       lastNum = n;
-      spawnError = null;
+      actionError = null;
       pendingSpawn = null;
     }
   });
@@ -141,7 +186,7 @@
   async function spawn(role: Role, agent: string, force = false) {
     if (!spaceId || !ticket || spawningRole) return;
     spawningRole = role;
-    spawnError = null;
+    actionError = null;
     try {
       const res = await spawnSession(spaceId, map.slug, ticket.num, role, agent, force);
       pendingSpawn = null;
@@ -154,10 +199,27 @@
       if (e instanceof ActionError && e.code === LIVE_SESSION) {
         pendingSpawn = { role, agent };
       } else {
-        spawnError = e instanceof ActionError ? e.message : (e as Error).message;
+        actionError = e instanceof ActionError ? e.message : (e as Error).message;
       }
     } finally {
       spawningRole = null;
+    }
+  }
+
+  // Release the claim, then let the snapshot say so: the ticket derives open again
+  // off the commit chartr just made, and the spawn footer takes over on the very
+  // same pane. No confirmation — the claim is one commit in the log either way, and
+  // the only claim worth protecting (a live session's) the server refuses outright.
+  async function release() {
+    if (!spaceId || !ticket || releasing) return;
+    releasing = true;
+    actionError = null;
+    try {
+      await releaseTicket(spaceId, map.slug, ticket.num);
+    } catch (e) {
+      actionError = e instanceof ActionError ? e.message : (e as Error).message;
+    } finally {
+      releasing = false;
     }
   }
 
@@ -168,11 +230,11 @@
   async function rememberAgent(agent: string) {
     agentOverride = agent;
     if (!spaceId) return;
-    spawnError = null;
+    actionError = null;
     try {
       await setSpaceAgent(spaceId, agent);
     } catch (e) {
-      spawnError = e instanceof ActionError ? e.message : (e as Error).message;
+      actionError = e instanceof ActionError ? e.message : (e as Error).message;
     }
   }
 
@@ -353,6 +415,24 @@
         </Button>
       {/if}
     </div>
+
+    <!-- The claim line: who holds this ticket, how long they have held it, and
+         whether anything in this chartr is actually running it. A claim outlives
+         the session that wrote it — the tab is in memory, the claim is a commit —
+         so "no session here" is the ordinary reading after a restart, and the one
+         that explains why an untouched ticket will not move. -->
+    {#if !isMap && ticket?.status === "claimed"}
+      <p class="flex items-center gap-1 text-[0.7rem] text-muted-foreground">
+        <span class="truncate">
+          claimed{claimAge ? ` ${claimAge}` : ""}{ticket.claimedBy
+            ? ` · ${ticket.claimedBy}`
+            : ""}
+        </span>
+        {#if !claimHeldLive}
+          <span class="shrink-0 text-foreground">· no session here</span>
+        {/if}
+      </p>
+    {/if}
   </Card.Header>
 
   <ScrollArea.Root class="min-h-0 flex-1">
@@ -437,25 +517,42 @@
        that the content scrolls under rather than buried at the end of the body.
        Two axes (ticket 02): the quiet selector on the left is *who* — the one
        agent every action spawns with — and the buttons on the right are *what*.
-       The ticket's type picks the emphasised action; the rest live under "More". -->
-  {#if canSpawn}
+       The ticket's type picks the emphasised action; the rest live under "More".
+       A claimed ticket has no spawn to offer — the claim is what holds it off the
+       frontier — so the same bar carries the one action it does have: release. -->
+  {#if canSpawn || canRelease}
     <div class="flex items-center gap-2 border-t border-border px-3 py-2">
-      <AgentSelector
-        {agents}
-        selected={agentOverride ?? lastAgent}
-        onselect={rememberAgent}
-        onregister={onRegisterAgent}
-      />
-      {#if spawnError}
+      {#if canSpawn}
+        <AgentSelector
+          {agents}
+          selected={agentOverride ?? lastAgent}
+          onselect={rememberAgent}
+          onregister={onRegisterAgent}
+        />
+      {/if}
+      {#if actionError}
         <p
           class="flex min-w-0 items-start gap-1.5 text-[0.7rem] text-destructive"
-          title={spawnError}
+          title={actionError}
         >
           <Warning class="mt-0.5 size-3.5 shrink-0" />
-          <span class="truncate">{spawnError}</span>
+          <span class="truncate">{actionError}</span>
         </p>
       {/if}
       <span class="flex-1"></span>
+      {#if canRelease}
+        <Button
+          variant="outline"
+          size="sm"
+          class="gap-1.5"
+          disabled={releasing}
+          title="Release — clear the claim so this ticket is takeable again"
+          onclick={release}
+        >
+          <ArrowUUpLeft />
+          {releasing ? "Releasing…" : "Release"}
+        </Button>
+      {/if}
       {#if preferredRole}
         <Button
           variant="default"

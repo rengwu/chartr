@@ -45,6 +45,12 @@ export interface Ticket {
   status: TicketStatus
   blockedBy?: number[]
   frontier: boolean
+  // The claim the ticket file carries: the session id stamped by the claim commit
+  // and when (RFC 3339). Present only while `claimed`, and read straight off the
+  // frontmatter — so a claim written by a chartr that has since restarted, or on
+  // another machine entirely, reads exactly as a local one does.
+  claimedBy?: string
+  claimedAt?: string
   // The ticket's markdown below its H1 title — Question, Done-when, and any
   // closing answer. Inlined so the detail pane (ticket 07) reads the full ticket,
   // and a blocker's answer, from the snapshot with no second fetch.
@@ -371,4 +377,34 @@ export function defaultRole(type: string): Role {
       : type === 'grilling'
         ? 'grill'
         : 'implement'
+}
+
+// heldLive reports whether a live session in these tabs is running on one ticket.
+// A claimed ticket with no such tab is *orphaned* as far as this chartr is
+// concerned: the claim stands on disk but nothing here is working it, which is the
+// whole state the ticket-level release exists for. A dead pinned tab does not
+// count — its session is over, and its claim is exactly what wants clearing.
+//
+// This is a view fact derived from live tabs, never a fifth status on the ticket:
+// what the file says is `claimed`, and only the server's own refusal decides
+// whether a release is allowed.
+export function heldLive(terminals: Terminal[], slug: string, num: number): boolean {
+  return terminals.some(
+    (t) => t.alive && t.session?.mapSlug === slug && t.session?.ticketNum === num,
+  )
+}
+
+// sinceLabel renders how long ago an RFC 3339 timestamp was, coarsely — the age of
+// a claim is read for "is this stuck?", never for precision, so it stops at days.
+// An unparseable or absent stamp renders nothing rather than a wrong number.
+export function sinceLabel(at: string | undefined, now: number = Date.now()): string {
+  if (!at) return ''
+  const then = Date.parse(at)
+  if (Number.isNaN(then)) return ''
+  const mins = Math.floor((now - then) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }

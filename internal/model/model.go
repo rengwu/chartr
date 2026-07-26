@@ -232,6 +232,15 @@ type Ticket struct {
 	// Frontier is membership in the frontier — the takeable edge: open, with
 	// every blocker resolved.
 	Frontier bool `json:"frontier"`
+	// ClaimedBy and ClaimedAt are the claim the ticket file carries — the session
+	// id stamped by the claim commit and when. Both are empty for every status but
+	// `claimed`, and both are read straight off the frontmatter, so a claim written
+	// on another machine (or by a chartr that has since restarted) travels exactly
+	// as a local one does. They are what lets the frontier show *who* holds a
+	// claimed ticket and how long they have held it, and what the ticket-level
+	// release names in its commit.
+	ClaimedBy string `json:"claimedBy,omitempty"`
+	ClaimedAt string `json:"claimedAt,omitempty"`
 	// Body is the ticket's markdown below its H1 title — Question and Done-when,
 	// and any closing answer. Inlined so the detail pane (ticket 07) reads the
 	// full ticket, and a blocker's answer, straight from the snapshot.

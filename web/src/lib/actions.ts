@@ -223,6 +223,19 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
   return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/sessions/${encodeURIComponent(sessionId)}/release`)
 }
 
+// releaseTicket clears a claim addressed by the ticket that carries it rather than
+// by the session holding it — the way back for a claim whose tab is gone: a chartr
+// restart (tabs live in memory, the claim on disk does not), a dismissed dead tab,
+// or a claim committed on another machine. Same write and same commit as
+// releaseSession; refused with LIVE_SESSION while a live session still holds the
+// ticket, which is the one case where the claim is not stale at all.
+export function releaseTicket(spaceId: string, slug: string, num: number): Promise<unknown> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(spaceId)}/maps/${encodeURIComponent(slug)}/tickets/${num}/release`,
+  )
+}
+
 // OpenLayerResult reports how far the open action got: `editor` launched
 // $VISUAL/$EDITOR, `os` fell back to the OS opener, and `none` means the path
 // itself is the answer — a layer with nothing on disk yet, or an environment with

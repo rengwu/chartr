@@ -171,6 +171,11 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/resume", s.handleResume)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/respawn", s.handleRespawn)
 	s.mux.HandleFunc("POST /api/spaces/{id}/sessions/{sid}/release", s.handleRelease)
+	// Release addressed by ticket rather than by session — the way back for a claim
+	// whose session tab is gone (a chartr restart, a dismissed dead tab, a claim
+	// committed on another machine). Same write and same commit as the halt's
+	// release; refused while a live session in this space still holds the ticket.
+	s.mux.HandleFunc("POST /api/spaces/{id}/maps/{slug}/tickets/{num}/release", s.handleReleaseTicket)
 	// Ad-hoc shells: open one in the space's working tree, end one by the human's
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.

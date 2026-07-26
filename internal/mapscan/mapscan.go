@@ -130,6 +130,8 @@ func deriveMap(dir string) model.Map {
 			Status:    string(t.Status),
 			BlockedBy: t.BlockedBy,
 			Frontier:  frontier[t.Num],
+			ClaimedBy: t.ClaimedBy,
+			ClaimedAt: t.ClaimedAt,
 			Body:      t.Body,
 		})
 	}

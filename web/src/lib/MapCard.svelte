@@ -49,7 +49,8 @@
   }: {
     maps: WMap[];
     // The space's open tabs, threaded to the island so a session paints its moon
-    // on the ticket it holds (ticket 13).
+    // on the ticket it holds (ticket 13), and to the detail pane so a claimed
+    // ticket can say whether anything here is still running it.
     terminals?: Terminal[];
     // The space these maps belong to — threaded to the detail pane so its payload
     // preview can fetch (ticket 08).
@@ -369,6 +370,7 @@
             {spaceId}
             {lastAgent}
             {agents}
+            {terminals}
             onclose={closePane}
             {onRegisterAgent}
             {onspawned}

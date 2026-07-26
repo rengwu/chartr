@@ -293,6 +293,14 @@ func (h *Chartr) Release(spaceID, sessionID string) (int, string) {
 	return h.Post(fmt.Sprintf("/api/spaces/%s/sessions/%s/release", spaceID, sessionID), nil)
 }
 
+// ReleaseTicket drives the release addressed by ticket rather than by session —
+// the one that reaches a claim whose session tab no longer exists. It is a
+// separate helper from Release so a test says which door it came in by.
+func (h *Chartr) ReleaseTicket(spaceID, slug string, num int) (int, string) {
+	h.t.Helper()
+	return h.Post(fmt.Sprintf("/api/spaces/%s/maps/%s/tickets/%d/release", spaceID, slug, num), nil)
+}
+
 // Snapshot connects a control socket, reads exactly one whole snapshot, and
 // closes it. Because operator actions push the new model before their HTTP
 // response returns, a snapshot taken after an action already reflects it.
