@@ -21,7 +21,7 @@ family = "Menlo"               # a custom family stacks ahead of the system
                                # bundled family is "IBM Plex Mono".
 weight = 400                   # normal-glyph weight: "normal", "bold", or 1..1000.
 boldWeight = 500               # bold-glyph weight: "normal", "bold", or 1..1000.
-size = 14                      # cell font size in px. Must be > 0.
+size = 13                      # cell font size in px. Must be > 0.
 # lineHeight = 1.0             # cell-height multiplier. Must be > 0.
 # letterSpacing = 0            # extra px between cells; a negative value tightens.
 # ligatures = false            # forces this terminal off the GPU renderer and onto
