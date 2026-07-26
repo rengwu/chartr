@@ -517,6 +517,67 @@ describe('label placement', () => {
     // Crowding may cost some labels, but never the one the operator picked.
     expect(drawn.some((d) => d.text.startsWith('07'))).toBe(true)
   })
+
+  // The flicker this pins: with the camera easing out, the slots under a label
+  // open and close by a hair every frame, and a solver with no memory will hop a
+  // label over its star and straight back the next frame. Crossing the star is
+  // the most visible move a label can make, so it has to be earned — a label may
+  // settle on the other side, but it may not go back and forth while the
+  // operator is holding still.
+  it('does not flip a label over its star and back while the camera eases', () => {
+    const { ctx, drawn } = recordingContext()
+    let frames: FrameRequestCallback[] = []
+    HTMLCanvasElement.prototype.getContext = (() => ctx) as never
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    }) as never
+    globalThis.cancelAnimationFrame = (() => {}) as never
+    vi.useFakeTimers({ toFake: ['performance'] })
+
+    try {
+      const { sm, host } = mounted()
+      sm.setModel(CROWDED)
+      const canvas = host.querySelector('canvas')!
+
+      // Every side a label was seen on, in order, per ticket number.
+      const seen = new Map<number, string[]>()
+      const sample = () => {
+        drawn.length = 0
+        vi.advanceTimersByTime(16)
+        const cb = frames.pop()
+        frames = []
+        cb?.(0)
+        for (const d of drawn) {
+          if (d.text.startsWith('▸')) continue
+          const num = parseInt(d.text.slice(0, 2), 10)
+          const star = sm.screenOf(num)
+          if (!star) continue
+          const side = d.y > star.y ? 'below' : 'above'
+          const trail = seen.get(num) ?? []
+          if (trail[trail.length - 1] !== side) trail.push(side)
+          seen.set(num, trail)
+        }
+      }
+
+      for (let i = 0; i < 20; i++) sample()
+      // Pull the camera back the way an operator does, and watch the whole ease
+      // out rather than only where it lands.
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { cancelable: true, deltaY: 200, clientX: 500, clientY: 350 }),
+      )
+      for (let i = 0; i < 60; i++) sample()
+
+      expect(seen.size).toBeGreaterThan(0)
+      for (const [num, trail] of seen) {
+        // One crossing is a label settling; two is it changing its mind about a
+        // decision it already made.
+        expect(trail.length, `label #${num} crossed its star: ${trail.join(' → ')}`).toBeLessThan(3)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 // How the camera *feels* is judged by eye, but what it feels like rests on three

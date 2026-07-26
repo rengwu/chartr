@@ -80,6 +80,18 @@ const LABEL_PRIORITY: Record<VisualState, number> = {
 // the viewport cull keeps a generous skirt around the canvas.
 const CULL_MARGIN = 140
 
+// The hysteresis band on which side of its star a label hangs, counted in
+// candidate steps. A label that went above stays above until the below slots
+// are clear by this many steps — so the near-tie that flips frame to frame as
+// the camera eases has to become a decisive win before the label crosses over.
+// One step is one line-height, which is about the smallest margin the eye can
+// still read as a deliberate move rather than a flicker.
+const SIDE_HYSTERESIS = 1
+// Where a label may sit relative to its star, as a signed side.
+const BELOW = 1
+const ABOVE = -1
+type Side = typeof BELOW | typeof ABOVE
+
 // How much title a label may carry, as the camera pulls back. Zoomed out, stars
 // crowd together and the same words need far more room than there is — so the
 // title is rationed rather than the label dropped. Below TITLE_MIN_SCALE only
@@ -256,6 +268,12 @@ export class StarMap {
   // text or the colours moved under it.
   #labelCache: { key: string; fs: number; items: LabelDraw[] } | null = null
   #labelEpoch = 0
+  // Which side of its star each label last chose, by ticket number. This is the
+  // one piece of state the label solve carries across frames, and the only
+  // reason it is not a pure function of camera + model. A label that was dropped
+  // keeps its remembered side, so a cluster re-opening puts it back where the
+  // operator last saw it rather than defaulting it below.
+  #labelSide = new Map<number, Side>()
   #bg = DEFAULT_BG
   #onSelect: SelectHandler = () => {}
   #ro: ResizeObserver | null = null
@@ -324,6 +342,12 @@ export class StarMap {
       return
     }
 
+    // The stars are about to move, which is the one event that makes a
+    // remembered side meaningless — it was chosen against a constellation that
+    // no longer exists. Every other epoch bump (a retitle, a resize, the camera
+    // easing to a new fit) leaves the stars where they were, and there the
+    // memory is exactly what we want kept.
+    this.#labelSide.clear()
     this.#sig = sig
     const pts = computeLayout(tickets)
     this.#nodes = tickets.map((t) => {
@@ -982,8 +1006,12 @@ export class StarMap {
   // the answer identical every frame, so the stars breathe and the labels hold
   // still.
   //
-  // That also makes the solve a pure function of camera + model, so it is cached
-  // and only redone when one of those actually changes.
+  // That also makes the solve depend on nothing that moves per frame, so it is
+  // cached and only redone when the camera or the model actually changes. The
+  // cache is a memo of the last solve, not a lookup table by pose, which is what
+  // lets the solve carry one piece of history across frames (`#labelSide`):
+  // re-solving the same pose reached a different way may legitimately answer
+  // differently, and only the newest answer is ever held.
   #drawLabels(g: CanvasRenderingContext2D): void {
     if (this.#cam.s < 0.22) return
     const key =
@@ -1016,16 +1044,20 @@ export class StarMap {
   //      tested a label against labels, so one pushed aside to dodge its
   //      neighbour would happily land on top of a star.
   //   2. A label can climb above the star, not only hang below it. Eight
-  //      candidates, alternating below/above at four distances. Placement stays
-  //      strictly vertical and always centred on its own star: a sideways slot
-  //      would buy room in a cluster, but a label that drifts laterally reads as
-  //      belonging to whichever star it drifted toward.
+  //      candidates over four distances on each side, ordered so the side the
+  //      label last took is tried first and the other side has to beat it by
+  //      SIDE_HYSTERESIS steps to win it over. Placement stays strictly vertical
+  //      and always centred on its own star: a sideways slot would buy room in a
+  //      cluster, but a label that drifts laterally reads as belonging to
+  //      whichever star it drifted toward.
   //   3. A label that fits nowhere is dropped rather than drawn over something.
   //      Which is survivable only because placement runs in priority order, so
   //      what gets dropped is the dimmest star present, never the selected one.
   //
   // Cost is ~16·N² box tests for N visible stars, run once per camera pose (the
-  // cache above), which at map scale is microseconds.
+  // cache above), which at map scale is microseconds. An easing camera changes
+  // pose every frame and so pays that every frame; the hysteresis rides along on
+  // it for one map read and one map write per label, which is free by comparison.
   #solveLabels(
     g: CanvasRenderingContext2D,
     key: string,
@@ -1079,20 +1111,31 @@ export class StarMap {
       // Every candidate is centred on the star and differs only in how far above
       // or below it sits. A label always reads as hanging off its own star, and
       // never drifts sideways toward a neighbour's.
-      const below = (k: number) => v.sy + v.rad + gap + fs * 0.82 + k * step
-      const above = (k: number) => v.sy - v.rad - gap - fs * 0.22 - k * step
-      const cands: number[] = []
-      for (let k = 0; k <= 3; k++) {
-        cands.push(below(k), above(k))
+      const slot = (side: Side, k: number) =>
+        side === BELOW
+          ? v.sy + v.rad + gap + fs * 0.82 + k * step
+          : v.sy - v.rad - gap - fs * 0.22 - k * step
+
+      // The remembered side goes first at every distance, and the other side
+      // enters SIDE_HYSTERESIS steps late — so with a band of 1 the order runs
+      // kept0, kept1, other0, kept2, other1, kept3, other2, other3. A label with
+      // no history prefers below, which is where the solver has always started.
+      const kept = this.#labelSide.get(v.n.num) ?? BELOW
+      const other: Side = kept === BELOW ? ABOVE : BELOW
+      const cands: { y: number; side: Side }[] = []
+      for (let k = 0; k <= 3 + SIDE_HYSTERESIS; k++) {
+        if (k <= 3) cands.push({ y: slot(kept, k), side: kept })
+        const j = k - SIDE_HYSTERESIS
+        if (j >= 0 && j <= 3) cands.push({ y: slot(other, j), side: other })
       }
 
       const left = v.sx - w / 2
-      for (const cy of cands) {
+      for (const c of cands) {
         const box: Box = {
           x0: left - 3,
-          y0: cy - fs * 0.82 - 2,
+          y0: c.y - fs * 0.82 - 2,
           x1: left + w + 3,
-          y1: cy + fs * 0.22 + 2,
+          y1: c.y + fs * 0.22 + 2,
         }
         let ok = true
         for (const o of obstacles) {
@@ -1103,7 +1146,8 @@ export class StarMap {
         }
         if (!ok) continue
         obstacles.push(box)
-        items.push({ text, x: v.sx, y: cy, fill: LABEL[v.n.vstate] })
+        items.push({ text, x: v.sx, y: c.y, fill: LABEL[v.n.vstate] })
+        this.#labelSide.set(v.n.num, c.side)
         break
       }
       // No candidate cleared: the label is dropped. It comes back as soon as the
