@@ -423,12 +423,13 @@
           class="relative isolate flex h-full flex-col items-center justify-center gap-2 overflow-hidden p-6 text-center"
         >
           <AsciiFlow class="-z-10" />
-          <!-- The copy and its controls ride on a plate of the pane's own
-               background: the flow field runs behind the plate, never under the
-               text, so the legibility of the empty state never depends on where
-               the water happens to be. -->
+          <!-- The copy and its controls ride on a plate that carries no colour
+               of its own — it only blurs what passes under it. The flow field
+               reads through at full strength, just out of focus, so the water
+               never sharpens into glyphs that compete with the text. The radius
+               clips the blur, so the plate still reads as a rounded pane. -->
           <div
-            class="relative flex flex-col items-center gap-2 rounded-lg bg-background px-6 py-4"
+            class="relative flex flex-col items-center gap-2 rounded-lg px-6 py-4 backdrop-blur-[2px]"
           >
             <p class="text-sm text-muted-foreground">No shell open in this space.</p>
             <div class="flex flex-wrap items-center justify-center gap-2">
