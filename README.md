@@ -4,7 +4,8 @@
 
 **Agent multiplexer with a map of the work.**
 
-[Download macOS app](https://github.com/rengwu/chartr/releases/latest)
+[Download macOS app (unsigned)](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
+(Apple silicon)
 
 Chart a wayfinder map inside chartr, then drive it to completion. The plan
 renders as a star-map; take a ticket off the frontier, pick an agent, and the
