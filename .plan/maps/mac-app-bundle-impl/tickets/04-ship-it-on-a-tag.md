@@ -1,6 +1,6 @@
 ---
 type: task
-blocked_by: [04]
+blocked_by: [03]
 ---
 
 # Ship it on a tag
@@ -20,13 +20,18 @@ more loudly, not for anything. If packaging looks like it wants to be gating,
 that is a decision to raise with the operator, not to take here.
 
 **Documentation.** The README's support-tiers section gains the disk image and
-the Gatekeeper instructions — the exact wording ticket 04 verified against a real
-macOS, not a paraphrase. The release-notes footer gains one line under
-best-effort. Both must say plainly that the app is unsigned and not notarized, so
-a cautious operator can decide for themselves; nothing here undersells the cost
-to make the download more appealing.
+the Gatekeeper instructions — the exact wording ticket 03 verified against a real
+macOS, not a paraphrase. It also gains **one line naming the terminal diagnostic
+path**, `/Applications/chartr.app/Contents/MacOS/chartr`, because the bundle has
+no failure dialog by design and that command is the only way an operator sees why
+a launch died. The release-notes footer gains one line under best-effort.
 
-The ADR work is **not** in this ticket — ticket 03 did it, where the premise
+Both must say plainly that the app is unsigned and not notarized, and name the
+architecture the image carries, so a cautious operator can decide for themselves
+and an Intel operator is not left guessing. Nothing here undersells the cost to
+make the download more appealing.
+
+The ADR work is **not** in this ticket — ticket 02 did it, where the premise
 broke.
 
 ## Done when
@@ -36,6 +41,7 @@ alongside the loose shells, with the supported binaries and `checksums.txt`
 unchanged and unmentioned by the new step. The shells job still carries
 `continue-on-error` and its dependency on the published release, and a simulated
 packaging failure attaches nothing while the release itself succeeds. The README
-and the release-notes footer carry the verified Gatekeeper wording and state the
-app is unsigned and un-notarized. `go vet ./...`, `go test ./...`, the frontend
+and the release-notes footer carry the verified Gatekeeper wording, state the app
+is unsigned and un-notarized, and name its architecture; the README also names
+the terminal diagnostic path. `go vet ./...`, `go test ./...`, the frontend
 `check` / `build` / `vitest`, and the no-amber check are green.

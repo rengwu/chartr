@@ -8,9 +8,15 @@ clicks through the one Gatekeeper prompt the disk image warned them about, and
 launches the cockpit from Launchpad — with the mark on the icon, the app's own
 name in the menu bar, their existing spaces already registered, and their state
 written where the command-line binary writes it. Done looks like a tag attaching
-an unsigned, ad-hoc-signed, universal bundle and its checksum sidecar as a
-best-effort asset, without the supported cgo-free release or its manifest having
-been touched at any point.
+an unsigned, ad-hoc-signed, single-architecture bundle and its checksum sidecar
+as a best-effort asset, without the supported cgo-free release or its manifest
+having been touched at any point.
+
+**Four tickets, and that is the point.** This map is deliberately the smallest
+route to a `.dmg`: the spec cut a native failure dialog, a universal binary and a
+round of ADR amendments, each recorded in *Out of scope* below with the condition
+that brings it back. A ticket that finds itself wanting one of them is finding a
+cut, not a gap — see the note on re-opened decisions.
 
 ## Notes
 
@@ -25,18 +31,18 @@ operator** rather than quietly deviating.
 **Per-session reading order:** the spec, then this map, then your ticket. The
 spec carries the settled seams and symbols; prefer them to brittle line-level
 paths. Vocabulary comes from `CONTEXT.md` at the repo root. The ADRs under
-`docs/adr/` are binding, and this effort **amends 0011, amends 0013, and writes a
-new ADR** for the unsigned bundle — all in ticket 03, the ticket that falsifies
-0013's premise. A ticket that touches an ADR says so in its answer.
+`docs/adr/` are binding, and this effort **writes exactly one new ADR** — in
+ticket 02, the ticket that falsifies 0013's premise. That ADR **names what it
+supersedes** in 0011 and 0013; neither of those files is edited. Amending them in
+place was considered and cut. A ticket that touches an ADR says so in its answer.
 
-**Sequencing.** The order is `01 → 02`, `01 → 03 → 04 → 05`. Ticket 01 comes
-first because it is load-bearing in a way the ordering hides: until the runtime
-root is anchored, a bundled launch dies claiming the single-instance lock, before
-a window exists, writing to a stream nobody reads — so every packaging ticket
-after it would be verified against an app that cannot start. 01 is verifiable
-from a terminal with no bundle in existence. 02 (visible failure) and 03
-(the bundle) are independent of each other and can be worked in either order once
-01 lands.
+**Sequencing is a straight line:** `01 → 02 → 03 → 04`. Ticket 01 comes first
+because it is load-bearing in a way the ordering hides: until the runtime root is
+anchored, a bundled launch dies claiming the single-instance lock, before a
+window exists, writing to a stream nobody reads — so every packaging ticket after
+it would be verified against an app that cannot start. 01 is verifiable from a
+terminal with no bundle in existence. After it, each ticket needs the artifact
+the one before it produced, so there is no parallelism to find here.
 
 **One seam, and it is the existing one.** All testable behaviour goes in the
 shell package's **tag-free half** — where the single-instance lock already lives,
@@ -59,9 +65,16 @@ ad-hoc signed only (which Apple Silicon requires to execute at all) and not
 notarized. Gatekeeper *will* block the first launch. Nothing in this effort tries
 to defeat quarantine; the cost is stated in the disk image, the release notes and
 the ADR. **The unblock instructions are perishable** — Apple has changed that path
-within recent memory — so ticket 04 verifies them against the current macOS by
+within recent memory — so ticket 03 verifies them against the current macOS by
 simulating a quarantined download rather than copying them forward from the spec
 on faith.
+
+**A bundled failure is silent, on purpose.** There is no failure dialog: fatal
+startup errors stay on standard error, which Finder discards. Ticket 01 removes
+the cause that made this likely, and the diagnostic is running the bundled
+executable straight from a terminal — which ticket 02 confirms still works and
+ticket 04 documents. If a ticket is tempted to add an alert to make its own
+verification easier, that is the cut trying to grow back.
 
 **Before commit:** run the CLAUDE.md gates — `go vet ./...` and `go test ./...`
 (the embed test compiles against `web/dist/`), the frontend `check` / `build`
@@ -80,8 +93,11 @@ map linter is wired in this repo.
 
 ## Out of scope
 
-<!-- Inherited from the spec's Out of Scope; these never graduate into tickets on this map. -->
+<!-- Inherited from the spec's Out of Scope; these never graduate into tickets on this map. The first three are deliberate cuts, each with the condition that brings it back. -->
 
+- **A native failure dialog and log file** — *cut.* Fatal startup errors stay on standard error. Back when an operator reports a launch that bounced with nothing to send; until then the terminal path is the diagnostic.
+- **A universal two-architecture binary** — *cut.* One slice, the host's, named in the filename. Back when an Intel operator asks; the naming makes that a `lipo` call, not a rename.
+- **Amending ADR 0011 and 0013 in place** — *cut.* The new ADR names what it supersedes instead. The falsified *code comments* are still corrected in ticket 02 — that part is not deferred.
 - **Developer ID signing and notarization** — both need the paid account; they slot into the assembly step when there is one.
 - **Auto-update in any form** — no update framework, no feed.
 - **A styled disk-image window** — background art and positioned icons are cosmetics on a tier that ships with a "your Mac will block this" note in the box.

@@ -45,10 +45,14 @@ tries to work around Gatekeeper by trickery.
 
 Underneath, the shell learns that it can be launched with no terminal attached.
 It notices it is running from inside a bundle, anchors its runtime root to the
-operator's home instead of the working directory it was handed, tolerates the
-stray arguments the window server sometimes injects, and surfaces a fatal startup
-failure as a dialog the operator can actually read plus a log file they can
-actually send — rather than a message written to a stream that goes nowhere.
+operator's home instead of the working directory it was handed, and tolerates the
+stray arguments the window server sometimes injects.
+
+**This is deliberately the smallest thing that ships.** Three things a fuller
+version of this spec would carry are cut, and cut on purpose: a native failure
+dialog, a universal two-architecture binary, and a round of ADR amendments. Each
+is recorded under *Out of Scope* with the condition that would bring it back.
+What remains is one build target, one disk image, and one release step.
 
 ## User Stories
 
@@ -62,31 +66,28 @@ actually send — rather than a message written to a stream that goes nowhere.
 8. As an operator whose Mac blocks the app on first launch, I want the disk image to have already told me why and what to click, so that I am not left guessing whether the download is broken or malicious.
 9. As an operator, I want the unblock instructions I am given to be the instructions that actually work on my macOS version, so that I do not burn twenty minutes on advice that stopped being true two releases ago.
 10. As a cautious operator, I want the release notes to state plainly that the app is unsigned and not notarized, so that I can decide for myself whether to trust it.
-11. As an operator on Apple Silicon, I want the app to launch at native speed, so that I am not paying a translation tax on every session.
-12. As an operator on an Intel Mac, I want the same download to work, so that I do not have to work out which of two files is mine.
-13. As an operator, I want to verify the download against a published checksum, so that I can confirm I got the bytes the project built.
-14. As an operator who launches the bundled app from Finder, I want my sessions and payload archives written somewhere I own, so that the app does not fail trying to write to the root of my disk.
-15. As an operator, I want the spaces I registered from the command line to be there when I open the bundled app, so that I have one registry rather than two.
-16. As an operator, I want the bundled app and the command-line binary to agree on where my state lives, so that switching between them does not silently fork my history.
-17. As an operator, I want launching the app a second time to raise the window I already have, so that I never end up with two cockpits fighting over one working tree.
-18. As an operator, I want the agents I installed with Homebrew or in my home directory to be findable from the bundled app, so that a Finder launch is not missing the tools a terminal launch has.
-19. As an operator whose app fails to start, I want a dialog that names what went wrong, so that a failed launch is not a silent bounce in the Dock.
-20. As an operator reporting a problem, I want a log file on disk I can attach, so that I can hand over evidence instead of a description.
-21. As an operator on a Mac with no working native web view, I want to be told that the supported browser binary exists and is what I should use, so that a missing dependency does not read as a broken product.
-22. As an operator, I want ⌘Q, closing the window, and a signal to shut the app down the same clean way, so that quitting never leaves a session or a lock behind.
-23. As an operator, I want the app's version to match the release I downloaded, so that a bug report names a build the project can reproduce.
-24. As a maintainer, I want to build the bundle and the disk image with one command on my own Mac, so that I can inspect the artifact before tagging.
-25. As a maintainer, I want those commands to do nothing but say so when run on Linux or Windows, so that they can sit in a shared build file without breaking anyone.
-26. As a maintainer, I want the packaging to run in the release job that already builds the shell, so that a release does not grow a second pipeline to keep in sync.
-27. As a maintainer, I want a packaging failure to be incapable of failing or altering the supported release, so that the tiering guarantee stays structural rather than aspirational.
-28. As a maintainer, I want the disk image's checksum to live in its own sidecar, so that a best-effort artifact never mutates the supported manifest.
-29. As a maintainer, I want the app's icon generated from the mark the cockpit already ships, so that the two can never drift apart.
-30. As a maintainer, I want the bundle stamped with the same version, commit and date as the supported binary, so that all three artifacts of a tag report one identity.
-31. As a maintainer, I want the bundled-launch behaviour covered by tests that run in the ordinary cgo-free suite, so that the part that can break silently is the part that is actually tested.
-32. As a maintainer, I want the decision to ship unsigned recorded with its costs, so that the next person does not rediscover the Gatekeeper trade-off from scratch.
-33. As a maintainer, I want the existing comments that assert the shell is never bundled corrected, so that the code does not carry a claim the build has falsified.
-34. As a maintainer, I want a documented way to simulate a quarantined download, so that the unblock instructions we publish are verified rather than assumed.
-35. As a maintainer, I want the command-line binary's behaviour left exactly as it is, so that adding a Mac app costs the supported artifact nothing.
+11. As an operator, I want the app to launch at native speed on my Mac, so that I am not paying a translation tax on every session.
+12. As an operator, I want to verify the download against a published checksum, so that I can confirm I got the bytes the project built.
+13. As an operator who launches the bundled app from Finder, I want my sessions and payload archives written somewhere I own, so that the app does not fail trying to write to the root of my disk.
+14. As an operator, I want the spaces I registered from the command line to be there when I open the bundled app, so that I have one registry rather than two.
+15. As an operator, I want the bundled app and the command-line binary to agree on where my state lives, so that switching between them does not silently fork my history.
+16. As an operator, I want launching the app a second time to raise the window I already have, so that I never end up with two cockpits fighting over one working tree.
+17. As an operator, I want the agents I installed with Homebrew or in my home directory to be findable from the bundled app, so that a Finder launch is not missing the tools a terminal launch has.
+18. As an operator, I want ⌘Q, closing the window, and a signal to shut the app down the same clean way, so that quitting never leaves a session or a lock behind.
+19. As an operator, I want the app's version to match the release I downloaded, so that a bug report names a build the project can reproduce.
+20. As a maintainer, I want to build the bundle and the disk image with one command on my own Mac, so that I can inspect the artifact before tagging.
+21. As a maintainer, I want those commands to do nothing but say so when run on Linux or Windows, so that they can sit in a shared build file without breaking anyone.
+22. As a maintainer, I want the packaging to run in the release job that already builds the shell, so that a release does not grow a second pipeline to keep in sync.
+23. As a maintainer, I want a packaging failure to be incapable of failing or altering the supported release, so that the tiering guarantee stays structural rather than aspirational.
+24. As a maintainer, I want the disk image's checksum to live in its own sidecar, so that a best-effort artifact never mutates the supported manifest.
+25. As a maintainer, I want the app's icon generated from the mark the cockpit already ships, so that the two can never drift apart.
+26. As a maintainer, I want the bundle stamped with the same version, commit and date as the supported binary, so that all three artifacts of a tag report one identity.
+27. As a maintainer, I want the bundled-launch behaviour covered by tests that run in the ordinary cgo-free suite, so that the part that can break silently is the part that is actually tested.
+28. As a maintainer, I want the decision to ship unsigned recorded with its costs, so that the next person does not rediscover the Gatekeeper trade-off from scratch.
+29. As a maintainer, I want the existing comments that assert the shell is never bundled corrected, so that the code does not carry a claim the build has falsified.
+30. As a maintainer, I want a documented way to simulate a quarantined download, so that the unblock instructions we publish are verified rather than assumed.
+31. As a maintainer, I want the command-line binary's behaviour left exactly as it is, so that adding a Mac app costs the supported artifact nothing.
+32. As a maintainer, I want the cut scope recorded with the condition that brings it back, so that shipping small now does not read later as having forgotten it.
 
 ## Implementation Decisions
 
@@ -110,9 +111,10 @@ Three distinct things get conflated as signing, and only one is free:
 
 Apple Silicon refuses to execute a binary carrying *no* signature at all, so the
 ad-hoc signature is not optional — it is the minimum that makes the app launch.
-The Go linker already ad-hoc signs the darwin binaries it produces, but combining
-two architecture slices invalidates that, so the assembled bundle is re-signed
-ad-hoc as the **last** step of assembly, after the slices are joined.
+The Go linker already ad-hoc signs the darwin binaries it produces, but the
+signature covers the executable, not the bundle around it, so the assembled
+bundle is signed ad-hoc as the **last** step of assembly, after the property list
+and the icon are in place.
 
 The consequence is Gatekeeper. A disk image downloaded through a browser carries
 the quarantine attribute, and an ad-hoc-signed, un-notarized application is
@@ -160,23 +162,27 @@ shell `PATH` hydration already runs at startup, added precisely because a Finder
 launch inherits a `PATH` that carries neither Homebrew nor the operator's own
 bin directory.
 
-### Failure has to be visible without a terminal
+### Failure stays on standard error, and that is a known cost
 
-Fatal startup errors currently go to standard error, which a Finder launch
-discards. Two surfaces replace it, both active **only when bundled**:
+Fatal startup errors go to standard error and keep going there, bundled or not.
+A Finder launch discards that stream, so a fatal failure under the bundle is a
+silent bounce in the Dock — including ADR 0013's deliberate "the native runtime
+is missing, use the supported binary" error, which is exactly the message an
+operator most needs.
 
-- a native alert naming what failed, so a failed launch is a message rather than
-  a bounce in the Dock — this includes ADR 0013's deliberate "the native runtime
-  is missing, use the supported binary" error, which is exactly the message that
-  must not be swallowed; and
-- a log file under the operator's own logs directory, so a report can carry
-  evidence.
+**This is accepted rather than solved.** The fix is a native Cocoa alert plus a
+log file, and it is real work — platform code behind the `webview` and `darwin`
+tags, a tag-free sink decision to keep testable, a second surface to keep in sync
+— on a failure mode that anchoring the runtime root makes rare by removing its
+most likely cause.
+It is deferred until the bundle has shipped and a failure is observed in the
+wild; the moment an operator reports a bounce with nothing to send, it stops
+being deferred. Recorded in *Out of Scope*.
 
-A terminal launch keeps standard error unchanged. The alert is Cocoa, sits with
-the existing platform code behind the `webview` and `darwin` tags, and — like the
-window and the menu before it — is **not unit-tested**; ADR 0013 already accepts
-that for surfaces needing a real display. What *is* tested is the tag-free
-decision of which sink applies.
+The consolation is that a bundled app is still runnable from a terminal:
+`/Applications/chartr.app/Contents/MacOS/chartr` prints exactly what the loose
+shell prints. That is the diagnostic path, and it belongs in the README beside
+the Gatekeeper note.
 
 ### The bundle
 
@@ -202,19 +208,23 @@ platform tooling expects. The shell's runtime icon path reads that same mark out
 of the embedded frontend for the same reason — generating rather than committing
 a second copy is what makes drift impossible.
 
-### Architecture: one runner, two slices, joined
+### Architecture: whatever the runner is, named in the filename
 
-cgo does not cross-compile between platforms, but the macOS toolchain builds both
-Mac architectures, so a single macOS runner produces both slices and joins them
-into one universal executable. The join happens before the ad-hoc signature,
-because joining strips signatures.
+The bundle is **single-architecture — the runner's own** — exactly like the loose
+shell beside it. cgo does not cross-compile, and while the macOS toolchain can in
+principle build both Mac slices for joining into a universal executable, that
+buys a second slice, a join step, a signature ordering constraint (joining strips
+signatures) and a degrade path, all for a best-effort artifact whose audience is
+on Apple Silicon.
 
-**The loose shell stays single-architecture.** Entangling the existing shell
-target with a two-slice build buys nothing for an artifact that is already a
-loose developer-facing binary; the bundle target does its own build. If the
-second slice fails to build, the bundle ships **single-architecture and says so
-in its filename** — degrading loudly is what the best-effort tier is for, and
-silently shipping a half-universal binary under a universal name is not.
+So: one `GOARCH`, the host's, **named in the disk image's filename** so an
+operator can see what they are getting and a second architecture can appear later
+beside it without renaming anything. This is the same contract `make webview`
+already follows, which is the point — the bundle target is the shell target plus
+packaging, not a new kind of build.
+
+Universal is a filename and a `lipo` call away when an Intel operator asks; the
+naming is chosen so that day costs nothing. Recorded in *Out of Scope*.
 
 ### The disk image
 
@@ -247,15 +257,24 @@ release; that structure is the guarantee, and it is not weakened to accommodate
 the new artifact.
 
 Documentation changes: the support-tiers section of the README gains the disk
-image and the Gatekeeper instructions; the release notes footer gains one line
-under best-effort. **Two ADR changes are required.** ADR 0011 enumerates the
-best-effort tier as the native shell per platform, and now needs the bundle. More
-sharply, ADR 0013 reasons *from* the shell being unbundled — the runtime app-name
+image, the Gatekeeper instructions and the run-from-terminal diagnostic line; the
+release notes footer gains one line under best-effort.
+
+**One new ADR, and no amendments.** The bundle does disturb two existing records
+— ADR 0011 enumerates the best-effort tier as the native shell per platform, and
+ADR 0013 reasons *from* the shell being unbundled, since the runtime app-name
 seeding and the runtime icon exist only because a bare binary has no property
-list, and a comment in the platform icon code states outright that handing the
-shell a real bundle is a packaging change out of its reach. A new ADR records the
-unsigned-bundle decision and its Gatekeeper cost; the falsified comments are
-corrected by the ticket that falsifies them.
+list. Editing both in place is three documents' worth of churn for one decision.
+Instead the new ADR states the unsigned-bundle decision with its Gatekeeper cost
+and **names what it supersedes in 0011 and 0013 explicitly**, which is what an
+ADR log is for — later records amending earlier ones is the format working, not a
+shortcut around it.
+
+What is *not* deferred is the code: a comment in the platform icon code states
+outright that handing the shell a real bundle is a packaging change out of its
+reach, and the build now falsifies it. **Comments that assert something untrue
+get corrected by the ticket that makes them untrue** — a stale comment misleads
+the next reader in a way a superseded ADR does not.
 
 The runtime app-name seeding and runtime icon are **kept, not deleted**. The
 property list supersedes them inside the bundle, but the loose shell is still a
@@ -278,9 +297,8 @@ a test drives them with constructed paths and never needs a real bundle, a real
 display, or a real home directory.
 
 Covered there: a path inside a bundle detected as bundled; a plain path not; an
-explicit runtime root winning over the bundled default; the bundled default
-landing on the home-anchored root rather than the working directory; and the
-choice of error sink following bundled-ness.
+explicit runtime root winning over the bundled default; and the bundled default
+landing on the home-anchored root rather than the working directory.
 
 **Nothing about the bundle, the signature or the disk image is unit-tested.**
 Those are properties of an artifact produced by platform tooling, and the tooling
@@ -304,6 +322,19 @@ unchanged to every ticket.
 
 ## Out of Scope
 
+Three of these are cuts from a fuller version of this spec rather than things
+never considered, and each carries the condition that brings it back.
+
+- **A native failure dialog and log file.** *Cut.* Fatal startup errors stay on
+  standard error, which a Finder launch discards. Brought back when an operator
+  reports a launch that bounced with nothing to send — until then the terminal
+  path (`chartr.app/Contents/MacOS/chartr`) is the diagnostic.
+- **A universal two-architecture binary.** *Cut.* The bundle is the runner's own
+  architecture, named in the filename. Brought back when an Intel operator asks;
+  the filename convention is chosen so that is a `lipo` call, not a rename.
+- **Amending ADR 0011 and 0013 in place.** *Cut.* The new ADR names what it
+  supersedes instead. The falsified *code comments* are still corrected — that
+  part is not deferred.
 - **Developer ID signing and notarization.** Both require the paid account. When
   there is one, they slot into the assembly step; nothing here is designed to
   make that harder.

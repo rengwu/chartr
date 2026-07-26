@@ -1,6 +1,6 @@
 ---
 type: task
-blocked_by: [03]
+blocked_by: [02]
 ---
 
 # The distributable disk image
@@ -14,6 +14,11 @@ compresses it into a read-only image named for project, version and architecture
 and writes a **per-asset `.sha256` sidecar** beside it. The sidecar is not a
 detail — the supported release owns `checksums.txt`, and a best-effort artifact
 never mutates it.
+
+**The architecture in the name is load-bearing**, not decoration. Ticket 02 ships
+one slice deliberately, so the name is what tells an operator whether the image
+is theirs — and it is what lets a second architecture appear beside it later
+without renaming the first.
 
 Off macOS the target prints a line and **succeeds**, like the bundle target it
 builds on.
