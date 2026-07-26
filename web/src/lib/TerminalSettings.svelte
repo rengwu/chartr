@@ -37,11 +37,10 @@
   // the file left unset tracks the app theme exactly as the terminal's own does.
   const groups = $derived(terminalSettingsSummary(prefs));
 
-  // Which sections are expanded. Start with the first open so the panel is never a
-  // wall of headers with nothing showing; the rest collapse away until asked for.
-  // Seeded from a one-off resolve (the titles are fixed, so this never goes stale).
+  // Which sections are expanded. Seeded from a one-off resolve
+  // (the titles are fixed, so this never goes stale).
   // svelte-ignore state_referenced_locally
-  let open = $state<string[]>([terminalSettingsSummary(prefs)[0].title]);
+  let open = $state<string[]>([]);
 </script>
 
 <section class="flex flex-col gap-2">

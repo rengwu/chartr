@@ -15,7 +15,7 @@
 family = "Menlo"  # a custom family stacks ahead of the system fallback
 weight = 400      # normal-glyph weight: "normal", "bold", or 1..1000
 boldWeight = 500  # bold-glyph weight: "normal", "bold", or 1..1000
-size = 14         # cell font size in px
+size = 13         # cell font size in px
 
 [scrolling]
 sensitivity = 3   # wheel-tick scale
