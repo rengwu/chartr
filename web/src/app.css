@@ -229,6 +229,20 @@
     background: var(--primary);
     transition: width 0.2s ease;
   }
+  /* The star-map canvas. The renderer creates this element itself (ADR 0010), so
+     it can never carry a Svelte-scoped style — these live here or nowhere. No
+     colour: the canvas paints its own surface at the seam. `touch-action` hands
+     the island every pan and pinch instead of letting the webview scroll or
+     magnify the page under it, and the cursor is the only tell that empty space
+     is draggable — the renderer already toggles `.drag` for the duration. */
+  .starmap-canvas {
+    display: block;
+    touch-action: none;
+    cursor: grab;
+  }
+  .starmap-canvas.drag {
+    cursor: grabbing;
+  }
 }
 
 /* A small, token-driven prose scale for the rendered-markdown surfaces (ticket

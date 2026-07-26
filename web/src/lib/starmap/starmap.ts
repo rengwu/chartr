@@ -55,6 +55,45 @@ interface Cam {
   s: number
 }
 
+// --- camera feel ------------------------------------------------------------
+// Every camera move — a drag, a zoom, seating a star, a refit — sets a goal, and
+// the camera eases toward it on an exponential curve with a fixed time constant.
+// Nothing snaps and nothing coasts: the map is always travelling to a place
+// something asked for, and it arrives exactly there.
+//
+// The constant is evaluated against real elapsed time, never per frame. A
+// per-frame lerp factor would converge twice as fast on a 120Hz panel as on a
+// 60Hz one — the map would literally weigh less on a better display.
+const CAM_TAU = 0.12
+// Close enough to be over: snapping here spares a long tail of sub-pixel frames.
+const CAM_EPS = 0.02
+const SCALE_EPS = 0.0005
+
+const MIN_SCALE = 0.12
+const MAX_SCALE = 3
+
+// A mouse wheel and a trackpad send the same event in very different units: a
+// wheel arrives as chunky notches (often counted in lines or pages), a trackpad
+// as a fine stream of pixels, and a pinch as that same stream with ctrl flagged
+// on. Normalising every one of them to pixels, clamping the outliers, and giving
+// the pinch its own gain is what lets one handler serve all three without one of
+// them feeling either dead or violent.
+const LINE_PX = 16
+const WHEEL_GAIN = 0.0016
+const PINCH_GAIN = 0.011
+const MAX_WHEEL_PX = 140
+const MAX_PINCH_PX = 50
+
+// WebKit's non-standard pinch event, which the Mac shell's WKWebView reports
+// instead of Chrome's ctrl-flagged wheel. `scale` is cumulative from the start
+// of the gesture, not per-event.
+interface GestureLike {
+  scale: number
+  clientX: number
+  clientY: number
+  preventDefault(): void
+}
+
 function mod(a: number, b: number): number {
   return ((a % b) + b) % b
 }
@@ -115,6 +154,11 @@ export class StarMap {
   #clock = 0
   #last = 0
   #raf = 0
+  // The live WebKit pinch, if one is in flight — it also mutes the wheel path,
+  // so a browser that reports a pinch both ways never zooms twice for one gesture.
+  // Stamped, so a gesture that never reports its end (interrupted, or swallowed
+  // by the window losing the pointer) cannot leave the wheel muted for good.
+  #gesture: { scale: number; at: number } | null = null
   #selected: number | null = null
   // One fading ticker line, drawn by the island itself (never a chrome
   // component — ADR 0010): what just changed under you, then calm again.
@@ -350,8 +394,10 @@ export class StarMap {
     const n = this.#byNum.get(num)
     if (!n) return
     const { cx, cy } = this.#freeRect()
-    this.#goal.x = cx - n.x * this.#cam.s
-    this.#goal.y = cy - n.y * this.#cam.s
+    // Against the goal scale, not the live one: seating mid-zoom must aim at
+    // where the camera is going, or the star lands off-centre when it arrives.
+    this.#goal.x = cx - n.x * this.#goal.s
+    this.#goal.y = cy - n.y * this.#goal.s
     this.#settleIfHeadless()
   }
 
@@ -363,6 +409,63 @@ export class StarMap {
     this.#cam.x = this.#goal.x
     this.#cam.y = this.#goal.y
     this.#cam.s = this.#goal.s
+  }
+
+  // Move the camera by a screen-space delta. The drag moves the *goal*, never the
+  // camera: the map trails the cursor while the hand is moving and glides in
+  // behind it when the hand stops. Because the goal tracks the pointer one-for-
+  // one, the map settles exactly where it was dragged — the lag is time, not
+  // distance, and none of it accumulates.
+  #pan(dx: number, dy: number): void {
+    this.#goal.x += dx
+    this.#goal.y += dy
+    this.#settleIfHeadless()
+  }
+
+  // Zoom by `f` about a screen point, keeping the world under that point pinned.
+  #zoomAt(sx: number, sy: number, f: number): void {
+    if (!(f > 0) || !isFinite(f)) return
+    const ns = clamp(this.#goal.s * f, MIN_SCALE, MAX_SCALE)
+    const k = ns / this.#goal.s
+    this.#goal.x = sx - (sx - this.#goal.x) * k
+    this.#goal.y = sy - (sy - this.#goal.y) * k
+    this.#goal.s = ns
+    this.#settleIfHeadless()
+  }
+
+  // Ease the camera toward its goal over real elapsed time.
+  //
+  // The ease runs in (focus, world-units-per-pixel) rather than in the camera's
+  // own (translate, scale): the world point under any given screen point is
+  // *linear* in that pair, so interpolating it holds that point exactly still.
+  // Interpolating translate and scale directly does not — the world slides out
+  // from under the cursor for the whole flight of a zoom, and pinning the focal
+  // point is most of what "zoom feels solid" means.
+  #easeCamera(dt: number): void {
+    const cam = this.#cam,
+      goal = this.#goal
+    const near =
+      Math.abs(goal.x - cam.x) < CAM_EPS &&
+      Math.abs(goal.y - cam.y) < CAM_EPS &&
+      Math.abs(goal.s - cam.s) < SCALE_EPS
+    if (near) {
+      cam.x = goal.x
+      cam.y = goal.y
+      cam.s = goal.s
+      return
+    }
+    const a = 1 - Math.exp(-dt / CAM_TAU)
+    // z is world units per screen pixel; f is the world point at screen origin.
+    const z = 1 / cam.s,
+      zg = 1 / goal.s
+    const fx = -cam.x * z,
+      fy = -cam.y * z
+    const nz = z + (zg - z) * a
+    const nfx = fx + (-goal.x * zg - fx) * a
+    const nfy = fy + (-goal.y * zg - fy) * a
+    cam.s = 1 / nz
+    cam.x = -nfx / nz
+    cam.y = -nfy / nz
   }
 
   // --- sizing + camera ------------------------------------------------------
@@ -425,11 +528,12 @@ export class StarMap {
   // --- input: pan, zoom, click ---------------------------------------------
   #bindPointer(canvas: HTMLCanvasElement): void {
     let drag: { x: number; y: number; moved: boolean } | null = null
-    const rectXY = (e: MouseEvent) => {
+    const rectXY = (e: { clientX: number; clientY: number }) => {
       const r = canvas.getBoundingClientRect()
       return { x: e.clientX - r.left, y: e.clientY - r.top }
     }
     const onDown = (e: MouseEvent) => {
+      this.#gesture = null
       drag = { x: e.clientX, y: e.clientY, moved: false }
       canvas.classList.add('drag')
     }
@@ -438,40 +542,77 @@ export class StarMap {
       const dx = e.clientX - drag.x,
         dy = e.clientY - drag.y
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true
-      this.#goal.x += dx
-      this.#goal.y += dy
-      this.#cam.x += dx
-      this.#cam.y += dy
+      this.#pan(dx, dy)
       drag.x = e.clientX
       drag.y = e.clientY
     }
     const onUp = (e: MouseEvent) => {
       canvas.classList.remove('drag')
+      // A press that never moved is a click; the release itself adds nothing —
+      // the camera is already on its way to where the drag put it.
       if (drag && !drag.moved) {
         const { x, y } = rectXY(e)
         this.selectAtScreen(x, y)
       }
       drag = null
     }
+    // One wheel handler for three devices, all normalised to pixels first: a
+    // notched wheel reports lines or pages, a trackpad reports pixels, and a
+    // trackpad pinch reports pixels with ctrl flagged on (which is how Chrome and
+    // Firefox describe a pinch — WebKit uses the gesture events below instead).
+    const pixelsOf = (e: WheelEvent, cap: number) => {
+      const unit = e.deltaMode === 1 ? LINE_PX : e.deltaMode === 2 ? this.#h : 1
+      return clamp(e.deltaY * unit, -cap, cap)
+    }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      // A pinch this browser has already reported through the gesture path — the
+      // stamp keeps a gesture that never ended from muting the wheel forever.
+      if (this.#gesture && now() - this.#gesture.at < 0.5) return
+      this.#gesture = null
       const { x, y } = rectXY(e)
-      const f = Math.exp(-e.deltaY * 0.0016)
-      const ns = clamp(this.#goal.s * f, 0.12, 3)
-      const k = ns / this.#goal.s
-      this.#goal.x = x - (x - this.#goal.x) * k
-      this.#goal.y = y - (y - this.#goal.y) * k
-      this.#goal.s = ns
+      const pinch = e.ctrlKey
+      const px = pixelsOf(e, pinch ? MAX_PINCH_PX : MAX_WHEEL_PX)
+      this.#zoomAt(x, y, Math.exp(-px * (pinch ? PINCH_GAIN : WHEEL_GAIN)))
+    }
+    // WebKit's pinch. preventDefault here does double duty: it keeps the zoom
+    // ours, and it stops WKWebView magnifying the whole page out from under the
+    // canvas.
+    const onGestureStart = (ev: Event) => {
+      const e = ev as unknown as GestureLike
+      e.preventDefault()
+      this.#gesture = { scale: e.scale || 1, at: now() }
+    }
+    const onGestureChange = (ev: Event) => {
+      const e = ev as unknown as GestureLike
+      e.preventDefault()
+      const g = this.#gesture
+      if (!g) return
+      const s = e.scale || 1
+      const { x, y } = rectXY(e)
+      this.#zoomAt(x, y, s / (g.scale || 1))
+      g.scale = s
+      g.at = now()
+    }
+    const onGestureEnd = (ev: Event) => {
+      ev.preventDefault()
+      this.#gesture = null
     }
     canvas.addEventListener('mousedown', onDown)
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    canvas.addEventListener('gesturestart', onGestureStart as EventListener)
+    canvas.addEventListener('gesturechange', onGestureChange as EventListener)
+    canvas.addEventListener('gestureend', onGestureEnd as EventListener)
     this.#detach.push(
       () => canvas.removeEventListener('mousedown', onDown),
       () => window.removeEventListener('mousemove', onMove),
       () => window.removeEventListener('mouseup', onUp),
       () => canvas.removeEventListener('wheel', onWheel),
+      () => canvas.removeEventListener('gesturestart', onGestureStart as EventListener),
+      () => canvas.removeEventListener('gesturechange', onGestureChange as EventListener),
+      () => canvas.removeEventListener('gestureend', onGestureEnd as EventListener),
     )
   }
 
@@ -492,9 +633,7 @@ export class StarMap {
       n._y = n.y + Math.cos(this.#clock * 0.55 + ph) * 2.4
       if (n.flare > 0) n.flare = Math.max(0, n.flare - dt / 1.1)
     }
-    this.#cam.x += (this.#goal.x - this.#cam.x) * 0.28
-    this.#cam.y += (this.#goal.y - this.#cam.y) * 0.28
-    this.#cam.s += (this.#goal.s - this.#cam.s) * 0.28
+    this.#easeCamera(dt)
 
     g.setTransform(this.#dpr, 0, 0, this.#dpr, 0, 0)
     g.fillStyle = this.#bg

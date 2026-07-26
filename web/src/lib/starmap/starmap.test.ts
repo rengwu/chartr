@@ -5,7 +5,7 @@
 // The canvas *feel* is not tested here (it can only be judged by eye); the
 // island runs headless, so no 2D context is required.
 
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { StarMap } from './starmap'
 import { computeLayout, structureSignature } from './layout'
 import { GRAMMAR, nonColorSignature, type SessionState } from './session'
@@ -318,5 +318,187 @@ describe('painting the overlay', () => {
     }
     // The ticker line the last change wrote is on the canvas.
     expect(texts.some((t) => t.startsWith('▸'))).toBe(true)
+  })
+})
+
+// How the camera *feels* is judged by eye, but what it feels like rests on three
+// things that are exactly assertable: a zoom keeps the world pinned under the
+// cursor, the ease runs on wall-clock time rather than on frames, and the input
+// devices that mean "zoom" all arrive in the same units. Those need a live
+// context — the ease only runs inside the render loop, and headless the camera
+// settles instantly — plus a clock the test drives.
+//
+// The camera is read straight back off the seam: two stars' world positions and
+// their screen positions pin the scale and translation exactly, no test hatch.
+function camera(sm: StarMap): { s: number; x: number; y: number } {
+  const p = sm.positions()
+  const [a, b] = [1, 5]
+  const world = Math.hypot(p[b].x - p[a].x, p[b].y - p[a].y)
+  const sa = sm.screenOf(a)!,
+    sb = sm.screenOf(b)!
+  const s = Math.hypot(sb.x - sa.x, sb.y - sa.y) / world
+  return { s, x: sa.x - p[a].x * s, y: sa.y - p[a].y * s }
+}
+
+// The world point sitting under a screen point — the thing a zoom must not move.
+function worldAt(cam: { s: number; x: number; y: number }, sx: number, sy: number) {
+  return { x: (sx - cam.x) / cam.s, y: (sy - cam.y) / cam.s }
+}
+
+describe('the camera', () => {
+  let frames: FrameRequestCallback[] = []
+  const realGetContext = HTMLCanvasElement.prototype.getContext
+  const realRaf = globalThis.requestAnimationFrame
+
+  beforeEach(() => {
+    frames = []
+    const stub = stubContext()
+    HTMLCanvasElement.prototype.getContext = (() => stub.ctx) as never
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    }) as never
+    globalThis.cancelAnimationFrame = (() => {}) as never
+    // The island reads performance.now(); faking it puts the frame rate under the
+    // test's control, which is the whole point of two of these tests.
+    vi.useFakeTimers({ toFake: ['performance'] })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    HTMLCanvasElement.prototype.getContext = realGetContext
+    globalThis.requestAnimationFrame = realRaf
+  })
+
+  // Advance the clock by `ms` and run one frame at that instant.
+  function step(ms: number): void {
+    vi.advanceTimersByTime(ms)
+    const cb = frames.pop()
+    frames = []
+    cb?.(0)
+  }
+  // Long enough for any ease to be not just visually over but inside the snap
+  // epsilon, so the camera is exactly on its goal rather than a hair short of it.
+  function settle(): void {
+    for (let i = 0; i < 150; i++) step(16)
+  }
+  function live(): { sm: StarMap; canvas: HTMLCanvasElement } {
+    const { sm, host } = mounted()
+    sm.setModel(fixture())
+    return { sm, canvas: host.querySelector('canvas')! }
+  }
+  function wheel(canvas: HTMLCanvasElement, init: WheelEventInit): void {
+    canvas.dispatchEvent(new WheelEvent('wheel', { cancelable: true, ...init }))
+  }
+  // WebKit's pinch event, which no DOM lib types and jsdom does not construct.
+  function gesture(canvas: HTMLCanvasElement, type: string, scale: number): void {
+    const e = new Event(type, { cancelable: true })
+    Object.assign(e, { scale, clientX: 500, clientY: 350 })
+    canvas.dispatchEvent(e)
+  }
+
+  it('holds the world still under the cursor for the whole flight of a zoom', () => {
+    const { sm, canvas } = live()
+    const anchor = { x: 700, y: 200 }
+    const pinned = worldAt(camera(sm), anchor.x, anchor.y)
+    const before = camera(sm).s
+
+    wheel(canvas, { deltaY: -240, clientX: anchor.x, clientY: anchor.y })
+    // Not just where it lands — every frame in between. Easing the camera's own
+    // translate and scale would let the map slide out from under the cursor for
+    // the whole transit and only line up at the end.
+    for (let i = 0; i < 40; i++) {
+      step(16)
+      const w = worldAt(camera(sm), anchor.x, anchor.y)
+      expect(Math.hypot(w.x - pinned.x, w.y - pinned.y)).toBeLessThan(0.05)
+    }
+    expect(camera(sm).s).toBeGreaterThan(before * 1.2)
+  })
+
+  it('eases on the clock, not on the frame, so a 120Hz panel is not twice as fast', () => {
+    const run = (stepMs: number, steps: number) => {
+      const { sm, canvas } = live()
+      wheel(canvas, { deltaY: -240, clientX: 700, clientY: 200 })
+      for (let i = 0; i < steps; i++) step(stepMs)
+      const cam = camera(sm)
+      sm.destroy()
+      return cam
+    }
+    // The same 160ms of wall clock, sampled at 60Hz and at 120Hz.
+    const slow = run(16, 10)
+    const fast = run(8, 20)
+    expect(fast.s).toBeCloseTo(slow.s, 4)
+    expect(fast.x).toBeCloseTo(slow.x, 3)
+    expect(fast.y).toBeCloseTo(slow.y, 3)
+    // And it is genuinely still in flight, not a comparison of two settled cameras.
+    const { sm, canvas } = live()
+    const settled = camera(sm)
+    wheel(canvas, { deltaY: -240, clientX: 700, clientY: 200 })
+    settle()
+    expect(camera(sm).s).toBeGreaterThan(slow.s * 1.02)
+    expect(slow.s).toBeGreaterThan(settled.s)
+  })
+
+  it('trails a drag and glides in behind it, landing exactly where it was put', () => {
+    const { sm, canvas } = live()
+    const start = camera(sm).x
+    canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: 0, clientY: 0 }))
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 0 }))
+
+    // The map is behind the cursor while the hand is moving — that lag *is* the
+    // ease — but it is already on its way.
+    step(16)
+    const trailing = camera(sm).x - start
+    expect(trailing).toBeGreaterThan(0)
+    expect(trailing).toBeLessThan(300)
+
+    // The release adds nothing of its own: no throw, no coast, no overshoot. The
+    // camera simply finishes the trip the drag asked for.
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 0 }))
+    const closing = camera(sm).x - start
+    expect(closing).toBeCloseTo(trailing, 6)
+
+    step(16)
+    expect(camera(sm).x - start).toBeGreaterThan(trailing)
+    settle()
+    expect(camera(sm).x - start).toBeCloseTo(300, 6)
+    // And it stays put once it arrives.
+    settle()
+    expect(camera(sm).x - start).toBeCloseTo(300, 6)
+  })
+
+  it('reads a notched wheel, a trackpad scroll and a pinch in the same units', () => {
+    // A wheel that counts lines and one that counts pixels mean the same thing.
+    const lines = live()
+    wheel(lines.canvas, { deltaY: -3, deltaMode: 1, clientX: 500, clientY: 350 })
+    settle()
+    const pixels = live()
+    wheel(pixels.canvas, { deltaY: -48, deltaMode: 0, clientX: 500, clientY: 350 })
+    settle()
+    expect(camera(lines.sm).s).toBeCloseTo(camera(pixels.sm).s, 6)
+
+    // A pinch is a ctrl-flagged wheel in Chrome and Firefox, and its deltas are a
+    // fraction of a scroll's — so it earns a gain of its own, or a pinch barely
+    // moves the map.
+    const scroll = live()
+    wheel(scroll.canvas, { deltaY: -10, clientX: 500, clientY: 350 })
+    settle()
+    const pinch = live()
+    wheel(pinch.canvas, { deltaY: -10, ctrlKey: true, clientX: 500, clientY: 350 })
+    settle()
+    expect(camera(pinch.sm).s).toBeGreaterThan(camera(scroll.sm).s * 1.05)
+  })
+
+  it('zooms once for a WebKit pinch, however many ways the browser reports it', () => {
+    const { sm, canvas } = live()
+    const before = camera(sm).s
+
+    gesture(canvas, 'gesturestart', 1)
+    gesture(canvas, 'gesturechange', 1.5)
+    // Safari has been known to report the same pinch as a ctrl-wheel as well; the
+    // wheel path stands down while a gesture is live so the map zooms once.
+    wheel(canvas, { deltaY: -40, ctrlKey: true, clientX: 500, clientY: 350 })
+    gesture(canvas, 'gestureend', 1.5)
+    settle()
+    expect(camera(sm).s).toBeCloseTo(before * 1.5, 4)
   })
 })
