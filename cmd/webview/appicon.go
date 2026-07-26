@@ -9,12 +9,15 @@ import (
 )
 
 // appIconPath is the icon's name inside the embedded SPA. Vite copies web/public
-// to the dist root, so the file the browser fetches as the PWA icon and the file
-// the Dock shows are the same bytes — the shell carries no second copy of the
-// artwork, and the two can never drift apart. `make bundle` downscales that same
-// source into the bundle's .icns for the same reason (ADR 0016), so all three
-// surfaces show one mark.
-const appIconPath = "icon-512.png"
+// to the dist root, so this is one of the files the browser can fetch — and it is
+// the same bytes `make bundle` downscales into the bundle's .icns (ADR 0016), so
+// the loose shell's Dock tile and the bundle's Finder icon can never drift apart.
+//
+// This is the mac-specific master rather than the square icon-512.png the PWA
+// manifest points at, because setApplicationIconImage: does not mask either: what
+// the PNG says, the Dock draws. Apple's shape has to be in the pixels, and it is
+// only in this one.
+const appIconPath = "icon-mac-1024.png"
 
 // applyAppIcon dresses the running app in the chartr mark, where the platform
 // has somewhere to put it (the macOS Dock; nowhere else, today).

@@ -21,6 +21,10 @@ package main
 // the call is a no-op over identical artwork. The loose shell is still a shipped
 // artifact, so this stays.
 //
+// AppKit does not mask what it is handed here any more than Finder masks an .icns,
+// which is why the PNG behind this is the mac-specific master carrying Apple's own
+// squircle and inset rather than the square PWA icon.
+//
 // It must run after the NSApplication exists, which is why the Go side calls it
 // beside installNativeMenu rather than beside setAppName.
 //

@@ -57,3 +57,8 @@
 
 # macOS
 .DS_Store
+
+# scripts/ carries the one Python tool in the repo (the mac app-icon generator,
+# ADR 0016). It is run by hand, never imported, so a cache here is pure litter.
+__pycache__/
+*.pyc

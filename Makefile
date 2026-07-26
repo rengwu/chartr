@@ -96,11 +96,25 @@ MACAPP_ID    := io.github.rengwu.chartr
 # targeted, not a number we picked, and claiming an older one would only promise
 # an operator a launch the loader then refuses.
 MACAPP_MACOS := 12.0
-# The mark the cockpit already ships (Vite copies web/public to the dist root, so
-# this is the same file the PWA fetches and the runtime Dock icon reads). The
-# .icns is downscaled from it at build time rather than committed, which is what
-# makes drift between the two impossible.
-MACAPP_MARK  := web/public/icon-512.png
+# The marks the cockpit already ships (Vite copies web/public to the dist root, so
+# these are the same bytes the runtime Dock icon reads).
+#
+# These are the mac-specific masters, NOT the square icon-512.png the PWA uses,
+# and the difference is load-bearing: macOS does not mask app icons, so the .icns
+# has to carry Apple's own shape — art inset to 824/1024 with a continuous-corner
+# squircle and the template's shadow (ADR 0016). Feeding it a full-bleed square
+# draws a tile that is visibly oversized and the wrong silhouette beside every
+# neighbour in the Dock.
+#
+# Three of them, because the artwork is redrawn per size band rather than scaled:
+# at 16 the cursor is bigger and bleeds off the plate, at 32 it is contained, and
+# 48-and-up is the full-detail drawing. Each entry below is rendered from the
+# master drawn for its band, and every canvas is the largest entry that band
+# feeds, so the iconset loop only ever downscales. Regenerate all three with
+# scripts/mac-app-icon.py.
+MACAPP_MARK_16 := web/public/icon-mac-16.png
+MACAPP_MARK_32 := web/public/icon-mac-32.png
+MACAPP_MARK    := web/public/icon-mac-1024.png
 
 ## bundle: assemble the best-effort macOS app bundle — the shell executable, an
 ## Info.plist and a generated icon — into build/macapp, ad-hoc signed.
@@ -140,11 +154,17 @@ bundle:
 	cp "$$exe" "$$app/Contents/MacOS/chartr"; \
 	iconset="$$stage/chartr.iconset"; \
 	mkdir -p "$$iconset"; \
-	for spec in "16 icon_16x16" "32 icon_16x16@2x" "32 icon_32x32" \
-	            "64 icon_32x32@2x" "128 icon_128x128" "256 icon_128x128@2x" \
-	            "256 icon_256x256" "512 icon_256x256@2x" "512 icon_512x512"; do \
+	for spec in "16 icon_16x16 $(MACAPP_MARK_16)" \
+	            "32 icon_16x16@2x $(MACAPP_MARK_32)" \
+	            "32 icon_32x32 $(MACAPP_MARK_32)" \
+	            "64 icon_32x32@2x $(MACAPP_MARK)" \
+	            "128 icon_128x128 $(MACAPP_MARK)" \
+	            "256 icon_128x128@2x $(MACAPP_MARK)" \
+	            "256 icon_256x256 $(MACAPP_MARK)" \
+	            "512 icon_256x256@2x $(MACAPP_MARK)" \
+	            "512 icon_512x512 $(MACAPP_MARK)"; do \
 		set -- $$spec; \
-		sips -z "$$1" "$$1" $(MACAPP_MARK) --out "$$iconset/$$2.png" >/dev/null; \
+		sips -z "$$1" "$$1" "$$3" --out "$$iconset/$$2.png" >/dev/null; \
 	done; \
 	iconutil -c icns "$$iconset" -o "$$app/Contents/Resources/chartr.icns"; \
 	rm -rf "$$iconset"; \
