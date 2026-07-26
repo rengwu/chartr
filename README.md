@@ -74,21 +74,23 @@ make dmg       # the macOS app
 
 ## Documentation
 
-(coming soon)
+- [Getting started](docs/getting-started.md) — fresh machine to first star-map
+- [Design system](docs/design-system.md) — tokens, primitives, the chrome/island split
+- [ADRs](docs/adr/) — why it is shaped the way it is
 
 ## Project status
 
-**Pre-release.** Nothing is tagged, so the releases page is empty until the first
-cut — build from source for now. chartr is used to build chartr, but the shape
-still moves and breaking changes are expected before 1.0.
+**`v0.1.0` is out** — grab a binary from the
+[releases page](https://github.com/rengwu/chartr/releases). chartr is used to
+build chartr, but the shape still moves and breaking changes are expected
+before 1.0.
 
-Blockers for `v0.1.0`:
+Shipped in `v0.1.0`:
 
 - [x] Spaces, tabs, activity detection
 - [x] Maps: star-map, spawn, claim/release
 - [x] Release pipeline — checksummed binaries, best-effort shells, macOS `.dmg`
-- [ ] Tag it
-- [ ] Getting started, written against a fresh machine
+- [x] Getting started, written against a fresh machine
 
 Not planned: a hosted service, an account, anything that phones home.
 
