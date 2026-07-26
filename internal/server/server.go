@@ -62,7 +62,7 @@ func New(opts Options) (*Server, error) {
 		opts.DataDir = "."
 	}
 	if opts.ConfigDir == "" {
-		opts.ConfigDir = userConfigRoot(opts.DataDir)
+		opts.ConfigDir = ConfigRoot(opts.DataDir)
 	}
 	dist, err := web.Dist()
 	if err != nil {
@@ -199,12 +199,17 @@ func New(opts Options) (*Server, error) {
 	return s, nil
 }
 
-// userConfigRoot resolves chartr's config root to `~/.config/chartr`, honouring
+// ConfigRoot resolves chartr's config root to `~/.config/chartr`, honouring
 // `XDG_CONFIG_HOME` when it is set. This is deliberately *not* os.UserConfigDir:
 // that returns `~/Library/Application Support` on macOS, and we want one path an
 // operator can reason about on every platform. It falls back to the runtime root
 // only when there is no home directory to anchor to (a stripped-down environment).
-func userConfigRoot(fallback string) string {
+//
+// It is exported because the macOS shell needs the same answer *before* it
+// constructs a Server: a bundled launch is handed `/` as its working directory,
+// so it anchors its runtime root here instead. One function is what keeps the
+// bundled app and the command-line binary from forking an operator's state.
+func ConfigRoot(fallback string) string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "chartr")
 	}

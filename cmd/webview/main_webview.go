@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -33,16 +32,30 @@ var (
 const appName = "chartr"
 
 func main() {
-	dataDir := flag.String("data-dir", "", "chartr session/runtime root (defaults to the current directory); user config lives under ~/.config/chartr")
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.Parse()
+	// The executable's own path is what tells the shell how it was launched, and
+	// it is read once, here, so everything below it is a pure function of a
+	// string. An unreadable path is simply not a bundle: the shell keeps the
+	// terminal launch's behaviour, which is the safe half of the guess.
+	exe, _ := os.Executable()
+	bundled := isBundled(exe)
 
-	if *showVersion {
+	flags, err := parseFlags(os.Args[1:], bundled)
+	if err != nil {
+		// flag has already printed the error and the usage.
+		os.Exit(2)
+	}
+
+	if flags.showVersion {
 		fmt.Printf("chartr shell %s (commit %s, built %s)\n", version, commit, date)
 		return
 	}
 
-	if err := run(*dataDir); err != nil {
+	// A bundled launch is handed `/` as its working directory, so it anchors to
+	// the home root the config already resolves to rather than dying on the lock
+	// before a window exists. An explicit --data-dir wins either way.
+	dataDir := runtimeRoot(flags.dataDir, exe, server.ConfigRoot(""))
+
+	if err := run(dataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "chartr shell: %v\n", err)
 		os.Exit(1)
 	}
