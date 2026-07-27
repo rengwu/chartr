@@ -92,6 +92,17 @@ Shipped in `v0.1.0`:
 - [x] Release pipeline — checksummed binaries, best-effort shells, macOS `.dmg`
 - [x] Getting started, written against a fresh machine
 
+Not yet:
+
+- [ ] **Shift+Enter as a literal newline** — the resolve seam and its tests are
+      in, but the keystroke doesn't land in a real terminal. Broken, not missing.
+- [ ] **Drag to reorder the sidebar** — spaces, and sessions within their own
+      space. Order is derived today (pinned, then recency); a manual order is a
+      new authority that has to win against it.
+- [ ] **"It's done" notifications** — a session that spends more than a
+      configurable *n* seconds working earns a push notification and a dot on its
+      card when it lands back on idle.
+
 Not planned: a hosted service, an account, anything that phones home.
 
 ## Platform support
