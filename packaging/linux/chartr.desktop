@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=chartr
+GenericName=Agent multiplexer
+Comment=Agent multiplexer with a map of the work
+Exec=chartr %U
+Icon=chartr
+Terminal=false
+Categories=Development;IDE;
+Keywords=agent;terminal;multiplexer;wayfinder;
+# The window's WM_CLASS, so the desktop pairs the running window with this entry
+# rather than drawing a second, iconless task-bar item beside it. GTK derives it
+# from the program name, which is `chartr` inside the AppDir.
+StartupWMClass=chartr
+StartupNotify=true

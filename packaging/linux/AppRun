@@ -1,0 +1,108 @@
+#!/bin/sh
+# AppRun — the AppImage's entry point, and the only place that knows the bundle
+# is not installed at the paths its libraries were compiled for.
+#
+# WebKitGTK is the whole reason this file is hand-written rather than generated.
+# It is not one library that a loader can find on LD_LIBRARY_PATH and be done
+# with: it is a library that *spawns its own helper executables* and loads its
+# own plugin bundle, and it locates all of them through paths baked in at
+# compile time — `/usr/lib/<triplet>/webkit2gtk-4.1`, which on the operator's
+# machine either does not exist or, worse, holds a different WebKit than the one
+# we bundled. Every export below redirects one such lookup back inside the
+# AppDir. Miss one and the failure is not a missing symbol at startup, it is a
+# window that opens blank because the web process could not be spawned.
+#
+# Keep this in sync with the `appimage` target in the Makefile, which is what
+# stages the directories these variables point at.
+
+set -e
+
+# $0 is the AppImage's mount point, which changes every run. Everything is
+# resolved relative to it; nothing here may assume an absolute install prefix.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# The bundled libraries come first so a distro that *does* ship WebKit cannot
+# half-satisfy the process with its own copy. The operator's own value is kept
+# after ours rather than discarded: this is their machine, and a
+# LD_LIBRARY_PATH they set deliberately still resolves anything we did not
+# bundle.
+export LD_LIBRARY_PATH="$HERE/usr/lib:${LD_LIBRARY_PATH}"
+
+# WebKit's multi-process architecture is the one thing an environment variable
+# cannot fix. It looks for WebKitNetworkProcess and WebKitWebProcess in a
+# directory compiled into the library, and WebKitGTK 2.52 removed the
+# WEBKIT_EXEC_PATH override that used to redirect it. So `make appimage` edits
+# that string in the bundled library to the fixed path below
+# (scripts/relocate-webkit.py), and this is where that path is made to mean this
+# AppImage's helpers. Get it wrong and the window opens on "WebKit encountered
+# an internal error" rather than failing loudly.
+WK_LINK="/tmp/.chartr-wk"
+WK_TARGET="$HERE/usr/lib/webkit2gtk-4.1"
+
+# One fixed name under /tmp is shared by every user on the machine, and what
+# lives there is a directory we are about to execute binaries out of. So it is
+# never trusted just because it exists: anything already at that path which is
+# not a symlink we own means someone else's chartr owns it, and the only safe
+# move is to stop and say so. /tmp's sticky bit is what makes this airtight
+# rather than a best-effort race -- it forbids replacing another user's entry at
+# all, so the check cannot be won by creating the link between the test and the
+# ln below.
+if [ -L "$WK_LINK" ] || [ -e "$WK_LINK" ]; then
+	link_uid="$(stat -c %u "$WK_LINK" 2>/dev/null || echo unknown)"
+	if [ ! -L "$WK_LINK" ] || [ "$link_uid" != "$(id -u)" ]; then
+		echo "chartr: $WK_LINK already exists and is not yours (owner uid $link_uid)." >&2
+		echo "chartr: it is where this AppImage points WebKit's helper processes, so it" >&2
+		echo "chartr: will not be reused. Ask that user to quit chartr, or run the" >&2
+		echo "chartr: cgo-free \`chartr\` binary, which serves the cockpit in your browser." >&2
+		exit 1
+	fi
+fi
+ln -sfn "$WK_TARGET" "$WK_LINK"
+
+export WEBKIT_INJECTED_BUNDLE_PATH="$WK_TARGET/injected-bundle"
+
+# GIO's module dir carries the TLS backend among other things. Both of these are
+# pointed at only when the Makefile actually staged them: an unset variable
+# leaves the library on its own default search, whereas a variable aimed at a
+# directory we did not bundle tells it authoritatively that there are no modules
+# at all — which is worse than saying nothing.
+[ -d "$HERE/usr/lib/gio/modules" ] && export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
+
+# GdkPixbuf reads its loader set from a cache of absolute paths, and an
+# AppImage's mount point is different on every run, so a cache generated at
+# build time is wrong by the time it is read. It is regenerated here, against
+# this run's mount point, into a private temp dir — a few milliseconds at
+# startup in exchange for a path that is right by construction.
+if [ -x "$HERE/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" ]; then
+	_cache="$(mktemp -t chartr-pixbuf-XXXXXX)"
+	if GDK_PIXBUF_MODULEDIR="$HERE/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders" \
+		"$HERE/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$_cache" 2>/dev/null; then
+		export GDK_PIXBUF_MODULE_FILE="$_cache"
+	else
+		rm -f "$_cache"
+	fi
+fi
+
+# GTK resolves icon themes and GSettings schemas through the XDG data dirs. Ours
+# is appended, not substituted: the operator's own theme should still win, and a
+# desktop that themes its widgets is exactly what a native window is for.
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:$HERE/usr/share"
+[ -d "$HERE/usr/share/glib-2.0/schemas" ] && \
+	export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
+
+# WebKit's own sandbox confines the web process with bubblewrap. It is worth
+# keeping — chartr renders a local SPA, but that SPA displays whatever an agent
+# writes into a terminal, so the renderer is not handling only trusted bytes.
+# The sandbox needs unprivileged user namespaces, which some distros restrict
+# and most containers forbid outright; where it cannot initialise, WebKit aborts
+# rather than degrading. So it stays on by default and the operator gets one
+# documented escape hatch, rather than us silently shipping the renderer
+# unsandboxed on every machine to spare the few that would have needed this.
+if [ -n "$CHARTR_DISABLE_WEBKIT_SANDBOX" ]; then
+	export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+fi
+
+# `exec` so the shell binary inherits pid 1's signals directly: the AppImage
+# wrapper must not sit between SIGTERM and the teardown that closes the window
+# and stops the server (ADR 0013).
+exec "$HERE/usr/bin/chartr" "$@"

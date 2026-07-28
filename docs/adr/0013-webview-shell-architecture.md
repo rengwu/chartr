@@ -19,7 +19,7 @@ The package is **split by build tag** so the cgo is invisible to every default b
 - The shell is a second `main` that must track `cmd/chartr`'s startup. It is ~40 lines of overlap; a third consumer would earn a shared `run` helper, two do not.
 - `webview/webview` enters `go.mod` as a direct dependency even though the default build never links it. `go mod tidy` keeps it because the tagged build needs it.
 - The shell's window behaviour and menu are **not unit-tested** — they need a real display. The lock is, in full; the tagged build is the CI matrix's job.
-- Linux's shell depends on the distro shipping headers `webview_go` pkg-configs for (`webkit2gtk-4.0`). Where it does not, that platform simply attaches no asset — which is what the best-effort tier is for.
+- ~~Linux's shell depends on the distro shipping headers `webview_go` pkg-configs for (`webkit2gtk-4.0`). Where it does not, that platform simply attaches no asset — which is what the best-effort tier is for.~~ **Superseded.** No distro ships `webkit2gtk-4.0` any more, so this consequence was not a rare fallback but the permanent state, and it cost `v0.1.0` its Linux app silently. `make webview` now generates a `.pc` forwarding the pin onto the installed 4.1 — the two releases share the `webkit2/webkit2.h` API and differ only in libsoup2 vs libsoup3 beneath it, so no fork of `webview_go` is needed. Linux ships an AppImage that bundles WebKit and gates the release (ADR 0011 as amended).
 
 ## Considered options
 
