@@ -4,8 +4,11 @@
 
 **Agent multiplexer with a map of the work.**
 
-[Download macOS app (unsigned)](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
-(Apple silicon)
+[Download macOS app](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
+(Apple silicon, unsigned)
+
+[Download Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
+(`amd64` or `arm64`)
 
 Chart a wayfinder map inside chartr, then drive it to completion. The plan
 renders as a star-map; take a ticket off the frontier, pick an agent, and the
@@ -69,7 +72,7 @@ Also available as `make appimage` from source, on Linux.
 
 ### macOS first launch
 
-The `.dmg` is unsigned, so macOS blocks it once:
+The `.dmg` is <b>unsigned</b>, so macOS blocks it once:
 
 1. Open chartr, click **Done** (_not_ **Move to Trash**).
 2. **System Settings → Privacy & Security → Security → Open Anyway**.
@@ -95,25 +98,19 @@ make dmg       # the macOS app
 
 ## Project status
 
-**`v0.1.0` is out** — grab a binary from the
+**`v0.2.1` is out** — grab a binary from the
 [releases page](https://github.com/rengwu/chartr/releases). chartr is used to
-build chartr, but the shape still moves and breaking changes are expected
-before 1.0.
+build chartr, but it is still alpha: the shape moves and breaking changes are
+expected before 1.0.
 
-Shipped in `v0.1.0`:
+Shipped in `v0.2.1`:
 
 - [x] Spaces, tabs, activity detection
 - [x] Maps: star-map, spawn, claim/release
-- [x] Release pipeline — checksummed binaries, best-effort shells, macOS `.dmg`
+- [x] Release pipeline — checksummed binaries, macOS `.dmg`, Linux `.AppImage`
 - [x] Getting started, written against a fresh machine
-
-Landing in the next tag:
-
 - [x] **Linux desktop app** — an `.AppImage` with WebKitGTK bundled, gated on a
-      render check against a host with no WebKit installed. `v0.1.0` shipped no
-      Linux app at all: `webview_go` pins a `webkit2gtk-4.0` that no current
-      distro carries, and the build lived in a `continue-on-error` job, so it
-      failed in silence.
+      render check against a host with no WebKit installed.
 
 Not yet:
 
@@ -123,7 +120,7 @@ Not yet:
       `pinned` goes away with the recency sort it fought over.
       [Spec](.plan/maps/sidebar-order/spec.md).
 - [ ] **"It's done" notifications** — a session that worked longer than a
-      configurable *n* seconds tells you when it stops, whether it landed, blocked
+      configurable _n_ seconds tells you when it stops, whether it landed, blocked
       or died, with the cockpit closed.
       [Spec](.plan/maps/session-notifications/spec.md).
 
@@ -132,9 +129,10 @@ Not planned: a hosted service, an account, anything that phones home.
 ## Platform support
 
 One **supported** artifact: the cgo-free binary that serves the cockpit in your
-browser, green on all three OSes before a tag ships. The desktop app is a native
-webview shell around that same server, which needs cgo and system webview libs,
-so it is a best-effort tier that may simply be absent
+browser, green on all three OSes before a tag ships. The Linux `.AppImage` is
+built and smoke-tested as a release gate, so it ships whenever the supported
+binary does. The macOS `.dmg` is a best-effort extra: it needs cgo and system
+webview libs, and may simply be absent
 ([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
 
 | Platform                  | Binary | Desktop app                             |
