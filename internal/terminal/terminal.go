@@ -414,6 +414,7 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		_ = p.Close()
 		return nil, fmt.Errorf("starting %s: %w", spec.name, err)
 	}
+	releaseSlave(p)
 
 	title := spec.title
 	if title == "" {
