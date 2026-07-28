@@ -38,9 +38,68 @@ jobs:
       - name: ConPTY round-trip smoke test
         run: go test -v -run TestConPTYRoundTrip ./internal/terminal
 
+  # The Linux desktop app, and a gate rather than a best-effort lane (ADR 0011 as
+  # amended). It is here, before `release`, because the failure it guards against
+  # is silent: a bundled WebKit that cannot spawn its helper processes still
+  # starts, still binds, still serves the SPA over loopback, and still exits 0 —
+  # it just renders an error page instead of the cockpit. Nothing short of
+  # looking at the screen catches that, which is what scripts/smoke-appimage.sh
+  # does, on a container with no webkit and no gtk installed at all.
+  linux-appimage:
+    name: linux AppImage + smoke (${{ matrix.goarch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            goarch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # webkit2gtk-4.0 is gone from Ubuntu 24.04; `make webview` forwards
+      # webview_go's pin onto 4.1 with a generated .pc.
+      - name: Install WebKitGTK toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev
+
+      - name: Build embedded frontend
+        run: make web
+
+      - name: Package the AppImage
+        run: make appimage WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
+        shell: bash
+
+      # The gate. A failure here fails the tag.
+      - name: Smoke the AppImage on a host with no WebKit
+        run: scripts/smoke-appimage.sh build/appimage/chartr_${GITHUB_REF_NAME#v}_linux_${{ matrix.goarch }}.AppImage
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.goarch }}
+          path: |
+            build/appimage/*.AppImage
+            build/appimage/*.AppImage.sha256
+          if-no-files-found: error
+
   release:
     name: supported binaries (cgo-free)
-    needs: windows-smoke
+    needs: [windows-smoke, linux-appimage]
     runs-on: ubuntu-latest
     env:
       CGO_ENABLED: "0"
@@ -74,6 +133,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Attach the AppImages the gate already built and proved. They are uploaded
+  # after the release exists, like every other per-platform asset, but unlike the
+  # `shells` job below this one is NOT continue-on-error: the artifacts are known
+  # good by the time this runs, so a failure here is a real upload failure and
+  # should be loud.
+  attach-appimage:
+    name: attach the Linux AppImages
+    needs: [release, linux-appimage]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: appimage-*
+          merge-multiple: true
+          path: appimage
+
+      # The versioned images are the archival assets; the unversioned copies
+      # beside them are what a link can name in advance, exactly as the macOS
+      # .dmg does. `/releases/latest/download/<asset>` needs an exact filename,
+      # so the README's download link is only a download link if some asset
+      # carries a name that does not move release to release. The architecture
+      # stays in that name, and each sidecar is regenerated so the checksum
+      # matches the file an operator actually pulled.
+      - name: Alias the newest AppImage per architecture
+        shell: bash
+        run: |
+          set -e
+          for arch in amd64 arm64; do
+            versioned=$(ls appimage/chartr_*_linux_${arch}.AppImage 2>/dev/null | head -1) || true
+            [ -n "$versioned" ] || continue
+            alias="appimage/chartr_linux_${arch}.AppImage"
+            cp "$versioned" "$alias"
+            ( cd appimage && sha256sum "chartr_linux_${arch}.AppImage" > "chartr_linux_${arch}.AppImage.sha256" )
+            echo "aliased $versioned as $alias"
+          done
+
+      - name: Upload to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # --repo, because this job deliberately does not check the tree out.
+        run: gh release upload "${GITHUB_REF_NAME}" appimage/* --clobber --repo "${{ github.repository }}"
+        shell: bash
+
   # Best-effort tier (ADR 0011): the native webview shells. This whole job is
   # `continue-on-error`, and it `needs: release` — so the supported release is
   # already published and checksummed before a single shell is attempted. A
@@ -89,8 +191,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            goos: linux
           - os: macos-latest
             goos: darwin
           - os: windows-latest
@@ -104,20 +204,11 @@ jobs:
           go-version: "1.26"
           cache: true
 
-      # Linux's WebKitGTK shell needs system dev headers; macOS links the system
-      # WebKit; Windows uses cgo-free go-webview2 (WebView2 runtime ships with the
-      # OS). Any of these steps failing is tolerated by continue-on-error.
-      # webview_go pkg-configs webkit2gtk-4.0, which recent Ubuntu images no
-      # longer carry; 4.1 is installed as the fallback so the lane at least
-      # attempts a build there. A distro whose headers do not match is exactly
-      # the best-effort failure this job exists to absorb.
-      - name: Install Linux webview toolchain
-        if: matrix.goos == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev \
-            || sudo apt-get install -y libwebkit2gtk-4.1-dev
-
+      # macOS links the system WebKit; Windows uses cgo-free go-webview2 (the
+      # WebView2 runtime ships with the OS), so neither needs a toolchain step.
+      # Linux is deliberately absent from this matrix: its desktop app is the
+      # AppImage, which is built and smoke-tested as a *gate* above rather than
+      # attached best-effort here.
       - name: Build embedded frontend
         run: make web
 

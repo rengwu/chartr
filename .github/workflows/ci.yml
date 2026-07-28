@@ -60,6 +60,36 @@ jobs:
             exit 1
           fi
 
+  # The Linux shell compiles on every change, not only at release time. This is
+  # the cheap half of the release gate and it exists because of how the previous
+  # breakage went unnoticed: webview_go pins `pkg-config: webkit2gtk-4.0`, that
+  # package vanished from the runner image, and because the shell was built only
+  # inside a `continue-on-error` release job, an entire version shipped with no
+  # Linux app and nothing said so. Compiling here means the pin can only rot in
+  # front of a red check. The full AppImage smoke stays in release.yml — it needs
+  # a container and a screenshot, which is too slow to put on every push.
+  linux-shell-build:
+    name: linux webview shell builds (cgo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install WebKitGTK toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev
+
+      # No frontend build: the shell embeds web/dist, and the committed .gitkeep
+      # is enough to compile the embed package. This job is asking whether the
+      # cgo links, not whether the SPA is current.
+      - name: Build the shell
+        run: make webview
+
   windows-smoke:
     name: windows PTY smoke (ConPTY round-trip)
     runs-on: windows-latest

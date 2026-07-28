@@ -52,6 +52,21 @@ chartr -data-dir ~/w   # session root (default: cwd)
 
 Install your own agent CLIs; chartr ships none.
 
+### Linux desktop app
+
+Download `chartr_linux_amd64.AppImage` (or `arm64`), make it executable, run it:
+
+```
+chmod +x chartr_linux_amd64.AppImage
+./chartr_linux_amd64.AppImage
+```
+
+No install, no dependencies — WebKitGTK is bundled. It borrows only what has to
+come from your machine: the GPU driver, your font configuration and your
+compositor.
+
+Also available as `make appimage` from source, on Linux.
+
 ### macOS first launch
 
 The `.dmg` is unsigned, so macOS blocks it once:
@@ -92,6 +107,14 @@ Shipped in `v0.1.0`:
 - [x] Release pipeline — checksummed binaries, best-effort shells, macOS `.dmg`
 - [x] Getting started, written against a fresh machine
 
+Landing in the next tag:
+
+- [x] **Linux desktop app** — an `.AppImage` with WebKitGTK bundled, gated on a
+      render check against a host with no WebKit installed. `v0.1.0` shipped no
+      Linux app at all: `webview_go` pins a `webkit2gtk-4.0` that no current
+      distro carries, and the build lived in a `continue-on-error` job, so it
+      failed in silence.
+
 Not yet:
 
 - [ ] **Shift+Enter as a literal newline** — the resolve seam and its tests are
@@ -118,13 +141,18 @@ so it is a best-effort tier that may simply be absent
 | ------------------------- | ------ | --------------------------------------- |
 | macOS `arm64`             | ✅     | `.dmg`, [unsigned](#macos-first-launch) |
 | macOS `amd64`             | ✅     | none (cgo won't cross-compile)          |
-| Linux `amd64` / `arm64`   | ✅     | none yet, **planned**                   |
+| Linux `amd64` / `arm64`   | ✅     | `.AppImage`, WebKitGTK bundled          |
 | Windows `amd64` / `arm64` | ✅     | none                                    |
 
-macOS is the only platform with a packaged app today. A Linux release is planned;
-Windows has none and none is scheduled. Either can be built locally with
-`make webview`, which needs WebKitGTK on Linux and go-webview2 on Windows
-([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
+The Linux `.AppImage` carries its own WebKitGTK, so it does not care whether your
+distro ships `webkit2gtk-4.1`, the older `4.0`, or neither. Every tag builds it
+and runs it against a container with **no WebKit and no GTK installed**,
+screenshotting the window to prove the cockpit rendered rather than trusting an
+exit code — and that check gates the release
+([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
+
+Windows has no packaged app and none is scheduled; it can be built locally with
+`make webview` ([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
 
 Windows is built and its ConPTY layer is smoke-tested every change, but it isn't
 driven daily, so **WSL2 is the sure path**.
