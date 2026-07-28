@@ -96,12 +96,13 @@ Not yet:
 
 - [ ] **Shift+Enter as a literal newline** — the resolve seam and its tests are
       in, but the keystroke doesn't land in a real terminal. Broken, not missing.
-- [ ] **Drag to reorder the sidebar** — spaces, and sessions within their own
-      space. Order is derived today (pinned, then recency); a manual order is a
-      new authority that has to win against it.
-- [ ] **"It's done" notifications** — a session that spends more than a
-      configurable *n* seconds working earns a push notification and a dot on its
-      card when it lands back on idle.
+- [ ] **Drag to reorder the sidebar** — spaces stay where you put them, and
+      `pinned` goes away with the recency sort it fought over.
+      [Spec](.plan/maps/sidebar-order/spec.md).
+- [ ] **"It's done" notifications** — a session that worked longer than a
+      configurable *n* seconds tells you when it stops, whether it landed, blocked
+      or died, with the cockpit closed.
+      [Spec](.plan/maps/session-notifications/spec.md).
 
 Not planned: a hosted service, an account, anything that phones home.
 

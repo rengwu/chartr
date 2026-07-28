@@ -76,10 +76,6 @@ colour, no amber).
   (`SubagentStop` fires after a turn already ended and revived idle panes). Left
   as fog until the screen path is real — it is the fallback everything else needs
   anyway.
-- **Notifications.** `blocked` is the state an operator wants pushed to them
-  rather than glanced at. The star-map already has an attention grammar (ticket
-  14) and a moons overlay (ticket 13); how `blocked` folds into those, and whether
-  it earns a toast, is not decided here.
 - **Which agents earn a manifest beyond the roster.** Six are named in the
   Destination. A seventh is a data change, but the roster is what "done" means.
 
@@ -92,6 +88,13 @@ colour, no amber).
   attach is unchanged; the grid is not a second source of truth for display.
 - **Acting on a detected state** — no auto-kill, no auto-resume, no timeout.
   Detection reports; the operator acts.
+- **Notifications.** Was fog here: `blocked` is the state an operator wants pushed
+  rather than glanced at, and how it folds into the attention grammar was
+  undecided. Settled as its own effort — see
+  [session notifications](../session-notifications/spec.md), which fires an OS
+  notification on any exit from `working` past a threshold and leaves this map's
+  grammar untouched. Pushing a state is acting on it, which is past this map's
+  destination.
 - **Remote or auto-updating manifests** — bundled and embedded only.
 - **Agent-specific features beyond state** — the OSC title also carries Claude's
   live task summary, which is tempting; anything past the three states is a
