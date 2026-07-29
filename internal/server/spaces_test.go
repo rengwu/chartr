@@ -15,7 +15,8 @@ import (
 )
 
 // The registry at the process boundary: register with an announced git init,
-// forget-not-destroy removal, a rebuildable index, and pin ordering. Every
+// forget-not-destroy removal, a rebuildable index, and the sidebar order — one
+// authority, the stored one, which nothing but an explicit reorder moves. Every
 // assertion is on what the design makes public — HTTP responses, control-socket
 // snapshots, the filesystem, and git — never on internals.
 
@@ -184,29 +185,80 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 	}
 }
 
-// Pinning reorders the sidebar: a pinned space sorts ahead of unpinned ones
-// regardless of recency (story 6). The snapshot carries spaces already ordered.
-func TestPinOrdersAhead(t *testing.T) {
-	h := chartrtest.Start(t)
-	older := register(t, h, chartrtest.NewSpaceRepo(t))
-	time.Sleep(5 * time.Millisecond) // distinct recency timestamps
-	newer := register(t, h, chartrtest.NewSpaceRepo(t))
+// spaceIDs is the sidebar sequence as the cockpit reads it: the snapshot's
+// spaces in slice order, which the client renders without re-sorting.
+func spaceIDs(m model.Model) []string {
+	out := make([]string, 0, len(m.Spaces))
+	for _, s := range m.Spaces {
+		out = append(out, s.ID)
+	}
+	return out
+}
 
-	// Newest-registered sorts first by recency.
-	if got := h.Snapshot(ctx(t)).Spaces[0].ID; got != newer.ID {
-		t.Fatalf("first space by recency = %s, want the newer %s", got, newer.ID)
+// A newly registered space appends. The stored order belongs to the operator, so
+// adding a repo lands it at the end rather than rearranging what is already
+// there (story 5).
+func TestNewSpaceLandsLast(t *testing.T) {
+	h := chartrtest.Start(t)
+
+	first := register(t, h, chartrtest.NewSpaceRepo(t))
+	time.Sleep(5 * time.Millisecond) // distinct recency timestamps; they must not matter
+	second := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	if got, want := spaceIDs(h.Snapshot(ctx(t))), []string{first.ID, second.ID}; !equalStrings(got, want) {
+		t.Fatalf("sidebar = %v, want registration order %v", got, want)
 	}
 
-	// Pin the older one; it must now lead despite being less recent.
-	if code, body := h.Post("/api/spaces/"+older.ID+"/pin", map[string]bool{"pinned": true}); code != 204 {
+	third := register(t, h, chartrtest.NewSpaceRepo(t))
+	snap := h.Snapshot(ctx(t))
+	if got := snap.Spaces[len(snap.Spaces)-1].ID; got != third.ID {
+		t.Errorf("last space = %s, want the newly registered %s", got, third.ID)
+	}
+}
+
+// Activating a space no longer moves it. Recency is still recorded, it simply
+// stops sorting anything, so the row under the operator's cursor stays put
+// (story 3).
+func TestActivatingASpaceDoesNotReorder(t *testing.T) {
+	h := chartrtest.Start(t)
+
+	a := register(t, h, chartrtest.NewSpaceRepo(t))
+	time.Sleep(5 * time.Millisecond)
+	b := register(t, h, chartrtest.NewSpaceRepo(t))
+	time.Sleep(5 * time.Millisecond)
+	c := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	want := []string{a.ID, b.ID, c.ID}
+	if got := spaceIDs(h.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Fatalf("sidebar = %v, want %v", got, want)
+	}
+
+	// Re-registering an existing path is how a space is activated: it refreshes
+	// recency. Under the old rule each of these would have jumped to the top.
+	for _, sp := range []registerResp{a, b} {
+		time.Sleep(5 * time.Millisecond)
+		register(t, h, sp.Path)
+	}
+
+	if got := spaceIDs(h.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Errorf("sidebar after activating = %v, want the unchanged %v", got, want)
+	}
+}
+
+// Pinning is vestigial after the stored order: the flag is still written and
+// still rides the snapshot, but it no longer moves a row. It goes away entirely
+// with its route in the contract half of this work.
+func TestPinNoLongerReorders(t *testing.T) {
+	h := chartrtest.Start(t)
+	first := register(t, h, chartrtest.NewSpaceRepo(t))
+	last := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	if code, body := h.Post("/api/spaces/"+last.ID+"/pin", map[string]bool{"pinned": true}); code != 204 {
 		t.Fatalf("pin = %d, body %s", code, body)
 	}
-	snap := h.Snapshot(ctx(t))
-	if snap.Spaces[0].ID != older.ID {
-		t.Errorf("first space after pin = %s, want the pinned %s", snap.Spaces[0].ID, older.ID)
-	}
-	if !snap.Spaces[0].Pinned {
-		t.Error("pinned space does not report pinned in the snapshot")
+
+	if got, want := spaceIDs(h.Snapshot(ctx(t))), []string{first.ID, last.ID}; !equalStrings(got, want) {
+		t.Errorf("sidebar after pinning the last space = %v, want the unchanged %v", got, want)
 	}
 }
 

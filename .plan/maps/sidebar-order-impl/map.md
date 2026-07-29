@@ -44,6 +44,14 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- **01 — Spaces carry an explicit order.** `registry.Entry` gains `order` and
+  `List` sorts by it alone; one load-time rule both freezes a pre-upgrade file
+  into today's pinned-then-recency sequence and degrades a malformed one
+  (duplicate/missing orders sort by the old rule and append behind), and every
+  save densifies to 0..n-1. Registration appends at `max(order)+1`; activation no
+  longer moves a row. `pinned` still written, orders nothing.
+  [ticket](tickets/01-spaces-carry-an-explicit-order.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the spec — it does not open fog here. -->
