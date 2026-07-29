@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: s8f542e9753dd
+claimed_at: 2026-07-29T19:06:09Z
 ---
 
 # Spaces carry an explicit order, frozen from today's
