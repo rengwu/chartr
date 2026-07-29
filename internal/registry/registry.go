@@ -2,8 +2,9 @@
 // spaces, held in the local user-config layer as a rebuildable index rather
 // than a source of truth (ticket 02, ADR 0003, ADR 0009). Everything
 // authoritative — maps, committed workspace config, git history — lives in the
-// repositories; the registry holds only registered paths and each space's local
-// pin and recency. Losing it costs re-adding folders, never work, so a
+// repositories; the registry holds only registered paths, the operator's sidebar
+// order, and each space's local pin and recency. Losing it costs re-adding
+// folders, never work (their arrangement included), so a
 // deleted spaces.toml is not an error: the operator re-registers and each
 // repo picks up exactly as it sits.
 //
@@ -26,12 +27,23 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Entry is one registered space: its path plus the local, per-machine pin and
-// recency that order the sidebar. The ID is derived from the path (so a rebuilt
-// registry re-derives the same identity) and is not persisted.
+// Entry is one registered space: its path plus the local, per-machine order,
+// pin and recency. The ID is derived from the path (so a rebuilt registry
+// re-derives the same identity) and is not persisted.
 type Entry struct {
-	ID         string    `toml:"-"`
-	Path       string    `toml:"path"`
+	ID   string `toml:"-"`
+	Path string `toml:"path"`
+	// Order is the space's position in the sidebar: the operator's arrangement,
+	// stored rather than derived, and the only thing List sorts by. It is dense
+	// (0..n-1 across the whole registry) and rewritten wholesale on every save,
+	// so a duplicate or missing index is unrepresentable after any successful
+	// write. A file carrying no order at all — one written before the sidebar had
+	// one — is frozen into today's sequence on load rather than reset, which is
+	// what makes the upgrade invisible.
+	Order int `toml:"order"`
+	// Pinned is vestigial: it is still read and written, but nothing orders by it
+	// any more. Dragging a space to the top is everything pinning did, so the key
+	// goes away entirely rather than racing the stored order for the sidebar.
 	Pinned     bool      `toml:"pinned"`
 	LastActive time.Time `toml:"last_active"`
 	// LastAgent is the registered agent this space last spawned with — state, not
@@ -79,8 +91,23 @@ func Load(dataDir string) (*Registry, error) {
 	if err := toml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("registry: parsing %s: %w", r.path, err)
 	}
-	for _, e := range f.Spaces {
-		e.ID = spaceID(e.Path)
+	// A missing `order` and an order of 0 decode into the same int, so the rows
+	// are read a second time as raw tables purely to learn which entries carried
+	// the key at all. Presence is what tells a pre-upgrade file — freeze it —
+	// apart from a hand-edited one, which degrades. The document has already
+	// parsed once, so this cannot fail; both decodes see the rows in file order.
+	var raw struct {
+		Spaces []map[string]any `toml:"space"`
+	}
+	_ = toml.Unmarshal(data, &raw)
+	carried := make([]bool, len(f.Spaces))
+	for i := range f.Spaces {
+		f.Spaces[i].ID = spaceID(f.Spaces[i].Path)
+		if i < len(raw.Spaces) {
+			_, carried[i] = raw.Spaces[i]["order"]
+		}
+	}
+	for _, e := range ordered(f.Spaces, carried) {
 		r.entries[e.ID] = e
 	}
 	return r, nil
@@ -90,11 +117,75 @@ type file struct {
 	Spaces []Entry `toml:"space"`
 }
 
+// ordered resolves the sidebar sequence of a just-loaded file and densifies it,
+// with carried[i] reporting whether entry i actually carried an `order` key.
+//
+// It is one rule doing two jobs. Entries with a unique order are well-formed and
+// keep their sequence; entries with a duplicate or missing order are malformed,
+// are sorted among themselves by the *old* rule — pinned first, then recency,
+// then path — and appended after the well-formed ones. A pre-upgrade file, where
+// no entry carries an order, is simply the case where every entry is malformed:
+// the whole list sorts by the old rule and freezes into 0..n-1, so the sidebar
+// after the upgrade is the sidebar before it. A hand-edit or a truncated file
+// costs the operator their arrangement, never their list of spaces.
+//
+// The result is written back on the next save, not here: loading the registry
+// stays a read.
+func ordered(entries []Entry, carried []bool) []Entry {
+	count := map[int]int{}
+	for i, e := range entries {
+		if carried[i] {
+			count[e.Order]++
+		}
+	}
+
+	wellFormed := make([]Entry, 0, len(entries))
+	malformed := make([]Entry, 0, len(entries))
+	for i, e := range entries {
+		if carried[i] && count[e.Order] == 1 {
+			wellFormed = append(wellFormed, e)
+		} else {
+			malformed = append(malformed, e)
+		}
+	}
+
+	sortByOrder(wellFormed)
+	sort.SliceStable(malformed, func(i, j int) bool {
+		if malformed[i].Pinned != malformed[j].Pinned {
+			return malformed[i].Pinned
+		}
+		if !malformed[i].LastActive.Equal(malformed[j].LastActive) {
+			return malformed[i].LastActive.After(malformed[j].LastActive)
+		}
+		return malformed[i].Path < malformed[j].Path // stable tiebreak
+	})
+
+	out := append(wellFormed, malformed...)
+	for i := range out {
+		out[i].Order = i
+	}
+	return out
+}
+
+// sortByOrder puts entries in sidebar sequence. The path tiebreak only exists to
+// make the sort total: orders are unique after any load or save, and the map the
+// entries come out of has no iteration order of its own.
+func sortByOrder(entries []Entry) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Order != entries[j].Order {
+			return entries[i].Order < entries[j].Order
+		}
+		return entries[i].Path < entries[j].Path
+	})
+}
+
 // Register makes path a space. It cleans the path to an absolute form, requires
 // it to be an existing directory, and — if it is not already a git repository —
-// runs `git init` there, reporting that it did so (never silent). Registering
-// an already-registered path just refreshes its recency. The bool result is
-// whether a `git init` was run.
+// runs `git init` there, reporting that it did so (never silent). A new space
+// appends: it takes max(order)+1, because the stored order belongs to the
+// operator and registering a repo is not a rearrangement. Registering an
+// already-registered path just refreshes its recency and leaves it where it sits.
+// The bool result is whether a `git init` was run.
 func (r *Registry) Register(path string) (Entry, bool, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -123,7 +214,7 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 	r.mu.Lock()
 	e, existed := r.entries[id]
 	if !existed {
-		e = Entry{ID: id, Path: abs}
+		e = Entry{ID: id, Path: abs, Order: r.nextOrderLocked()}
 	}
 	e.LastActive = time.Now().UTC()
 	r.entries[id] = e
@@ -148,8 +239,21 @@ func (r *Registry) Deregister(id string) error {
 	return r.saveLocked()
 }
 
-// SetPin sets whether a space is pinned (pinned spaces sort first). Pinning an
-// unknown ID is a no-op.
+// nextOrderLocked is the order a newly registered space takes: one past the last
+// row of the sidebar, so it appends. The caller holds r.mu.
+func (r *Registry) nextOrderLocked() int {
+	next := 0
+	for _, e := range r.entries {
+		if e.Order >= next {
+			next = e.Order + 1
+		}
+	}
+	return next
+}
+
+// SetPin sets whether a space is pinned. It no longer orders anything — the
+// sidebar sorts by the stored order alone — and is kept only until the pin
+// surface is removed. Pinning an unknown ID is a no-op.
 func (r *Registry) SetPin(id string, pinned bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -193,10 +297,10 @@ func (r *Registry) SetLastAgent(id, name string) error {
 	return r.saveLocked()
 }
 
-// List returns the entries ordered as the sidebar shows them: pinned first,
-// then the rest by recency (most-recently-active on top). An actionable signal
-// may flag a row but never re-sorts it, so this order is stable against
-// everything but pin and activity.
+// List returns the entries ordered as the sidebar shows them: the operator's
+// stored order, and nothing else. Pin and recency are still recorded but sort
+// nothing, and an actionable signal may flag a row but never re-sorts it — so
+// only an explicit reorder, or a registration appending at the end, moves a row.
 func (r *Registry) List() []Entry {
 	r.mu.Lock()
 	out := make([]Entry, 0, len(r.entries))
@@ -205,15 +309,7 @@ func (r *Registry) List() []Entry {
 	}
 	r.mu.Unlock()
 
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Pinned != out[j].Pinned {
-			return out[i].Pinned
-		}
-		if !out[i].LastActive.Equal(out[j].LastActive) {
-			return out[i].LastActive.After(out[j].LastActive)
-		}
-		return out[i].Path < out[j].Path // stable tiebreak
-	})
+	sortByOrder(out)
 	return out
 }
 
@@ -226,11 +322,13 @@ func (r *Registry) Get(id string) (Entry, bool) {
 }
 
 // saveLocked writes the whole registry atomically (temp file + rename) so a
-// crash mid-write cannot corrupt it. The caller holds r.mu.
+// crash mid-write cannot corrupt it, and densifies the order first so every
+// successful write leaves 0..n-1 on disk. The caller holds r.mu.
 func (r *Registry) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
 		return fmt.Errorf("registry: creating config dir: %w", err)
 	}
+	r.densifyLocked()
 
 	f := file{Spaces: make([]Entry, 0, len(r.entries))}
 	for _, e := range r.entries {
@@ -251,6 +349,23 @@ func (r *Registry) saveLocked() error {
 		return fmt.Errorf("registry: replacing %s: %w", r.path, err)
 	}
 	return nil
+}
+
+// densifyLocked rewrites every entry's order to its index in the current
+// sequence, so the stored order is 0..n-1 with no gap and no duplicate. It runs
+// on every save because holes appear honestly — a deregistration leaves one, a
+// degraded file loads with one, a registration appends past the end — and none
+// of them should outlive the next write. The caller holds r.mu.
+func (r *Registry) densifyLocked() {
+	seq := make([]Entry, 0, len(r.entries))
+	for _, e := range r.entries {
+		seq = append(seq, e)
+	}
+	sortByOrder(seq)
+	for i, e := range seq {
+		e.Order = i
+		r.entries[e.ID] = e
+	}
 }
 
 // spaceID derives a stable identity from the absolute path, so a registry

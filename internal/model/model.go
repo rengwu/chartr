@@ -110,8 +110,9 @@ type ResolvedSkill struct {
 
 // Space is a registered git repository chartr drives. Ticket 02 fills in
 // the registry semantics (path, pin) and the effective role bindings; ticket 03
-// adds the maps beneath. Spaces arrive already ordered — pinned first, then by
-// recency — so the sidebar renders them in slice order without re-sorting.
+// adds the maps beneath. Spaces arrive already ordered — in the operator's own
+// stored order, which nothing but an explicit reorder moves — so the sidebar
+// renders them in slice order without re-sorting.
 type Space struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -123,7 +124,9 @@ type Space struct {
 	// Empty when it can't be determined; the sidebar simply omits it then. A
 	// label, never a guarantee.
 	Branch string `json:"branch,omitempty"`
-	// Pinned spaces sort first; the flag is local, per-machine registry state.
+	// Pinned is local, per-machine registry state that no longer sorts anything:
+	// the stored order replaced it outright. It rides the wire only until the pin
+	// surface is removed.
 	Pinned bool `json:"pinned"`
 	// Dirty is true when the working tree carries uncommitted changes — modified,
 	// staged, or untracked files a session or an ad-hoc shell left behind. It is a

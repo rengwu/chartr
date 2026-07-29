@@ -68,8 +68,9 @@ func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handlePin sets whether a space is pinned, which reorders the sidebar
-// (pinned-first) on the next snapshot.
+// handlePin sets whether a space is pinned. The flag no longer orders anything —
+// the sidebar sorts by the operator's stored order alone — so this writes a
+// vestigial bit and rebuilds; it survives only until the pin surface is removed.
 func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Pinned bool `json:"pinned"`
