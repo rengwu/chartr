@@ -72,6 +72,16 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   a *sample*, so a tab dropped from the manager never reports its last run — the
   emitting seam decides whether a drop flushes the clock.
   [ticket](tickets/01-the-working-clock-and-the-settle-debounce.md)
+- **02 — `notify.toml` and the resolved prefs.** A separate per-machine
+  `notify.toml` resolves positive `after`/`settle` durations and tri-state
+  `enabled` against the shipped 60s/10s/true defaults, warning and falling back
+  per bad key through the existing space warning surface. The complete values
+  ride `Model.Notify`, appear with their create/open file on the read-only Settings
+  surface, and reconfigure clocks without resetting them on ordinary rebuilds;
+  `enabled = false` removes each clock at the source. The manager now folds every
+  published sample into the single `RunFinished` callback seam, with no notifier
+  or dot consumer yet.
+  [ticket](tickets/02-notify-toml-and-the-resolved-prefs.md)
 
 ## Not yet specified
 
