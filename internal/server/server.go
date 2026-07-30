@@ -34,10 +34,10 @@ type Options struct {
 	// platform (honouring `XDG_CONFIG_HOME`) — and the single home for every
 	// user-scoped setting: the space
 	// registry (`spaces.toml`), the agent library (`user.toml`), terminal
-	// customization (`terminal.toml`), the operator's own skills (`skills/`), and
-	// the materialized built-in library (`builtin-skills/`). Defaults to the OS
-	// user config dir; tests point it at a temp dir so a developer's own config
-	// never leaks into a run.
+	// customization (`terminal.toml`), notification timing (`notify.toml`), the
+	// operator's own skills (`skills/`), and the materialized built-in library
+	// (`builtin-skills/`). Defaults to the OS user config dir; tests point it at a
+	// temp dir so a developer's own config never leaks into a run.
 	ConfigDir string
 }
 
@@ -92,7 +92,7 @@ func New(opts Options) (*Server, error) {
 	// covering whatever the persisted registry already holds.
 	//
 	// The config root is pinned into the same watch. It is nobody's space, but
-	// every rebuild re-reads `user.toml` and `terminal.toml` out of it, so an
+	// every rebuild re-reads `user.toml`, `terminal.toml` and `notify.toml` out of it, so an
 	// operator saving a config edit in their own editor — the only way those files
 	// are ever edited, since the surface opens rather than edits them — is the same
 	// kind of notice a map write is, and reaches live terminals without a refresh.
@@ -100,7 +100,7 @@ func New(opts Options) (*Server, error) {
 	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
-	s.terms = terminal.NewManager(s.rebuild)
+	s.terms = terminal.NewManager(s.rebuild, nil)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)

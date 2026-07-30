@@ -39,7 +39,7 @@ func TestAdHocShellRunningAnAgentReadsItsTitle(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	m := NewManager(nil) // nil onChange: no background sampler, we drive sample() by hand
+	m := NewManager(nil, nil) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)
@@ -126,7 +126,7 @@ func TestAdHocShellAgentReadsBlockedFromScreen(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	m := NewManager(nil) // nil onChange: no background sampler, we drive sample() by hand
+	m := NewManager(nil, nil) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)
@@ -171,7 +171,7 @@ func TestNonAgentCommandKeepsTheShellGrammar(t *testing.T) {
 		t.Skip("foreground process groups are a unix affordance")
 	}
 
-	m := NewManager(nil)
+	m := NewManager(nil, nil)
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)

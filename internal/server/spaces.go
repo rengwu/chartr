@@ -26,6 +26,11 @@ const userConfigName = "user.toml"
 // the single source of truth for every terminal island's look and feel.
 const terminalConfigName = "terminal.toml"
 
+// notifyConfigName is the operator's machine-wide notification rule. It is a
+// separate file because it controls server behaviour, not terminal customization
+// or execution.
+const notifyConfigName = "notify.toml"
+
 // handleRegister registers a folder as a space. Registration is a plain HTTP
 // action so its outcome — including an announced `git init` — surfaces in the
 // response (ADR 0010, story 2), and the new space also lands in the pushed
@@ -193,9 +198,19 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	}
 	termPrefs, termWarnings := config.ResolveTerminalPrefs(termTOML)
 
+	// Session notification timing is another per-machine file, read and resolved
+	// on every rebuild. Missing and malformed files both leave a usable machine;
+	// only malformed values add warnings to the same surface as terminal.toml.
+	notifyTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, notifyConfigName))
+	notifyPrefs, notifyWarnings := config.ResolveNotifyPrefs(notifyTOML)
+	s.terms.ConfigureNotifications(
+		notifyPrefs.Enabled, notifyPrefs.After, notifyPrefs.Settle)
+
+	configWarnings := append([]string{}, termWarnings...)
+	configWarnings = append(configWarnings, notifyWarnings...)
 	spaces := make([]model.Space, 0, len(entries))
 	for _, e := range entries {
-		spaces = append(spaces, s.deriveSpace(e, userTOML, termWarnings))
+		spaces = append(spaces, s.deriveSpace(e, userTOML, configWarnings))
 	}
 	// The global skill library resolves with no repo in play, so it is the same
 	// answer whether or not a space is registered — which is exactly what the
@@ -214,8 +229,13 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// The known-CLI probe is a $PATH check, like the folder chooser above: it is
 		// a property of the machine, resolved fresh on every rebuild so a newly
 		// installed harness shows up without a restart. Never nil for the wire.
-		Detected:     detectedAgents(),
-		Terminal:     modelTerminalPrefs(termPrefs),
+		Detected: detectedAgents(),
+		Terminal: modelTerminalPrefs(termPrefs),
+		Notify: model.NotifyPrefs{
+			After:   notifyPrefs.After.String(),
+			Settle:  notifyPrefs.Settle.String(),
+			Enabled: notifyPrefs.Enabled,
+		},
 		NativePicker: nativePicker,
 	}
 }
@@ -292,7 +312,7 @@ func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 	}
 }
 
-func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []string) model.Space {
+func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings []string) model.Space {
 	// The agent library is global, but its live warnings — an agent with no
 	// adapter, an unreadable prompt delivery — surface where the operator is, so
 	// they ride each space's warnings the way the binding resolver's used to.
@@ -328,9 +348,9 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []s
 	// surfaced on the space without the operator opening settings.
 	warnings := append([]string{}, agentWarnings...)
 	warnings = append(warnings, prompt.LibraryWarnings(s.skillRoots(e.Path))...)
-	// The terminal.toml parse warnings are global (the file is per-machine), but
-	// they surface where the operator is, the way the agent-library warnings do.
-	warnings = append(warnings, termWarnings...)
+	// The per-machine config parse warnings are global, but they surface where the
+	// operator is, the way the agent-library warnings do.
+	warnings = append(warnings, configWarnings...)
 
 	// The standing offer to install chartr's tracker adapter, surfaced only when
 	// there is something to act on and the operator has not dismissed it — so the

@@ -208,6 +208,42 @@ func TestNilRunClockEmitsNothing(t *testing.T) {
 	}
 }
 
+// The per-machine switch is applied where clocks are seated. Disabled is not a
+// flag checked by later consumers: the terminal owns no clock, so there is no
+// RunFinished event for a consumer to receive.
+func TestManagerNotificationPrefsSeatOrRemoveClockAtSource(t *testing.T) {
+	m := NewManager(nil, nil)
+	tm := &Terminal{
+		ID:      "term-1",
+		SpaceID: "space",
+		session: &Session{MapSlug: "notifications", TicketNum: 2},
+	}
+	m.terms[tm.ID] = tm
+	m.order = append(m.order, tm.ID)
+
+	m.ConfigureNotifications(true, 90*time.Second, 4*time.Second)
+	if tm.clock == nil {
+		t.Fatal("enabled notifications left the terminal with no run clock")
+	}
+	if tm.clock.after != 90*time.Second || tm.clock.settle != 4*time.Second {
+		t.Errorf("clock constants = %s / %s, want 90s / 4s", tm.clock.after, tm.clock.settle)
+	}
+
+	// A rebuild with unchanged prefs must preserve the in-progress clock. Model
+	// rebuilds happen on state changes, so replacing it here would prevent every
+	// real run from ever reaching its threshold.
+	clock := tm.clock
+	m.ConfigureNotifications(true, 90*time.Second, 4*time.Second)
+	if tm.clock != clock {
+		t.Error("unchanged notification prefs replaced the clock")
+	}
+
+	m.ConfigureNotifications(false, 90*time.Second, 4*time.Second)
+	if tm.clock != nil {
+		t.Fatalf("disabled notifications left clock %+v, want nil at source", tm.clock)
+	}
+}
+
 // A misconstructed clock falls back to the shipped defaults rather than firing on
 // every dip — ticket 02 validates the operator's file, so a zero reaching here is a
 // defect, and the defect must not turn into a burst of notifications.

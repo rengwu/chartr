@@ -29,6 +29,7 @@ import (
 const (
 	layerUserConfig      = "user-config"
 	layerTerminalConfig  = "terminal-config"
+	layerNotifyConfig    = "notify-config"
 	layerBuiltinSkills   = "builtin-skills"
 	layerUserSkills      = "user-skills"
 	layerWorkspaceSkills = "workspace-skills"
@@ -36,8 +37,9 @@ const (
 )
 
 // globalLayers are the files the operator's config lives in, shared by every
-// space: the agent library and the two skill libraries that are not a space's own.
-// They are derived once per rebuild rather than repeated under each space.
+// space: the agent library, terminal and notification prefs, and the two skill
+// libraries that are not a space's own. They are derived once per rebuild rather
+// than repeated under each space.
 //
 // Every user-scoped layer lives under one roof — the operator's config root
 // (`~/.config/chartr`): the agent library (`user.toml`), terminal customization
@@ -56,6 +58,8 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.ConfigDir, userConfigName)),
 		layerAt(layerTerminalConfig, "user", "terminal",
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
+		layerAt(layerNotifyConfig, "user", "notifications",
+			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
 		layerAt(layerUserSkills, "user", "skills", roots.User),
 	}
 }
@@ -199,12 +203,12 @@ func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
 // layerTemplates maps a creatable layer name to the starter bytes written when
 // the operator asks to scaffold it from defaults. Only layers with an entry here
 // can be created through handleCreateGlobalLayer; a name with no template is
-// refused, the same shape as an unknown layer. Today that is `terminal.toml`
-// alone — the agent library and skill roots are grown by their own edits, not
-// stamped from a defaults file — but the map is the seam a second templated file
-// would slot into.
+// refused, the same shape as an unknown layer. `terminal.toml` and `notify.toml`
+// carry starters; the agent library and skill roots are grown by their own edits,
+// not stamped from a defaults file.
 var layerTemplates = map[string][]byte{
 	layerTerminalConfig: config.ScaffoldTerminalTOML,
+	layerNotifyConfig:   config.ScaffoldNotifyTOML,
 }
 
 // handleCreateGlobalLayer stamps a config file from its defaults template — the

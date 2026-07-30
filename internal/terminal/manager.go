@@ -39,6 +39,13 @@ type Manager struct {
 	order    []string
 	seq      int
 	onChange func()
+	// onFinished is the one event seam tickets 03 and 04 consume. This ticket
+	// seats and drives the clock; a nil callback deliberately consumes nothing.
+	onFinished func(RunFinished)
+
+	notifyEnabled bool
+	notifyAfter   time.Duration
+	notifySettle  time.Duration
 
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -65,11 +72,19 @@ const (
 var agentEngine = detect.Builtin()
 
 // NewManager builds an empty Manager. onChange is called after a terminal is
-// opened or ends, and whenever a live tab's activity changes; a nil onChange
-// is tolerated (the manager is usable without a push, as in a focused unit
-// test) and, with no one to notify, the background sampler is not started.
-func NewManager(onChange func()) *Manager {
-	m := &Manager{terms: make(map[string]*Terminal), onChange: onChange}
+// opened or ends, and whenever a live tab's activity changes. onFinished receives
+// each qualifying run once; nil is valid until a consumer is wired. A nil
+// onChange is tolerated (the manager is usable without a push, as in a focused
+// unit test) and, with no one to notify, the background sampler is not started.
+func NewManager(onChange func(), onFinished func(RunFinished)) *Manager {
+	m := &Manager{
+		terms:         make(map[string]*Terminal),
+		onChange:      onChange,
+		onFinished:    onFinished,
+		notifyEnabled: true,
+		notifyAfter:   DefaultNotifyAfter,
+		notifySettle:  DefaultNotifySettle,
+	}
 	if onChange != nil {
 		m.stop = make(chan struct{})
 		go m.sampleLoop()
@@ -116,9 +131,35 @@ func (m *Manager) sampleOnce(slowTick bool) {
 		if t.sample(agentEngine) {
 			changed = true
 		}
+		if ev := t.updateRunClock(time.Now()); ev != nil && m.onFinished != nil {
+			m.onFinished(*ev)
+		}
 	}
 	if changed {
 		m.notify()
+	}
+}
+
+// ConfigureNotifications applies the resolved per-machine notification prefs.
+// It is safe to call on every model rebuild: unchanged values preserve every
+// in-progress clock, while an actual edit updates the constants in place. Turning
+// the feature off removes each clock; turning it back on starts a fresh clock.
+func (m *Manager) ConfigureNotifications(enabled bool, after, settle time.Duration) {
+	if after <= 0 {
+		after = DefaultNotifyAfter
+	}
+	if settle <= 0 {
+		settle = DefaultNotifySettle
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.notifyEnabled == enabled && m.notifyAfter == after && m.notifySettle == settle {
+		return
+	}
+	m.notifyEnabled, m.notifyAfter, m.notifySettle = enabled, after, settle
+	for _, t := range m.terms {
+		t.configureRunClock(enabled, after, settle)
 	}
 }
 
@@ -139,6 +180,7 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 	// Record the terminal before its read loop starts, so a shell that exits
 	// instantly cannot remove itself before it has been listed.
 	m.mu.Lock()
+	t.configureRunClock(m.notifyEnabled, m.notifyAfter, m.notifySettle)
 	m.terms[id] = t
 	m.order = append(m.order, id)
 	m.mu.Unlock()
@@ -192,6 +234,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string,
 	// Record the tab before the read loop starts, so an agent that exits instantly
 	// cannot remove itself before it has been listed (as Open does).
 	m.mu.Lock()
+	t.configureRunClock(m.notifyEnabled, m.notifyAfter, m.notifySettle)
 	m.terms[id] = t
 	m.order = append(m.order, id)
 	m.mu.Unlock()
@@ -223,6 +266,7 @@ func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args, env []string, 
 	// Record the tab before the read loop starts, so an agent that exits instantly
 	// cannot remove itself before it has been listed (as Open and OpenSession do).
 	m.mu.Lock()
+	t.configureRunClock(m.notifyEnabled, m.notifyAfter, m.notifySettle)
 	m.terms[id] = t
 	m.order = append(m.order, id)
 	m.mu.Unlock()

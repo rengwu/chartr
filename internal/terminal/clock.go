@@ -3,6 +3,7 @@ package terminal
 import (
 	"time"
 
+	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 )
 
@@ -13,8 +14,8 @@ import (
 // gives an operator these two through `notify.toml`; these are what stands until
 // they do, and what stands when the file is absent or a value is dropped.
 const (
-	DefaultNotifyAfter  = 60 * time.Second // n
-	DefaultNotifySettle = 10 * time.Second // D
+	DefaultNotifyAfter  = config.DefaultNotifyAfter  // n
+	DefaultNotifySettle = config.DefaultNotifySettle // D
 )
 
 // RunFinished is one ended run, reported once. It carries everything both of its
@@ -89,6 +90,31 @@ func newRunClock(id, spaceID string, s *Session, after, settle time.Duration) *r
 		settle = DefaultNotifySettle
 	}
 	return &runClock{id: id, spaceID: spaceID, session: s, after: after, settle: settle}
+}
+
+// configureRunClock is the source switch for one terminal. Updating positive
+// constants preserves a run already in progress; disabling removes the machine
+// entirely, and re-enabling seats a fresh one.
+func (t *Terminal) configureRunClock(enabled bool, after, settle time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !enabled {
+		t.clock = nil
+		return
+	}
+	if t.clock == nil {
+		t.clock = newRunClock(t.ID, t.SpaceID, t.session, after, settle)
+		return
+	}
+	t.clock.after, t.clock.settle = after, settle
+}
+
+// updateRunClock folds the state the terminal actually published on this sample.
+// It runs after detection and publishing, never from raw evidence.
+func (t *Terminal) updateRunClock(now time.Time) *RunFinished {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.clock.update(t.state, now)
 }
 
 // update folds one published state in at now and returns the run that ended on

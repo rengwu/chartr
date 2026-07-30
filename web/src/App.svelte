@@ -724,6 +724,7 @@
             agents={agentLibrary}
             {detected}
             terminalPrefs={control.model?.terminal}
+            notifyPrefs={control.model?.notify}
             scope={route.scope}
             onScope={(s) => navigate(settingsHash(s))}
             onClose={leaveSettings}
