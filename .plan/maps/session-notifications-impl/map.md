@@ -82,6 +82,19 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   published sample into the single `RunFinished` callback seam, with no notifier
   or dot consumer yet.
   [ticket](tickets/02-notify-toml-and-the-resolved-prefs.md)
+- **04 — The dot on the session card.** `model.Terminal.FinishedUnseen` is the
+  cockpit's half of the one `RunFinished` event: per-tab server state raised in
+  `server.onRunFinished` (the fan-out ticket 03's notifier joins) and cleared by
+  `POST /api/spaces/{id}/terminals/{termID}/seen`, which is a 204 no-op on a tab
+  carrying no dot. Because it rides the snapshot, a run that ended with no browser
+  attached still shows its dot on the next load. `web/src/lib/unseen.ts` holds the
+  pure derivation as two complementary functions — the card draws the dot exactly
+  when the tab is not in view, the app posts the acknowledgement exactly when it
+  is — and the mark is a named `--primary` circle on the tab's own card. No space
+  row changed; `attention.ts` kept its behaviour and gained no export, only the
+  corrected citation. The flag follows the event rather than the session binding,
+  so a long ad-hoc build carries it too.
+  [ticket](tickets/04-the-dot-on-the-session-card.md)
 
 ## Not yet specified
 
