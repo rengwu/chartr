@@ -382,12 +382,15 @@ type Info struct {
 	Status  string
 	Alive   bool
 	Session *Session
+	// FinishedUnseen is the dot: this tab finished a qualifying run and the
+	// operator has not focused it since.
+	FinishedUnseen bool
 }
 
 // info snapshots one terminal's public shape under its own lock.
 func (t *Terminal) info() Info {
 	t.mu.Lock()
-	alive, proc, state := t.alive, t.proc, t.state
+	alive, proc, state, unseen := t.alive, t.proc, t.state, t.finishedUnseen
 	t.mu.Unlock()
 	if proc == "" {
 		proc = t.Title
@@ -395,7 +398,47 @@ func (t *Terminal) info() Info {
 	if state == "" {
 		state = model.TerminalIdle
 	}
-	return Info{ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state, Alive: alive, Session: t.session}
+	return Info{
+		ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state,
+		Alive: alive, Session: t.session, FinishedUnseen: unseen,
+	}
+}
+
+// MarkFinishedUnseen raises the dot on a tab: it finished a run worth reporting
+// and the operator has not looked at it. It is the dot's half of the one
+// RunFinished event — the OS notification is the other, and neither knows about
+// the other. An id that names no live terminal is a no-op: a tab can end between
+// the clock emitting and this call, and there is then nothing left to mark.
+func (m *Manager) MarkFinishedUnseen(id string) {
+	m.mu.Lock()
+	t := m.terms[id]
+	m.mu.Unlock()
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.finishedUnseen = true
+	t.mu.Unlock()
+}
+
+// MarkSeen clears the dot — the operator focused the tab, which is the whole
+// acknowledgement. It reports whether it actually cleared anything, so the caller
+// pushes a fresh model only when there was a dot to clear: focusing a tab that
+// carries none is an ordinary no-op, not an error and not a push.
+func (m *Manager) MarkSeen(id string) bool {
+	m.mu.Lock()
+	t := m.terms[id]
+	m.mu.Unlock()
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.finishedUnseen {
+		return false
+	}
+	t.finishedUnseen = false
+	return true
 }
 
 // ForSpace returns the space's terminals in creation order, so sessions seat top

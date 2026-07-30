@@ -115,6 +115,12 @@ export interface Terminal {
   alive: boolean
   // Set only when this tab is a session; absent on an ad-hoc shell.
   session?: Session
+  // The tab finished a run long enough to be worth interrupting the operator over
+  // — the same event the OS notification carries — and they have not looked at it
+  // since. Server state, so it is here on a reload: the run may have ended with no
+  // browser attached at all. Cleared by focusing the tab, which is the only
+  // acknowledgement there is (`unseen.ts`).
+  finishedUnseen?: boolean
 }
 
 export interface Space {

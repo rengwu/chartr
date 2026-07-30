@@ -4,6 +4,7 @@
   import SkillLauncher from "./SkillLauncher.svelte";
   import { Button } from "./components/ui/button";
   import { spaceAttention, spaceLiveness } from "./attention";
+  import { showsFinishedDot } from "./unseen";
   import {
     X,
     Check,
@@ -404,6 +405,24 @@
               >
                 {#if t.session}{t.session.agent} · {t.status}{:else}{t.status}{/if}
               </span>
+
+              {#if showsFinishedDot(t, isActive)}
+                <!-- It finished a run worth interrupting you over while you
+                     were elsewhere (session-notifications) — the quiet half
+                     of the notification the OS already showed. It rides
+                     `--primary`, the one emphasis token, and it is a state
+                     rather than a decoration: `role="img"` with a name, so
+                     the card announces the difference instead of leaving a
+                     screen reader a bare circle. Focusing the tab clears it —
+                     there is no dismiss — which is why it never shows on the
+                     tab in view. -->
+                <span
+                  role="img"
+                  aria-label="finished while you were away"
+                  title="Finished while you were away — open it to clear this"
+                  class="size-2 shrink-0 rounded-full bg-primary"
+                ></span>
+              {/if}
 
               {#if t.session && !t.alive}
                 <!-- The death halt: a dead session is pinned to its ticket and

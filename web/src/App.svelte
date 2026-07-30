@@ -6,6 +6,7 @@
     deregisterSpace,
     openTerminal,
     closeTerminal,
+    markTerminalSeen,
     resumeSession,
     respawnSession,
     releaseSession,
@@ -25,6 +26,7 @@
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
   import { spaceHaltTarget } from "./lib/attention";
+  import { acknowledgesFinishedRun } from "./lib/unseen";
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
   import { nativeTitleBarHeight } from "./lib/titlebar";
@@ -183,6 +185,23 @@
   const activeTerm = $derived.by<Terminal | null>(() => {
     const ts = selected?.terminals ?? [];
     return ts.find((t) => t.id === activeTermId) ?? ts[0] ?? null;
+  });
+
+  // Acknowledging a run that finished while the operator was elsewhere
+  // (session-notifications): the tab in front of them clears its own dot. Focus is
+  // the only acknowledgement there is — no dismiss, no clear-all — and "focused"
+  // here is exactly what the sidebar paints as the active row: the shell the pane
+  // is showing, with the settings surface not standing over it. The flag itself is
+  // server state, so this posts and lets the cleared snapshot come back; a failure
+  // is silent, because a dot that outlives one failed post clears on the next look.
+  $effect(() => {
+    const space = selected;
+    const term = activeTerm;
+    if (!space || !term) return;
+    if (!acknowledgesFinishedRun(term, !route.settings)) return;
+    void markTerminalSeen(space.id, term.id).catch(() => {
+      // Nothing to say: the dot is the server's, and the next look posts again.
+    });
   });
 
   // The filter is a pure view over the ordered list — it now reaches into

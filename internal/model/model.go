@@ -287,6 +287,17 @@ type Terminal struct {
 	// and the resolved agent and model. Absent on an ad-hoc shell, which is
 	// deliberately not a session; the chrome tells the two apart by its presence.
 	Session *Session `json:"session,omitempty"`
+	// FinishedUnseen records that this tab finished a run long enough to be worth
+	// interrupting the operator over — the same event the OS notification carries —
+	// and that they have not looked at it since. It is set when the run clock emits
+	// and cleared when the operator focuses the tab, which is the only
+	// acknowledgement there is: no manual dismiss, no clear-all, no count.
+	//
+	// It lives here, in the snapshot, rather than in the browser, because the run
+	// most worth recording is the one that ended with no browser attached at all. A
+	// client-side flag would show nothing in exactly that case; this one survives a
+	// reload because the server never forgot it.
+	FinishedUnseen bool `json:"finishedUnseen,omitempty"`
 }
 
 // TerminalPrefs is the operator's resolved terminal customization on the wire —

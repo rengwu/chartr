@@ -130,6 +130,12 @@ type Terminal struct {
 	// clock folds the state after every sample into the one RunFinished stream
 	// later consumers share. Nil is the configured disabled state.
 	clock *runClock
+	// finishedUnseen is the dot on this tab's card: a qualifying run ended and the
+	// operator has not looked at the tab since. It is per-tab runtime state exactly
+	// as proc and state are — set by the consumer of the clock's event, cleared when
+	// the operator focuses the tab — and it dies with the tab, so a dot can never
+	// outlive the run it records.
+	finishedUnseen bool
 
 	// grid reconstructs the terminal's visible screen server-side from the same
 	// PTY bytes the browser renders, read by the sampler for detection only (never

@@ -331,6 +331,10 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 			Proc:   info.Proc,
 			Status: info.Status,
 			Alive:  info.Alive,
+			// The dot rides the snapshot beside the tab's status, which is what makes it
+			// survive a browser reload: the run it records may have ended with no browser
+			// attached at all.
+			FinishedUnseen: info.FinishedUnseen,
 		}
 		if info.Session != nil {
 			term.Session = &model.Session{

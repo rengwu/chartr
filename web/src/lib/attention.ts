@@ -39,8 +39,11 @@ export function spaceHaltTarget(space: Space): { mapSlug: string; ticketNum: num
 // human — takes the slot the old `quiet` hint held, which measured PTY silence and
 // never fired for the TUI agents it was written for. The precedence is left exactly
 // as it was: how `blocked` folds into the attention grammar, and whether it
-// outranks a working session, is deliberately not decided here (map, Not yet
-// specified — Notifications).
+// outranks a working session, is deliberately not decided here. Pushing `blocked`
+// to the operator is settled elsewhere and does not touch this grammar: the
+// session-notifications spec (`.plan/maps/session-notifications/spec.md`) fires an
+// OS notification and marks the tab's own card, and deliberately adds nothing to a
+// space row.
 export type Liveness = 'working' | 'blocked' | null
 
 export function spaceLiveness(space: Space): Liveness {
