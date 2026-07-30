@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [02]
+claimed_by: s1113c0491582
+claimed_at: 2026-07-30T19:04:24Z
 ---
 
 # The dot on the session card
