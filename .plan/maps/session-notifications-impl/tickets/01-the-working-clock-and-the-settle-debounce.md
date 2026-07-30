@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: s8bbabd85b85f
+claimed_at: 2026-07-30T17:07:07Z
 ---
 
 # The working clock and the settle debounce
