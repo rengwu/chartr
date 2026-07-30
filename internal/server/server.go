@@ -119,6 +119,11 @@ func New(opts Options) (*Server, error) {
 	// stays the one place a space is created — the client posts back whatever path
 	// comes out of here.
 	s.mux.HandleFunc("POST /api/spaces/pick", s.handlePickFolder)
+	// The sidebar arrangement, as one write of the whole ordered list. It is not
+	// addressed by space because it is not a per-row move: the drag and the
+	// keyboard both send the complete list, which is idempotent and matches the
+	// dense 0..n-1 order every save writes.
+	s.mux.HandleFunc("POST /api/spaces/reorder", s.handleReorder)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
 	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	// The remembered agent, set directly rather than only as a side effect of a

@@ -75,6 +75,18 @@ export function deregisterSpace(id: string): Promise<void> {
   return send('DELETE', `/api/spaces/${encodeURIComponent(id)}`) as Promise<void>
 }
 
+// reorderSpaces sets the sidebar arrangement: the *complete* ordered list of
+// space ids, never a per-row move. One endpoint takes the whole list, so the
+// pointer drag and the keyboard share a single write path; the write is
+// idempotent, and two drags in quick succession cannot interleave into a
+// half-moved sidebar. A list that omits a registered space, names an unknown id,
+// or repeats one is refused with a 400 that changes nothing — a partial list is
+// a client bug, not a partial reorder. The new order arrives back as a fresh
+// snapshot over the control socket like every other action's result.
+export function reorderSpaces(ids: string[]): Promise<void> {
+  return send('POST', '/api/spaces/reorder', { ids }) as Promise<void>
+}
+
 // setSpaceAgent records the agent a space should spawn with, without spawning —
 // the action footer's selector persists the operator's pick immediately, so it
 // reads as a saved setting rather than a choice that only sticks once they launch.

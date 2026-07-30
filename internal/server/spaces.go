@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,6 +62,32 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 // recency — and touches nothing in the repository (story 4).
 func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 	if err := s.reg.Deregister(r.PathValue("id")); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rebuild()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleReorder applies the operator's sidebar arrangement: one endpoint taking
+// the complete ordered list of space ids, never a per-row move. The whole list
+// is what the drag and the keyboard both send, so there is one write path, the
+// write is idempotent, and two drags in quick succession cannot interleave into a
+// half-moved sidebar. A list that omits a registered space, names an unknown id,
+// or repeats one is a client bug: it is refused with a `400` and changes nothing.
+func (s *Server) handleReorder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.reg.Reorder(body.IDs); err != nil {
+		if errors.Is(err, registry.ErrBadReorder) {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
