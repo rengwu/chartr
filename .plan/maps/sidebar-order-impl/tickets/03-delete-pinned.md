@@ -1,8 +1,6 @@
 ---
 type: task
 blocked_by: [02]
-claimed_by: s61e37f09a238
-claimed_at: 2026-07-30T06:49:41Z
 ---
 
 # Delete `pinned`
