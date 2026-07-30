@@ -131,6 +131,26 @@ func replay(t *testing.T, agent string, chunks []chunk) []transition {
 // driven by the bytes an agent really wrote, at the size it wrote them.
 func replayScreen(t *testing.T, agent, name string) []transition {
 	t.Helper()
+	var out []transition
+	replayPublished(t, agent, name, 0, func(now time.Duration, tr transition, changed bool) {
+		if changed {
+			out = append(out, tr)
+		}
+	})
+	return out
+}
+
+// replayPublished is replayScreen's engine: it drives one recording through the
+// whole path and calls visit for *every* sample tick, not only the ones that
+// changed the published state. replayScreen keeps the changes; the notification
+// clock (clock_test.go) needs the full per-tick history, because its rule is about
+// how long a state persisted rather than when it moved.
+//
+// tail extends the sampling past the last recorded chunk with the evidence the
+// recording ended on. Real sampling does not stop when an agent stops writing
+// bytes, and a settle delay measured after the last byte needs those ticks.
+func replayPublished(t *testing.T, agent, name string, tail time.Duration, visit func(now time.Duration, tr transition, changed bool)) {
+	t.Helper()
 	cols, rows := recordingGeometry(t, name)
 	chunks := loadRecording(t, name)
 
@@ -142,11 +162,10 @@ func replayScreen(t *testing.T, agent, name string) []transition {
 	store := func(dst *string) func(string) { return func(v string) { *dst = v } }
 
 	pub := newPublisher(time.Time{})
-	var out []transition
 	next := 0
 	end := chunks[len(chunks)-1].at
 
-	for now := time.Duration(0); now <= end+sampleInterval; now += sampleInterval {
+	for now := time.Duration(0); now <= end+tail+sampleInterval; now += sampleInterval {
 		for next < len(chunks) && chunks[next].at <= now {
 			scanner.scan(chunks[next].data, store(&title), store(&progress))
 			g.write(chunks[next].data)
@@ -154,11 +173,9 @@ func replayScreen(t *testing.T, agent, name string) []transition {
 		}
 		ev := detect.Evidence{Title: title, Progress: progress, Screen: g.text()}
 		res := agentEngine.Evaluate(agent, ev)
-		if state, changed := pub.update(res, time.Time{}.Add(now)); changed {
-			out = append(out, transition{at: now, state: state, positive: res.State != ""})
-		}
+		state, changed := pub.update(res, time.Time{}.Add(now))
+		visit(now, transition{at: now, state: state, positive: res.State != ""}, changed)
 	}
-	return out
 }
 
 func sawState(trs []transition, state string) bool {
