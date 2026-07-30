@@ -14,7 +14,7 @@ import (
 // command's name, and the change is observable — which is the whole basis for
 // the sidebar's live status indicator.
 func TestSampleTracksForegroundCommand(t *testing.T) {
-	m := NewManager(nil) // nil onChange: no background sampler, we drive sample() by hand
+	m := NewManager(nil, nil) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
 		t.Fatalf("open shell: %v", err)

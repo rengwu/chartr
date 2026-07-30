@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { Agent, ConfigLayer, Space, TerminalPrefs } from './model'
+  import type { Agent, ConfigLayer, NotifyPrefs, Space, TerminalPrefs } from './model'
   import { settingsHash, type SettingsScope } from './route'
   import { createConfigLayer, openConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
+  import NotifySettings from './NotifySettings.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
   import { ArrowSquareOut, FilePlus, Stack, User, Warning, X } from 'phosphor-svelte'
@@ -19,6 +20,7 @@
     agents,
     detected,
     terminalPrefs,
+    notifyPrefs,
     scope,
     onScope,
     onClose,
@@ -37,6 +39,9 @@
     // here, rendered by the Terminal section on the global scope. Per-machine
     // cosmetic settings belong beside the user config, not under a space.
     terminalPrefs?: TerminalPrefs
+    // The resolved notify.toml values are read-only here, on the same terms as
+    // terminal customization: show what is in force and open the owning file.
+    notifyPrefs?: NotifyPrefs
     scope: SettingsScope
     onScope: (scope: SettingsScope) => void
     onClose: () => void
@@ -55,7 +60,10 @@
   // section rather than in the generic list — it comes with the settings it holds,
   // and listing it twice would be two rows for one file.
   const terminalLayer = $derived(config.find((l) => l.holds === 'terminal'))
-  const files = $derived(config.filter((l) => l.holds !== 'terminal'))
+  const notifyLayer = $derived(config.find((l) => l.holds === 'notifications'))
+  const files = $derived(
+    config.filter((l) => l.holds !== 'terminal' && l.holds !== 'notifications'),
+  )
 
   // The files a space carries in its own repository sit beside the shared ones.
   const layers = $derived<ConfigLayer[]>(space ? [...files, ...space.layers] : files)
@@ -68,10 +76,10 @@
   // for these the row offers a Create action that writes the self-documenting
   // starter (all keys at their defaults) and then hands off to the same open. Kept
   // as a set the server is the real authority on — it refuses a name with no
-  // template — so this only governs which rows show the button. Today that is the
-  // per-machine terminal config alone; the agent library and skill roots grow by
-  // their own edits, not from a stamped file.
-  const creatable = new Set(['terminal-config'])
+  // template — so this only governs which rows show the button. The two
+  // self-documenting per-machine prefs files have starters; the agent library and
+  // skill roots grow by their own edits, not from a stamped file.
+  const creatable = new Set(['terminal-config', 'notify-config'])
 
   // The escape hatch: the server resolves the *named* layer and launches the
   // operator's editor. Where it cannot, the path itself is the answer, surfaced
@@ -181,6 +189,7 @@
           <!-- Per-machine cosmetics, beside the user config rather than under a
                space: what terminal.toml has in force, and the file itself. -->
           <TerminalSettings prefs={terminalPrefs} layer={terminalLayer} {layerRow} />
+          <NotifySettings prefs={notifyPrefs} layer={notifyLayer} {layerRow} />
 
           <section class="flex flex-col gap-2">
             <h2 class="text-xs font-semibold">Files on disk</h2>

@@ -1,0 +1,15 @@
+# Session notifications are machine-wide server behaviour, so they live here
+# rather than in terminal.toml (terminal customization) or user.toml (execution
+# choices). This file is local to this machine, never committed and never scoped
+# to a space.
+#
+# A session or shell must publish `working` for at least this long to report when
+# that run ends.
+# after = "60s"
+#
+# A run must stay out of `working` this long before its ending is settled. This
+# collapses short pauses between tool calls into one run.
+# settle = "10s"
+#
+# Turning this off removes the clock at its source: no finished event is produced.
+# enabled = true

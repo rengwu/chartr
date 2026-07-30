@@ -127,6 +127,9 @@ type Terminal struct {
 	oscProgress string
 	agent       string
 	pub         *publisher
+	// clock folds the state after every sample into the one RunFinished stream
+	// later consumers share. Nil is the configured disabled state.
+	clock *runClock
 
 	// grid reconstructs the terminal's visible screen server-side from the same
 	// PTY bytes the browser renders, read by the sampler for detection only (never

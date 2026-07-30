@@ -48,6 +48,10 @@ type Model struct {
 	// look — so a machine with no file rides an empty struct. Any parse warnings
 	// surface on the spaces beside the agent-library warnings, not here.
 	Terminal TerminalPrefs `json:"terminal"`
+	// Notify is the operator's resolved machine-wide run notification rule from
+	// `notify.toml`. Durations ride as Go duration strings so the read-only config
+	// surface shows the same units the file accepts rather than nanoseconds.
+	Notify NotifyPrefs `json:"notify"`
 	// NativePicker is whether this machine can raise an OS folder chooser for
 	// "add a space" — always true on macOS, true on Linux with zenity or kdialog
 	// installed, false otherwise. It is capability, not state, so it never
@@ -70,16 +74,24 @@ type ConfigLayer struct {
 	// matching the provenance badges on the values it can set.
 	Layer string `json:"layer"`
 	// Holds names what this layer can set: "agents" (the operator's agent library),
-	// "skills", or "terminal" (the per-machine terminal customization). Each lives
-	// in its own file — the library and `terminal.toml` in the chartr state root,
-	// skills under the operator's config root — and the surface shows that split
-	// rather than implying one file.
+	// "skills", "terminal" (terminal customization), or "notifications" (the
+	// machine-wide run clock). Each lives in its own file and the surface shows
+	// that split rather than implying one file.
 	Holds string `json:"holds"`
 	// Path is the absolute location on disk, and Exists whether anything is there
 	// yet. A layer that does not exist is still listed: it is where the value
 	// *would* go.
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
+}
+
+// NotifyPrefs is the resolved notify.toml value on the wire. Unlike terminal
+// customization these are complete values, never tri-state: absent or invalid
+// keys have already become the shipped defaults.
+type NotifyPrefs struct {
+	After   string `json:"after"`
+	Settle  string `json:"settle"`
+	Enabled bool   `json:"enabled"`
 }
 
 // ResolvedSkill is one skill of the library as it resolves for a space: which

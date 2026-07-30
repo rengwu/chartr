@@ -32,7 +32,7 @@ const planDirName = ".plan"
 //
 // Alongside the spaces it also pins the operator's config root, which belongs to
 // no space and never changes for a server's lifetime. Every file under it
-// (`user.toml`, `terminal.toml`) is re-read on each rebuild, so an edit made in
+// (`user.toml`, `terminal.toml`, `notify.toml`) is re-read on each rebuild, so an edit made in
 // the operator's own editor is worth exactly the same notice a map edit gets:
 // without it, a saved `terminal.toml` would sit unread until some unrelated
 // action happened to rebuild.

@@ -24,7 +24,7 @@ import (
 // its terminal report dead, and the manager's onChange fires to publish it.
 func TestExitedProcessIsReaped(t *testing.T) {
 	reaped := make(chan struct{}, 4)
-	m := NewManager(func() { reaped <- struct{}{} })
+	m := NewManager(func() { reaped <- struct{}{} }, nil)
 	defer m.Shutdown()
 
 	// A shell is the honest subject here: it is what an ad-hoc tab actually runs,

@@ -193,11 +193,11 @@ export interface ResolvedSkill {
 // ConfigLayer is one file or directory the operator's config lives in. `name` is
 // the server-side token the open action resolves — the client never sends a path.
 // `holds` is what the file carries: the agent library, skills, or the per-machine
-// terminal customization.
+// terminal customization, or machine-wide notification timing.
 export interface ConfigLayer {
   name: string
   layer: Layer
-  holds: 'agents' | 'skills' | 'terminal'
+  holds: 'agents' | 'skills' | 'terminal' | 'notifications'
   path: string
   exists: boolean
 }
@@ -232,6 +232,16 @@ export interface Model {
   // resolve seam (`buildTerminalOptions` in tokens.ts) turns it into the concrete
   // xterm options and theme, falling every unset slot through to the design token.
   terminal?: TerminalPrefs
+  // The complete machine-wide run notification rule resolved from notify.toml.
+  // Durations use the same strings the file accepts, and are always present
+  // because absent or invalid keys have already fallen back server-side.
+  notify?: NotifyPrefs
+}
+
+export interface NotifyPrefs {
+  after: string
+  settle: string
+  enabled: boolean
 }
 
 // TerminalPrefs mirrors the Go `model.TerminalPrefs`: every field is a pref the
