@@ -50,3 +50,52 @@ falls back rather than breaking anything; `enabled = false` silences the clock a
 source; `go vet ./...`, `go test ./...` and the frontend `check`, `build` and
 `vitest` scripts pass, with no amber in the built CSS. No notification and no dot
 in this ticket.
+
+## Answer
+
+`notify.toml` now owns the machine-wide run-clock preferences end to end. The
+operator file lives beside `terminal.toml`, is reread on every rebuild, resolves
+into the pushed model, and configures the per-tab `runClock` instances that fold
+published terminal states.
+
+**What shipped.**
+
+- `internal/config/notify.go` resolves `after`, `settle`, and `enabled` to concrete
+  defaults of 60s, 10s, and true. Missing keys stay distinct from explicit values,
+  including `enabled = false`. Durations must be positive Go duration strings.
+  Invalid values fall back independently, with exactly one actionable warning
+  naming `notify.toml` and the bad key; malformed TOML falls back wholesale with a
+  file-level warning, and unknown keys warn without breaking known neighbours.
+- `notify.scaffold.toml` is the inert starter the config surface creates. Its
+  header says why this is neither terminal customization (`terminal.toml`) nor an
+  execution choice (`user.toml`), and all three shipped defaults are reproduced as
+  commented keys, so creating the file changes nothing.
+- The snapshot carries the complete resolved values as `Model.Notify`; parse
+  warnings join terminal warnings on each space. The config-root watcher already
+  drives rebuilds, and a process-boundary test proves an external save changes the
+  pushed value without a refresh.
+- `notify-config` joins the named global config layers and create/open endpoints.
+  The global Settings surface shows the three parsed values and the owning file,
+  using the same read-value-plus-open-file pattern as terminal customization.
+  There is no form or second store that writes preference values.
+- `terminal.Manager` now owns the resolved constants and seats one clock per tab.
+  Every sample folds the state the terminal actually published, downstream of
+  detection and publisher hysteresis, into the single `RunFinished` callback seam
+  tickets 03 and 04 will consume. Rebuilds with unchanged preferences preserve an
+  in-progress clock; a real threshold edit updates it in place. Turning the
+  feature off removes the clock itself, and re-enabling starts a fresh one, so no
+  consumer needs an enabled check and the two later consumers cannot disagree.
+  The 60s/10s defaults are defined once in `internal/config` and re-exported beside
+  `runClock`.
+
+**Tests.** Config tests cover the absent file, every valid value, a negative
+duration, an unparseable duration, duration and boolean type errors, independent
+fallback beside valid neighbours, and the scaffold's inert documented defaults.
+Server tests cover snapshot resolution, warning propagation, watch-driven reread,
+named-layer open, and scaffold creation. The terminal test proves custom constants
+reach a seated clock, unchanged rebuilds do not reset it, and disabled means the
+clock is nil at the source.
+
+`go vet ./...`, `go test ./...`, `npm run check`, `npm run build`, and `npm test`
+all pass. The built CSS contains no `amber`. No OS notifier, notification content,
+attention dot, or seen endpoint was added; those remain tickets 03 and 04.
