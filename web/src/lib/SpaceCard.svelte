@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Agent, Space, Terminal } from "./model";
+  import type { DropEdge } from "./reorder";
   import SkillLauncher from "./SkillLauncher.svelte";
   import { Button } from "./components/ui/button";
   import { spaceAttention, spaceLiveness } from "./attention";
@@ -15,6 +16,7 @@
     Warning,
     PauseCircle,
     GitBranchIcon,
+    DotsSixVertical,
     Plus,
     PlusIcon,
   } from "phosphor-svelte";
@@ -30,6 +32,14 @@
     activeTermId,
     agents,
     opening = false,
+    reorderable = false,
+    dragActive = false,
+    dragged = false,
+    dropEdge = null,
+    ongrabstart,
+    ongrabover,
+    ongrabdrop,
+    ongrabend,
     onselect,
     onselectsession,
     onjumphalt,
@@ -56,6 +66,25 @@
     // A launch or shell-open is in flight somewhere in the chrome; the on-ramps
     // disable while it is, so one click cannot start two tabs.
     opening?: boolean;
+    // Whether this row can be dragged to a new place in the sidebar. It is the
+    // chrome's call, not the card's: a drop position inside a *filtered* sidebar
+    // does not describe a position in the whole list, so the handles go inert
+    // while the filter box is non-empty rather than inventing a mapping.
+    reorderable?: boolean;
+    // A reorder drag is in flight somewhere in the sidebar. Only then does this
+    // card accept a drop — an unrelated drag (a file onto the window) must fall
+    // through to the browser rather than be swallowed as a reorder.
+    dragActive?: boolean;
+    // This card is the one being dragged: it dims, so the indicator below reads
+    // as where it is going rather than where a second row would go.
+    dragged?: boolean;
+    // Which edge of this row the drop would land on, or null for no indicator.
+    // The row must show where it will land *before* the drop, not only after it.
+    dropEdge?: DropEdge | null;
+    ongrabstart: () => void;
+    ongrabover: (edge: DropEdge) => void;
+    ongrabdrop: () => void;
+    ongrabend: () => void;
     onselect: () => void;
     onselectsession: (t: Terminal) => void;
     // The halt flag doubles as the jump: the chrome deep-links the halted ticket.
@@ -79,6 +108,14 @@
 
   const attention = $derived(spaceAttention(space));
   const liveness = $derived(spaceLiveness(space));
+
+  // Which half of the row the pointer is in — the whole drop rule. "On this row"
+  // is never the answer by itself: coming down it means above, coming up it
+  // means below, and the midpoint is what tells the two apart.
+  function edgeUnder(e: DragEvent): DropEdge {
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY < box.top + box.height / 2 ? "before" : "after";
+  }
 
   // Copy-to-clipboard for the branch chip. The card sets `select-none` — it is a
   // click target, and drag-selecting inside one is noise — so this button is the
@@ -125,11 +162,34 @@
   aria-label="Select {space.name}"
   title={space.path}
   class={[
-    "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
+    "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
     selected
       ? "border-primary/60 bg-sidebar-accent/30"
       : "border-sidebar-border hover:border-primary/30",
+    dragged && "opacity-50",
   ]}
+  draggable={reorderable}
+  ondragstart={(e) => {
+    // Some payload has to be set or Firefox refuses to start the drag at all;
+    // nothing reads it — the chrome holds which row is moving, because a drop
+    // outside the sidebar must not be interpretable as anything.
+    e.dataTransfer?.setData("text/plain", space.id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    ongrabstart();
+  }}
+  ondragover={(e) => {
+    if (!dragActive) return;
+    // Only a preventDefault'd dragover makes this a drop target at all.
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    ongrabover(edgeUnder(e));
+  }}
+  ondrop={(e) => {
+    if (!dragActive) return;
+    e.preventDefault();
+    ongrabdrop();
+  }}
+  ondragend={() => ongrabend()}
   onclick={onselect}
   onkeydown={(e) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -138,14 +198,52 @@
     }
   }}
 >
-  <!-- Identity: the space's name, with the forget action pinned
-       top-right (the branch rides the action row below). Ambient
-       cross-space attention (ticket 14, story 8) rides on the name
+  {#if dropEdge}
+    <!-- Where the row will land, drawn before the drop rather than only after
+         it (story 8). It rides the emphasis roles the chrome reserves —
+         `--primary` for the bar, `--ring` for the halo that lifts it off the
+         sidebar surface — and sits absolutely in the gap between cards, so
+         showing it never nudges the list the operator is aiming at. -->
+    <div
+      aria-hidden="true"
+      class={[
+        "pointer-events-none absolute right-0 left-0 h-0.5 rounded-full bg-primary ring-2 ring-ring/30",
+        dropEdge === "before" ? "-top-1.5" : "-bottom-1.5",
+      ]}
+    ></div>
+  {/if}
+
+  <!-- Identity: the space's name, behind its drag handle, with the forget
+       action pinned top-right (the branch rides the action row below).
+       Ambient cross-space attention (ticket 14, story 8) rides on the name
        line — a wants-you flag (a session halted) and a liveness dot,
        both echoing the same signals the queue pulls and the session
        cards below already carry in detail. Neither ever re-sorts the
-       card; muscle memory over this list holds. -->
+       card; muscle memory over this list holds — and now the operator's
+       own arrangement is the only thing that sets it. -->
   <div class="flex items-start gap-1">
+    <!-- The drag affordance: visible on every row, so the sidebar reads as
+         rearrangeable without discovering it by accident (story 7). It is the
+         grip, not the drag source — the whole card is draggable, which is a far
+         bigger target than a 14px icon — so it is `aria-hidden` and the keyboard
+         path (Alt+↑/↓ on the selected space) carries the same move for anyone
+         not using a pointer. It dims rather than disappearing while the list is
+         filtered: the row is inert there, and a handle that vanishes reads as a
+         layout bug. -->
+    <span
+      class={[
+        "-ml-0.5 flex shrink-0 items-center self-center",
+        reorderable
+          ? "cursor-grab text-muted-foreground active:cursor-grabbing"
+          : "cursor-default text-muted-foreground/30",
+      ]}
+      title={reorderable
+        ? "Drag to reorder — or Alt (⌥) + ↑ / ↓ on the selected space"
+        : "Clear the filter to rearrange your spaces"}
+      aria-hidden="true"
+    >
+      <DotsSixVertical class="size-3.5" weight="bold" />
+    </span>
     <span
       class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
     >

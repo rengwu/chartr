@@ -12,9 +12,11 @@
     launch,
     pickFolder,
     registerSpace,
+    reorderSpaces,
     ActionError,
     LIVE_SESSION,
   } from "./lib/actions";
+  import { dropIndex, reorder, type DropEdge } from "./lib/reorder";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpaceCard from "./lib/SpaceCard.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
@@ -100,8 +102,10 @@
     };
   });
 
-  // Spaces arrive already ordered — pinned first, then by recency — so we render
-  // them in slice order and never re-sort on the client.
+  // Spaces arrive already ordered — the operator's own stored arrangement, the
+  // one authority — so we render them in slice order and never re-sort on the
+  // client. Recency is still recorded and sorts nothing; only an explicit
+  // reorder, or a registration appending at the end, moves a row.
   const spaces = $derived<Space[]>(control.model?.spaces ?? []);
   // The config layers shared by every space — the operator's local binding file
   // and the two skill libraries that are not a space's own.
@@ -199,6 +203,70 @@
         ),
     );
   });
+
+  // --- Reordering the sidebar ------------------------------------------------
+  //
+  // The operator's arrangement is theirs to set, and there is exactly *one*
+  // write path for it: resolve the move to a complete ordered list of ids and
+  // post that. The pointer drag and the keyboard both end in `applyOrder`, so
+  // the keyboard is not a second implementation. Nothing is applied optimistically
+  // — the new arrangement arrives as a fresh snapshot over the control socket,
+  // like every other action's result.
+
+  // The row being dragged and the row it is hovering over, held by *id* rather
+  // than by index: a snapshot can land mid-drag (a space registered elsewhere,
+  // a session opening), and an index captured on grab would then name a
+  // different row by the time it is dropped. Both null when no drag is in flight.
+  let dragId = $state<string | null>(null);
+  let dropAt = $state<{ overId: string; edge: DropEdge } | null>(null);
+
+  // Dragging is inert while the filter box is non-empty. A drop position within
+  // a filtered subset does not describe a position in the whole list, and mapping
+  // one onto the other would invent a rule nothing else in the product makes — so
+  // the handles are disabled instead. It gates the keyboard move as well as the
+  // drag: both write the whole list, so both need the whole list in view.
+  const reorderable = $derived(filter.trim() === "");
+
+  async function applyOrder(ids: string[]) {
+    const current = spaces.map((s) => s.id);
+    // A drop back where it started, or ⌥↑ on the first row: an ordinary outcome,
+    // and the honest response is to write nothing at all.
+    if (ids.length === current.length && ids.every((id, i) => id === current[i])) return;
+    try {
+      await reorderSpaces(ids);
+    } catch (e) {
+      actionError = `Couldn’t save the new order: ${(e as Error).message}`;
+    }
+  }
+
+  function endDrag() {
+    dragId = null;
+    dropAt = null;
+  }
+
+  function dropDragged() {
+    const id = dragId;
+    const at = dropAt;
+    endDrag();
+    if (id === null || at === null) return;
+    const ids = spaces.map((s) => s.id);
+    const from = ids.indexOf(id);
+    const over = ids.indexOf(at.overId);
+    // Either row having left the sidebar since the grab, the drop describes
+    // nothing; the arrangement stands as it is.
+    if (from < 0 || over < 0) return;
+    void applyOrder(reorder(ids, from, dropIndex(from, over, at.edge)));
+  }
+
+  // ⌥↑ / ⌥↓ move the selected space, emitting the same whole-list write a drag
+  // does. `reorder` clamps, so a nudge past either end simply moves nothing.
+  function moveSelected(delta: number) {
+    if (!reorderable || !selected) return;
+    const ids = spaces.map((s) => s.id);
+    const i = ids.indexOf(selected.id);
+    if (i < 0) return;
+    void applyOrder(reorder(ids, i, i + delta));
+  }
 
   // Confirmations and failures are the chrome's own surfaces, never the browser's
   // `confirm()`/`alert()`. The native shell's webview implements one WKUIDelegate
@@ -348,11 +416,28 @@
   }
 
   // Keyboard-first navigation (story 30): space switching, alongside the map's
-  // own M/Esc (SpacePane.onKey). `[`/`]` cycle spaces in the same
-  // pinned-then-recency order the sidebar renders, never the filtered view — a
-  // keyboard shortcut should not depend on what's typed in the filter box.
+  // own M/Esc (SpacePane.onKey). `[`/`]` cycle spaces in the operator's own
+  // stored sidebar order, never the filtered view — a keyboard shortcut should
+  // not depend on what's typed in the filter box.
   function onGlobalKey(e: KeyboardEvent) {
-    if (isEditingTarget() || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (isEditingTarget()) return;
+    // ⌥↑ / ⌥↓ move the selected space in the sidebar (story 9) — the same write
+    // the drag emits, so reordering is not mouse-only. It is read ahead of the
+    // modifier bail-out below, being the one binding that *wants* a modifier:
+    // ⌥ keeps it clear of the bare arrow keys the panes use, and ⌘/⌃ are the
+    // platform's. Like every global binding it sits behind `isEditingTarget`, so
+    // a keystroke aimed at a terminal, a text field or a dialog is never stolen.
+    if (
+      e.altKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      (e.key === "ArrowUp" || e.key === "ArrowDown")
+    ) {
+      e.preventDefault();
+      moveSelected(e.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     // `,` enters the settings route (the conventional preferences key); Esc
     // leaves it, ahead of the map's own Esc, which the pane suppresses while
     // settings is up.
@@ -478,6 +563,14 @@
             <SpaceCard
               {space}
               {opening}
+              {reorderable}
+              dragActive={dragId !== null}
+              dragged={dragId === space.id}
+              dropEdge={dropAt?.overId === space.id ? dropAt.edge : null}
+              ongrabstart={() => (dragId = space.id)}
+              ongrabover={(edge) => (dropAt = { overId: space.id, edge })}
+              ongrabdrop={dropDragged}
+              ongrabend={endDrag}
               selected={selected?.id === space.id}
               activeTermId={activeTerm?.id ?? null}
               agents={agentLibrary}

@@ -16,6 +16,7 @@ package registry
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -249,6 +250,46 @@ func (r *Registry) nextOrderLocked() int {
 		}
 	}
 	return next
+}
+
+// ErrBadReorder marks a reorder that does not name the registry exactly once
+// over: a list that omits a registered space, names an unknown id, or repeats
+// one. A partial list is a client bug, not a partial reorder, so the caller
+// answers it as a bad request rather than a failure of the registry.
+var ErrBadReorder = errors.New("registry: a reorder must name every registered space exactly once")
+
+// Reorder sets the sidebar sequence to ids: the whole ordered list, applied as
+// order 0..n-1. It is deliberately not a per-row move — a full-list write is
+// idempotent, it is already the shape every save writes, and it cannot leave the
+// sidebar half-moved when the operator drags twice in quick succession.
+//
+// The list is validated in full before anything is touched, so a rejected
+// reorder leaves the arrangement exactly as it was. Because the length matches
+// and every id is known and distinct, the list is a permutation of the registry.
+func (r *Registry) Reorder(ids []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(ids) != len(r.entries) {
+		return fmt.Errorf("%w: %d ids for %d spaces", ErrBadReorder, len(ids), len(r.entries))
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if _, ok := r.entries[id]; !ok {
+			return fmt.Errorf("%w: no space %q", ErrBadReorder, id)
+		}
+		if seen[id] {
+			return fmt.Errorf("%w: %q appears twice", ErrBadReorder, id)
+		}
+		seen[id] = true
+	}
+
+	for i, id := range ids {
+		e := r.entries[id]
+		e.Order = i
+		r.entries[id] = e
+	}
+	return r.saveLocked()
 }
 
 // SetPin sets whether a space is pinned. It no longer orders anything — the

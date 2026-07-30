@@ -51,6 +51,15 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   save densifies to 0..n-1. Registration appends at `max(order)+1`; activation no
   longer moves a row. `pinned` still written, orders nothing.
   [ticket](tickets/01-spaces-carry-an-explicit-order.md)
+- **02 — Drag a space to reorder it.** `POST /api/spaces/reorder` takes the
+  complete ordered list and `registry.Reorder` applies it as 0..n-1; it validates
+  the whole list before touching an entry, so an omitted, unknown or repeated id
+  is a `400` that cannot half-move the sidebar. The card is the drag source with a
+  Phosphor grip and a `--primary`/`--ring` drop indicator drawn before the drop;
+  `⌥↑`/`⌥↓` on the selected space emit the same whole-list write, behind
+  `isEditingTarget`; both are inert while the filter box is non-empty. Nothing is
+  applied optimistically — the arrangement returns as a snapshot.
+  [ticket](tickets/02-drag-a-space-to-reorder-it.md)
 
 ## Not yet specified
 

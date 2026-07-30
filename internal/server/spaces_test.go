@@ -245,6 +245,88 @@ func TestActivatingASpaceDoesNotReorder(t *testing.T) {
 	}
 }
 
+// The reorder the operator's drag emits: one endpoint takes the complete ordered
+// list and the sidebar follows it, through the registry and back into the model
+// snapshot the cockpit renders (story 1). It is the operator's arrangement, so it
+// outlives the process that received it — a fresh chartr on the same config dir
+// reads it straight back off disk (story 2).
+func TestReorderSetsTheSidebarAndSurvivesARestart(t *testing.T) {
+	configDir := t.TempDir()
+	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+
+	a := register(t, h, chartrtest.NewSpaceRepo(t))
+	b := register(t, h, chartrtest.NewSpaceRepo(t))
+	c := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	if got, want := spaceIDs(h.Snapshot(ctx(t))), []string{a.ID, b.ID, c.ID}; !equalStrings(got, want) {
+		t.Fatalf("sidebar = %v, want registration order %v", got, want)
+	}
+
+	// Drag the last space to the top.
+	want := []string{c.ID, a.ID, b.ID}
+	if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
+		t.Fatalf("reorder = %d, body %s", code, body)
+	}
+	if got := spaceIDs(h.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Fatalf("sidebar after reorder = %v, want %v", got, want)
+	}
+
+	// Sending the same list again changes nothing: the write is idempotent, which
+	// is what makes a full-list write safe to emit on every drag.
+	if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
+		t.Fatalf("repeat reorder = %d, body %s", code, body)
+	}
+	if got := spaceIDs(h.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Errorf("sidebar after a repeated reorder = %v, want the unchanged %v", got, want)
+	}
+
+	// The arrangement is on disk, not in this process: a fresh chartr over the
+	// same registry shows the same sidebar.
+	second := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	if got := spaceIDs(second.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Errorf("sidebar after a restart = %v, want the arrangement %v", got, want)
+	}
+}
+
+// A reorder is the whole list or nothing. A request that omits a registered
+// space, names an id the registry does not know, or repeats one is a client bug
+// — refused with a 400 that leaves the previous arrangement exactly as it was,
+// rather than applied as a partial reorder.
+func TestReorderRejectsAListThatIsNotTheWholeRegistry(t *testing.T) {
+	h := chartrtest.Start(t)
+
+	a := register(t, h, chartrtest.NewSpaceRepo(t))
+	b := register(t, h, chartrtest.NewSpaceRepo(t))
+	c := register(t, h, chartrtest.NewSpaceRepo(t))
+
+	// Put the sidebar in a known non-default arrangement first, so a rejected
+	// request that silently reset the order would show up.
+	want := []string{b.ID, c.ID, a.ID}
+	if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
+		t.Fatalf("reorder = %d, body %s", code, body)
+	}
+
+	for _, tc := range []struct {
+		name string
+		ids  []string
+	}{
+		{"a list omitting a registered space", []string{b.ID, c.ID}},
+		{"a list naming an unknown space", []string{b.ID, c.ID, "deadbeefcafe"}},
+		{"a list repeating a space", []string{b.ID, c.ID, c.ID}},
+		{"an empty list", []string{}},
+		{"a list longer than the registry", []string{b.ID, c.ID, a.ID, a.ID}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": tc.ids}); code != 400 {
+				t.Errorf("reorder with %s = %d, want 400 (body %s)", tc.name, code, body)
+			}
+			if got := spaceIDs(h.Snapshot(ctx(t))); !equalStrings(got, want) {
+				t.Errorf("sidebar after a refused reorder = %v, want the untouched %v", got, want)
+			}
+		})
+	}
+}
+
 // Pinning is vestigial after the stored order: the flag is still written and
 // still rides the snapshot, but it no longer moves a row. It goes away entirely
 // with its route in the contract half of this work.
