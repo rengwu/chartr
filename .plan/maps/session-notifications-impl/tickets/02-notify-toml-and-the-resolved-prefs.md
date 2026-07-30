@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [01]
+claimed_by: s2d5179cf39c6
+claimed_at: 2026-07-30T18:36:06Z
 ---
 
 # `notify.toml` and the resolved prefs
