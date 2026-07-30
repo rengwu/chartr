@@ -10,6 +10,7 @@ import (
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/terminal"
 )
 
 // handleOpenTerminal opens an ad-hoc shell in the space's working tree (story
@@ -146,6 +147,38 @@ func (s *Server) handleCloseTerminal(w http.ResponseWriter, r *http.Request) {
 	if err := s.terms.Close(r.PathValue("termID")); err != nil {
 		httpError(w, http.StatusNotFound, err.Error())
 		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// onRunFinished is the server's end of the one RunFinished seam: the run clock
+// folded a tab's published states and decided a run worth reporting has ended
+// (session-notifications spec, "The clock is a pure function"). Every consumer of
+// that event hangs here, and they are independent — the dot below records it in
+// the cockpit, and the OS notification announces it elsewhere; neither re-derives
+// the rule, and neither knows about the other.
+//
+// It runs on the sampler's goroutine, so it does what the manager's own change
+// callback does: mark, then push a fresh snapshot, which is what makes the dot
+// appear with no refresh (and appear on reload, since the flag is server state).
+func (s *Server) onRunFinished(ev terminal.RunFinished) {
+	s.terms.MarkFinishedUnseen(ev.TerminalID)
+	s.rebuild()
+}
+
+// handleTerminalSeen clears one tab's dot: the operator focused it, which is the
+// whole acknowledgement. Focusing a tab that carries no dot is an ordinary no-op
+// — the client posts on focus without knowing whether there was anything to clear
+// — so it answers 204 either way and pushes only when something actually changed.
+// An id that names no live terminal is a 404, exactly as ending one is.
+func (s *Server) handleTerminalSeen(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("termID")
+	if _, ok := s.terms.Lookup(id); !ok {
+		httpError(w, http.StatusNotFound, "no such terminal")
+		return
+	}
+	if s.terms.MarkSeen(id) {
+		s.rebuild()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

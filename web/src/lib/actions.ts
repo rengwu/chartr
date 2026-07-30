@@ -114,6 +114,18 @@ export function closeTerminal(spaceId: string, termId: string): Promise<void> {
   ) as Promise<void>
 }
 
+// markTerminalSeen acknowledges a run that finished while the operator was
+// elsewhere: the tab is in front of them now, so its dot clears in the snapshot
+// (session-notifications). Focusing is the whole acknowledgement — there is no
+// dismiss and no clear-all — and posting for a tab that carries no dot is an
+// ordinary no-op, which is why the caller may post on focus without checking.
+export function markTerminalSeen(spaceId: string, termId: string): Promise<void> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(spaceId)}/terminals/${encodeURIComponent(termId)}/seen`,
+  ) as Promise<void>
+}
+
 // ideate opens the ideate on-ramp (ticket 15): a live, ticketless agent tab typed
 // the on-disk starter prompt on open. It shares only the adapter's spawn
 // primitive with a real session — no map or ticket, no claim, no lifecycle, ended

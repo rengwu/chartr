@@ -100,7 +100,7 @@ func New(opts Options) (*Server, error) {
 	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
-	s.terms = terminal.NewManager(s.rebuild, nil)
+	s.terms = terminal.NewManager(s.rebuild, s.onRunFinished)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
@@ -186,6 +186,12 @@ func New(opts Options) (*Server, error) {
 	// response (ADR 0010); the shell itself lives on the terminal socket.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals", s.handleOpenTerminal)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}", s.handleCloseTerminal)
+	// The acknowledgement of a run that finished while the operator was elsewhere
+	// (session-notifications, the dot): focusing a tab clears its dot in the
+	// snapshot. It is a POST because it writes state, and it is the *only* way the
+	// dot clears — there is no manual dismiss and no clear-all, which is what keeps
+	// a stale dot unrepresentable.
+	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/{termID}/seen", s.handleTerminalSeen)
 	// The skill launcher: run any on-ramp skill on a chosen agent as a live,
 	// ticketless tab with an optional line of context — no map or ticket lookup, no
 	// claim, no lifecycle, ended only by the human, exactly like an ad-hoc shell.
