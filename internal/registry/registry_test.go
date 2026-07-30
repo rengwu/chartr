@@ -3,7 +3,7 @@ package registry_test
 import (
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,30 +14,17 @@ import (
 // The stored sidebar order at the file seam. The migration is the test that
 // matters: a registry written before spaces carried an order must load to
 // exactly the sequence the *old* rule produced — pinned first, then recency,
-// then path — and keep it once it is written back. The old rule is restated
-// here as an independent oracle (oldRule) rather than a hand-copied list, so the
-// assertion is against the behaviour being frozen and not against a fixture
-// someone would have to re-derive by eye.
+// then path — and keep it once it is written back.
+//
+// That sequence is now stated as a literal expectation rather than re-derived by
+// an oracle. `pinned` is deleted: it is gone from registry.Entry, so a comparator
+// written here can no longer read the field it sorted by, and only the migration
+// (which reads the raw key at load) still knows about it. The fixture's expected
+// order is spelled out beside the fixture instead, so what is being frozen is
+// visible in one place.
 //
 // The degradation cases follow: a hand-edited or truncated file costs the
 // operator their arrangement, never their list of spaces.
-
-// oldRule is the sidebar comparator as it stood before this order existed,
-// lifted from the pre-change registry.List: pinned first, then most-recently-
-// active, then path as the stable tiebreak.
-func oldRule(entries []registry.Entry) []string {
-	out := append([]registry.Entry{}, entries...)
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Pinned != out[j].Pinned {
-			return out[i].Pinned
-		}
-		if !out[i].LastActive.Equal(out[j].LastActive) {
-			return out[i].LastActive.After(out[j].LastActive)
-		}
-		return out[i].Path < out[j].Path
-	})
-	return paths(out)
-}
 
 func paths(entries []registry.Entry) []string {
 	out := make([]string, 0, len(entries))
@@ -111,6 +98,11 @@ func storedOrders(t *testing.T, dir string) map[string]int {
 // preUpgrade is a registry as it was written before the order existed: mixed
 // pinned and last_active values, no order anywhere, deliberately not in
 // sidebar sequence in the file.
+//
+// preUpgradeOrder is what the old rule made of it, worked through by hand:
+// the two pinned spaces lead, most-recently-active first among them (gamma
+// 01-03 before alpha 01-01), then the unpinned two the same way (delta 01-09
+// before beta 01-05).
 const preUpgrade = `
 [[space]]
   path = "/repos/beta"
@@ -133,16 +125,18 @@ const preUpgrade = `
   last_active = 2026-01-03T09:00:00Z
 `
 
+var preUpgradeOrder = []string{"/repos/gamma", "/repos/alpha", "/repos/delta", "/repos/beta"}
+
 // The upgrade is invisible: a file with no order loads to exactly the sequence
-// the old rule produced, and that sequence survives the save that writes it back.
+// the old rule produced — `pinned` included, which is why the migration still
+// reads the deleted key — and that sequence survives the save that writes it back.
 func TestMigrationFreezesTodaysOrder(t *testing.T) {
 	dir := writeRegistry(t, preUpgrade)
 	r := load(t, dir)
 
 	got := paths(r.List())
-	want := oldRule(r.List())
-	if !equal(got, want) {
-		t.Fatalf("frozen order = %v, want the old rule's %v", got, want)
+	if !equal(got, preUpgradeOrder) {
+		t.Fatalf("frozen order = %v, want the old rule's %v", got, preUpgradeOrder)
 	}
 	// Sanity: the file's own row order is not the sidebar's, so the assertion
 	// above is testing a sort and not an echo.
@@ -194,6 +188,49 @@ func TestStoredOrderBeatsPinAndRecency(t *testing.T) {
 	want := []string{"/repos/beta", "/repos/gamma", "/repos/alpha"}
 	if !equal(got, want) {
 		t.Errorf("order = %v, want the stored %v", got, want)
+	}
+}
+
+// `pinned` is deleted, and a file that still carries it is not an error: the key
+// is ignored on read — every space present, in its stored order, the flag moving
+// nothing — and stops being written on the next save. An operator who upgrades
+// never has to touch the file, and never sees a warning about a key they cannot
+// act on.
+func TestPinnedKeyIsIgnoredAndDroppedOnSave(t *testing.T) {
+	dir := writeRegistry(t, `
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+  pinned = false
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+  pinned = true
+
+[[space]]
+  path = "/repos/gamma"
+  order = 2
+  pinned = true
+`)
+	r := load(t, dir)
+	want := []string{"/repos/alpha", "/repos/beta", "/repos/gamma"}
+	if got := paths(r.List()); !equal(got, want) {
+		t.Fatalf("order = %v, want the stored %v — a stale pinned key must move nothing", got, want)
+	}
+
+	if err := r.SetTrackerDismissed(r.List()[0].ID, true); err != nil {
+		t.Fatalf("forcing a save: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "spaces.toml"))
+	if err != nil {
+		t.Fatalf("reading spaces.toml back: %v", err)
+	}
+	if strings.Contains(string(data), "pinned") {
+		t.Errorf("the saved registry still writes pinned:\n%s", data)
+	}
+	if got := paths(load(t, dir).List()); !equal(got, want) {
+		t.Errorf("order after dropping the key = %v, want %v", got, want)
 	}
 }
 
