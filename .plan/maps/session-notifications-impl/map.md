@@ -57,6 +57,20 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- **01 — The working clock and the settle debounce.** `runClock` in
+  `internal/terminal/clock.go` is the whole rule: a pure fold over the published
+  `(state, timestamp)` pairs, time as a parameter, emitting at most one
+  `RunFinished` per run — tab id, space, map/ticket where it is a session, the
+  reason it settled into, and a duration that excludes the *D* wait. An empty state
+  moves nothing, a nil clock emits nothing (that is `enabled = false`), and
+  non-positive constants clamp to the shipped defaults, `DefaultNotifyAfter` = 60s
+  and `DefaultNotifySettle` = 10s. Table-tested per behaviour plus the real
+  recorded Claude turn, which folds to exactly one `idle` event spanning its
+  dialog and its pause. Flagged for ticket 03: a run only ends on a *sample*, so a
+  tab dropped from the manager never reports its last run — the emitting seam
+  decides whether a drop flushes the clock.
+  [ticket](tickets/01-the-working-clock-and-the-settle-debounce.md)
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A ticket that exposes a genuinely new question sends it back to the spec — it does not open fog here. -->
