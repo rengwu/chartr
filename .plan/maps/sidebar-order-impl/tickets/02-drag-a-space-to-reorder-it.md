@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [01]
+claimed_by: s31174e546833
+claimed_at: 2026-07-30T05:38:54Z
 ---
 
 # Drag a space to reorder it
