@@ -66,9 +66,11 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   non-positive constants clamp to the shipped defaults, `DefaultNotifyAfter` = 60s
   and `DefaultNotifySettle` = 10s. Table-tested per behaviour plus the real
   recorded Claude turn, which folds to exactly one `idle` event spanning its
-  dialog and its pause. Flagged for ticket 03: a run only ends on a *sample*, so a
-  tab dropped from the manager never reports its last run — the emitting seam
-  decides whether a drop flushes the clock.
+  dialog and its pause. **Operator-approved:** the two defaults stand as the
+  numbers ticket 02's file defaults to, and the gap below is accepted as ticket
+  03's to settle rather than the spec's. Flagged for ticket 03: a run only ends on
+  a *sample*, so a tab dropped from the manager never reports its last run — the
+  emitting seam decides whether a drop flushes the clock.
   [ticket](tickets/01-the-working-clock-and-the-settle-debounce.md)
 
 ## Not yet specified
