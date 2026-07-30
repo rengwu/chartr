@@ -60,6 +60,15 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   `isEditingTarget`; both are inert while the filter box is non-empty. Nothing is
   applied optimistically — the arrangement returns as a snapshot.
   [ticket](tickets/02-drag-a-space-to-reorder-it.md)
+- **03 — `pinned` is deleted.** `Entry.Pinned`, `SetPin`, the
+  `POST /api/spaces/{id}/pin` route and handler, and `Space.pinned` on both sides
+  of the wire are gone; an old `spaces.toml` carrying the key loads without
+  complaint and drops it on the next save. One read survives on purpose: the
+  migration freeze reads the raw `pinned` key at load, because today's sequence
+  *is* pinned-first and a freeze that cannot see the flag reshuffles the sidebar on
+  upgrade. It orders nothing afterwards and is never written. The SPA fallback now
+  404s unrouted `/api/` paths, without which the deleted route answered `200` with
+  the app's HTML. [ticket](tickets/03-delete-pinned.md)
 
 ## Not yet specified
 

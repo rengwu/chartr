@@ -3,10 +3,9 @@
 // than a source of truth (ticket 02, ADR 0003, ADR 0009). Everything
 // authoritative — maps, committed workspace config, git history — lives in the
 // repositories; the registry holds only registered paths, the operator's sidebar
-// order, and each space's local pin and recency. Losing it costs re-adding
-// folders, never work (their arrangement included), so a
-// deleted spaces.toml is not an error: the operator re-registers and each
-// repo picks up exactly as it sits.
+// order, and each space's local recency. Losing it costs re-adding folders, never
+// work (their arrangement included), so a deleted spaces.toml is not an error:
+// the operator re-registers and each repo picks up exactly as it sits.
 //
 // Registering a folder that is not yet a git repository runs `git init`,
 // announced and never silent (story 2). De-registering forgets the entry and
@@ -28,9 +27,9 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Entry is one registered space: its path plus the local, per-machine order,
-// pin and recency. The ID is derived from the path (so a rebuilt registry
-// re-derives the same identity) and is not persisted.
+// Entry is one registered space: its path plus the local, per-machine order and
+// recency. The ID is derived from the path (so a rebuilt registry re-derives the
+// same identity) and is not persisted.
 type Entry struct {
 	ID   string `toml:"-"`
 	Path string `toml:"path"`
@@ -41,11 +40,7 @@ type Entry struct {
 	// write. A file carrying no order at all — one written before the sidebar had
 	// one — is frozen into today's sequence on load rather than reset, which is
 	// what makes the upgrade invisible.
-	Order int `toml:"order"`
-	// Pinned is vestigial: it is still read and written, but nothing orders by it
-	// any more. Dragging a space to the top is everything pinning did, so the key
-	// goes away entirely rather than racing the stored order for the sidebar.
-	Pinned     bool      `toml:"pinned"`
+	Order      int       `toml:"order"`
 	LastActive time.Time `toml:"last_active"`
 	// LastAgent is the registered agent this space last spawned with — state, not
 	// config: chartr writes it after a successful launch and nothing edits it.
@@ -93,22 +88,22 @@ func Load(dataDir string) (*Registry, error) {
 		return nil, fmt.Errorf("registry: parsing %s: %w", r.path, err)
 	}
 	// A missing `order` and an order of 0 decode into the same int, so the rows
-	// are read a second time as raw tables purely to learn which entries carried
-	// the key at all. Presence is what tells a pre-upgrade file — freeze it —
-	// apart from a hand-edited one, which degrades. The document has already
-	// parsed once, so this cannot fail; both decodes see the rows in file order.
+	// are read a second time as raw tables purely to learn what the typed Entry
+	// cannot say. The document has already parsed once, so this cannot fail; both
+	// decodes see the rows in file order.
 	var raw struct {
 		Spaces []map[string]any `toml:"space"`
 	}
 	_ = toml.Unmarshal(data, &raw)
-	carried := make([]bool, len(f.Spaces))
+	rows := make([]legacyRow, len(f.Spaces))
 	for i := range f.Spaces {
 		f.Spaces[i].ID = spaceID(f.Spaces[i].Path)
 		if i < len(raw.Spaces) {
-			_, carried[i] = raw.Spaces[i]["order"]
+			_, rows[i].hasOrder = raw.Spaces[i]["order"]
+			rows[i].pinned, _ = raw.Spaces[i]["pinned"].(bool)
 		}
 	}
-	for _, e := range ordered(f.Spaces, carried) {
+	for _, e := range ordered(f.Spaces, rows) {
 		r.entries[e.ID] = e
 	}
 	return r, nil
@@ -118,8 +113,24 @@ type file struct {
 	Spaces []Entry `toml:"space"`
 }
 
+// legacyRow is what the raw second decode learns about a row that its typed
+// Entry cannot say, and both facts matter only to the migration.
+//
+// hasOrder: whether the row carried an `order` key at all. Presence is what tells
+// a pre-upgrade file — freeze it — apart from a hand-edited one, which degrades.
+//
+// pinned: the deleted `pinned` flag. It is gone from Entry, from the wire model
+// and from the HTTP surface, and is never written again — but the freeze is
+// defined as *today's* sequence, and today's sequence put pinned spaces first.
+// Reading the dead key here, and only here, is what keeps the upgrade invisible
+// for an operator whose file still carries it; it orders nothing afterwards.
+type legacyRow struct {
+	hasOrder bool
+	pinned   bool
+}
+
 // ordered resolves the sidebar sequence of a just-loaded file and densifies it,
-// with carried[i] reporting whether entry i actually carried an `order` key.
+// with rows[i] carrying what the raw decode learned about entry i.
 //
 // It is one rule doing two jobs. Entries with a unique order are well-formed and
 // keep their sequence; entries with a duplicate or missing order are malformed,
@@ -127,41 +138,50 @@ type file struct {
 // then path — and appended after the well-formed ones. A pre-upgrade file, where
 // no entry carries an order, is simply the case where every entry is malformed:
 // the whole list sorts by the old rule and freezes into 0..n-1, so the sidebar
-// after the upgrade is the sidebar before it. A hand-edit or a truncated file
-// costs the operator their arrangement, never their list of spaces.
+// after the upgrade is the sidebar before it. This is the only place the deleted
+// `pinned` key is still read, and it is read as history: what the sidebar looked
+// like at the moment of the upgrade, never as an ordering input afterwards.
+// A hand-edit or a truncated file costs the operator their arrangement, never
+// their list of spaces.
 //
 // The result is written back on the next save, not here: loading the registry
 // stays a read.
-func ordered(entries []Entry, carried []bool) []Entry {
+func ordered(entries []Entry, rows []legacyRow) []Entry {
 	count := map[int]int{}
 	for i, e := range entries {
-		if carried[i] {
+		if rows[i].hasOrder {
 			count[e.Order]++
 		}
 	}
 
+	// The malformed are held as indices, not entries, so each one's raw row — the
+	// only place its `pinned` still lives — travels with it into the sort.
 	wellFormed := make([]Entry, 0, len(entries))
-	malformed := make([]Entry, 0, len(entries))
+	malformed := make([]int, 0, len(entries))
 	for i, e := range entries {
-		if carried[i] && count[e.Order] == 1 {
+		if rows[i].hasOrder && count[e.Order] == 1 {
 			wellFormed = append(wellFormed, e)
 		} else {
-			malformed = append(malformed, e)
+			malformed = append(malformed, i)
 		}
 	}
 
 	sortByOrder(wellFormed)
-	sort.SliceStable(malformed, func(i, j int) bool {
-		if malformed[i].Pinned != malformed[j].Pinned {
-			return malformed[i].Pinned
+	sort.SliceStable(malformed, func(a, b int) bool {
+		i, j := malformed[a], malformed[b]
+		if rows[i].pinned != rows[j].pinned {
+			return rows[i].pinned
 		}
-		if !malformed[i].LastActive.Equal(malformed[j].LastActive) {
-			return malformed[i].LastActive.After(malformed[j].LastActive)
+		if !entries[i].LastActive.Equal(entries[j].LastActive) {
+			return entries[i].LastActive.After(entries[j].LastActive)
 		}
-		return malformed[i].Path < malformed[j].Path // stable tiebreak
+		return entries[i].Path < entries[j].Path // stable tiebreak
 	})
 
-	out := append(wellFormed, malformed...)
+	out := wellFormed
+	for _, i := range malformed {
+		out = append(out, entries[i])
+	}
 	for i := range out {
 		out[i].Order = i
 	}
@@ -227,7 +247,7 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 	return e, gitInited, nil
 }
 
-// Deregister forgets a space: it removes the registry entry and its local pin
+// Deregister forgets a space: it removes the registry entry and its local order
 // and recency, and touches nothing in the repository. Re-register any time and
 // the repo picks up exactly as it sits. Forgetting an unknown ID is a no-op.
 func (r *Registry) Deregister(id string) error {
@@ -292,21 +312,6 @@ func (r *Registry) Reorder(ids []string) error {
 	return r.saveLocked()
 }
 
-// SetPin sets whether a space is pinned. It no longer orders anything — the
-// sidebar sorts by the stored order alone — and is kept only until the pin
-// surface is removed. Pinning an unknown ID is a no-op.
-func (r *Registry) SetPin(id string, pinned bool) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	e, ok := r.entries[id]
-	if !ok {
-		return nil
-	}
-	e.Pinned = pinned
-	r.entries[id] = e
-	return r.saveLocked()
-}
-
 // SetTrackerDismissed records whether the operator waved off the tracker-adapter
 // offer for a space, so it is not shown again. Setting it on an unknown ID, or to
 // the value already held, is a no-op.
@@ -339,9 +344,9 @@ func (r *Registry) SetLastAgent(id, name string) error {
 }
 
 // List returns the entries ordered as the sidebar shows them: the operator's
-// stored order, and nothing else. Pin and recency are still recorded but sort
-// nothing, and an actionable signal may flag a row but never re-sorts it — so
-// only an explicit reorder, or a registration appending at the end, moves a row.
+// stored order, and nothing else. Recency is still recorded but sorts nothing,
+// and an actionable signal may flag a row but never re-sorts it — so only an
+// explicit reorder, or a registration appending at the end, moves a row.
 func (r *Registry) List() []Entry {
 	r.mu.Lock()
 	out := make([]Entry, 0, len(r.entries))

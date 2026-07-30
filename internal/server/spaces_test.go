@@ -327,20 +327,22 @@ func TestReorderRejectsAListThatIsNotTheWholeRegistry(t *testing.T) {
 	}
 }
 
-// Pinning is vestigial after the stored order: the flag is still written and
-// still rides the snapshot, but it no longer moves a row. It goes away entirely
-// with its route in the contract half of this work.
-func TestPinNoLongerReorders(t *testing.T) {
+// Pin is gone, route and all. It was the ordering authority the stored order
+// replaced, and it is the whole of what this half deletes: the ordering
+// assertions above (activation does not move a row, a registration appends, a
+// reorder is the one way a row moves) are what stand in its place. The sidebar is
+// untouched by the call, because there is nothing there to call.
+func TestPinRouteIsGone(t *testing.T) {
 	h := chartrtest.Start(t)
 	first := register(t, h, chartrtest.NewSpaceRepo(t))
 	last := register(t, h, chartrtest.NewSpaceRepo(t))
 
-	if code, body := h.Post("/api/spaces/"+last.ID+"/pin", map[string]bool{"pinned": true}); code != 204 {
-		t.Fatalf("pin = %d, body %s", code, body)
+	if code, body := h.Post("/api/spaces/"+last.ID+"/pin", map[string]bool{"pinned": true}); code != 404 {
+		t.Errorf("post to the deleted pin route = %d, want 404 (body %s)", code, body)
 	}
 
 	if got, want := spaceIDs(h.Snapshot(ctx(t))), []string{first.ID, last.ID}; !equalStrings(got, want) {
-		t.Errorf("sidebar after pinning the last space = %v, want the unchanged %v", got, want)
+		t.Errorf("sidebar after a post to the deleted pin route = %v, want the unchanged %v", got, want)
 	}
 }
 

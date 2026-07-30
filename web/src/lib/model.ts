@@ -124,7 +124,6 @@ export interface Space {
   // The working tree's current git branch (or a short detached-HEAD sha), read
   // live. Absent when it can't be determined — the sidebar omits it then.
   branch?: string
-  pinned: boolean
   // True when the working tree carries uncommitted changes — a session's or a
   // shell's debris. A badge, never a spawn gate (story 68): the operator decides
   // whether the debris is harmless; chartr spawns into it all the same.

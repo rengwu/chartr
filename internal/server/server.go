@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,7 +126,6 @@ func New(opts Options) (*Server, error) {
 	// dense 0..n-1 order every save writes.
 	s.mux.HandleFunc("POST /api/spaces/reorder", s.handleReorder)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
-	s.mux.HandleFunc("POST /api/spaces/{id}/pin", s.handlePin)
 	// The remembered agent, set directly rather than only as a side effect of a
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.
@@ -271,11 +271,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // (ticket 07's star names) resolve. On an unbuilt checkout dist holds only
 // .gitkeep and non-asset paths 404 — the browser demo needs `make web` first;
 // the tests exercise the control socket and HTTP actions, which do not.
+//
+// `/api/` is excluded from the fallback: an unrouted API path is a missing
+// endpoint, not a client route, and answering it with the app's index page turns
+// a deleted route (`/api/spaces/{id}/pin`) into a silent 200 for whoever still
+// calls it. It 404s instead.
 func spaHandler(dist fs.FS) http.Handler {
 	files := http.FileServer(http.FS(dist))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || fileExists(dist, r.URL.Path) {
 			files.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
 			return
 		}
 		if index, err := fs.ReadFile(dist, "index.html"); err == nil {

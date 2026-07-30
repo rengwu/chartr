@@ -322,8 +322,8 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	// It is also surfaced on the space, so a stale fork is visible without opening
 	// the preview. The library lives under the data root, not the watched `.plan/`,
 	// so it refreshes on the next rebuild rather than by notice — force one.
-	if code, body := h.Post(fmt.Sprintf("/api/spaces/%s/pin", resp.ID), map[string]bool{"pinned": true}); code != 204 {
-		t.Fatalf("pin to force a rebuild = %d, body %s", code, body)
+	if code, body := h.Put(fmt.Sprintf("/api/spaces/%s/agent", resp.ID), map[string]string{"agent": "opus"}); code != 204 {
+		t.Fatalf("remembering an agent to force a rebuild = %d, body %s", code, body)
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if !hasSubstring(s.Warnings, "behind the shipped default") {

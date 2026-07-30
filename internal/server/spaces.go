@@ -58,7 +58,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleDeregister forgets a space — the registry entry and its local pin and
+// handleDeregister forgets a space — the registry entry and its local order and
 // recency — and touches nothing in the repository (story 4).
 func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 	if err := s.reg.Deregister(r.PathValue("id")); err != nil {
@@ -88,25 +88,6 @@ func (s *Server) handleReorder(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		httpError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.rebuild()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// handlePin sets whether a space is pinned. The flag no longer orders anything —
-// the sidebar sorts by the operator's stored order alone — so this writes a
-// vestigial bit and rebuilds; it survives only until the pin surface is removed.
-func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Pinned bool `json:"pinned"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httpError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := s.reg.SetPin(r.PathValue("id"), body.Pinned); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -374,7 +355,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, termWarnings []s
 		Name:           filepath.Base(e.Path),
 		Path:           e.Path,
 		Branch:         gitBranch(e.Path),
-		Pinned:         e.Pinned,
 		Dirty:          gitDirty(e.Path),
 		LastAgent:      e.LastAgent,
 		Skills:         s.resolvedSkills(e.Path),
