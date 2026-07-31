@@ -76,3 +76,84 @@ switching to it from a registered space with the map open does not carry the map
 across; it does not appear in the settings surface's list of spaces even while it
 has a shell open. `go vet ./...`, `go test ./...` and the frontend `check`,
 `build` and `vitest` scripts pass, with no amber in the built CSS.
+
+## Answer
+
+Closed the gap on both sides: the refusals are real at the server, and the
+controls are gone from the chrome.
+
+**One resolver, swapped in.** `repoSpace` (server/spaces.go) is the single
+doorstep for every action that needs a repository: it answers not-found for an
+unknown id and refuses the Scratch identity with a `400` naming the reason. It
+replaced the repeated `reg.Get` + not-found block at spawn, launch, ideate,
+payload preview, `haltTarget` (resume/respawn/release-session), ticket release,
+tracker-adapter install, and per-space config open — and it is now the doorstep
+at three handlers that previously did no lookup at all: deregister, set-agent,
+and tracker dismiss. The three terminal handlers keep the plain lookup, as
+specified. Two shapes changed as a consequence, both deliberate and worth a
+reader knowing:
+
+- **Deregistering an unknown id was a `204` no-op and is now a `404`**, because
+  the resolver is the shape the ticket asked these handlers to share. The same
+  applies to set-agent and tracker-dismiss. That is a strictly better answer,
+  but it is a wire change beyond Scratch, so it is flagged rather than buried.
+- **`handleSetSpaceAgent` now resolves the space before decoding its body**, so
+  a Scratch request gets the Scratch refusal rather than "agent is required".
+
+`registry.Deregister`'s own Scratch guard stands untouched underneath — the HTTP
+refusal is the answer, the registry invariant is the floor.
+
+**The card lost every control it cannot honour.** The forget button and the
+whole action row — branch chip, skills launcher, new-shell control — are behind
+`{#if !space.scratch}`. The row is not rendered rather than rendered blank, so
+the card's `gap-2` leaves no strip under the shells. The drag handle and the
+shell rows stay.
+
+**The stage lost its map controls.** `mapless` gates the star-map toggle, the
+tracker banner and the map's `M`/`Esc` bindings. Because the map's open state is
+a standing preference on the stage rather than per space, the card itself is
+gated by `mapOpen` (`mapShown && !mapless`) where it renders — which is what
+stops an operator carrying an open map across from a registered space. Three
+other readers of `mapShown` follow from a *rendered* card and now read `mapOpen`
+too: the docked split's frozen terminal width, the first-dock measurement, and
+the deep-link reflection. The first of those was a real bug in waiting — without
+it a Scratch shell would have sat in 60% of the stage with nothing beside it.
+
+**The settings surface stops listing it.** `configurableSpaces` in
+`spacevisibility.ts` sits beside `visibleSpaces` as a second pure predicate, and
+`App.svelte` feeds it the *unfiltered* snapshot, so a Scratch space with a shell
+open is visible in the sidebar and still absent as a config scope.
+
+**Tested** at the seam ticket 01 used. `TestRepoScopedEndpointsRefuseScratch`
+drives all thirteen refused endpoints and asserts each answers `400` *with a
+message naming Scratch* — several of them would 400 anyway on a missing agent or
+map, so the status alone would not have proved the guard. It registers a real
+stub agent so the launch endpoints clear their own doorstep first, asserts
+Scratch is still in the next snapshot after the refused deregistration, and
+asserts the isolated home is still empty afterwards.
+`TestTerminalEndpointsAcceptScratch` covers open/seen/close. Three vitest cases
+cover `configurableSpaces`, including the Scratch-with-a-shell case that tells it
+apart from `visibleSpaces`.
+
+**Verified against a real built binary** under isolated `HOME`,
+`XDG_CONFIG_HOME` and data roots: all thirteen endpoints refused with the Scratch
+message; a registered space still accepted tracker-dismiss and set-agent (`204`)
+and an unknown id still answered `404`; the terminal endpoints accepted Scratch;
+the control socket showed Scratch still present after the refused
+deregistration; and the isolated home was completely empty — no `.git`, no
+`.plan/`, no adapter, no payload. Green: `go vet ./...`, `go test ./... -count=1`,
+frontend `check` (0 errors), `build`, and 211 vitests; no amber in the built CSS.
+
+**Left out, deliberately.** No controllable browser was attached to this session,
+so the chrome half was verified by build and type-check plus the pure-module
+test, not by a visual click-through — the same limitation ticket 01 recorded.
+The three DOM claims resting on that (no remove/branch/skills/new-shell control
+on the card, no map toggle on the stage, `M` inert) are simple template guards,
+but they are unclicked and a human should look. Also: the stage's empty state is
+left alone, being unreachable for Scratch by construction, and the stage header's
+gear is left in place — it opens the global settings route, not a space scope.
+
+**Unrelated, found in passing:** `web/src/lib/SpacePane.svelte` carries a literal
+NUL byte in the `{#key}` separator (`${activeTerm.id}\0${terminalPrefsKey}`). It
+predates this ticket, it works, and it is out of scope here — but it makes the
+file binary to `grep`/`rg`, which will cost the next reader time.
