@@ -82,6 +82,21 @@ test compiles against `dist/`. Grep the built CSS for amber before committing.
   published sample into the single `RunFinished` callback seam, with no notifier
   or dot consumer yet.
   [ticket](tickets/02-notify-toml-and-the-resolved-prefs.md)
+- **03 — The OS notification.** `internal/notify` is one interface wide: a pure
+  `Compose` writing the space into the title and the ticket, the reason in the
+  operator's words and the duration into the body, and three `exec` paths —
+  `osascript`, `notify-send`, a PowerShell toast — chosen once by
+  `notify.Platform()` where the server is built, so tests substitute a stub through
+  `server.Options.Notifier` and never shell out on any OS. Operator text is never
+  syntax: macOS reads it out of argv through an `on run argv` handler, Linux passes
+  it positionally after `--`, and Windows — the one platform with no argv to hide
+  it in — decodes it from base64 inside an otherwise constant script.
+  `server.announceRun` runs off the sampler goroutine after the dot is pushed, and
+  a missing binary, a non-zero exit or an unsupported OS changes nothing and logs
+  once per process. **Ticket 01's flag answered:** a drop does *not* flush the
+  clock — a dead session pins and reports as `dead` through the ordinary path,
+  while what drops is a tab the operator just ended themselves.
+  [ticket](tickets/03-the-os-notification.md)
 - **04 — The dot on the session card.** `model.Terminal.FinishedUnseen` is the
   cockpit's half of the one `RunFinished` event: per-tab server state raised in
   `server.onRunFinished` (the fan-out ticket 03's notifier joins) and cleared by
