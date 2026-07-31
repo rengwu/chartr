@@ -285,19 +285,23 @@
       {/if}
       <span class="truncate">{space.name}</span>
     </span>
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      class="-mt-0.5 -mr-0.5 hover:text-destructive"
-      aria-label="Remove space"
-      title="Remove from this list (your files stay put)"
-      onclick={(e) => {
-        e.stopPropagation();
-        onforget();
-      }}
-    >
-      <X />
-    </Button>
+    <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
+         it carries no forget control rather than one that would be refused. -->
+    {#if !space.scratch}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        class="-mt-0.5 -mr-0.5 hover:text-destructive"
+        aria-label="Remove space"
+        title="Remove from this list (your files stay put)"
+        onclick={(e) => {
+          e.stopPropagation();
+          onforget();
+        }}
+      >
+        <X />
+      </Button>
+    {/if}
   </div>
 
   <!-- Sessions: the space's open shells, each its own card inside the
@@ -486,70 +490,80 @@
        keyboard reach every other action in this row has. The size
        variants all set a fixed height and `shrink-0`, so this one
        overrides both — it still has to truncate and still has to be
-       the spacer. -->
-  <div class="flex items-center gap-1">
-    <span
-      class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
-    >
-      {#if space.branch}
-        <Button
-          variant="ghost"
-          class="-mx-1 h-auto min-w-0 shrink justify-start gap-1.5 rounded-sm px-1 py-0.5 text-[0.6rem] font-normal text-muted-foreground hover:text-foreground [&_svg:not([class*='size-'])]:size-3"
-          aria-label="Copy branch name"
-          title={copied
-            ? copied.ok
-              ? "Copied"
-              : "Couldn’t copy — clipboard unavailable"
-            : `Copy branch — ${space.branch}`}
-          onclick={(e) => {
-            e.stopPropagation();
-            void copyToClipboard(space.branch ?? "");
-          }}
-        >
-          {#if copied}
-            {#if copied.ok}
-              <Check class="text-primary" />
+       the spacer.
+
+       Scratch honours none of the three: it is not a repository, so a
+       branch chip would tell the operator something false, and neither
+       on-ramp can act on a space with no map and no repository. That
+       empties the row, so the row itself does not render — the card's
+       own `gap-2` would otherwise leave a blank strip under the shells.
+       The drag handle and the shell rows above stay: it is reorderable
+       and its shells are selectable like any other space's. -->
+  {#if !space.scratch}
+    <div class="flex items-center gap-1">
+      <span
+        class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
+      >
+        {#if space.branch}
+          <Button
+            variant="ghost"
+            class="-mx-1 h-auto min-w-0 shrink justify-start gap-1.5 rounded-sm px-1 py-0.5 text-[0.6rem] font-normal text-muted-foreground hover:text-foreground [&_svg:not([class*='size-'])]:size-3"
+            aria-label="Copy branch name"
+            title={copied
+              ? copied.ok
+                ? "Copied"
+                : "Couldn’t copy — clipboard unavailable"
+              : `Copy branch — ${space.branch}`}
+            onclick={(e) => {
+              e.stopPropagation();
+              void copyToClipboard(space.branch ?? "");
+            }}
+          >
+            {#if copied}
+              {#if copied.ok}
+                <Check class="text-primary" />
+              {:else}
+                <Warning class="text-destructive" />
+              {/if}
             {:else}
-              <Warning class="text-destructive" />
+              <GitBranchIcon />
             {/if}
-          {:else}
-            <GitBranchIcon />
-          {/if}
-          <span class="truncate font-mono">{space.branch}</span>
-        </Button>
-      {/if}
-    </span>
-    <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
-         the agent picker over the on-ramp skills. The row's own click
-         just selects the space, which the launch does anyway, so this
-         one deliberately does not stop propagation — the dropdown
-         trigger has no click handler of its own to protect. The agent's
-         model and the skill name live in the menu, not on this cramped
-         label. -->
-    <SkillLauncher
-      {agents}
-      lastAgent={space.lastAgent}
-      skills={space.skills}
-      label="Skills"
-      disabled={opening}
-      size="xs"
-      ariaLabel="Launch a skill in {space.name}"
-      title="Launch a self-driving skill in {space.name} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
-      onrun={onlaunch}
-      {onregister}
-    ></SkillLauncher>
-    <Button
-      variant="outline"
-      size="xs"
-      aria-label="Open a shell in {space.name}"
-      title="Open a shell in {space.name}"
-      disabled={opening}
-      onclick={(e) => {
-        e.stopPropagation();
-        onopenshell();
-      }}
-    >
-      <PlusIcon />
-    </Button>
-  </div>
+            <span class="truncate font-mono">{space.branch}</span>
+          </Button>
+        {/if}
+      </span>
+      <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
+           the agent picker over the on-ramp skills. The row's own click
+           just selects the space, which the launch does anyway, so this
+           one deliberately does not stop propagation — the dropdown
+           trigger has no click handler of its own to protect. The agent's
+           model and the skill name live in the menu, not on this cramped
+           label. -->
+      <SkillLauncher
+        {agents}
+        lastAgent={space.lastAgent}
+        skills={space.skills}
+        label="Skills"
+        disabled={opening}
+        size="xs"
+        ariaLabel="Launch a skill in {space.name}"
+        title="Launch a self-driving skill in {space.name} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
+        onrun={onlaunch}
+        {onregister}
+      ></SkillLauncher>
+      <Button
+        variant="outline"
+        size="xs"
+        aria-label="Open a shell in {space.name}"
+        title="Open a shell in {space.name}"
+        disabled={opening}
+        onclick={(e) => {
+          e.stopPropagation();
+          onopenshell();
+        }}
+      >
+        <PlusIcon />
+      </Button>
+    </div>
+  {/if}
 </div>

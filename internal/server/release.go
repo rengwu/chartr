@@ -31,9 +31,8 @@ import (
 // from a teammate's live one on a shared map, and the answer to that is the
 // operator, not a heuristic.
 func (s *Server) handleReleaseTicket(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 	num, err := strconv.Atoi(r.PathValue("num"))

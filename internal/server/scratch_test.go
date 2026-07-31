@@ -175,6 +175,110 @@ func TestScratchSlotSurvivesARestart(t *testing.T) {
 	}
 }
 
+// Refusal is a server rule, not merely an absent button: the chrome offers none
+// of these on Scratch, but a stale or hand-written client must not be able to
+// reach past that and act on the operator's home directory. Every endpoint that
+// resolves a space before it acts answers a bad request, and the isolated home
+// is still empty afterwards — the public proof that nothing was written, charted
+// or initialised there.
+func TestRepoScopedEndpointsRefuseScratch(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	chartrtest.StubAgent(t, "some-harness")
+	h := chartrtest.Start(t)
+	// A real, present agent, so the launch endpoints clear their own doorstep and
+	// the Scratch identity is the only thing left that can refuse them.
+	registerAgent(t, h, "stub", map[string]any{"adapter": "some-harness"})
+	id := registry.ScratchID
+
+	refusals := []struct {
+		what string
+		call func() (int, string)
+	}{
+		{"spawn a session", func() (int, string) {
+			return h.SpawnWithAgent(id, "some-map", 1, "implement", "stub")
+		}},
+		{"launch an on-ramp skill", func() (int, string) {
+			return h.LaunchRaw(id, "stub", "ideate", "")
+		}},
+		{"ideate", func() (int, string) { return h.IdeateRaw(id, "stub") }},
+		{"preview a payload", func() (int, string) {
+			return h.Get("/api/spaces/" + id + "/maps/some-map/tickets/1/payload?role=implement")
+		}},
+		{"resume a dead session", func() (int, string) { return h.Resume(id, "sess") }},
+		{"respawn a dead session", func() (int, string) { return h.Respawn(id, "sess") }},
+		{"release a dead session", func() (int, string) { return h.Release(id, "sess") }},
+		{"release a ticket", func() (int, string) { return h.ReleaseTicket(id, "some-map", 1) }},
+		{"install the tracker adapter", func() (int, string) {
+			return h.Post("/api/spaces/"+id+"/tracker-adapter", nil)
+		}},
+		{"dismiss the tracker-adapter offer", func() (int, string) {
+			return h.Post("/api/spaces/"+id+"/tracker-adapter/dismiss", nil)
+		}},
+		{"open a config layer", func() (int, string) {
+			return h.Post("/api/spaces/"+id+"/config/open", map[string]string{"layer": "user-config"})
+		}},
+		{"set the remembered agent", func() (int, string) {
+			return h.Put("/api/spaces/"+id+"/agent", map[string]string{"agent": "stub"})
+		}},
+		{"deregister it", func() (int, string) { return h.Delete("/api/spaces/" + id) }},
+	}
+	for _, r := range refusals {
+		code, body := r.call()
+		if code != 400 {
+			t.Errorf("%s = %d, want 400 (body %s)", r.what, code, body)
+			continue
+		}
+		// The message has to name the reason: a 400 these endpoints would have
+		// given anyway — a malformed body, an unregistered agent — is not the
+		// refusal this asserts.
+		if !strings.Contains(body, "Scratch") {
+			t.Errorf("%s refused with %s, want a refusal naming Scratch", r.what, body)
+		}
+	}
+
+	// Deregistering is refused rather than silently ignored, and the entry it
+	// names is untouched: a no-op on an explicit destructive request is worse
+	// than a clear answer.
+	snap := h.Snapshot(ctx(t))
+	scratch := findSpace(t, snap, id)
+	if !scratch.Scratch {
+		t.Error("Scratch left the snapshot after a refused deregistration")
+	}
+
+	// Nothing reached the home directory: no repository, no `.plan/`, no adapter,
+	// no payload — the whole point of refusing at the server rather than in the
+	// chrome.
+	entries, err := os.ReadDir(fakeHome)
+	if err != nil {
+		t.Fatalf("read the isolated home: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("refused actions wrote into the home directory: %v", names)
+	}
+}
+
+// The three terminal endpoints are the whole of what Scratch is for, so they
+// take it like any other space: open a shell, acknowledge it, end it.
+func TestTerminalEndpointsAcceptScratch(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	h := chartrtest.Start(t)
+	id := registry.ScratchID
+
+	termID := h.OpenTerminal(id)
+	if code, body := h.Post("/api/spaces/"+id+"/terminals/"+termID+"/seen", nil); code != 204 {
+		t.Errorf("acknowledge a Scratch shell = %d, want 204 (body %s)", code, body)
+	}
+	if code, body := h.Delete("/api/spaces/" + id + "/terminals/" + termID); code != 204 {
+		t.Errorf("end a Scratch shell = %d, want 204 (body %s)", code, body)
+	}
+}
+
 func allSpaceIDs(m model.Model) []string {
 	out := make([]string, 0, len(m.Spaces))
 	for _, s := range m.Spaces {

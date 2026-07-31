@@ -119,6 +119,21 @@
   const warnings = $derived<string[]>(space.warnings ?? [])
   const maps = $derived<WMap[]>(space.maps ?? [])
 
+  // The Scratch space has no repository, so it has nothing to chart: no star-map
+  // toggle, no map card, no tracker-adapter offer, and inert M/Esc. `mapShown` is
+  // a standing preference for the whole stage rather than per space, so this is
+  // enforced *here*, where the card renders — an operator who leaves the map open
+  // on a registered space and switches to Scratch must not carry it across, and
+  // gating only the toggle would do exactly that.
+  const mapless = $derived(space.scratch === true)
+
+  // Whether the star-map is actually on the stage — the standing preference, minus
+  // the spaces that cannot hold a map. Everything that follows from a *rendered*
+  // card reads this rather than `mapShown`: the docked split's frozen terminal
+  // width included, or a Scratch shell would sit in 60% of the stage with nothing
+  // beside it.
+  const mapOpen = $derived(mapShown && !mapless)
+
   // A stable identity for the current terminal prefs: the terminal island keys its
   // remount on this string, so editing `terminal.toml` (a new snapshot with
   // different prefs) tears the island down and mounts it afresh with the new
@@ -238,7 +253,7 @@
     if (openSlug) p.set('m', openSlug)
     if (selectedTicket !== null) p.set('t', String(selectedTicket))
     else if (showMaterial) p.set('mat', '1')
-    const want = mapShown && (selectedTicket !== null || showMaterial) ? '#' + p.toString() : ''
+    const want = mapOpen && (selectedTicket !== null || showMaterial) ? '#' + p.toString() : ''
     if (location.hash !== want) {
       history.replaceState(null, '', want || location.pathname + location.search)
     }
@@ -272,7 +287,7 @@
     else summon()
   }
   $effect(() => {
-    if (mapShown && dock && bodyEl && !dockTermWidth) {
+    if (mapOpen && dock && bodyEl && !dockTermWidth) {
       const w = bodyEl.clientWidth
       // First dock: terminal keeps ~60%, always leaving room for the map; clamped
       // so neither pane collapses on a narrow window. A resize below overrides it.
@@ -325,6 +340,10 @@
     // Inert while the settings route covers the stage: its own Esc must not also
     // peel back this pane's map underneath it.
     if (!active) return
+    // Inert over Scratch for the same reason the toggle is absent there: there is
+    // no map to summon, and a binding that silently changes state nothing renders
+    // is worse than one that does nothing.
+    if (mapless) return
     // A summoned Sheet/Dialog (the action station) owns its own Escape; the
     // chrome's M/Esc bindings must not also fire while it holds focus.
     const editing = isEditingTarget()
@@ -391,16 +410,19 @@
       {/if}
       <!-- The one star-map show/hide control for the whole stage, beside the
            bindings; reflects mapShown via aria-pressed. Available even with
-           zero maps: the picker itself explains there's nothing yet. -->
-      <Button
-        variant={mapShown ? 'secondary' : 'ghost'}
-        size="sm"
-        aria-pressed={mapShown}
-        title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
-        onclick={toggleMap}
-      >
-        <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
-      </Button>
+           zero maps: the picker itself explains there's nothing yet — but not
+           over Scratch, which has no repository to hold a `.plan/` at all. -->
+      {#if !mapless}
+        <Button
+          variant={mapShown ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={mapShown}
+          title={mapShown ? 'Hide the star-map (M)' : 'Show the star-map (M)'}
+          onclick={toggleMap}
+        >
+          <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
+        </Button>
+      {/if}
       {#if onOpenSettings}
         <Button
           variant="ghost"
@@ -423,7 +445,7 @@
        (that space has no maps yet, so there's nothing else there). Space-scoped
        and snapshot-gated either way: each action clears the offer by the next
        snapshot (ADR 0010). -->
-  {#if space.trackerAdapter && space.trackerAdapter.state !== 'absent'}
+  {#if !mapless && space.trackerAdapter && space.trackerAdapter.state !== 'absent'}
     <div class="mx-3 mt-2">
       <TrackerAdapterBanner spaceId={space.id} offer={space.trackerAdapter} />
     </div>
@@ -438,7 +460,7 @@
          session selection now, so this simply renders the active shell. -->
     <div
       class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      style={mapShown && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
+      style={mapOpen && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
     >
       {#if activeTerm}
         <!-- Remount the island on a terminal switch *or* a prefs change: the
@@ -495,7 +517,7 @@
       {/if}
     </div>
 
-    {#if mapShown}
+    {#if mapOpen}
       <MapCard
         {maps}
         spaceId={space.id}

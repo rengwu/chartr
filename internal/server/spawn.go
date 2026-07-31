@@ -43,9 +43,8 @@ const sessionRunDir = ".chartr/run"
 // once written (a launch failure after a good claim is a dead session the human
 // resolves, never an automatic rollback).
 func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 	num, err := strconv.Atoi(r.PathValue("num"))
