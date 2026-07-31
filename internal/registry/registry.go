@@ -39,7 +39,8 @@ type Entry struct {
 	ID   string `toml:"-"`
 	Path string `toml:"path"`
 	// Scratch marks the one built-in entry. It is held in memory alongside the
-	// registered entries but is never encoded as a [[space]] row.
+	// registered entries but is never encoded as a [[space]] row: the only part of
+	// it that reaches the file is its Order, written as a scalar beside the rows.
 	Scratch bool `toml:"-"`
 	// Order is the space's position in the sidebar: the operator's arrangement,
 	// stored rather than derived, and the only thing List sorts by. It is dense
@@ -77,8 +78,9 @@ type Registry struct {
 }
 
 // Load opens the registry under dataDir, reading spaces.toml if it exists, then
-// appends Scratch in memory. A missing file yields Scratch alone — that is the
-// first-run state, not an error, and the same state a lost registry recovers from.
+// seats Scratch in memory at the slot the file recorded for it. A missing file
+// yields Scratch alone — that is the first-run state, not an error, and the same
+// state a lost registry recovers from.
 func Load(dataDir string) (*Registry, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -90,7 +92,7 @@ func Load(dataDir string) (*Registry, error) {
 	}
 	data, err := os.ReadFile(r.path)
 	if os.IsNotExist(err) {
-		r.addScratch(home)
+		r.addScratch(home, nil)
 		return r, nil
 	}
 	if err != nil {
@@ -119,22 +121,58 @@ func Load(dataDir string) (*Registry, error) {
 	for _, e := range ordered(f.Spaces, rows) {
 		r.entries[e.ID] = e
 	}
-	r.addScratch(home)
+	r.addScratch(home, f.ScratchOrder)
 	return r, nil
 }
 
-// addScratch appends the synthetic entry to the loaded sidebar sequence. Its
-// path follows this machine and is intentionally never read from spaces.toml.
-func (r *Registry) addScratch(home string) {
-	r.entries[ScratchID] = Entry{
-		ID:      ScratchID,
-		Path:    filepath.Clean(home),
-		Order:   len(r.entries),
-		Scratch: true,
+// addScratch splices the synthetic entry into the loaded sidebar sequence at the
+// slot the file recorded, and densifies what comes out. Its path follows this
+// machine and is intentionally never read from spaces.toml — only its slot is.
+//
+// The registered rows arrive already compacted by ordered, so the file's gap
+// where Scratch sat is closed before the splice and reopened by it: a save that
+// wrote rows 0, 2, 3 beside scratch_order = 1 loads back to exactly that
+// sequence. A file with no recorded slot — one written before Scratch had a
+// remembered place, or before Scratch existed — appends it at the end, which is
+// the arrangement the operator already had with one row after it. An index the
+// sequence cannot hold degrades the same way, the way a mangled order does
+// everywhere else here: the arrangement is what suffers, never the list.
+func (r *Registry) addScratch(home string, slot *int) {
+	seq := make([]Entry, 0, len(r.entries)+1)
+	for _, e := range r.entries {
+		seq = append(seq, e)
+	}
+	sortByOrder(seq)
+
+	at := len(seq)
+	if slot != nil && *slot >= 0 && *slot < at {
+		at = *slot
+	}
+	scratch := Entry{ID: ScratchID, Path: filepath.Clean(home), Scratch: true}
+	seq = append(seq, Entry{})
+	copy(seq[at+1:], seq[at:])
+	seq[at] = scratch
+
+	for i, e := range seq {
+		e.Order = i
+		r.entries[e.ID] = e
 	}
 }
 
 type file struct {
+	// ScratchOrder is the Scratch space's slot in the sidebar, and the only thing
+	// about the synthetic entry that is persisted. It is a scalar beside the rows
+	// rather than a row of its own because a [[space]] row means "a folder the
+	// operator registered", which is what keeps deleting this file and re-adding
+	// those folders a complete recovery — Scratch needs no recovering, being
+	// rebuilt from nothing on every run.
+	//
+	// It is a pointer so that a file carrying no slot at all is told apart from
+	// one that records slot 0, exactly as the rows' own `order` is. It is written
+	// on every save and read as the splice index on every load; it is declared
+	// before Spaces because a scalar cannot follow an array of tables in TOML.
+	ScratchOrder *int `toml:"scratch_order,omitempty"`
+
 	Spaces []Entry `toml:"space"`
 }
 
@@ -427,6 +465,11 @@ func (r *Registry) saveLocked() error {
 	f := file{Spaces: make([]Entry, 0, len(r.entries)-1)}
 	for _, e := range r.entries {
 		if e.Scratch {
+			// Scratch is written as its slot and nothing else. Densification ran over
+			// the whole arrangement, so the registered rows below carry the orders it
+			// gave them and the file keeps a gap exactly where this index sits.
+			slot := e.Order
+			f.ScratchOrder = &slot
 			continue
 		}
 		f.Spaces = append(f.Spaces, e)
