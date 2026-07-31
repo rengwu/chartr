@@ -59,6 +59,43 @@ e.g. each Sheet's own `onOpenChange`/close explicitly owning suppression of
 the outer bindings while it's open, rather than every listener re-deriving
 "am I inside a dialog" from live focus state at its own, uncoordinated time.
 
+## Answer
+
+**Obsolete — closed without a fix.** All three bugs were in surfaces that have
+since been deliberately cut, so there is nothing left to repair:
+
+- **The hover ring** went with `feef288` *Cut the map card's "Next up" action
+  station*, which explicitly retired `StarMap`'s `hoverNum` prop, the island's
+  `hover()` seam method, `starmap.ts`'s `#hovered` field and its dashed ring —
+  the drawer's rows were their only driver. No `hover` remains anywhere in
+  `web/src/lib/starmap/`.
+- **The `q` toggle and the Needs-you queue** went with `03645c0` *Cut the
+  needs-you queue; halt flag jumps directly* (needs-you-cut ticket 01). There is
+  no `q` binding anywhere in `web/src/`, and the `sheet` primitive was deleted
+  along with the queue for want of another consumer.
+- **The `Esc` double-close** cannot happen: `SpacePane.svelte` no longer has a
+  keyboard handler at all. The only `Escape` handlers left in the app are
+  `App.svelte`'s leave-settings and `TerminalFind.svelte`'s.
+
+The ticket's root-cause reading — that `isEditingTarget()` is a live DOM-focus
+check each listener re-derives at its own uncoordinated time, rather than a
+snapshot — is still true of `web/src/lib/keys.ts`, which keeps its
+`[role="dialog"]` clause and has one caller (`App.svelte`'s `onGlobalKey`). It
+needs no coordination work today, on YAGNI grounds, and both directions of the
+race are unreachable rather than merely unlikely:
+
+- No key opens a dialog any more, so the "guard blocks the toggle that would
+  close it" direction has no trigger.
+- The Escape direction would need a `Modal` open while `route.settings` is true.
+  Settings renders `absolute inset-0 z-30` over the entire stage, sidebar
+  included, so none of `App.svelte`'s modals are reachable from that route.
+
+Worth revisiting only if a future surface adds a *toggle key that opens a
+dialog*, or lets a modal open over settings — either brings the ordering
+question back, and the ticket's suggested shape (the open dialog owning
+suppression of the outer bindings, rather than every listener re-deriving "am I
+inside a dialog") is the answer to reach for then.
+
 <!--
 Source: a by-eye browser walkthrough of ticket 14, requested after the
 implementing session flagged the browser pass as the one thing it couldn't
