@@ -1,6 +1,6 @@
 // Package registry is the space registry: the operator's list of registered
-// spaces, held in the local user-config layer as a rebuildable index rather
-// than a source of truth (ticket 02, ADR 0003, ADR 0009). Everything
+// spaces plus the one synthetic Scratch entry, held in memory as a rebuildable
+// index rather than a source of truth (ticket 02, ADR 0003, ADR 0009). Everything
 // authoritative — maps, committed workspace config, git history — lives in the
 // repositories; the registry holds only registered paths, the operator's sidebar
 // order, and each space's local recency. Losing it costs re-adding folders, never
@@ -27,12 +27,20 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Entry is one registered space: its path plus the local, per-machine order and
-// recency. The ID is derived from the path (so a rebuilt registry re-derives the
-// same identity) and is not persisted.
+// ScratchID is the fixed identity of chartr's one synthetic Scratch space. A
+// registered space id is twelve hexadecimal characters derived from its absolute
+// path, so this human-readable value cannot collide with one.
+const ScratchID = "scratch"
+
+// Entry is one space in the in-memory registry: its path plus the local,
+// per-machine order and recency. A registered entry's ID is derived from its
+// path; Scratch instead carries the fixed ScratchID and is never persisted.
 type Entry struct {
 	ID   string `toml:"-"`
 	Path string `toml:"path"`
+	// Scratch marks the one built-in entry. It is held in memory alongside the
+	// registered entries but is never encoded as a [[space]] row.
+	Scratch bool `toml:"-"`
 	// Order is the space's position in the sidebar: the operator's arrangement,
 	// stored rather than derived, and the only thing List sorts by. It is dense
 	// (0..n-1 across the whole registry) and rewritten wholesale on every save,
@@ -68,16 +76,21 @@ type Registry struct {
 	entries map[string]Entry // keyed by ID
 }
 
-// Load opens the registry under dataDir, reading spaces.toml if it exists. A
-// missing file yields an empty registry — that is the first-run state, not an
-// error, and the same state a lost registry recovers from.
+// Load opens the registry under dataDir, reading spaces.toml if it exists, then
+// appends Scratch in memory. A missing file yields Scratch alone — that is the
+// first-run state, not an error, and the same state a lost registry recovers from.
 func Load(dataDir string) (*Registry, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("registry: resolving the operator's home directory: %w", err)
+	}
 	r := &Registry{
 		path:    filepath.Join(dataDir, "spaces.toml"),
 		entries: map[string]Entry{},
 	}
 	data, err := os.ReadFile(r.path)
 	if os.IsNotExist(err) {
+		r.addScratch(home)
 		return r, nil
 	}
 	if err != nil {
@@ -106,7 +119,19 @@ func Load(dataDir string) (*Registry, error) {
 	for _, e := range ordered(f.Spaces, rows) {
 		r.entries[e.ID] = e
 	}
+	r.addScratch(home)
 	return r, nil
+}
+
+// addScratch appends the synthetic entry to the loaded sidebar sequence. Its
+// path follows this machine and is intentionally never read from spaces.toml.
+func (r *Registry) addScratch(home string) {
+	r.entries[ScratchID] = Entry{
+		ID:      ScratchID,
+		Path:    filepath.Clean(home),
+		Order:   len(r.entries),
+		Scratch: true,
+	}
 }
 
 type file struct {
@@ -253,6 +278,11 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 func (r *Registry) Deregister(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The HTTP refusal belongs to the repo-scoped action guard (ticket 02), but
+	// the registry invariant is already absolute: Scratch is always present.
+	if id == ScratchID {
+		return nil
+	}
 	if _, ok := r.entries[id]; !ok {
 		return nil
 	}
@@ -272,10 +302,9 @@ func (r *Registry) nextOrderLocked() int {
 	return next
 }
 
-// ErrBadReorder marks a reorder that does not name the registry exactly once
-// over: a list that omits a registered space, names an unknown id, or repeats
-// one. A partial list is a client bug, not a partial reorder, so the caller
-// answers it as a bad request rather than a failure of the registry.
+// ErrBadReorder marks a reorder that does not name every registered space
+// exactly once. Scratch alone may be absent because the chrome hides it while it
+// is empty; every other omission remains a client bug.
 var ErrBadReorder = errors.New("registry: a reorder must name every registered space exactly once")
 
 // Reorder sets the sidebar sequence to ids: the whole ordered list, applied as
@@ -284,13 +313,13 @@ var ErrBadReorder = errors.New("registry: a reorder must name every registered s
 // sidebar half-moved when the operator drags twice in quick succession.
 //
 // The list is validated in full before anything is touched, so a rejected
-// reorder leaves the arrangement exactly as it was. Because the length matches
-// and every id is known and distinct, the list is a permutation of the registry.
+// reorder leaves the arrangement exactly as it was. If Scratch is omitted it is
+// spliced back at its current slot before the orders are applied.
 func (r *Registry) Reorder(ids []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if len(ids) != len(r.entries) {
+	if len(ids) != len(r.entries) && len(ids) != len(r.entries)-1 {
 		return fmt.Errorf("%w: %d ids for %d spaces", ErrBadReorder, len(ids), len(r.entries))
 	}
 	seen := make(map[string]bool, len(ids))
@@ -303,8 +332,27 @@ func (r *Registry) Reorder(ids []string) error {
 		}
 		seen[id] = true
 	}
+	for id, e := range r.entries {
+		if !e.Scratch && !seen[id] {
+			return fmt.Errorf("%w: missing registered space %q", ErrBadReorder, id)
+		}
+	}
 
-	for i, id := range ids {
+	order := append([]string(nil), ids...)
+	if !seen[ScratchID] {
+		slot := r.entries[ScratchID].Order
+		if slot > len(order) {
+			slot = len(order)
+		}
+		order = append(order, "")
+		copy(order[slot+1:], order[slot:])
+		order[slot] = ScratchID
+	}
+	if len(order) != len(r.entries) {
+		return fmt.Errorf("%w: %d ids for %d spaces", ErrBadReorder, len(ids), len(r.entries))
+	}
+
+	for i, id := range order {
 		e := r.entries[id]
 		e.Order = i
 		r.entries[id] = e
@@ -376,8 +424,11 @@ func (r *Registry) saveLocked() error {
 	}
 	r.densifyLocked()
 
-	f := file{Spaces: make([]Entry, 0, len(r.entries))}
+	f := file{Spaces: make([]Entry, 0, len(r.entries)-1)}
 	for _, e := range r.entries {
+		if e.Scratch {
+			continue
+		}
 		f.Spaces = append(f.Spaces, e)
 	}
 	sort.Slice(f.Spaces, func(i, j int) bool { return f.Spaces[i].Path < f.Spaces[j].Path })

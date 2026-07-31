@@ -26,12 +26,13 @@ func TestControlSocketSendsSnapshotOnConnect(t *testing.T) {
 
 	snap := conn.ReadSnapshot(ctx)
 
-	// Near-empty, but well-formed: a non-nil, empty spaces array.
+	// Near-empty, but well-formed: the one synthetic Scratch entry is present
+	// from first run so the footer can open its ordinary terminal endpoint.
 	if snap.Spaces == nil {
-		t.Fatal("snapshot.spaces was null, want an empty array")
+		t.Fatal("snapshot.spaces was null")
 	}
-	if len(snap.Spaces) != 0 {
-		t.Fatalf("snapshot.spaces = %v, want empty", snap.Spaces)
+	if len(snap.Spaces) != 1 || !snap.Spaces[0].Scratch {
+		t.Fatalf("snapshot.spaces = %v, want only the synthetic Scratch entry", snap.Spaces)
 	}
 }
 

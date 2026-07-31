@@ -67,7 +67,12 @@ malformations does it in one run.
 
 ## Decisions so far
 
-<!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
+- **01 — Scratch terminal tracer.** A fixed, flagged synthetic registry entry
+  resolves `$HOME` on load, is always present in the pushed model but never in a
+  `[[space]]` row, derives only its live terminals, and is hidden by one chrome
+  predicate while empty. The footer opens it through the ordinary terminal
+  endpoint; reorder accepts omission of Scratch alone and restores its current
+  in-memory slot. [01](./tickets/01-a-scratch-shell-opened-from-the-sidebar.md)
 
 ## Not yet specified
 

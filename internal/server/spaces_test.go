@@ -159,7 +159,7 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 
 	first := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	resp := register(t, first, repo)
-	if len(first.Snapshot(ctx(t)).Spaces) != 1 {
+	if len(spaceIDs(first.Snapshot(ctx(t)))) != 1 {
 		t.Fatal("space not registered on the first chartr")
 	}
 
@@ -168,8 +168,8 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 		t.Fatalf("removing registry: %v", err)
 	}
 	second := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
-	if got := len(second.Snapshot(ctx(t)).Spaces); got != 0 {
-		t.Fatalf("after registry loss, snapshot has %d spaces, want 0", got)
+	if got := len(spaceIDs(second.Snapshot(ctx(t)))); got != 0 {
+		t.Fatalf("after registry loss, snapshot has %d registered spaces, want 0", got)
 	}
 
 	// The repo — the authoritative state — is untouched, so re-adding restores.
@@ -180,7 +180,7 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 	if resp2.ID != resp.ID {
 		t.Errorf("re-registered id = %s, want the same stable id %s", resp2.ID, resp.ID)
 	}
-	if len(second.Snapshot(ctx(t)).Spaces) != 1 {
+	if len(spaceIDs(second.Snapshot(ctx(t)))) != 1 {
 		t.Error("re-registering did not restore the space")
 	}
 }
@@ -190,6 +190,9 @@ func TestRegistryLossIsRebuildable(t *testing.T) {
 func spaceIDs(m model.Model) []string {
 	out := make([]string, 0, len(m.Spaces))
 	for _, s := range m.Spaces {
+		if s.Scratch {
+			continue
+		}
 		out = append(out, s.ID)
 	}
 	return out

@@ -120,16 +120,18 @@ type ResolvedSkill struct {
 	NeedsContext bool `json:"needsContext,omitempty"`
 }
 
-// Space is a registered git repository chartr drives. Ticket 02 fills in
-// the registry semantics (path, recency) and the effective role bindings; ticket
-// 03 adds the maps beneath. Spaces arrive already ordered — in the operator's own
-// stored order, which nothing but an explicit reorder moves — so the sidebar
-// renders them in slice order without re-sorting.
+// Space is one registry entry in the pushed model: normally a registered git
+// repository chartr drives, or the one flagged synthetic Scratch entry. Spaces
+// arrive already ordered — in the operator's own stored order, which nothing but
+// an explicit reorder moves — so the sidebar renders them without re-sorting.
 type Space struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
-	// Path is the absolute working-tree root, shown in the UI and the stable
-	// thing a local binding override is keyed by.
+	// Scratch marks the one synthetic home for ad-hoc shells. Registered spaces
+	// omit it; consumers that offer repository actions use it as their guard.
+	Scratch bool `json:"scratch,omitempty"`
+	// Path is the absolute working directory. For a registered space it is the
+	// working-tree root; for Scratch it is the operator's home directory.
 	Path string `json:"path"`
 	// Branch is the working tree's current git branch — the checked-out ref's
 	// short name, or a short sha for a detached HEAD — read live on each rebuild.
