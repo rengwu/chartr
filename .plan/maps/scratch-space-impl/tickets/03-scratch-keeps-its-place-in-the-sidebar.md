@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [01]
+claimed_by: s3817e5ae187c
+claimed_at: 2026-07-31T13:37:06Z
 ---
 
 # Scratch keeps its place in the sidebar
