@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"path/filepath"
 
 	"github.com/coder/websocket"
 
 	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/notify"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/terminal"
@@ -161,9 +164,47 @@ func (s *Server) handleCloseTerminal(w http.ResponseWriter, r *http.Request) {
 // It runs on the sampler's goroutine, so it does what the manager's own change
 // callback does: mark, then push a fresh snapshot, which is what makes the dot
 // appear with no refresh (and appear on reload, since the flag is server state).
+// The OS notification goes last and off this goroutine, because it execs: the
+// cockpit's own half must not wait on a notification daemon, and a daemon that has
+// wedged must not stall the sampler that every tab's status is read from.
 func (s *Server) onRunFinished(ev terminal.RunFinished) {
 	s.terms.MarkFinishedUnseen(ev.TerminalID)
 	s.rebuild()
+	go s.announceRun(ev)
+}
+
+// announceRun tells the operating system that a run ended, so the operator hears
+// about it with the cockpit's browser tab closed — the case that motivated the
+// whole effort (spec, story 2). It is best-effort by contract: a missing binary, a
+// non-zero exit, a headless box with no notification daemon each leave the cockpit
+// exactly as it was, and only the first of them is logged. Nothing here is retried
+// and nothing here reaches the model.
+func (s *Server) announceRun(ev terminal.RunFinished) {
+	// The event carries the space's id, because that is what the terminal manager
+	// knows; the operator knows the space by the name the sidebar gives it, which is
+	// the registry's to answer. A space deregistered between the run ending and this
+	// call simply goes unnamed rather than unreported.
+	space := ""
+	if e, ok := s.reg.Get(ev.SpaceID); ok {
+		space = filepath.Base(e.Path)
+	}
+
+	err := s.notifier.Notify(notify.Compose(notify.Run{
+		Space:     space,
+		MapSlug:   ev.MapSlug,
+		TicketNum: ev.TicketNum,
+		Reason:    ev.Reason,
+		Duration:  ev.Duration,
+	}))
+	if err != nil {
+		// Once per process, not once per notification: an operator whose machine can
+		// never notify should learn that once, and an operator whose machine can should
+		// never learn anything at all.
+		s.notifyFailed.Do(func() {
+			log.Printf("chartr: could not fire an OS notification (%v); "+
+				"session notifications are best-effort and this is logged once", err)
+		})
+	}
 }
 
 // handleTerminalSeen clears one tab's dot: the operator focused it, which is the

@@ -26,6 +26,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/notify"
 	"github.com/rengwu/chartr/internal/server"
 )
 
@@ -55,6 +56,16 @@ type Option func(*server.Options)
 // dir), whose `skills/` is the user layer of the skill library.
 func WithConfigDir(dir string) Option {
 	return func(o *server.Options) { o.ConfigDir = dir }
+}
+
+// WithNotifier substitutes the OS notifier a run's end is announced through
+// (session-notifications, ticket 03). It is the one seam that has to be swapped
+// rather than driven: the real notifier execs the machine's notification tool, and
+// no test shells out to that on any platform. A test that does not care leaves the
+// platform notifier in place — nothing in the suite runs long enough to reach the
+// shipped 60-second threshold, so it is never called.
+func WithNotifier(n notify.Notifier) Option {
+	return func(o *server.Options) { o.Notifier = n }
 }
 
 // Start launches chartr on a random loopback port and registers cleanup that
