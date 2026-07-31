@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [01]
+claimed_by: s03fcfb72b49a
+claimed_at: 2026-07-31T14:37:45Z
 ---
 
 # Scratch offers only what it can do
