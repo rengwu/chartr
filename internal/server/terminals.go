@@ -46,9 +46,8 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 // the tab it seats carries no Session, so it reads and ends exactly like an ad-hoc
 // shell (never the session grammar, never the death halt).
 func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 	// The picker sends the agent, the on-ramp skill it chose, and — for a skill
@@ -70,9 +69,8 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 // frontend moves to `/launch`. It names its agent explicitly, exactly as a session
 // does (ticket 03) — the operator sees and chooses what their on-ramp runs.
 func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 	// An empty body is still a well-formed request that named no agent, which

@@ -16,9 +16,8 @@ import (
 // preview with no restart. The `role` query selects which role prompt resolves;
 // composition is otherwise identical.
 func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 

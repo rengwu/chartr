@@ -31,6 +31,36 @@ const terminalConfigName = "terminal.toml"
 // or execution.
 const notifyConfigName = "notify.toml"
 
+// repoSpace resolves the space an action names in its path, and is the one
+// doorstep for every action that needs a repository behind it. It answers
+// not-found for an id the registry does not hold, and refuses the Scratch
+// identity with a bad request: Scratch is the operator's home directory, and
+// spawning, charting, releasing, configuring or deregistering it would act on
+// `$HOME` (spec, "Repo-scoped actions refuse it at the server").
+//
+// The refusal is a server rule and not merely an absent button — the chrome does
+// not offer these controls on Scratch, but a stale or hand-written client must
+// not be able to reach past that. Deregistering is refused rather than silently
+// ignored for the same reason: a no-op on an explicit destructive request tells
+// the caller nothing.
+//
+// The three terminal handlers deliberately do *not* use it. Opening, closing and
+// acknowledging a shell is the whole of what Scratch is for, so they keep the
+// plain registry lookup.
+func (s *Server) repoSpace(w http.ResponseWriter, r *http.Request) (registry.Entry, bool) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return registry.Entry{}, false
+	}
+	if e.Scratch {
+		httpError(w, http.StatusBadRequest,
+			"the Scratch space holds ad-hoc shells only — it has no repository to act on")
+		return registry.Entry{}, false
+	}
+	return e, true
+}
+
 // handleRegister registers a folder as a space. Registration is a plain HTTP
 // action so its outcome — including an announced `git init` — surfaces in the
 // response (ADR 0010, story 2), and the new space also lands in the pushed
@@ -64,9 +94,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeregister forgets a space — the registry entry and its local order and
-// recency — and touches nothing in the repository (story 4).
+// recency — and touches nothing in the repository (story 4). Scratch cannot be
+// forgotten: it is refused here rather than no-op'd, so a client that asks gets
+// an answer instead of a silence it would read as success.
 func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
-	if err := s.reg.Deregister(r.PathValue("id")); err != nil {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	if err := s.reg.Deregister(e.ID); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -107,6 +143,10 @@ func (s *Server) handleReorder(w http.ResponseWriter, r *http.Request) {
 // only offers registered agents, and an unresolvable name simply reads back as
 // nothing remembered (chooseAgent), so no membership check is enforced here.
 func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Agent string `json:"agent"`
 	}
@@ -118,7 +158,7 @@ func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "agent is required")
 		return
 	}
-	if err := s.reg.SetLastAgent(r.PathValue("id"), body.Agent); err != nil {
+	if err := s.reg.SetLastAgent(e.ID, body.Agent); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -134,9 +174,8 @@ func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
 // and the next snapshot shows the now up-to-date adapter, so the offer clears
 // itself.
 func (s *Server) handleInstallTrackerAdapter(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 	path, err := tracker.Install(e.Path, prompt.TrackerAdapter())
@@ -152,7 +191,11 @@ func (s *Server) handleInstallTrackerAdapter(w http.ResponseWriter, r *http.Requ
 // adapter offer for a space, so it leaves the next snapshot and is not shown
 // again. It silences the prompt only — it writes nothing to the repo.
 func (s *Server) handleDismissTrackerAdapter(w http.ResponseWriter, r *http.Request) {
-	if err := s.reg.SetTrackerDismissed(r.PathValue("id"), true); err != nil {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	if err := s.reg.SetTrackerDismissed(e.ID, true); err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

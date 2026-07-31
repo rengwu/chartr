@@ -30,7 +30,7 @@
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
   import { nativeTitleBarHeight } from "./lib/titlebar";
-  import { visibleSpaces } from "./lib/spacevisibility";
+  import { configurableSpaces, visibleSpaces } from "./lib/spacevisibility";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
   import { Plus, X, CircleNotch, Gear, FolderOpen, TerminalWindow } from "phosphor-svelte";
 
@@ -111,6 +111,11 @@
   // ordered list without re-sorting it.
   const snapshotSpaces = $derived<Space[]>(control.model?.spaces ?? []);
   const spaces = $derived<Space[]>(visibleSpaces(snapshotSpaces));
+  // The settings surface enumerates spaces as config scopes, and Scratch has none
+  // — so it reads the unfiltered snapshot minus Scratch rather than the sidebar's
+  // list above. A Scratch space with a shell open is visible in the sidebar and
+  // still absent here.
+  const scopeSpaces = $derived<Space[]>(configurableSpaces(snapshotSpaces));
   // The config layers shared by every space — the operator's local binding file
   // and the two skill libraries that are not a space's own.
   const configLayers = $derived(control.model?.config ?? []);
@@ -762,7 +767,7 @@
       {#if route.settings && route.scope}
         <div class="absolute inset-0 z-30 bg-background">
           <Settings
-            {spaces}
+            spaces={scopeSpaces}
             config={configLayers}
             agents={agentLibrary}
             {detected}

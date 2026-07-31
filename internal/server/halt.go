@@ -52,9 +52,8 @@ func forceRequested(r *http.Request) bool {
 // session, a tab that is an ad-hoc shell rather than a session, or a session still
 // live. On ok it guarantees info.Session is non-nil and the session is dead.
 func (s *Server) haltTarget(w http.ResponseWriter, r *http.Request) (registry.Entry, terminal.Info, bool) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return registry.Entry{}, terminal.Info{}, false
 	}
 	info, ok := s.terms.Lookup(r.PathValue("sid"))

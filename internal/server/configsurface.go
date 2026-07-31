@@ -158,9 +158,8 @@ func (s *Server) resolvedSkills(repoDir string) []model.ResolvedSkill {
 // exist yet is reported as such with its path — the surface says where the value
 // would go, and nothing is created on a read-shaped action.
 func (s *Server) handleOpenLayer(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.reg.Get(r.PathValue("id"))
+	e, ok := s.repoSpace(w, r)
 	if !ok {
-		httpError(w, http.StatusNotFound, "no such space")
 		return
 	}
 
