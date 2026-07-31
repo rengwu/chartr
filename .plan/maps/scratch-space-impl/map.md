@@ -73,6 +73,14 @@ malformations does it in one run.
   predicate while empty. The footer opens it through the ordinary terminal
   endpoint; reorder accepts omission of Scratch alone and restores its current
   in-memory slot. [01](./tickets/01-a-scratch-shell-opened-from-the-sidebar.md)
+- **03 — Scratch keeps its sidebar slot.** That slot now outlives the process as
+  a `scratch_order` scalar beside the `[[space]]` rows, never as a row. Save
+  records the entry's order while skipping it from the rows, so the file keeps a
+  gap where Scratch sits; load compacts the registered rows through the existing
+  path, splices Scratch back at the recorded index, and densifies. A file with no
+  recorded slot appends it last and leaves the operator's arrangement untouched.
+  Registry-only — the chrome needed no change.
+  [03](./tickets/03-scratch-keeps-its-place-in-the-sidebar.md)
 
 ## Not yet specified
 

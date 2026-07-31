@@ -149,6 +149,32 @@ func TestReorderMayOmitOnlyScratch(t *testing.T) {
 	}
 }
 
+// The slot is stored, not merely remembered for as long as this process lives.
+// A second chartr over the same config root is the only thing that can tell the
+// two apart, so the arrangement is asserted across one: the operator moves
+// Scratch, restarts, and finds the sidebar exactly as they left it.
+func TestScratchSlotSurvivesARestart(t *testing.T) {
+	configDir := t.TempDir()
+	repoA, repoB := chartrtest.NewSpaceRepo(t), chartrtest.NewSpaceRepo(t)
+
+	first := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	a := register(t, first, repoA)
+	b := register(t, first, repoB)
+
+	want := []string{b.ID, registry.ScratchID, a.ID}
+	if code, body := first.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
+		t.Fatalf("seat Scratch between registered spaces = %d, body %s", code, body)
+	}
+	if got := allSpaceIDs(first.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Fatalf("sidebar after the move = %v, want %v", got, want)
+	}
+
+	second := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	if got := allSpaceIDs(second.Snapshot(ctx(t))); !equalStrings(got, want) {
+		t.Errorf("sidebar after a restart = %v, want the stored %v", got, want)
+	}
+}
+
 func allSpaceIDs(m model.Model) []string {
 	out := make([]string, 0, len(m.Spaces))
 	for _, s := range m.Spaces {

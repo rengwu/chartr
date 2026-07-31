@@ -61,3 +61,67 @@ it hides, opens a new one, and finds it back in the position they put it; that
 position survives a restart; an operator upgrading from a registry file written
 before this feature sees their existing arrangement unchanged with the Scratch
 space appended last. `go vet ./...` and `go test ./...` pass.
+
+## Answer
+
+The Scratch space's sidebar slot now persists, as one scalar beside the rows. The
+whole change is in `internal/registry`; nothing in `web/` moved, because the
+chrome already posts the list it can see and the server already splices Scratch
+back into it (ticket 01) — the only thing missing was that the slot did not
+outlive the process.
+
+**One scalar, never a row.** `file` gained `ScratchOrder *int`
+(`scratch_order`), declared before `Spaces` because a scalar cannot follow an
+array of tables in TOML, and a pointer for the same reason the rows' own `order`
+is read through one: an absent key has to be told apart from a recorded slot of
+0. `saveLocked` already skipped the Scratch entry when building the rows; it now
+records that entry's order on the way past. `[[space]]` rows still mean exactly
+what they meant, so deleting the registry and re-adding folders is still a
+complete recovery.
+
+**Load compacts, splices, densifies.** `addScratch` takes the recorded slot and
+seats Scratch by it rather than appending. The registered rows arrive already
+compacted by the existing `ordered`, so the file's gap is closed before the
+splice and reopened by it — a save that wrote rows 0, 2, 3 beside
+`scratch_order = 1` loads back to precisely that sequence. No second ordering
+rule was added: the splice is expressed on the sorted sequence and the whole list
+takes its index as its order, which is the same densification the rest of the
+package does.
+
+**Done-when, clause by clause.** *Dragged, hidden, reopened, still in place* —
+the slot is registry state and nothing in the terminal lifecycle touches it, so
+a hide/show cycle cannot move it; a reorder posted while Scratch is hidden splices
+it back at that slot (ticket 01) and the save records it. *Survives a restart* —
+the slot is on disk and read as the splice index on the next load. *The upgrade is
+invisible* — a file with no `scratch_order` appends Scratch at the end and leaves
+the registered arrangement exactly as it was, whether the file already stored an
+order or predates that too. `go vet ./...` and `go test ./...` are green.
+
+**Tested at the two seams the ticket names.** In `registry_test.go`, at the file
+seam: the slot round-trips through a save and a reload (asserting the file
+carries `scratch_order`, still writes three rows for three registered spaces, and
+leaves the registered rows the gapped orders 0, 2, 3); a hand-written gapped file
+loads back into the same sequence; `scratch_order = 0` is a slot and not an
+absence; a file with no recorded slot leaves the arrangement untouched — covered
+for both a file that stores an order and the pre-order `preUpgrade` fixture; and
+a hand-edited out-of-range slot degrades to appending without costing a space.
+In `scratch_test.go`, at the API seam: `TestScratchSlotSurvivesARestart` moves
+Scratch between two registered spaces, starts a second chartr over the same config
+root, and asserts the snapshot's sequence — the only thing that can tell a stored
+order from one this process happens to remember. All five new registry tests and
+the restart test fail against the pre-change registry, which is what makes them
+tests rather than echoes.
+
+Verified beyond the suite against a real built binary under isolated `HOME`,
+`XDG_CONFIG_HOME` and data roots: reordering to *(B, Scratch, A)* wrote
+`scratch_order = 1` above two rows carrying orders 0 and 2 and no row for
+Scratch; a restart over that config root pushed the same three ids in the same
+order; opening a scratch shell, closing the last one, posting a reorder that
+omits the now-hidden Scratch, and opening another left it still in slot 1; and
+stripping `scratch_order` from the file — a pre-feature registry — started with
+the two registered spaces in their arrangement and Scratch appended last.
+
+Deliberately unchanged: the chrome. No `web/` file needed editing, so the
+frontend `check`/`build`/vitest and the amber grep were not the gate here; the
+Go embed test still compiles against the existing `dist/`. Ticket 02's refusals
+are untouched — nothing here goes near a repo-scoped action.

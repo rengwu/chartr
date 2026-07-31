@@ -37,6 +37,30 @@ func paths(entries []registry.Entry) []string {
 	return out
 }
 
+// slots names the sidebar sequence with Scratch left in, which paths deliberately
+// drops. Where the synthetic entry sits among the registered rows is the whole
+// subject of the stored-slot tests, and it has no path of its own worth naming.
+func slots(entries []registry.Entry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.Scratch {
+			out = append(out, "scratch")
+			continue
+		}
+		out = append(out, e.Path)
+	}
+	return out
+}
+
+// idsOf is the argument a Reorder takes: the current sequence, by ID.
+func idsOf(entries []registry.Entry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.ID)
+	}
+	return out
+}
+
 // writeRegistry lays down a spaces.toml verbatim and returns its data dir, so a
 // test can describe a pre-upgrade or hand-edited file exactly as it sits on disk.
 func writeRegistry(t *testing.T, body string) string {
@@ -388,6 +412,172 @@ func TestMissingFileLoadsEmpty(t *testing.T) {
 	if scratch, ok := r.Get(registry.ScratchID); !ok || !scratch.Scratch {
 		t.Errorf("fresh registry has no flagged Scratch entry: entry=%+v present=%v", scratch, ok)
 	}
+}
+
+// The Scratch slot at the file seam. It is the one thing about the synthetic
+// entry that is persisted, and it persists as a scalar beside the rows rather
+// than as a row: a [[space]] row goes on meaning "a folder the operator
+// registered", which is what keeps deleting this file and re-adding those
+// folders a complete recovery.
+
+const threeRegistered = `
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+
+[[space]]
+  path = "/repos/gamma"
+  order = 2
+`
+
+// Drag Scratch into the middle and it stays there across a save and a reload.
+// The file records the move as one scalar, leaves the registered rows carrying
+// the gapped orders densification gave them, and still writes no row for Scratch.
+func TestScratchSlotRoundTripsThroughSaveAndReload(t *testing.T) {
+	dir := writeRegistry(t, threeRegistered)
+	r := load(t, dir)
+
+	if got := slots(r.List()); !equal(got, []string{"/repos/alpha", "/repos/beta", "/repos/gamma", "scratch"}) {
+		t.Fatalf("a file with no recorded slot loads as %v, want Scratch appended last", got)
+	}
+
+	seq := idsOf(r.List())
+	if err := r.Reorder([]string{seq[0], seq[3], seq[1], seq[2]}); err != nil {
+		t.Fatalf("seating Scratch second: %v", err)
+	}
+	want := []string{"/repos/alpha", "scratch", "/repos/beta", "/repos/gamma"}
+	if got := slots(r.List()); !equal(got, want) {
+		t.Fatalf("order after the move = %v, want %v", got, want)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "spaces.toml"))
+	if err != nil {
+		t.Fatalf("reading spaces.toml back: %v", err)
+	}
+	if !strings.Contains(string(data), "scratch_order = 1") {
+		t.Errorf("the saved registry does not record Scratch's slot:\n%s", data)
+	}
+	if got := strings.Count(string(data), "[[space]]"); got != 3 {
+		t.Errorf("the saved registry carries %d rows, want only the 3 registered:\n%s", got, data)
+	}
+	// Densification ran over the whole arrangement, so the rows are written with a
+	// hole at index 1 where Scratch sits. That hole is the contract the load path
+	// has to put back, not an accident to be tidied away.
+	orders := storedOrders(t, dir)
+	for p, i := range map[string]int{"/repos/alpha": 0, "/repos/beta": 2, "/repos/gamma": 3} {
+		if orders[p] != i {
+			t.Errorf("stored order for %s = %d, want %d — the row orders must leave Scratch's gap", p, orders[p], i)
+		}
+	}
+
+	if got := slots(load(t, dir).List()); !equal(got, want) {
+		t.Errorf("order after save and reload = %v, want the stored %v", got, want)
+	}
+}
+
+// The gap is legal input on its own terms: a file whose registered rows skip the
+// index Scratch sat at loads back into exactly that sequence, without the
+// existing compaction disturbing what surrounds it.
+func TestGappedRowsLoadScratchBackIntoItsSlot(t *testing.T) {
+	dir := writeRegistry(t, `
+scratch_order = 1
+
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 2
+
+[[space]]
+  path = "/repos/gamma"
+  order = 3
+`)
+	want := []string{"/repos/alpha", "scratch", "/repos/beta", "/repos/gamma"}
+	if got := slots(load(t, dir).List()); !equal(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
+	}
+}
+
+// A slot of 0 is a real slot, not a missing one — the same distinction the rows'
+// own order draws, and the reason the recorded index is read through a pointer.
+func TestScratchSlotZeroIsASlotNotAnAbsence(t *testing.T) {
+	dir := writeRegistry(t, `
+scratch_order = 0
+
+[[space]]
+  path = "/repos/alpha"
+  order = 1
+
+[[space]]
+  path = "/repos/beta"
+  order = 2
+`)
+	want := []string{"scratch", "/repos/alpha", "/repos/beta"}
+	if got := slots(load(t, dir).List()); !equal(got, want) {
+		t.Errorf("order = %v, want %v — scratch_order = 0 must seat it first", got, want)
+	}
+}
+
+// The upgrade is invisible. A file written before this feature carries no
+// recorded slot, so the operator's arrangement is exactly what it was and Scratch
+// appends behind it — whether the file already stored an order or predates that
+// too. An operator who upgrades and never opens a scratch shell cannot tell.
+func TestNoRecordedSlotLeavesTheArrangementUntouched(t *testing.T) {
+	t.Run("a file that stores an order", func(t *testing.T) {
+		dir := writeRegistry(t, `
+[[space]]
+  path = "/repos/alpha"
+  order = 2
+
+[[space]]
+  path = "/repos/beta"
+  order = 0
+
+[[space]]
+  path = "/repos/gamma"
+  order = 1
+`)
+		want := []string{"/repos/beta", "/repos/gamma", "/repos/alpha", "scratch"}
+		if got := slots(load(t, dir).List()); !equal(got, want) {
+			t.Errorf("order = %v, want the stored arrangement with Scratch last, %v", got, want)
+		}
+	})
+
+	t.Run("a file that predates the order too", func(t *testing.T) {
+		dir := writeRegistry(t, preUpgrade)
+		want := append(append([]string(nil), preUpgradeOrder...), "scratch")
+		if got := slots(load(t, dir).List()); !equal(got, want) {
+			t.Errorf("order = %v, want the old rule's arrangement with Scratch last, %v", got, want)
+		}
+	})
+}
+
+// A hand-edited slot the sequence cannot hold degrades the way every other
+// mangled order here does: the arrangement suffers, the list never does.
+func TestOutOfRangeScratchSlotAppends(t *testing.T) {
+	dir := writeRegistry(t, `
+scratch_order = 99
+
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+`)
+	r := load(t, dir)
+	want := []string{"/repos/alpha", "/repos/beta", "scratch"}
+	if got := slots(r.List()); !equal(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
+	}
+	assertTotalOrder(t, r, 2)
 }
 
 // Recency is still recorded — it is a useful fact beside last_agent — it just
