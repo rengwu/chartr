@@ -513,6 +513,16 @@ func (m *Manager) Shutdown() {
 // scrollback intact — for the operator to resume, respawn, or release (ticket 10);
 // it is already marked dead by the read loop's cleanup, so the push just re-renders
 // it frozen. Either way a fresh model is pushed.
+//
+// A drop does not flush the run clock, which is ticket 01's open question answered
+// by ticket 03, the emitting seam: a run only ever ends on a sample. The reason is
+// that every drop is a tab the operator is already standing at. A session that died
+// on its own — the ending the whole feature exists for — *pins* rather than drops,
+// keeps being sampled, and reports through the ordinary path as `dead`; what drops
+// is an ad-hoc shell the operator exited, a session they killed, or an on-ramp tab
+// whose agent quit. Flushing those would notify an operator about the thing they
+// just did. The accepted cost is that an on-ramp tab whose agent exits on its own
+// after a long run reports nothing.
 func (m *Manager) onExit(id string) {
 	m.mu.Lock()
 	t := m.terms[id]

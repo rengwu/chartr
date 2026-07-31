@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rengwu/chartr/internal/notify"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/terminal"
@@ -39,6 +40,11 @@ type Options struct {
 	// (`builtin-skills/`). Defaults to the OS user config dir; tests point it at a
 	// temp dir so a developer's own config never leaks into a run.
 	ConfigDir string
+	// Notifier fires the OS notification that reports an ended run. It defaults to
+	// the platform notifier for the machine chartr is running on, chosen here so
+	// nothing downstream knows which OS it is on; a test substitutes a stub, which
+	// is what keeps the suite from ever shelling out to a real notifier.
+	Notifier notify.Notifier
 }
 
 // Server is a single operator's chartr backend. Construct with New, then run
@@ -53,6 +59,13 @@ type Server struct {
 	// pickLock serializes native folder choosers, so a double-click on New Space
 	// raises one dialog rather than a stack the operator dismisses in order.
 	pickLock sync.Mutex
+
+	// notifier announces an ended run to the operating system, and notifyFailed
+	// keeps that announcement quiet when it cannot: a machine with no notification
+	// daemon logs its first failure and nothing after it, so a feature that can
+	// never work on this box does not fill the log of one that is working fine.
+	notifier     notify.Notifier
+	notifyFailed sync.Once
 }
 
 // New builds a Server with the control-socket hub seeded to the empty model and
@@ -64,6 +77,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.ConfigDir == "" {
 		opts.ConfigDir = ConfigRoot(opts.DataDir)
+	}
+	if opts.Notifier == nil {
+		opts.Notifier = notify.Platform()
 	}
 	dist, err := web.Dist()
 	if err != nil {
@@ -81,10 +97,11 @@ func New(opts Options) (*Server, error) {
 	}
 
 	s := &Server{
-		opts: opts,
-		hub:  newHub(),
-		mux:  http.NewServeMux(),
-		reg:  reg,
+		opts:     opts,
+		hub:      newHub(),
+		mux:      http.NewServeMux(),
+		reg:      reg,
+		notifier: opts.Notifier,
 	}
 	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild
 	// whenever a space's `.plan/` changes, so a map created outside chartr
