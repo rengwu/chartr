@@ -30,8 +30,9 @@
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
   import { nativeTitleBarHeight } from "./lib/titlebar";
+  import { visibleSpaces } from "./lib/spacevisibility";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
-  import { Plus, X, CircleNotch, Gear, FolderOpen } from "phosphor-svelte";
+  import { Plus, X, CircleNotch, Gear, FolderOpen, TerminalWindow } from "phosphor-svelte";
 
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
@@ -105,10 +106,11 @@
   });
 
   // Spaces arrive already ordered — the operator's own stored arrangement, the
-  // one authority — so we render them in slice order and never re-sort on the
-  // client. Recency is still recorded and sorts nothing; only an explicit
-  // reorder, or a registration appending at the end, moves a row.
-  const spaces = $derived<Space[]>(control.model?.spaces ?? []);
+  // one authority. The snapshot always includes Scratch; the one predicate below
+  // removes it while empty, and every cockpit behavior consumes that visible
+  // ordered list without re-sorting it.
+  const snapshotSpaces = $derived<Space[]>(control.model?.spaces ?? []);
+  const spaces = $derived<Space[]>(visibleSpaces(snapshotSpaces));
   // The config layers shared by every space — the operator's local binding file
   // and the two skill libraries that are not a space's own.
   const configLayers = $derived(control.model?.config ?? []);
@@ -340,6 +342,15 @@
     } finally {
       opening = false;
     }
+  }
+
+  // Scratch is always present in the server snapshot even while its empty row is
+  // hidden. The footer finds that flagged entry and uses the ordinary terminal
+  // action; no registration or folder chooser is involved.
+  async function openScratchShell() {
+    const scratch = snapshotSpaces.find((space) => space.scratch);
+    if (!scratch) return;
+    await openShell(scratch);
   }
 
   // The skill launcher (skill-launcher map): the space card's on-ramp control runs
@@ -674,6 +685,19 @@
             <FolderOpen /> New Space
           {:else}
             <Plus /> New Space
+          {/if}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="w-full"
+          disabled={opening || control.model === null}
+          onclick={openScratchShell}
+        >
+          {#if opening}
+            <CircleNotch class="animate-spin" /> Opening…
+          {:else}
+            <TerminalWindow /> New Scratch Shell
           {/if}
         </Button>
       </div>

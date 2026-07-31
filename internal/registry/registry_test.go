@@ -29,6 +29,9 @@ import (
 func paths(entries []registry.Entry) []string {
 	out := make([]string, 0, len(entries))
 	for _, e := range entries {
+		if e.Scratch {
+			continue
+		}
 		out = append(out, e.Path)
 	}
 	return out
@@ -354,7 +357,12 @@ func TestZeroIsAnOrderNotAnAbsence(t *testing.T) {
 // space appears exactly once and the sequence is dense after the next save.
 func assertTotalOrder(t *testing.T, r *registry.Registry, want int) {
 	t.Helper()
-	list := r.List()
+	list := make([]registry.Entry, 0, want)
+	for _, e := range r.List() {
+		if !e.Scratch {
+			list = append(list, e)
+		}
+	}
 	if len(list) != want {
 		t.Fatalf("listed %d spaces, want %d — degradation lost or duplicated one", len(list), want)
 	}
@@ -370,12 +378,15 @@ func assertTotalOrder(t *testing.T, r *registry.Registry, want int) {
 	}
 }
 
-// A missing file is still the first-run state, and an empty registry has nothing
-// to order.
+// A missing file is still the first-run state: no registered rows, plus the one
+// synthetic Scratch entry held in memory.
 func TestMissingFileLoadsEmpty(t *testing.T) {
 	r := load(t, t.TempDir())
-	if got := len(r.List()); got != 0 {
-		t.Errorf("fresh registry lists %d spaces, want 0", got)
+	if got := paths(r.List()); len(got) != 0 {
+		t.Errorf("fresh registry lists registered spaces %v, want none", got)
+	}
+	if scratch, ok := r.Get(registry.ScratchID); !ok || !scratch.Scratch {
+		t.Errorf("fresh registry has no flagged Scratch entry: entry=%+v present=%v", scratch, ok)
 	}
 }
 

@@ -1,8 +1,6 @@
 ---
 type: task
 blocked_by: []
-claimed_by: sb95345b5f876
-claimed_at: 2026-07-31T12:15:11Z
 ---
 
 # A scratch shell, opened from the sidebar
@@ -89,3 +87,60 @@ no `[[space]]` row has been written for it; dragging a registered space still
 works while the Scratch space is hidden. `go vet ./...`, `go test ./...` and the
 frontend `check`, `build` and `vitest` scripts pass, with no amber in the built
 CSS.
+
+## Answer
+
+Shipped the tracer bullet from the sidebar footer through the existing terminal
+endpoint and back through the pushed model.
+
+**Synthetic registry entry.** The registry now creates one fixed `scratch`
+entry on every load, flagged with `Scratch`, pointed at the home directory
+resolved on that machine, and appended after the registered rows read from
+`spaces.toml`. Its identity cannot collide with the twelve-hex-character ids
+derived for registered paths. `List` and `Get` include it like any other entry,
+while saves omit it from `[[space]]` entirely and the registry invariant prevents
+it being deleted. The ordinary terminal handler therefore opens Scratch PTYs in
+that home path without touching the terminal manager or passing through
+registration/`git init`.
+
+**Thin, always-present snapshot.** The wire `Space` now carries a `scratch` flag.
+Scratch derivation returns its fixed name/path and live terminals, with empty
+maps, skills and layers and no branch, dirty state, remembered agent, warnings or
+tracker offer. It returns before any map discovery, git read, skill/config-layer
+resolution or tracker classification, and the filesystem watcher excludes its
+home path. Registered spaces keep their existing derivation unchanged.
+
+**One chrome visibility rule and one way in.** `visibleSpaces` is the single pure
+predicate: registered spaces always remain; Scratch remains only while it has a
+terminal. `App.svelte` feeds that visible list to first-run rendering, filtering,
+selection fallback, cycling and reorder, while retaining the unfiltered snapshot
+only to find the flagged entry when the new footer action is clicked. **New
+Scratch Shell** is a ghost-variant shadcn `Button` beneath the outline **New
+Space** action, with a Phosphor `TerminalWindow` icon. It invokes the ordinary
+`openTerminal` action directly—no chooser and no registration. When its last tab
+ends, the predicate removes Scratch and the existing stale-selection fallback
+seats the first remaining neighbouring space.
+
+**Hidden-row reorder.** A reorder may omit Scratch alone. After validating every
+named id and proving every registered entry is present exactly once, the registry
+splices Scratch back at its current in-memory slot and applies the complete order.
+Unknown ids, duplicates and any registered-space omission remain atomic bad
+requests that leave the sequence untouched.
+
+Tests cover the first-run flagged/thin snapshot, two real Scratch PTYs with a
+command proving their working directory is the isolated home, absence of both
+`.git` and a registry file after opening them, and both accepted/rejected reorder
+shapes. The frontend vitest covers empty Scratch hidden, occupied Scratch shown,
+and registered spaces never filtered. Verification is green: `go vet ./...`,
+`go test ./...`, frontend `check`, `build`, and all 208 vitests; the built CSS has
+no amber marker. A real built binary under isolated `HOME`, `XDG_CONFIG_HOME` and
+data roots opened two Scratch shells and closed both with 204 responses, while
+the isolated home remained without `.git` and the isolated config remained
+without `spaces.toml`. No controllable browser was attached to this session, so
+the live verification was performed at the binary's HTTP/process boundary rather
+than as a visual click-through.
+
+Deliberately left to the already-charted follow-ups: ticket 02 removes/refuses
+the repository-scoped controls and actions Scratch cannot honour; ticket 03
+persists Scratch's sidebar slot across hiding and restart. This ticket keeps the
+slot only for the current process and appends Scratch again on load, as specified.

@@ -127,6 +127,8 @@ export interface Space {
   id: string
   name: string
   path: string
+  // The one synthetic Scratch entry is flagged; registered spaces omit this.
+  scratch?: boolean
   // The working tree's current git branch (or a short detached-HEAD sha), read
   // live. Absent when it can't be determined — the sidebar omits it then.
   branch?: string

@@ -170,6 +170,11 @@ func (s *Server) rebuild() {
 	entries := s.reg.List()
 	roots := make([]string, 0, len(entries))
 	for _, e := range entries {
+		// Scratch follows the operator's home but must never make it a discovery
+		// root. Its model is rebuilt from terminal state only.
+		if e.Scratch {
+			continue
+		}
 		roots = append(roots, e.Path)
 	}
 	s.watch.setRoots(roots)
@@ -313,39 +318,26 @@ func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 }
 
 func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings []string) model.Space {
+	terminals := s.modelTerminals(e.ID)
+	if e.Scratch {
+		return model.Space{
+			ID:        e.ID,
+			Name:      "Scratch",
+			Scratch:   true,
+			Path:      e.Path,
+			Skills:    []model.ResolvedSkill{},
+			Layers:    []model.ConfigLayer{},
+			Maps:      []model.Map{},
+			Terminals: terminals,
+		}
+	}
+
 	// The agent library is global, but its live warnings — an agent with no
 	// adapter, an unreadable prompt delivery — surface where the operator is, so
 	// they ride each space's warnings the way the binding resolver's used to.
 	_, agentWarnings := config.ResolveAgents(userTOML, nil)
 
 	maps := mapscan.Discover(e.Path)
-
-	// Ad-hoc shells and sessions are runtime state the manager owns, not derived
-	// from disk; fold them in so a mapless space still shows its terminal tabs and a
-	// reconnecting browser rediscovers the open shells (story 29).
-	terminals := make([]model.Terminal, 0)
-	for _, info := range s.terms.ForSpace(e.ID) {
-		term := model.Terminal{
-			ID:     info.ID,
-			Title:  info.Title,
-			Proc:   info.Proc,
-			Status: info.Status,
-			Alive:  info.Alive,
-			// The dot rides the snapshot beside the tab's status, which is what makes it
-			// survive a browser reload: the run it records may have ended with no browser
-			// attached at all.
-			FinishedUnseen: info.FinishedUnseen,
-		}
-		if info.Session != nil {
-			term.Session = &model.Session{
-				MapSlug:   info.Session.MapSlug,
-				TicketNum: info.Session.TicketNum,
-				Role:      info.Session.Role,
-				Agent:     info.Session.Agent,
-			}
-		}
-		terminals = append(terminals, term)
-	}
 
 	// Fold in the skill library's own notices — a fork behind the shipped default
 	// (story 23) — beside the agent-library warnings, so both live problems are
@@ -388,6 +380,36 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 		Warnings:       warnings,
 		TrackerAdapter: trackerOffer,
 	}
+}
+
+// modelTerminals is the runtime-only half shared by registered and Scratch
+// spaces. It performs no filesystem reads; the terminal manager already groups
+// every tab by the registry identity it was opened against.
+func (s *Server) modelTerminals(spaceID string) []model.Terminal {
+	terminals := make([]model.Terminal, 0)
+	for _, info := range s.terms.ForSpace(spaceID) {
+		term := model.Terminal{
+			ID:     info.ID,
+			Title:  info.Title,
+			Proc:   info.Proc,
+			Status: info.Status,
+			Alive:  info.Alive,
+			// The dot rides the snapshot beside the tab's status, which is what makes it
+			// survive a browser reload: the run it records may have ended with no browser
+			// attached at all.
+			FinishedUnseen: info.FinishedUnseen,
+		}
+		if info.Session != nil {
+			term.Session = &model.Session{
+				MapSlug:   info.Session.MapSlug,
+				TicketNum: info.Session.TicketNum,
+				Role:      info.Session.Role,
+				Agent:     info.Session.Agent,
+			}
+		}
+		terminals = append(terminals, term)
+	}
+	return terminals
 }
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash
