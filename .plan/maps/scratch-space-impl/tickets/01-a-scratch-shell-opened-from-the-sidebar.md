@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: sb95345b5f876
+claimed_at: 2026-07-31T12:15:11Z
 ---
 
 # A scratch shell, opened from the sidebar
