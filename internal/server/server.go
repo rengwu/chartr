@@ -45,6 +45,12 @@ type Options struct {
 	// nothing downstream knows which OS it is on; a test substitutes a stub, which
 	// is what keeps the suite from ever shelling out to a real notifier.
 	Notifier notify.Notifier
+	// NoWatch starts with the filesystem watch dead — the same state newWatcher
+	// falls back to when the OS watcher cannot be created (fd limits, a sandbox,
+	// an unusual filesystem). fsnotify's init cannot be made to fail portably, so
+	// this is how a test reaches the degraded path that connect-time discovery
+	// exists to cover (ticket 19).
+	NoWatch bool
 }
 
 // Server is a single operator's chartr backend. Construct with New, then run
@@ -113,7 +119,11 @@ func New(opts Options) (*Server, error) {
 	// operator saving a config edit in their own editor — the only way those files
 	// are ever edited, since the surface opens rather than edits them — is the same
 	// kind of notice a map write is, and reaches live terminals without a refresh.
-	s.watch = newWatcher(s.rebuild, opts.ConfigDir)
+	if opts.NoWatch {
+		s.watch = deadWatcher(opts.ConfigDir)
+	} else {
+		s.watch = newWatcher(s.rebuild, opts.ConfigDir)
+	}
 	// Ad-hoc shells are chartr-owned runtime state (ticket 05). The manager
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.

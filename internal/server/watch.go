@@ -54,7 +54,8 @@ type watcher struct {
 // nothing: the cockpit stays fully usable and maps still appear on every
 // operator action, only unattended notice is lost.
 func newWatcher(onChange func(), pinned string) *watcher {
-	w := &watcher{onChange: onChange, pinned: pinned, watched: map[string]bool{}}
+	w := deadWatcher(pinned)
+	w.onChange = onChange
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return w
@@ -62,6 +63,15 @@ func newWatcher(onChange func(), pinned string) *watcher {
 	w.fsw = fsw
 	go w.run()
 	return w
+}
+
+// deadWatcher is the watcher with no OS watcher behind it — setRoots and close
+// are no-ops on it and nothing ever fires onChange. It is what newWatcher falls
+// back to when fsnotify cannot start, given a name so the degraded path can also
+// be entered on purpose (Options.NoWatch), which is the only portable way to
+// test that discovery still reaches a browser without it (ticket 19).
+func deadWatcher(pinned string) *watcher {
+	return &watcher{pinned: pinned, watched: map[string]bool{}}
 }
 
 // setRoots reconciles the watch set to cover the pinned config root, each root's

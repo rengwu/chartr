@@ -13,9 +13,9 @@ import (
 // the browser resyncs on reconnect.
 const writeTimeout = 10 * time.Second
 
-// handleControl serves one browser's control socket. On connect it sends the
-// current model snapshot immediately, then streams a fresh whole snapshot on
-// every change (ADR 0010). The socket is push-only — the client never writes
+// handleControl serves one browser's control socket. On connect it rescans and
+// sends the current model snapshot immediately, then streams a fresh whole
+// snapshot on every change (ADR 0010). The socket is push-only — the client never writes
 // state through it — so a dropped or reconnecting browser simply gets the whole
 // snapshot again, losing nothing.
 func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +34,15 @@ func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
 	// drain incoming frames to process close/ping and notice disconnects.
 	// CloseRead does exactly that and cancels ctx when the peer goes away.
 	ctx := c.CloseRead(r.Context())
+
+	// A connect is a discovery notice of its own (ticket 19). The watch degrades
+	// to watching nothing when fsnotify cannot start, and an individual create
+	// event can be missed; in either state an operator who takes no action never
+	// sees a map written from outside. Rebuilding here — before subscribing, so
+	// the snapshot below is the fresh one — closes that at the one moment a user
+	// is provably present and looking. rebuild is idempotent and a reconnect is
+	// not a hot path, so this needs no debounce of its own.
+	s.rebuild()
 
 	sub, snapshot := s.hub.subscribe()
 	defer s.hub.unsubscribe(sub)

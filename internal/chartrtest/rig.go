@@ -68,6 +68,14 @@ func WithNotifier(n notify.Notifier) Option {
 	return func(o *server.Options) { o.Notifier = n }
 }
 
+// WithoutWatch starts the server with its filesystem watch dead — the degraded
+// state chartr falls back to when the OS watcher cannot be created. Nothing
+// written from outside fires a notice, so a test using this is asserting on the
+// discovery that happens without one (ticket 19).
+func WithoutWatch() Option {
+	return func(o *server.Options) { o.NoWatch = true }
+}
+
 // Start launches chartr on a random loopback port and registers cleanup that
 // shuts it down when the test ends. It fails the test on any startup error.
 func Start(t testing.TB, opts ...Option) *Chartr {
