@@ -49,3 +49,39 @@ newly-created map/ticket is in the first snapshot the browser receives even when
 the filesystem watch never fired; the existing by-notice discovery is unchanged;
 `go vet ./...` and `go test ./...` pass, and the frontend `check`/`build`/`vitest`
 pass with no amber in the built CSS.
+
+## Answer
+
+One line of behaviour, as specified. `handleControl` (`internal/server/control.go`)
+now calls `s.rebuild()` **before** `s.hub.subscribe()`. `rebuild` is synchronous
+and ends in `s.hub.setModel(...)`, which writes `modelJSON` under the same lock
+`subscribe` reads it under, so the snapshot the connect already sends *is* the
+fresh one — no second push, no waiting, no new plumbing. No timer, no refresh
+button, no watch-health surface; the by-notice path is untouched.
+
+An unlooked-for second benefit, worth a reader knowing: `rebuild` also calls
+`watch.setRoots`, which re-attempts any directory `Add` that previously failed.
+So a connect repairs a *partially* degraded watch, not only a dead one.
+
+**The test seam.** fsnotify's init cannot be made to fail portably, so the
+degraded path needed a deliberate door: `Options.NoWatch` starts the server with
+the same nothing-watching watcher `newWatcher` already falls back to. That
+fallback got a name — `deadWatcher(pinned)` in `watch.go` — and `newWatcher` now
+builds on it, so there is one shape for "no OS watcher behind this" rather than
+two. `chartrtest.WithoutWatch()` is the rig option. `setRoots` and `close` were
+already nil-safe; nothing else needed guarding.
+
+**Tests** (`internal/server/rescan_test.go`, process-boundary like ticket 03's):
+
+- `TestConnectRescansWhenWatchIsDead` — with `WithoutWatch()`, assert the space
+  starts mapless, drop a map in from outside, then dial and read the *first*
+  snapshot. No `WaitFor`: no notice is ever coming, so waiting would only mask a
+  failure as a timeout. Confirmed to fail (`maps = []`) with the `s.rebuild()`
+  line commented out, so it is testing the fix and not the fixture.
+- `TestWatchStillDiscoversForAConnectedBrowser` — the live watch unregressed: an
+  already-connected browser receives a map by notice without reconnecting.
+
+**Verified:** `go vet ./...` and `go test ./...` pass (the full server suite,
+including ticket 03's existing `TestMapAppearsByNoticeBothLayouts`). No frontend
+change was needed, and the frontend gates pass unchanged anyway —
+`svelte-check` 0 errors, `vitest` 211/211, `npm run build` clean.
