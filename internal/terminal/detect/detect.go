@@ -72,20 +72,22 @@ var genericRuntime = map[string]bool{
 // against its region. Priority orders rules (highest first); SkipStateUpdate marks
 // a veto rule. The matcher fields are ANDed — every one that is set must pass — so
 // a rule narrows rather than widens as fields are added.
+//
+// There are deliberately only three matchers. All and Any cover substring matching
+// (every one, or at least one); LineRegex covers patterns. A plain whole-region
+// regex is not offered: every region a rule reads is either single-line (an OSC
+// value, where the two are identical) or a screen slice, where a pattern meant for
+// one row must not be allowed to straddle a line break.
 type Rule struct {
 	ID              string   `toml:"id"`
 	State           string   `toml:"state"`
 	Priority        int      `toml:"priority"`
 	Region          string   `toml:"region"`
-	Contains        []string `toml:"contains"`
 	Any             []string `toml:"any"`
 	All             []string `toml:"all"`
-	Not             []string `toml:"not"`
-	Regex           []string `toml:"regex"`
 	LineRegex       []string `toml:"line_regex"`
 	SkipStateUpdate bool     `toml:"skip_state_update"`
 
-	regex     []*regexp.Regexp
 	lineRegex []*regexp.Regexp
 }
 
@@ -154,13 +156,6 @@ func New(fsys fs.FS, dir string) (*Engine, error) {
 func (e *Engine) add(m *Manifest) error {
 	for i := range m.Rules {
 		r := &m.Rules[i]
-		for _, pat := range r.Regex {
-			re, err := regexp.Compile(pat)
-			if err != nil {
-				return fmt.Errorf("rule %q: regex %q: %w", r.ID, pat, err)
-			}
-			r.regex = append(r.regex, re)
-		}
 		for _, pat := range r.LineRegex {
 			re, err := regexp.Compile(pat)
 			if err != nil {
@@ -237,7 +232,7 @@ func region(name string, ev Evidence) string {
 		return ev.Title
 	case "osc_progress":
 		return ev.Progress
-	case "screen", "whole_recent":
+	case "whole_recent":
 		return ev.Screen
 	case "bottom_non_empty_lines":
 		return bottomNonEmptyLines(ev.Screen, arg)
@@ -252,7 +247,7 @@ func region(name string, ev Evidence) string {
 
 // parseRegion splits a region name into its function and an optional integer
 // argument: "bottom_non_empty_lines(6)" → ("bottom_non_empty_lines", 6), and a
-// bare "screen" → ("screen", 0). A malformed argument reads as 0.
+// bare "whole_recent" → ("whole_recent", 0). A malformed argument reads as 0.
 func parseRegion(name string) (string, int) {
 	open := strings.IndexByte(name, '(')
 	if open < 0 || !strings.HasSuffix(name, ")") {
@@ -355,18 +350,8 @@ func (r *Rule) matches(text string) bool {
 	if r.empty() {
 		return false
 	}
-	for _, s := range r.Contains {
-		if !strings.Contains(text, s) {
-			return false
-		}
-	}
 	for _, s := range r.All {
 		if !strings.Contains(text, s) {
-			return false
-		}
-	}
-	for _, s := range r.Not {
-		if strings.Contains(text, s) {
 			return false
 		}
 	}
@@ -382,11 +367,6 @@ func (r *Rule) matches(text string) bool {
 			return false
 		}
 	}
-	for _, re := range r.regex {
-		if !re.MatchString(text) {
-			return false
-		}
-	}
 	for _, re := range r.lineRegex {
 		if !matchesLine(text, re) {
 			return false
@@ -397,14 +377,14 @@ func (r *Rule) matches(text string) bool {
 
 // empty reports whether a rule specifies no matcher at all.
 func (r *Rule) empty() bool {
-	return len(r.Contains) == 0 && len(r.All) == 0 && len(r.Not) == 0 &&
-		len(r.Any) == 0 && len(r.regex) == 0 && len(r.lineRegex) == 0
+	return len(r.All) == 0 && len(r.Any) == 0 && len(r.lineRegex) == 0
 }
 
-// matchesLine reports whether re matches at least one line of text. It is the
-// line-anchored cousin of regex: a screen region is many lines (ticket 02), and a
+// matchesLine reports whether re matches at least one line of text. It is the only
+// pattern matcher a rule gets: a screen region is many lines (ticket 02), and a
 // pattern meant for one row must not straddle a line break. For a single-line
-// region (an OSC title) it behaves exactly like regex.
+// region (an OSC title or progress value) it behaves exactly like a plain regex,
+// which is why no separate whole-region matcher is needed.
 func matchesLine(text string, re *regexp.Regexp) bool {
 	for _, line := range strings.Split(text, "\n") {
 		if re.MatchString(line) {

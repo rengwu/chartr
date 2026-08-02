@@ -22,7 +22,7 @@ id = "idle"
 state = "idle"
 priority = 50
 region = "osc_title"
-contains = ["✳"]
+all = ["✳"]
 
 # --- Screen rules (ticket 02, measured against rec-claude.jsonl) ---
 

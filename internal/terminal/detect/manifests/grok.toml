@@ -16,7 +16,7 @@ id = "blocked"
 state = "blocked"
 priority = 100
 region = "osc_title"
-contains = ["Action Required"]
+all = ["Action Required"]
 
 # An active progress pulse (state 1 = active, 3 = indeterminate) → working.
 [[rule]]
@@ -24,7 +24,7 @@ id = "working"
 state = "working"
 priority = 60
 region = "osc_progress"
-regex = ['^4;[13]']
+line_regex = ['^4;[13]']
 
 # Progress cleared (state 0) → the pulse stopped: a positive idle signal.
 [[rule]]
@@ -32,4 +32,4 @@ id = "idle"
 state = "idle"
 priority = 40
 region = "osc_progress"
-regex = ['^4;0']
+line_regex = ['^4;0']
