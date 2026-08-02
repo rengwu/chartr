@@ -236,10 +236,13 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Single-operator localhost tool reached through the Vite dev proxy; the
-		// cross-origin Host check would only get in the way (as on the control
-		// socket).
-		InsecureSkipVerify: true,
+		// Scoped to the address chartr is listening on (as on the control socket).
+		// Inbound binary frames go straight to the PTY below, so an unscoped
+		// handshake is keystroke injection into the operator's live shells and
+		// agent sessions, as them — and scrollback replay carries them back out.
+		// The refusal happens here, before Attach, so a turned-away handshake
+		// writes nothing at all.
+		OriginPatterns: s.origins,
 	})
 	if err != nil {
 		return

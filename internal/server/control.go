@@ -20,10 +20,13 @@ const writeTimeout = 10 * time.Second
 // snapshot again, losing nothing.
 func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// The cockpit is a single-operator tool bound to localhost and reached
-		// through the Vite dev proxy in development, so the cross-origin Host
-		// check would only get in the way here.
-		InsecureSkipVerify: true,
+		// Scoped to the address chartr is listening on: this socket pushes the
+		// whole model snapshot — absolute repository paths, branch state, the live
+		// terminal ids — to whoever completes the handshake, and binding to
+		// loopback is not a boundary against a page in another tab. The Vite dev
+		// proxy's origin is named too, but only in a development build
+		// (originPatterns).
+		OriginPatterns: s.origins,
 	})
 	if err != nil {
 		return

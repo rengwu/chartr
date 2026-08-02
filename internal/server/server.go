@@ -62,6 +62,13 @@ type Server struct {
 	reg   *registry.Registry
 	watch *watcher
 	terms *terminal.Manager
+	// origins is the browser-origin allowlist both websocket handshakes are
+	// checked against (originPatterns). It is set once, in Serve, from the address
+	// the listener actually bound: that is the last moment before a handler can
+	// run and the first at which the address is known — the shell binds
+	// `127.0.0.1:0` and learns its port only after net.Listen, so New cannot have
+	// it.
+	origins []string
 	// pickLock serializes native folder choosers, so a double-click on New Space
 	// raises one dialog rather than a stack the operator dismisses in order.
 	pickLock sync.Mutex
@@ -262,6 +269,13 @@ func ConfigRoot(fallback string) string {
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	defer s.watch.close()
 	defer s.terms.Shutdown()
+
+	// Scope both websocket handshakes to the address we are actually listening on,
+	// so a page on another origin can neither read the model snapshot nor type
+	// into a terminal. This is written before the listener is served, and every
+	// handler that reads it runs on a goroutine started after, so the write is
+	// ordered ahead of every read without a lock.
+	s.origins = originPatterns(ln.Addr())
 
 	httpSrv := &http.Server{
 		Handler:           s.mux,
