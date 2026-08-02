@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01]
+claimed_by: s03dce6d82955
+claimed_at: 2026-08-02T18:18:35Z
 ---
 
 # What is chartr's trust boundary?
