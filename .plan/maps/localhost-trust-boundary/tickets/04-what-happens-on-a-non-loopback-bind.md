@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [02, 03]
+claimed_by: s0b56ec50e0a7
+claimed_at: 2026-08-02T19:20:03Z
 ---
 
 # What happens when `-addr` is not loopback?
