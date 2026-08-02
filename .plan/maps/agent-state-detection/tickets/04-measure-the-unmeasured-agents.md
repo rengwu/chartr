@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: se193f9533252
+claimed_at: 2026-08-02T15:57:26Z
 ---
 
 # Four of the six agents were never measured
@@ -11,7 +13,7 @@ codex, opencode, grok, pi) each read correctly through a full turn — idle,
 working, and stopped-for-permission." Only **two** were ever measured. Tickets 01
 and 02 captured claude and kimi and tested against their real bytes; the other
 four manifests were written from herdr's data and from the braille-spinner shape
-the captured agents share. Three of the four say so in their own headers:
+the captured agents share. All four say so in their own headers:
 
 ```
 codex.toml    "only claude and kimi were captured as fixtures for this map, so
@@ -20,6 +22,8 @@ opencode.toml "NOT captured as a fixture … extrapolated … not verified again
                recorded opencode bytes"
 pi.toml       "NOT captured as a fixture … extrapolated, not verified against
                recorded pi bytes"
+grok.toml     "not captured as a local fixture … come from the described
+               signals and herdr's manifest, not a recording here"
 ```
 
 That was a reasonable place to leave it while the engine was being built. It is
@@ -38,15 +42,15 @@ ships no screen rules to catch it, unlike claude and kimi.
 all, one extrapolated spinner pattern each, no symptom reported only because
 nobody has watched them closely.
 
-**What is newly possible.** Four of the six roster agents are installed on this
-machine right now — claude, kimi, **codex**, **opencode**, **pi**. Only `grok` is
-not. The three unmeasured-but-installed agents can be captured today; there is no
+**What is newly possible.** All six roster agents are installed, available and
+prompt-ready on this machine right now — claude, kimi, **codex**, **opencode**,
+**grok**, **pi**. All four unmeasured agents can be captured today; there is no
 blocker beyond someone driving each through a turn.
 
-**Why one ticket and not three.** The expensive part is shared and paid once: a
+**Why one ticket and not four.** The expensive part is shared and paid once: a
 PTY recorder in the capture format, and the judgement about what each agent's
 evidence actually supports. Per agent after that it is a small TOML edit and one
-table case. Splitting would triple the ceremony over identical work.
+table case. Splitting would multiply the ceremony over identical work.
 
 **The recorder has to come back.** The map notes the two design spikes were
 thrown away deliberately — "the *recordings* are worth keeping as test fixtures"
@@ -66,16 +70,16 @@ sample. If an agent's evidence needs something none of those express, that is a
 finding worth writing down before reaching for a new matcher; the DSL was just
 cut down from six precisely because unused generality accumulated.
 
-**Grok stays fog.** It is not installed and cannot be verified here. Its manifest
-should not be left looking measured when it is not — say so on the map rather
-than shipping a rule that reads like evidence.
+**Grok is part of the measurement pass.** Its `Action Required` title and OSC
+9;4 progress rules came from herdr and described signals, not local evidence.
+Now that the CLI is installed, capture the same idle, working and permission
+states as the other three agents and correct the manifest against the bytes.
 
-Done when: `codex`, `opencode` and `pi` each have a real PTY capture in
+Done when: `codex`, `opencode`, `grok` and `pi` each have a real PTY capture in
 `.plan/maps/agent-state-detection/assets/` covering idle, a working turn, and a
 stopped-for-permission state where the agent has one; each manifest is corrected
 against what those bytes actually say — including adding screen rules where the
 title turns out to carry nothing, as kimi's did; `recording_test.go` asserts the
 published transitions for each from its recording; the "not verified" notes are
-gone from the three headers or replaced with what was measured; grok's remaining
-uncertainty is recorded on the map rather than in a comment; and `go vet ./...` /
-`go test ./...` pass.
+gone from the four headers or replaced with what was measured; and
+`go vet ./...` / `go test ./...` pass.
