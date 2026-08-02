@@ -14,6 +14,12 @@
 # U+25A0 (■), immediately followed by the "esc interrupt" affordance. The old
 # braille pattern could never have matched a single frame, so a working opencode
 # read as idle for the same reason codex did.
+#
+# opencode stops for its human in two different ways, and they share no chrome: a
+# tool permission ("△ Permission required") and a `question` tool choice panel. The
+# second was found after ticket 04 closed — a session sitting on a multiple-choice
+# question read as idle, because the capture that measured this agent only ever
+# drove a permission. Each has its own rule and its own recording.
 agent = "opencode"
 match = ["opencode"]
 
@@ -29,6 +35,31 @@ state = "blocked"
 priority = 200
 region = "bottom_non_empty_lines(4)"
 line_regex = ['Allow once\s+Allow always\s+Reject']
+
+# Blocked: the `question` tool's choice panel — the second way opencode stops for
+# its human, and the one ticket 04's capture never reached because it only drove a
+# tool permission. The agent has called `question`, drawn a numbered list of
+# options, and is waiting on a keystroke; nothing else on screen says so, and with
+# only the permission rule above a session sitting on this panel matched no rule at
+# all and fell through the sampler's absence path to idle.
+#
+# The anchor is the panel's footer hint, which is the one line present in every
+# mode it renders: `enter <verb>  esc dismiss`. Both halves are required for the
+# same reason the working rule requires two — either alone is a phrase, together
+# they are chrome. The verb is left open rather than enumerated: the capture only
+# ever showed `submit`, and opencode swaps it for a different word on a multi-select
+# or a confirmation, so pinning the measured one would make the rule miss the modes
+# that were not driven. `esc dismiss` is the narrowing half and it is exact — no
+# other opencode overlay offers it (the pickers close and cancel).
+#
+# Measured in rec-opencode-1.2.27-question.jsonl: working from 12s, this panel from
+# 15s to 89s, working again once answered, idle at the prompt.
+[[rule]]
+id = "blocked-question"
+state = "blocked"
+priority = 200
+region = "bottom_non_empty_lines(4)"
+line_regex = ['enter\s+\S+\s+esc\s+dismiss']
 
 # Working: the square-cell spinner leading the bottom status line, with "esc
 # interrupt" behind it. Both halves are required — the glyph run alone is a
