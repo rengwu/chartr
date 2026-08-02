@@ -176,3 +176,45 @@ Widened to 8. `TestPiWorkingSurvivesATypedInputBox` pins the headroom.
 transitions for all four from their own recordings; the hand-written table cases in
 `detect_test.go` that encoded the old guesses were rewritten against the captures —
 four of them were failing the moment the manifests became true.
+
+### Follow-up, 2026-08-03: opencode blocks two ways, and only one was captured
+
+The operator reported an opencode session sitting on a multiple-choice question
+still reading **idle**. It was the same defect this ticket killed three times, from
+a direction the ticket did not look: not an extrapolated pattern, but a **state the
+capture never drove**.
+
+opencode has two stopped-for-human surfaces and they share no chrome — the
+`△ Permission required` panel this ticket measured, and the `question` tool's choice
+panel, whose only structural anchor is the footer `enter <verb>  esc dismiss`. With
+the permission rule as opencode's only blocked rule, a session on the question panel
+matched no rule at all and fell through the sampler's absence path to idle. Replaying
+the new capture against the manifest as this ticket left it publishes exactly that:
+
+```
+idle → working (10.2s) → idle (14.1s, absence-derived) → working (89.1s) → idle
+```
+
+The 14.1s idle is the whole bug: the panel went up at 15s and the tab had already
+given up on it.
+
+Fixed by a second rule, `blocked-question`, measured against
+`rec-opencode-1.2.27-question.jsonl`. The verb is deliberately left open
+(`enter\s+\S+\s+esc\s+dismiss`) rather than pinned to the captured `submit` —
+opencode swaps it for `toggle` on a multi-select and `confirm` on a confirmation,
+neither of which the capture drove, and `esc dismiss` is unique to this panel across
+the whole binary, so it is the half that narrows.
+
+**What this says about the Done-when.** "Idle, a working turn, and a
+stopped-for-permission state" was the wrong shape of question for opencode, and
+possibly for others: it asks for one blocked state per agent, and opencode has two.
+Worth a look at the other five before the map closes — codex, grok and claude all
+ship interactive pickers and plan-approval flows the captures never entered, and a
+capture only proves the transitions it walks through.
+
+**One known gap left open.** opencode's permission panel has a sub-state the
+capture also never reached: rejecting a permission opens a
+`△ Reject permission — Tell OpenCode what to do differently` textarea with an
+`enter confirm  esc cancel` footer. opencode is still waiting on its human there and
+no rule covers it. Flagged rather than written from the binary's strings, which is
+the extrapolation this ticket exists to stop.

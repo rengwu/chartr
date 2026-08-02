@@ -34,6 +34,20 @@ stopped-for-permission → approved → idle:
   `⠇ Working...` spinner one line further from the foot and is what sized the
   rule's region). No permission state: pi ships no approval gate. 45s.
 
+Taken 2026-08-03, after an operator reported an opencode session on a
+multiple-choice question reading as idle:
+
+- `rec-opencode-1.2.27-question.jsonl` — opencode stopped on its `question` tool
+  choice panel, answered with ↓/enter, then run to completion. Working from 12s,
+  the panel 15s–89s, working again, idle. It exists because a *permission* is not
+  the only way opencode blocks: the ticket-04 capture drove one, the panel shares
+  none of its chrome, and nothing was watching the gap. 133s.
+
+The lesson `-question` adds to the one above: measuring an agent is not the same
+as measuring an agent's *states*. Three manifests were wrong because their
+patterns were extrapolated; this one was wrong because a state was never driven.
+A capture only proves the transitions it walks through.
+
 ## Format
 
 Line 1 is `{"cols":N,"rows":M}`. Every line after is `[elapsed_seconds,

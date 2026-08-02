@@ -445,6 +445,73 @@ func TestOpencodeRecordingReadsBlockedWorkingAndIdleFromScreen(t *testing.T) {
 	}
 }
 
+// The second way opencode stops for its human, and the one ticket 04's capture
+// never reached: the `question` tool's choice panel. The operator reported a
+// session sitting on a multiple-choice question reading as idle — the permission
+// rule was the only blocked rule opencode had, this panel shares none of its
+// chrome, so no rule matched and the sampler's absence path published idle. This is
+// the same class of defect ticket 04 killed three times over, arriving through a
+// state the capture did not drive rather than through an extrapolated pattern.
+//
+// The capture is a whole cycle: a turn, the panel, an answer, the turn resuming,
+// and the prompt. Replaying it must show all three states from the grid alone.
+func TestOpencodeRecordingReadsBlockedOnAQuestionPanel(t *testing.T) {
+	got := replayScreenTail(t, "opencode", "rec-opencode-1.2.27-question.jsonl", 5*time.Second)
+	if len(got) == 0 {
+		t.Fatal("replaying the opencode question recording published nothing at all")
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked while sitting on the question panel — the reported bug. published %v", got)
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	// The capture answers the question and runs on, so the panel is a discrete event
+	// rather than where the tab settles — the rule has to let go of it too.
+	if last := got[len(got)-1]; last.state != model.TerminalIdle {
+		t.Errorf("settled on %q at the end of the recording, want %q; published %v",
+			last.state, model.TerminalIdle, got)
+	}
+	for _, tr := range got {
+		if tr.state == model.TerminalBlocked && !tr.positive {
+			t.Errorf("published an absence-derived blocked at %s — the panel is a positive screen match", tr.at)
+		}
+	}
+}
+
+// The question panel renders its footer hint three ways — the middle verb changes
+// with the mode, and the ↑↓ hint disappears on a confirmation — so the rule leaves
+// the verb open and narrows on "esc dismiss", which no other opencode overlay
+// offers. Only the first of these was driven by the capture; the other two come
+// from the modes the panel ships, and are pinned here so a later reader does not
+// tighten the rule back down onto the one word that was measured.
+func TestOpencodeQuestionPanelFooterModes(t *testing.T) {
+	cases := []struct {
+		name  string
+		line  string
+		state string
+	}{
+		{"single choice, as captured", "  ┃  ↑↓ select  enter submit  esc dismiss", model.TerminalBlocked},
+		{"multi-select toggles", "  ┃  ⇆ tab  ↑↓ select  enter toggle  esc dismiss", model.TerminalBlocked},
+		{"a confirmation drops the ↑↓ hint", "  ┃  enter confirm  esc dismiss", model.TerminalBlocked},
+		// The narrowing half doing its job: the pickers opencode dismisses with esc
+		// close/cancel are chrome the operator opened, not the agent waiting on one.
+		{"a picker that closes rather than dismisses", "  ┃  ↑↓ select  enter open  esc close", ""},
+		{"the words apart, in prose", "  press enter to submit, or esc", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := agentEngine.Evaluate("opencode", detect.Evidence{Screen: tc.line})
+			if res.State != tc.state {
+				t.Errorf("read %q, want %q", res.State, tc.state)
+			}
+		})
+	}
+}
+
 // opencode's spinner is squares, not braille — the extrapolation ticket 04 caught.
 // Pinning both halves keeps a future reader from "restoring" the braille pattern
 // from the shape claude and kimi share, and keeps the "esc interrupt" half of the
