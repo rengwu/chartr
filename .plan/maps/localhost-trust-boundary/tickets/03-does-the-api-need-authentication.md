@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [02]
+claimed_by: se0219db4c903
+claimed_at: 2026-08-02T18:23:34Z
 ---
 
 # Does the API need authentication at all?
