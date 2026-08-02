@@ -197,16 +197,47 @@ service unit, that artifact must not contain this flag.** See the revisit trigge
   unchanged, both WebSockets are unchanged, Origin and Host stay enforced, no timer
   and no persisted secret appears. Print one additional startup line stating the
   exposure.
-- **The flag on a loopback address is itself an error.** A flag that claims exposure
-  where there is none is a misconfiguration, and refusing it is what stops
-  `alias chartr='chartr -expose-cleartext'` from surviving in a shell profile and
-  silently arming a later `-addr` change.
+- **The flag on a loopback address is ignored, with a printed notice.** Not an error.
+  An earlier draft refused it, to stop `alias chartr='chartr -expose-cleartext'`
+  surviving in a shell profile and silently arming a later `-addr` change. That
+  defence is speculative and it is bought with a *failed launch* on a command that is
+  in every other respect correct — the wrong trade for an app whose whole posture is
+  that it starts once and runs for weeks. The notice discourages the alias, and the
+  ambient-consent worry already has a revisit trigger of its own below.
 - **`-addr` with a different *port* on loopback is untouched.** `127.0.0.1:9000` was
   always fine and stays fine.
 - **The desktop shell is out of it by construction.** `cmd/webview` hard-codes
   `127.0.0.1:0` and has no `-addr` flag (ticket 05). It can never be exposed, sees no
   refusal, and **must not gain an `-addr` flag** — that would be the posture
   divergence 05 spent its answer rejecting.
+
+### Nothing here can interrupt a running instance
+
+chartr is a cockpit that starts once and holds live terminals and sessions for weeks.
+Ticket 03 rejected expiry and restart-as-recovery for that reason, and this rule is
+built to the same standard — it is worth stating the claim outright so a later change
+has to break it deliberately:
+
+- **The whole rule is a startup decision.** It is evaluated once, before
+  `net.Listen`, on a process that has no live state yet. A refused launch never had a
+  cockpit to lose.
+- **There is no runtime path that can reach it.** A listener's address is fixed for
+  the process lifetime; chartr has no rebind, no config reload and no address change,
+  so no running instance can ever transition from allowed to refused.
+- **The desktop app is untouched.** `cmd/webview` hard-codes `127.0.0.1:0` and has no
+  `-addr`, so every `.dmg` and AppImage operator sees no change at all.
+- **A loopback CLI operator sees no change either** — same launch, same one printed
+  line. Only two populations are affected: whoever binds wide deliberately (one flag,
+  once) and whoever binds wide by accident of `:9000` syntax (one edit, once).
+- **Neither the flag nor the exposed bind alters the credential, its lifetime, or the
+  recovery flow.** `Enter`-to-reprint works identically; no timer, sweep or
+  re-authentication exists to fire mid-session.
+
+The one place where restart pressure genuinely rises is the flagged doubt below: an
+exposed bind makes a *leaked* capability realistic, and 03 provides no revocation
+short of ending the process. That is the strongest UX argument for keeping loopback
+the default, and the second-strongest reason the reopen — if it comes — must be a
+live remint rather than an expiry.
 
 **The compliance test for "one posture, one gate": the flag must change zero code
 paths after the listener exists.** No second middleware, no stricter credential, no
