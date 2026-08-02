@@ -17,7 +17,6 @@
     Warning,
     PauseCircle,
     GitBranchIcon,
-    DotsSixVertical,
     Plus,
     PlusIcon,
   } from "phosphor-svelte";
@@ -160,8 +159,15 @@
     suppressClick = false;
     if (!reorderable || !e.isPrimary || e.button !== 0) return;
     // Controls inside the card own their own gestures — the forget button, the
-    // branch copy, the launcher's menu. A press on one is never a grab.
-    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) {
+    // branch copy, the launcher's menu, and the session rows, which are click
+    // targets that switch the shell in view. A press on one is never a grab, and
+    // each shows the pointer rather than the card's open hand: the affordance
+    // and what the press actually does have to agree.
+    if (
+      (e.target as HTMLElement).closest(
+        "button, a, input, select, textarea, [data-session-row]",
+      )
+    ) {
       return;
     }
     press = { x: e.clientX, y: e.clientY, id: e.pointerId };
@@ -265,7 +271,20 @@
   title={space.path}
   data-space-id={space.id}
   class={[
-    "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-2 select-none",
+    "relative flex flex-col gap-2 rounded-lg border p-2 select-none",
+    // The whole card *is* the grab target, so the whole card carries the
+    // affordance: an open hand that closes while a row is held, the same tell
+    // the star-map's empty space uses. There is no separate grip icon — the
+    // cursor is the discovery, over a target the size of the card rather than a
+    // 14px handle. The card's own click targets opt back out and are excluded
+    // from the grab below, so a hand never appears over something that cannot be
+    // dragged. `active:` covers the press before the threshold, `dragging` holds
+    // the closed hand once the row has left the pointer behind, and the keyboard
+    // path (Alt+↑/↓ on the selected space) is unchanged.
+    reorderable
+      ? "cursor-grab active:cursor-grabbing [&_button]:cursor-pointer [&_[data-session-row]]:cursor-pointer"
+      : "cursor-pointer",
+    dragging && "cursor-grabbing",
     selected
       ? "border-primary/60 bg-sidebar-accent/30"
       : "border-sidebar-border hover:border-primary/30",
@@ -310,7 +329,7 @@
     ></div>
   {/if}
 
-  <!-- Identity: the space's name, behind its drag handle, with the forget
+  <!-- Identity: the space's name, with the forget
        action pinned top-right (the branch rides the action row below).
        Ambient cross-space attention (ticket 14, story 8) rides on the name
        line — a wants-you flag (a session halted) and a liveness dot,
@@ -319,28 +338,6 @@
        card; muscle memory over this list holds — and now the operator's
        own arrangement is the only thing that sets it. -->
   <div class="flex items-start gap-1">
-    <!-- The drag affordance: visible on every row, so the sidebar reads as
-         rearrangeable without discovering it by accident (story 7). It is the
-         grip, not the drag source — the whole card is the grab target, which is a
-         far bigger one than a 14px icon — so it is `aria-hidden` and the keyboard
-         path (Alt+↑/↓ on the selected space) carries the same move for anyone
-         not using a pointer. It dims rather than disappearing while the list is
-         filtered: the row is inert there, and a handle that vanishes reads as a
-         layout bug. -->
-    <span
-      class={[
-        "-ml-0.5 flex shrink-0 items-center self-center",
-        reorderable
-          ? "cursor-grab text-muted-foreground active:cursor-grabbing"
-          : "cursor-default text-muted-foreground/30",
-      ]}
-      title={reorderable
-        ? "Drag to reorder — or Alt (⌥) + ↑ / ↓ on the selected space"
-        : "Clear the filter to rearrange your spaces"}
-      aria-hidden="true"
-    >
-      <DotsSixVertical class="size-3.5" weight="bold" />
-    </span>
     <span
       class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
     >
@@ -413,6 +410,7 @@
             role="button"
             tabindex="0"
             aria-pressed={isActive}
+            data-session-row
             class={[
               "flex flex-col gap-0.5 rounded-md border px-2 py-1.5 transition-colors",
               isActive
@@ -593,7 +591,7 @@
        on-ramp can act on a space with no map and no repository. That
        empties the row, so the row itself does not render — the card's
        own `gap-2` would otherwise leave a blank strip under the shells.
-       The drag handle and the shell rows above stay: it is reorderable
+       The shell rows above stay, and so does the grab: it is reorderable
        and its shells are selectable like any other space's. -->
   {#if !space.scratch}
     <div class="flex items-center gap-1">
