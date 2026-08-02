@@ -78,6 +78,12 @@ colour, no amber).
   anyway.
 - **Which agents earn a manifest beyond the roster.** Six are named in the
   Destination. A seventh is a data change, but the roster is what "done" means.
+- **Grok's rules cannot be verified here.** Ticket 04 measures the roster against
+  real captures, but `grok` is not installed on this machine, so its manifest
+  stays what it has always been: `Action Required` and the OSC 9;4 progress
+  states, taken from herdr and from the described signals, never seen locally. It
+  is the one roster agent the Destination's "reads correctly through a full turn"
+  cannot be asserted for. Left as fog rather than quietly counted as done.
 
 ## Out of scope
 
