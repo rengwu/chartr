@@ -143,6 +143,11 @@
     // keystroke *means* is decided at the resolve seam, off the operator's prefs;
     // the island only obeys it — `input()` puts the bytes through the same onData
     // path a typed key takes, and returning false stops xterm submitting the line.
+    // The `preventDefault` on both branches is load-bearing: xterm cancels the DOM
+    // event only when it handles a key itself, so without it the keydown we took
+    // over still produces a keypress whose charCode 13 xterm sends as a stray `\r`
+    // — the newline lands and the line submits anyway. The seam maps that trailing
+    // keypress to `swallow` so it dies here too.
     xterm.attachCustomKeyEventHandler((ev) => {
       // Cmd+F opens the find widget (ticket 07). Meta only — Ctrl+F is readline's
       // forward-char in the shell, never ours to take — and returning false keeps
@@ -157,8 +162,14 @@
         findOpen = true
         return false
       }
-      if (terminalKeyAction(ev, prefs) !== 'newline') return true
+      const action = terminalKeyAction(ev, prefs)
+      if (action === 'swallow') {
+        ev.preventDefault()
+        return false
+      }
+      if (action !== 'newline') return true
       xterm.input(TERMINAL_NEWLINE)
+      ev.preventDefault()
       return false
     })
 

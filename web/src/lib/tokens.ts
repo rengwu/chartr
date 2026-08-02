@@ -543,16 +543,21 @@ export function terminalSearchDecorations(
  * - `newline` — Shift+Enter with the pref on: the shell gets a literal newline
  *   (`TERMINAL_NEWLINE`) instead of submitting, the Ghostty behaviour every agent
  *   CLI wants for composing multi-line input (story 14).
+ * - `swallow` — the Shift+Enter *keypress* that follows the intercepted keydown.
+ *   xterm cancels the DOM event only when it handles a key itself, so the
+ *   keydown we take over still produces a keypress, and xterm's `_keyPress`
+ *   would turn its charCode 13 into a stray `\r` — the newline lands and the
+ *   line submits anyway. The swallow is what keeps the newline a newline.
  * - `submit` — an Enter we do not intercept, including Shift+Enter with the pref
  *   off: xterm's own handling stands and the line goes.
  * - `default` — everything else, including an Enter carrying another modifier
  *   (Ctrl/Alt/Meta already mean something to the shell and are never intercepted).
  *
  * `shiftEnterNewline` is unset-means-*on*; `false` is what restores plain submit.
- * Only a keydown acts — the matching keyup must stay `default` or the newline
- * would be written twice.
+ * Only a keydown writes the newline — the matching keypress is swallowed and the
+ * keyup stays `default`, or the newline would be written again.
  */
-export type TerminalKeyAction = 'newline' | 'submit' | 'default'
+export type TerminalKeyAction = 'newline' | 'swallow' | 'submit' | 'default'
 
 // What a `newline` action writes to the shell: a literal LF, the same bytes
 // Ghostty's `shift+enter=text:\n` sends.
@@ -569,10 +574,14 @@ export function terminalKeyAction(
   ev: TerminalKeyEvent,
   prefs: TerminalPrefs | undefined = undefined,
 ): TerminalKeyAction {
-  if (ev.type !== 'keydown' || ev.key !== 'Enter') return 'default'
-  if (ev.ctrlKey || ev.altKey || ev.metaKey) return 'default'
-  if (ev.shiftKey && prefs?.shiftEnterNewline !== false) return 'newline'
-  return 'submit'
+  if (ev.key !== 'Enter' || ev.ctrlKey || ev.altKey || ev.metaKey) return 'default'
+  const newline = ev.shiftKey && prefs?.shiftEnterNewline !== false
+  if (ev.type === 'keydown') return newline ? 'newline' : 'submit'
+  // The intercepted keydown still produces a keypress, whose charCode 13 xterm
+  // would send as a stray `\r` right after our newline — swallow it (see the
+  // action list above).
+  if (ev.type === 'keypress' && newline) return 'swallow'
+  return 'default'
 }
 
 // setOpt assigns an xterm option only when the resolved value is defined, so an
