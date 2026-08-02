@@ -1,21 +1,40 @@
-# pi.
+# pi 0.78.0. Measured on this machine (ticket 04, see
+# .plan/maps/agent-state-detection/assets/rec-pi-0.78.0.jsonl: idle at the prompt, a
+# working turn driving four bash commands, and the return to idle).
 #
-# NOTE: pi was NOT captured as a fixture for this map — only claude and kimi were
-# (see .plan/agent-state-detection/assets). pi additionally ships a real herdr
-# lifecycle extension that reports its state over a socket — authoritative where it
-# exists — but that hook path is left as fog on the map until the screen path is real
-# (Not yet specified — Hook-reported state), so here pi reads the same screen fallback
-# as everything else. The working rule is extrapolated from the shared braille-spinner
-# pattern, not verified against recorded pi bytes; a wrong pattern is a data fix.
-# Idle is the absence of the spinner, confirmed by the sampler's hysteresis.
+# pi is the one roster agent whose extrapolation measurement *vindicated*: it does
+# draw a braille spinner at the head of a line near the foot of the screen,
+# "⠇ Working...", exactly the shape this rule was guessed from. Its title is written
+# once per session and reads "π - <dirname>" forever, carrying no state at all, so
+# the screen is the whole grammar — as it is for kimi and opencode.
+#
+# One thing measurement did change: the region. The spinner sits five non-empty
+# lines above the foot with an empty input box (spinner, rule, rule, cwd, status),
+# and the capture deliberately types a follow-up into the box mid-turn, which
+# inserts a line and pushes it to exactly six — the last slot the old
+# bottom_non_empty_lines(6) could see. A two-line message would have pushed it out
+# and a working pi would have read as idle with no other rule to catch it. Widened
+# to 8 so an operator typing while pi works cannot silently break detection.
+#
+# **pi has no stopped-for-permission state to detect.** It ships no approval gate:
+# `pi --help` offers only allow/deny *lists* of tool names (--tools,
+# --exclude-tools), never an interactive confirmation, and the capture shows it
+# running `rm -f` outside the workspace without pausing. So pi has no blocked rule —
+# not an omission, an absence in the agent. The map already records where pi's
+# blocked would come from if it comes at all: pi ships a real herdr lifecycle
+# extension that reports its state over a socket, which is authoritative where it
+# exists and is left as fog (Not yet specified — Hook-reported state). pi is the
+# agent that makes that fog worth clearing.
 agent = "pi"
 match = ["pi"]
 
-# Working: a braille spinner frame leading a recent line, scoped to the foot of the
-# screen and line-anchored (see opencode.toml — the same extrapolated shape).
+# Working: the "⠇ Working..." spinner line. Line-anchored so only a braille frame at
+# the *head* of a line counts, and followed by at least one non-space so a bare run
+# of frames in prose cannot match — the same anchoring discipline kimi's rule uses
+# against its ever-present "thinking" status bar.
 [[rule]]
 id = "working"
 state = "working"
 priority = 100
-region = "bottom_non_empty_lines(6)"
-line_regex = ['^\s*[\x{2800}-\x{28FF}]']
+region = "bottom_non_empty_lines(8)"
+line_regex = ['^\s*[\x{2800}-\x{28FF}]+\s+\S']

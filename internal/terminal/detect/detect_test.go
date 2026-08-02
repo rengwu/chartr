@@ -57,6 +57,33 @@ func TestShippedManifestRules(t *testing.T) {
 		rule,
 		"K2.7 Coding thinking  ~",
 	}, "\n")
+	// opencode's chrome is ┃ and ▀ rather than flat rules, and its spinner is a run of
+	// square cells (U+2B1D / U+25A0) trailed by the "esc interrupt" affordance —
+	// measured in ticket 04, not the braille every other agent uses.
+	opencodeWorking := strings.Join([]string{
+		"   ▣  Build · gpt-5.4",
+		"   ⬝⬝⬝■■■■■  esc interrupt      ctrl+t variants  tab agents  ctrl+p commands    • OpenCode 1.2.27",
+	}, "\n")
+	opencodeBlocked := strings.Join([]string{
+		"┃  △ Permission required",
+		"┃    # Counts lines in notes.txt",
+		"┃  $ wc -l notes.txt",
+		"┃   Allow once   Allow always   Reject        ctrl+f fullscreen  ⇆ select  enter confirm",
+		"┃                                                              • OpenCode 1.2.27",
+	}, "\n")
+	// pi's spinner leads its own line above the flat rules framing its input box.
+	piWorking := strings.Join([]string{
+		" $ date (timeout 10s)",
+		" Took 0.0s",
+		" ⠇ Working...",
+		rule,
+		" a follow-up typed while pi works",
+		rule,
+		"/private/tmp/scratchpad/agentcwd (main)",
+		"↑3.1k ↓688 R4.1k $0.006 (sub) 0.8%/272k (auto)",
+	}, "\n")
+	// The braille spinner shape the opencode and pi rules were once *extrapolated*
+	// from, kept as a negative: opencode does not draw it.
 	spinnerScreen := strings.Join([]string{"⠋ Working (12s · esc to interrupt)", "  building the answer"}, "\n")
 
 	for _, tc := range []struct {
@@ -75,20 +102,30 @@ func TestShippedManifestRules(t *testing.T) {
 		{"claude empty title matches nothing", "claude", Evidence{Title: ""}, "", false},
 		{"claude plain title matches nothing", "claude", Evidence{Title: "some shell title"}, "", false},
 
-		// Codex: the blocked signal in the title is the one this ticket's Done-when
-		// names, and it outranks working.
-		{"codex Action Required is blocked", "codex", Evidence{Title: "Action Required — approve edit"}, "blocked", false},
-		{"codex working title", "codex", Evidence{Title: "Working (50s • esc to interrupt)"}, "working", false},
-		{"codex blocked wins over working", "codex", Evidence{Title: "Working — Action Required"}, "blocked", false},
-		{"codex quiet title matches nothing", "codex", Evidence{Title: "codex"}, "", false},
+		// Codex: measured in ticket 04. "Action Required" is real and is the one roster
+		// title carrying blocked outright; working is a braille frame on the directory
+		// name, *not* the "Working" string herdr's manifest claimed. Codex draws that
+		// status line on the screen and never broadcasts it, which is why the old rule
+		// left a working codex reading as idle.
+		{"codex Action Required is blocked", "codex", Evidence{Title: "[ . ] Action Required | agentcwd"}, "blocked", false},
+		{"codex alternate blocked marker", "codex", Evidence{Title: "[ ! ] Action Required | agentcwd"}, "blocked", false},
+		{"codex braille frame is working", "codex", Evidence{Title: "⠹ agentcwd"}, "working", false},
+		{"codex idle title matches nothing", "codex", Evidence{Title: "agentcwd"}, "", false},
+		{"codex never broadcasts herdr's Working string", "codex",
+			Evidence{Title: "Working (50s • esc to interrupt)"}, "", false},
 
-		// Grok: the same blocked title, plus an OSC 9;4 progress pulse for working.
-		{"grok Action Required is blocked", "grok", Evidence{Title: "Action Required"}, "blocked", false},
-		{"grok active progress is working", "grok", Evidence{Progress: "4;1;40"}, "working", false},
-		{"grok indeterminate progress is working", "grok", Evidence{Progress: "4;3;0"}, "working", false},
-		{"grok cleared progress is a positive idle", "grok", Evidence{Progress: "4;0;0"}, "idle", false},
-		{"grok blocked title outranks a working pulse", "grok",
-			Evidence{Title: "Action Required", Progress: "4;1;40"}, "blocked", false},
+		// Grok: measured in ticket 04. The same "Action Required", but it emits no OSC
+		// 9;4 progress at all — the pulse herdr's manifest promised never arrives, so
+		// working reads the braille frame grok really writes. Grok keeps spinning while
+		// it waits on the operator, so a blocked title carries a frame too and blocked
+		// has to outrank working.
+		{"grok Action Required is blocked", "grok",
+			Evidence{Title: "⚠ Action Required - ⠙ - Remove probe file as requested… - grok"}, "blocked", false},
+		{"grok braille frame is working", "grok", Evidence{Title: "⠼ - Waiting for response… - grok"}, "working", false},
+		{"grok working phases all carry the frame", "grok", Evidence{Title: "⠧ - Responding - grok"}, "working", false},
+		{"grok idle title matches nothing", "grok",
+			Evidence{Title: "Run Exact Shell rm Temp Probe File - grok"}, "", false},
+		{"grok emits no progress, so a pulse means nothing", "grok", Evidence{Progress: "4;1;40"}, "", false},
 		{"grok no evidence matches nothing", "grok", Evidence{}, "", false},
 
 		// Claude's screen rules (ticket 02). Blocked comes off the screen because the
@@ -108,12 +145,19 @@ func TestShippedManifestRules(t *testing.T) {
 			Evidence{Screen: "K2.7 Coding thinking  ~\ncontext: 15%"}, "", false},
 		{"kimi empty screen matches nothing", "kimi", Evidence{}, "", false},
 
-		// opencode and pi have no title either; a braille spinner near the foot of the
-		// screen reads working, its absence reads nothing (idle by absence).
-		{"opencode working from a spinner", "opencode", Evidence{Screen: spinnerScreen}, "working", false},
-		{"opencode idle has no spinner", "opencode", Evidence{Screen: "❯ ready\n(no spinner here)"}, "", false},
-		{"pi working from a spinner", "pi", Evidence{Screen: spinnerScreen}, "working", false},
-		{"pi idle has no spinner", "pi", Evidence{Screen: "❯ ready"}, "", false},
+		// opencode and pi write no state to their titles either, so both read entirely
+		// off the screen. Ticket 04 measured both: opencode's spinner is squares with an
+		// "esc interrupt" hint and it has a permission panel; pi's is the braille
+		// "⠇ Working..." the rule was extrapolated to expect, and it has no permission
+		// state at all (it ships no approval gate).
+		{"opencode working from the square spinner", "opencode", Evidence{Screen: opencodeWorking}, "working", false},
+		{"opencode blocked from the permission panel", "opencode", Evidence{Screen: opencodeBlocked}, "blocked", false},
+		{"opencode does not draw a braille spinner", "opencode", Evidence{Screen: spinnerScreen}, "", false},
+		{"opencode idle status line has no spinner", "opencode",
+			Evidence{Screen: "  ctrl+t variants  tab agents  ctrl+p commands    • OpenCode 1.2.27"}, "", false},
+		{"pi working from the ⠇ Working... spinner", "pi", Evidence{Screen: piWorking}, "working", false},
+		{"pi idle prompt box has no spinner", "pi",
+			Evidence{Screen: strings.Join([]string{rule, rule, "/private/tmp/scratchpad/agentcwd (main)"}, "\n")}, "", false},
 
 		// An agent with no manifest is nobody's business: the caller falls back to
 		// the shell grammar.

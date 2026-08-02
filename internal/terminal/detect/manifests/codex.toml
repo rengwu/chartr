@@ -1,16 +1,31 @@
-# Codex CLI. Its title carries state, and — unlike Claude — a blocked signal: it
-# writes "Action Required" while it waits on the operator (an approval it cannot
-# proceed past). While generating it shows a "Working" status. Idle is the absence
-# of both, confirmed by the sampler.
+# Codex CLI 0.146.0. Measured on this machine (ticket 04, see
+# .plan/maps/agent-state-detection/assets/rec-codex-0.146.0.jsonl: idle at the
+# prompt, a working turn, and the "Would you like to run the following command?"
+# approval it stopped on).
 #
-# NOTE: only claude and kimi were captured as fixtures for this map, so codex's
-# exact title strings are taken from herdr's manifest and codex's documented
-# status line ("Working (Ns • esc to interrupt)") rather than a local recording.
-# Ticket 02's screen regions firm this up; a wrong string here is a data fix.
+# Codex writes its state into OSC 0, and the title is *not* what herdr's manifest
+# implied. It has three measured shapes:
+#
+#   "agentcwd"                          idle — the working directory's basename alone
+#   "⠹ agentcwd"                        working — a braille frame prefixed to it
+#   "[ . ] Action Required | agentcwd"  blocked — the marker alternates [ . ] / [ ! ]
+#
+# The correction ticket 04 exists for: the old working rule looked for "Working" /
+# "Thinking" / "Running" in the title, and codex never writes any of those. Its
+# "Working (2s • esc to interrupt)" status line is drawn on the *screen*, not
+# broadcast — so the working rule never fired, nothing else matched, and a working
+# codex fell through the sampler's absence path to idle. It reads the braille frame
+# now, the same signal claude broadcasts.
+#
+# "Action Required" survived measurement unchanged, and codex is the one roster
+# agent whose title carries blocked directly — claude and kimi both need the screen
+# for it.
 agent = "codex"
 match = ["codex"]
 
-# Waiting on the operator — an approval it cannot proceed past.
+# Waiting on the operator — an approval it cannot proceed past. Measured as
+# "[ . ] Action Required | agentcwd", the marker alternating with "[ ! ]" about once
+# a second, so only the stable words are matched.
 [[rule]]
 id = "blocked"
 state = "blocked"
@@ -18,10 +33,13 @@ priority = 100
 region = "osc_title"
 all = ["Action Required"]
 
-# Actively generating.
+# A braille frame (U+2800–U+28FF) prefixed to the directory name → actively
+# generating. Codex cycles ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ about ten frames a second while it works and
+# drops back to the bare directory name the moment it stops. Idle carries no marker
+# at all, so it stays an absence the sampler confirms.
 [[rule]]
 id = "working"
 state = "working"
 priority = 60
 region = "osc_title"
-any = ["Working", "Thinking", "Running"]
+line_regex = ['[\x{2800}-\x{28FF}]']
