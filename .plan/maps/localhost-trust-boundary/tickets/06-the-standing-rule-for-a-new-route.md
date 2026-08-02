@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [03, 04, 05]
+claimed_by: s12b38a391114
+claimed_at: 2026-08-02T19:36:15Z
 ---
 
 # What must a new route satisfy before it ships?
