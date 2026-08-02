@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { dropIndex, reorder } from './reorder'
+import { dropIndex, dropTarget, reorder, type RowBox } from './reorder'
 
 const ids = ['a', 'b', 'c', 'd']
+
+// Four 40px rows with an 8px gutter between them, the sidebar's own geometry
+// (`gap-2` on the list), starting 100px down the viewport. The gutters matter:
+// the drop indicator is drawn in them, so they are what the operator aims at.
+const rows: RowBox[] = [
+  { id: 'a', top: 100, bottom: 140 },
+  { id: 'b', top: 148, bottom: 188 },
+  { id: 'c', top: 196, bottom: 236 },
+  { id: 'd', top: 244, bottom: 284 },
+]
 
 describe('reorder', () => {
   it('moves a row to the top', () => {
@@ -74,5 +84,53 @@ describe('dropIndex', () => {
     expect(move(1, 2, 'after')).toEqual(['a', 'c', 'b', 'd'])
     expect(move(2, 1, 'before')).toEqual(['a', 'c', 'b', 'd'])
     expect(move(1, 1, 'after')).toEqual(ids)
+  })
+})
+
+describe('dropTarget', () => {
+  it('reads the half of the row the pointer is in', () => {
+    expect(dropTarget(rows, 110)).toEqual({ overId: 'a', edge: 'before' })
+    expect(dropTarget(rows, 130)).toEqual({ overId: 'a', edge: 'after' })
+    expect(dropTarget(rows, 200)).toEqual({ overId: 'c', edge: 'before' })
+    expect(dropTarget(rows, 230)).toEqual({ overId: 'c', edge: 'after' })
+  })
+
+  it('lands a release in the gutter between two rows on that seam', () => {
+    // The gutter is where the drop indicator is drawn, so it must not be the one
+    // strip that rejects a drop — which is exactly what it was under HTML5
+    // drag-and-drop, the rows being the only elements that could accept one.
+    for (const y of [141, 144, 147]) {
+      expect(dropTarget(rows, y)).toEqual({ overId: 'b', edge: 'before' })
+    }
+    // And that is the same position as the trailing edge of the row above: both
+    // describe the gap between a and b.
+    expect(dropIndex(0, 1, 'before')).toBe(dropIndex(0, 0, 'after'))
+  })
+
+  it('lands a release past either end of the list on the nearest end', () => {
+    // Dragged clear above the sidebar, or below the last row into the empty
+    // space under the list — including a pointer that has left the window, whose
+    // Y the browser still reports (and reports out of range).
+    expect(dropTarget(rows, 40)).toEqual({ overId: 'a', edge: 'before' })
+    expect(dropTarget(rows, -600)).toEqual({ overId: 'a', edge: 'before' })
+    expect(dropTarget(rows, 300)).toEqual({ overId: 'd', edge: 'after' })
+    expect(dropTarget(rows, 5000)).toEqual({ overId: 'd', edge: 'after' })
+  })
+
+  it('has nowhere to land when the dragged row was the only one', () => {
+    expect(dropTarget([], 120)).toBeNull()
+  })
+
+  it('resolves a drag of the first row to the fourth position', () => {
+    // The operator's own report: grab the top row, pull it down past the last
+    // one, let go somewhere out of bounds. The rows given exclude the dragged
+    // row, which is riding the pointer and is a reference for nothing.
+    const others = rows.filter((r) => r.id !== 'a')
+    const at = dropTarget(others, 9999)!
+    expect(at).toEqual({ overId: 'd', edge: 'after' })
+
+    const from = ids.indexOf('a')
+    const over = ids.indexOf(at.overId)
+    expect(reorder(ids, from, dropIndex(from, over, at.edge))).toEqual(['b', 'c', 'd', 'a'])
   })
 })

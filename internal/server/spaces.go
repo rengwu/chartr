@@ -132,8 +132,27 @@ func (s *Server) handleReorder(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.rebuild()
+	// A reorder is the one mutation that derives nothing new: the same spaces, in
+	// a different sequence. Republishing the snapshot permuted is the whole of it,
+	// and it skips a rebuild's per-space `git status`, `.plan/` walks and config
+	// resolution — the work the operator was watching the sidebar wait for.
+	// The registry's own list is what sets the order, not the posted ids: the
+	// sidebar may legitimately omit Scratch, and the registry places it.
+	if !s.hub.reorderSpaces(spaceIDs(s.reg.List())) {
+		// The snapshot is not the set we just ordered — a rebuild raced us, or a
+		// space appeared between the write and here. Derive it properly.
+		s.rebuild()
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// spaceIDs is the registry's sidebar order as a plain id sequence.
+func spaceIDs(entries []registry.Entry) []string {
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.ID)
+	}
+	return ids
 }
 
 // handleSetSpaceAgent records the agent a space should spawn with, decoupled from

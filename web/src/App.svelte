@@ -17,7 +17,7 @@
     ActionError,
     LIVE_SESSION,
   } from "./lib/actions";
-  import { dropIndex, reorder, type DropEdge } from "./lib/reorder";
+  import { dropIndex, dropTarget, reorder, type DropEdge } from "./lib/reorder";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpaceCard from "./lib/SpaceCard.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
@@ -237,7 +237,16 @@
   // post that. The pointer drag and the keyboard both end in `applyOrder`, so
   // the keyboard is not a second implementation. Nothing is applied optimistically
   // — the new arrangement arrives as a fresh snapshot over the control socket,
-  // like every other action's result.
+  // like every other action's result. That snapshot is fast because the server
+  // republishes the one it holds permuted rather than deriving a new one
+  // (hub.reorderSpaces); the round trip is what the drop waits on, so a rebuild's
+  // per-space `git status` would be felt as the sidebar lagging the operator's hand.
+  //
+  // The gesture is pointer events under pointer capture, not HTML5 drag-and-drop
+  // — see SpaceCard's drag block for why. The consequence here is that a card
+  // reports a viewport Y and this file resolves it: capture routes every move to
+  // the row that was grabbed, so no other card ever sees the pointer — and only
+  // the sidebar knows the list anyway.
 
   // The row being dragged and the row it is hovering over, held by *id* rather
   // than by index: a snapshot can land mid-drag (a space registered elsewhere,
@@ -245,6 +254,75 @@
   // different row by the time it is dropped. Both null when no drag is in flight.
   let dragId = $state<string | null>(null);
   let dropAt = $state<{ overId: string; edge: DropEdge } | null>(null);
+
+  // The scroll container the rows live in. The drag hit-tests against the DOM
+  // rather than against measurements taken on grab, because the list can scroll
+  // (and a snapshot can land) mid-drag; reading the rows each frame is a handful
+  // of rects on a sidebar, and it is never wrong.
+  let listEl = $state<HTMLElement | null>(null);
+  // The pointer's last known viewport Y, and the frame loop that reads it. The
+  // loop, not the move event, is what resolves the drop: the operator holding
+  // still at the edge of a scrolling list is still changing where the row lands,
+  // so the answer has to be recomputed per frame rather than per move.
+  let pointerY = 0;
+  let dragFrame = 0;
+
+  // How close to an edge of the list starts an auto-scroll, and how fast it runs
+  // at full deflection. Pointer capture replaced HTML5 drag-and-drop, which
+  // scrolled a scrollable drop target for us; this is that behaviour, kept.
+  const SCROLL_EDGE = 40;
+  const SCROLL_SPEED = 14;
+
+  // Where the drop would land if the pointer were released now. Every Y resolves
+  // to *something* — above the first row is its leading edge, below the last is
+  // its trailing one, and the gutters between rows fall to the row below. There
+  // is deliberately no horizontal test: the operator dragging out over the
+  // terminal pane, or clear off the window, still means the position the sidebar
+  // is showing them.
+  function resolveDrop(clientY: number) {
+    if (listEl === null || dragId === null) return;
+    // The dragged row rides the pointer, so its own rect is no longer where the
+    // list says it is — it is not a reference for anything.
+    const rows = [...listEl.querySelectorAll<HTMLElement>("[data-space-id]")]
+      .filter((row) => row.dataset.spaceId !== dragId)
+      .map((row) => {
+        const box = row.getBoundingClientRect();
+        return { id: row.dataset.spaceId!, top: box.top, bottom: box.bottom };
+      });
+    const next = dropTarget(rows, clientY);
+    if (next === null) return;
+    // Same answer as last frame: leave `dropAt` alone. Reassigning it would
+    // invalidate every card's `dropEdge` sixty times a second for no change.
+    if (dropAt?.overId === next.overId && dropAt.edge === next.edge) return;
+    dropAt = next;
+  }
+
+  function autoScroll(clientY: number) {
+    if (listEl === null) return;
+    const box = listEl.getBoundingClientRect();
+    if (clientY < box.top + SCROLL_EDGE) {
+      const t = Math.min(1, (box.top + SCROLL_EDGE - clientY) / SCROLL_EDGE);
+      listEl.scrollTop -= SCROLL_SPEED * t;
+    } else if (clientY > box.bottom - SCROLL_EDGE) {
+      const t = Math.min(1, (clientY - (box.bottom - SCROLL_EDGE)) / SCROLL_EDGE);
+      listEl.scrollTop += SCROLL_SPEED * t;
+    }
+  }
+
+  function dragTick() {
+    dragFrame = 0;
+    if (dragId === null) return;
+    autoScroll(pointerY);
+    resolveDrop(pointerY);
+    dragFrame = requestAnimationFrame(dragTick);
+  }
+
+  function startDrag(id: string, clientY: number) {
+    dragId = id;
+    pointerY = clientY;
+    resolveDrop(clientY);
+    if (dragFrame === 0) dragFrame = requestAnimationFrame(dragTick);
+  }
 
   // Dragging is inert while the filter box is non-empty. A drop position within
   // a filtered subset does not describe a position in the whole list, and mapping
@@ -268,6 +346,8 @@
   function endDrag() {
     dragId = null;
     dropAt = null;
+    if (dragFrame !== 0) cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
   }
 
   function dropDragged() {
@@ -455,6 +535,17 @@
   // stored sidebar order, never the filtered view — a keyboard shortcut should
   // not depend on what's typed in the filter box.
   function onGlobalKey(e: KeyboardEvent) {
+    // Esc abandons a reorder in flight, the one thing it did for free under
+    // HTML5 drag-and-drop. It is read ahead of `isEditingTarget` because a drag
+    // is a modal gesture: focus may well still be in the terminal the operator
+    // clicked before reaching for the sidebar, and Esc means the drag. Clearing
+    // the chrome's state is the whole cancel — the card drops its lift on the
+    // spot, and the release it is still holding resolves to nothing.
+    if (e.key === "Escape" && dragId !== null) {
+      e.preventDefault();
+      endDrag();
+      return;
+    }
     if (isEditingTarget()) return;
     // ⌥↑ / ⌥↓ move the selected space in the sidebar (story 9) — the same write
     // the drag emits, so reordering is not mouse-only. It is read ahead of the
@@ -593,17 +684,19 @@
       {:else if spaces.length === 0}
         <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
       {:else}
-        <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
+        <div
+          bind:this={listEl}
+          class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
+        >
           {#each filtered as space (space.id)}
             <SpaceCard
               {space}
               {opening}
               {reorderable}
-              dragActive={dragId !== null}
               dragged={dragId === space.id}
               dropEdge={dropAt?.overId === space.id ? dropAt.edge : null}
-              ongrabstart={() => (dragId = space.id)}
-              ongrabover={(edge) => (dropAt = { overId: space.id, edge })}
+              ongrabstart={(clientY) => startDrag(space.id, clientY)}
+              ongrabmove={(clientY) => (pointerY = clientY)}
               ongrabdrop={dropDragged}
               ongrabend={endDrag}
               selected={selected?.id === space.id}
