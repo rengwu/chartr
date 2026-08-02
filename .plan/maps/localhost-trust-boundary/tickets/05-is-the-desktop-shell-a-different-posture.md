@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [02]
+claimed_by: s90a2c59f4097
+claimed_at: 2026-08-02T18:30:38Z
 ---
 
 # Is the desktop shell's posture different from the CLI's?
