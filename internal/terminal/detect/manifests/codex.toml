@@ -16,7 +16,7 @@ id = "blocked"
 state = "blocked"
 priority = 100
 region = "osc_title"
-contains = ["Action Required"]
+all = ["Action Required"]
 
 # Actively generating.
 [[rule]]

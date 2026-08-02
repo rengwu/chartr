@@ -60,8 +60,9 @@ func (s *oscScanner) scan(chunk []byte, onTitle, onProgress func(string)) {
 					i++
 					continue
 				}
-				// Stray ESC: abort this sequence, reprocess b from ground.
-				s.abort()
+				// Stray ESC: abort this sequence without delivering anything, and
+				// reprocess b from ground.
+				s.reset()
 				continue
 			}
 			if b == 0x1b {
@@ -153,10 +154,8 @@ func (s *oscScanner) finish(onTitle, onProgress func(string)) {
 	s.reset()
 }
 
-// abort ends the current sequence without delivering anything (a malformed or
+// reset ends the current sequence without delivering anything (a malformed or
 // interrupted OSC) and returns to ground.
-func (s *oscScanner) abort() { s.reset() }
-
 func (s *oscScanner) reset() {
 	s.state = oscGround
 	s.buf = s.buf[:0]

@@ -138,7 +138,6 @@ func TestRegionsAreTheOnlySeam(t *testing.T) {
 	for _, tc := range []struct{ region, want string }{
 		{"osc_title", "t"},
 		{"osc_progress", "p"},
-		{"screen", "s"},
 		{"whole_recent", "s"},
 		{"no_such_region", ""},
 	} {
@@ -221,7 +220,7 @@ func TestParseRegion(t *testing.T) {
 		fn   string
 		narg int
 	}{
-		{"screen", "screen", 0},
+		{"whole_recent", "whole_recent", 0},
 		{"bottom_non_empty_lines(6)", "bottom_non_empty_lines", 6},
 		{"bottom_non_empty_lines( 3 )", "bottom_non_empty_lines", 3},
 		{"after_last_horizontal_rule", "after_last_horizontal_rule", 0},
@@ -259,7 +258,7 @@ agent = "vetoer"
 id = "viewer-open"
 priority = 200
 region = "osc_title"
-contains = ["transcript"]
+all = ["transcript"]
 skip_state_update = true
 
 [[rule]]
@@ -267,7 +266,7 @@ id = "blocked"
 state = "blocked"
 priority = 100
 region = "osc_title"
-contains = ["Approve?"]
+all = ["Approve?"]
 `)
 
 	// The blocked rule alone fires normally.
@@ -280,19 +279,19 @@ contains = ["Approve?"]
 	}
 }
 
-// Every matcher the ticket names, and the AND between them: a rule narrows as
-// fields are added, and a rule with no matchers at all never matches — so a stray
-// empty rule cannot swallow every sample.
+// All three matchers, and the AND between them: a rule narrows as fields are
+// added, and a rule with no matchers at all never matches — so a stray empty rule
+// cannot swallow every sample.
 func TestMatchers(t *testing.T) {
 	e := synthetic(t, `
 agent = "m"
 
 [[rule]]
-id = "contains-all"
+id = "all-of"
 state = "working"
 priority = 100
 region = "osc_title"
-contains = ["alpha", "beta"]
+all = ["alpha", "beta"]
 
 [[rule]]
 id = "any-of"
@@ -302,25 +301,25 @@ region = "osc_title"
 any = ["yes", "sure"]
 
 [[rule]]
-id = "all-but-not"
+id = "all-and-any"
 state = "idle"
 priority = 80
 region = "osc_title"
 all = ["keep"]
-not = ["drop"]
+any = ["this", "that"]
 
 [[rule]]
-id = "regex"
+id = "single-line-regex"
 state = "working"
 priority = 70
 region = "osc_progress"
-regex = ['^4;[13]']
+line_regex = ['^4;[13]']
 
 [[rule]]
 id = "line-regex"
 state = "blocked"
 priority = 60
-region = "screen"
+region = "whole_recent"
 line_regex = ['^\s*> Approve']
 
 [[rule]]
@@ -335,16 +334,18 @@ region = "osc_title"
 		ev   Evidence
 		want string
 	}{
-		{"contains needs every substring", Evidence{Title: "alpha beta"}, "working"},
-		{"contains fails when one is missing", Evidence{Title: "alpha only"}, ""},
+		{"all needs every substring", Evidence{Title: "alpha beta"}, "working"},
+		{"all fails when one is missing", Evidence{Title: "alpha only"}, ""},
 		{"any needs just one", Evidence{Title: "sure thing"}, "blocked"},
 		{"any fails when none are present", Evidence{Title: "nope"}, ""},
-		{"all with not passes", Evidence{Title: "keep this"}, "idle"},
-		{"not vetoes the rule", Evidence{Title: "keep but drop"}, ""},
-		{"regex on the progress region", Evidence{Progress: "4;3;0"}, "working"},
-		{"regex that does not match", Evidence{Progress: "4;0;0"}, ""},
-		// line_regex is anchored per line: it matches a row of a multi-line region,
-		// and its ^ does not straddle the line break the way a plain regex would.
+		{"all and any are ANDed together", Evidence{Title: "keep this"}, "idle"},
+		{"all passing is not enough when any fails", Evidence{Title: "keep only"}, ""},
+		// On a single-line region (an OSC value) line_regex is exactly a plain regex,
+		// which is why no separate whole-region matcher is offered.
+		{"line_regex on the single-line progress region", Evidence{Progress: "4;3;0"}, "working"},
+		{"line_regex that does not match", Evidence{Progress: "4;0;0"}, ""},
+		// On a screen region it is anchored per line: it matches a row, and its ^ does
+		// not straddle the line break.
 		{"line_regex matches one row of a screen", Evidence{Screen: "some output\n  > Approve this?\ntail"}, "blocked"},
 		{"line_regex does not match mid-line", Evidence{Screen: "tail > Approve"}, ""},
 		{"a rule with no matchers never fires", Evidence{Title: "anything at all"}, ""},
@@ -367,14 +368,14 @@ id = "low"
 state = "idle"
 priority = 1
 region = "osc_title"
-contains = ["x"]
+all = ["x"]
 
 [[rule]]
 id = "high"
 state = "blocked"
 priority = 99
 region = "osc_title"
-contains = ["x"]
+all = ["x"]
 `)
 	if got := e.Evaluate("p", Evidence{Title: "x"}); got.State != "blocked" {
 		t.Errorf("Evaluate = %q, want the priority-99 rule's state %q", got.State, "blocked")
@@ -422,7 +423,7 @@ agent = "bad"
 id = "r"
 state = "working"
 region = "osc_title"
-regex = ["("]
+line_regex = ["("]
 `)}}, "m")
 	if err == nil {
 		t.Fatal("New accepted a manifest with an uncompilable regex")
