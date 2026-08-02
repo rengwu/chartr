@@ -280,3 +280,58 @@ Add: reopen if a supported platform cannot deliver or handle the activation sign
 or if a desktop browser fallback becomes a supported requirement — in which case it
 needs a deliberate delivery decision, because knowledge of the port is not one and
 the second process still may not carry the capability.
+
+## Amendment — 2026-08-03: no activation signal; the second launch says so and exits
+
+**Supersedes** the *A second launch signals the running process; it never receives a
+URL* section of the amendment above. Everything else stands: one admission posture,
+the `?k=` first navigation, the ephemeral port as non-control, the webview as a
+delivery channel, no desktop auth mode, and the deliberate omission of webview
+cookie-loss recovery.
+
+**Operator decision, taken during ticket 06's grill.** The amendment above was right
+about what to *reject* and wrong about what to build in its place.
+
+### Why this is being cut
+
+The `SIGUSR1` design costs native window-raising code on exactly the two platforms
+where it is hardest, to save one alt-tab:
+
+- **macOS already has its native raise** (`raiseInstance`, `menu_darwin.go`) and is
+  untouched either way. So every line of new work lands on the tiered platforms.
+- **Linux needs a signal handler plus a `gtk_window_present` marshalled onto the
+  existing UI thread** — cgo, from a signal context, on the AppImage that ADR 0011's
+  amendment made a release gate.
+- **Windows has no `SIGUSR1` at all.** Go does not define it there, and the shell is a
+  real (best-effort) tier that builds and smoke-tests in CI. The amendment above
+  specified a mechanism one supported platform cannot express, which its own revisit
+  trigger anticipated — "reopen if a supported platform cannot deliver or handle the
+  activation signal" — without noticing the trigger was already true when written.
+
+### What replaces it
+
+**A second launch prints that the first is running, names its PID, and exits
+non-zero.** No signal, no handler, no per-platform raise, no new code beyond changing
+one message. macOS keeps `raiseInstance` and its behaviour is unchanged.
+
+The message must still obey the amendment above's real finding, which is the part
+worth keeping: **it must not print the running instance's URL**, because under
+authentication that is an instruction that visibly does not work, and its only
+apparent remedy is quitting a live cockpit. It names the window and the PID and stops
+there. Quitting is never presented as the remedy.
+
+### What this knowingly gives up
+
+On Linux and Windows, double-clicking chartr while it is running tells the operator it
+is running instead of pulling the window forward. They alt-tab. That is a real but
+small regression against a design that was never built, on the two platforms where the
+desktop shell is explicitly best-effort (ADR 0011).
+
+### Amended revisit trigger
+
+The triggers above stand, minus the activation-signal one, which this removes by
+removing the signal. Add: **build the raise when someone asks for it on a platform
+they actually use.** If that happens, the shape is per-platform native activation
+behind the existing `raiseInstance` seam — not an HTTP route, which the amendment
+above rejected for reasons that still hold, and not a mechanism specified before it is
+known which platform needs it.
