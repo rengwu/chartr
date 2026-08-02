@@ -332,6 +332,21 @@ describe('terminalKeyAction', () => {
     // The matching keyup must not write the newline a second time.
     expect(terminalKeyAction(key({ type: 'keyup', shiftKey: true }))).toBe('default')
   })
+
+  it('swallows the Shift+Enter keypress that follows the intercepted keydown', () => {
+    // xterm cancels the DOM event only when it handles a key itself, so the
+    // keydown we take over still produces a keypress — whose charCode 13 xterm
+    // would send as a stray `\r` right after our newline, submitting the line
+    // we just broke. The swallow is what keeps the newline a newline.
+    expect(terminalKeyAction(key({ type: 'keypress', shiftKey: true }))).toBe('swallow')
+    // With the pref off the keydown was a plain submit xterm handled itself,
+    // so there is nothing to swallow.
+    expect(
+      terminalKeyAction(key({ type: 'keypress', shiftKey: true }), { shiftEnterNewline: false }),
+    ).toBe('default')
+    // A plain Enter's keypress is xterm's own business (its keydown handled it).
+    expect(terminalKeyAction(key({ type: 'keypress' }))).toBe('default')
+  })
 })
 
 describe('resolveRenderer', () => {
