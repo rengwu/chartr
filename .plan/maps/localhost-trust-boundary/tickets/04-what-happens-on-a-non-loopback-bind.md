@@ -323,10 +323,16 @@ as a `Host`. Decided:
    it is the form the operator's own browser should use, and `Enter`-to-reprint (03)
    reprints exactly it. `http://0.0.0.0:<port>` is never printed as though it were a
    URL.
-2. **Exposure gets its own line, and the capability is not on it.** State that the
-   listener answers on the network and enumerate the interface addresses it actually
-   answers on, as bare addresses. The capability appears exactly once in the output,
-   attached to the local URL.
+2. **Exposure gets its own line, and the capability is not on it.** Echo back the
+   address the operator asked for and say what it means — `exposed on :9000 —
+   reachable from the network, in cleartext`. The capability appears exactly once in
+   the output, attached to the local URL.
+
+   chartr deliberately does **not** enumerate the interface addresses the listener
+   answers on. Walking `net.Interfaces()` and filtering link-local and IPv6 forms is
+   real cross-platform code bought for a cosmetic line, and the operator who wants
+   their LAN address has `ifconfig`. Echoing the requested address carries the same
+   information — that this launch is exposed, and on which port — at no cost.
 
 The reason for (2) is narrow and I will not oversell it: an operator who wants the
 combined URL will concatenate the two in five seconds, and that is fine — they did it
@@ -345,22 +351,25 @@ chartr inviting the leak; making the operator assemble it is chartr staying out 
    this ticket is forbidden to create. If second-device access ever becomes a product
    goal, the missing piece is a transport (TLS), not a weaker credential.
 
-### The interface: yes, an indicator, and it is not designed here
+### The interface: no indicator, and here is the trigger that would earn one
 
-The cockpit should show that this instance is bound wide. Not an alert — a fact,
-present whenever the listener is non-loopback and absent otherwise. Two reasons the
-startup line is not enough: a chartr process is expected to live for weeks (that is
-03's own premise), so "typed the flag on Monday, screen-sharing on Friday" is the
-normal case; and a scrolled-past log line is the exact thing this ticket's fourth
-bullet distrusts.
+The map asked whether 04 produces the need for a bound-address indicator in the
+cockpit. **It does not — not with this rule.** The case for one was written against a
+warn-only world, where an operator could be exposed without having decided to be.
+Under refuse-plus-flag the exposure is never accidental: it exists only because the
+operator typed `-expose-cleartext` on this launch. An indicator would spend a
+snapshot field, chrome work and a whole ticket telling them something they typed.
 
-It is cheap and safe: the bind address is already known to the server, and it rides
-the post-admission snapshot, so it discloses nothing to anyone not already admitted.
+The residual argument — a chartr process lives for weeks (03's own premise), so
+"typed the flag on Monday, screen-sharing on Friday" is real — is not nothing, but it
+is not enough to build against now. YAGNI: build it when someone is bitten.
 
-**This needs its own frontend ticket** under CLAUDE.md and ADR 0012, chrome side of
-the ADR 0010 split, monochrome — no amber, and `--destructive` is a deliberate choice
-someone should have to make rather than one this answer makes for them. It pairs with
-the denial-page ticket the map already lists. I am not designing it here.
+**Trigger:** if operators do run exposed for long stretches, or if the flag turns out
+to be common enough that a launch's posture is genuinely forgotten, add it — as one
+token-styled line of fact in the chrome, present only when the listener is
+non-loopback, riding the post-admission snapshot (so it discloses nothing to anyone
+not already admitted). It would be frontend work under CLAUDE.md and ADR 0012, chrome
+side of the ADR 0010 split, monochrome. Nobody should design it before then.
 
 ### Rejected alternatives
 
