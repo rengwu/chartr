@@ -291,6 +291,52 @@ func TestReorderSetsTheSidebarAndSurvivesARestart(t *testing.T) {
 	}
 }
 
+// A reorder republishes the snapshot permuted rather than deriving a new one —
+// the sequence is the only thing it changes, and rebuilding costs a `git status`
+// and a `.plan/` scan per space, which the operator watches the sidebar wait for.
+// The risk that shortcut carries is a snapshot that keeps the order but loses
+// what hangs off each space, so this asserts the derived halves survive the move:
+// a space's discovered maps and its git branch arrive intact, in the new order.
+func TestReorderKeepsEachSpacesDerivedState(t *testing.T) {
+	h := chartrtest.Start(t)
+
+	plain := chartrtest.NewSpaceRepo(t)
+	mapped := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, mapped, "widget", mapBody)
+	chartrtest.WriteTicket(t, mapped, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+
+	a := register(t, h, plain)
+	b := register(t, h, mapped)
+
+	before := findSpace(t, h.Snapshot(ctx(t)), b.ID)
+	if len(before.Maps) != 1 {
+		t.Fatalf("maps before reorder = %d, want the one written", len(before.Maps))
+	}
+	if before.Branch == "" {
+		t.Fatal("branch before reorder is empty; the fixture is on main")
+	}
+
+	want := []string{b.ID, a.ID}
+	if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
+		t.Fatalf("reorder = %d, body %s", code, body)
+	}
+
+	m := h.Snapshot(ctx(t))
+	if got := spaceIDs(m); !equalStrings(got, want) {
+		t.Fatalf("sidebar after reorder = %v, want %v", got, want)
+	}
+	after := findSpace(t, m, b.ID)
+	if len(after.Maps) != len(before.Maps) {
+		t.Errorf("maps after reorder = %d, want the %d it had", len(after.Maps), len(before.Maps))
+	}
+	if after.Branch != before.Branch {
+		t.Errorf("branch after reorder = %q, want the %q it had", after.Branch, before.Branch)
+	}
+	if after.Path != before.Path {
+		t.Errorf("path after reorder = %q, want %q", after.Path, before.Path)
+	}
+}
+
 // A reorder is the whole list or nothing. A request that omits a registered
 // space, names an id the registry does not know, or repeats one is a client bug
 // — refused with a 400 that leaves the previous arrangement exactly as it was,

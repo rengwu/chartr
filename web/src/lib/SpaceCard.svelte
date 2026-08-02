@@ -34,11 +34,10 @@
     agents,
     opening = false,
     reorderable = false,
-    dragActive = false,
     dragged = false,
     dropEdge = null,
     ongrabstart,
-    ongrabover,
+    ongrabmove,
     ongrabdrop,
     ongrabend,
     onselect,
@@ -72,18 +71,20 @@
     // does not describe a position in the whole list, so the handles go inert
     // while the filter box is non-empty rather than inventing a mapping.
     reorderable?: boolean;
-    // A reorder drag is in flight somewhere in the sidebar. Only then does this
-    // card accept a drop — an unrelated drag (a file onto the window) must fall
-    // through to the browser rather than be swallowed as a reorder.
-    dragActive?: boolean;
-    // This card is the one being dragged: it dims, so the indicator below reads
-    // as where it is going rather than where a second row would go.
+    // This card is the one being dragged: it dims and rides the pointer, so the
+    // indicator below reads as where it is going rather than where a second row
+    // would go. It is the *chrome's* answer, not this card's own `dragging` — so
+    // a cancelled drag (Esc) drops the lift on the spot while the operator is
+    // still holding the button.
     dragged?: boolean;
     // Which edge of this row the drop would land on, or null for no indicator.
     // The row must show where it will land *before* the drop, not only after it.
     dropEdge?: DropEdge | null;
-    ongrabstart: () => void;
-    ongrabover: (edge: DropEdge) => void;
+    // The gesture reports the pointer's viewport Y and nothing else: which row
+    // that lands on is the sidebar's question, because only the sidebar knows the
+    // list. See the drag block below for why the card cannot answer it.
+    ongrabstart: (clientY: number) => void;
+    ongrabmove: (clientY: number) => void;
     ongrabdrop: () => void;
     ongrabend: () => void;
     onselect: () => void;
@@ -110,12 +111,111 @@
   const attention = $derived(spaceAttention(space));
   const liveness = $derived(spaceLiveness(space));
 
-  // Which half of the row the pointer is in — the whole drop rule. "On this row"
-  // is never the answer by itself: coming down it means above, coming up it
-  // means below, and the midpoint is what tells the two apart.
-  function edgeUnder(e: DragEvent): DropEdge {
-    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return e.clientY < box.top + box.height / 2 ? "before" : "after";
+  // --- The reorder drag ------------------------------------------------------
+  //
+  // Pointer events with pointer capture, not HTML5 drag-and-drop. The API this
+  // replaces only delivers a `drop` to an element that preventDefault'd its own
+  // `dragover`, which made the *cards* the only surface that could commit a move:
+  // releasing over the 8px gutter between two rows — the strip the drop indicator
+  // is drawn in — over the terminal pane, or off the window entirely all arrived
+  // as `dragend` and threw the move away. Under capture the release is ours
+  // wherever it happens, so a drag commits to the last position it showed.
+  //
+  // The card reports the pointer's Y and never resolves it: capture routes every
+  // move to the row that was grabbed, not the row under the cursor, so the card
+  // the operator is *over* sees nothing. Only the sidebar knows the list, so the
+  // sidebar does the hit test.
+
+  // How far the pointer travels before a press becomes a drag. Below it the
+  // gesture is still a click that selects the space — the whole card is both the
+  // drag source and the selection target, as it was, and the threshold is what
+  // keeps one from eating the other.
+  const DRAG_THRESHOLD = 4;
+
+  let cardEl = $state<HTMLElement | null>(null);
+  // The press that may become a drag: where it started and which pointer owns it.
+  // Non-null from pointerdown, which is *before* there is a drag — `dragging` is
+  // what says the threshold has been crossed.
+  let press: { x: number; y: number; id: number } | null = null;
+  let dragging = $state(false);
+  // How far the pointer has moved since the grab, so the row can ride it. Purely
+  // cosmetic: the drop position comes from the pointer, never from this offset.
+  let liftY = $state(0);
+  // A drag ends in a `click` on the card (capture makes it the target), and that
+  // click would select the space the operator just finished moving. Set on any
+  // release that was a real drag, and cleared by the next press so an undelivered
+  // click can never eat a later, genuine one.
+  let suppressClick = false;
+
+  function releasePointer() {
+    if (press !== null && cardEl?.hasPointerCapture(press.id)) {
+      cardEl.releasePointerCapture(press.id);
+    }
+    press = null;
+    dragging = false;
+    liftY = 0;
+  }
+
+  function onPointerDown(e: PointerEvent) {
+    suppressClick = false;
+    if (!reorderable || !e.isPrimary || e.button !== 0) return;
+    // Controls inside the card own their own gestures — the forget button, the
+    // branch copy, the launcher's menu. A press on one is never a grab.
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) {
+      return;
+    }
+    press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    if (press === null || e.pointerId !== press.id) return;
+    if (!dragging) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < DRAG_THRESHOLD) {
+        return;
+      }
+      dragging = true;
+      cardEl?.setPointerCapture(press.id);
+      ongrabstart(e.clientY);
+      return;
+    }
+    // The button came up somewhere the browser never told us about — another
+    // application's window took the release. Treat it as the drop it was: the
+    // operator let go, and the position on screen was the answer.
+    if (e.buttons === 0) {
+      finishDrag();
+      return;
+    }
+    liftY = e.clientY - press.y;
+    ongrabmove(e.clientY);
+  }
+
+  // A release *by the pointer that grabbed the row* commits it; a second finger
+  // coming up is not this gesture ending, so it is ignored rather than allowed to
+  // drop a row the first one is still holding.
+  function onPointerUp(e: PointerEvent) {
+    if (press === null || e.pointerId !== press.id) return;
+    finishDrag();
+  }
+
+  function onPointerCancel(e: PointerEvent) {
+    if (press === null || e.pointerId !== press.id) return;
+    const wasDragging = dragging;
+    releasePointer();
+    if (!wasDragging) return;
+    // The gesture was taken away rather than completed — the row goes back where
+    // it was, which is the whole of the cancel: nothing was moved optimistically.
+    suppressClick = true;
+    ongrabend();
+  }
+
+  function finishDrag() {
+    const wasDragging = dragging;
+    releasePointer();
+    // A press that never crossed the threshold is a click, and the click handler
+    // below is left to select the space exactly as it did before.
+    if (!wasDragging) return;
+    suppressClick = true;
+    ongrabdrop();
   }
 
   // Copy-to-clipboard for the branch chip. The card sets `select-none` — it is a
@@ -157,41 +257,37 @@
      the one string actually worth lifting — has its own copy button
      instead. The path stays the card's tooltip. -->
 <div
+  bind:this={cardEl}
   role="button"
   tabindex="0"
   aria-pressed={selected}
   aria-label="Select {space.name}"
   title={space.path}
+  data-space-id={space.id}
   class={[
-    "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
+    "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-2 select-none",
     selected
       ? "border-primary/60 bg-sidebar-accent/30"
       : "border-sidebar-border hover:border-primary/30",
-    dragged && "opacity-50",
+    // The lift is driven frame by frame from the pointer, so the row must not
+    // also be easing towards it — transitions are dropped for its duration and
+    // the colour transition stands the rest of the time.
+    dragged
+      ? "z-10 opacity-60 shadow-lg"
+      : "transition-colors",
   ]}
-  draggable={reorderable}
-  ondragstart={(e) => {
-    // Some payload has to be set or Firefox refuses to start the drag at all;
-    // nothing reads it — the chrome holds which row is moving, because a drop
-    // outside the sidebar must not be interpretable as anything.
-    e.dataTransfer?.setData("text/plain", space.id);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-    ongrabstart();
+  style={dragged ? `transform: translateY(${liftY}px)` : undefined}
+  onpointerdown={onPointerDown}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={onPointerCancel}
+  onclick={() => {
+    if (suppressClick) {
+      suppressClick = false;
+      return;
+    }
+    onselect();
   }}
-  ondragover={(e) => {
-    if (!dragActive) return;
-    // Only a preventDefault'd dragover makes this a drop target at all.
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    ongrabover(edgeUnder(e));
-  }}
-  ondrop={(e) => {
-    if (!dragActive) return;
-    e.preventDefault();
-    ongrabdrop();
-  }}
-  ondragend={() => ongrabend()}
-  onclick={onselect}
   onkeydown={(e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -225,8 +321,8 @@
   <div class="flex items-start gap-1">
     <!-- The drag affordance: visible on every row, so the sidebar reads as
          rearrangeable without discovering it by accident (story 7). It is the
-         grip, not the drag source — the whole card is draggable, which is a far
-         bigger target than a 14px icon — so it is `aria-hidden` and the keyboard
+         grip, not the drag source — the whole card is the grab target, which is a
+         far bigger one than a 14px icon — so it is `aria-hidden` and the keyboard
          path (Alt+↑/↓ on the selected space) carries the same move for anyone
          not using a pointer. It dims rather than disappearing while the list is
          filtered: the row is inert there, and a handle that vanishes reads as a

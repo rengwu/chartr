@@ -46,3 +46,41 @@ export function dropIndex(from: number, over: number, edge: DropEdge): number {
   const insertAt = edge === 'after' ? over + 1 : over
   return insertAt > from ? insertAt - 1 : insertAt
 }
+
+// One candidate row, measured: its id and its vertical extent in viewport
+// coordinates. Only the vertical extent is ever consulted — see `dropTarget`.
+export type RowBox = { id: string; top: number; bottom: number }
+
+/**
+ * Resolve a pointer at `clientY` to the row edge a release would land on, given
+ * the candidate rows in list order.
+ *
+ * **Every Y resolves to something.** Above the first row is its leading edge,
+ * below the last is its trailing one, and a Y in the gutter *between* two rows
+ * belongs to the row below — which is the same position as the trailing edge of
+ * the row above, so the gutter is not a dead zone but the seam it looks like.
+ * This total-ness is the point: the drag commits wherever the operator lets go,
+ * rather than only over the pixels of a row.
+ *
+ * **There is no horizontal test.** The pointer being out over the terminal pane,
+ * or clear off the window, does not change which position the sidebar has been
+ * showing the operator, so it does not change where the row lands.
+ *
+ * `rows` must already exclude the row being dragged: it rides the pointer, so
+ * its own box is no longer where the list has it and is a reference for nothing.
+ * An empty list yields null — there is nowhere to land.
+ */
+export function dropTarget(
+  rows: RowBox[],
+  clientY: number,
+): { overId: string; edge: DropEdge } | null {
+  if (rows.length === 0) return null
+  for (const row of rows) {
+    if (clientY >= row.bottom) continue
+    // Half-height within the row; above the first row's top this is `before` too,
+    // which is exactly right.
+    const edge: DropEdge = clientY < row.top + (row.bottom - row.top) / 2 ? 'before' : 'after'
+    return { overId: row.id, edge }
+  }
+  return { overId: rows[rows.length - 1].id, edge: 'after' }
+}
