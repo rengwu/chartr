@@ -57,6 +57,12 @@ circumstance under which this gets reopened.
 
 ## Answer
 
+> **Partly superseded — read the [amendment](#amendment--2026-08-03-one-reusable-capability-no-consumed-nonce) at the end of this file first.** The
+> credential decision below stands. Its *bootstrap* — a consumed one-use nonce
+> distinct from the capability — does not: it made restarting the accidental recovery
+> path for a lost cookie. Every mention of a nonce, a one-use handoff, or a
+> per-restart bootstrap cost below is superseded.
+
 **Yes. Every server instance must generate a high-entropy, per-process bearer
 capability and require it at the common server-ingress gate for every route that
 reveals cockpit data or exercises cockpit authority, including both WebSockets.**
@@ -193,3 +199,135 @@ intentional automation API, multi-operator use, or remote access. A future OS-na
 channel that can prove operator intent more tightly may replace the bearer handoff,
 but it must preserve the same trust set; mere inconvenience is not a reason to
 fall back to port-as-identity.
+
+## Amendment — 2026-08-03: one reusable capability, no consumed nonce
+
+**Supersedes** the *Bootstrap and measured cost* section's browser-CLI, desktop-shell
+and Vite bullets, and the sentence in *Verdict and revisit trigger* naming "a fresh
+bootstrap after each restart" as the accepted cost. Everything else in the answer
+above stands: the credential itself, the single ingress gate, both WebSockets,
+Origin and Host on top for browser callers, the memory-only rule, the exclusion of
+spawned agents, and every rejected alternative already listed.
+
+### Why this needed reopening
+
+The original answer specified **two secrets** — a consumed one-use bootstrap nonce
+distinct from the bearer capability — and never said how a *running* instance issues
+a second nonce. Restarting therefore became the accidental recovery mechanism for a
+lost cookie. That is disqualifying: chartr is a long-running cockpit holding live
+terminals, sessions and in-memory state across weeks of work, and losing that to a
+cleared cookie is a worse outcome than the disclosure the credential defends against.
+
+The correction is a subtraction, not a new mechanism. A nonce that immediately mints a
+cookie of exactly equal power is not stronger than the capability it exchanges for —
+it only adds consumption state, a second secret to keep straight, and a recovery
+cliff. Collapsing the two into one reusable process-lifetime capability removes the
+cliff and, with it, four downstream complications the original answer had to invent:
+a separate bootstrap endpoint with nonce state, a "separate one-use browser handoff"
+for the desktop (ticket 05), an activation channel for a second desktop launch, and
+bootstrap-specific Vite proxy wiring.
+
+### The capability is valid for the process lifetime
+
+One 32-byte random capability, generated at server start, held only in server memory,
+with **no expiry, no rotation and no consumption**. It is valid exactly as long as the
+process that minted it, and is invalid the instant that process ends. This is the
+whole restart-free property: there is no credential state that can go stale
+independently of the thing it admits, so no timer, sweep or renewal path exists to
+interrupt a running instance. Time passing is not a security event here — the
+capability's blast radius is a process the operator is actively using, and expiring it
+on a schedule would impose a recurring re-authentication on the operator while doing
+nothing to an attacker who already holds it.
+
+### Bootstrap is a redirect, not an endpoint
+
+The gate accepts the capability three ways, all in one middleware:
+
+1. a `k` query parameter on any `GET`, which is the bootstrap;
+2. the `HttpOnly` cookie that bootstrap sets, which is how browsers and both
+   WebSocket handshakes carry it thereafter;
+3. an `Authorization: Bearer` header, for tests and deliberate non-browser clients.
+
+Bootstrap is a branch in the same middleware rather than a route of its own: a `GET`
+carrying a valid `k` sets `chartr=<capability>` as `HttpOnly`, `SameSite=Strict`,
+`Path=/`, with a long `Max-Age` so an ordinary browser restart is not a recovery
+event, and `302`s to the same path without `k` under `Referrer-Policy: no-referrer`.
+A `302` replaces the history entry, so the clean URL is what the operator bookmarks
+and what the SPA ever sees in `location`. An invalid or absent capability gets the
+denial page described below. Because cookies ride the WebSocket handshake to a
+same-origin listener, the control and terminal sockets need no separate token
+mechanism — which is what keeps the "one gate" claim true of the code and not just of
+the prose.
+
+The bootstrap URL is **reusable for the process lifetime**. Presenting it twice is
+not an error, does not consume anything, and yields the same cookie.
+
+### Recovery without restart
+
+Two loss cases exist and each has a same-process answer:
+
+- **A browser cookie is lost** — cleared, a second browser, a private window. The
+  operator re-opens the bootstrap URL. If they no longer have it, the CLI **reprints
+  it on demand**: the process reads its own stdin and prints the bootstrap URL again
+  on `Enter`, and the denial page says so in as many words. This adds no file, no
+  endpoint, no second secret and no unauthenticated surface, and the channel is
+  restricted to whoever controls the terminal the cockpit is running in — which is a
+  better proof of operator intent than anything the network side can offer. Detached
+  launches simply lose the reprint, which is acceptable: a launch with no terminal
+  has the URL in its log.
+- **The desktop webview's cookie is lost.** Deliberately not solved; see ticket 05.
+
+Both recoveries are the same process answering again, so live terminals, sessions and
+in-memory cockpit state are untouched by construction. **Restart is not a recovery
+path and must never be documented as one.**
+
+### The exposure this knowingly accepts
+
+A reusable capability lives in the CLI's terminal scrollback for the life of the
+process. This is Jupyter's posture and it is accepted deliberately rather than
+engineered around: the terminal is the operator's own channel, and ticket 02 already
+concedes that code with full control of the operator's OS account is outside what
+chartr can defend.
+
+What the original answer forbade still holds, and holds for exactly this reason. The
+capability must not reach project files, user config, `.chartr/shell.lock`, argv,
+environment variables inherited by children, ordinary logs, control snapshots, or
+agent payloads. The distinction is not ceremonial: an agent instructed to read a file
+succeeds trivially, while one that must read another process's memory needs a debugger
+and, on macOS, entitlements it does not have. Memory-plus-terminal keeps that gap;
+a token file closes it. The clean URL after redirect stays bookmarkable and carries
+nothing.
+
+### Additionally rejected
+
+- **A consumed one-use nonce distinct from the capability** — rejected as the defect
+  being corrected. It buys no strength over the capability it mints, and its
+  consumption is precisely what made restart the recovery path.
+- **Expiry or periodic rotation of the capability** — rejected. It interrupts a
+  running instance on a timer, which is the failure mode this amendment exists to
+  remove, and it does not dislodge an attacker who has already stolen it.
+- **A persisted capability or bootstrap-URL file, even at `0600`** — rejected. It
+  would make recovery trivial, but hands the excluded party in ticket 02 — spawned
+  agents and repository dependencies running as the operator — a stable file to read.
+  This is the one convenience whose cost is a real narrowing of the trust set.
+- **Restart as the recovery mechanism** — rejected outright, and named here so no
+  later ticket can adopt it by silence. Losing live terminals and sessions to a
+  cookie problem is a worse outcome than the one being defended against.
+- **A separate bootstrap endpoint with server-side nonce state** — rejected as
+  unnecessary once the capability is reusable; a query parameter and a `302` in the
+  existing middleware do the same work with no state to keep.
+- **Bootstrap-specific Vite proxy wiring** — rejected as unnecessary. Development
+  adds the one exact Vite origin to the admitted set (ticket 02) and the developer
+  opens the ordinary `?k=` URL through the proxy; the proxy forwards `Set-Cookie`
+  already, so the cookie belongs to the Vite origin used for later proxied requests
+  without a bootstrap-aware proxy rule. A backend restart still means a fresh dev
+  bootstrap.
+
+### Amended revisit trigger
+
+The triggers above stand. Add: reopen if evidence shows the terminal-scrollback
+exposure is materially exploited, if an operator's realistic workflow produces cookie
+loss often enough that `Enter`-to-reprint is felt as a recurring login rather than a
+rare recovery, or if any future launcher cannot present the capability without
+persisting it. A revisit may make the capability *harder* to obtain; it may not
+reintroduce a credential whose loss requires restarting the process.

@@ -62,15 +62,22 @@ session changing it should have to argue with a numbered decision.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- **02 — the boundary is client admission, not the process or the port**: the original "single operator, bound to localhost, therefore safe" assumption is **replaced**, not defended. For a browser client the security identity is the exact origin of the page, with `Host` protecting that decision from DNS rebinding rather than substituting for it. **In** the trust set: the one operator, through a chartr UI document served from an origin this instance admits. **Out:** every other tab in that browser, other local processes *including agents chartr spawned*, other OS users, every network peer. Authority **and** disclosure are protected in their own right — scrollback, paths, branch state and snapshots are assets, so a push-only socket is not harmless and a read-only route is not outside the boundary. The Vite dev origin is an *admitted second principal* added per run, never a disabled gate. Knowingly accepted limitation: chartr cannot isolate code that already controls the operator's OS account. [ticket](tickets/02-what-is-the-trust-boundary.md)
+- **03 — one per-process capability, required at one gate, valid for the process lifetime**: authentication of an admitted client, not an account system — no users, passwords, roles or login screen. A 32-byte capability is generated at server start, held **only in memory**, and required at a single ingress middleware for every route that reveals cockpit data or exercises authority, both WebSockets included; browsers must pass Origin and Host *as well*. Spawned agents are answered explicitly: they are outside the boundary and never receive it. **Amended 2026-08-03** after the first answer's consumed one-use nonce made restarting the accidental recovery path for a lost cookie: the nonce is deleted, one *reusable* capability replaces two secrets, and bootstrap collapses into a branch of the same middleware — `?k=<capability>` on any `GET` sets an `HttpOnly`/`SameSite=Strict` cookie and `302`s to the clean URL, so cookies then carry both sockets and no bootstrap endpoint, nonce state or Vite proxy wiring exists. **No expiry, no rotation, no consumption**: the capability is valid exactly as long as its process, so nothing can go stale independently of the thing it admits. A lost browser cookie is recovered by re-opening the bootstrap URL, reprinted on `Enter` by the running CLI reading its own stdin. Knowingly accepted: the URL lives in terminal scrollback for the process lifetime (Jupyter's posture) — but never in files, `~/.config`, the shell lock, argv, child environments or logs, because an agent can `cat` a file and cannot trivially read process memory. **Restart is not a recovery path.** [ticket](tickets/03-does-the-api-need-authentication.md)
+- **05 — one posture, two delivery adapters; the shell signals its window rather than handing over a URL**: the ephemeral `127.0.0.1:0` bind is collision avoidance and is credited only as incidental friction — no admission decision may depend on an attacker failing to find the port. The webview is a controlled *delivery channel*, not a different principal: an ordinary browser can reach the same listener and Origin cannot tell the containers apart, so User-Agent or marker-global checks would be forgeable hints. Its one real advantage is that the launcher controls the first navigation, which after the 03 amendment makes the desktop bootstrap a `?k=` parameter on the existing `Navigate` call — zero paste, nothing printed, nothing in `.chartr/shell.lock`. **Amended 2026-08-03** for the second-launch case the first answer left open (`raiseInstance` is false on every non-macOS platform, so today's fallback prints the running URL, which authentication turns into a dead instruction whose only apparent remedy is quitting a live cockpit): a second launch now **sends `SIGUSR1` to the PID in the lock and exits**, and the running shell raises its own window. Not an HTTP route — signal delivery is same-user-only by the kernel, so the residual abuse case is strictly smaller than what that user already has and needs no rate limiting. The second process never receives the capability, the URL, or a reason to quit anything. Webview cookie-loss recovery is deliberately **not** built, with the two-line fix and its trigger written down. [ticket](tickets/05-is-the-desktop-shell-a-different-posture.md)
+
 ## Not yet specified
 
-- **Everything the tickets ask.** This map opens with all of it as fog: the
-  boundary itself (02), authentication (03), non-loopback binds (04), the desktop
-  shell's posture (05), and the rule new routes must satisfy (06).
-- **Whether any of this reaches the user interface.** If a decision here implies the
-  operator must *see* something — a bound-address indicator, a warning banner on a
-  wide bind — that is frontend work under CLAUDE.md and ADR 0012, and it is not
-  scoped until a ticket produces the need.
+- **The remaining tickets.** Non-loopback binds (04) and the rule new routes must
+  satisfy (06) are still fog; both now carry the constraints 03 and 05 settled, so
+  they decide what is left rather than re-deriving the credential.
+- **The denial page, which 03 has now produced a need for.** An operator whose cookie
+  is gone lands on it, and it is the surface that tells them to press `Enter` in the
+  chartr terminal — so it is load-bearing for the recovery flow, not a stub 403. It
+  is frontend work under CLAUDE.md and ADR 0012 and needs its own ticket; note that it
+  is served on the *unauthenticated* surface, so it cannot use anything the cockpit
+  fetches after admission. A bound-address indicator may join it if 04 produces the
+  need.
 
 ## Out of scope
 

@@ -49,8 +49,42 @@ resolved by security reflex: an operator who wants to bind wide on a network the
 control is not making a mistake, and a tool that refuses them has taken something
 away. Whatever is decided, say what the operator can still do afterwards.
 
+**Constraints inherited from 03 and 05 — read these before answering.** Ticket 03 and
+its 2026-08-03 amendment settled the credential, and this ticket does not get to
+re-litigate its shape. Four things are already decided and would be defects to
+reintroduce here:
+
+- **The credential is unconditional.** The second bullet above ("a credential when the
+  bind is wide") is stale — it was written before 03 landed. A per-process capability
+  is required on *every* bind including loopback, so "require it off loopback" is not
+  the middle position; it is already the floor. This ticket decides what a wide bind
+  needs **in addition**, or whether it is refused, not whether the capability applies.
+- **One posture, one gate.** A wide bind must not select a second auth mode, a
+  stricter credential, a separate middleware, or a "remote" server variant. That is
+  the drift shape ticket 05 spent its whole answer rejecting, and it is how the
+  original two-`websocket.Accept` bug happened. Anything a wide bind needs is either
+  a property of the one gate or a refusal at startup.
+- **No expiry, no rotation, no restart-as-recovery.** Exposure does not make a timer
+  a good idea; ticket 03's amendment rejected expiry outright, and the reasoning does
+  not weaken off loopback. Whatever this ticket decides must leave a running instance
+  running — an operator must never lose live terminals and sessions to an
+  authentication event.
+- **The capability stays out of persistent state.** A wide bind is exactly where a
+  token file starts to look convenient. It is rejected in 03 for reasons that get
+  stronger, not weaker, with more reachable callers.
+
+**One genuinely new question this ticket owns.** The bootstrap URL now carries the
+capability in a `?k=` parameter, and the CLI prints it at startup. On a wide bind the
+address chartr prints is either meaningless (`0.0.0.0`) or a specific interface, and
+the URL is a bearer secret in a context where more than one machine may be able to
+reach the listener. Decide what is printed, over what transport that URL is expected
+to travel, and whether an operator relaying it to another machine is a supported flow
+or a documented hazard. This is downstream of the credential's shape, not a reason to
+change it.
+
 Done when: a decided rule for non-loopback binds with the argument behind it; the
 container and private-network cases each answered rather than lumped in; the
-loopback-or-finer question settled; and the existing `-addr` behaviour either
-preserved with a stated justification or changed with a stated migration for whoever
-is using it today.
+loopback-or-finer question settled; the existing `-addr` behaviour either preserved
+with a stated justification or changed with a stated migration for whoever is using
+it today; and the bootstrap URL's presentation on a wide bind decided without
+introducing a second posture, an expiry, or a persisted credential.

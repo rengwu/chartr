@@ -51,7 +51,44 @@ Settle:
   examples, since a rule with a precedent attached is easier to apply than one
   stated abstractly.
 
-Done when: the rule exists as a checkable sentence; its home is decided and the
-argument is recorded where a future session will collide with it; the structural
-enforcement is specified along with what it does not cover; and the regression-test
-question is answered either way, with a specification if the answer is yes.
+**Constraints inherited from 03 and 05 — read these before answering.** The X in the
+rule sentence is now known, and the shape of the enforcement with it. Four things
+would be defects to reintroduce:
+
+- **The rule names two proofs, not one.** The example sentence above mentions only
+  "reachable from the bound origin", which is the pre-03 world. A route is reached by
+  an *admitted* client: exact Origin and Host for browser-shaped callers **and** the
+  per-process capability, carried by cookie or `Authorization` header. A rule that
+  says only "origin" will be followed literally and will leave the next route open to
+  `curl`.
+- **Nothing is classified per route.** Ticket 03 rejected read/write splits,
+  route-specific tokens and per-handler admission checks, explicitly because
+  classification is a trap every new handler can get wrong. The rule must therefore
+  not ask an author to categorise their route — the gate applies to all of it, and
+  the only thing an author can get wrong is landing in the exemption list.
+- **The exemption list is the thing worth testing.** The structural enforcement is one
+  middleware wrapping `s.mux` that owns both admission and the `?k=` bootstrap branch
+  (03 amendment, 05 amendment). Its unauthenticated surface is closed and small —
+  inert static assets, the bootstrap redirect, the denial page — so the regression
+  test that has teeth is one that enumerates the mux's routes and asserts each is
+  refused **both** from a foreign origin and without a capability, with the
+  unauthenticated set named explicitly so adding to it is a visible diff rather than
+  a quiet default. A newly added route should fail that test until someone thinks
+  about it, which is the property the question above already identified.
+- **Recovery is part of the rule's world, not an exception to it.** The bootstrap
+  redirect, the CLI's `Enter`-to-reprint, and the shell's `SIGUSR1` activation are
+  the *only* sanctioned unauthenticated or out-of-band paths. A new route must not
+  add a fifth, and no route, message, or document may present restarting the process
+  as a way to recover access.
+
+If the trust boundary earns an ADR — it should — the ADR carries tickets 02, 03 and
+05 together with their amendments, since the capability's process lifetime and the
+absence of any restart-based recovery are the parts a future session is most likely
+to "simplify" back into a defect.
+
+Done when: the rule exists as a checkable sentence naming both proofs; its home is
+decided and the argument is recorded where a future session will collide with it; the
+structural enforcement is specified along with what it does not cover; the
+unauthenticated exemption list is enumerated rather than implied; and the
+regression-test question is answered either way, with a specification if the answer
+is yes.

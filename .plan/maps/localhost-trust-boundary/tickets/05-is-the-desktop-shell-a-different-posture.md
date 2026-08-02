@@ -57,6 +57,12 @@ desktop packaging cost of ticket 03's answer is named.
 
 ## Answer
 
+> **Partly superseded — read the [amendment](#amendment--2026-08-03-signal-the-window-never-hand-over-a-url) at the end of this file first.** The
+> verdict below — one posture, a shell-specific bootstrap adapter — stands and is
+> reaffirmed. Every mention of a "one-use" nonce or handoff is superseded by ticket
+> 03's reusable capability, and the second-launch fallback below is replaced: a second
+> launch signals the running window and never receives a URL.
+
 **One admission posture, with a shell-specific bootstrap adapter.** The desktop
 shell and CLI must use the same server-ingress policy settled by tickets 02 and 03:
 an exact admitted Origin and Host for browser-shaped callers, plus the same fresh
@@ -171,3 +177,106 @@ Also reopen it if browser fallback becomes a supported desktop requirement rathe
 than a recovery possibility, because its handoff and UX will then need an explicit
 contract. Port unpredictability or a webview brand string alone never qualifies as
 evidence for a separate posture.
+
+## Amendment — 2026-08-03: signal the window, never hand over a URL
+
+**Supersedes** every reference above to a "one-use" bootstrap or nonce — ticket 03's
+amendment replaced it with one reusable process-lifetime capability — and replaces
+the *Packaging cost and anti-drift rule* section's treatment of the second-launch
+fallback. The verdict itself is unchanged and is reaffirmed: **one admission posture,
+with a shell-specific bootstrap adapter.** The ephemeral port is still not a security
+control, the webview is still a controlled delivery channel rather than a different
+principal, and `openExternalURL` remains the native-boundary precedent, not an
+admission rule.
+
+### First navigation is the whole desktop bootstrap
+
+The shell holds the capability in memory already — it constructs the `Server`. Its
+delivery adapter is one line at `cmd/webview/main_webview.go:163`: navigate to the
+cockpit URL carrying `?k=<capability>` instead of the clean URL. The middleware sets
+the cookie and redirects, and the operator sees a window that was simply already
+signed in. Nothing is printed, pasted, or displayed; the capability never touches
+argv, `.chartr/shell.lock`, logs, or an agent-visible environment. This is what the
+answer above meant by a zero-paste desktop experience, and the reusable capability
+makes it a parameter on an existing `Navigate` call rather than a handoff mechanism.
+
+### A second launch signals the running process; it never receives a URL
+
+The answer above left the second-launch fallback unresolved, and the obvious repairs
+are all wrong in the same way. `raiseInstance` reports false on every non-macOS
+platform (`cmd/webview/menu_other.go:28`), so today's fallback prints the running
+instance's URL (`main_webview.go:102`). Under authentication that URL leads to a
+denial page — an instruction that visibly does not work, whose only apparent remedy
+is quitting the running shell. That makes restart the recovery path for an ordinary
+double-click, which ticket 03's amendment rules out.
+
+**The second process must not obtain the capability, and it does not need to.** The
+lock already records the live shell's PID (`cmd/webview/lock.go:31`); that is a
+sufficient channel. A second launch **sends `SIGUSR1` to the recorded PID and exits**,
+and the running shell raises its own window from its signal handler. `raiseInstance`
+becomes "signal, then trust the running process" on the platforms that report false
+today, with the raise itself a `gtk_window_present` or the platform equivalent
+dispatched onto the existing UI thread; macOS keeps the native path it already has.
+
+This is deliberately not an HTTP route. An unauthenticated `/activate` endpoint would
+add the only unauthenticated authority-bearing surface in the product and would be
+reachable by any page that finds the port, whereas signal delivery is restricted to
+the same OS user by the kernel — the same user who, as ticket 02 concedes, can
+already drive the window manager directly. So the residual abuse case is not merely
+bounded, it is strictly smaller than what the adversary already has, and it needs no
+rate limiting to say so.
+
+The second-launch failure message must stop printing the running instance's URL. When
+the raise cannot be attempted or does not take, the honest message names the running
+window and its PID and directs the operator to it. Quitting is never presented as the
+remedy.
+
+### Webview cookie loss is deliberately not solved
+
+A webview's cookie jar has no operator-facing clear button and no second profile, so
+the browser loss case that ticket 03's `Enter`-to-reprint recovery answers has no real
+desktop counterpart. Building a desktop recovery path now would be speculative
+plumbing on a failure nobody has seen.
+
+Named so the omission is a decision rather than an oversight: if it ever happens, the
+fix is to bind one more native function beside `__chartrOpenExternal` that
+re-`Navigate`s the window through the bootstrap URL the shell still holds in memory,
+and have the SPA call it on a `401`. That is a few lines and needs no new secret, no
+server change, and no restart — which is exactly why it does not need building in
+advance. **Trigger:** any reproducible report of a webview losing its cockpit cookie
+while its process is still alive.
+
+### Additionally rejected
+
+- **Printing the running URL to a second launch** — rejected. It is an instruction
+  that no longer works, and its implied remedy is quitting a live cockpit.
+- **Passing the capability or bootstrap URL to the second process** — rejected. A
+  second process is not a trusted client, the lock must never become a credential
+  store, and the operator's answer is the window that already exists.
+- **An unauthenticated HTTP activation route** — rejected. It would create the
+  product's only unauthenticated authority-bearing surface, reachable from any page
+  that discovers the port, to replace a signal that is already same-user-only.
+- **Rate limiting the activation channel** — rejected as unnecessary once activation
+  is a signal. Anyone who can send it can already raise or close windows directly.
+- **A desktop-only credential, transport, or auth mode** — still rejected, as above.
+  The delivery adapter differs; the posture does not. There must be no
+  `desktopSkipAuth`, trusted-User-Agent, or webview-only handler branch.
+
+### Amended anti-drift rule
+
+Unchanged in substance and now cheaper to hold: one admission middleware in
+`internal/server` owns the gate *and* the `?k=` bootstrap branch, and both launchers
+configure that shared primitive rather than selecting a mode. Launcher differences
+stop at delivery — the CLI prints its bootstrap URL and reprints it on `Enter`, the
+shell passes it to `Navigate`. Conformance tests exercise protected HTTP, both
+WebSockets, bootstrap redirect and cookie issuance, and clean-URL denial against the
+shared server, independently of launcher. The second-launch signal path is a shell
+test and touches no server code, which is itself the point.
+
+### Amended revisit trigger
+
+The triggers above stand, with "one-use navigation" read as "bootstrap navigation".
+Add: reopen if a supported platform cannot deliver or handle the activation signal,
+or if a desktop browser fallback becomes a supported requirement — in which case it
+needs a deliberate delivery decision, because knowledge of the port is not one and
+the second process still may not carry the capability.
