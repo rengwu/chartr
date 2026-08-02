@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: sf2e933acc091
+claimed_at: 2026-08-02T20:25:51Z
 ---
 
 # Both websockets accept any origin, so any page can drive a terminal
