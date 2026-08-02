@@ -1,5 +1,7 @@
 ---
 type: research
+claimed_by: s3d41a500e84d
+claimed_at: 2026-08-02T18:09:05Z
 ---
 
 # How comparable local-server tools draw this line
