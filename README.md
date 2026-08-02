@@ -114,10 +114,40 @@ Shipped in `v0.2.1`:
 - [x] **Linux desktop app** — an `.AppImage` with WebKitGTK bundled, gated on a
       render check against a host with no WebKit installed.
 
+Fixed on `main` since `v0.2.1`:
+
+- [x] **Shift+Enter as a literal newline** — the keystroke now lands: the seam
+      swallows the stray keypress xterm turned into a `\r` right after the
+      newline, which was submitting the line it had just broken.
+
 Not yet:
 
-- [ ] **Shift+Enter as a literal newline** — the resolve seam and its tests are
-      in, but the keystroke doesn't land in a real terminal. Broken, not missing.
+- [ ] **Windows desktop app** — a native-windowed chartr for Windows as a
+      shipped, tested artifact, the way the macOS `.dmg` and Linux `.AppImage`
+      already are: WebView2, packaging, and a slot in the release pipeline.
+- [ ] **Registered agents verified end to end** — `codex` and `kimi` are
+      believed working (register, spawn, opener delivered, states read) but the
+      checklist has never been formally run; then extend it to the harnesses
+      whose flags are still unchecked: `grok`, `opencode`, `pi`.
+- [ ] **Agent registration examples in the docs** — one working `[agents.*]`
+      block per provider in the getting-started guide, so registering an agent
+      is a paste, not a read of the adapter source.
+- [ ] **Scratch shells open where you say** — the starting directory of a
+      scratch terminal is configurable, instead of always the cockpit's own
+      working tree.
+- [ ] **Session-status inference misfires** — known cases where a tab's
+      working/idle/done reads wrong, the OSC C1/UTF-8 misfire among them.
+      [Map](.plan/maps/agent-state-detection/map.md).
+- [ ] **Payload preview loses its scroll** — expanding the composed document in
+      the payload preview modal breaks scrolling.
+- [ ] **Ticket details** — markdown that renders incorrectly, and ticket
+      references that should be clickable links to the ticket they name.
+- [ ] **Keyboard shortcuts: coverage and config** — more of the cockpit is
+      reachable from the keyboard, and the bindings are the operator's to remap,
+      not fixed in the chrome.
+- [ ] **Pre-packaged skill delivery** — a better way for the bundled skills to
+      reach an agent than today's sync.
+      [Today](docs/skill-sync.md).
 - [ ] **Drag to reorder the sidebar** — spaces stay where you put them, and
       `pinned` goes away with the recency sort it fought over.
       [Spec](.plan/maps/sidebar-order/spec.md).
