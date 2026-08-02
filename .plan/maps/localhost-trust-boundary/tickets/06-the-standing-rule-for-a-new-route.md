@@ -221,8 +221,9 @@ Its spine, in the repo's ADR idiom (sentence title, argument, `## Consequences`,
    that is the sentence the ADR is carrying forward.
 3. **Loopback by default, `-expose-cleartext` or refuse** (04) — as a clause, with
    the cleartext-disclosure argument that decides it.
-4. **One posture, two delivery adapters** (05 + amendment) — the shell's `?k=` first
-   navigation and the `SIGUSR1` second launch, with no desktop auth mode.
+4. **One posture, two delivery adapters** (05 + amendments) — the shell's `?k=` first
+   navigation, with no desktop auth mode, and the rule that no second-launch message
+   prints the running URL or offers quitting as the remedy.
 5. **What the gate does not cover**, with the worked examples below.
 
 **Rejected homes.** A `doc.go` package comment in `internal/server` — appealing
@@ -369,9 +370,17 @@ browsers chartr supports and in the webview. If it does not, the correction is
 requires exact Origin and Host on anything that matters. Not a weakening; a different
 spelling of a control that is not carrying the weight alone.
 
-Nothing else in 03, 04 or 05 came out shaky under this ticket's weight. 04's bind rule
-has no route-level consequence and needed none. 05's `SIGUSR1` path touches no server
-code, which was its author's point and holds.
+04's bind rule came out clean: it has no route-level consequence and needed none.
+
+**05's `SIGUSR1` second-launch activation did not survive, and was cut by operator
+decision after this answer was first written** — see 05's second amendment. It touched
+no server code, which was its author's point and is still true, so it changes nothing
+in this ticket's rule, enforcement or tests. It was cut on cost: macOS already has
+`raiseInstance`, so the work all landed on the tiered platforms, and Windows has no
+`SIGUSR1` for Go to send. A second launch now prints that the first is running and
+exits. The finding underneath it stands untouched and is the part that mattered here —
+**no message may print the running instance's URL or offer quitting as the remedy**,
+because under authentication that is a dead instruction pointing at a restart.
 
 ### What this ticket deliberately does not build
 
@@ -401,10 +410,11 @@ with `subtle.ConstantTimeCompare`, not `==`. One standard-library call, no mecha
 
 ### Revisit trigger
 
-- **Anything is proposed for the unauthenticated branch.** A fifth entry beside
+- **Anything is proposed for the unauthenticated branch.** A third entry beside
   bootstrap and denial is a change to the boundary and needs ADR 0017 amended, not a
-  commit. The bootstrap redirect, `Enter`-to-reprint and `SIGUSR1` remain the only
-  sanctioned out-of-band paths (03, 05).
+  commit. The bootstrap redirect and `Enter`-to-reprint are now the only sanctioned
+  out-of-band paths (03) — 05's `SIGUSR1` was cut, which shortens the list rather than
+  changing its rule.
 - **A route appears that the gate cannot cover** — a second listener, a Unix socket, a
   handler registered outside `s.mux`, an automation interface (03 anticipates one).
   Then "one middleware around `s.mux`" has stopped naming the boundary and the rule's
