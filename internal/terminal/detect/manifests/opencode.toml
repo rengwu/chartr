@@ -1,23 +1,43 @@
-# opencode.
+# opencode 1.2.27. Measured on this machine (ticket 04, see
+# .plan/maps/agent-state-detection/assets/rec-opencode-1.2.27.jsonl: idle at the
+# splash prompt, the "△ Permission required" panel it stopped on, and a working
+# turn once approved).
 #
-# NOTE: opencode was NOT captured as a fixture for this map — only claude and kimi
-# were (see .plan/agent-state-detection/assets) — and opencode writes nothing to its
-# title, so working-vs-idle must come from the screen. The working rule below is
-# extrapolated from the braille-spinner pattern the captured agents share (claude's
-# title spinner, kimi's "⠋ thinking..." line): a live spinner frame at the head of a
-# line near the foot of the screen. It is not verified against recorded opencode
-# bytes. A wrong pattern here is a data fix — the point of manifests being data — and
-# a captured opencode turn is what would firm it up. Idle is the absence of the
-# spinner, confirmed by the sampler's hysteresis.
+# The title carries no state — two writes for a whole session, "OpenCode" at boot
+# and then "OC | <session summary>" once the turn is named, which then never
+# changes again. So opencode reads its whole grammar off the screen, exactly as
+# kimi does.
+#
+# The correction ticket 04 exists for: the working rule here was extrapolated from
+# the braille spinner claude and kimi share, and opencode does not use braille. Its
+# spinner is a run of eight square cells that fill left to right, U+2B1D (⬝) and
+# U+25A0 (■), immediately followed by the "esc interrupt" affordance. The old
+# braille pattern could never have matched a single frame, so a working opencode
+# read as idle for the same reason codex did.
 agent = "opencode"
 match = ["opencode"]
 
-# Working: a braille spinner frame leading a recent line. Scoped to the bottom of the
-# screen (live chrome, not scrolled-off transcript) and line-anchored so only a
-# spinner at the start of a line counts.
+# Blocked: the "△ Permission required" panel. The footer row is the structural
+# anchor — the three choices sit on one line, which is why it is a line_regex and
+# not three substrings that could match scattered across the region. opencode draws
+# no flat U+2500 rules (its chrome is ┃ and ▀), so the framed-region helpers claude
+# and kimi use find nothing here and the panel is scoped by position instead: the
+# footer is the second-from-last non-empty line while the panel is up.
+[[rule]]
+id = "blocked"
+state = "blocked"
+priority = 200
+region = "bottom_non_empty_lines(4)"
+line_regex = ['Allow once\s+Allow always\s+Reject']
+
+# Working: the square-cell spinner leading the bottom status line, with "esc
+# interrupt" behind it. Both halves are required — the glyph run alone is a
+# progress-bar shape common enough to appear in output, and "esc interrupt" is the
+# affordance opencode only offers while a turn can still be interrupted. It is gone
+# from the line the moment the turn ends, which is what leaves idle an absence.
 [[rule]]
 id = "working"
 state = "working"
 priority = 100
-region = "bottom_non_empty_lines(6)"
-line_regex = ['^\s*[\x{2800}-\x{28FF}]']
+region = "bottom_non_empty_lines(4)"
+line_regex = ['^\s*[\x{2B1D}\x{25A0}]+\s+esc interrupt']

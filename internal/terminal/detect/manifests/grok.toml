@@ -1,16 +1,39 @@
-# Grok CLI. Its title carries a blocked signal ("Action Required", the same shape
-# codex uses), and it additionally emits OSC 9;4 progress — the ConEmu/Windows
-# Terminal progress sequence — while it works. The retained progress value is the
-# OSC 9 payload, e.g. "4;1;50": field 1 is the progress state (1 = active,
-# 3 = indeterminate, 0 = cleared).
+# Grok CLI 0.2.118 (Grok Build Beta). Measured on this machine (ticket 04, see
+# .plan/maps/agent-state-detection/assets/rec-grok-0.2.118.jsonl: idle at the splash
+# prompt, a working turn, and the numbered approval panel it stopped on).
 #
-# NOTE: as with codex, grok was not captured as a local fixture; the "Action
-# Required" title and the OSC 9;4 progress states come from the described signals
-# and herdr's manifest, not a recording here. Ticket 02's screen regions refine it.
+# Grok broadcasts the richest title of the roster, a chain of dash-separated fields
+# that grows and shrinks through a turn. The measured shapes:
+#
+#   "grok"                                   idle at boot
+#   "Run Exact Shell rm … - grok"            idle once the session has a name
+#   "⠼ - Waiting for response… - grok"       working; also "Thinking" and "Responding"
+#   "⚠ Action Required - ⠙ - … - grok"       blocked
+#
+# Two corrections ticket 04 makes, both from the bytes:
+#
+#  1. Grok emits **no OSC 9;4 progress at all** — zero progress writes across the
+#     whole capture. The working rule ('^4;[13]') and the positive idle rule
+#     ('^4;0') both read osc_progress, so neither could ever fire: a working grok
+#     matched nothing and fell through the sampler's absence path to idle, the same
+#     class of bug codex had. The progress claim came from herdr's manifest and was
+#     never true here. Working now reads the braille frame grok actually writes, and
+#     the progress-derived idle rule is deleted rather than left as decoration —
+#     idle is an absence the sampler confirms, as it is for every other agent.
+#
+#  2. "Action Required" survived measurement, exactly as herdr described it, and
+#     grok prefixes it with ⚠. Only the stable words are matched.
+#
+# Note the ordering constraint the capture makes explicit: a blocked title carries a
+# braille frame *too* ("⚠ Action Required - ⠙ - …"), because the spinner keeps
+# turning while grok waits on the operator. Blocked must therefore outrank working,
+# which is what the priorities below do. Grok also paints its splash logo out of
+# braille glyphs, which is a trap for any screen rule — another reason its grammar
+# stays on the title.
 agent = "grok"
 match = ["grok"]
 
-# Waiting on the operator.
+# Waiting on the operator — the numbered "Yes, proceed / No, reject" approval panel.
 [[rule]]
 id = "blocked"
 state = "blocked"
@@ -18,18 +41,14 @@ priority = 100
 region = "osc_title"
 all = ["Action Required"]
 
-# An active progress pulse (state 1 = active, 3 = indeterminate) → working.
+# A braille frame (U+2800–U+28FF) leading the title → actively generating. It is the
+# one field common to every working title grok wrote; the words behind it cycle
+# through "Waiting for response…", "Thinking" and "Responding" within a single turn,
+# so matching the frame rather than the words is what keeps this rule from breaking
+# on the next phase grok invents.
 [[rule]]
 id = "working"
 state = "working"
 priority = 60
-region = "osc_progress"
-line_regex = ['^4;[13]']
-
-# Progress cleared (state 0) → the pulse stopped: a positive idle signal.
-[[rule]]
-id = "idle"
-state = "idle"
-priority = 40
-region = "osc_progress"
-line_regex = ['^4;0']
+region = "osc_title"
+line_regex = ['[\x{2800}-\x{28FF}]']

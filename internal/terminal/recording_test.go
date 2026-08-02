@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +15,12 @@ import (
 	"github.com/rengwu/chartr/internal/terminal/detect"
 )
 
-// recordingsDir holds the real PTY captures taken while this map was designed.
-// The engine is tested against recorded agent bytes rather than hand-written
-// strings, because hand-written strings encode what we *think* an agent draws;
-// these are what Claude Code actually emitted. Ticket 02 extends the same set.
+// recordingsDir holds the real PTY captures of every agent in the roster. The
+// engine is tested against recorded agent bytes rather than hand-written strings,
+// because hand-written strings encode what we *think* an agent draws. Ticket 04 is
+// the proof: three of the four manifests written from herdr's data and from the
+// braille shape claude and kimi share turned out to describe signals their agents
+// never emit, and every one of those bugs read as a working agent gone idle.
 const recordingsDir = "../../.plan/maps/agent-state-detection/assets"
 
 // chunk is one recorded PTY read: when it arrived, and the bytes.
@@ -132,8 +135,20 @@ func replay(t *testing.T, agent string, chunks []chunk) []transition {
 // driven by the bytes an agent really wrote, at the size it wrote them.
 func replayScreen(t *testing.T, agent, name string) []transition {
 	t.Helper()
+	return replayScreenTail(t, agent, name, 0)
+}
+
+// replayScreenTail is replayScreen with sampling that keeps going for tail past the
+// last recorded byte. An agent that finishes its turn and falls quiet writes its
+// final idle title and then stops emitting entirely, so the absence confirmation
+// that publishes idle needs ticks the recording itself no longer supplies — real
+// sampling does not stop when an agent stops typing. Claude's capture ends mid-
+// stream and needs none; the agents captured in ticket 04 end at a settled prompt
+// and do.
+func replayScreenTail(t *testing.T, agent, name string, tail time.Duration) []transition {
+	t.Helper()
 	var out []transition
-	replayPublished(t, agent, name, 0, func(now time.Duration, tr transition, changed bool) {
+	replayPublished(t, agent, name, tail, func(now time.Duration, tr transition, changed bool) {
 		if changed {
 			out = append(out, tr)
 		}
@@ -345,6 +360,229 @@ func TestClaudeRecordingDoesNotFlicker(t *testing.T) {
 		if got[i].state == got[i-1].state {
 			t.Errorf("published %q twice in a row at %s and %s", got[i].state, got[i-1].at, got[i].at)
 		}
+	}
+}
+
+// Codex is the bug ticket 04 was opened on: its shipped working rule looked for
+// "Working" / "Thinking" / "Running" in the title, and the capture proves codex
+// writes none of them — it prefixes a braille frame to the directory name instead,
+// so the rule never fired and a working codex fell through to idle. Replaying the
+// real capture must now show the full grammar: working during the turn, blocked on
+// the "Would you like to run the following command?" approval (the one roster title
+// that says "Action Required" outright), and idle at the prompt either side.
+func TestCodexRecordingReadsWorkingBlockedAndIdle(t *testing.T) {
+	got := replayScreenTail(t, "codex", "rec-codex-0.146.0.jsonl", 5*time.Second)
+	if len(got) == 0 {
+		t.Fatal("replaying the Codex recording published nothing at all")
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; the braille title frame did not fire. published %v", got)
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked while sitting on the approval; published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	// The capture approves the command and runs on past it, so blocked is a discrete
+	// event rather than where the tab settles.
+	if last := got[len(got)-1]; last.state != model.TerminalIdle {
+		t.Errorf("settled on %q at the end of the recording, want %q; published %v",
+			last.state, model.TerminalIdle, got)
+	}
+	// blocked comes from a title codex positively broadcast, never from an absence.
+	for _, tr := range got {
+		if tr.state == model.TerminalBlocked && !tr.positive {
+			t.Errorf("published an absence-derived blocked at %s — codex announces it in the title", tr.at)
+		}
+	}
+}
+
+// The dead rule, pinned. Codex's status line does read "Working (2s • esc to
+// interrupt)", but it draws that on the *screen*; the title it broadcasts is the
+// directory name with a braille frame. Asserting the old strings resolve to nothing
+// keeps the next reader from "restoring" them from herdr's manifest.
+func TestCodexTitleNeverCarriesHerdrsWorkingStrings(t *testing.T) {
+	for _, title := range []string{"Working", "Thinking", "Running"} {
+		if res := agentEngine.Evaluate("codex", detect.Evidence{Title: title}); res.State == model.TerminalWorking {
+			t.Errorf("codex title %q read as working; the capture shows codex never writes it", title)
+		}
+	}
+	if res := agentEngine.Evaluate("codex", detect.Evidence{Title: "⠹ agentcwd"}); res.State != model.TerminalWorking {
+		t.Errorf("codex braille title read as %q, want %q", res.State, model.TerminalWorking)
+	}
+	if res := agentEngine.Evaluate("codex", detect.Evidence{Title: "agentcwd"}); res.State != "" {
+		t.Errorf("codex idle title read as %q, want no state (idle by absence)", res.State)
+	}
+}
+
+// opencode reads its whole grammar off the screen: its title is written twice a
+// session and names the conversation, never the state. The capture stops on the
+// "△ Permission required" panel, is approved, and runs to completion, so replaying
+// it must surface blocked, working and idle from the grid alone.
+func TestOpencodeRecordingReadsBlockedWorkingAndIdleFromScreen(t *testing.T) {
+	got := replayScreenTail(t, "opencode", "rec-opencode-1.2.27.jsonl", 5*time.Second)
+	if len(got) == 0 {
+		t.Fatal("replaying the opencode recording published nothing at all")
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked; the △ Permission required panel did not fire. published %v", got)
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working; the square-cell spinner did not fire. published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	if last := got[len(got)-1]; last.state != model.TerminalIdle {
+		t.Errorf("settled on %q at the end of the recording, want %q; published %v",
+			last.state, model.TerminalIdle, got)
+	}
+	for _, tr := range got {
+		if tr.state == model.TerminalBlocked && !tr.positive {
+			t.Errorf("published an absence-derived blocked at %s — the panel is a positive screen match", tr.at)
+		}
+	}
+}
+
+// opencode's spinner is squares, not braille — the extrapolation ticket 04 caught.
+// Pinning both halves keeps a future reader from "restoring" the braille pattern
+// from the shape claude and kimi share, and keeps the "esc interrupt" half of the
+// working rule load-bearing rather than decorative.
+func TestOpencodeSpinnerIsSquaresNotBraille(t *testing.T) {
+	const footer = "  ctrl+t variants  tab agents  ctrl+p commands    • OpenCode 1.2.27"
+	cases := []struct {
+		name  string
+		line  string
+		state string
+	}{
+		{"squares with the interrupt hint", "   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt" + footer, model.TerminalWorking},
+		{"half-filled squares", "   ⬝⬝⬝■■■■■  esc interrupt" + footer, model.TerminalWorking},
+		{"braille, which opencode never draws", "   ⠋⠙⠹  esc interrupt" + footer, ""},
+		{"the same line once the turn ends", "  " + footer, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := agentEngine.Evaluate("opencode", detect.Evidence{Screen: tc.line})
+			if res.State != tc.state {
+				t.Errorf("read %q, want %q", res.State, tc.state)
+			}
+		})
+	}
+}
+
+// Grok is the roster agent the map had written off as unmeasurable. Replaying its
+// real capture must show the whole grammar off the title alone: working while the
+// braille frame leads it, blocked while "⚠ Action Required" does, and idle at the
+// prompt either side.
+func TestGrokRecordingReadsWorkingBlockedAndIdle(t *testing.T) {
+	got := replayScreenTail(t, "grok", "rec-grok-0.2.118.jsonl", 5*time.Second)
+	if len(got) == 0 {
+		t.Fatal("replaying the Grok recording published nothing at all")
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; published %v", got)
+	}
+	if !sawState(got, model.TerminalBlocked) {
+		t.Errorf("never read blocked while sitting on the approval panel; published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	if last := got[len(got)-1]; last.state != model.TerminalIdle {
+		t.Errorf("settled on %q at the end of the recording, want %q; published %v",
+			last.state, model.TerminalIdle, got)
+	}
+}
+
+// Grok emits no OSC 9;4 progress at all — herdr's claim, carried into this manifest
+// unverified, is simply false here. The capture is the evidence, and this pins it:
+// were grok to start pulsing progress, this fails and the manifest is worth
+// revisiting. It also pins the ordering the capture forces — grok keeps spinning
+// while it waits, so a title carrying *both* a braille frame and "Action Required"
+// must read blocked, not working.
+func TestGrokEmitsNoProgressAndBlockedOutranksItsSpinner(t *testing.T) {
+	var scanner oscScanner
+	var progress string
+	for _, c := range loadRecording(t, "rec-grok-0.2.118.jsonl") {
+		scanner.scan(c.data, func(string) {}, func(v string) { progress = v })
+	}
+	if progress != "" {
+		t.Errorf("Grok emitted OSC progress %q; the manifest records that it emits none", progress)
+	}
+
+	const blocked = "⚠ Action Required - ⠙ - Remove probe file as requested… - grok"
+	if res := agentEngine.Evaluate("grok", detect.Evidence{Title: blocked}); res.State != model.TerminalBlocked {
+		t.Errorf("grok title %q read as %q, want %q — the spinner must not outrank Action Required",
+			blocked, res.State, model.TerminalBlocked)
+	}
+	if res := agentEngine.Evaluate("grok", detect.Evidence{Title: "⠼ - Thinking - grok"}); res.State != model.TerminalWorking {
+		t.Errorf("grok working title read as %q, want %q", res.State, model.TerminalWorking)
+	}
+	if res := agentEngine.Evaluate("grok", detect.Evidence{Title: "Run Exact Shell rm Temp Probe File - grok"}); res.State != "" {
+		t.Errorf("grok idle title read as %q, want no state (idle by absence)", res.State)
+	}
+}
+
+// pi reads its grammar off the screen — its title is written once a session and
+// says "π - <dirname>" forever. The capture is a working turn driving four bash
+// commands and the settle back to the prompt; there is no blocked to assert,
+// because pi ships no approval gate to stop at (see pi.toml).
+func TestPiRecordingReadsWorkingThenIdleFromScreen(t *testing.T) {
+	got := replayScreenTail(t, "pi", "rec-pi-0.78.0.jsonl", 5*time.Second)
+	if len(got) == 0 {
+		t.Fatal("replaying the pi recording published nothing at all")
+	}
+	if !sawState(got, model.TerminalWorking) {
+		t.Errorf("never read working across the recorded turn; the ⠇ Working... spinner did not fire. published %v", got)
+	}
+	if !sawState(got, model.TerminalIdle) {
+		t.Errorf("never read idle at the recorded prompt; published %v", got)
+	}
+	if last := got[len(got)-1]; last.state != model.TerminalIdle {
+		t.Errorf("settled on %q at the end of the recording, want %q; published %v",
+			last.state, model.TerminalIdle, got)
+	}
+	// pi's title says nothing, so every one of those states came off the grid.
+	var scanner oscScanner
+	titles := map[string]bool{}
+	for _, c := range loadRecording(t, "rec-pi-0.78.0.jsonl") {
+		scanner.scan(c.data, func(v string) { titles[v] = true }, func(string) {})
+	}
+	for got := range titles {
+		if res := agentEngine.Evaluate("pi", detect.Evidence{Title: got}); res.State != "" {
+			t.Errorf("pi title %q resolved to %q; pi's grammar is screen-only", got, res.State)
+		}
+	}
+}
+
+// The region, not the pattern, was pi's real defect. Its spinner sits five non-empty
+// lines above the foot with an empty input box and six with one line typed into it —
+// the last slot bottom_non_empty_lines(6) could see. An operator typing a two-line
+// message while pi worked would have pushed the spinner out of the region entirely
+// and a working pi would have read as idle, with no second rule to catch it. This
+// pins the headroom the widened region buys.
+func TestPiWorkingSurvivesATypedInputBox(t *testing.T) {
+	const spinner = " ⠇ Working..."
+	const rule = "─────────────────────────────────────────────"
+	foot := []string{
+		rule,
+		"/private/tmp/scratchpad/agentcwd (main)",
+		"↑3.1k ↓688 R4.1k $0.006 (sub) 0.8%/272k (auto)",
+	}
+	for _, typed := range []int{0, 1, 2, 3} {
+		t.Run(fmt.Sprintf("%d typed lines", typed), func(t *testing.T) {
+			lines := []string{"Took 0.0s", spinner, rule}
+			for i := 0; i < typed; i++ {
+				lines = append(lines, fmt.Sprintf("a follow-up line %d typed while pi works", i))
+			}
+			lines = append(lines, foot...)
+			res := agentEngine.Evaluate("pi", detect.Evidence{Screen: strings.Join(lines, "\n")})
+			if res.State != model.TerminalWorking {
+				t.Errorf("read %q with %d lines in the input box, want %q — the spinner fell out of the region",
+					res.State, typed, model.TerminalWorking)
+			}
+		})
 	}
 }
 
