@@ -70,3 +70,22 @@ Done when: a `0x9D` byte in ground-state output no longer opens an OSC sequence;
 the 7-bit `ESC ]` path and all existing OSC tests are unchanged and passing; a
 malformed no-code OSC no longer delivers a title; and `go vet ./...` /
 `go test ./...` pass.
+
+## Answer
+
+Removed the bare `0x9D` transition from `oscGround`, so only the existing 7-bit
+`ESC ]` introducer opens an OSC. `enterPayload` now requires `haveCode`; an OSC
+whose semicolon arrives before any numeric code moves to `oscSkip` and cannot be
+delivered as title code 0.
+
+Added scanner regressions proving that UTF-8 `Ý` leaves the state machine in
+ground without firing either callback, that a genuine `ESC ] 0 ; ... BEL` title
+immediately following it is still read, and that a no-code OSC is discarded.
+The decoded Claude recording contains many real `0x9D` continuation bytes in
+its `❯` prompt glyph, so a recording-backed test now feeds captured bytes through
+the end of that glyph and pins the scanner in ground state. Kimi's recording has
+no `0x9D` byte, so it needed no equivalent case.
+
+`go vet ./...` and `go test ./...` both pass. Deliberately did not add
+UTF-8-aware C1 control support: the settled fix drops the incomplete raw-C1 path
+while preserving the measured 7-bit form used by the recorded agents.
