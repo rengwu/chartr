@@ -13,8 +13,8 @@ package terminal
 // ST (ESC \).
 type oscScanner struct {
 	state    oscState
-	code     int    // the numeric OSC code being read (Ps)
-	haveCode bool   // at least one code digit seen
+	code     int  // the numeric OSC code being read (Ps)
+	haveCode bool // at least one code digit seen
 	kind     oscKind
 	buf      []byte // payload of a kept OSC, capped
 	escSeen  bool   // an ESC was seen mid-sequence; a following '\' is ST
@@ -79,11 +79,8 @@ func (s *oscScanner) scan(chunk []byte, onTitle, onProgress func(string)) {
 
 		switch s.state {
 		case oscGround:
-			switch b {
-			case 0x1b:
+			if b == 0x1b {
 				s.state = oscEsc
-			case 0x9d: // C1 OSC
-				s.beginOSC()
 			}
 		case oscEsc:
 			if b == ']' {
@@ -130,6 +127,11 @@ func (s *oscScanner) beginOSC() {
 // enterPayload is reached at the ';' after the code: decide whether this OSC is
 // one we retain (0/2 title, 9 progress) or one we skip cheaply.
 func (s *oscScanner) enterPayload() {
+	if !s.haveCode {
+		s.state = oscSkip
+		return
+	}
+
 	switch {
 	case s.code == 0 || s.code == 2:
 		s.kind, s.state = oscTitle, oscKeep

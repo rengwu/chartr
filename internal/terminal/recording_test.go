@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -271,6 +272,21 @@ func TestClaudeRecordingReadsWorkingThenIdle(t *testing.T) {
 				tr.at, agentStartupGrace)
 		}
 	}
+}
+
+func TestClaudeRecordingPromptGlyphDoesNotOpenC1OSC(t *testing.T) {
+	prompt := []byte("❯") // E2 9D AF: the middle byte is the C1 OSC value.
+	for _, c := range loadRecording(t, "rec-claude.jsonl") {
+		if start := bytes.Index(c.data, prompt); start >= 0 {
+			var scanner oscScanner
+			scanner.scan(c.data[:start+len(prompt)], func(string) {}, func(string) {})
+			if scanner.state != oscGround {
+				t.Fatalf("state after recorded Claude prompt glyph = %v, want oscGround", scanner.state)
+			}
+			return
+		}
+	}
+	t.Fatal("recorded Claude turn contains no prompt glyph")
 }
 
 // Claude's blocked never reaches its title — a permission prompt paints ✳, byte-

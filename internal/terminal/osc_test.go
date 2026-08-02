@@ -75,6 +75,11 @@ func TestOSCScanner(t *testing.T) {
 			title:  "",
 		},
 		{
+			name:   "an OSC without a numeric code is discarded",
+			chunks: []string{"\x1b];not a title\x07"},
+			title:  "",
+		},
+		{
 			name:   "an empty title clears to empty rather than sticking",
 			chunks: []string{"\x1b]0;something\x07", "\x1b]0;\x07"},
 			title:  "",
@@ -106,6 +111,32 @@ func TestOSCScanner(t *testing.T) {
 				t.Errorf("progress = %q, want %q", progr, tc.progr)
 			}
 		})
+	}
+}
+
+func TestOSCScannerDoesNotTreatUTF8AsC1OSC(t *testing.T) {
+	var s oscScanner
+	var title, progress string
+	onTitle := func(v string) { title = v }
+	onProgress := func(v string) { progress = v }
+
+	// U+00DD contains 0x9D as its UTF-8 continuation byte. That byte is text,
+	// not a C1 OSC introducer, so it must leave the scanner in ground state.
+	s.scan([]byte("Ý"), onTitle, onProgress)
+	if title != "" || progress != "" {
+		t.Fatalf("UTF-8 text delivered title %q or progress %q", title, progress)
+	}
+	if s.state != oscGround {
+		t.Fatalf("state after UTF-8 text = %v, want oscGround", s.state)
+	}
+
+	// A genuine 7-bit OSC immediately afterward must still be recognized.
+	s.scan([]byte("\x1b]0;kept\x07"), onTitle, onProgress)
+	if title != "kept" {
+		t.Errorf("title after UTF-8 text = %q, want %q", title, "kept")
+	}
+	if progress != "" {
+		t.Errorf("progress after UTF-8 text = %q, want empty", progress)
 	}
 }
 
