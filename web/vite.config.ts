@@ -28,6 +28,13 @@ export default defineConfig({
     proxy: {
       '/api': { target: backend, changeOrigin: true },
       // ws:true is what forwards the control and terminal sockets to Go.
+      //
+      // Both websockets are scoped to the address the backend is listening on, and
+      // changeOrigin rewrites Host while leaving this dev server's Origin in place,
+      // so the two differ and the backend has to be told about this origin
+      // explicitly. That is what `make dev-backend`'s `-tags chartrdev` does — a
+      // handshake refused with 403 in development almost always means the backend
+      // was started some other way.
       '/ws': { target: backend, ws: true, changeOrigin: true },
     },
   },

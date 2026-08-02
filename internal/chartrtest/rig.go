@@ -12,8 +12,11 @@
 package chartrtest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -373,6 +376,117 @@ func (h *Chartr) DialTerminal(ctx context.Context, termID string) *TerminalConn 
 		h.t.Fatalf("chartrtest: dial terminal socket %s: %v", termID, err)
 	}
 	return &TerminalConn{c: c, t: h.t}
+}
+
+// DialControlOrigin dials the control socket presenting origin as the browser's
+// Origin header, and returns the connection together with the handshake's HTTP
+// status. Unlike DialControl it does not fail the test on a refusal: a refusal is
+// the result a test is usually after here — this is how the suite asserts that a
+// page on another origin is turned away (websocket-origin-fix, ticket 01). The
+// connection is nil exactly when the handshake was refused.
+func (h *Chartr) DialControlOrigin(ctx context.Context, origin string) (*ControlConn, int) {
+	h.t.Helper()
+	c, status := h.dialOrigin(ctx, "/ws/control", origin)
+	if c == nil {
+		return nil, status
+	}
+	return &ControlConn{c: c, t: h.t}, status
+}
+
+// DialTerminalOrigin is DialControlOrigin for a terminal's binary socket: it
+// presents origin and returns the connection (nil when refused) with the
+// handshake status.
+func (h *Chartr) DialTerminalOrigin(ctx context.Context, termID, origin string) (*TerminalConn, int) {
+	h.t.Helper()
+	c, status := h.dialOrigin(ctx, "/ws/terminal/"+termID, origin)
+	if c == nil {
+		return nil, status
+	}
+	return &TerminalConn{c: c, t: h.t}, status
+}
+
+func (h *Chartr) dialOrigin(ctx context.Context, path, origin string) (*websocket.Conn, int) {
+	h.t.Helper()
+	wsURL := "ws" + strings.TrimPrefix(h.BaseURL, "http") + path
+	c, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": []string{origin}},
+	})
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	if err != nil {
+		return nil, status
+	}
+	return c, status
+}
+
+// AttemptCrossOriginTerminalWrite performs the terminal handshake by hand over a
+// raw TCP connection — presenting origin as a browser would, and pipelining a
+// masked binary frame carrying keys immediately after the request, without
+// waiting for the response. It returns the handshake response's HTTP status.
+//
+// It is deliberately not a websocket.Dial. A client library will not write a
+// frame onto a handshake it already knows was refused, so a test built on one
+// could not tell an outright rejection from a server that accepts the socket and
+// then closes it — and the second is the regression worth pinning
+// (websocket-origin-fix, ticket 01). This always puts the bytes on the wire; the
+// assertion is that they never reach the PTY.
+func (h *Chartr) AttemptCrossOriginTerminalWrite(termID, origin, keys string) int {
+	h.t.Helper()
+
+	hostPort := strings.TrimPrefix(h.BaseURL, "http://")
+	conn, err := net.DialTimeout("tcp", hostPort, 5*time.Second)
+	if err != nil {
+		h.t.Fatalf("chartrtest: dial %s: %v", hostPort, err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	var key [16]byte
+	if _, err := rand.Read(key[:]); err != nil {
+		h.t.Fatalf("chartrtest: generating a Sec-WebSocket-Key: %v", err)
+	}
+	req := "GET /ws/terminal/" + termID + " HTTP/1.1\r\n" +
+		"Host: " + hostPort + "\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Version: 13\r\n" +
+		"Sec-WebSocket-Key: " + base64.StdEncoding.EncodeToString(key[:]) + "\r\n" +
+		"Origin: " + origin + "\r\n" +
+		"\r\n"
+	if _, err := conn.Write(append([]byte(req), h.clientBinaryFrame([]byte(keys))...)); err != nil {
+		h.t.Fatalf("chartrtest: writing the cross-origin handshake: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodGet})
+	if err != nil {
+		h.t.Fatalf("chartrtest: reading the cross-origin handshake response: %v", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+// clientBinaryFrame encodes one masked client binary frame — the bytes a browser
+// puts on the wire for a keystroke. Only the 7-bit length form is encoded, which
+// is all a probe payload needs.
+func (h *Chartr) clientBinaryFrame(payload []byte) []byte {
+	h.t.Helper()
+	if len(payload) > 125 {
+		h.t.Fatalf("chartrtest: cross-origin probe payload is %d bytes, must be under 126", len(payload))
+	}
+	var mask [4]byte
+	if _, err := rand.Read(mask[:]); err != nil {
+		h.t.Fatalf("chartrtest: generating a frame mask: %v", err)
+	}
+	// 0x82: FIN set, opcode 2 (binary). 0x80: the payload is masked, as every
+	// client frame must be.
+	frame := []byte{0x82, 0x80 | byte(len(payload))}
+	frame = append(frame, mask[:]...)
+	for i, b := range payload {
+		frame = append(frame, b^mask[i%4])
+	}
+	return frame
 }
 
 // TerminalConn is a connected terminal socket in a test. Raw PTY bytes arrive as

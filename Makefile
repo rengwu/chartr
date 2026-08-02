@@ -19,9 +19,22 @@ web:
 go-build:
 	go build -o $(BIN) ./cmd/chartr
 
-## dev-backend: run the chartr backend (serves :8787).
+## dev-backend: run the chartr backend (serves :8787) for use behind `dev-web`.
+##
+## The `chartrdev` tag is what admits the Vite dev server's origin on the two
+## websockets. Both handshakes are scoped to the address chartr is listening on,
+## and Vite proxies with `changeOrigin: true` — the request arrives with the
+## backend's Host and the browser's own Origin — so without the tag the dev proxy
+## is refused like any other cross-origin page. The tag exists so that widening is
+## a development build rather than a flag on a released binary: nothing else in
+## this Makefile sets it, and `internal/server/origins_dev.go` is not compiled into
+## anything that ships. Set CHARTR_DEV_ORIGIN if Vite landed somewhere other than
+## localhost:5173.
+##
+## Run chartr any other way — `make build`, `go run ./cmd/chartr` — and you get the
+## shipped behaviour, which is what `bin/chartr` serving the embedded SPA needs.
 dev-backend:
-	go run ./cmd/chartr
+	go run -tags chartrdev ./cmd/chartr
 
 ## dev-web: run Vite with HMR, proxying /api and /ws to the backend.
 dev-web:
