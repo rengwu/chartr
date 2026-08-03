@@ -51,9 +51,16 @@ Grab your platform's archive from the
 
 ```
 chartr                 # http://127.0.0.1:8787
-chartr -addr :9000
+chartr -addr :9000     # not loopback — see below
 chartr -data-dir ~/w   # session root (default: cwd)
 ```
+
+chartr has **no authentication**. Reaching the port is the whole of the access
+check, and the API behind it opens shells, runs commands and spawns agents in
+your account. Binding to anything other than loopback — `-addr :9000`,
+`-addr 0.0.0.0:9000`, a LAN address — hands that to everyone who can reach the
+port. Keep the default `127.0.0.1` unless you mean to expose it; chartr warns at
+startup when you don't.
 
 Install your own agent CLIs; chartr ships none.
 
