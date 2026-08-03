@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -276,6 +277,15 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	// handler that reads it runs on a goroutine started after, so the write is
 	// ordered ahead of every read without a lock.
 	s.origins = originPatterns(ln.Addr())
+
+	// A bind that is not loopback puts an unauthenticated API — shells, agent
+	// spawns, the operator's files — in front of everyone who can reach the port,
+	// and neither the origin patterns above nor the host gate below stand in the
+	// way of a client that is not a browser. Nothing is refused here: an operator
+	// who meant it keeps working, and they are told what they exposed.
+	if exposedBind(ln.Addr()) {
+		log.Print(exposureWarning(ln.Addr()))
+	}
 
 	httpSrv := &http.Server{
 		// Every route goes through the host gate first. Scoping the sockets to the
