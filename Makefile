@@ -334,6 +334,51 @@ dmg:
 LINUXDEPLOY_VERSION  := 1-alpha-20251107-1
 APPIMAGETOOL_VERSION := 1.9.1
 
+# ...and pinned by content, not only by tag, because a tag is not a pin.
+#
+# `1-alpha-20251107-1` is a GitHub release tag, and a release tag is mutable: the
+# publisher can re-point it at different bytes without the version string here
+# changing. linuxdeploy publishes nothing but dated alphas, so there is no stable
+# tag to move to — the checksum below is what makes depending on that tag safe.
+# appimagetool's 1.9.1 is an ordinary release and is better, but it is mutable in
+# exactly the same way and gets the same treatment.
+#
+# Both tools are executed on the build machine and shape the artifact shipped to
+# users, so they are verified after download and BEFORE chmod +x, on the cached
+# path as well as the freshly fetched one. A mismatch deletes the file and fails
+# the target; it is never a warning.
+#
+# To bump either tool:
+#
+#   1. Change the version above.
+#   2. Re-derive BOTH architectures' checksums — they change together, and a
+#      stale aarch64 sum will not show up on an amd64 build machine:
+#
+#        v=1-alpha-20251107-1        # the new tag
+#        for a in x86_64 aarch64; do \
+#          curl -fsSL -o /tmp/t \
+#            "https://github.com/linuxdeploy/linuxdeploy/releases/download/$v/linuxdeploy-$a.AppImage"; \
+#          echo "$a $(sha256sum /tmp/t | cut -d' ' -f1)"; \
+#        done
+#
+#      (appimagetool is the same shape against AppImage/appimagetool and
+#      appimagetool-$a.AppImage.)
+#   3. Cross-check each against the digest GitHub reports for the asset itself,
+#      which is computed server-side and so is not just your own download read
+#      back to you:
+#
+#        curl -fsSL https://api.github.com/repos/linuxdeploy/linuxdeploy/releases/tags/$v \
+#          | python3 -c "import json,sys; [print(a['name'], a.get('digest')) for a in json.load(sys.stdin)['assets']]"
+#
+#      The four values recorded below were derived and cross-checked this way on
+#      2026-08-03; local sums and API digests agreed.
+#   4. Delete build/appimage/tools so the next build re-fetches rather than
+#      verifying the old binary against the new sum and failing.
+LINUXDEPLOY_SHA256_x86_64   := c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+LINUXDEPLOY_SHA256_aarch64  := 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+APPIMAGETOOL_SHA256_x86_64  := ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+APPIMAGETOOL_SHA256_aarch64 := f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+
 # Linux desktops mask, round and theme icons themselves, and expect a full-bleed
 # square to do it to — so this is the PWA master, deliberately NOT the macOS
 # squircle set the bundle uses (ADR 0016). Feeding a Linux desktop Apple's
@@ -395,10 +440,32 @@ appimage:
 		exit 0; \
 	fi; \
 	case "$$goarch" in \
-		amd64) tool_arch=x86_64 ;; \
-		arm64) tool_arch=aarch64 ;; \
+		amd64) tool_arch=x86_64; \
+			linuxdeploy_sha="$(LINUXDEPLOY_SHA256_x86_64)"; \
+			appimagetool_sha="$(APPIMAGETOOL_SHA256_x86_64)" ;; \
+		arm64) tool_arch=aarch64; \
+			linuxdeploy_sha="$(LINUXDEPLOY_SHA256_aarch64)"; \
+			appimagetool_sha="$(APPIMAGETOOL_SHA256_aarch64)" ;; \
 		*) echo "no AppImage tooling for linux/$$goarch; nothing to package"; exit 0 ;; \
 	esac; \
+	verify_tool() { \
+		if command -v sha256sum >/dev/null 2>&1; then \
+			actual=$$(sha256sum "$$1" | cut -d' ' -f1); \
+		else \
+			actual=$$(shasum -a 256 "$$1" | cut -d' ' -f1); \
+		fi; \
+		if [ "$$actual" != "$$2" ]; then \
+			rm -f "$$1"; \
+			echo "$$1: SHA-256 mismatch — refusing to run it" >&2; \
+			echo "  expected $$2" >&2; \
+			echo "  actual   $$actual" >&2; \
+			echo "  the file has been deleted. Either the release tag was re-pointed at" >&2; \
+			echo "  different bytes, or the download was tampered with. Do not bypass this:" >&2; \
+			echo "  re-derive the checksum only after establishing why it changed (Makefile," >&2; \
+			echo "  beside LINUXDEPLOY_VERSION)." >&2; \
+			exit 1; \
+		fi; \
+	}; \
 	$(MAKE) webview WEBVIEW_VERSION=$(WEBVIEW_VERSION) \
 		WEBVIEW_COMMIT=$(WEBVIEW_COMMIT) WEBVIEW_DATE=$(WEBVIEW_DATE); \
 	shell_bin="build/shell/chartr-shell_$(WEBVIEW_VERSION)_linux_$$goarch"; \
@@ -414,14 +481,16 @@ appimage:
 		echo "fetching linuxdeploy $(LINUXDEPLOY_VERSION) ($$tool_arch)"; \
 		curl -fsSL -o "$$tools/linuxdeploy" \
 			"https://github.com/linuxdeploy/linuxdeploy/releases/download/$(LINUXDEPLOY_VERSION)/linuxdeploy-$$tool_arch.AppImage"; \
-		chmod +x "$$tools/linuxdeploy"; \
 	fi; \
+	verify_tool "$$tools/linuxdeploy" "$$linuxdeploy_sha"; \
+	chmod +x "$$tools/linuxdeploy"; \
 	if [ ! -x "$$tools/appimagetool" ]; then \
 		echo "fetching appimagetool $(APPIMAGETOOL_VERSION) ($$tool_arch)"; \
 		curl -fsSL -o "$$tools/appimagetool" \
 			"https://github.com/AppImage/appimagetool/releases/download/$(APPIMAGETOOL_VERSION)/appimagetool-$$tool_arch.AppImage"; \
-		chmod +x "$$tools/appimagetool"; \
 	fi; \
+	verify_tool "$$tools/appimagetool" "$$appimagetool_sha"; \
+	chmod +x "$$tools/appimagetool"; \
 	appdir="build/appimage/AppDir"; \
 	rm -rf "$$appdir"; \
 	mkdir -p "$$appdir/usr/bin" "$$appdir/usr/lib"; \
