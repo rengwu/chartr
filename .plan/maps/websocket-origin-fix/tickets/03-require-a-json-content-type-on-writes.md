@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s3a9b9a7a72d4
+claimed_at: 2026-08-03T08:18:43Z
 ---
 
 # Handlers decode JSON regardless of Content-Type, so a POST needs no preflight
