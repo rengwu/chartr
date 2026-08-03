@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s8a33b2220cbe
+claimed_at: 2026-08-03T04:35:06Z
 ---
 
 # No route checks Host, so DNS rebinding grants the whole API
