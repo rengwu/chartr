@@ -58,3 +58,119 @@ Done when: every route rejects a Host that is not the bound address; the three
 loopback spellings still work; the wildcard-bind rule is decided and written down
 in the answer; the tests above exist and fail without the fix; and `go vet ./...` /
 `go test ./...` pass.
+
+## Answer
+
+**Every route goes through a host gate before it is routed.** Commit `7eb895f`.
+
+`Serve` now hands `http.Server` `hostGate(ln.Addr(), s.mux)` rather than the mux
+raw (`internal/server/server.go:285`). The gate is one wrapper
+(`internal/server/hostgate.go`): a `hostRule` derived once from the bound
+address, and a per-request `allows(r.Host)` that answers 403 with `http.Error`
+and nothing worth reading, never a redirect. Because it wraps the mux, it covers
+the API, the SPA, and both websockets by construction — there is no route it can
+be forgotten on, which is the property the ticket was after.
+
+**The comparison.** `net.SplitHostPort` splits the header; a Host with no port
+is read as 80, the only scheme chartr serves. The port must equal the bound port.
+The host is normalized once — lowercased, trailing root dot stripped, IPv6
+brackets removed — so `LOCALHOST.` and `[::1]` are not third and fourth answers,
+and normalization widens nothing (`evil.example.` normalizes to `evil.example`,
+refused either way). Names are matched verbatim against a closed list;
+addresses are compared with `net.IP.Equal`, so `::ffff:127.0.0.1` is not a way
+around `127.0.0.1`.
+
+**The rule, by bind:**
+
+- **Loopback** (`127.0.0.1:PORT`, the CLI default and the shell's ephemeral
+  port) — exactly `127.0.0.1`, `[::1]` and `localhost` on that port, and nothing
+  else. A closed allowlist of what the operator's own browser actually sends.
+- **One specific non-loopback address** — that address alone.
+- **Wildcard** (`:9000`, `0.0.0.0:9000`) — the three loopback spellings, plus
+  any address the machine currently holds, as a literal. No other name, ever.
+
+**The wildcard rule, and the half of the ticket's suggestion I did not take.**
+The ticket proposed accepting the machine's own addresses *and refusing names
+that do not resolve to them*. The first half is what I built. The second half is
+not merely unworkable, it is self-defeating: resolving the Host header is exactly
+what rebinding subverts. `evil.example` resolves to `127.0.0.1` **because the
+attacker pointed it there**, so a lookup would confirm it as one of our own
+addresses and admit the very request the check exists to stop. So the gate never
+resolves a name — it refuses one it does not already know. That is the narrowing
+the ticket asked me to state rather than a silent acceptance, and it has a real
+cost worth naming: **a machine bound to `0.0.0.0` and reached at its own hostname
+(`http://mybox.local:9000/`) is now refused, and the operator must use the IP.**
+That is a behaviour change for a configuration ticket 04 already warns about; I
+think refusing is right there, but it is the kind of call a human may want to
+revisit when 04 writes the warning, so it is flagged rather than buried.
+
+Own addresses are looked up at request time (`net.InterfaceAddrs`) rather than
+cached at startup, so a laptop that joins a network or drops a VPN does not
+answer to a stale set — and the lookup is only ever reached by a request the
+static set already turned down, so it is off the ordinary path.
+
+**A listener with no host:port** (a unix socket) leaves the check off, and that
+is correct rather than a compromise: rebinding is an attack on a *name* resolving
+to a TCP port, and a socket no browser can dial has neither. Nothing in chartr
+builds one today; `originPatterns` has the same branch for the same reason.
+
+**Against each Done-when clause.**
+
+- *Every route rejects a Host that is not the bound address* — the wrapper sits
+  above the mux, and there are tests on an API route
+  (`TestForeignHostRefusedOnAPIRoutes`), the SPA route
+  (`TestForeignHostRefusedOnTheSPARoute`), and **both** websockets
+  (`TestForeignHostRefusedOnBothWebsocketRoutes`).
+- *The three loopback spellings still work* —
+  `TestEveryLoopbackSpellingStillReachesEveryRoute` drives `127.0.0.1`,
+  `localhost` and `[::1]` against `/api/health` and `/ws/control`, and
+  `TestTheOperatorsBrowserAtLocalhostStillStreams` does the same end to end: a
+  real dial to `ws://localhost:PORT` against a `127.0.0.1` bind, reading a
+  snapshot. `TestTheRightNameOnTheWrongPortIsRefused` pins the other side, that
+  the port is half the address.
+- *The wildcard rule is decided and written down* — above, and in
+  `hostRuleFor`'s doc comment where the next reader will meet it.
+- *The tests exist and fail without the fix* — verified by unwiring the gate
+  (`Handler: s.mux`) and re-running. Four fail; the two positive tests pass
+  either way, which is what says they are not vacuous. The websocket failures
+  read `= 101, want 403` — the socket genuinely opened under the attacker's
+  name, which is the reported hole reproduced rather than a status code.
+- *`go vet ./...` / `go test ./...` pass* — both, and also under
+  `-tags chartrdev`, and `go test -race` over the origin and host tests.
+
+**The rebinding pairing is in the test, not just the name.** `HandshakeWithHost`
+(`internal/chartrtest/rig.go`) presents `Host: attacker.example:PORT` *and*
+`Origin: http://attacker.example:PORT` — what a rebound browser really sends,
+since it believes that name is this address. coder/websocket authorizes any
+handshake whose Origin equals its Host regardless of `OriginPatterns`, so ticket
+01 is provably not what turns these away; only the Host check is. It is a raw
+TCP handshake because net/http drops a Host set through a header map, and
+`DialOptions` has no way to reach `Request.Host`. Ticket 01's
+`AttemptCrossOriginTerminalWrite` now shares that one handshake writer — a pure
+refactor, its behaviour and its test unchanged.
+
+Beyond the suite, the real binary was checked by hand: bound to `127.0.0.1:8912`,
+the three loopback spellings and `LOCALHOST.:8912` answer 200, while
+`evil.example:8912` and `127.0.0.1:9999` answer 403.
+
+**Deliberately not done.**
+
+- **No test for the wildcard bind.** Binding `0.0.0.0` in a test raises the macOS
+  firewall dialog on an unsigned test binary, which is not a thing to add to
+  `go test ./...`. The wildcard path is therefore reasoned and documented, not
+  pinned — the one gap in this ticket's coverage, and stated here rather than
+  left to be discovered. If it is worth pinning, it wants a rig option to bind a
+  given address and a decision about CI, which is more than this ticket.
+- **Nothing about the dev proxy.** Vite forwards with `changeOrigin: true`, which
+  rewrites Host to the *target* — the bound address — so the proxy passes the
+  gate with no dev-only widening. The `chartrdev` tag stays what ticket 01 made
+  it: an origin gate, not a host one.
+- **No second every-route check.** The wrapper is written so one can be added
+  beside the first, per the ticket, but no speculative hook was added for the
+  trust-boundary map's ticket 06.
+- **No documentation change.** The `-addr` warning is ticket 04's, and the
+  wildcard rule above is what it will need.
+
+**One flag for a human**, unchanged from ticket 01: the map's disclosure note
+applies to this commit too. It sits on `main` unpushed, and pushing `.plan/`
+before a release publishes the exploit path. Nothing here pushes.
