@@ -75,7 +75,11 @@ func acquireLock(dataDir, url string) (release func(), err error) {
 	// O_EXCL is the claim: two shells launched at once cannot both believe they
 	// won. The loser falls through to the liveness check below, where the
 	// winner's live pid refuses it.
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	// Owner-only: the lock names the loopback address this shell is serving on,
+	// and no other login on the machine has business reading it (ticket 05). The
+	// directory above keeps its normal mode — the data root may be a repository
+	// checkout, which is not chartr's to tighten.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		info, ok, readErr := readLock(path)
 		if readErr != nil {
@@ -86,7 +90,12 @@ func acquireLock(dataDir, url string) (release func(), err error) {
 		}
 		// Stale (dead pid) or unparseable: take it over. An abrupt exit must not
 		// lock the operator out of their own cockpit forever.
-		if err := os.WriteFile(path, []byte(formatLock(me)), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(formatLock(me)), 0o600); err != nil {
+			return nil, err
+		}
+		// The stale file already existed, so the mode above was not applied to it —
+		// a lock left by an older build would keep its 0644.
+		if err := os.Chmod(path, 0o600); err != nil {
 			return nil, err
 		}
 		return releaseFunc(path, me), nil
