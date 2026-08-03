@@ -55,6 +55,9 @@
 # nested below the repo root as well as one at it.
 .chartr/
 
+# handoffs are local-only. restricted here as they may contain sensitive info.
+.plan/handoffs
+
 # macOS
 .DS_Store
 
