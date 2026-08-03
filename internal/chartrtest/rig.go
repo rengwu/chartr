@@ -20,9 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,16 +51,38 @@ type Chartr struct {
 	// coloured by — the developer's own config.
 	ConfigDir string
 
-	t testing.TB
+	t    testing.TB
+	logs *safeBuffer
 }
 
 // Option configures Start.
-type Option func(*server.Options)
+type Option func(*startOptions)
+
+// startOptions is everything Start takes: what the server is constructed with,
+// and what it is told to listen on. The bind address is not a server.Option —
+// the listener is main's to create, and the rig makes the same one — so the two
+// travel together here rather than Start growing a second parameter.
+type startOptions struct {
+	server server.Options
+	addr   string
+}
 
 // WithConfigDir overrides the operator's config root (default: a fresh temp
 // dir), whose `skills/` is the user layer of the skill library.
 func WithConfigDir(dir string) Option {
-	return func(o *server.Options) { o.ConfigDir = dir }
+	return func(o *startOptions) { o.server.ConfigDir = dir }
+}
+
+// WithBindAddress starts chartr on a given address rather than the default
+// ephemeral loopback port — the operator's `-addr` (websocket-origin-fix, ticket
+// 04). `0.0.0.0:0` is the wildcard bind the README documents as `-addr :9000`,
+// on a port the test does not have to pick.
+//
+// A test using this is asserting on what the *bind* changes, not on a route:
+// the rig's BaseURL still dials loopback, because a wildcard-bound chartr is
+// listening there too.
+func WithBindAddress(addr string) Option {
+	return func(o *startOptions) { o.addr = addr }
 }
 
 // WithNotifier substitutes the OS notifier a run's end is announced through
@@ -68,7 +92,7 @@ func WithConfigDir(dir string) Option {
 // platform notifier in place — nothing in the suite runs long enough to reach the
 // shipped 60-second threshold, so it is never called.
 func WithNotifier(n notify.Notifier) Option {
-	return func(o *server.Options) { o.Notifier = n }
+	return func(o *startOptions) { o.server.Notifier = n }
 }
 
 // WithoutWatch starts the server with its filesystem watch dead — the degraded
@@ -76,7 +100,7 @@ func WithNotifier(n notify.Notifier) Option {
 // written from outside fires a notice, so a test using this is asserting on the
 // discovery that happens without one (ticket 19).
 func WithoutWatch() Option {
-	return func(o *server.Options) { o.NoWatch = true }
+	return func(o *startOptions) { o.server.NoWatch = true }
 }
 
 // Start launches chartr on a random loopback port and registers cleanup that
@@ -84,20 +108,33 @@ func WithoutWatch() Option {
 func Start(t testing.TB, opts ...Option) *Chartr {
 	t.Helper()
 
-	sopts := server.Options{DataDir: t.TempDir(), ConfigDir: t.TempDir()}
+	sopts := startOptions{
+		server: server.Options{DataDir: t.TempDir(), ConfigDir: t.TempDir()},
+		addr:   "127.0.0.1:0",
+	}
 	for _, opt := range opts {
 		opt(&sopts)
 	}
 
-	srv, err := server.New(sopts)
+	srv, err := server.New(sopts.server)
 	if err != nil {
 		t.Fatalf("chartrtest: server.New: %v", err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", sopts.addr)
 	if err != nil {
-		t.Fatalf("chartrtest: listen: %v", err)
+		t.Fatalf("chartrtest: listen on %s: %v", sopts.addr, err)
 	}
+
+	// Everything the server logs while this rig is up, kept for Logged() and
+	// still passed through to wherever it was going, so a failing test's output
+	// is not swallowed by the rig capturing it. The restore is registered before
+	// the shutdown cleanup so it runs after it (cleanups are LIFO) and a line
+	// logged on the way down is captured too.
+	logs := &safeBuffer{}
+	prevLog := log.Writer()
+	log.SetOutput(io.MultiWriter(prevLog, logs))
+	t.Cleanup(func() { log.SetOutput(prevLog) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -116,11 +153,58 @@ func Start(t testing.TB, opts ...Option) *Chartr {
 	})
 
 	return &Chartr{
-		BaseURL:   "http://" + ln.Addr().String(),
-		DataDir:   sopts.DataDir,
-		ConfigDir: sopts.ConfigDir,
+		BaseURL:   "http://" + dialableAuthority(ln.Addr()),
+		DataDir:   sopts.server.DataDir,
+		ConfigDir: sopts.server.ConfigDir,
 		t:         t,
+		logs:      logs,
 	}
+}
+
+// Logged is everything chartr has logged since this rig started — the channel a
+// startup warning arrives on (websocket-origin-fix, ticket 04). It is the
+// operator's own stderr, which makes it public surface rather than an internal
+// seam: a test reads exactly what they would see.
+//
+// Serve runs on its own goroutine here, so a test asserting a line is *absent*
+// must first do something that proves the server got past the point that logs it
+// — a request answered is proof enough.
+func (h *Chartr) Logged() string {
+	return h.logs.String()
+}
+
+// dialableAuthority is the host:port a test dials to reach a listener. A
+// wildcard bind reports itself as `0.0.0.0:PORT`, which is an address to listen
+// on rather than one to connect to; it is listening on loopback as well, so that
+// is what the rig talks to.
+func dialableAuthority(addr net.Addr) string {
+	host, port, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// safeBuffer is a bytes.Buffer a test can read while the server's goroutines are
+// still writing to it.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // Get performs a GET and returns the status code and body. It fails the test on
