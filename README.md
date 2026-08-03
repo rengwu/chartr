@@ -26,23 +26,26 @@ CLIs in tabs.
 
 ## Key features
 
-- **Chart the map without leaving.** Launch a planning agent from the sidebar and
-  whatever it writes to `.plan/maps/` draws as a star-map the moment it hits disk.
-- **Spawn off the frontier.** Take an unblocked ticket, pick a role and an agent,
-  and the session opens in that agent's own TUI with full context already
-  submitted.
-- **Whatever CLI you run.** The adapter models one thing, how a binary takes its
-  opening line, so anything on `PATH` registers and claude, codex, opencode,
-  kimi, grok and pi are detected for you.
-- **Tells blocked from thinking.** Tab status comes from what an agent broadcasts
-  and draws, so the sidebar flags whichever space is waiting on you.
-- **The map on disk is the state.** A ticket resolves when its `## Answer`
-  appears, and chartr's only writes are the claim and release commits on the
-  ticket file.
-- **Skills are files.** Plain `SKILL.md` directories you can shadow per repo or
-  per machine, and your own launchable skill shows up in the sidebar.
-- **Terminal in one TOML.** Presets, 21 colour slots, font, cursor, padding,
-  keybindings.
+- **Live map view.** Files in `.plan/maps/` appear as a star-map as soon as they
+  are written.
+- **Start from a ticket.** Select an unblocked ticket, role and agent to open a
+  session with the required context already submitted.
+- **Your own CLI agents.** Register any compatible CLI on `PATH`. chartr detects claude,
+  codex, opencode, kimi, grok and pi by default.
+- **Agent status.** The sidebar shows whether each agent is working or waiting
+  for input.
+- **Sidebar ordering.** Drag spaces to reorder them. The order is saved across
+  restarts.
+- **Scratch terminals.** Open a shell in your home directory without registering
+  or initializing a repository.
+- **Session notifications.** Receive a system notification when a long-running
+  session finishes, blocks or exits. The tab stays marked until you return.
+- **File-based state.** Add an `## Answer` section to resolve a ticket. chartr
+  only writes claim and release commits to ticket files.
+- **File-based skills.** Add `SKILL.md` directories per repository or machine.
+  Launchable skills appear in the sidebar.
+- **Terminal settings.** Configure presets, colours, font, cursor, padding and
+  keybindings in TOML, including Shift+Enter for a newline.
 
 ## Installation
 
@@ -107,63 +110,67 @@ make dmg       # the macOS app
 
 ## Project status
 
-**`v0.2.1` is out** — grab a binary from the
-[releases page](https://github.com/rengwu/chartr/releases). chartr is used to
-build chartr, but it is still alpha: the shape moves and breaking changes are
-expected before 1.0.
+The current release is **`v0.2.1`**. Download it from the
+[releases page](https://github.com/rengwu/chartr/releases).
 
-Shipped in `v0.2.1`:
+chartr is still alpha. Features and file formats may change before 1.0.
 
-- [x] Spaces, tabs, activity detection
-- [x] Maps: star-map, spawn, claim/release
-- [x] Release pipeline — checksummed binaries, macOS `.dmg`, Linux `.AppImage`
-- [x] Getting started, written against a fresh machine
-- [x] **Linux desktop app** — an `.AppImage` with WebKitGTK bundled, gated on a
-      render check against a host with no WebKit installed.
+Available in `v0.2.1`:
 
-Fixed on `main` since `v0.2.1`:
+- [x] **Spaces and tabs.** Manage projects, shells and agent sessions from the
+      sidebar.
+- [x] **Maps.** View star-maps, start sessions, and claim or release tickets.
+- [x] **Release builds.** Checksummed binaries, a macOS `.dmg`, and a Linux
+      `.AppImage`.
+- [x] **Setup guide.** Instructions for installing chartr and creating a first
+      map.
+- [x] **Linux desktop app.** The `.AppImage` includes WebKitGTK and is tested on
+      a system without WebKit installed.
 
-- [x] **Shift+Enter as a literal newline** — the keystroke now lands: the seam
-      swallows the stray keypress xterm turned into a `\r` right after the
-      newline, which was submitting the line it had just broken.
+Available on `main` after `v0.2.1`:
+
+- [x] **Shift+Enter.** Insert a newline without submitting the current input.
+- [x] **Codex and Kimi.** Registration, session startup, prompt delivery and
+      status reporting were tested with the real CLIs.
+- [x] **Agent status fixes.** Recordings from real CLIs now test all six built-in
+      agents. Status rules for codex, grok, opencode and pi were corrected, along
+      with a UTF-8 parsing bug.
+- [x] **Sidebar ordering.** Drag spaces to reorder them, or move the selected
+      space with `⌥↑` / `⌥↓`. The order is saved across restarts.
+      [Spec](.plan/maps/sidebar-order/spec.md).
+- [x] **Scratch space.** Open a shell in your home directory without registering
+      a repository. Scratch is shown only while a shell is open and keeps its
+      sidebar position.
+- [x] **Session notifications.** Receive a system notification when a
+      long-running session finishes, blocks or exits. Notifications work when the
+      cockpit is closed, and the tab stays marked until you return. Configure the
+      timing or turn the feature off in `notify.toml`.
+      [Spec](.plan/maps/session-notifications/spec.md).
 
 Not yet:
 
-- [ ] **Windows desktop app** — a native-windowed chartr for Windows as a
-      shipped, tested artifact, the way the macOS `.dmg` and Linux `.AppImage`
-      already are: WebView2, packaging, and a slot in the release pipeline.
-- [ ] **Registered agents verified end to end** — `codex` and `kimi` are
-      believed working (register, spawn, opener delivered, states read) but the
-      checklist has never been formally run; then extend it to the harnesses
-      whose flags are still unchecked: `grok`, `opencode`, `pi`.
-- [ ] **Agent registration examples in the docs** — one working `[agents.*]`
-      block per provider in the getting-started guide, so registering an agent
-      is a paste, not a read of the adapter source.
-- [ ] **Scratch shells open where you say** — the starting directory of a
-      scratch terminal is configurable, instead of always the cockpit's own
-      working tree.
-- [ ] **Session-status inference misfires** — known cases where a tab's
-      working/idle/done reads wrong, the OSC C1/UTF-8 misfire among them.
+- [ ] **Windows desktop app.** Add a packaged and tested WebView2 app to the
+      release pipeline.
+- [ ] **More agent verification.** Run the full registration, startup, prompt and
+      status checks for grok, opencode and pi.
+- [ ] **Agent configuration examples.** Add a working `[agents.*]` example for
+      each provider to the setup guide.
+- [ ] **Scratch terminal location.** Allow users to choose the starting directory
+      instead of always using the home directory.
+- [ ] **Agent status gaps.** Some prompts can still appear idle while waiting for
+      input, including opencode's rejection-feedback prompt.
       [Map](.plan/maps/agent-state-detection/map.md).
-- [ ] **Payload preview loses its scroll** — expanding the composed document in
-      the payload preview modal breaks scrolling.
-- [ ] **Ticket details** — markdown that renders incorrectly, and ticket
-      references that should be clickable links to the ticket they name.
-- [ ] **Keyboard shortcuts: coverage and config** — more of the cockpit is
-      reachable from the keyboard, and the bindings are the operator's to remap,
-      not fixed in the chrome.
-- [ ] **Pre-packaged skill delivery** — a better way for the bundled skills to
-      reach an agent than today's sync.
+- [ ] **Payload preview scrolling.** Expanded previews do not scroll correctly.
+- [ ] **Ticket details.** Fix markdown rendering and make ticket references
+      clickable.
+- [ ] **Keyboard controls.** Add shortcuts for more actions and allow users to
+      change the bindings.
+- [ ] **Settings page.** Reorganize the page to make settings easier to find and
+      manage.
+- [ ] **Bundled skills.** Improve how included skills are copied to agents.
       [Today](docs/skill-sync.md).
-- [ ] **Drag to reorder the sidebar** — spaces stay where you put them, and
-      `pinned` goes away with the recency sort it fought over.
-      [Spec](.plan/maps/sidebar-order/spec.md).
-- [ ] **"It's done" notifications** — a session that worked longer than a
-      configurable _n_ seconds tells you when it stops, whether it landed, blocked
-      or died, with the cockpit closed.
-      [Spec](.plan/maps/session-notifications/spec.md).
 
-Not planned: a hosted service, an account, anything that phones home.
+No hosted service or user accounts are planned. chartr does not send usage data.
 
 ## Platform support
 
