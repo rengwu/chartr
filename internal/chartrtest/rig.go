@@ -266,6 +266,38 @@ func (h *Chartr) Post(path string, body any) (int, string) {
 	return resp.StatusCode, string(out)
 }
 
+// PostWithContentType posts body verbatim under a Content-Type of the caller's
+// choosing — an empty contentType omits the header entirely, and an empty body
+// sends none — and returns the status code and body.
+//
+// It is how a test makes the request a cross-origin page can send with *no
+// preflight*: a POST whose content type is one of the three CORS-simple ones, or
+// a bare `fetch(url, {method: 'POST'})` that carries neither body nor header.
+// The browser delivers those without asking the server first, so the only thing
+// that can refuse them is the server acting on what they declare
+// (websocket-origin-fix, ticket 03).
+func (h *Chartr) PostWithContentType(path, contentType, body string) (int, string) {
+	h.t.Helper()
+	var r io.Reader
+	if body != "" {
+		r = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(http.MethodPost, h.BaseURL+path, r)
+	if err != nil {
+		h.t.Fatalf("chartrtest: build POST %s: %v", path, err)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatalf("chartrtest: POST %s as %q: %v", path, contentType, err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(out)
+}
+
 // Put performs a JSON PUT — the shape an action that sets one named field to one
 // value takes (the transparency surface's binding edit, ticket 05) — and returns
 // the status code and body.

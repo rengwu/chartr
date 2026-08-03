@@ -288,11 +288,13 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 
 	httpSrv := &http.Server{
-		// Every route goes through the host gate first. Scoping the sockets to the
-		// bound origin above is not enough on its own: a DNS-rebinding name makes
-		// the browser believe the attacker's origin *is* this address, and the only
-		// thing that still gives it away is the name it asks for (hostGate).
-		Handler:           hostGate(ln.Addr(), s.mux),
+		// Every route goes through the gate first — the checks that hold whatever
+		// the route is (gate): the Host must name the address we bound, and a write
+		// must declare a JSON body. Scoping the sockets to the bound origin above is
+		// not enough on its own: a DNS-rebinding name makes the browser believe the
+		// attacker's origin *is* this address, and the only thing that still gives
+		// it away is the name it asks for.
+		Handler:           gate(ln.Addr(), s.mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: the control and terminal sockets are long-lived.
 		BaseContext: func(net.Listener) context.Context { return ctx },

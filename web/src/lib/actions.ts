@@ -23,9 +23,16 @@ export class ActionError extends Error {
 export const LIVE_SESSION = 'live_session_exists'
 
 async function send(method: string, path: string, body?: unknown): Promise<unknown> {
+  // Every POST declares JSON, and so does anything carrying a body — the server
+  // refuses an undeclared write with a 415 (websocket-origin-fix, ticket 03).
+  // That includes the actions that send no body at all (open a shell, pick a
+  // folder, install the tracker adapter): a POST is the one write a browser will
+  // send cross-origin with no preflight, and the declaration is what puts one
+  // behind a preflight the server never answers.
+  const declaresJson = method === 'POST' || body !== undefined
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: declaresJson ? { 'Content-Type': 'application/json' } : undefined,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) {
