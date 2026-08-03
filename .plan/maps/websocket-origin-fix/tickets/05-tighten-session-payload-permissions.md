@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s22fa74c60137
+claimed_at: 2026-08-03T09:04:13Z
 ---
 
 # Session payloads are world-readable
