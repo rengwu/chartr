@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: s0f28b121a405
+claimed_at: 2026-08-03T07:54:44Z
 ---
 
 # There is no way to report a vulnerability, and `-addr :9000` is documented without a warning
