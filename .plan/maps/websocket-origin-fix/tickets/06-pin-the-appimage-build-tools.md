@@ -1,5 +1,7 @@
 ---
 type: task
+claimed_by: session_01HTp28WKpvHvJ824ycLXjLZ
+claimed_at: 2026-08-03T07:36:57Z
 ---
 
 # `make appimage` runs unverified binaries fetched from a mutable tag
