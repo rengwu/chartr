@@ -48,9 +48,15 @@ chartr
 The cockpit is at <http://127.0.0.1:8787>. Two flags matter:
 
 ```
-chartr -addr :9000       # serve somewhere else
+chartr -addr :9000       # serve somewhere else — not loopback, see below
 chartr -data-dir ~/work  # session/runtime root (default: cwd)
 ```
+
+chartr has **no authentication**: anyone who can reach the port can open shells,
+run commands and spawn agents as you. `-addr :9000` (or any non-loopback
+address) gives that to everyone who can reach your machine on that port, so keep
+the default `127.0.0.1` unless you mean to expose it. chartr warns at startup
+when the address it bound is not loopback.
 
 Your config lives at `~/.config/chartr` (or `$XDG_CONFIG_HOME/chartr`) — the
 registry of spaces, your agent library, terminal theme. That path is **global**,
