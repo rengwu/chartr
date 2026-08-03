@@ -74,14 +74,29 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
 
+# The body of the GitHub release. `use: github` asks GitHub's compare API for the
+# commit list, but the notes are rendered here, so these filters are what decide
+# what an operator reads on the releases page.
 changelog:
   use: github
   sort: asc
   filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+    # An allowlist, not a blocklist, because most of this history is not about
+    # the shipped artifact at all. The harness commits its own bookkeeping —
+    # `Claim <ticket> for implement (agent)`, `Release <ticket> back to the
+    # frontier` — and every ticket closes with an answer commit under its role's
+    # verb (`implement:`, `grill:`, `research:`, `chart:`, `plan:`). That set is
+    # open: a new role invents a new verb, and a blocklist only learns about it
+    # after it has already shipped in someone's release notes.
+    #
+    # So the rule is inverted — a commit appears only if its prefix says it
+    # changed the artifact. A change missing from the notes is wearing a prefix
+    # that is not on this list; add it here rather than renaming the commit.
+    include:
+      - '^feat(\(.+\))?!?:'
+      - '^fix(\(.+\))?!?:'
+      - '^perf(\(.+\))?!?:'
+      - '^refactor(\(.+\))?!?:'
 
 release:
   github:
