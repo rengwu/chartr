@@ -2,42 +2,22 @@ package server
 
 import (
 	"net"
-	"net/http"
 	"strings"
 )
 
-// hostGate wraps h with the checks that must hold for *every* route, whatever
-// it is, applied before anything is routed. Today there is exactly one: the
-// request's Host must name the address chartr is actually listening on. A
-// second every-route check belongs beside it, here, rather than in another
-// layer of wrapper.
-//
-// The Host check is what closes DNS rebinding. Scoping the websocket handshakes
-// to the bound origin does not: an attacker serves a page from a name whose DNS
-// record they control, re-points it at 127.0.0.1 on a short TTL, and the browser
-// now believes http://evil.example:8787 *is* chartr. Every same-origin
-// protection falls at once — the origin equals the host, so the websocket check
-// admits the handshake, responses are readable, and the whole HTTP API is open
-// for read and write. Nothing about that is visible from the Origin header,
-// because the browser is not lying: it really did connect to us. The one thing
-// that gives it away is the name it asks for, which is not one we answer to.
-//
-// A refusal is a plain 403 with nothing worth reading in it, and never a
-// redirect — a redirect to the right name would hand the attacker's page a
-// working URL.
-func hostGate(addr net.Addr, h http.Handler) http.Handler {
-	rule := hostRuleFor(addr)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rule.allows(r.Host) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
 // hostRule is the set of Host values chartr answers to, derived once from the
-// address the listener bound.
+// address the listener bound. It is the first of the gate's every-route checks
+// (gate), and the one that closes DNS rebinding.
+//
+// Scoping the websocket handshakes to the bound origin does not close it: an
+// attacker serves a page from a name whose DNS record they control, re-points it
+// at 127.0.0.1 on a short TTL, and the browser now believes
+// http://evil.example:8787 *is* chartr. Every same-origin protection falls at
+// once — the origin equals the host, so the websocket check admits the
+// handshake, responses are readable, and the whole HTTP API is open for read and
+// write. Nothing about that is visible from the Origin header, because the
+// browser is not lying: it really did connect to us. The one thing that gives it
+// away is the name it asks for, which is not one we answer to.
 type hostRule struct {
 	// unscoped disables the check entirely, for a listener that is not a
 	// host:port one at all (a unix socket). There is no address to scope to, and
