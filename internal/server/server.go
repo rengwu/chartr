@@ -95,6 +95,15 @@ func New(opts Options) (*Server, error) {
 	if opts.Notifier == nil {
 		opts.Notifier = notify.Platform()
 	}
+	// Create the config root before anything writes into it, so it is owner-only
+	// from the start: the registry and the agent library live here, and a root
+	// several writers can create is a root whose mode is whichever of them ran
+	// first (websocket-origin-fix, ticket 05). An existing root is left as it is —
+	// MkdirAll never chmods, and this path can fall back to the runtime root, which
+	// is not chartr's to re-permission.
+	if err := os.MkdirAll(opts.ConfigDir, ownerDirMode); err != nil {
+		return nil, err
+	}
 	dist, err := web.Dist()
 	if err != nil {
 		return nil, err

@@ -456,8 +456,14 @@ func (r *Registry) Get(id string) (Entry, bool) {
 // saveLocked writes the whole registry atomically (temp file + rename) so a
 // crash mid-write cannot corrupt it, and densifies the order first so every
 // successful write leaves 0..n-1 on disk. The caller holds r.mu.
+//
+// The file is the absolute path of every repository the operator works in, which
+// is nobody else's business on a shared machine, so it is written owner-only under
+// an owner-only config root. The chmod is not redundant with the write mode: a
+// temp file left behind by a crashed save already exists, and os.WriteFile only
+// applies its mode when it creates the file (websocket-origin-fix, ticket 05).
 func (r *Registry) saveLocked() error {
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(r.path), 0o700); err != nil {
 		return fmt.Errorf("registry: creating config dir: %w", err)
 	}
 	r.densifyLocked()
@@ -482,8 +488,11 @@ func (r *Registry) saveLocked() error {
 	}
 
 	tmp := r.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("registry: writing %s: %w", tmp, err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		return fmt.Errorf("registry: securing %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, r.path); err != nil {
 		return fmt.Errorf("registry: replacing %s: %w", r.path, err)

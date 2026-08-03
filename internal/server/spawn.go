@@ -376,16 +376,25 @@ func (s *Server) resolve(registry.Entry) config.Resolution {
 // inside the space and returns its absolute path (what the opener points the agent
 // at). It (re)writes a `.gitignore` of `*` beside the payloads on every spawn, so
 // the ignore holds even on a fresh clone that never had the run directory.
+//
+// The two halves are written with different modes on purpose. The run directory
+// and its ignore marker are the repository's — git reads the marker, and a
+// checkout shared with another login must keep working — so they stay ordinary
+// repository files. The per-session directory below them is chartr's own and holds
+// the prompt, so it is the operator's alone (ticket 05).
 func (s *Server) writeSessionPayload(repo, sessionID, markdown string) (string, error) {
 	runDir := filepath.Join(repo, sessionRunDir)
-	if err := os.MkdirAll(filepath.Join(runDir, sessionID), 0o755); err != nil {
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(runDir, ".gitignore"), []byte("*\n"), 0o644); err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(filepath.Join(runDir, sessionID), ownerDirMode); err != nil {
+		return "", err
+	}
 	path := filepath.Join(runDir, sessionID, "payload.md")
-	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
+	if err := writeOwnerFile(path, []byte(markdown)); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -397,10 +406,10 @@ func (s *Server) writeSessionPayload(repo, sessionID, markdown string) (string, 
 // word (story 49).
 func (s *Server) archivePayload(sessionID, markdown string) error {
 	dir := filepath.Join(s.opts.DataDir, "sessions", sessionID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, ownerDirMode); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "payload.md"), []byte(markdown), 0o644)
+	return writeOwnerFile(filepath.Join(dir, "payload.md"), []byte(markdown))
 }
 
 // newSessionID mints a session's stable identity — the id its tab, its claim

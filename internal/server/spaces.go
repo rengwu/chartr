@@ -475,15 +475,18 @@ func (s *Server) modelTerminals(spaceID string) []model.Terminal {
 }
 
 // writeFileAtomic writes data to path via a temp file and rename, so a crash
-// mid-write cannot leave the operator's committed config truncated. The committed
-// config sits under `.chartr/`, which a space may not have yet, so the
-// parent directory is created first.
+// mid-write cannot leave the operator's config truncated. Every caller writes
+// under the config root — the agent library and the terminal and notification
+// files — which a machine may not have yet, so the parent directory is created
+// first. That config is chartr's own state and can carry an agent's environment,
+// so it is written owner-only, and the rename carries the temp file's mode onto
+// the destination rather than leaving an older 0644 in place (ticket 05).
 func writeFileAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), ownerDirMode); err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := writeOwnerFile(tmp, data); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
