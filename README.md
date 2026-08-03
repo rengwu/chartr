@@ -107,27 +107,16 @@ make dmg       # the macOS app
 - [Getting started](docs/getting-started.md) — fresh machine to first star-map
 - [Design system](docs/design-system.md) — tokens, primitives, the chrome/island split
 - [ADRs](docs/adr/) — why it is shaped the way it is
+- [Security](SECURITY.md) — the trust boundary, and how to report a vulnerability
 
 ## Project status
 
-The current release is **`v0.2.1`**. Download it from the
+The current release is **`v0.2.2`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
 chartr is still alpha. Features and file formats may change before 1.0.
 
-Available in `v0.2.1`:
-
-- [x] **Spaces and tabs.** Manage projects, shells and agent sessions from the
-      sidebar.
-- [x] **Maps.** View star-maps, start sessions, and claim or release tickets.
-- [x] **Release builds.** Checksummed binaries, a macOS `.dmg`, and a Linux
-      `.AppImage`.
-- [x] **Setup guide.** Instructions for installing chartr and creating a first
-      map.
-- [x] **Linux desktop app.** The `.AppImage` includes WebKitGTK and is tested on
-      a system without WebKit installed.
-
-Available on `main` after `v0.2.1`:
+New in `v0.2.2`:
 
 - [x] **Shift+Enter.** Insert a newline without submitting the current input.
 - [x] **Codex and Kimi.** Registration, session startup, prompt delivery and
@@ -146,6 +135,30 @@ Available on `main` after `v0.2.1`:
       cockpit is closed, and the tab stays marked until you return. Configure the
       timing or turn the feature off in `notify.toml`.
       [Spec](.plan/maps/session-notifications/spec.md).
+- [x] **Browser trust boundary.** Both websockets are scoped to the address
+      chartr is listening on, every route refuses a `Host` it is not bound to,
+      and writes require a JSON content type — so a web page on another origin
+      cannot drive the cockpit or reach a terminal.
+      [Map](.plan/maps/websocket-origin-fix/map.md).
+- [x] **A warning on a wide bind.** Binding somewhere other than loopback says so
+      at startup, and [SECURITY.md](SECURITY.md) names what that exposes and how
+      to report a vulnerability.
+- [x] **Owner-only state.** Session payloads and chartr's own state are written
+      readable by your account alone.
+- [x] **Pinned AppImage tooling.** The Linux build verifies its build tools by
+      checksum before running them.
+
+Available since `v0.2.1`:
+
+- [x] **Spaces and tabs.** Manage projects, shells and agent sessions from the
+      sidebar.
+- [x] **Maps.** View star-maps, start sessions, and claim or release tickets.
+- [x] **Release builds.** Checksummed binaries, a macOS `.dmg`, and a Linux
+      `.AppImage`.
+- [x] **Setup guide.** Instructions for installing chartr and creating a first
+      map.
+- [x] **Linux desktop app.** The `.AppImage` includes WebKitGTK and is tested on
+      a system without WebKit installed.
 
 Not yet:
 
