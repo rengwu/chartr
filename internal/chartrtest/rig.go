@@ -136,6 +136,31 @@ func (h *Chartr) Get(path string) (int, string) {
 	return resp.StatusCode, string(body)
 }
 
+// GetWithHost performs a GET that asks for host, whatever address it dials — the
+// request a browser makes once a DNS-rebinding name has been re-pointed at
+// chartr's listening socket. It returns the status code and body.
+//
+// The browser is not lying when it does this: it really did connect to us, and
+// it really does believe that name is this origin. The Host header is the only
+// place the substitution shows (websocket-origin-fix, ticket 02).
+func (h *Chartr) GetWithHost(path, host string) (int, string) {
+	h.t.Helper()
+	req, err := http.NewRequest(http.MethodGet, h.BaseURL+path, nil)
+	if err != nil {
+		h.t.Fatalf("chartrtest: build GET %s: %v", path, err)
+	}
+	// Request.Host, not a header: net/http writes the header from this field and
+	// ignores Header["Host"] entirely.
+	req.Host = host
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatalf("chartrtest: GET %s as %s: %v", path, host, err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(out)
+}
+
 // Post performs a JSON POST — an operator action (ADR 0010) — and returns the
 // status code and body. A nil body sends no request body.
 func (h *Chartr) Post(path string, body any) (int, string) {
@@ -378,6 +403,26 @@ func (h *Chartr) DialTerminal(ctx context.Context, termID string) *TerminalConn 
 	return &TerminalConn{c: c, t: h.t}
 }
 
+// DialControlAt dials the control socket by way of a given authority
+// (`localhost:PORT`) rather than the rig's own BaseURL, and returns the
+// connection together with the handshake status — the connection is nil exactly
+// when it was refused. The authority has to resolve to the listening socket;
+// this is the operator typing another spelling of the same address into their
+// browser, not a forgery, so Host and Origin both carry it the way a real browse
+// does.
+func (h *Chartr) DialControlAt(ctx context.Context, authority string) (*ControlConn, int) {
+	h.t.Helper()
+	c, resp, err := websocket.Dial(ctx, "ws://"+authority+"/ws/control", nil)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	if err != nil {
+		return nil, status
+	}
+	return &ControlConn{c: c, t: h.t}, status
+}
+
 // DialControlOrigin dials the control socket presenting origin as the browser's
 // Origin header, and returns the connection together with the handshake's HTTP
 // status. Unlike DialControl it does not fail the test on a refusal: a refusal is
@@ -434,11 +479,41 @@ func (h *Chartr) dialOrigin(ctx context.Context, path, origin string) (*websocke
 // assertion is that they never reach the PTY.
 func (h *Chartr) AttemptCrossOriginTerminalWrite(termID, origin, keys string) int {
 	h.t.Helper()
+	return h.rawHandshake("/ws/terminal/"+termID, h.authority(), origin, h.clientBinaryFrame([]byte(keys)))
+}
 
-	hostPort := strings.TrimPrefix(h.BaseURL, "http://")
-	conn, err := net.DialTimeout("tcp", hostPort, 5*time.Second)
+// HandshakeWithHost performs the websocket handshake for path over a raw TCP
+// connection to the address chartr bound, presenting host as the request's Host
+// header and `http://host` as its Origin, and returns the handshake's HTTP
+// status (101 when the socket was opened).
+//
+// That pairing is the point, and it is what a DNS-rebinding attacker's browser
+// actually sends: it believes the attacker's name *is* this address, so it sets
+// both headers to it and they agree. coder/websocket authorizes any handshake
+// whose Origin equals its Host regardless of the origin patterns, so nothing in
+// websocket-origin-fix ticket 01 stands here — only the Host check does
+// (ticket 02).
+//
+// It is done by hand rather than with websocket.Dial because net/http drops a
+// Host set through a header map: a client only sends a Host that disagrees with
+// the address it dialled if the request was built with Request.Host, which
+// DialOptions has no way to reach.
+func (h *Chartr) HandshakeWithHost(path, host string) int {
+	h.t.Helper()
+	return h.rawHandshake(path, host, "http://"+host, nil)
+}
+
+// rawHandshake writes one websocket handshake for path over a raw TCP
+// connection to the bound address, presenting host and origin verbatim, and
+// appends trailer to the same write — so anything in it is on the wire before
+// the response has been read, let alone acted on. It returns the response's
+// status.
+func (h *Chartr) rawHandshake(path, host, origin string, trailer []byte) int {
+	h.t.Helper()
+
+	conn, err := net.DialTimeout("tcp", h.authority(), 5*time.Second)
 	if err != nil {
-		h.t.Fatalf("chartrtest: dial %s: %v", hostPort, err)
+		h.t.Fatalf("chartrtest: dial %s: %v", h.authority(), err)
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -447,24 +522,29 @@ func (h *Chartr) AttemptCrossOriginTerminalWrite(termID, origin, keys string) in
 	if _, err := rand.Read(key[:]); err != nil {
 		h.t.Fatalf("chartrtest: generating a Sec-WebSocket-Key: %v", err)
 	}
-	req := "GET /ws/terminal/" + termID + " HTTP/1.1\r\n" +
-		"Host: " + hostPort + "\r\n" +
+	req := "GET " + path + " HTTP/1.1\r\n" +
+		"Host: " + host + "\r\n" +
 		"Upgrade: websocket\r\n" +
 		"Connection: Upgrade\r\n" +
 		"Sec-WebSocket-Version: 13\r\n" +
 		"Sec-WebSocket-Key: " + base64.StdEncoding.EncodeToString(key[:]) + "\r\n" +
 		"Origin: " + origin + "\r\n" +
 		"\r\n"
-	if _, err := conn.Write(append([]byte(req), h.clientBinaryFrame([]byte(keys))...)); err != nil {
-		h.t.Fatalf("chartrtest: writing the cross-origin handshake: %v", err)
+	if _, err := conn.Write(append([]byte(req), trailer...)); err != nil {
+		h.t.Fatalf("chartrtest: writing the handshake for %s: %v", path, err)
 	}
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodGet})
 	if err != nil {
-		h.t.Fatalf("chartrtest: reading the cross-origin handshake response: %v", err)
+		h.t.Fatalf("chartrtest: reading the handshake response for %s: %v", path, err)
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode
+}
+
+// authority is the host:port chartr bound, the way a URL spells it.
+func (h *Chartr) authority() string {
+	return strings.TrimPrefix(h.BaseURL, "http://")
 }
 
 // clientBinaryFrame encodes one masked client binary frame — the bytes a browser
