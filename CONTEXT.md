@@ -94,6 +94,20 @@ _Avoid_: local settings, preferences, overrides
 The global settings route: the agent library and the paths of the files behind it, each openable in the operator's editor. Read-value-plus-open-file, never a second config store — there is nothing left to explain about layers.
 _Avoid_: settings screen, preferences, config panel, options
 
+### Git integration
+
+**Space path**:
+The directory selected when an operator registers a Space. It is the location for the Space's files and non-Git actions.
+_Avoid_: Git root when referring to the selected directory
+
+**Git root**:
+The root directory of the Git repository that contains the Space path. It is the location used for Git actions for that Space.
+_Avoid_: project root, repository path
+
+**Git action**:
+An operation that reads or changes Git repository state for a Space, such as repository setup, branch display, dirty status, or a claim or release commit.
+_Avoid_: file operation
+
 ### Ticket lifecycle
 
 **Implementing**:

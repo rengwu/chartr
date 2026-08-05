@@ -130,8 +130,8 @@ type Space struct {
 	// Scratch marks the one synthetic home for ad-hoc shells. Registered spaces
 	// omit it; consumers that offer repository actions use it as their guard.
 	Scratch bool `json:"scratch,omitempty"`
-	// Path is the absolute working directory. For a registered space it is the
-	// working-tree root; for Scratch it is the operator's home directory.
+	// Path is the absolute Space path selected by the operator. For Scratch it is
+	// the operator's home directory.
 	Path string `json:"path"`
 	// Branch is the working tree's current git branch — the checked-out ref's
 	// short name, or a short sha for a detached HEAD — read live on each rebuild.

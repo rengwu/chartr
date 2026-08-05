@@ -80,8 +80,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	entry, gitInited, err := s.reg.Register(body.Path)
 	if err != nil {
-		// A bad path is the operator's to fix; surface it as the response.
-		httpError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusInternalServerError
+		if errors.Is(err, registry.ErrInvalidPath) {
+			status = http.StatusBadRequest
+		}
+		// Invalid paths are the operator's to fix. Git and registry failures are
+		// server errors because chartr could not complete the action safely.
+		httpError(w, status, err.Error())
 		return
 	}
 	s.rebuild()

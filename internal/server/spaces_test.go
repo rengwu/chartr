@@ -3,8 +3,10 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -42,6 +44,9 @@ func register(t *testing.T, h *chartrtest.Chartr, path string) registerResp {
 	var r registerResp
 	if err := json.Unmarshal([]byte(body), &r); err != nil {
 		t.Fatalf("register response not JSON: %v (%q)", err, body)
+	}
+	if strings.Contains(body, "gitRoot") || strings.Contains(body, "git_root") {
+		t.Fatalf("register response exposes the internal Git root: %s", body)
 	}
 	return r
 }
@@ -91,6 +96,305 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 	if resp2.GitInited {
 		t.Error("gitInited = true for an existing repo, want false")
 	}
+}
+
+func TestRegisterSubdirectoryUsesRootGitStateAndSpaceFiles(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	firstPath := filepath.Join(repo, "first")
+	secondPath := filepath.Join(repo, "second")
+
+	chartrtest.WriteMap(t, firstPath, "first-map", mapBody)
+	chartrtest.WriteTicket(t, firstPath, "first-map", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	writeWorkspaceSkill(t, firstPath, "implement", "", "First skill")
+	chartrtest.WriteMap(t, secondPath, "second-map", mapBody)
+	chartrtest.WriteTicket(t, secondPath, "second-map", "01-second.md", ticket(1, "Second", "[]", "task", ""))
+	writeWorkspaceSkill(t, secondPath, "research", "", "Second skill")
+	chartrtest.Git(t, repo, "add", "--all")
+	chartrtest.Git(t, repo, "commit", "-qm", "baseline")
+
+	// This change is outside both selected Space paths. A root-wide Git action
+	// must report it for both Spaces.
+	chartrtest.WriteFile(t, repo, "outside.txt", "changed outside both Spaces")
+
+	first := register(t, h, firstPath)
+	second := register(t, h, secondPath)
+
+	if first.GitInited || second.GitInited {
+		t.Fatalf("child registration reported git init: first=%v second=%v", first.GitInited, second.GitInited)
+	}
+	if first.Path != firstPath || second.Path != secondPath {
+		t.Fatalf("registration paths = %q and %q, want %q and %q", first.Path, second.Path, firstPath, secondPath)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("two Space paths share identity %q", first.ID)
+	}
+	for _, path := range []string{firstPath, secondPath} {
+		if _, err := os.Stat(filepath.Join(path, ".git")); !os.IsNotExist(err) {
+			t.Errorf("registration created %s/.git: %v", path, err)
+		}
+	}
+
+	snapshot := h.Snapshot(ctx(t))
+	firstSpace := findSpace(t, snapshot, first.ID)
+	secondSpace := findSpace(t, snapshot, second.ID)
+	paths := map[string]string{"first": firstPath, "second": secondPath}
+	spaces := map[string]model.Space{"first": firstSpace, "second": secondSpace}
+	for name, space := range spaces {
+		if space.Path != paths[name] {
+			t.Errorf("%s Space path = %q, want %q", name, space.Path, paths[name])
+		}
+		if space.Branch != "main" {
+			t.Errorf("%s branch = %q, want main from the Git root", name, space.Branch)
+		}
+		if !space.Dirty {
+			t.Errorf("%s is clean, want the change outside the selected Space path", name)
+		}
+	}
+	if len(firstSpace.Maps) != 1 || firstSpace.Maps[0].Slug != "first-map" {
+		t.Errorf("first Space maps = %+v, want only first-map", firstSpace.Maps)
+	}
+	if len(secondSpace.Maps) != 1 || secondSpace.Maps[0].Slug != "second-map" {
+		t.Errorf("second Space maps = %+v, want only second-map", secondSpace.Maps)
+	}
+	if !hasWorkspaceSkill(firstSpace, "implement") || hasWorkspaceSkill(firstSpace, "research") {
+		t.Errorf("first Space skills are not scoped: %+v", firstSpace.Skills)
+	}
+	if !hasWorkspaceSkill(secondSpace, "research") || hasWorkspaceSkill(secondSpace, "implement") {
+		t.Errorf("second Space skills are not scoped: %+v", secondSpace.Skills)
+	}
+}
+
+func hasWorkspaceSkill(space model.Space, name string) bool {
+	for _, skill := range space.Skills {
+		if skill.Name == name && skill.Layer == "workspace" {
+			return true
+		}
+	}
+	return false
+}
+
+func registerFailure(t *testing.T, h *chartrtest.Chartr, path string, wantStatus int) {
+	t.Helper()
+	code, body := h.Post("/api/spaces", map[string]string{"path": path})
+	if code != wantStatus {
+		t.Fatalf("register %s = %d, want %d, body %s", path, code, wantStatus, body)
+	}
+	var response map[string]any
+	if err := json.Unmarshal([]byte(body), &response); err != nil {
+		t.Fatalf("registration error is not JSON: %v (%q)", err, body)
+	}
+	if message, ok := response["error"].(string); !ok || strings.TrimSpace(message) == "" {
+		t.Fatalf("registration error has no message: %s", body)
+	}
+	for _, field := range []string{"id", "path", "gitInited"} {
+		if _, ok := response[field]; ok {
+			t.Errorf("registration error exposes success field %q: %s", field, body)
+		}
+	}
+}
+
+func assertNotRegistered(t *testing.T, h *chartrtest.Chartr, path string) {
+	t.Helper()
+	if registeredPath(t, h, path) {
+		t.Errorf("failed registration added %s to the registry", path)
+	}
+}
+
+func assertNoGitEntry(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(path, ".git")); !os.IsNotExist(err) {
+		t.Errorf("failed registration created %s/.git: %v", path, err)
+	}
+}
+
+func TestRegisterLinkedWorktreeUsesLinkedRoot(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.Git(t, repo, "commit", "--allow-empty", "-qm", "baseline")
+	linked := filepath.Join(t.TempDir(), "linked")
+	chartrtest.Git(t, repo, "worktree", "add", "-q", "-b", "linked-main", linked)
+	child := filepath.Join(linked, "child")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("creating linked worktree child: %v", err)
+	}
+	chartrtest.WriteFile(t, linked, "outside-child.txt", "dirty in the linked worktree\n")
+
+	dotGit := filepath.Join(linked, ".git")
+	dotGitBefore, err := os.ReadFile(dotGit)
+	if err != nil {
+		t.Fatalf("reading linked worktree .git file: %v", err)
+	}
+	if info, err := os.Stat(dotGit); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("linked worktree .git is not a file: %v", err)
+	}
+
+	root := register(t, h, linked)
+	spaceChild := register(t, h, child)
+	if root.GitInited || spaceChild.GitInited {
+		t.Fatalf("linked worktree registration ran git init: root=%v child=%v", root.GitInited, spaceChild.GitInited)
+	}
+	if root.Path != linked || spaceChild.Path != child {
+		t.Fatalf("registration paths = %q and %q, want %q and %q", root.Path, spaceChild.Path, linked, child)
+	}
+	assertNoGitEntry(t, child)
+	if dotGitAfter, err := os.ReadFile(dotGit); err != nil || string(dotGitAfter) != string(dotGitBefore) {
+		t.Errorf("linked worktree .git file changed: before=%q after=%q err=%v", dotGitBefore, dotGitAfter, err)
+	}
+
+	snapshot := h.Snapshot(ctx(t))
+	for _, space := range []model.Space{
+		findSpace(t, snapshot, root.ID),
+		findSpace(t, snapshot, spaceChild.ID),
+	} {
+		if space.Branch != "linked-main" {
+			t.Errorf("linked worktree branch = %q, want linked-main", space.Branch)
+		}
+		if !space.Dirty {
+			t.Errorf("linked worktree Space is clean, want the dirty change in its Git root")
+		}
+	}
+}
+
+func TestRegisterNestedRepositoryAndSubmoduleUseInnermostRoots(t *testing.T) {
+	h := chartrtest.Start(t)
+	outer := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, outer, "outer.txt", "outer\n")
+	chartrtest.Git(t, outer, "add", "--all")
+	chartrtest.Git(t, outer, "commit", "-qm", "outer baseline")
+	outerHead := chartrtest.Git(t, outer, "rev-parse", "HEAD")
+
+	nested := filepath.Join(outer, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("creating nested repository: %v", err)
+	}
+	chartrtest.Git(t, nested, "init", "-q", "-b", "nested-main")
+	chartrtest.Git(t, nested, "config", "user.email", "chartr-test@example.com")
+	chartrtest.Git(t, nested, "config", "user.name", "Chartr Test")
+	chartrtest.Git(t, nested, "commit", "--allow-empty", "-qm", "nested baseline")
+	nestedGitHeadBefore := readFile(t, filepath.Join(nested, ".git", "HEAD"))
+	chartrtest.WriteFile(t, nested, "nested-dirty.txt", "nested change\n")
+
+	source := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteFile(t, source, "source.txt", "source\n")
+	chartrtest.Git(t, source, "add", "--all")
+	chartrtest.Git(t, source, "commit", "-qm", "source baseline")
+	submodule := filepath.Join(outer, "submodule")
+	chartrtest.Git(t, outer, "-c", "protocol.file.allow=always", "submodule", "add", "-q", source, "submodule")
+	chartrtest.Git(t, submodule, "checkout", "-q", "-b", "submodule-main")
+	submoduleGitBefore := readFile(t, filepath.Join(submodule, ".git"))
+	chartrtest.WriteFile(t, submodule, "submodule-dirty.txt", "submodule change\n")
+
+	nestedResp := register(t, h, nested)
+	submoduleResp := register(t, h, submodule)
+	if nestedResp.GitInited || submoduleResp.GitInited {
+		t.Fatalf("nested repository registration ran git init: nested=%v submodule=%v", nestedResp.GitInited, submoduleResp.GitInited)
+	}
+	if nestedResp.Path != nested || submoduleResp.Path != submodule {
+		t.Fatalf("registration paths = %q and %q, want %q and %q", nestedResp.Path, submoduleResp.Path, nested, submodule)
+	}
+	if got := chartrtest.Git(t, outer, "rev-parse", "HEAD"); got != outerHead {
+		t.Errorf("outer repository HEAD changed from %s to %s", outerHead, got)
+	}
+	if got := readFile(t, filepath.Join(nested, ".git", "HEAD")); got != nestedGitHeadBefore {
+		t.Errorf("nested repository .git/HEAD changed from %q to %q", nestedGitHeadBefore, got)
+	}
+	if got := readFile(t, filepath.Join(submodule, ".git")); got != submoduleGitBefore {
+		t.Errorf("submodule .git file changed from %q to %q", submoduleGitBefore, got)
+	}
+
+	snapshot := h.Snapshot(ctx(t))
+	nestedSpace := findSpace(t, snapshot, nestedResp.ID)
+	submoduleSpace := findSpace(t, snapshot, submoduleResp.ID)
+	if nestedSpace.Branch != "nested-main" || !nestedSpace.Dirty {
+		t.Errorf("nested Space Git state = branch %q, dirty %v; want nested-main and dirty", nestedSpace.Branch, nestedSpace.Dirty)
+	}
+	if submoduleSpace.Branch != "submodule-main" || !submoduleSpace.Dirty {
+		t.Errorf("submodule Space Git state = branch %q, dirty %v; want submodule-main and dirty", submoduleSpace.Branch, submoduleSpace.Dirty)
+	}
+}
+
+func TestRegisterFailuresDoNotInitOrPersist(t *testing.T) {
+	h := chartrtest.Start(t)
+
+	missing := filepath.Join(t.TempDir(), "missing")
+	registerFailure(t, h, missing, http.StatusBadRequest)
+	assertNotRegistered(t, h, missing)
+
+	regularFile := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(regularFile, []byte("not a Space\n"), 0o644); err != nil {
+		t.Fatalf("creating regular file: %v", err)
+	}
+	registerFailure(t, h, regularFile, http.StatusBadRequest)
+	assertNotRegistered(t, h, regularFile)
+
+	if runtime.GOOS != "windows" {
+		inaccessible := filepath.Join(t.TempDir(), "inaccessible")
+		if err := os.Mkdir(inaccessible, 0o755); err != nil {
+			t.Fatalf("creating inaccessible directory: %v", err)
+		}
+		if err := os.Chmod(inaccessible, 0); err != nil {
+			t.Fatalf("removing directory permissions: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(inaccessible, 0o755) })
+		probe, err := os.Open(inaccessible)
+		if err == nil {
+			_ = probe.Close()
+			t.Log("skipping inaccessible-directory case because this process can open mode-000 directories")
+		} else {
+			registerFailure(t, h, inaccessible, http.StatusBadRequest)
+			assertNotRegistered(t, h, inaccessible)
+			if err := os.Chmod(inaccessible, 0o755); err != nil {
+				t.Fatalf("restoring inaccessible directory permissions: %v", err)
+			}
+			assertNoGitEntry(t, inaccessible)
+		}
+	}
+
+	broken := t.TempDir()
+	brokenGit := filepath.Join(broken, ".git")
+	brokenGitBefore := []byte("gitdir: /path/that/does/not/exist\n")
+	if err := os.WriteFile(brokenGit, brokenGitBefore, 0o644); err != nil {
+		t.Fatalf("creating broken Git metadata: %v", err)
+	}
+	registerFailure(t, h, broken, http.StatusInternalServerError)
+	assertNotRegistered(t, h, broken)
+	if got, err := os.ReadFile(brokenGit); err != nil || string(got) != string(brokenGitBefore) {
+		t.Errorf("broken .git marker changed: before=%q after=%q err=%v", brokenGitBefore, got, err)
+	}
+
+	bare := t.TempDir()
+	chartrtest.Git(t, bare, "init", "-q", "--bare")
+	registerFailure(t, h, bare, http.StatusInternalServerError)
+	assertNotRegistered(t, h, bare)
+	assertNoGitEntry(t, bare)
+
+	missingGit := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	registerFailure(t, h, missingGit, http.StatusInternalServerError)
+	assertNotRegistered(t, h, missingGit)
+	assertNoGitEntry(t, missingGit)
+}
+
+func TestRegisterRegistryFailureIsServerErrorAndKeepsInit(t *testing.T) {
+	h := chartrtest.Start(t)
+	plain := t.TempDir()
+
+	if err := os.Chmod(h.ConfigDir, 0o500); err != nil {
+		t.Fatalf("making config directory read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(h.ConfigDir, 0o700) })
+	probe := filepath.Join(h.ConfigDir, "write-probe")
+	if err := os.WriteFile(probe, []byte("probe"), 0o600); err == nil {
+		_ = os.Remove(probe)
+		t.Skip("process can write a mode-0500 config directory")
+	}
+
+	registerFailure(t, h, plain, http.StatusInternalServerError)
+	if _, err := os.Stat(filepath.Join(plain, ".git")); err != nil {
+		t.Errorf("registry failure removed the successful git init: %v", err)
+	}
+	assertNotRegistered(t, h, plain)
 }
 
 // De-registering forgets the entry and touches nothing in the repository — not

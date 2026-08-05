@@ -4,16 +4,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/rengwu/chartr/internal/gitroot"
 )
 
-// gitBranch reports the working tree's current branch by reading .git/HEAD — the
-// checked-out ref's short name, or a short sha for a detached HEAD. It follows
-// the one level of indirection a linked worktree uses (.git as a file pointing
-// at the real gitdir). Empty on anything it can't read, so the sidebar simply
-// omits the branch rather than surfacing an error: this is a label, not a
-// guarantee, and reading a file (not shelling out to git) keeps it cheap enough
-// to run on every rebuild.
-func gitBranch(root string) string {
+// gitBranch resolves the Git root from the Space path, then reports the
+// working tree's current branch by reading .git/HEAD — the checked-out ref's
+// short name, or a short sha for a detached HEAD. It follows the one level of
+// indirection a linked worktree uses (.git as a file pointing at the real
+// gitdir). Empty on anything it cannot read, so the sidebar omits the branch
+// rather than surfacing an error.
+func gitBranch(spacePath string) string {
+	root, err := gitroot.Resolve(spacePath)
+	if err != nil {
+		return ""
+	}
 	dir := filepath.Join(root, ".git")
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -29,6 +34,9 @@ func gitBranch(root string) string {
 		p := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(b)), "gitdir:"))
 		if p == "" {
 			return ""
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, p)
 		}
 		dir = p
 	}

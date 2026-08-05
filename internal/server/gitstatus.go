@@ -1,8 +1,11 @@
 package server
 
-// gitDirty reports whether the working tree at root carries uncommitted changes —
-// anything `git status --porcelain` lists: modified, staged, or untracked files
-// (gitignored paths, like chartr's own `run/` payloads, never count). It is
+import "github.com/rengwu/chartr/internal/gitroot"
+
+// gitDirty resolves the Git root from the Space path, then reports whether that
+// working tree carries uncommitted changes — anything `git status --porcelain`
+// lists: modified, staged, or untracked files (gitignored paths, like chartr's
+// own `run/` payloads, never count). It is
 // the dirty badge (spec, Git and the gate; story 68): surfaced so the operator can
 // judge whether a session's or a shell's debris is harmless, and never a spawn
 // gate. A label, not a guarantee — a repo it cannot read reads clean rather than
@@ -14,7 +17,11 @@ package server
 // on. Without the flag the badge's read would race the gate's own `git add` for
 // the lock and fail the commit. Nothing chartr reads for a badge is worth an
 // index lock.
-func gitDirty(root string) bool {
+func gitDirty(spacePath string) bool {
+	root, err := gitroot.Resolve(spacePath)
+	if err != nil {
+		return false
+	}
 	out, err := git(root, "--no-optional-locks", "status", "--porcelain")
 	if err != nil {
 		return false

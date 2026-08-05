@@ -17,14 +17,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/rengwu/chartr/internal/gitroot"
 )
 
 // ScratchID is the fixed identity of chartr's one synthetic Scratch space. A
@@ -263,31 +264,32 @@ func sortByOrder(entries []Entry) {
 	})
 }
 
-// Register makes path a space. It cleans the path to an absolute form, requires
-// it to be an existing directory, and — if it is not already a git repository —
-// runs `git init` there, reporting that it did so (never silent). A new space
-// appends: it takes max(order)+1, because the stored order belongs to the
-// operator and registering a repo is not a rearrangement. Registering an
-// already-registered path just refreshes its recency and leaves it where it sits.
-// The bool result is whether a `git init` was run.
-func (r *Registry) Register(path string) (Entry, bool, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return Entry{}, false, fmt.Errorf("registry: resolving %q: %w", path, err)
-	}
-	abs = filepath.Clean(abs)
+// ErrInvalidPath marks a registration path that is missing, inaccessible, or
+// not a directory. The server returns these errors as client errors. Git and
+// registry errors are not wrapped with this value, so the server returns them as
+// server errors.
+var ErrInvalidPath = errors.New("registry: invalid Space path")
 
-	info, err := os.Stat(abs)
+// Register makes path a Space. It cleans the path to an absolute form and
+// validates that it is an accessible directory before it runs any Git action.
+// If it is not already a Git repository, it runs `git init` there, reporting
+// that it did so (never silent). A new Space appends: it takes max(order)+1,
+// because the stored order belongs to the operator and registering a repository
+// is not a rearrangement. Registering an already-registered path just refreshes
+// its recency and leaves it where it sits. The bool result is whether a `git
+// init` was run.
+func (r *Registry) Register(path string) (Entry, bool, error) {
+	abs, err := validSpacePath(path)
 	if err != nil {
-		return Entry{}, false, fmt.Errorf("registry: %q is not a folder I can register: %w", path, err)
-	}
-	if !info.IsDir() {
-		return Entry{}, false, fmt.Errorf("registry: %q is a file, not a folder", path)
+		return Entry{}, false, err
 	}
 
 	gitInited := false
-	if !isGitRepo(abs) {
-		if err := gitInit(abs); err != nil {
+	if _, err := gitroot.Resolve(abs); err != nil {
+		if !errors.Is(err, gitroot.ErrNotRepository) {
+			return Entry{}, false, err
+		}
+		if err := gitroot.Init(abs); err != nil {
 			return Entry{}, false, err
 		}
 		gitInited = true
@@ -296,6 +298,10 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 	id := spaceID(abs)
 
 	r.mu.Lock()
+	before := make(map[string]Entry, len(r.entries))
+	for key, value := range r.entries {
+		before[key] = value
+	}
 	e, existed := r.entries[id]
 	if !existed {
 		e = Entry{ID: id, Path: abs, Order: r.nextOrderLocked()}
@@ -303,11 +309,51 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 	e.LastActive = time.Now().UTC()
 	r.entries[id] = e
 	err = r.saveLocked()
+	if err != nil {
+		// A failed persistence operation must not leave a registration that exists
+		// only in memory. Repository initialization is deliberately not rolled back,
+		// but the registry mutation is.
+		r.entries = before
+	}
 	r.mu.Unlock()
 	if err != nil {
 		return Entry{}, false, err
 	}
 	return e, gitInited, nil
+}
+
+// validSpacePath performs all path checks before Git sees the path. Reading one
+// directory entry distinguishes an accessible empty directory from a directory
+// whose permissions prevent Space discovery. It also keeps a missing path,
+// regular file, or inaccessible directory from reaching `git -C` or `git init`.
+func validSpacePath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: resolving %q: %v", ErrInvalidPath, path, err)
+	}
+	abs = filepath.Clean(abs)
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", fmt.Errorf("%w: %q is not a folder I can register: %v", ErrInvalidPath, path, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%w: %q is a file, not a folder", ErrInvalidPath, path)
+	}
+
+	dir, err := os.Open(abs)
+	if err != nil {
+		return "", fmt.Errorf("%w: %q is not accessible: %v", ErrInvalidPath, path, err)
+	}
+	_, readErr := dir.Readdirnames(1)
+	closeErr := dir.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return "", fmt.Errorf("%w: %q is not accessible: %v", ErrInvalidPath, path, readErr)
+	}
+	if closeErr != nil {
+		return "", fmt.Errorf("%w: closing %q after access check: %v", ErrInvalidPath, path, closeErr)
+	}
+	return abs, nil
 }
 
 // Deregister forgets a space: it removes the registry entry and its local order
@@ -523,20 +569,4 @@ func (r *Registry) densifyLocked() {
 func spaceID(absPath string) string {
 	sum := sha256.Sum256([]byte(absPath))
 	return hex.EncodeToString(sum[:])[:12]
-}
-
-func isGitRepo(dir string) bool {
-	// A .git entry (directory for a normal clone, a file for a linked worktree)
-	// marks the repository root; chartr registers repository roots.
-	_, err := os.Stat(filepath.Join(dir, ".git"))
-	return err == nil
-}
-
-func gitInit(dir string) error {
-	cmd := exec.Command("git", "init")
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("registry: git init in %s failed: %w\n%s", dir, err, out)
-	}
-	return nil
 }

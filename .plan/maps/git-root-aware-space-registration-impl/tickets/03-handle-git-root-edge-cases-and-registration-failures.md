@@ -38,3 +38,38 @@ nested `.git` directory.
 - The response and error results match the settled registration contract.
 - Existing nested `.git` directories remain untouched.
 - Tests prove all supported cases through the existing chartr process boundary.
+
+## Answer
+
+Completed the registration edge cases and failure results.
+
+- Registration now validates the Space path before it runs Git. Missing paths,
+  inaccessible directories, and regular files return client errors. They do not
+  run Git and do not add a registry entry.
+- Registration uses the shared Git-root resolver. It accepts linked worktrees,
+  nested repositories, and submodules without running `git init` or changing
+  the outer repository. A plain directory still receives `.git` only in the
+  selected Space path and reports `gitInited: true`.
+- Missing Git, broken Git metadata, bare repositories, and invalid worktrees
+  return server errors. They do not run `git init`, change existing `.git`
+  entries, or add a registry entry.
+- The success response is unchanged. It reports the selected absolute Space
+  path and `gitInited`. It does not expose the Git root. Registration persistence
+  errors are server errors, and a successful `git init` is not removed when a
+  later registry save fails.
+- Added process-boundary coverage for linked worktrees, nested repositories,
+  submodules, invalid paths, Git failures, error JSON, and registry save
+  failures.
+
+Validation:
+
+- `go vet ./...` passed.
+- `go test ./... -run '^$' -count=1` passed and compiled all packages.
+- `go test ./internal/registry -count=1` passed.
+- The focused registration process tests passed:
+  `go test ./internal/server -run '^TestRegister(SubdirectoryUsesRootGitStateAndSpaceFiles|LinkedWorktreeUsesLinkedRoot|NestedRepositoryAndSubmoduleUseInnermostRoots|FailuresDoNotInitOrPersist|RegistryFailureIsServerErrorAndKeepsInit|InitialisesNonRepoAnnounced)$' -count=1`.
+- A broader `^TestRegister` run also selects an existing ticket 02 spawn test.
+  That test still fails in ticket 02 claim-path code. It is outside this ticket.
+
+Claim and release Git actions remain in ticket 02. Public Git-root display and
+legacy nested repository cleanup remain out of scope.
