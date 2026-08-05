@@ -14,6 +14,8 @@ The map is done when every decision an implementation map needs is settled — n
 
 **The standing preferences that bind this effort.** chartr is a **cockpit, not an autopilot**. The client is **hackable** — what chartr injects is visible on disk as plain files. And the rule this map exists to honour: **the operator's repo carries no chartr operating artifacts**; `.plan/maps/` is committed work product, everything else lives under chartr's own config root.
 
+**YAGNI binds every ticket on this map.** Design for what this effort needs today, not for what a source list, a payload or a ruleset could conceivably want later. A field, a kind, a flag, a hook or an extra file earns its place by a *named case that exists now* — a failure mode someone has to handle, a decision already settled above, or a need another ticket on this map states in writing. "Someone might want to" is not one, and neither is symmetry with a mechanism sitting next door in the codebase: precedent is a reason to copy a *stance*, not to copy machinery whose original pressure is absent here. Where a session is torn, the smaller model plus a recorded revisit trigger beats the larger one — this map produces decisions, and a decision that can be widened later is cheaper than a knob that has to be carried forever. The last entry under `Out of scope` is the precedent: the source list *is* the extension point, and a second mechanism would be speculative bloat.
+
 **What is being kept, and is not up for re-litigation:** the spaces/sessions model, the PTY terminal layer, the star map, the wayfinder map format itself, the agent library and its per-spawn selection, and the one-session-per-space invariant (ADR 0003).
 
 ## Decisions so far
