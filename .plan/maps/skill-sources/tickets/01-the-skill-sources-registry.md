@@ -1,5 +1,7 @@
 ---
 type: grilling
+claimed_by: sce0c1186772b
+claimed_at: 2026-08-05T10:45:34Z
 ---
 
 # The skill sources registry
