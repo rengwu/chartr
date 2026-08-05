@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/gitroot"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/registry"
@@ -221,7 +222,12 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	if err := writeReleaseCommit(e.Path, ticketPath, info.ID); err != nil {
+	gitRoot, err := gitroot.Resolve(e.Path)
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "locating Git root for the release: "+err.Error())
+		return
+	}
+	if err := writeReleaseCommit(gitRoot, ticketPath, info.ID); err != nil {
 		httpError(w, http.StatusInternalServerError, "releasing the claim: "+err.Error())
 		return
 	}

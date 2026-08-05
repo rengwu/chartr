@@ -38,3 +38,32 @@ available for the later edge-case ticket.
   shared branch and dirty state.
 - No public registry, API, model, or UI field exposes the Git root.
 - Tests prove the behavior through the existing chartr process boundary.
+
+## Answer
+
+Implemented the normal repository-child path.
+
+- Added `internal/gitroot`. It normalizes the Space path and runs Git root
+  discovery with `git -C <Space path> rev-parse --show-toplevel`. It returns a
+  separate no-repository result. Registration runs `git init` only for that
+  result. An existing `.git` marker does not allow fallback initialization.
+- Registry registration now keeps the selected absolute path. It does not add a
+  Git-root field and reports `gitInited: false` for a repository child.
+- Branch and dirty Git actions resolve the Git root before they act. Dirty state
+  therefore includes changes outside the selected Space path. Map, skill, and
+  other Space file discovery still uses the selected path.
+- Added a process-boundary test for two child Spaces in one Git root. It checks
+  separate paths and identities, no child `.git` directory, shared branch and
+  dirty state, scoped maps and skills, and no Git-root field in the response.
+
+Validation:
+
+- `go vet ./...` passed.
+- `go test ./... -run '^$' -count=1` passed and compiled all packages.
+- `go test ./internal/registry -count=1` passed.
+- The process-boundary test and the full test suite cannot run in this sandbox
+  because the test harness cannot bind its local TCP listener. The full suite
+  also has unrelated terminal-test failures in this environment.
+
+Claim and release Git commits remain for ticket 02. Git edge-case registration
+failures remain for ticket 03.

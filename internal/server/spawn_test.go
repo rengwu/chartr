@@ -190,6 +190,50 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	}
 }
 
+// A Space below the Git root keeps its Space files below that path, but its
+// claim commit uses the root-relative ticket path. An unrelated root change
+// stays out of both the index and the commit.
+func TestSpawnFromSubdirectoryCommitsOnlyTheNestedTicket(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	space := filepath.Join(repo, "child")
+
+	chartrtest.WriteMap(t, space, "widget", mapBody)
+	chartrtest.WriteTicket(t, space, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.Git(t, repo, "add", "--all")
+	chartrtest.Git(t, repo, "commit", "-qm", "baseline")
+	chartrtest.WriteFile(t, repo, "outside.txt", "unrelated root change")
+	chartrtest.StubAgent(t, "claude")
+
+	resp := register(t, h, space)
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+
+	rel := filepath.Join("child", ".plan", "widget", "tickets", "01-first.md")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
+		t.Errorf("claim commit touched %v, want exactly [%s]", got, rel)
+	}
+	if strings.Contains(files, "outside.txt") {
+		t.Errorf("claim commit included unrelated root change:\n%s", files)
+	}
+	staged := chartrtest.Git(t, repo, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "outside.txt") {
+		t.Errorf("claim staged unrelated root change:\n%s", staged)
+	}
+	if n := chartrtest.Git(t, repo, "rev-list", "--count", "HEAD"); n != "2" {
+		t.Errorf("commits after nested claim = %s, want 2 (baseline + claim)", n)
+	}
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
+	if !strings.Contains(msg, "Claim "+rel) || !strings.Contains(msg, "Session: "+sp.SessionID) {
+		t.Errorf("claim commit does not use the root-relative ticket path or session:\n%s", msg)
+	}
+
+	tk := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1)
+	if tk.Status != "claimed" || tk.ClaimedBy != sp.SessionID {
+		t.Errorf("nested ticket claim = {status:%s by:%q}, want {claimed %q}", tk.Status, tk.ClaimedBy, sp.SessionID)
+	}
+}
+
 // A spawn that names no agent is refused (ticket 04) — there is no binding to fall
 // back to any more — and the refusal blocks nothing else: no claim is written, the
 // ticket stays open with no session tab, and the space is still fully usable as a

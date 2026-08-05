@@ -15,6 +15,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/gitroot"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
@@ -291,12 +292,16 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	if err != nil {
 		return nil, http.StatusNotFound, err
 	}
+	gitRoot, err := gitroot.Resolve(in.entry.Path)
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("locating Git root for the claim: %w", err)
+	}
 
 	// The claim commit — chartr's one write here (ADR 0008), pathspec-limited
 	// to the ticket file and carrying the agent and payload-hash trailers. On a
 	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
 	// the new session id supersedes the dead one.
-	if err := writeClaimCommit(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
+	if err := writeClaimCommit(gitRoot, ticketPath, in.sessionID, claimedAt, claim{
 		SessionID:  in.sessionID,
 		Role:       in.role,
 		Agent:      in.spec.Name,

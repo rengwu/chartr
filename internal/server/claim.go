@@ -48,10 +48,10 @@ type claim struct {
 // It never rewrites history and never pushes (ADR 0008): the claim is a new
 // commit, full stop. The returned error surfaces to the operator — a repo with no
 // git identity, say — with nothing launched.
-func writeClaimCommit(repo, ticketPath, sessionID string, at string, c claim) error {
-	rel, err := filepath.Rel(repo, ticketPath)
+func writeClaimCommit(gitRoot, ticketPath, sessionID string, at string, c claim) error {
+	rel, err := filepath.Rel(gitRoot, ticketPath)
 	if err != nil {
-		return fmt.Errorf("locating ticket under the space: %w", err)
+		return fmt.Errorf("locating ticket under the Git root: %w", err)
 	}
 
 	src, err := os.ReadFile(ticketPath)
@@ -66,10 +66,10 @@ func writeClaimCommit(repo, ticketPath, sessionID string, at string, c claim) er
 	// Stage then partial-commit the one path. `git add` makes an untracked ticket
 	// known to git; `--only -- <path>` commits from HEAD plus that path alone,
 	// leaving the rest of the index untouched.
-	if out, err := git(repo, "add", "--", rel); err != nil {
+	if out, err := git(gitRoot, "add", "--", rel); err != nil {
 		return fmt.Errorf("staging the claim: %w\n%s", err, out)
 	}
-	if out, err := git(repo, "commit", "--only", "-m", claimMessage(rel, c), "--", rel); err != nil {
+	if out, err := git(gitRoot, "commit", "--only", "-m", claimMessage(rel, c), "--", rel); err != nil {
 		return fmt.Errorf("committing the claim: %w\n%s", err, out)
 	}
 	return nil
@@ -150,10 +150,10 @@ func stripClaim(src string) string {
 // discipline the claim uses (ADR 0008). Recording the release as its own commit
 // keeps git the whole audit trail: the ticket's history reads claim → release, and
 // the stale claim is cleared by an operator act, never on its own.
-func writeReleaseCommit(repo, ticketPath, sessionID string) error {
-	rel, err := filepath.Rel(repo, ticketPath)
+func writeReleaseCommit(gitRoot, ticketPath, sessionID string) error {
+	rel, err := filepath.Rel(gitRoot, ticketPath)
 	if err != nil {
-		return fmt.Errorf("locating ticket under the space: %w", err)
+		return fmt.Errorf("locating ticket under the Git root: %w", err)
 	}
 	src, err := os.ReadFile(ticketPath)
 	if err != nil {
@@ -162,11 +162,11 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 	if err := os.WriteFile(ticketPath, []byte(stripClaim(string(src))), 0o644); err != nil {
 		return fmt.Errorf("clearing the claim on the ticket: %w", err)
 	}
-	if out, err := git(repo, "add", "--", rel); err != nil {
+	if out, err := git(gitRoot, "add", "--", rel); err != nil {
 		return fmt.Errorf("staging the release: %w\n%s", err, out)
 	}
 	msg := fmt.Sprintf("Release %s back to the frontier\n\nSession: %s\nChartr-Write: true", rel, sessionID)
-	if out, err := git(repo, "commit", "--only", "-m", msg, "--", rel); err != nil {
+	if out, err := git(gitRoot, "commit", "--only", "-m", msg, "--", rel); err != nil {
 		return fmt.Errorf("committing the release: %w\n%s", err, out)
 	}
 	return nil

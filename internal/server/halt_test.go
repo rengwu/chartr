@@ -194,6 +194,49 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 	}
 }
 
+// The session-keyed release uses the Git root for a child Space too. Its commit
+// must name only the nested ticket, even when the root has another change.
+func TestHaltReleaseFromSubdirectoryCommitsOnlyTheNestedTicket(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	space := filepath.Join(repo, "child")
+
+	chartrtest.WriteMap(t, space, "widget", mapBody)
+	chartrtest.WriteTicket(t, space, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.WriteFile(t, repo, "outside.txt", "unrelated root change")
+	chartrtest.StubDyingAgent(t, "claude")
+
+	resp := register(t, h, space)
+	sid := spawnThenDie(t, h, resp.ID, "widget", 1, "implement")
+
+	if code, body := h.Release(resp.ID, sid); code != 200 {
+		t.Fatalf("release = %d, body %s", code, body)
+	}
+
+	rel := filepath.Join("child", ".plan", "widget", "tickets", "01-first.md")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
+		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
+	}
+	if strings.Contains(files, "outside.txt") {
+		t.Errorf("release commit included unrelated root change:\n%s", files)
+	}
+	staged := chartrtest.Git(t, repo, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "outside.txt") {
+		t.Errorf("release staged unrelated root change:\n%s", staged)
+	}
+	if n := commitCount(t, repo); n != "2" {
+		t.Errorf("commits after nested session release = %s, want 2 (claim + release)", n)
+	}
+	body, err := os.ReadFile(filepath.Join(space, ".plan", "widget", "tickets", "01-first.md"))
+	if err != nil {
+		t.Fatalf("reading nested ticket after release: %v", err)
+	}
+	if strings.Contains(string(body), "claimed_by") {
+		t.Errorf("release left claimed_by on the nested ticket:\n%s", body)
+	}
+}
+
 // Respawn: a fresh session on the same ticket. A new claim supersedes the stale
 // one (re-stamped in place, its own commit), so the ticket stays claimed but by the
 // new session, and nothing is doubled.

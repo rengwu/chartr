@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -98,6 +99,52 @@ func TestReleaseTicketClearsAnOrphanedClaim(t *testing.T) {
 	// frontmatter — by construction there is no tab left to ask.
 	if msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B"); !strings.Contains(msg, "sess-gone") {
 		t.Errorf("release commit does not name the released session:\n%s", msg)
+	}
+}
+
+// A ticket release from a child Space uses the ticket path relative to the Git
+// root. The unrelated root change stays out of the release commit and index.
+func TestReleaseTicketFromSubdirectoryCommitsOnlyTheNestedTicket(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+	space := filepath.Join(repo, "child")
+
+	chartrtest.WriteMap(t, space, "widget", mapBody)
+	chartrtest.WriteTicket(t, space, "widget", "01-first.md",
+		claimedTicket(1, "First", "sess-gone", "2026-07-20T09:00:00Z"))
+	commitAll(t, repo)
+	chartrtest.WriteFile(t, repo, "outside.txt", "unrelated root change")
+
+	resp := register(t, h, space)
+	if code, body := h.ReleaseTicket(resp.ID, "widget", 1); code != 200 {
+		t.Fatalf("release = %d, body %s", code, body)
+	}
+
+	rel := filepath.Join("child", ".plan", "widget", "tickets", "01-first.md")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
+		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
+	}
+	if strings.Contains(files, "outside.txt") {
+		t.Errorf("release commit included unrelated root change:\n%s", files)
+	}
+	staged := chartrtest.Git(t, repo, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "outside.txt") {
+		t.Errorf("release staged unrelated root change:\n%s", staged)
+	}
+	if n := commitCount(t, repo); n != "2" {
+		t.Errorf("commits after nested release = %s, want 2 (fixture + release)", n)
+	}
+	body, err := os.ReadFile(filepath.Join(space, ".plan", "widget", "tickets", "01-first.md"))
+	if err != nil {
+		t.Fatalf("reading nested ticket after release: %v", err)
+	}
+	if strings.Contains(string(body), "claimed_by") {
+		t.Errorf("release left claimed_by on the nested ticket:\n%s", body)
+	}
+	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
+	if !strings.Contains(msg, "Release "+rel) || !strings.Contains(msg, "sess-gone") {
+		t.Errorf("release commit does not use the root-relative ticket path or session:\n%s", msg)
 	}
 }
 

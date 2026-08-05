@@ -28,3 +28,28 @@ changes anywhere else in the shared Git root.
 - Existing claim and release behavior for a Space at the Git root remains green.
 - Tests prove the commit contents and Git history through the existing chartr
   process boundary.
+
+## Answer
+
+Implemented root-aware claim and release commits.
+
+- Claim commits now resolve the Git root before they run. They calculate the
+  ticket path relative to that root.
+- Ticket release and dead-session release use the same Git-root rule.
+- The existing path-limited `git add` and `git commit --only` behavior remains.
+  An unrelated file in the Git root is not added or committed.
+- Added process-boundary tests for a nested claim, a ticket release, and a
+  dead-session release. The tests check the root-relative commit path, commit
+  history, claim marker, release marker, and unrelated root changes.
+
+Validation:
+
+- `gofmt` passed.
+- `go test ./... -run '^$' -count=1` passed with a temporary allowed Go cache.
+- `go vet ./...` passed.
+- `go test ./internal/registry -count=1` passed.
+- The three new process tests could not run. The test harness cannot bind
+  `127.0.0.1:0` in this sandbox and reports `operation not permitted`.
+
+No public Git-root field, Space-path change, file-discovery change, or new Git
+action was added.

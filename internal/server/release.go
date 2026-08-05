@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/rengwu/chartr/internal/gitroot"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/terminal"
 )
@@ -78,10 +79,15 @@ func (s *Server) handleReleaseTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusNotFound, err.Error())
 		return
 	}
+	gitRoot, err := gitroot.Resolve(e.Path)
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "locating Git root for the release: "+err.Error())
+		return
+	}
 	// The commit names the session being released, read off the ticket's own
 	// frontmatter — the claim is the only thing that knows, since by construction
 	// there may be no tab left to ask.
-	if err := writeReleaseCommit(e.Path, ticketPath, tk.ClaimedBy); err != nil {
+	if err := writeReleaseCommit(gitRoot, ticketPath, tk.ClaimedBy); err != nil {
 		httpError(w, http.StatusInternalServerError, "releasing the claim: "+err.Error())
 		return
 	}
