@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rengwu/chartr/internal/gitroot"
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
@@ -49,7 +50,7 @@ type claim struct {
 // commit, full stop. The returned error surfaces to the operator — a repo with no
 // git identity, say — with nothing launched.
 func writeClaimCommit(gitRoot, ticketPath, sessionID string, at string, c claim) error {
-	rel, err := filepath.Rel(gitRoot, ticketPath)
+	rel, err := gitroot.RelativePath(gitRoot, ticketPath)
 	if err != nil {
 		return fmt.Errorf("locating ticket under the Git root: %w", err)
 	}
@@ -151,7 +152,7 @@ func stripClaim(src string) string {
 // keeps git the whole audit trail: the ticket's history reads claim → release, and
 // the stale claim is cleared by an operator act, never on its own.
 func writeReleaseCommit(gitRoot, ticketPath, sessionID string) error {
-	rel, err := filepath.Rel(gitRoot, ticketPath)
+	rel, err := gitroot.RelativePath(gitRoot, ticketPath)
 	if err != nil {
 		return fmt.Errorf("locating ticket under the Git root: %w", err)
 	}

@@ -47,6 +47,30 @@ func Resolve(spacePath string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
+// RelativePath returns path relative to root after resolving symlinks in both
+// paths. Git can report a canonical root even when the selected Space path uses
+// a symlink, so lexical filepath.Rel calls can otherwise produce a path outside
+// the repository.
+func RelativePath(root, path string) (string, error) {
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolving Git root %q: %w", root, err)
+	}
+	canonicalPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolving path %q: %w", path, err)
+	}
+
+	rel, err := filepath.Rel(canonicalRoot, canonicalPath)
+	if err != nil {
+		return "", fmt.Errorf("locating path %q under Git root %q: %w", path, root, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q is outside Git root %q", path, root)
+	}
+	return rel, nil
+}
+
 // Init creates a Git repository in spacePath.
 func Init(spacePath string) error {
 	cmd := exec.Command("git", "init")

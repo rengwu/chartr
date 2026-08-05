@@ -234,6 +234,42 @@ func TestSpawnFromSubdirectoryCommitsOnlyTheNestedTicket(t *testing.T) {
 	}
 }
 
+// Git can return a canonical path while the registry keeps the selected path
+// through a symlink. Claim commits must use one path form for both values.
+func TestSpawnFromSymlinkedSpacePathCommitsOnlyTheNestedTicket(t *testing.T) {
+	h := chartrtest.Start(t)
+	repo := chartrtest.NewSpaceRepo(t)
+
+	aliasParent := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(filepath.Dir(repo), aliasParent); err != nil {
+		t.Skipf("creating a symlink for the temporary repository: %v", err)
+	}
+	aliasedRepo := filepath.Join(aliasParent, filepath.Base(repo))
+	space := filepath.Join(aliasedRepo, "child")
+
+	chartrtest.WriteMap(t, space, "widget", mapBody)
+	chartrtest.WriteTicket(t, space, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.Git(t, repo, "add", "--all")
+	chartrtest.Git(t, repo, "commit", "-qm", "baseline")
+	chartrtest.WriteFile(t, repo, "outside.txt", "unrelated root change")
+	chartrtest.StubAgent(t, "claude")
+
+	resp := register(t, h, space)
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+
+	rel := filepath.Join("child", ".plan", "widget", "tickets", "01-first.md")
+	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
+	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
+		t.Errorf("claim commit touched %v, want exactly [%s]", got, rel)
+	}
+	if strings.Contains(files, "outside.txt") {
+		t.Errorf("claim commit included unrelated root change:\n%s", files)
+	}
+	if msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B"); !strings.Contains(msg, "Claim "+rel) || !strings.Contains(msg, "Session: "+sp.SessionID) {
+		t.Errorf("claim commit does not use the canonical root-relative path or session:\n%s", msg)
+	}
+}
+
 // A spawn that names no agent is refused (ticket 04) — there is no binding to fall
 // back to any more — and the refusal blocks nothing else: no claim is written, the
 // ticket stays open with no session tab, and the space is still fully usable as a
