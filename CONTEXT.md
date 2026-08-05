@@ -7,7 +7,7 @@ A cockpit for driving wayfinder maps to completion: switch between project space
 ### The map
 
 **Space**:
-A git repository chartr drives, registered once and switched between. It owns exactly one working tree, which is what makes it the unit of serialisation.
+A selected directory that chartr registers and switches between. It has one Space path for its files and maps. Its Git actions use the Git root, and one Git root can serve more than one Space.
 _Avoid_: project, workspace, repo, folder
 
 **Map**:
