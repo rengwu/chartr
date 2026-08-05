@@ -1,5 +1,7 @@
 ---
 type: grilling
+claimed_by: s575cb57b227d
+claimed_at: 2026-08-05T14:28:00Z
 ---
 
 # The conventions ruleset
