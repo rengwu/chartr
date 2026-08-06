@@ -76,3 +76,70 @@ hand-edited file, an unknown `kind`, a row named `chartr-skills`, and a missing 
 unparseable file. Both resolution forms are tested including the never-fall-through
 rule; the discovery walk is tested at its depth bound and its descend-stop rule.
 `go vet` and `go test` pass.
+
+## Answer
+
+`internal/sources` exists: `sources.go` (the file, the walk, resolution, the
+`dir` half of the surface) and `git.go` (clone, refresh, the PATH gate), with
+`sources_test.go` driving all of it through the public API against real
+directories under a temp config root. **Nothing consumes it.** No operator can see
+or do anything new at this commit — this is a foundation, and its green suite is
+not progress anyone can use until ticket 05 seeds the default row and ticket 07
+resolves role bindings through it.
+
+**What it is.** `Load(configDir)` reads `sources.toml`, an array of tables whose
+position is resolution order, and returns the operator's rows plus the synthetic
+`chartr-skills` row last. `Warnings()` carries what the load dropped. `List`,
+`Get`, `Walk`, `States`, `Resolve`, `RegisterDir`, `RegisterGit`, `Remove`,
+`SetEnabled`, `Reorder` and `Refresh` are the seam. Saves are temp-then-rename at
+`0600` under a `0700` root. No hashed id, no order int, no densify, no second
+decode — position makes those failure modes unrepresentable, which was the whole
+argument for not copying `internal/registry`'s machinery.
+
+**Each Done-when clause.** Every row of the failure-mode table has a test, named
+after what it reads as: vanished dir path (`unavailable`, zero skills, row never
+auto-removed), `git` absent from PATH (registration refused at the gate, an
+existing checkout still resolves, only refresh fails), clone failing partway (no
+row, no directory, git's own output in the error), zero skills (`empty`),
+duplicate skill name across sources (not an error — the lower one is marked
+shadowed and stays reachable qualified), duplicate basename inside one source
+(sorted walk order wins, loser named on the row), duplicate source name at
+registration (`ErrDuplicateName`, nothing written) and in a hand-edited file
+(first row wins, the later one warned by name), unknown kind and a row with
+neither path nor url (dropped, rest of the list stands), a row named
+`chartr-skills` (dropped, and the name refused at registration), missing file and
+unparseable file (default row alone; missing is silent, unparseable warns). Both
+resolution forms are tested, including a qualified miss into an empty source while
+a *lower* source has that skill — it stays not-found — and a qualified reference
+into a disabled source whose error contains the word `disabled`. The walk is
+tested at depth 1/2/3 with a depth-4 skill excluded, a `SKILL.md` below a skill
+not descended into, and dot-entries and `node_modules` skipped. `go vet ./...` and
+`go test ./...` pass; both source kinds landed in one commit rather than two.
+
+**Decisions inside the delegation, worth reading.**
+
+- The default row's path is `<configDir>/sources/chartr-skills`, exposed as
+  `DefaultPath` — a named directory beside the hash-keyed git checkouts, which
+  cannot collide with it. Ticket 05 owns what lands there.
+- `default_commit` and `default_fetched` are already persisted beside
+  `default_enabled`, so ticket 05's amendment (two scalars beside the toggle,
+  default row git-kinded) needs no file reshape.
+- **`Refresh` refuses the default row**, with an error saying so. The
+  seeded→pinned conversion needs the seed's URL constant, which is ticket 05's;
+  making the registry guess it would have been that ticket's decision taken here.
+- Walk order is sorted depth-first, so a subdirectory named `a` yields before a
+  top-level skill named `one`. It is deterministic, which is all the
+  duplicate-basename rule needs, and it is asserted rather than left implicit.
+- `Remove` deletes a git source's checkout (chartr's own, under the config root)
+  and never touches a `dir` source's folder.
+- Registration takes a source that is empty or absent today: that is a status on
+  the row, not a refusal, which is the same reading the failure-mode table gives a
+  path that vanishes later.
+
+**Deliberately not done:** no server wiring, no HTTP surface, no settings model —
+those are tickets 07, 08 and 10. The `Skill` type carries no body or frontmatter;
+composition reads the file when it needs it. Nothing in `internal/prompt` was
+touched, so both models coexist exactly as the sequencing intends.
+
+`CONTEXT.md` gains the **Source** entry, per the spec's rule that vocabulary
+follows its ticket.
