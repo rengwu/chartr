@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [02]
+claimed_by: s8452a699f9cc
+claimed_at: 2026-08-06T16:29:29Z
 ---
 
 # Migration, and the tracker-adapter surface
