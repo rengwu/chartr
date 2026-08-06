@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [02, 03, 05]
+claimed_by: sc913abcd812d
+claimed_at: 2026-08-06T17:08:12Z
 ---
 
 # The two payloads
