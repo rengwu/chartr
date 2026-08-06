@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [04]
+claimed_by: s73174bffe493
+claimed_at: 2026-08-06T05:26:24Z
 ---
 
 # chartr-skills, and how it ships
