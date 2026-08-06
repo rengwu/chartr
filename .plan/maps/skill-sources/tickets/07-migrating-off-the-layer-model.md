@@ -46,7 +46,18 @@ This is not new machinery kept alive past its purpose — it is a **one-time mig
 
 Deleting the untouched case is safe under downgrade for a reason worth stating plainly: `Materialize` (`internal/prompt/prompt.go:415`) **never overwrites an existing file** — "existing files are never overwritten... an operator's edits are the point." An old binary reached by downgrade recreates a deleted-but-untouched `builtin-skills/` from its own embed on the next startup, exactly as if it had never been removed. Leaving an *edited* copy in place downgrades even more cleanly: the old binary's `RootsFor`/`Resolve` still point straight at that path and read the operator's edits back untouched, because migration never moved or renamed the directory — it only added a pointer to it that the old binary doesn't know how to read and therefore ignores.
 
-**Registering an edited copy is placed before the migrated `<configDir>/skills/` row would sit, and both are placed before the default `chartr-skills` row** — old resolution order was workspace › user › built-in (`prompt.go:323-325`); with the workspace layer gone (next section), the surviving relative order between what used to be "user" and what used to be "built-in" carries forward as the order between the two migrated rows, and both still beat the shipped default they're standing in front of.
+**The migrated `<configDir>/skills/` row is placed before the row registering an edited copy, and both are placed before the default `chartr-skills` row** — old resolution order was workspace › user › built-in (`prompt.go:323-325`); with the workspace layer gone (next section), the surviving relative order between what used to be "user" and what used to be "built-in" carries forward as the order between the two migrated rows, and both still beat the shipped default they're standing in front of.
+
+<!-- Corrected 2026-08-06 (ticket 08, on the operator's call). This sentence
+originally led with "Registering an edited copy is placed before the migrated
+`<configDir>/skills/` row would sit", which contradicts its own justification —
+`<configDir>/skills/` was the *user* layer and `<configDir>/builtin-skills/` the
+*built-in* one, and `prompt.go:323-325` resolves user above built-in. Step 3 of
+"What the upgrade actually does on first run" already said it correctly
+("migrated-user row before migrated-builtin row"); only the lead clause was
+wrong. Ordering unchanged from what the ticket intended: `Legacy skills` first,
+`Migrated built-in skills` second. -->
+
 
 ### `<space>/.chartr/skills/` — chartr stops reading it, and says nothing
 
