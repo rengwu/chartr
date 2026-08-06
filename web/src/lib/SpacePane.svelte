@@ -3,12 +3,12 @@
   import type { Agent, Space, Terminal as Term, TerminalPrefs, Map as WMap } from './model'
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
-  import SkillLauncher from './SkillLauncher.svelte'
+  import NewShellButton from './NewShellButton.svelte'
   import AsciiFlow from './AsciiFlow.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { openingFor, paneState, rememberPane } from './mapstate'
-  import { Warning, Sparkle, Lightbulb, Gear } from 'phosphor-svelte'
+  import { Warning, Sparkle, Gear } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
   // identity (name and path) plus the stage-level controls — warnings, the
@@ -30,7 +30,7 @@
     terminalPrefs,
     active = true,
     onOpenShell,
-    onLaunch,
+    onFreeSession,
     onOpenSettings,
     onRegisterAgent,
     onspawned,
@@ -51,12 +51,11 @@
     // selection into the URL, which the settings route owns while it is up.
     active?: boolean
     onOpenShell: () => void
-    // The skill launcher (skill-launcher map): a live, ticketless on-ramp for a
-    // space with no shell open, running any self-driving skill on a chosen agent.
-    // The control here picks the agent and the skill and hands both up, along with
-    // the optional one line a `needs-context` skill asked for — absent when the
-    // launch is bare, which is every self-driving one.
-    onLaunch: (agent: string, skill: string, context?: string) => void
+    // A free session (skill-sources ticket 08): a live, ticketless agent tab for a
+    // space with no shell open, told the free payload and nothing else. The
+    // control here picks the agent and hands the name up; there is no skill and no
+    // context line to settle.
+    onFreeSession: (agent: string) => void
     // The cockpit-wide way into the config surface (ticket 05), owned by the
     // enclosing App — the route is App's, this pane just carries the control at
     // the right end of its title bar. Absent in the macOS shell, where the
@@ -475,18 +474,17 @@
           >
             <p class="text-sm text-muted-foreground">No shell open in this space.</p>
             <div class="flex flex-wrap items-center justify-center gap-2">
-              <Button variant="outline" size="sm" onclick={onOpenShell}>New Shell</Button>
-              <SkillLauncher
+              <!-- The same one control the space card carries (skill-sources
+                   ticket 08): the body opens a plain shell, the caret starts a
+                   free session on a registered agent. -->
+              <NewShellButton
                 {agents}
-                lastAgent={space.lastAgent}
-                skills={space.skills}
-                label="Skills"
-                title="Launch a self-driving skill — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
-                onrun={onLaunch}
+                size="sm"
+                title="Open a plain shell — nothing is injected. The caret starts a free session on a registered agent instead."
+                onshell={onOpenShell}
+                onfree={onFreeSession}
                 onregister={onRegisterAgent}
-              >
-                {#snippet icon()}<Lightbulb />{/snippet}
-              </SkillLauncher>
+              />
               <Button
                 variant="outline"
                 size="sm"

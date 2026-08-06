@@ -396,7 +396,7 @@ type launchSpec struct {
 	args []string
 	// env is what this launch adds to the inherited environment, as `KEY=VALUE`
 	// entries. Empty for an ad-hoc shell, which wants the operator's environment
-	// exactly as chartr received it; a session or an on-ramp carries whatever its
+	// exactly as chartr received it; a session or a free session carries whatever its
 	// registered agent asked for.
 	env   []string
 	title string

@@ -253,14 +253,10 @@ func New(opts Options) (*Server, error) {
 	// dot clears — there is no manual dismiss and no clear-all, which is what keeps
 	// a stale dot unrepresentable.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/{termID}/seen", s.handleTerminalSeen)
-	// The skill launcher: run any on-ramp skill on a chosen agent as a live,
-	// ticketless tab with an optional line of context — no map or ticket lookup, no
+	// The new-shell control's agent rows: start a free session on a chosen agent —
+	// a live, ticketless tab told the free payload, with no map or ticket lookup, no
 	// claim, no lifecycle, ended only by the human, exactly like an ad-hoc shell.
-	s.mux.HandleFunc("POST /api/spaces/{id}/launch", s.handleLaunch)
-	// The ideate on-ramp (ticket 15) is the `skill=ideate` case of the launcher,
-	// kept as its own thin route so nothing mid-flight breaks while the frontend
-	// moves to `/launch`.
-	s.mux.HandleFunc("POST /api/spaces/{id}/ideate", s.handleIdeate)
+	s.mux.HandleFunc("POST /api/spaces/{id}/launch", s.handleFree)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))
 

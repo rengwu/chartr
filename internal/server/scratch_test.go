@@ -195,10 +195,7 @@ func TestRepoScopedEndpointsRefuseScratch(t *testing.T) {
 		{"spawn a session", func() (int, string) {
 			return h.SpawnWithAgent(id, "some-map", 1, "implement", "stub")
 		}},
-		{"launch an on-ramp skill", func() (int, string) {
-			return h.LaunchRaw(id, "stub", "ideate", "")
-		}},
-		{"ideate", func() (int, string) { return h.IdeateRaw(id, "stub") }},
+		{"start a free session", func() (int, string) { return h.LaunchRaw(id, "stub") }},
 		{"preview a payload", func() (int, string) {
 			return h.Get("/api/spaces/" + id + "/maps/some-map/tickets/1/payload?role=implement")
 		}},

@@ -34,6 +34,10 @@ The open, unblocked, unclaimed tickets of a map — the edge of the known. Wayfi
 A PTY running an agent CLI against exactly one ticket, wired by a pre-injected prompt.
 _Avoid_: run, job, task, terminal
 
+**Free session**:
+An agent chartr launched into a space with no ticket and no role, started by picking a registered agent from the space card's `new shell` menu. It is told the free payload — what chartr is, the conventions pointer, the operator's preferences, and the sources inventory — and nothing about how to behave. It shares only the adapter's spawn primitive with a session: no map or ticket is looked up, no claim is written, no lifecycle derives for it, and it never counts toward the one-session-per-space gate. The tab is titled by the agent's registered name. The same control's body opens an **empty shell**, which is a plain shell with nothing injected at all.
+_Avoid_: on-ramp, ideate, skill launch, ticketless session
+
 **Role**:
 What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. It is the key a **binding** names a skill under, it shapes the payload, and it is recorded on the claim; it does not itself select a skill, and it does not resolve to an agent.
 _Avoid_: mode, kind, job type

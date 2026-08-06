@@ -24,7 +24,7 @@ import (
 
 // sessionRunDir is the gitignored directory, inside each space, that holds live
 // sessions' composed payloads (ADR 0005 — one inspectable file per session), and
-// the ideate on-ramp's starter prompt (ticket 15), which reuses the same
+// a free session's payload (skill-sources ticket 08), which reuses the same
 // writeSessionPayload path though it is deliberately not a session. It sits under
 // chartr's committed `.chartr/` directory but is itself never
 // committed: chartr drops a `.gitignore` of `*` beside it so an agent's
