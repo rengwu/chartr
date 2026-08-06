@@ -81,3 +81,119 @@ own voice there is four sentences and nothing else will notice a fifth, so a dif
 that file is the review. The preview badges name the source a role body came from.
 A real grilling session spawned on this repo's next map reads correctly in the
 cockpit. `go vet`, `go test`, and the frontend `check`/`build`/`vitest` pass.
+
+## Answer
+
+Both payloads compose, both have goldens, and the tracer bullet closes: a
+`grilling` preview on this repo's own `localhost-trust-boundary` map, served by
+the real binary against a throwaway config root, returns
+`core:chartr, grill:chartr-skills, conventions:chartr, preferences:operator,
+sources:context, map, ticket, blocker #01` — the body between the core and the
+conventions pointer came out of `<configDir>/sources/chartr-skills/grill/SKILL.md`
+through the registry. One commit.
+
+**The core moved into the binary.** It is read from the embedded asset, not
+resolved through the layers, because the spec's origin table gives it `chartr
+(embedded)` and a layer-resolved core would have badged `built-in`/`user`/
+`workspace` — an origin the set does not contain. That emptied `ComposeInput` of
+`Roots` entirely (the skill-library manifest part is gone too), so the field and
+the nil-`Sources` layer fallback ticket 05 flagged as a hedge both went with it;
+`Resolve`, `Library` and `Materialize` are untouched and still serve the settings
+surface until ticket 09. The claim trailer is unchanged — the core still records
+`core=built-in:<shippedHash>`, which is exactly true of an embedded copy.
+
+**The `Part`/`Segment` collapse was taken.** The diff stayed small: one struct,
+`ctxPart`, `renderMarkdown`, `model.ts` and five lines of `PayloadPreview.svelte`.
+`Segment` is gone; a `Part` is `{name, kind, origin, label, text}`. The frontend's
+lookup is now `originVariant[part.origin] ?? 'secondary'` — the fallback is kept
+and deliberately not `'outline'`, so a source name (an open set) reads as a
+distinct badge rather than silently borrowing chartr's.
+
+### Each Done-when clause
+
+- *Both payloads have golden files* — `internal/prompt/testdata/{ticket,free}-payload.golden.md`,
+  written by `TestTicketPayloadGolden` / `TestFreePayloadGolden` against a real
+  seeded config root, with the temp path normalised to `<config>`. Rewrite with
+  `go test ./internal/prompt -update`.
+- *The free payload's golden is the guard on the ignore test* — chartr's voice in
+  it is exactly four sentences: what chartr is, the conventions pointer, the
+  sources inventory line, the shadowing sentence. The conventions sentence is the
+  consequence form the ticket specified ("a file under `.plan/maps/` is read by
+  chartr only where it follows the format stated at ⟨path⟩"), so it survives being
+  ignored and carries the whole reason to open the file.
+- *A `grilling` session composes the seeded `grill` body, asserted through the
+  preview endpoint* — `TestFirstRunSeedsTheSkillsAndTheBindings` already asserted
+  it and still does; `TestTicketPayloadGolden` re-asserts it at the package seam by
+  reading a prose line out of the materialized `SKILL.md` and finding it in both
+  the part and the document.
+- *The preview badges name the source a role body came from* — asserted as
+  `Origin == "chartr-skills"` in the golden test's part table, in
+  `TestPayloadComposesWithProvenanceAndBundle`, and in the bindings test.
+- *`go vet`, `go test`, frontend `check`/`build`/`vitest`* — all clean.
+
+### Other tests, and what moved
+
+`TestFreePayloadVariesOnlyWithSourcesAndPreferences` covers the two things that
+vary and the two rules about what does not appear: a disabled source is absent,
+and no `https://` reaches the document. `TestUnavailableSourceWarns` covers the one
+surviving composition warning. `TestFreePayloadPreviewIsSpaceIndependent` hits
+`GET /api/payload/free` at the process boundary and asserts the map slug, the
+ticket title and the word "frontier" are all absent from a payload composed while
+a space with a live map is registered.
+
+Three server tests were retargeted or dropped, all for the same reason — the core
+was the last thing they observed the layer model through:
+
+- `TestSkillShadowingMatrix` became
+  `TestNeitherCoreNorRoleIsShadowableByASkillLayer`, which writes a `core` into
+  the user layer and a `grill` into the workspace layer and asserts the composed
+  document is byte-identical to the one before. That is a better guard for this
+  ticket than the matrix was.
+- `TestBehindDefaultSurfaced` and `TestMaterializedLibraryEditsCompose` are
+  deleted. Both asserted a fork/edit reaching a *payload*; no layer reaches a
+  payload any more. Fork drift is still covered at the package seam
+  (`TestForkedFromDriftOverDirectoryHash`, `LibraryWarnings`) and still surfaces on
+  the space, until ticket 09 deletes the model.
+- `Skill.Support` went, so the two supporting-file assertions in
+  `TestWholeSkillShadowing` went with it, and `TestShippedLibraryIsElevenSkills` is
+  now `TestShippedLibraryIsTenSkills` and asserts `tracker-convention` no longer
+  resolves.
+
+`CONTEXT.md`'s **Context bundle** entry loses its glossary and manifest clauses
+and gains the sources block, per the spec's rule that vocabulary follows its
+ticket. *free session* is ticket 08's to write.
+
+### Flagged
+
+- **The whole `tracker-convention` directory is deleted, not just `glossary.md`.**
+  Deleting the `TrackerSkill` constant takes it out of `Names()`, which makes the
+  embedded directory unreachable — dead bytes in the binary rather than a skill.
+  Ticket 09 was going to cut it; leaving an unreferenced copy behind for one ticket
+  seemed worse than cutting it here.
+- **This commit invalidates `prompt.MatchesShipped` for every already-materialized
+  library**, because the embedded set and the core's bytes both changed. Ticket
+  06's migration therefore takes its *other* branch on such a machine: it registers
+  `builtin-skills` as a source instead of moving it aside. That branch is the safe
+  one (nothing is moved, nothing is lost) and the release freeze means no build
+  between 06 and 09 ships, so only a from-source dev can see it — but it is a real
+  behaviour change to a resolved ticket's guarantee and it is not one I could avoid
+  while editing the core.
+- **Two vendored seed skills still say "glossary".** `to-spec` and `to-tickets` in
+  `internal/sources/assets/chartr-skills/` mention it; fixing them means
+  re-authoring in the skills repo and re-running `make vendor-skills`, which is
+  ticket 01's artifact and not mine to re-vendor mid-map. `docs/skill-sync.md` and
+  ADR 0005 also still describe the glossary — the spec assigns the skill-sync
+  deletion to the cut (ticket 09) and the narrative pass to ticket 10.
+
+### Deliberately left out
+
+No UI for the free payload's preview: the endpoint exists and is tested, and the
+ticket puts the surface on the settings screen in ticket 10. No free-session
+*launch* path — that is ticket 08's split button; `ComposeFree` is waiting for it.
+No deletions from ticket 09's list beyond the four this ticket named. A real
+grilling session was previewed but not **spawned** in the cockpit's GUI: I read
+both payloads out of the running binary's preview endpoints (which is the byte
+source the modal renders) rather than clicking through a build, and I did not
+write a claim commit into this repo mid-session to do it. If the GUI read is
+wanted as its own check, it is one `make build webview` away and nothing about the
+wire format is untested.
