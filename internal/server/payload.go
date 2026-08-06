@@ -61,6 +61,8 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 		Roots:     s.skillRoots(e.Path),
 		Bundle:    bundle,
 		ConfigDir: s.opts.ConfigDir,
+		Sources:   s.srcs,
+		Bindings:  s.roleBindings(),
 	})
 	if err != nil {
 		// An unknown role is the caller's to fix; every other input was validated.

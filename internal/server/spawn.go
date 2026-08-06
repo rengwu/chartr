@@ -271,6 +271,8 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		Role:      in.role,
 		Roots:     s.skillRoots(in.entry.Path),
 		ConfigDir: s.opts.ConfigDir,
+		Sources:   s.srcs,
+		Bindings:  s.roleBindings(),
 		Bundle: prompt.Bundle{
 			MapName:     in.m.Name,
 			MapBody:     in.m.Body,

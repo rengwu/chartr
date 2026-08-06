@@ -125,10 +125,13 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		"Args: --model sonnet",
 		"Role: implement",
 		"Payload-SHA256: " + sp.PayloadSha,
-		// The content provenance, re-keyed from prompt parts to skills: which
-		// layer won each composed skill, and the hash of the directory it won.
+		// The content provenance, one line per composed skill. The core is still
+		// chartr's own embedded skill and reads as its layer and directory hash; the
+		// role came from a registered source and reads as the source's name, with
+		// `@<commit>` where that source carries a pin — the seeded default carries
+		// none until the operator fetches it (skill-sources ticket 05).
 		"Skill: core=built-in:" + prompt.ShippedHash("core"),
-		"Skill: implement=built-in:" + prompt.ShippedHash("implement"),
+		"Skill: implement=chartr-skills",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("claim commit message missing trailer %q:\n%s", want, msg)
@@ -507,8 +510,11 @@ func TestUnreadablePromptDeliveryWarnsAndFallsBack(t *testing.T) {
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	// Hand-written, since the registration surface would refuse "stdin" outright.
+	// The whole file is replaced, so it carries the role bindings startup seeded —
+	// they are seeded once and never auto-refilled, so a config written over them
+	// would leave every role unbound until the next fresh install.
 	chartrtest.WriteFile(t, h.ConfigDir, "user.toml",
-		"[agents.runner]\nadapter = \"claude\"\nprompt = \"stdin\"\n")
+		"[agents.runner]\nadapter = \"claude\"\nprompt = \"stdin\"\n\n"+seededRoles)
 	delivery := chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)

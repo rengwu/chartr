@@ -22,6 +22,7 @@ import (
 	"github.com/rengwu/chartr/internal/notify"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/sources"
 	"github.com/rengwu/chartr/internal/terminal"
 	"github.com/rengwu/chartr/web"
 )
@@ -57,10 +58,14 @@ type Options struct {
 // Server is a single operator's chartr backend. Construct with New, then run
 // with Serve.
 type Server struct {
-	opts  Options
-	hub   *hub
-	mux   *http.ServeMux
-	reg   *registry.Registry
+	opts Options
+	hub  *hub
+	mux  *http.ServeMux
+	reg  *registry.Registry
+	// srcs is the operator's skill-source list. It is loaded once here and walked
+	// fresh on every resolve, so a skill folder created a second ago is usable in
+	// the very next spawn without a restart.
+	srcs  *sources.Registry
 	watch *watcher
 	terms *terminal.Manager
 	// origins is the browser-origin allowlist both websocket handshakes are
@@ -118,6 +123,23 @@ func New(opts Options) (*Server, error) {
 	if err := prompt.Materialize(opts.ConfigDir); err != nil {
 		return nil, err
 	}
+	// The skill sources: the operator's ordered list, then chartr's own default
+	// source brought into the state the compiled seed describes, then the four role
+	// bindings — in that order, because a binding is seeded pointing into the
+	// default source and must not be written before that source is on disk. Both
+	// writes are quiet and both are once-only: the seed reconciles against a `.git`
+	// the operator's own fetch left behind, and the bindings seed only on a startup
+	// that finds no `[roles]` table at all (skill-sources ticket 05).
+	srcs, err := sources.Load(opts.ConfigDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := sources.Reconcile(opts.ConfigDir); err != nil {
+		return nil, err
+	}
+	if err := seedRoleBindings(opts.ConfigDir); err != nil {
+		return nil, err
+	}
 	// Write chartr's file-format contract and create the operator's preferences
 	// file, both under the config root (skill-sources ticket 03). Startup is the
 	// first of two reconcile points; every composition is the other, so an upgrade
@@ -131,6 +153,7 @@ func New(opts Options) (*Server, error) {
 		hub:      newHub(),
 		mux:      http.NewServeMux(),
 		reg:      reg,
+		srcs:     srcs,
 		notifier: opts.Notifier,
 	}
 	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild

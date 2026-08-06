@@ -124,14 +124,16 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 		t.Fatalf("payload preview = %d, body %s", code, body)
 	}
 
-	// Core comes first, then the chosen role, both shipped built-in by default.
+	// Core comes first, shipped built-in; then the chosen role, resolved through
+	// its seeded binding into the default source rather than through the layers
+	// (skill-sources ticket 05).
 	core := findPart(t, p, "core")
 	if got := segLayers(core); len(got) != 1 || got[0] != "built-in" {
 		t.Errorf("core layers = %v, want [built-in]", got)
 	}
 	impl := findPart(t, p, "implement")
-	if got := segLayers(impl); len(got) != 1 || got[0] != "built-in" {
-		t.Errorf("implement layers = %v, want [built-in]", got)
+	if got := segLayers(impl); len(got) != 1 || got[0] != "chartr-skills" {
+		t.Errorf("implement layers = %v, want [chartr-skills]", got)
 	}
 	if !strings.Contains(segText(impl), "implementation map") {
 		t.Errorf("implement prompt missing its shipped content:\n%s", segText(impl))
@@ -290,9 +292,11 @@ func TestSkillShadowingMatrix(t *testing.T) {
 		t.Errorf("frontmatter leaked into the composed body:\n%s", txt)
 	}
 
-	// Shadowing is per skill: the role skill is untouched by any of it.
-	if got := segLayers(findPart(t, p, "grill")); !equalStrings(got, []string{"built-in"}) {
-		t.Errorf("grill layers = %v, want the untouched [built-in]", got)
+	// Shadowing is per skill, and it does not reach the role at all: the role
+	// resolves through its binding into the operator's sources, so nothing written
+	// into a skill layer can move it (skill-sources ticket 05).
+	if got := segLayers(findPart(t, p, "grill")); !equalStrings(got, []string{"chartr-skills"}) {
+		t.Errorf("grill layers = %v, want the untouched [chartr-skills]", got)
 	}
 }
 
@@ -308,7 +312,10 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	resp := register(t, h, repo)
 
 	// A stale fork: a skill recording a `forked_from` that is not the shipped hash.
-	writeUserSkill(t, h.ConfigDir, "implement", "forked_from: deadbeef\n", "MY OWN IMPLEMENT SKILL")
+	// The subject is `core`, the one skill still resolved through the layers — the
+	// role half now comes from the operator's sources and carries no fork marker
+	// (skill-sources ticket 05); the whole provenance machinery goes with ticket 09.
+	writeUserSkill(t, h.ConfigDir, "core", "forked_from: deadbeef\n", "MY OWN CORE SKILL")
 
 	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "implement")
 	if !hasSubstring(p.Warnings, "behind the shipped default") {
@@ -316,8 +323,8 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	}
 	// The frontmatter is stripped from the composed body — meta never leaks into
 	// the payload.
-	if strings.Contains(segText(findPart(t, p, "implement")), "forked_from") {
-		t.Errorf("fork frontmatter leaked into the payload:\n%s", segText(findPart(t, p, "implement")))
+	if strings.Contains(segText(findPart(t, p, "core")), "forked_from") {
+		t.Errorf("fork frontmatter leaked into the payload:\n%s", segText(findPart(t, p, "core")))
 	}
 	// It is also surfaced on the space, so a stale fork is visible without opening
 	// the preview. The library lives under the data root, not the watched `.plan/`,
@@ -331,7 +338,7 @@ func TestBehindDefaultSurfaced(t *testing.T) {
 	}
 
 	// A fork recording the *current* shipped hash is owned, not behind.
-	writeUserSkill(t, h.ConfigDir, "implement", "forked_from: "+prompt.ShippedHash("implement")+"\n", "MY OWN IMPLEMENT SKILL")
+	writeUserSkill(t, h.ConfigDir, "core", "forked_from: "+prompt.ShippedHash("core")+"\n", "MY OWN CORE SKILL")
 	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "implement")
 	if hasSubstring(p.Warnings, "behind the shipped default") {
 		t.Errorf("a fork on the current default should not warn: %v", p.Warnings)
@@ -348,21 +355,24 @@ func TestMaterializedLibraryEditsCompose(t *testing.T) {
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
-	// The library was materialized on start; edit a role skill in place.
-	materialized := filepath.Join(h.ConfigDir, "builtin-skills", "research", "SKILL.md")
+	// The library was materialized on start; edit the core skill in place. `core`
+	// is the subject because it is the one skill still resolved through the layers
+	// — the roles now resolve through their bindings into the operator's sources
+	// (skill-sources ticket 05).
+	materialized := filepath.Join(h.ConfigDir, "builtin-skills", "core", "SKILL.md")
 	if _, err := os.Stat(materialized); err != nil {
 		t.Fatalf("library was not materialized: %v", err)
 	}
-	if err := os.WriteFile(materialized, []byte(skillSource("research", "", "EDITED-RESEARCH-SKILL on disk.")), 0o644); err != nil {
+	if err := os.WriteFile(materialized, []byte(skillSource("core", "", "EDITED-CORE-SKILL on disk.")), 0o644); err != nil {
 		t.Fatalf("editing materialized skill: %v", err)
 	}
 
 	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "research")
-	research := findPart(t, p, "research")
-	if !strings.Contains(segText(research), "EDITED-RESEARCH-SKILL") {
-		t.Errorf("edit to the materialized library did not compose:\n%s", segText(research))
+	core := findPart(t, p, "core")
+	if !strings.Contains(segText(core), "EDITED-CORE-SKILL") {
+		t.Errorf("edit to the materialized library did not compose:\n%s", segText(core))
 	}
-	if got := research.Segments[0].Layer; got != "built-in" {
+	if got := core.Segments[0].Layer; got != "built-in" {
 		t.Errorf("materialized base layer = %q, want built-in", got)
 	}
 }

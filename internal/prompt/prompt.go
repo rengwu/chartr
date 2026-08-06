@@ -157,6 +157,15 @@ type Skill struct {
 	Hash        string `json:"hash"`
 	Stale       bool   `json:"stale,omitempty"`
 
+	// Source and Commit name where a skill resolved from once it comes through the
+	// source registry rather than the three layers: the registered source's name,
+	// and the commit that source is pinned at where it carries one. A skill with a
+	// Source has no Layer and no Hash — the pair replaces both on the claim
+	// trailer, because a source name plus a commit identifies bytes a teammate can
+	// fetch, where a content hash only says that something differed.
+	Source string `json:"source,omitempty"`
+	Commit string `json:"commit,omitempty"`
+
 	// OnRamp marks a self-driving skill the launcher may open cold from the
 	// sidebar (`on-ramp: true` in its frontmatter). NeedsContext marks one that
 	// offers an optional one-line context box before it launches

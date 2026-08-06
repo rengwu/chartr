@@ -86,7 +86,13 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 // there now", and a first registration on a machine with no config yet is the
 // ordinary case, not an error.
 func (s *Server) readUserConfig() (string, []byte, error) {
-	path := filepath.Join(s.opts.ConfigDir, userConfigName)
+	return readUserConfigAt(s.opts.ConfigDir)
+}
+
+// readUserConfigAt is the same read against a config root alone, for the startup
+// writes that happen before there is a Server to ask.
+func readUserConfigAt(configDir string) (string, []byte, error) {
+	path := filepath.Join(configDir, userConfigName)
 	b, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return path, nil, err

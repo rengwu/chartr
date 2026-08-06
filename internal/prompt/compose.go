@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/sources"
 )
 
 // Blocker is one of a ticket's blockers as the context bundle carries it: its
@@ -41,6 +42,13 @@ type ComposeInput struct {
 	// assembles anything. Empty skips the reconcile, which is for tests that
 	// compose without a config root at all.
 	ConfigDir string
+	// Sources and Bindings are how the *role* half of the payload resolves: the
+	// operator's ordered source list, and the `[roles]` table saying which
+	// source-qualified skill each role spawns with. A nil registry keeps the layer
+	// resolution, which is what this package's own tests compose against; every
+	// path in the server passes one, and the layers go away with ticket 09.
+	Sources  *sources.Registry
+	Bindings config.RoleBindings
 }
 
 // Compose assembles the payload a session for this ticket and role would be told:
@@ -65,18 +73,41 @@ func Compose(in ComposeInput) (Payload, error) {
 	var warnings []string
 	var skills []Skill
 	var parts []Part
-	for _, name := range []string{CoreSkill, in.Role} {
-		s, ok := Resolve(name, in.Roots)
-		if !ok {
-			return Payload{}, fmt.Errorf("no %q skill in any layer", name)
-		}
+
+	// The core is chartr's own and still resolves through the layers; the role is
+	// the operator's, and resolves through their binding table into their sources.
+	core, ok := Resolve(CoreSkill, in.Roots)
+	if !ok {
+		return Payload{}, fmt.Errorf("no %q skill in any layer", CoreSkill)
+	}
+	role, err := in.roleSkill()
+	if err != nil {
+		// An unresolvable binding stops here, which is the whole enforcement: the
+		// spawn path aborts on this error before it writes the claim commit.
+		return Payload{}, err
+	}
+	for _, p := range []struct {
+		name  string
+		skill Skill
+	}{{CoreSkill, core}, {in.Role, role}} {
+		s := p.skill
 		if s.Stale {
 			warnings = append(warnings, staleWarning(s))
 		}
 		skills = append(skills, s)
+		// A sourced skill's provenance tag is the source's name — the same thing a
+		// layer tag was for, now naming a place the operator registered rather than
+		// one of three fixed roots.
+		tag := s.Layer
+		if s.Source != "" {
+			tag = s.Source
+		}
 		parts = append(parts, Part{
-			Name: name, Kind: "prompt",
-			Segments: []Segment{{Layer: s.Layer, Label: "skill", Text: s.Body}},
+			// The part keeps the *role's* name, not the bound skill's: the preview
+			// reads as "what the grill role got", and a role may be bound to a skill
+			// called something else entirely.
+			Name: p.name, Kind: "prompt",
+			Segments: []Segment{{Layer: tag, Label: "skill", Text: s.Body}},
 		})
 	}
 
@@ -120,6 +151,21 @@ func Compose(in ComposeInput) (Payload, error) {
 		Warnings:  warnings,
 		Markdown:  renderMarkdown(parts),
 	}, nil
+}
+
+// roleSkill resolves the role half of the payload: through the operator's
+// binding table and source list when a registry is present, and through the three
+// layers when it is not (this package's own tests, which compose with roots
+// alone). The layer fallback goes away when ticket 09 deletes the layer model.
+func (in ComposeInput) roleSkill() (Skill, error) {
+	if in.Sources != nil {
+		return resolveRoleSkill(in.Sources, in.Bindings, in.Role)
+	}
+	s, ok := Resolve(in.Role, in.Roots)
+	if !ok {
+		return Skill{}, fmt.Errorf("no %q skill in any layer", in.Role)
+	}
+	return s, nil
 }
 
 // AnswerSection returns a ticket's closing answer prose for inlining as a
