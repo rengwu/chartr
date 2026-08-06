@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: sc617a7e5557c
+claimed_at: 2026-08-06T11:17:15Z
 ---
 
 # The chartr-skills repo
