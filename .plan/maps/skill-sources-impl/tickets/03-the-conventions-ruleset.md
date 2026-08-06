@@ -71,8 +71,8 @@ today. `go vet`, `go test`, and the frontend `check`/`build`/`vitest` pass.
 
 ## Answer
 
-Two commits: the contract ([`a221c34`](#)) and the discovery narrowing
-([`90057af`](#)), split so the second can be reverted alone.
+Two commits: the contract (`a221c34`) and the discovery narrowing (`90057af`),
+split so the second can be reverted alone.
 
 **The document** is `internal/prompt/assets/conventions.md`, embedded as a string.
 It opens with the applicability rule (work asked to be charted into a map, created
