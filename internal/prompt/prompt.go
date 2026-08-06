@@ -52,15 +52,13 @@ const (
 
 // The skills chartr knows by name. CoreSkill is the common core — read straight
 // out of the binary by composition, never through the layers, because it is
-// chartr's own voice and not the operator's to shadow; IdeateSkill is the ideate
-// on-ramp, composed alone (no core, no context bundle) because an ideate session
-// is ticketless and mapless. The four method skills — WayfinderSkill,
-// DomainSkill, SpecSkill, TicketsSkill — are shipped, resolved, and materialized
-// like the rest, but never auto-composed into a session payload: they serve
-// charting, speccing, and ticket-breaking work done outside a composed session.
+// chartr's own voice and not the operator's to shadow. The four method skills —
+// WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill — are shipped, resolved,
+// and materialized like the rest, but never auto-composed into a session payload:
+// they serve charting, speccing, and ticket-breaking work done outside a composed
+// session.
 const (
-	CoreSkill   = "core"
-	IdeateSkill = "ideate"
+	CoreSkill = "core"
 
 	WayfinderSkill = "wayfinder"
 	DomainSkill    = "domain-modeling"
@@ -161,15 +159,6 @@ type Skill struct {
 	Source string `json:"source,omitempty"`
 	Commit string `json:"commit,omitempty"`
 
-	// OnRamp marks a self-driving skill the launcher may open cold from the
-	// sidebar (`on-ramp: true` in its frontmatter). NeedsContext marks one that
-	// offers an optional one-line context box before it launches
-	// (`needs-context: true`). Both ride whole-skill shadowing: a shadowing
-	// layer's SKILL.md declares its own flags, so a user or workspace skill sets
-	// its own on-ramp status.
-	OnRamp       bool `json:"onRamp,omitempty"`
-	NeedsContext bool `json:"needsContext,omitempty"`
-
 	Body string `json:"-"`
 }
 
@@ -205,15 +194,14 @@ type Payload struct {
 	Markdown  string   `json:"markdown"`
 }
 
-// Names lists the skills chartr ships, in a stable order: the core, the
-// roles, the ideate on-ramp, then the four method skills.
+// Names lists the skills chartr ships, in a stable order: the core, the roles,
+// then the four method skills.
 func Names() []string {
 	names := []string{CoreSkill}
 	for _, r := range config.Roles {
 		names = append(names, string(r))
 	}
-	return append(names, IdeateSkill,
-		WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill)
+	return append(names, WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill)
 }
 
 // shortHash is the 8-hex prefix of a content hash — short enough to read in
@@ -347,15 +335,13 @@ func joinSkill(root, name string) string {
 func newSkill(name, layer, dir string, files map[string][]byte) Skill {
 	meta, body := splitFrontmatter(string(files[skillFile]))
 	s := Skill{
-		Name:         name,
-		Layer:        layer,
-		Dir:          dir,
-		Description:  meta["description"],
-		ForkedFrom:   strings.ToLower(meta["forked_from"]),
-		Hash:         hashFiles(files),
-		OnRamp:       parseBool(meta["on-ramp"]),
-		NeedsContext: parseBool(meta["needs-context"]),
-		Body:         strings.TrimSpace(body),
+		Name:        name,
+		Layer:       layer,
+		Dir:         dir,
+		Description: meta["description"],
+		ForkedFrom:  strings.ToLower(meta["forked_from"]),
+		Hash:        hashFiles(files),
+		Body:        strings.TrimSpace(body),
 	}
 	s.Stale = s.ForkedFrom != "" && s.ForkedFrom != ShippedHash(name)
 	return s
@@ -526,24 +512,6 @@ func Launch(roots Roots, skill, context string) []byte {
 		body += "\n\n---\n\n## Your task\n\n" + c
 	}
 	return []byte(body)
-}
-
-// Ideate returns the ideate on-ramp's resolved body — Launch pinned to the ideate
-// skill with no context, kept so the `/ideate` route and its callers read
-// unchanged while the launcher generalises the same spine to any on-ramp skill.
-func Ideate(roots Roots) string {
-	return string(Launch(roots, IdeateSkill, ""))
-}
-
-// parseBool reads a frontmatter boolean flag tolerantly (true/false, yes/1, and
-// their casings); anything it cannot read as true is false, so an absent or
-// malformed flag simply leaves the skill off the launcher.
-func parseBool(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "true", "yes", "1":
-		return true
-	}
-	return false
 }
 
 // splitFrontmatter peels a leading `---` delimited block off a SKILL.md, returning

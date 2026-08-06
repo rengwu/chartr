@@ -10,7 +10,7 @@
     resumeSession,
     respawnSession,
     releaseSession,
-    launch,
+    launchFree,
     pickFolder,
     registerSpace,
     reorderSpaces,
@@ -438,22 +438,20 @@
     await openShell(scratch);
   }
 
-  // The skill launcher (skill-launcher map): the space card's on-ramp control runs
-  // any self-driving skill on a chosen agent as a live, ticketless tab — shares
-  // only the spawn primitive with a real session, so it opens exactly like a shell
-  // (no role picker, no ticket, nothing to gate on). ideate is now just the
-  // `skill=ideate` case of this one launch. It names the agent that runs it
-  // (agent-selection ticket 03), and carries the optional one line a
-  // `needs-context` skill asked for — absent for every bare launch, which is the
-  // whole of the self-driving ones.
-  async function launchSpace(space: Space, agent: string, skill: string, context?: string) {
+  // The new-shell control's agent rows (skill-sources ticket 08): a free session
+  // on the agent the operator clicked — a live, ticketless tab told the free
+  // payload, which shares only the spawn primitive with a real session, so it
+  // opens exactly like a shell (no role picker, no ticket, nothing to gate on).
+  // It names the agent that runs it (agent-selection ticket 03) and sends nothing
+  // else: a free session takes no skill and no context line.
+  async function freeSession(space: Space, agent: string) {
     selectSpace(space.id);
     opening = true;
     try {
-      const { id } = await launch(space.id, agent, skill, context);
+      const { id } = await launchFree(space.id, agent);
       activeTermId = id;
     } catch (e) {
-      actionError = `Couldn’t launch ${skill}: ${(e as Error).message}`;
+      actionError = `Couldn’t start a session on ${agent}: ${(e as Error).message}`;
     } finally {
       opening = false;
     }
@@ -709,8 +707,7 @@
               onendshell={(t) => endShell(space, t)}
               onhalt={(t, verb) => haltAction(space, t, verb, HALT_ACTIONS[verb])}
               onopenshell={() => openShell(space)}
-              onlaunch={(agent, skill, context) =>
-                launchSpace(space, agent, skill, context)}
+              onfreesession={(agent) => freeSession(space, agent)}
               onregister={() => openSettings({ kind: "user" })}
             />
           {:else}
@@ -841,7 +838,7 @@
           terminalPrefs={control.model?.terminal}
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
-          onLaunch={(agent, skill, context) => launchSpace(selected, agent, skill, context)}
+          onFreeSession={(agent) => freeSession(selected, agent)}
           onOpenSettings={titleBarH
             ? undefined
             : () => openSettings(lastSettingsScope ?? { kind: "default" })}

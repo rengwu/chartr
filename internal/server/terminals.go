@@ -36,62 +36,36 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})
 }
 
-// handleLaunch is the skill launcher's endpoint: it runs any *on-ramp* skill on a
-// chosen agent as a live, ticketless tab, with an optional line of context. It
-// generalises the ideate on-ramp (ticket 15) rather than adding a parallel path —
-// ideate is just the `skill=ideate` case, and `handleIdeate` below delegates
-// here. It is the one opinionated nudge toward charting grown into a picker: an
+// handleFree is the new-shell control's endpoint: it starts a **free session** —
+// an agent chartr launched into a space with no ticket and no role, told what
+// chartr is and what skills exist and nothing about how to behave. It is an
 // operator affordance, not a role, so it shares only the adapter's spawn primitive
 // with a real session — no map or ticket is looked up, no claim is written, and
 // the tab it seats carries no Session, so it reads and ends exactly like an ad-hoc
 // shell (never the session grammar, never the death halt).
-func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleFree(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.repoSpace(w, r)
 	if !ok {
 		return
 	}
-	// The picker sends the agent, the on-ramp skill it chose, and — for a skill
-	// that offers it — an optional line of context. An empty context is valid and
-	// launches the skill bare.
-	var body struct {
-		Agent   string `json:"agent"`
-		Skill   string `json:"skill"`
-		Context string `json:"context"`
-	}
-	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&body)
-	}
-	s.launchOnRamp(w, e, body.Agent, body.Skill, body.Context)
-}
-
-// handleIdeate keeps the `/ideate` route working as a thin delegate to the launch
-// spine with `skill=ideate` and no context, so nothing mid-flight breaks while the
-// frontend moves to `/launch`. It names its agent explicitly, exactly as a session
-// does (ticket 03) — the operator sees and chooses what their on-ramp runs.
-func (s *Server) handleIdeate(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.repoSpace(w, r)
-	if !ok {
-		return
-	}
-	// An empty body is still a well-formed request that named no agent, which
-	// agentSpec refuses with the same message as any other nameless one.
+	// The menu sends the agent it was clicked on, and nothing else: a free session
+	// takes no skill and no context line — the operator types their first message
+	// into the live TUI, which is what the TUI is for.
 	var body struct {
 		Agent string `json:"agent"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
-	s.launchOnRamp(w, e, body.Agent, prompt.IdeateSkill, "")
+	s.launchFree(w, e, body.Agent)
 }
 
-// launchOnRamp is the shared launch spine: settle the chosen agent, refuse a skill
-// the resolved library does not mark on-ramp, compose that skill's payload alone
-// (with the optional context riding inside it), write it to the gitignored run
-// directory, launch the agent's TUI with the read-this-file opener, and remember
-// the agent. It is the generalisation of the old ideate handler — every refusal is
-// the same one a spawn gives, in the same order (ticket 04), and a refusal opens
-// nothing and writes nothing.
-func (s *Server) launchOnRamp(w http.ResponseWriter, e registry.Entry, agent, skill, context string) {
+// launchFree is the free-session spine: settle the chosen agent, compose the free
+// payload, write it to the gitignored run directory, launch the agent's TUI with
+// the read-this-file opener, and remember the agent. Every refusal is the same one
+// a spawn gives, in the same order (agent-selection ticket 04), and a refusal
+// opens nothing and writes nothing.
+func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent string) {
 	// The same doorstep, the same refusals, in the same order a spawn gives them.
 	spec, status, err := agentSpec(s.resolve(e), agent)
 	if err != nil {
@@ -99,21 +73,18 @@ func (s *Server) launchOnRamp(w http.ResponseWriter, e registry.Entry, agent, sk
 		return
 	}
 
-	// The pushed library is the allowlist: the server launches only a skill it
-	// resolves as `on-ramp`, never one the client merely named (as spawn refuses a
-	// non-role). This is what keeps an augmentative or second-step skill — core,
-	// to-tickets, implement — off the launcher even if a stale client asks for it.
-	roots := s.skillRoots(e.Path)
-	sk, ok := prompt.Resolve(skill, roots)
-	if !ok || !sk.OnRamp {
-		httpError(w, http.StatusBadRequest, "skill "+skill+" is not an on-ramp skill")
+	payload, err := prompt.ComposeFree(s.opts.ConfigDir, s.srcs)
+	if err != nil {
+		// Nothing here is the caller's input; a failure is an unreadable
+		// preferences file, which is the operator's to fix on disk.
+		httpError(w, http.StatusInternalServerError, "composing the free payload: "+err.Error())
 		return
 	}
 
 	id := newSessionID()
-	promptPath, err := s.writeSessionPayload(e.Path, id, string(prompt.Launch(roots, skill, context)))
+	promptPath, err := s.writeSessionPayload(e.Path, id, payload.Markdown)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the launch prompt: "+err.Error())
+		httpError(w, http.StatusInternalServerError, "writing the free payload: "+err.Error())
 		return
 	}
 
@@ -123,15 +94,18 @@ func (s *Server) launchOnRamp(w http.ResponseWriter, e registry.Entry, agent, sk
 		Prompt:  adapter.Opener(promptPath),
 		Deliver: spec.Prompt,
 	})
-	t, err := s.terms.OpenOnRamp(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, skill, spec.Adapter)
+	// Titled by the agent's registered name — the tab is titled by the thing the
+	// operator clicked, which is the only labelling rule that never needs
+	// explaining. Three free sessions on one agent get three identical titles, as
+	// every ad-hoc shell in a space is titled `zsh` today.
+	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, spec.Name, spec.Adapter)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "opening the launch tab: "+err.Error())
+		httpError(w, http.StatusInternalServerError, "opening the free tab: "+err.Error())
 		return
 	}
 
-	// The space remembers what it just spawned with, so the next launch or spawn
-	// here is one click — the same rule a real spawn follows (spawn.go). There is no
-	// remembered *skill*: the launcher is always a dropdown the operator picks from.
+	// The space remembers what it just spawned with, so the next free session or
+	// spawn here is one click — the same rule a real spawn follows (spawn.go).
 	if spec.Name != "" {
 		if err := s.reg.SetLastAgent(e.ID, spec.Name); err == nil {
 			s.rebuild()

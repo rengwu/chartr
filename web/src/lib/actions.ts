@@ -133,39 +133,17 @@ export function markTerminalSeen(spaceId: string, termId: string): Promise<void>
   ) as Promise<void>
 }
 
-// ideate opens the ideate on-ramp (ticket 15): a live, ticketless agent tab typed
-// the on-disk starter prompt on open. It shares only the adapter's spawn
-// primitive with a real session — no map or ticket, no claim, no lifecycle, ended
-// only by the human, exactly like an ad-hoc shell — and returns the new tab's id.
-//
-// It names its agent like every other spawn (ticket 03): ideate used to borrow
-// the `grill` role's binding, which appeared on no surface. There is no role
-// behind it to fall back on, so the name is always sent.
-export function ideate(id: string, agent = ''): Promise<{ id: string }> {
-  return send('POST', `/api/spaces/${encodeURIComponent(id)}/ideate`, {
-    agent,
-  }) as Promise<{
-    id: string
-  }>
-}
-
-// launch is the skill launcher's spine (skill-launcher ticket 01/02): it runs one
-// *on-ramp* skill on a chosen agent as a live, ticketless tab — the generalisation
-// of `ideate`, which is just the `skill=ideate` case. It names its agent like every
-// spawn, and passes an optional line of `context` for a skill that offers one (03);
-// bare is valid and correct for the self-driving skills. The server refuses any
-// skill the resolved library does not mark on-ramp — the pushed library is the
-// allowlist — and remembers the agent, not the skill.
-export function launch(
-  id: string,
-  agent: string,
-  skill: string,
-  context = '',
-): Promise<{ id: string }> {
+// launchFree starts a **free session** in a space on a chosen agent (skill-sources
+// ticket 08): a live, ticketless tab told the free payload — what chartr is and
+// what skills exist, and nothing about how to behave. It shares only the adapter's
+// spawn primitive with a real session (no map or ticket, no claim, no lifecycle,
+// ended only by the human, exactly like an ad-hoc shell) and returns the new tab's
+// id. It names its agent like every other spawn (agent-selection ticket 03): there
+// is no role behind it to fall back on, so the name is always sent. There is
+// nothing else to send — a free session takes no skill and no context line.
+export function launchFree(id: string, agent: string): Promise<{ id: string }> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/launch`, {
     agent,
-    skill,
-    context,
   }) as Promise<{ id: string }>
 }
 

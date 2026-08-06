@@ -354,57 +354,31 @@ func (h *Chartr) OpenTerminal(spaceID string) string {
 	return r.ID
 }
 
-// Ideate opens the ideate on-ramp in the space on a named registered agent and
-// returns its tab id (ticket 15). Ideate names its agent like every other spawn
-// (ticket 03), so — unlike Spawn — there is one helper and it always says which:
-// there is no role behind it to fall back to. It fails the test on a non-200
-// response; IdeateRaw is the way to assert a refusal.
-func (h *Chartr) Ideate(spaceID, agent string) string {
+// Launch starts a free session in the space on a named registered agent and
+// returns its tab id. A free session names its agent like every other spawn
+// (agent-selection ticket 03), so — unlike Spawn — there is one helper and it
+// always says which: there is no role behind it to fall back to. It fails the test
+// on a non-200; LaunchRaw is the way to assert a refusal.
+func (h *Chartr) Launch(spaceID, agent string) string {
 	h.t.Helper()
-	code, body := h.IdeateRaw(spaceID, agent)
+	code, body := h.LaunchRaw(spaceID, agent)
 	if code != 200 {
-		h.t.Fatalf("chartrtest: ideate in %s with %q = %d, body %s", spaceID, agent, code, body)
+		h.t.Fatalf("chartrtest: free session in %s with %q = %d, body %s", spaceID, agent, code, body)
 	}
 	var r struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(body), &r); err != nil {
-		h.t.Fatalf("chartrtest: ideate response not JSON: %v (%q)", err, body)
+		h.t.Fatalf("chartrtest: free-session response not JSON: %v (%q)", err, body)
 	}
 	return r.ID
 }
 
-// IdeateRaw posts the ideate action and returns the status code and body, so a
-// test can assert a refusal — an unregistered agent, or one whose binary is gone.
-func (h *Chartr) IdeateRaw(spaceID, agent string) (int, string) {
+// LaunchRaw posts the free-session action and returns the status code and body, so
+// a test can assert a refusal — an unregistered agent, or one whose binary is gone.
+func (h *Chartr) LaunchRaw(spaceID, agent string) (int, string) {
 	h.t.Helper()
-	return h.Post("/api/spaces/"+spaceID+"/ideate", map[string]string{"agent": agent})
-}
-
-// Launch opens an on-ramp skill in the space on a named agent, with an optional
-// line of context, and returns its tab id (ticket 01). It fails the test on a
-// non-200; LaunchRaw is the way to assert a refusal — a non-on-ramp skill, or an
-// agent the library cannot run.
-func (h *Chartr) Launch(spaceID, agent, skill, context string) string {
-	h.t.Helper()
-	code, body := h.LaunchRaw(spaceID, agent, skill, context)
-	if code != 200 {
-		h.t.Fatalf("chartrtest: launch %q in %s with %q = %d, body %s", skill, spaceID, agent, code, body)
-	}
-	var r struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(body), &r); err != nil {
-		h.t.Fatalf("chartrtest: launch response not JSON: %v (%q)", err, body)
-	}
-	return r.ID
-}
-
-// LaunchRaw posts the launch action and returns the status code and body.
-func (h *Chartr) LaunchRaw(spaceID, agent, skill, context string) (int, string) {
-	h.t.Helper()
-	return h.Post("/api/spaces/"+spaceID+"/launch",
-		map[string]string{"agent": agent, "skill": skill, "context": context})
+	return h.Post("/api/spaces/"+spaceID+"/launch", map[string]string{"agent": agent})
 }
 
 // Spawn posts a spawn action for a ticket and role and returns the status code

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Agent, Space, Terminal } from "./model";
   import type { DropEdge } from "./reorder";
-  import SkillLauncher from "./SkillLauncher.svelte";
+  import NewShellButton from "./NewShellButton.svelte";
   import { Button } from "./components/ui/button";
   import { spaceAttention, spaceLiveness } from "./attention";
   import { showsFinishedDot } from "./unseen";
@@ -17,8 +17,6 @@
     Warning,
     PauseCircle,
     GitBranchIcon,
-    Plus,
-    PlusIcon,
   } from "phosphor-svelte";
 
   // The three choices a dead session offers. The card names the choice; the
@@ -46,7 +44,7 @@
     onendshell,
     onhalt,
     onopenshell,
-    onlaunch,
+    onfreesession,
     onregister,
   }: {
     space: Space;
@@ -60,10 +58,10 @@
     // paints one.
     activeTermId: string | null;
     // The registered agent library — global, the same list whatever space is in
-    // view — handed straight to the skill launcher's agent picker.
+    // view — handed straight to the new-shell menu, in registration order.
     agents: Agent[];
-    // A launch or shell-open is in flight somewhere in the chrome; the on-ramps
-    // disable while it is, so one click cannot start two tabs.
+    // A free session or shell-open is in flight somewhere in the chrome; the
+    // control disables while it is, so one click cannot start two tabs.
     opening?: boolean;
     // Whether this row can be dragged to a new place in the sidebar. It is the
     // chrome's call, not the card's: a drop position inside a *filtered* sidebar
@@ -94,9 +92,10 @@
     onendshell: (t: Terminal) => void;
     onhalt: (t: Terminal, verb: HaltVerb) => void;
     onopenshell: () => void;
-    // The launch the skill launcher settled: the chosen agent, the skill, and the
-    // optional one line a `needs-context` skill asked for.
-    onlaunch: (agent: string, skill: string, context?: string) => void;
+    // The free session the new-shell menu settled: the agent the operator clicked.
+    // It takes no skill and no context line — a free session is told the free
+    // payload and nothing else.
+    onfreesession: (agent: string) => void;
     // Where an empty agent library sends the operator: the registration surface.
     onregister: () => void;
   } = $props();
@@ -159,7 +158,7 @@
     suppressClick = false;
     if (!reorderable || !e.isPrimary || e.button !== 0) return;
     // Controls inside the card own their own gestures — the forget button, the
-    // branch copy, the launcher's menu, and the session rows, which are click
+    // branch copy, the new-shell menu, and the session rows, which are click
     // targets that switch the shell in view. A press on one is never a grab, and
     // each shows the pointer rather than the card's open hand: the affordance
     // and what the press actually does have to agree.
@@ -576,9 +575,9 @@
     </ul>
   {/if}
 
-  <!-- Actions: the two ticketless on-ramps — ideate and a plain
-       shell — sharing their row with the branch, which doubles as
-       the spacer that pushes them right. The branch is a real ghost
+  <!-- Actions: the one ticketless on-ramp — the new-shell split button —
+       sharing its row with the branch, which doubles as
+       the spacer that pushes it right. The branch is a real ghost
        Button rather than a bare span with a handler: it is a control
        inside a control, so it earns the same hover, focus ring and
        keyboard reach every other action in this row has. The size
@@ -586,9 +585,9 @@
        overrides both — it still has to truncate and still has to be
        the spacer.
 
-       Scratch honours none of the three: it is not a repository, so a
-       branch chip would tell the operator something false, and neither
-       on-ramp can act on a space with no map and no repository. That
+       Scratch honours neither: it is not a repository, so a
+       branch chip would tell the operator something false, and the
+       on-ramp cannot act on a space with no map and no repository. That
        empties the row, so the row itself does not render — the card's
        own `gap-2` would otherwise leave a blank strip under the shells.
        The shell rows above stay, and so does the grab: it is reorderable
@@ -626,38 +625,22 @@
           </Button>
         {/if}
       </span>
-      <!-- The skill launcher (skill-launcher map): one `Skills ▾` menu —
-           the agent picker over the on-ramp skills. The row's own click
-           just selects the space, which the launch does anyway, so this
-           one deliberately does not stop propagation — the dropdown
-           trigger has no click handler of its own to protect. The agent's
-           model and the skill name live in the menu, not on this cramped
-           label. -->
-      <SkillLauncher
+      <!-- The new-shell control (skill-sources ticket 08): one split button
+           where the launcher and the `+` shell button used to sit side by
+           side. The row is shorter for it, and the branch chip — which
+           doubles as the spacer — gains the width. The row's own click just
+           selects the space, which either action does anyway, so the caret
+           deliberately does not stop propagation; the body does, because it
+           has a handler of its own to protect. -->
+      <NewShellButton
         {agents}
-        lastAgent={space.lastAgent}
-        skills={space.skills}
-        label="Skills"
         disabled={opening}
-        size="xs"
-        ariaLabel="Launch a skill in {space.name}"
-        title="Launch a self-driving skill in {space.name} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it."
-        onrun={onlaunch}
+        ariaLabel="Open a shell in {space.name}"
+        title="Open a plain shell in {space.name} — nothing is injected. The caret starts a free session on a registered agent instead."
+        onshell={onopenshell}
+        onfree={onfreesession}
         {onregister}
-      ></SkillLauncher>
-      <Button
-        variant="outline"
-        size="xs"
-        aria-label="Open a shell in {space.name}"
-        title="Open a shell in {space.name}"
-        disabled={opening}
-        onclick={(e) => {
-          e.stopPropagation();
-          onopenshell();
-        }}
-      >
-        <PlusIcon />
-      </Button>
+      />
     </div>
   {/if}
 </div>
