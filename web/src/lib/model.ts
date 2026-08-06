@@ -325,26 +325,28 @@ export interface TerminalPrefs {
   brightWhite?: string
 }
 
-// The payload preview (ticket 08): exactly what a session for a ticket and role
-// would be told, with per-part layer provenance. `layer` is the config layer a
-// skill segment resolved from, or 'context' for an assembled bundle artifact.
-export type PartLayer = Layer | 'context'
+// The payload preview: exactly what a session would be told, with per-part
+// provenance. `origin` is an open string — 'chartr' for the embedded core and the
+// conventions pointer, 'operator' for preferences, 'context' for anything
+// assembled at compose time, and otherwise the *registered source's name* for a
+// resolved skill body, which is the badge that answers the one silent failure
+// source order can cause.
+export type PartOrigin = 'chartr' | 'operator' | 'context' | (string & {})
 
-export interface PayloadSegment {
-  layer: PartLayer
+// A labelled block of the payload — chartr's core, a resolved role skill, the
+// conventions pointer or the operator's preferences (`kind: 'prompt'`), or an
+// assembled context artifact (`kind: 'context'`: the sources block, the map body,
+// the ticket, a blocker's answer). One block of text, never a segment list.
+export interface PayloadPart {
+  name: string
+  kind: 'prompt' | 'context'
+  origin: PartOrigin
   label?: string
   text: string
 }
 
-// A labelled block of the payload — a resolved skill (`kind: 'prompt'`, e.g.
-// core or a role) or an assembled context artifact (`kind: 'context'`, e.g. the
-// glossary, map body, ticket, or a blocker's answer).
-export interface PayloadPart {
-  name: string
-  kind: 'prompt' | 'context'
-  segments: PayloadSegment[]
-}
-
+// `role` and `ticketNum` are empty on a free session's payload, which belongs to
+// no ticket and no role.
 export interface Payload {
   role: string
   ticketNum: number

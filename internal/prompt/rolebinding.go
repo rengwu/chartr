@@ -50,6 +50,10 @@ func resolveRoleSkill(reg *sources.Registry, bindings config.RoleBindings, role 
 	if err != nil {
 		return Skill{}, err
 	}
+	if reg == nil {
+		return Skill{}, fmt.Errorf(
+			"the %s role is bound to %q, but no source list was loaded, so nothing can resolve it", role, ref)
+	}
 	found, err := reg.Resolve(ref)
 	if err != nil {
 		return Skill{}, fmt.Errorf("the %s role is bound to %q, which resolves to nothing: %w", role, ref, err)

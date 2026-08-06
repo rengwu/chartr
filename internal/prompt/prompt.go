@@ -16,12 +16,13 @@
 // and is surfaced as behind, never auto-merged.
 //
 // chartr keeps composing the payload itself (ADR 0002, reaffirmed): it reads
-// the resolved core + role bodies with their frontmatter stripped and assembles
-// them with a context bundle (map body, ticket, blockers' answers, and the
-// glossary sourced from the `tracker-convention` skill) into one markdown
-// document, built fresh every time and never accumulated. Supporting files stay
-// on disk rather than being inlined, so a session can zoom into them on demand at
-// no payload cost.
+// chartr's embedded core and the bound role's body with its frontmatter stripped,
+// appends the conventions pointer and the operator's preferences, and assembles
+// them with a context region (the sources block, and for a ticket session the map
+// body, the ticket, and its blockers' answers) into one markdown document, built
+// fresh every time and never accumulated. Supporting files stay on disk rather
+// than being inlined, so a session can zoom into them on demand at no payload
+// cost.
 package prompt
 
 import (
@@ -49,20 +50,17 @@ const (
 	SourceCommit = "9e8b5ea"
 )
 
-// The skills chartr knows by name. CoreSkill is injected first before any
-// role skill; IdeateSkill is the ideate on-ramp, composed alone (no core, no
-// context bundle) because an ideate session is ticketless and mapless;
-// TrackerSkill restates the wayfinder map format and carries the method glossary
-// as its supporting file, which the context bundle sources. The four method
-// skills — WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill — are shipped,
-// resolved, and materialized like the rest, but never auto-composed into a
-// session payload: they serve charting, speccing, and ticket-breaking work done
-// outside a composed session.
+// The skills chartr knows by name. CoreSkill is the common core — read straight
+// out of the binary by composition, never through the layers, because it is
+// chartr's own voice and not the operator's to shadow; IdeateSkill is the ideate
+// on-ramp, composed alone (no core, no context bundle) because an ideate session
+// is ticketless and mapless. The four method skills — WayfinderSkill,
+// DomainSkill, SpecSkill, TicketsSkill — are shipped, resolved, and materialized
+// like the rest, but never auto-composed into a session payload: they serve
+// charting, speccing, and ticket-breaking work done outside a composed session.
 const (
-	CoreSkill    = "core"
-	IdeateSkill  = "ideate"
-	TrackerSkill = "tracker-convention"
-	GlossaryFile = "glossary.md"
+	CoreSkill   = "core"
+	IdeateSkill = "ideate"
 
 	WayfinderSkill = "wayfinder"
 	DomainSkill    = "domain-modeling"
@@ -70,15 +68,25 @@ const (
 	TicketsSkill   = "to-tickets"
 )
 
-// Segment layer tags. The three skill layers name where a skill resolved from —
-// shipped floor, the operator's own fork, or a space's committed library; "context"
-// tags a context-bundle part, which is assembled rather than resolved through the
-// layers.
+// Skill layer tags: the shipped floor, the operator's own fork, or a space's
+// committed library. They name where a *library* skill resolved from; a payload
+// part carries an Origin instead, which is an open string.
 const (
 	LayerBuiltin   = "built-in"
 	LayerUser      = "user"
 	LayerWorkspace = "workspace"
-	LayerContext   = "context"
+)
+
+// Part origins — where a block of the payload came from, as the preview badges
+// it. The set is open on purpose: a resolved skill body's origin is the
+// *registered source's name*, so the badge answers the one silent failure source
+// order can cause (which source's copy of this skill actually ran). These three
+// are the fixed members: chartr's own embedded text, the operator's preferences,
+// and anything assembled fresh at compose time.
+const (
+	OriginChartr   = "chartr"
+	OriginOperator = "operator"
+	OriginContext  = "context"
 )
 
 const (
@@ -165,24 +173,22 @@ type Skill struct {
 	Body string `json:"-"`
 }
 
-// Segment is one contiguous piece of a composed part, tagged with the layer it
-// came from so field-level provenance survives onto the wire and into the
-// preview. Under whole-skill shadowing a resolved skill is a single segment
-// tagged with the layer that won it; a context part is a single segment tagged
-// "context".
-type Segment struct {
-	Layer string `json:"layer"`
-	Label string `json:"label,omitempty"`
-	Text  string `json:"text"`
-}
-
-// Part is one labelled block of the payload — a resolved skill (core, a role) or
-// a context artifact (glossary, map, ticket, a blocker's answer). Kind is
-// "prompt" or "context".
+// Part is one labelled block of the payload — chartr's core, a resolved role
+// skill, the conventions pointer, the operator's preferences, or a context
+// artifact (the sources block, the map, this ticket, a blocker's answer). Kind is
+// "prompt" or "context"; Origin is where the text came from, and is what the
+// preview badges.
+//
+// A part is one contiguous block of text. It was a list of tagged segments while
+// a per-field merge across the skill layers looked likely; whole-skill shadowing
+// never produced a second segment, and resolution through sources cannot, so the
+// machinery is gone.
 type Part struct {
-	Name     string    `json:"name"`
-	Kind     string    `json:"kind"`
-	Segments []Segment `json:"segments"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Origin string `json:"origin"`
+	Label  string `json:"label,omitempty"`
+	Text   string `json:"text"`
 }
 
 // Payload is the whole composed result for one ticket and role: the parts with
@@ -200,13 +206,13 @@ type Payload struct {
 }
 
 // Names lists the skills chartr ships, in a stable order: the core, the
-// roles, then the two library skills, then the four method skills.
+// roles, the ideate on-ramp, then the four method skills.
 func Names() []string {
 	names := []string{CoreSkill}
 	for _, r := range config.Roles {
 		names = append(names, string(r))
 	}
-	return append(names, IdeateSkill, TrackerSkill,
+	return append(names, IdeateSkill,
 		WayfinderSkill, DomainSkill, SpecSkill, TicketsSkill)
 }
 
@@ -353,24 +359,6 @@ func newSkill(name, layer, dir string, files map[string][]byte) Skill {
 	}
 	s.Stale = s.ForkedFrom != "" && s.ForkedFrom != ShippedHash(name)
 	return s
-}
-
-// Support returns one of a skill's supporting files (the glossary, say) from
-// whichever layer won the directory — off disk when a layer won it, out of the
-// binary when the shipped copy did.
-func (s Skill) Support(name string) (string, bool) {
-	if s.Dir != "" {
-		b, err := os.ReadFile(filepath.Join(s.Dir, name))
-		if err != nil {
-			return "", false
-		}
-		return string(b), true
-	}
-	b, err := assets.ReadFile(path.Join(embedRoot, s.Name, name))
-	if err != nil {
-		return "", false
-	}
-	return string(b), true
 }
 
 // staleWarning is the sentence the cockpit shows for a fork that has fallen
@@ -604,8 +592,6 @@ format. Vendored from %s (%s).
 - `+"`core/`"+` — the common core, injected first for every role.
 - `+"`grill/`, `prototype/`, `research/`, `implement/`"+` — one per role.
 - `+"`ideate/`"+` — the ticketless ideate on-ramp, composed alone.
-- `+"`tracker-convention/`"+` — the wayfinder map format, carrying `+"`glossary.md`"+`
-  (the glossary each session's context bundle is built from) as a supporting file.
 - `+"`wayfinder/`"+` — the map method: charting an effort and working its tickets.
 - `+"`domain-modeling/`"+` — keep `+"`CONTEXT.md`"+` and the ADRs current as terms
   crystallise.

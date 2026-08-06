@@ -12,13 +12,11 @@ import (
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
-// The skill library and payload preview at the process boundary. chartr
-// materializes a hackable `SKILL.md` library, resolves each skill across
-// built-in ‹ user ‹ workspace with whole-skill shadowing, surfaces a fork behind
-// the shipped default, and composes core + role + context bundle into one
-// payload. Every assertion is on the public payload the preview endpoint returns
-// and on the files on disk; no test reaches into the package. The focused
-// resolution/assembly unit seam lives in internal/prompt (prompt_test.go).
+// The two payload previews at the process boundary: the ticket payload for a
+// chosen ticket and role, and the free payload, which names no space because it
+// holds no fact about one. Every assertion is on the public payload the endpoints
+// return and on the files on disk; no test reaches into the package. The focused
+// composition seam, with both goldens, lives in internal/prompt.
 
 func getPayload(t *testing.T, h *chartrtest.Chartr, id, slug string, num int, role string) (int, prompt.Payload, string) {
 	t.Helper()
@@ -60,21 +58,7 @@ func partNames(p prompt.Payload) []string {
 	return out
 }
 
-func segLayers(part prompt.Part) []string {
-	var out []string
-	for _, s := range part.Segments {
-		out = append(out, s.Layer)
-	}
-	return out
-}
-
-func segText(part prompt.Part) string {
-	var out []string
-	for _, s := range part.Segments {
-		out = append(out, s.Text)
-	}
-	return strings.Join(out, "\n")
-}
+func segText(part prompt.Part) string { return part.Text }
 
 // skillSource renders a SKILL.md: the standard frontmatter contract over a body,
 // with any extra frontmatter lines (a `forked_from:`) folded in.
@@ -102,10 +86,10 @@ func writeWorkspaceSkill(t *testing.T, repo, name, extra, body string) {
 		filepath.Join(".chartr", "skills", name, "SKILL.md"), skillSource(name, extra, body))
 }
 
-// The preview composes a session's whole payload: the resolved core and role
-// prompts (shipped built-in by default), then the context bundle assembled fresh
-// — glossary, map body, this ticket, and each blocker's answer pulled inline. The
-// composed markdown is the single document a session would be told.
+// The preview composes a session's whole payload: chartr's embedded core and the
+// role's bound skill, then the contract files, then the context region assembled
+// fresh — the sources block, the map body, this ticket, and each blocker's answer
+// pulled inline. The composed markdown is the single document a session is told.
 func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -128,19 +112,19 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	// its seeded binding into the default source rather than through the layers
 	// (skill-sources ticket 05).
 	core := findPart(t, p, "core")
-	if got := segLayers(core); len(got) != 1 || got[0] != "built-in" {
-		t.Errorf("core layers = %v, want [built-in]", got)
+	if core.Origin != "chartr" {
+		t.Errorf("core origin = %q, want chartr", core.Origin)
 	}
 	impl := findPart(t, p, "implement")
-	if got := segLayers(impl); len(got) != 1 || got[0] != "chartr-skills" {
-		t.Errorf("implement layers = %v, want [chartr-skills]", got)
+	if impl.Origin != "chartr-skills" {
+		t.Errorf("implement origin = %q, want chartr-skills", impl.Origin)
 	}
 	if !strings.Contains(segText(impl), "implementation map") {
 		t.Errorf("implement prompt missing its shipped content:\n%s", segText(impl))
 	}
 
 	// The context bundle is present and fresh (ADR 0005).
-	for _, name := range []string{"glossary", "map", "ticket"} {
+	for _, name := range []string{"sources", "map", "ticket"} {
 		if !hasPart(p, name) {
 			t.Errorf("payload missing context part %q; parts: %v", name, partNames(p))
 		}
@@ -151,8 +135,8 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	if !strings.Contains(segText(blocker), "USE-THE-BASE-APPROACH") {
 		t.Errorf("blocker answer not inlined:\n%s", segText(blocker))
 	}
-	if l := blocker.Segments[0].Layer; l != "context" {
-		t.Errorf("blocker segment layer = %q, want context", l)
+	if blocker.Origin != "context" {
+		t.Errorf("blocker origin = %q, want context", blocker.Origin)
 	}
 
 	// The composed markdown is one document carrying prompt and context together.
@@ -246,134 +230,78 @@ func TestBlockerAnswerCarriesItsCorrections(t *testing.T) {
 	}
 }
 
-// Resolution walks built-in ‹ user ‹ workspace with whole-skill shadowing: the
-// most specific layer defining a skill wins its entire directory, and a committed
-// workspace skill wins over a local user one (the content half of ADR 0009). The
-// whole matrix is observable in the resolved core part's single segment and its
-// layer tag.
-func TestSkillShadowingMatrix(t *testing.T) {
+// Neither half of the instruction is a skill layer's to move. The core is
+// chartr's own voice, read straight out of the binary, and the role resolves
+// through the operator's binding into their sources — so a `core` or a `grill`
+// written into either skill layer changes nothing about what a session is told.
+//
+// This replaces the shadowing matrix that stood here. The layers still resolve
+// the shipped library for the settings surface, but no layer reaches a payload
+// any more, and the whole model goes with ticket 09.
+func TestNeitherCoreNorRoleIsShadowableByASkillLayer(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	resp := register(t, h, repo)
 
-	// Baseline: the shipped default, one built-in segment.
-	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "grill")
-	if got := segLayers(findPart(t, p, "core")); len(got) != 1 || got[0] != "built-in" {
-		t.Fatalf("baseline core layers = %v, want [built-in]", got)
-	}
+	_, base, _ := getPayload(t, h, resp.ID, "widget", 1, "grill")
 
-	// A user skill shadows the built-in whole directory — the shipped body is
-	// gone, not stacked onto.
 	writeUserSkill(t, h.ConfigDir, "core", "", "USER-CORE-SKILL")
-	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
-	core := findPart(t, p, "core")
-	if got := segLayers(core); !equalStrings(got, []string{"user"}) {
-		t.Errorf("user-shadowed core layers = %v, want [user]", got)
-	}
-	if txt := segText(core); !strings.Contains(txt, "USER-CORE-SKILL") || strings.Contains(txt, "chartr session") {
-		t.Errorf("user skill did not shadow the shipped body:\n%s", txt)
-	}
+	writeWorkspaceSkill(t, repo, "grill", "", "WORKSPACE-GRILL-SKILL")
 
-	// A committed workspace skill wins over the user one.
-	writeWorkspaceSkill(t, repo, "core", "", "WORKSPACE-CORE-SKILL")
-	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "grill")
-	core = findPart(t, p, "core")
-	if got := segLayers(core); !equalStrings(got, []string{"workspace"}) {
-		t.Errorf("workspace-shadowed core layers = %v, want [workspace]", got)
+	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "grill")
+	core := findPart(t, p, "core")
+	if core.Origin != "chartr" || strings.Contains(core.Text, "USER-CORE-SKILL") {
+		t.Errorf("a user skill reached the core: %s\n%s", core.Origin, core.Text)
 	}
-	txt := segText(core)
-	if !strings.Contains(txt, "WORKSPACE-CORE-SKILL") || strings.Contains(txt, "USER-CORE-SKILL") {
-		t.Errorf("workspace skill did not win over the user one:\n%s", txt)
+	if !strings.Contains(core.Text, "chartr session") {
+		t.Errorf("the embedded core is not what composed:\n%s", core.Text)
 	}
 	// Frontmatter is metadata for the cockpit, never payload.
-	if strings.Contains(txt, "description:") {
-		t.Errorf("frontmatter leaked into the composed body:\n%s", txt)
+	if strings.Contains(core.Text, "description:") {
+		t.Errorf("frontmatter leaked into the composed body:\n%s", core.Text)
 	}
-
-	// Shadowing is per skill, and it does not reach the role at all: the role
-	// resolves through its binding into the operator's sources, so nothing written
-	// into a skill layer can move it (skill-sources ticket 05).
-	if got := segLayers(findPart(t, p, "grill")); !equalStrings(got, []string{"chartr-skills"}) {
-		t.Errorf("grill layers = %v, want the untouched [chartr-skills]", got)
+	grill := findPart(t, p, "grill")
+	if grill.Origin != "chartr-skills" || strings.Contains(grill.Text, "WORKSPACE-GRILL-SKILL") {
+		t.Errorf("a workspace skill reached the role: %s\n%s", grill.Origin, grill.Text)
+	}
+	if p.Markdown != base.Markdown {
+		t.Error("writing into the skill layers changed the composed document")
 	}
 }
 
-// A skill that records the shipped default it forked from is surfaced as behind
-// when that default has since moved on — never auto-merged (story 23). The notice
-// rides both the space snapshot and the preview; a fork recording the current
-// shipped hash draws no warning.
-func TestBehindDefaultSurfaced(t *testing.T) {
+// The free payload's preview takes no space, and returns the same four parts
+// whichever tree the operator happens to have registered — no map list, no
+// frontier, no ticket, no role. It is the operator's one window onto what an
+// agent chartr launches without a ticket is told.
+func TestFreePayloadPreviewIsSpaceIndependent(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	resp := register(t, h, repo)
+	register(t, h, repo)
 
-	// A stale fork: a skill recording a `forked_from` that is not the shipped hash.
-	// The subject is `core`, the one skill still resolved through the layers — the
-	// role half now comes from the operator's sources and carries no fork marker
-	// (skill-sources ticket 05); the whole provenance machinery goes with ticket 09.
-	writeUserSkill(t, h.ConfigDir, "core", "forked_from: deadbeef\n", "MY OWN CORE SKILL")
-
-	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "implement")
-	if !hasSubstring(p.Warnings, "behind the shipped default") {
-		t.Errorf("behind-default not surfaced in preview warnings: %v", p.Warnings)
+	code, body := h.Get("/api/payload/free")
+	if code != 200 {
+		t.Fatalf("free payload preview = %d, body %s", code, body)
 	}
-	// The frontmatter is stripped from the composed body — meta never leaks into
-	// the payload.
-	if strings.Contains(segText(findPart(t, p, "core")), "forked_from") {
-		t.Errorf("fork frontmatter leaked into the payload:\n%s", segText(findPart(t, p, "core")))
-	}
-	// It is also surfaced on the space, so a stale fork is visible without opening
-	// the preview. The library lives under the data root, not the watched `.plan/`,
-	// so it refreshes on the next rebuild rather than by notice — force one.
-	if code, body := h.Put(fmt.Sprintf("/api/spaces/%s/agent", resp.ID), map[string]string{"agent": "opus"}); code != 204 {
-		t.Fatalf("remembering an agent to force a rebuild = %d, body %s", code, body)
-	}
-	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
-	if !hasSubstring(s.Warnings, "behind the shipped default") {
-		t.Errorf("behind-default not surfaced on the space: %v", s.Warnings)
+	var p prompt.Payload
+	if err := json.Unmarshal([]byte(body), &p); err != nil {
+		t.Fatalf("free payload response not JSON: %v (%q)", err, body)
 	}
 
-	// A fork recording the *current* shipped hash is owned, not behind.
-	writeUserSkill(t, h.ConfigDir, "core", "forked_from: "+prompt.ShippedHash("core")+"\n", "MY OWN CORE SKILL")
-	_, p, _ = getPayload(t, h, resp.ID, "widget", 1, "implement")
-	if hasSubstring(p.Warnings, "behind the shipped default") {
-		t.Errorf("a fork on the current default should not warn: %v", p.Warnings)
+	if got := partNames(p); !equalStrings(got, []string{"core", "conventions", "preferences", "sources"}) {
+		t.Errorf("free payload parts = %v, want core, conventions, preferences, sources", got)
 	}
-}
-
-// The materialized library is editable on disk, and an edit shows up in the next
-// composition with no restart. The materialized skill directory *is* the built-in
-// layer, so an edit there composes without shadowing anything.
-func TestMaterializedLibraryEditsCompose(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	resp := register(t, h, repo)
-
-	// The library was materialized on start; edit the core skill in place. `core`
-	// is the subject because it is the one skill still resolved through the layers
-	// — the roles now resolve through their bindings into the operator's sources
-	// (skill-sources ticket 05).
-	materialized := filepath.Join(h.ConfigDir, "builtin-skills", "core", "SKILL.md")
-	if _, err := os.Stat(materialized); err != nil {
-		t.Fatalf("library was not materialized: %v", err)
+	// Not one live fact about the space it will run in.
+	for _, forbidden := range []string{"widget", "First", "frontier", ".plan/maps/widget"} {
+		if strings.Contains(p.Markdown, forbidden) {
+			t.Errorf("the free payload carries %q, a live fact about the space:\n%s", forbidden, p.Markdown)
+		}
 	}
-	if err := os.WriteFile(materialized, []byte(skillSource("core", "", "EDITED-CORE-SKILL on disk.")), 0o644); err != nil {
-		t.Fatalf("editing materialized skill: %v", err)
-	}
-
-	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "research")
-	core := findPart(t, p, "core")
-	if !strings.Contains(segText(core), "EDITED-CORE-SKILL") {
-		t.Errorf("edit to the materialized library did not compose:\n%s", segText(core))
-	}
-	if got := core.Segments[0].Layer; got != "built-in" {
-		t.Errorf("materialized base layer = %q, want built-in", got)
+	if !strings.Contains(p.Markdown, "chartr is the cockpit") {
+		t.Errorf("the free payload is missing its core:\n%s", p.Markdown)
 	}
 }
 

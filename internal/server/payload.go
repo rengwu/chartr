@@ -58,7 +58,6 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := prompt.Compose(prompt.ComposeInput{
 		Role:      role,
-		Roots:     s.skillRoots(e.Path),
 		Bundle:    bundle,
 		ConfigDir: s.opts.ConfigDir,
 		Sources:   s.srcs,
@@ -70,6 +69,24 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(w, http.StatusOK, payload)
+}
+
+// handleFreePayloadPreview composes and returns the payload a *free* session is
+// told — an agent chartr launched into a space with no ticket and no role.
+//
+// It takes no space, because the free payload holds no live fact about one: the
+// same bytes in an empty tree and a tree mid-effort, varying only with the source
+// list and the operator's preferences. That is why it hangs off the settings
+// surface rather than a space card, and why this route names no space id.
+func (s *Server) handleFreePayloadPreview(w http.ResponseWriter, r *http.Request) {
+	payload, err := prompt.ComposeFree(s.opts.ConfigDir, s.srcs)
+	if err != nil {
+		// Nothing here is the caller's input; a failure is an unreadable
+		// preferences file, which is the operator's to fix on disk.
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, payload)
 }
 
