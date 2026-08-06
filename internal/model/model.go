@@ -200,10 +200,9 @@ type TrackerAdapterOffer struct {
 }
 
 // Map is one discovered wayfinder map beneath a space: its body material and its
-// tickets with their derived status. It is read wherever wayfinder writes — the
-// flat `.plan/<slug>/` layout or the nested `.plan/maps/<slug>/` one — and rendered as-is: a
-// malformed map is never refused, only surfaced through Malformations (story
-// 17). A discovered map is live: it opens and offers session actions the moment
+// tickets with their derived status. It is read from the one fixed root chartr's
+// conventions declare — `.plan/maps/<slug>/` — and rendered as-is: a malformed
+// map is never refused, only surfaced through Malformations (story 17). A discovered map is live: it opens and offers session actions the moment
 // it is found, with no classification step in between.
 type Map struct {
 	// Slug is the map directory's name — its stable identity within the space.

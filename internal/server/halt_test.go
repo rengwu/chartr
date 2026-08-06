@@ -63,7 +63,7 @@ func commitCount(t *testing.T, repo string) string {
 // ticketFileBody reads a ticket file's current bytes from the working tree.
 func ticketFileBody(t *testing.T, repo, slug, filename string) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repo, ".plan", slug, "tickets", filename))
+	b, err := os.ReadFile(filepath.Join(repo, chartrtest.MapDir(slug), "tickets", filename))
 	if err != nil {
 		t.Fatalf("reading ticket file: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 	if n := commitCount(t, repo); n != "2" {
 		t.Errorf("commits after release = %s, want 2 (claim + release)", n)
 	}
-	rel := filepath.Join(".plan", "widget", "tickets", "01-first.md")
+	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
 	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
 	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
 		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
