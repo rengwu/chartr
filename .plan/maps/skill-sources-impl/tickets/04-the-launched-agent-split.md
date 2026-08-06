@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: s46e954fe912c
+claimed_at: 2026-08-06T16:01:13Z
 ---
 
 # The launched-agent split
