@@ -41,39 +41,9 @@ func (r *Registry) RegisterGit(name, url, ref string) (Source, error) {
 	}
 
 	dest := r.checkoutPath(url)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return Source{}, fmt.Errorf("sources: creating the checkouts directory: %w", err)
-	}
-	tmp, err := os.MkdirTemp(filepath.Dir(dest), ".clone-")
-	if err != nil {
-		return Source{}, fmt.Errorf("sources: creating a temp directory to clone into: %w", err)
-	}
-	// One cleanup covers every failure below: a clone that fails partway leaves
-	// nothing, and a successful one has already moved out of the temp directory.
-	defer os.RemoveAll(tmp)
-
-	into := filepath.Join(tmp, "checkout")
-	args := []string{"clone", "--depth", "1", "--single-branch"}
-	if ref != "" {
-		args = append(args, "--branch", ref)
-	}
-	if out, err := git("", append(args, url, into)...); err != nil {
-		return Source{}, fmt.Errorf("sources: cloning %s failed: %w\n%s", url, err, out)
-	}
-
-	commit, err := head(into)
+	commit, ref, err := cloneInto(dest, url, ref)
 	if err != nil {
 		return Source{}, err
-	}
-	if ref == "" {
-		ref, _ = branch(into)
-	}
-
-	if err := os.RemoveAll(dest); err != nil {
-		return Source{}, fmt.Errorf("sources: clearing %s: %w", dest, err)
-	}
-	if err := os.Rename(into, dest); err != nil {
-		return Source{}, fmt.Errorf("sources: moving the clone into place: %w", err)
 	}
 
 	s := Source{
@@ -105,16 +75,17 @@ func (r *Registry) RegisterGit(name, url, ref string) (Source, error) {
 // fetches unattended, and the only report is the new short sha on the returned
 // row. The checkout is chartr's, not a workspace: a refresh discards local edits
 // inside it, and the answer to "I want to edit this" is a `dir` source.
+//
+// The default source takes the same path with one extra state at the front: while
+// it is still seeded there is nothing to fetch into, so the first refresh clones
+// the seed's upstream over chartr's bytes and the source becomes the operator's
+// pinned checkout. The commit and timestamp it records are the two scalars beside
+// the default toggle, which is what lets the settings row read "fetched ⟨date⟩ —
+// ⟨sha⟩" rather than "shipped with this build" without inspecting the filesystem.
 func (r *Registry) Refresh(name string) (Source, error) {
 	s, ok := r.Get(name)
 	if !ok {
 		return Source{}, fmt.Errorf("%w: no source named %q", ErrNotFound, name)
-	}
-	if s.Default {
-		// Converting the seeded default into a pinned checkout is the seed's own
-		// step: it owns the URL the first fetch would clone from, and the two
-		// states are read off the filesystem rather than recorded here.
-		return Source{}, fmt.Errorf("sources: refreshing %q is the seed's own step, not the registry's", DefaultName)
 	}
 	if s.Kind != KindGit {
 		return Source{}, fmt.Errorf("sources: %q is a %s source; there is nothing to fetch", s.Name, s.Kind)
@@ -123,23 +94,33 @@ func (r *Registry) Refresh(name string) (Source, error) {
 		return Source{}, err
 	}
 
-	ref := s.Ref
-	if ref == "" {
-		ref = "HEAD"
+	var commit string
+	var err error
+	switch {
+	case s.Default && !Pinned(s.Path):
+		// The seeded→pinned conversion, which happens exactly once: there is no
+		// checkout to fetch into yet, only chartr's own bytes, so the first refresh
+		// clones the upstream over them. From here the `.git` it leaves behind is
+		// what stops the startup reconcile writing there ever again, and every later
+		// refresh takes the ordinary fetch path below.
+		commit, _, err = cloneInto(s.Path, SeedURL, s.Ref)
+	default:
+		commit, err = fetchInto(s.Path, s.Name, s.Ref)
 	}
-	if out, err := git(s.Path, "fetch", "--depth", "1", "origin", ref); err != nil {
-		return Source{}, fmt.Errorf("sources: fetching %s failed: %w\n%s", s.Name, err, out)
-	}
-	if out, err := git(s.Path, "reset", "--hard", "FETCH_HEAD"); err != nil {
-		return Source{}, fmt.Errorf("sources: resetting %s failed: %w\n%s", s.Name, err, out)
-	}
-	commit, err := head(s.Path)
 	if err != nil {
 		return Source{}, err
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if s.Default {
+		r.def.Commit = commit
+		r.def.Fetched = time.Now().UTC()
+		if err := r.saveLocked(); err != nil {
+			return Source{}, err
+		}
+		return r.def, nil
+	}
 	for i := range r.rows {
 		if !strings.EqualFold(r.rows[i].Name, s.Name) {
 			continue
@@ -152,6 +133,66 @@ func (r *Registry) Refresh(name string) (Source, error) {
 		return r.rows[i], nil
 	}
 	return Source{}, fmt.Errorf("%w: no source named %q", ErrNotFound, name)
+}
+
+// cloneInto clones url at ref into dest, shallow and single-branch, through a
+// temp directory beside dest that is renamed into place — so nothing half-cloned
+// is ever readable at dest, and a clone that fails partway leaves neither a
+// directory nor anything for a caller to record. It returns the checked-out
+// commit and the ref it landed on (the remote's own default branch, when the
+// caller named none, so a later refresh fetches the same branch rather than
+// whatever HEAD has become).
+func cloneInto(dest, url, ref string) (string, string, error) {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", "", fmt.Errorf("sources: creating the checkouts directory: %w", err)
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(dest), ".clone-")
+	if err != nil {
+		return "", "", fmt.Errorf("sources: creating a temp directory to clone into: %w", err)
+	}
+	// One cleanup covers every failure below: a clone that fails partway leaves
+	// nothing, and a successful one has already moved out of the temp directory.
+	defer os.RemoveAll(tmp)
+
+	into := filepath.Join(tmp, "checkout")
+	args := []string{"clone", "--depth", "1", "--single-branch"}
+	if ref != "" {
+		args = append(args, "--branch", ref)
+	}
+	if out, err := git("", append(args, url, into)...); err != nil {
+		return "", "", fmt.Errorf("sources: cloning %s failed: %w\n%s", url, err, out)
+	}
+
+	commit, err := head(into)
+	if err != nil {
+		return "", "", err
+	}
+	if ref == "" {
+		ref, _ = branch(into)
+	}
+
+	if err := os.RemoveAll(dest); err != nil {
+		return "", "", fmt.Errorf("sources: clearing %s: %w", dest, err)
+	}
+	if err := os.Rename(into, dest); err != nil {
+		return "", "", fmt.Errorf("sources: moving the clone into place: %w", err)
+	}
+	return commit, ref, nil
+}
+
+// fetchInto moves an existing checkout to the tip of its ref and returns the new
+// commit. A hard reset, because the checkout is chartr's and not a workspace.
+func fetchInto(dir, name, ref string) (string, error) {
+	if ref == "" {
+		ref = "HEAD"
+	}
+	if out, err := git(dir, "fetch", "--depth", "1", "origin", ref); err != nil {
+		return "", fmt.Errorf("sources: fetching %s failed: %w\n%s", name, err, out)
+	}
+	if out, err := git(dir, "reset", "--hard", "FETCH_HEAD"); err != nil {
+		return "", fmt.Errorf("sources: resetting %s failed: %w\n%s", name, err, out)
+	}
+	return head(dir)
 }
 
 // requireGit is the gate. It is checked at registration and at refresh, and
