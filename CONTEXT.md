@@ -90,9 +90,17 @@ _Avoid_: agent registry, profiles, presets
 The versioned skill overlays a space carries in `.chartr/skills/` — shared, portable, and winning over user skills for *content*. It is the only chartr config a space commits: there is no committed *execution* config, so nothing about how an agent runs is ever versioned into a repository.
 _Avoid_: workspace config, project config, repo config
 
+**Conventions**:
+chartr's file-format contract: one generated `conventions.md` under the config root stating the fixed `.plan/maps/` layout, the permanent ticket numbering, `map.md`'s five sections, the recognized frontmatter, the structural headings, the derived-status table and the frontier. **Format only** — it never says how to interview, decide, decompose or behave; that is a skill's job. chartr owns the bytes: they are rewritten at startup and reconciled again before every composition, so it is the one thing in the config root an operator cannot shadow, disable or reorder away, and an edit lasts until the next compose. Discovery enforces the one rule it can — the fixed root — and the lint stays advisory.
+_Avoid_: tracker convention, tracker adapter, ruleset, format skill, template
+
+**Preferences**:
+The operator's own standing instructions, in `preferences.md` beside the conventions. chartr creates it empty once and never writes it again; its bytes are appended to every payload verbatim, unranked and unmerged. A contradictory preference can make an agent write a map chartr cannot read — accepted, because the file is the operator's control surface, not chartr's. An unreadable one fails composition rather than being silently dropped.
+_Avoid_: user prompt, custom instructions, overrides, settings
+
 **User config**:
 The operator's local, uncommitted chartr config under the state root. It carries the agent library and is keyed to this machine, never a space's repository.
-_Avoid_: local settings, preferences, overrides
+_Avoid_: local settings, overrides
 
 **Settings surface**:
 The global settings route: the agent library and the paths of the files behind it, each openable in the operator's editor. Read-value-plus-open-file, never a second config store — there is nothing left to explain about layers.

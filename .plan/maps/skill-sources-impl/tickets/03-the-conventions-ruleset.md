@@ -68,3 +68,83 @@ startup; editing the conventions file and composing anything restores it; deleti
 composition visibly rather than silently. `mapscan` finds maps under `.plan/maps/`
 and nowhere else, and this repo's own star map still renders every map it renders
 today. `go vet`, `go test`, and the frontend `check`/`build`/`vitest` pass.
+
+## Answer
+
+Two commits: the contract ([`a221c34`](#)) and the discovery narrowing
+([`90057af`](#)), split so the second can be reverted alone.
+
+**The document** is `internal/prompt/assets/conventions.md`, embedded as a string.
+It opens with the applicability rule (work asked to be charted into a map, created
+as a wayfinder map, broken into tickets, or equivalent wording produces a
+chartr-compatible artifact in this format), then: the fixed layout with the
+sibling `-impl` map and the reserved `spec.md` slot and the explicit statement that
+a `map.md` anywhere else is invisible; the filename/permanent-identity rule with
+zero-padding below 100 and natural width above, never reused or renumbered, readers
+tolerant of legacy widths; `map.md`'s five sections in order, with the
+relative-link index bullet under `Decisions so far`, the bold-lead bullet and the
+italic `*Anchored to [Title](tickets/NN-slug.md).*` clearing edge under `Not yet
+specified`, and the rule that a ruled-out ticket is indexed under `Out of scope`;
+the recognized frontmatter as a table with `status` forbidden, `claimed_by` /
+`claimed_at` chartr-owned, and unknown keys tolerated and ignored; the four exact
+structural headings; the derived-status table in evaluation order with the
+bare-heading caveat; the frontier calculation; and the six format terms defined at
+the end where the format uses them. Nothing about interviewing, research or
+prototyping technique, decomposition, sizing, the decision process, role behaviour,
+commit discipline or spec templates is in it — the format/method line is the reason
+this file can be unshadowable.
+
+**Materialization** is `prompt.ReconcileContract(configDir)` in
+`internal/prompt/conventions.go`. It writes the conventions atomically (temp file
+in the same directory, 0600, rename) whenever the bytes are missing or differ, and
+returns a `Contract{ConventionsPath, Preferences}`. `preferences.md` is the
+opposite: created empty when absent, never rewritten when present, and an existing
+file that cannot be read returns an error naming the path. It runs at two points —
+`server.New` after `prompt.Materialize`, and the top of `prompt.Compose`, which now
+takes a `ConfigDir` (both call sites, spawn and preview, pass `s.opts.ConfigDir`).
+So an upgrade updates the contract without a restart, and an operator edit lasts
+exactly until the next composition, preview included.
+
+**Deliberately not done in this ticket:** the returned `Contract` is not yet a
+payload part. Ticket 07 owns where the conventions path and the preferences bytes
+sit in the two payloads; here the value of the call is the reconcile and the
+visible failure, and `Compose` discards the rest. That is a knowing, commented
+loose end, not an oversight — wiring the parts now would have written ticket 07's
+payload shape blind.
+
+**The narrowing:** `mapDirs` is no longer a `filepath.WalkDir` over `.plan/` but a
+single `os.ReadDir` of `.plan/maps/`, keeping the children that hold a `map.md`.
+A `map.md` nested any deeper is not a map. The test fixtures moved with it —
+`chartrtest.MapDir(slug)` names the root once, `WriteMap`/`WriteTicket` go through
+it, and the four hard-coded `.plan/<slug>/…` paths in the halt, release and spawn
+tests were re-pointed. `TestMapAppearsByNoticeBothLayouts` became
+`TestMapAppearsByNoticeUnderTheFixedRootOnly`: it writes a flat map and one nested
+a level too deep *first*, then waits for a map under the fixed root, and asserts
+the two are still absent — so the negative is checked after discovery has had every
+chance to see them. The stale layout-agnostic comments in `mapscan` and
+`model.Map` were corrected to match.
+
+**Verified against the Done-when:**
+
+- Ran the real binary with `XDG_CONFIG_HOME=$(mktemp -d)`: `conventions.md` (byte
+  identical to the embedded asset) and an empty `0600 preferences.md` appear on
+  startup.
+- `TestComposingRestoresTheConventionsFile` truncates the file and composes; the
+  canonical bytes are back. `TestAnEditedConventionsFileIsRestored` covers the
+  startup path.
+- `TestADeletedPreferencesFileIsRecreatedEmpty`, and
+  `TestPreferencesAreReadVerbatimAndNeverRewritten` for the never-rewritten half.
+- `TestAnUnreadablePreferencesFileFailsComposition`: `chmod 000`, compose, expect
+  an error naming `preferences.md`.
+- Discovery: 19 of this repo's 19 `map.md` files are under `.plan/maps/<slug>/`, so
+  the star map renders exactly what it rendered before — the narrowing costs this
+  repo nothing.
+- `go vet ./...`, `go test ./...`, and `web/` `check`, `vitest`, `build` all pass.
+
+**Flagged, nothing acted on:** the existing lint is untouched, still advisory, and
+no session is told to run it, as specified. `CONTEXT.md` gains **Conventions** and
+**Preferences**; while writing them I removed "preferences" from **User config**'s
+`_Avoid_` list, because the word now names a specific file and the avoid-list would
+have forbidden the correct term. The `tracker-convention` skill, the
+`issue-tracker.md` adapter template and the glossary are all still live and
+untouched — they are ticket 09's to cut.
