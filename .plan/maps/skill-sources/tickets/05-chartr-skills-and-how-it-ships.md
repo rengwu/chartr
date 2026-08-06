@@ -105,13 +105,24 @@ be able to say which. What it may not do is be the place a rule is *stated*.
 `## Answer` in `grill/SKILL.md` is a name; "a prose-bearing `## Answer` derives
 the ticket as resolved" is a rule and belongs only in `conventions.md`.
 
-**Templates mirroring section names stay allowed**, which is the one rule of
-`docs/skill-sync.md` that survives intact: `wayfinder` may carry the map-body
-skeleton, `to-tickets` the ticket shape. Stripping them would leave a method
-skill unable to show what its output looks like, and by-hand readers with
-nothing. On any disagreement `conventions.md` wins — stated in the repo's own
-contract, and reinforced by ticket 04's instruction order, which puts the
-conventions pointer after the role body.
+**No skill carries a section skeleton.** This reverses the one exception
+`docs/skill-sync.md` granted — method skills mirroring the convention's section
+names in a template — and it is the operator's call, taken with the alternatives
+in hand. The reasoning: a frozen token cannot drift, a six-heading skeleton with
+prose guidance can, and the two copies are now two repositories rather than two
+directories in one. `conventions.md` as ticket 04 wrote it already states both
+skeletons, so nothing is lost and ticket 04 needs no amendment.
+
+The cost is real and lands on the vendoring work, not on chartr: `wayfinder` and
+`to-tickets` carry method guidance *inside* their placeholders — *"\<what
+reaching the end of this map looks like … every session orients to it before
+choosing a ticket\>"* — which is method, not format, and disappears with the
+template unless it is re-authored as prose. That re-authoring is a required part
+of seeding the repo, not a follow-up.
+
+On any disagreement `conventions.md` wins — stated in the repo's own contract,
+and reinforced by ticket 04's instruction order, which puts the conventions
+pointer after the role body.
 
 **Frontmatter is `name` and `description` only, and chartr reads neither.** This
 is a consequence of ticket 02 rather than a new decision: the sources block
@@ -237,11 +248,12 @@ effort is gutting.
 ### The repo's own contract, and what chartr validates
 
 `chartr-skills/CONTRACT.md` states: the seven skills and what each is for; the
-two-clause acceptance test above with its naming allowance; frontmatter is
-`name` + `description` only; no Claude-Code framing (slash commands, hooks,
-loaders); no relative links between skill directories — refer to another skill
-by name, since a source may be registered as a subset; role skills short, method
-skills long; and `conventions.md` wins on any disagreement.
+two-clause acceptance test above, with its naming allowance and its ban on
+section skeletons; frontmatter is `name` + `description` only; no Claude-Code
+framing (slash commands, hooks, loaders); no relative links between skill
+directories — refer to another skill by name, since a source may be registered
+as a subset; role skills short, method skills long; and `conventions.md` wins on
+any disagreement.
 
 **chartr validates nothing.** Ticket 01 already fixed discovery as "a directory
 with `SKILL.md` at depth 1–3", and that is the whole test at registration and at
@@ -275,6 +287,15 @@ opposite of what a source list is for.
 - **Keeping the per-skill diff-and-triage procedure**, re-pointed at
   `chartr-skills`. Rejected: it existed because chartr re-authored someone
   else's skills in place. Against a repo chartr owns, a sync is a copy.
+- **Keeping section skeletons in the method skills** (`docs/skill-sync.md`'s one
+  exception, carried forward). Rejected by the operator: the skeletons duplicate
+  what `conventions.md` already states, across two repositories now, and a
+  skeleton is the part of a skill most likely to drift and least likely to be
+  noticed drifting. Also rejected in the other direction: **forbidding the
+  `## Answer` token as well**, which would leave the injected role body — the
+  only text that reaches a session by force — silent about where its output
+  goes, against a payload that by ticket 02's ignore test may not tell the agent
+  to read the conventions.
 - **Validating a source's skills at registration** (frontmatter present, body
   non-empty, name matches directory). Rejected: it makes chartr the judge of
   other people's repos and adds a failure mode — a source that registers but
@@ -288,12 +309,12 @@ opposite of what a source list is for.
   and a `git`-kinded default row). It is inside the delegation ticket 01 wrote,
   but it is a change to a resolved ticket's stated model and a human should see
   it as one.
-- **The `## Answer` naming allowance re-creates, in miniature, the
-  two-places problem `docs/skill-sync.md` warned about** — and worse than
-  before, because the two places are now two repositories rather than two
-  directories in one. The narrowing (names yes, rules no) is what makes it
-  survivable, and the wholesale-copy vendor step means a drifted skill is
-  visible in a chartr PR diff. It is a real cost, not a solved problem.
+- **The `## Answer` naming allowance is the last of the two-places problem
+  `docs/skill-sync.md` warned about**, and it is deliberately the smallest
+  version of it: one token, frozen by ticket 04, in a repository chartr vendors
+  wholesale. It survives only because the injected role body is the one text a
+  session cannot skip. If ticket 04 ever renames the closing heading, seven
+  skills and a vendored seed move with it.
 - **A refresh of the default can break a seeded role binding.** If ticket 03
   binds `grilling = "chartr-skills/grill"` and a fetched commit renames or drops
   `grill`, the binding resolves to nothing and chartr's own refresh button broke
@@ -316,10 +337,9 @@ opposite of what a source list is for.
 - **The `.git`-as-ownership rule** is revisited the first time an operator wants
   chartr's newer seed *after* having refreshed. The escape is an explicit
   "reset to shipped" action that deletes the checkout, not a comparison rule.
-- **Templates inside method skills** are revisited the first time one drifts
-  from `conventions.md` badly enough to produce a map chartr misreads. The
-  escape is deleting the template and pointing at the conventions, not moving
-  the template into `conventions.md`, which ticket 04 fenced to format-only.
+- **The no-skeletons rule** is revisited if prose-only method skills measurably
+  produce worse-shaped maps than templated ones did. The escape is enriching
+  `conventions.md`'s existing skeleton, never restoring a template to a skill.
 - **The `Skill:` trailer** is revisited if a dir source's unversioned line ever
   has to answer "what exactly ran" in an incident. The escape is recording the
   role body's own hash again — which is re-deriving what `Payload-SHA256`
