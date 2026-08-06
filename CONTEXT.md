@@ -47,7 +47,7 @@ The per-agent shim that knows how to launch one agent CLI, inject its prompt and
 _Avoid_: driver, plugin, backend, integration
 
 **Context bundle**:
-The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, this glossary, and the skill-library manifest (what skills exist, their uses, and the paths to read them at). Assembled fresh each time and never accumulated.
+The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, and the sources block (the enabled sources in resolution order, each with its local path and the skill names found there). Assembled fresh each time and never accumulated. It is the data half of a payload: it renders below the `# Context` rule, after every instruction.
 _Avoid_: memory, prompt context, preamble
 
 **Source**:

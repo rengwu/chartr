@@ -63,17 +63,14 @@ func TestAnEditedConventionsFileIsRestored(t *testing.T) {
 // not only a restart. This is the guarantee that makes an upgrade take effect in
 // a running cockpit.
 func TestComposingRestoresTheConventionsFile(t *testing.T) {
-	dir := t.TempDir()
-	r := roots(t)
-	writeSkill(t, r.Builtin, prompt.CoreSkill, "", "core body", nil)
-	writeSkill(t, r.Builtin, "grill", "", "grill body", nil)
+	dir, reg, bindings := fixture(t)
 
 	path := prompt.ConventionsPath(dir)
 	if err := os.WriteFile(path, []byte("truncated"), 0o600); err != nil {
 		t.Fatalf("seed edited conventions: %v", err)
 	}
 
-	if _, err := prompt.Compose(prompt.ComposeInput{Role: "grill", Roots: r, ConfigDir: dir}); err != nil {
+	if _, err := prompt.Compose(prompt.ComposeInput{Role: "grill", ConfigDir: dir, Sources: reg, Bindings: bindings}); err != nil {
 		t.Fatalf("compose: %v", err)
 	}
 	b, _ := os.ReadFile(path)
@@ -133,7 +130,7 @@ func TestAnUnreadablePreferencesFileFailsComposition(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads unreadable files")
 	}
-	dir := t.TempDir()
+	dir, reg, bindings := fixture(t)
 	if _, err := prompt.ReconcileContract(dir); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
@@ -142,11 +139,7 @@ func TestAnUnreadablePreferencesFileFailsComposition(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(prompt.PreferencesPath(dir), 0o600) })
 
-	r := roots(t)
-	writeSkill(t, r.Builtin, prompt.CoreSkill, "", "core body", nil)
-	writeSkill(t, r.Builtin, "grill", "", "grill body", nil)
-
-	_, err := prompt.Compose(prompt.ComposeInput{Role: "grill", Roots: r, ConfigDir: dir})
+	_, err := prompt.Compose(prompt.ComposeInput{Role: "grill", ConfigDir: dir, Sources: reg, Bindings: bindings})
 	if err == nil {
 		t.Fatal("compose succeeded with an unreadable preferences.md")
 	}

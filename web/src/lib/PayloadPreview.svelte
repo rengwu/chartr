@@ -90,22 +90,15 @@
       })
   })
 
-  const layerLabel: Record<string, string> = {
-    'built-in': 'built-in',
-    user: 'user',
-    workspace: 'workspace',
-    context: 'context',
-  }
-
-  // The palette has one chromatic token (--destructive); four layers are told
-  // apart by weight instead of hue: built-in (the shipped baseline) is the
-  // lightest touch, workspace and user step up in emphasis for what a human
-  // committed or configured locally, and context (assembled fresh per session)
-  // is set apart as the odd one out.
-  const layerVariant: Record<string, BadgeVariant> = {
-    'built-in': 'outline',
-    workspace: 'secondary',
-    user: 'default',
+  // The palette has one chromatic token (--destructive); origins are told apart
+  // by weight instead of hue: chartr's own embedded text is the lightest touch,
+  // the operator's preferences step up for what a human wrote, and context
+  // (assembled fresh per session) is set apart as the odd one out. Every other
+  // origin is a *registered source's name*, an open set, so the lookup keeps its
+  // fallback and a new source degrades to a plain outline rather than breaking.
+  const originVariant: Record<string, BadgeVariant> = {
+    chartr: 'outline',
+    operator: 'default',
     context: 'ghost',
   }
 
@@ -121,8 +114,8 @@
       <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground break-words"
         >#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code
       >
-      would be told — the resolved skill library and the context bundle, assembled fresh. Each block is
-      tagged with the layer it came from.
+      would be told — the core, the skill its role is bound to, the contract files and the context,
+      assembled fresh. Each block is tagged with where it came from.
     </p>
 
     <div class="flex flex-wrap gap-1.5" role="group" aria-label="Preview role">
@@ -197,15 +190,11 @@
                   <span class="text-sm font-medium">{part.name}</span>
                   <span class="text-[0.65rem] tracking-wide text-muted-foreground uppercase">{partKindLabel(part)}</span>
                 </div>
-                {#each part.segments as seg, i}
-                  <div class={cn(i > 0 && 'mt-1.5 border-t border-dashed border-border pt-1.5')}>
-                    <div class="mb-1 flex items-center gap-1.5">
-                      <Badge variant={layerVariant[seg.layer] ?? 'outline'}>{layerLabel[seg.layer] ?? seg.layer}</Badge>
-                      {#if seg.label}<span class="text-[0.7rem] text-muted-foreground">{seg.label}</span>{/if}
-                    </div>
-                    <div class="prose-sm">{@html renderMarkdown(seg.text)}</div>
-                  </div>
-                {/each}
+                <div class="mb-1 flex items-center gap-1.5">
+                  <Badge variant={originVariant[part.origin] ?? 'secondary'}>{part.origin}</Badge>
+                  {#if part.label}<span class="text-[0.7rem] text-muted-foreground">{part.label}</span>{/if}
+                </div>
+                <div class="prose-sm">{@html renderMarkdown(part.text)}</div>
               </li>
             {/each}
           </ol>

@@ -75,8 +75,8 @@ func TestFirstRunSeedsTheSkillsAndTheBindings(t *testing.T) {
 	if !strings.Contains(segText(findPart(t, p, "grill")), marker) {
 		t.Errorf("the composed grill part is not the seed's body:\n%s", segText(findPart(t, p, "grill")))
 	}
-	if got := segLayers(findPart(t, p, "grill")); len(got) != 1 || got[0] != "chartr-skills" {
-		t.Errorf("grill provenance = %v, want [chartr-skills]", got)
+	if got := findPart(t, p, "grill").Origin; got != "chartr-skills" {
+		t.Errorf("grill provenance = %q, want chartr-skills", got)
 	}
 }
 

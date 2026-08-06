@@ -1,13 +1,23 @@
 package prompt
 
 import (
+	_ "embed"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/sources"
 )
+
+// freeCoreText is the free session's core: chartr's own account of what it is,
+// embedded rather than sourced because a session told nothing about how to
+// behave must still be told what launched it. It is one sentence, and it is held
+// to the same test as every other sentence chartr writes in its own voice — it is
+// still true if the agent does nothing about it.
+//
+//go:embed assets/core-free.md
+var freeCoreText string
 
 // Blocker is one of a ticket's blockers as the context bundle carries it: its
 // number, title, and its resolved answer pulled inline (ADR 0005). The server
@@ -30,12 +40,12 @@ type Bundle struct {
 	Blockers    []Blocker
 }
 
-// ComposeInput is everything Compose needs: the role, the skill-library roots
-// resolution walks, the config root the contract files live under, and the
-// assembled bundle.
+// ComposeInput is everything Compose needs: the role, the config root the
+// contract files live under, the source registry and binding table the role
+// resolves through, and the assembled bundle.
 type ComposeInput struct {
-	Role   string
-	Roots  Roots
+	Role string
+	// Bundle is the ticket-specific half — the map, the ticket, the blockers.
 	Bundle Bundle
 	// ConfigDir is the operator's config root. Composition reconciles the
 	// generated conventions and the operator's preferences against it before it
@@ -44,17 +54,17 @@ type ComposeInput struct {
 	ConfigDir string
 	// Sources and Bindings are how the *role* half of the payload resolves: the
 	// operator's ordered source list, and the `[roles]` table saying which
-	// source-qualified skill each role spawns with. A nil registry keeps the layer
-	// resolution, which is what this package's own tests compose against; every
-	// path in the server passes one, and the layers go away with ticket 09.
+	// source-qualified skill each role spawns with. Sources also renders the
+	// payload's sources block, so it is required even for a free session.
 	Sources  *sources.Registry
 	Bindings config.RoleBindings
 }
 
-// Compose assembles the payload a session for this ticket and role would be told:
-// the resolved core and role skill bodies (frontmatter stripped), then the
-// context bundle. It returns the parts with provenance, the skills that won,
-// any stale-fork warnings, and the single markdown document they render to.
+// Compose assembles the payload a session for this ticket and role would be
+// told: chartr's embedded core, the bound role skill's body concatenated whole,
+// the conventions pointer, the operator's preferences, and then the context
+// region — the sources block, the map, this ticket, and each blocker's answer.
+// Instructions, then data.
 func Compose(in ComposeInput) (Payload, error) {
 	if !config.IsRole(in.Role) {
 		return Payload{}, fmt.Errorf("unknown role %q; want one of %v", in.Role, config.Roles)
@@ -63,71 +73,33 @@ func Compose(in ComposeInput) (Payload, error) {
 	// Every composition — a spawn and a preview alike — reconciles the config
 	// root's two contract files first: the generated conventions are restored to
 	// the canonical bytes, and an unreadable `preferences.md` fails the compose
-	// here rather than quietly dropping the operator's instructions. The Contract
-	// itself becomes payload parts in the two-payloads ticket; today the value of
-	// this call is the reconcile and the visible failure.
-	if _, err := ReconcileContract(in.ConfigDir); err != nil {
-		return Payload{}, err
-	}
-
-	var warnings []string
-	var skills []Skill
-	var parts []Part
-
-	// The core is chartr's own and still resolves through the layers; the role is
-	// the operator's, and resolves through their binding table into their sources.
-	core, ok := Resolve(CoreSkill, in.Roots)
-	if !ok {
-		return Payload{}, fmt.Errorf("no %q skill in any layer", CoreSkill)
-	}
-	role, err := in.roleSkill()
+	// here rather than quietly dropping the operator's instructions.
+	contract, err := ReconcileContract(in.ConfigDir)
 	if err != nil {
-		// An unresolvable binding stops here, which is the whole enforcement: the
-		// spawn path aborts on this error before it writes the claim commit.
 		return Payload{}, err
 	}
-	for _, p := range []struct {
-		name  string
-		skill Skill
-	}{{CoreSkill, core}, {in.Role, role}} {
-		s := p.skill
-		if s.Stale {
-			warnings = append(warnings, staleWarning(s))
-		}
-		skills = append(skills, s)
-		// A sourced skill's provenance tag is the source's name — the same thing a
-		// layer tag was for, now naming a place the operator registered rather than
-		// one of three fixed roots.
-		tag := s.Layer
-		if s.Source != "" {
-			tag = s.Source
-		}
-		parts = append(parts, Part{
-			// The part keeps the *role's* name, not the bound skill's: the preview
-			// reads as "what the grill role got", and a role may be bound to a skill
-			// called something else entirely.
-			Name: p.name, Kind: "prompt",
-			Segments: []Segment{{Layer: tag, Label: "skill", Text: s.Body}},
-		})
+
+	// The role is the operator's, and resolves through their binding table into
+	// their sources. An unresolvable binding stops here, which is the whole
+	// enforcement: the spawn path aborts on this error before the claim commit.
+	role, err := resolveRoleSkill(in.Sources, in.Bindings, in.Role)
+	if err != nil {
+		return Payload{}, err
 	}
 
-	// The context bundle, assembled fresh (ADR 0005): the glossary sourced from
-	// the resolved `tracker-convention` skill, the skill-library manifest, the
-	// map body, this ticket, and each blocker's answer inline. The bundle is
-	// composed, never a skill: the ticket a session was handed must not be
-	// mistaken for durable skill content.
-	var gloss string
-	if tc, ok := Resolve(TrackerSkill, in.Roots); ok {
-		if g, ok := tc.Support(GlossaryFile); ok {
-			gloss = g
-		}
-		if tc.Stale {
-			warnings = append(warnings, staleWarning(tc))
-		}
+	core := embeddedCore()
+	parts := []Part{
+		{Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core", Text: core.Body},
+		// The part keeps the *role's* name, not the bound skill's: the preview reads
+		// as "what the grill role got", and a role may be bound to a skill called
+		// something else entirely. The body is concatenated rather than pointed at,
+		// which is what makes the claim trailer's skill record mean *this text ran*.
+		{Name: in.Role, Kind: "prompt", Origin: role.Source, Label: "skill", Text: role.Body},
 	}
-	parts = append(parts,
-		ctxPart("glossary", "Glossary", gloss),
-		ctxPart("skill-library", "Skill library", skillManifest(in.Roots)),
+	parts = append(parts, contractParts(contract)...)
+
+	srcPart, warnings := sourcesPart(in.Sources)
+	parts = append(parts, srcPart,
 		ctxPart("map", "Map: "+orDash(in.Bundle.MapName), in.Bundle.MapBody),
 		ctxPart("ticket", fmt.Sprintf("Ticket #%02d — %s", in.Bundle.TicketNum, orDash(in.Bundle.TicketTitle)), in.Bundle.TicketBody),
 	)
@@ -147,25 +119,138 @@ func Compose(in ComposeInput) (Payload, error) {
 		Role:      in.Role,
 		TicketNum: in.Bundle.TicketNum,
 		Parts:     parts,
-		Skills:    skills,
+		Skills:    []Skill{core, role},
 		Warnings:  warnings,
 		Markdown:  renderMarkdown(parts),
 	}, nil
 }
 
-// roleSkill resolves the role half of the payload: through the operator's
-// binding table and source list when a registry is present, and through the three
-// layers when it is not (this package's own tests, which compose with roots
-// alone). The layer fallback goes away when ticket 09 deletes the layer model.
-func (in ComposeInput) roleSkill() (Skill, error) {
-	if in.Sources != nil {
-		return resolveRoleSkill(in.Sources, in.Bindings, in.Role)
+// ComposeFree assembles the payload a free session is told — an agent chartr
+// launched into a space with no ticket and no role. Four parts: chartr's free
+// core, the conventions pointer, the operator's preferences, and the sources
+// block.
+//
+// **It carries no live fact about the space.** No map list, no frontier, no
+// branch for a space without `.plan/` — the same bytes in an empty tree and a
+// tree mid-effort. The agent is already in the tree and can list a directory,
+// while a list composed at spawn is wrong the moment another session resolves a
+// ticket, and a free session outlives that snapshot. What varies is the sources
+// block and the preferences bytes, and that is all — which is why this takes no
+// space at all, only the config root and the registry.
+func ComposeFree(configDir string, reg *sources.Registry) (Payload, error) {
+	contract, err := ReconcileContract(configDir)
+	if err != nil {
+		return Payload{}, err
 	}
-	s, ok := Resolve(in.Role, in.Roots)
-	if !ok {
-		return Skill{}, fmt.Errorf("no %q skill in any layer", in.Role)
+
+	parts := []Part{{
+		Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core",
+		Text: strings.TrimSpace(freeCoreText),
+	}}
+	parts = append(parts, contractParts(contract)...)
+	srcPart, warnings := sourcesPart(reg)
+	parts = append(parts, srcPart)
+
+	return Payload{
+		Parts:    parts,
+		Warnings: warnings,
+		Markdown: renderMarkdown(parts),
+	}, nil
+}
+
+// embeddedCore is the ticket session's core, read straight out of the binary.
+// It does not resolve through the skill layers and is not a source's to shadow:
+// it is chartr's own voice, and the claim trailer records it by the shipped hash
+// the running binary carries.
+func embeddedCore() Skill {
+	b, err := assets.ReadFile(path.Join(embedRoot, CoreSkill, skillFile))
+	if err != nil {
+		return Skill{Name: CoreSkill, Layer: LayerBuiltin}
 	}
-	return s, nil
+	meta, body := splitFrontmatter(string(b))
+	return Skill{
+		Name:        CoreSkill,
+		Layer:       LayerBuiltin,
+		Description: meta["description"],
+		Hash:        ShippedHash(CoreSkill),
+		Body:        strings.TrimSpace(body),
+	}
+}
+
+// contractParts are the two config-root documents every payload carries, in
+// order: the conventions as a *path*, and the operator's preferences as bytes.
+//
+// The conventions are pointed at rather than inlined because a location is a
+// capability and survives being ignored, where "read this" is an instruction
+// whose whole content is what the agent should do. The sentence therefore states
+// the consequence — a map file chartr cannot parse is a map file chartr does not
+// see — and carries the entire reason to open the path.
+//
+// `preferences.md` is the exception to all of it: the operator's own voice,
+// unwrapped, unlabelled and unranked, and permitted to contradict everything
+// above it. It is always a part, even when empty, so the preview shows the
+// operator where their file lands.
+func contractParts(c Contract) []Part {
+	var parts []Part
+	if c.ConventionsPath != "" {
+		parts = append(parts, Part{
+			Name: "conventions", Kind: "prompt", Origin: OriginChartr, Label: "contract",
+			Text: fmt.Sprintf(
+				"A file under `.plan/maps/` is read by chartr only where it follows the format stated at `%s`.",
+				c.ConventionsPath),
+		})
+	}
+	return append(parts, Part{
+		Name: "preferences", Kind: "prompt", Origin: OriginOperator, Label: "preferences",
+		Text: c.Preferences,
+	})
+}
+
+// sourcesPart renders the inventory both payloads carry identically: every
+// enabled source in resolution order with its local checkout path and the skill
+// names the walk found, and a closing sentence stating what happens when two
+// sources carry the same name.
+//
+// **A git source's URL is never printed.** It is a fetchable address in a
+// document handed to an agent running with permissions skipped, on an effort
+// whose standing decision is that nothing fetches unattended. The path is what a
+// session can act on; the URL is what it should not.
+//
+// Descriptions are omitted deliberately: names fall out of the walk for free,
+// where a description costs one file read per skill at every compose.
+//
+// The second return is the composition's warnings, with the one case that
+// silently changes what a payload says — a registered source whose directory is
+// not there.
+func sourcesPart(reg *sources.Registry) (Part, []string) {
+	var b strings.Builder
+	b.WriteString("The skills chartr can resolve, in the order it resolves them.\n")
+
+	var warnings []string
+	if reg != nil {
+		for _, st := range reg.States() {
+			if st.Status == sources.StatusUnavailable {
+				warnings = append(warnings, fmt.Sprintf(
+					"the source %q is unavailable — nothing is at %s, so every skill it carried resolves to nothing",
+					st.Name, st.Path))
+			}
+			if !st.Enabled {
+				continue
+			}
+			names := make([]string, 0, len(st.Skills))
+			for _, sk := range st.Skills {
+				names = append(names, sk.Name)
+			}
+			list := strings.Join(names, ", ")
+			if list == "" {
+				list = "no skills"
+			}
+			fmt.Fprintf(&b, "\n- `%s` at `%s` — %s", st.Name, st.Path, list)
+		}
+	}
+
+	b.WriteString("\n\nWhere two of them carry a skill of the same name, the earlier one is what a bare name reaches, and the later one is reached as `source/skill`.")
+	return ctxPart("sources", "Skill sources", b.String()), warnings
 }
 
 // AnswerSection returns a ticket's closing answer prose for inlining as a
@@ -197,42 +282,12 @@ func isAmendment(heading string) bool {
 
 func ctxPart(name, label, text string) Part {
 	return Part{
-		Name:     name,
-		Kind:     "context",
-		Segments: []Segment{{Layer: LayerContext, Label: label, Text: strings.TrimRight(text, "\n")}},
+		Name:   name,
+		Kind:   "context",
+		Origin: OriginContext,
+		Label:  label,
+		Text:   strings.TrimRight(text, "\n"),
 	}
-}
-
-// skillManifest renders the library a session may reach for: every shipped
-// skill's name, its one-line use, and the path its winning layer sits at — so
-// when the map's Notes or a ticket names a skill, the session can read its
-// SKILL.md off disk. Existence and reach only, never content: the bodies stay
-// out of the payload, and a stale fork is surfaced through LibraryWarnings,
-// not here.
-func skillManifest(roots Roots) string {
-	var b strings.Builder
-	b.WriteString("The skills chartr ships. When the map or your ticket names one, read its `SKILL.md` under the path shown and apply it — do not work from memory of this list.")
-	for _, name := range Names() {
-		s, ok := Resolve(name, roots)
-		if !ok {
-			continue
-		}
-		desc := s.Description
-		if desc == "" {
-			desc = "(no description)"
-		}
-		dir := s.Dir
-		if dir == "" && roots.Builtin != "" {
-			// The embedded floor is materialized under the built-in root.
-			dir = filepath.Join(roots.Builtin, name)
-		}
-		if dir != "" {
-			fmt.Fprintf(&b, "\n- `%s` — %s (`%s`)", name, desc, dir)
-		} else {
-			fmt.Fprintf(&b, "\n- `%s` — %s", name, desc)
-		}
-	}
-	return b.String()
 }
 
 func orDash(s string) string {
@@ -243,13 +298,17 @@ func orDash(s string) string {
 }
 
 // renderMarkdown is the single-document view of the payload: the prompt parts
-// (core, then role) run first as the instruction, then a `# Context` section
-// gathers every context part under its own heading. This is what would be written
-// to the gitignored payload file and pointed at with a one-line opener (a later
-// ticket); here it is what the preview shows and what the tests assert over.
+// (core, role, conventions, preferences) run first as the instruction, then a
+// `# Context` section gathers every context part under its own heading. An empty
+// part contributes nothing — an operator with no preferences leaves no gap. This
+// is what gets written to the gitignored payload file and pointed at with a
+// one-line opener, and what the preview shows.
 func renderMarkdown(parts []Part) string {
 	var prompts, context []Part
 	for _, p := range parts {
+		if strings.TrimSpace(p.Text) == "" {
+			continue
+		}
 		if p.Kind == "prompt" {
 			prompts = append(prompts, p)
 		} else {
@@ -262,30 +321,19 @@ func renderMarkdown(parts []Part) string {
 		if i > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(partText(p))
+		b.WriteString(strings.TrimSpace(p.Text))
 	}
 	if len(context) > 0 {
 		b.WriteString("\n\n---\n\n# Context\n")
 		for _, p := range context {
 			b.WriteString("\n## ")
-			b.WriteString(p.Segments[0].Label)
+			b.WriteString(p.Label)
 			b.WriteString("\n\n")
-			b.WriteString(partText(p))
+			b.WriteString(strings.TrimSpace(p.Text))
 			b.WriteString("\n")
 		}
 	}
 	return strings.TrimSpace(b.String()) + "\n"
-}
-
-// partText joins a part's non-empty segments with a blank line between them.
-func partText(p Part) string {
-	var segs []string
-	for _, s := range p.Segments {
-		if t := strings.TrimSpace(s.Text); t != "" {
-			segs = append(segs, t)
-		}
-	}
-	return strings.Join(segs, "\n\n")
 }
 
 // answerThroughAmendments returns the body under the first matching `## <name>`

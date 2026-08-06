@@ -269,7 +269,6 @@ const emptyLibraryMessage = "no agents are registered — register one in settin
 func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	payload, err := prompt.Compose(prompt.ComposeInput{
 		Role:      in.role,
-		Roots:     s.skillRoots(in.entry.Path),
 		ConfigDir: s.opts.ConfigDir,
 		Sources:   s.srcs,
 		Bindings:  s.roleBindings(),
