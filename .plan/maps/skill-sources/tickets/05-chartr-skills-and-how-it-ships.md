@@ -228,6 +228,26 @@ effort is gutting.
   vendor procedure becomes the Make target's comment, the shipped-skill contract
   moves into `chartr-skills/CONTRACT.md`, and its format/duplication warning is
   superseded by ticket 04. Nothing in chartr's `docs/` replaces it.
+
+**Deleting that file retires the decision it carried**, and this ticket retires
+it out loud rather than by deletion. `docs/skill-sync.md` holds a *"decided
+2026-07-22, do not re-litigate"* block with two rules, and no ADR ever recorded
+either of them — checked against all sixteen — so the file is their only home.
+
+- ***Re-author, never wrap*** — **survives, relocated.** It becomes
+  `chartr-skills/CONTRACT.md`'s rule and now applies upstream, where a Pocock
+  skill is adapted once, rather than at vendor time.
+- ***No runtime loading*** — **reversed, knowingly.** Its stated reason was
+  reproducibility: skills embedded in the binary mean two machines resolve
+  identical bytes for the same ticket, which is what made the payload hash a
+  provenance trailer worth trusting. Registered sources give that up outright. A
+  `dir` source is a folder the operator can edit between two spawns and it
+  records no version at all, so "this prompt ran" is no longer verifiable off a
+  teammate's machine. What replaces it is weaker and honest about being weaker:
+  the `Skill:` trailer *names the source* and pins it where the source is a git
+  checkout, and `Payload-SHA256` still fixes the exact bytes for the machine that
+  composed them. The map chose an operator-owned, hackable library over
+  cross-machine reproducibility; this is the sentence that says so.
 - The stale duplicate at the repo root (`/skills/`, gitignored, already drifted
   from the embedded copy) goes with it.
 
@@ -321,11 +341,10 @@ opposite of what a source list is for.
   chartr's own role resolution. Ticket 03 owns what a spawn does with an
   unresolvable binding; this ticket supplies the failure mode, and notes it is
   the sharpest consequence of choosing a refreshable default over a frozen one.
-- **`docs/skill-sync.md` also carried the "why chartr owns its skills" decision
-  of 2026-07-22** (re-author, never wrap; no runtime loading). This effort
-  reverses the second half outright — sources *are* runtime loading — and no
-  ticket on this map has written that reversal down as such. Ticket 07 or 08
-  should, wherever the ADR amendments land.
+- **The reproducibility this effort gives up is recorded above, not resolved.**
+  Ticket 07 or 08 should carry the retirement into ADR 0009's amendment,
+  wherever that lands; the reasoning it has to answer is now written down rather
+  than deleted with `docs/skill-sync.md`.
 
 ### Revisit triggers
 
