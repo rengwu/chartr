@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01, 02, 03, 04, 05, 06, 07]
+claimed_by: s30d77be9aa83
+claimed_at: 2026-08-06T09:39:23Z
 ---
 
 # Sequencing the work
