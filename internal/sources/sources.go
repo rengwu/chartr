@@ -180,6 +180,25 @@ func DefaultPath(configDir string) string {
 	return filepath.Join(configDir, checkoutsDir, DefaultName)
 }
 
+// FilePath is where the list lives. It is exported because the absence of this
+// file is what the first-run migration fires on: the one durable signal that no
+// build with skill sources has ever started against this config root.
+func FilePath(configDir string) string {
+	return filepath.Join(configDir, fileName)
+}
+
+// HasSkills reports whether the bounded discovery walk finds at least one skill
+// below dir. It is the same walk a registered source is read with, so a directory
+// that would contribute no rows to the library answers no here — which is what
+// lets the migration skip registering an empty legacy directory rather than
+// leaving a permanently `empty` row behind.
+func HasSkills(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	return len(discover(dir, 1)) > 0
+}
+
 // Load reads the list under configDir. A missing or unparseable file is the
 // default row alone — the first-run state, not an error — and a row this package
 // cannot read is dropped with a warning while the rest of the list stands.
@@ -601,6 +620,17 @@ func (r *Registry) freeNameLocked(name string) error {
 		}
 	}
 	return nil
+}
+
+// Save writes the list as it stands. Every mutation on the seam already saves,
+// so this exists for the one caller that must guarantee the *file* exists even
+// when it registered nothing: the first-run migration, which fires on the file's
+// absence and would otherwise run again at every startup on a machine with
+// nothing to migrate.
+func (r *Registry) Save() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.saveLocked()
 }
 
 // saveLocked writes the whole list atomically (temp file + rename) so a crash

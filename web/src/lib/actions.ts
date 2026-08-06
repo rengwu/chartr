@@ -26,7 +26,7 @@ async function send(method: string, path: string, body?: unknown): Promise<unkno
   // Every POST declares JSON, and so does anything carrying a body — the server
   // refuses an undeclared write with a 415 (websocket-origin-fix, ticket 03).
   // That includes the actions that send no body at all (open a shell, pick a
-  // folder, install the tracker adapter): a POST is the one write a browser will
+  // folder): a POST is the one write a browser will
   // send cross-origin with no preflight, and the declaration is what puts one
   // behind a preflight the server never answers.
   const declaresJson = method === 'POST' || body !== undefined
@@ -306,29 +306,6 @@ export function createConfigLayer(layer: string): Promise<{ path: string; create
     path: string
     created: boolean
   }>
-}
-
-// installTrackerAdapter writes chartr's tracker adapter into a space — the one
-// endpoint behind Install (absent), Refresh (stale), and Replace (foreign): the
-// operator acting on the offer is the consent, so it is a single write with no
-// separate confirm on the wire. Returns the path it wrote; the next snapshot drops
-// the offer, the adapter now being up-to-date. A refused write (e.g. a foreign file
-// the server won't clobber) throws ActionError carrying chartr's own message.
-export function installTrackerAdapter(id: string): Promise<{ path: string }> {
-  return send('POST', `/api/spaces/${encodeURIComponent(id)}/tracker-adapter`) as Promise<{
-    path: string
-  }>
-}
-
-// dismissTrackerAdapter silences the offer for good (persisted per-space) and
-// writes nothing to the repo — the Dismiss (×) on every state and the Leave that
-// declines a foreign replace. Returns 204 → null; the offer is gone from the next
-// snapshot.
-export function dismissTrackerAdapter(id: string): Promise<void> {
-  return send(
-    'POST',
-    `/api/spaces/${encodeURIComponent(id)}/tracker-adapter/dismiss`,
-  ) as Promise<void>
 }
 
 // setAgent registers or updates one agent of the operator's library. It is a PUT

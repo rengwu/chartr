@@ -45,8 +45,7 @@ func gate(addr net.Addr, h http.Handler) http.Handler {
 // `application/x-www-form-urlencoded` — or absent, which is what a bare
 // `fetch(url, {method: 'POST'})` sends. The routes that take no body are side
 // effects worth causing blind (open a shell, raise the operator's folder
-// chooser, write the tracker adapter into their repo), so "carries a body" is
-// not the line. **And anything carrying a body**, whatever its method, because a
+// chooser), so "carries a body" is not the line. **And anything carrying a body**, whatever its method, because a
 // body is bytes a handler will decode and an undeclared one has no business
 // being decoded.
 //

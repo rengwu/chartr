@@ -4,7 +4,6 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import SkillLauncher from './SkillLauncher.svelte'
-  import TrackerAdapterBanner from './TrackerAdapterBanner.svelte'
   import AsciiFlow from './AsciiFlow.svelte'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
@@ -120,7 +119,7 @@
   const maps = $derived<WMap[]>(space.maps ?? [])
 
   // The Scratch space has no repository, so it has nothing to chart: no star-map
-  // toggle, no map card, no tracker-adapter offer, and inert M/Esc. `mapShown` is
+  // toggle, no map card, and inert M/Esc. `mapShown` is
   // a standing preference for the whole stage rather than per space, so this is
   // enforced *here*, where the card renders — an operator who leaves the map open
   // on a registered space and switches to Scratch must not carry it across, and
@@ -437,20 +436,6 @@
     </div>
   </header>
 
-  <!-- chartr's offer about this space's tracker adapter. The maintenance states —
-       stale (a refresh) and foreign (a file in the way) — surface as a chrome
-       banner under the header, where they can coexist with a space that already
-       has maps. The clean first-write offer (absent) instead lives in the maps
-       pane's empty picker, right where its "let chartr write maps here" belongs
-       (that space has no maps yet, so there's nothing else there). Space-scoped
-       and snapshot-gated either way: each action clears the offer by the next
-       snapshot (ADR 0010). -->
-  {#if !mapless && space.trackerAdapter && space.trackerAdapter.state !== 'absent'}
-    <div class="mx-3 mt-2">
-      <TrackerAdapterBanner spaceId={space.id} offer={space.trackerAdapter} />
-    </div>
-  {/if}
-
   <!-- The panes row: the terminal column and, over it, the star-map card. It is
        the positioning context for a floating card (relative), and a flex row for
        the docked split — the terminal's frozen width lives in an inline
@@ -521,7 +506,6 @@
       <MapCard
         {maps}
         spaceId={space.id}
-        trackerAdapter={space.trackerAdapter}
         lastAgent={space.lastAgent}
         {agents}
         terminals={space.terminals ?? []}
