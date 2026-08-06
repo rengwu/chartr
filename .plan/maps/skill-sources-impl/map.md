@@ -96,6 +96,14 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   unmanifested agent no longer reads idle for life and no longer flashes idle at
   boot. Note: the engine *does* ship a manifest for `kimi` at HEAD, so it is not a
   valid unmanifested agent to hand-test with.
+- [The new-shell control](tickets/08-the-new-shell-control.md) — the launcher and
+  the `+` shell button are one `new shell` split button (`NewShellButton.svelte`,
+  on the space card *and* `SpacePane`'s empty state); the caret's agent rows start
+  a free session on the repurposed `/launch` route through `ComposeFree` and
+  `OpenFree`, titled by the agent's registered name and outside the one-session
+  gate. `/ideate`, `prompt.Ideate`, the on-ramp/needs-context frontmatter and the
+  context modal are gone; `prompt.Launch` survives unused for ticket 09.
+  Note: tickets 05, 06 and 07 resolved without adding their line here.
 
 ## Not yet specified
 
