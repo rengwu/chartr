@@ -57,9 +57,10 @@ func (s *Server) handlePayloadPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload, err := prompt.Compose(prompt.ComposeInput{
-		Role:   role,
-		Roots:  s.skillRoots(e.Path),
-		Bundle: bundle,
+		Role:      role,
+		Roots:     s.skillRoots(e.Path),
+		Bundle:    bundle,
+		ConfigDir: s.opts.ConfigDir,
 	})
 	if err != nil {
 		// An unknown role is the caller's to fix; every other input was validated.

@@ -268,8 +268,9 @@ const emptyLibraryMessage = "no agents are registered — register one in settin
 // death halt to resolve.
 func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	payload, err := prompt.Compose(prompt.ComposeInput{
-		Role:  in.role,
-		Roots: s.skillRoots(in.entry.Path),
+		Role:      in.role,
+		Roots:     s.skillRoots(in.entry.Path),
+		ConfigDir: s.opts.ConfigDir,
 		Bundle: prompt.Bundle{
 			MapName:     in.m.Name,
 			MapBody:     in.m.Body,
