@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [01, 02]
+claimed_by: sa7b6dffd9349
+claimed_at: 2026-08-06T16:06:19Z
 ---
 
 # The seed, and role bindings that resolve into it
