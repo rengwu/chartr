@@ -225,6 +225,7 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string,
 		args:    args,
 		env:     env,
 		title:   sessionTitle(s),
+		agent:   s.Agent,
 		session: &sess,
 	})
 	if err != nil {
@@ -257,8 +258,13 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string,
 // if a known agent holds the foreground (it usually does), the shell grammar
 // otherwise. id is chosen by the caller, matching OpenSession's style,
 // so the tab and the gitignored prompt file it points at share one identity.
-func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args, env []string, opener, title string) (*Terminal, error) {
-	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, env: env, title: title})
+//
+// agent is the adapter being launched — carried for the same reason a session
+// carries it: chartr chose this binary, so the sampler is told rather than made to
+// rediscover it off the PTY, and a tab on an agent with no shipped manifest reads
+// working-while-alive instead of a permanent, wrong idle.
+func (m *Manager) OpenOnRamp(spaceID, cwd, id, name string, args, env []string, opener, title, agent string) (*Terminal, error) {
+	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, env: env, title: title, agent: agent})
 	if err != nil {
 		return nil, err
 	}

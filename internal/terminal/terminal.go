@@ -77,6 +77,12 @@ type Terminal struct {
 	// shell. Immutable after start.
 	session *Session
 
+	// launchedAgent is the adapter chartr itself started in this PTY, empty when the
+	// tab is an ad-hoc shell the operator drives. It answers a different question
+	// from session: *chartr knows which binary runs here*, which is true of a
+	// session and of a ticketless launch alike. Immutable after start.
+	launchedAgent string
+
 	// shellPID is the shell process's pid, which (being a session leader on a new
 	// PTY) is also its process-group id. The foreground group equals it exactly
 	// when the shell sits at its prompt, which is how sample tells idle from
@@ -392,8 +398,13 @@ type launchSpec struct {
 	// entries. Empty for an ad-hoc shell, which wants the operator's environment
 	// exactly as chartr received it; a session or an on-ramp carries whatever its
 	// registered agent asked for.
-	env     []string
-	title   string
+	env   []string
+	title string
+	// agent is the adapter chartr is launching here, set by every launch chartr
+	// chose the binary for — a session and a ticketless launch both — and empty for
+	// an ad-hoc shell. It is what the sampler identifies the tab from, so it does
+	// not have to read the PTY's foreground for an answer chartr already knows.
+	agent   string
 	session *Session
 }
 
@@ -430,18 +441,20 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		title = shellTitle(spec.name)
 	}
 	state := model.TerminalIdle
-	if spec.session != nil {
-		// Seat a session as working until the first sample decides otherwise, so a
-		// just-spawned session orbits rather than flashing a spurious idle tick while
-		// its agent boots. The agent grammar's startup grace holds the same line once
-		// the agent is identified.
+	if spec.agent != "" {
+		// Seat a chartr-launched agent as working until the first sample decides
+		// otherwise, so a just-spawned tab orbits rather than flashing a spurious idle
+		// tick while its agent boots. The agent grammar's startup grace holds the same
+		// line once the agent is identified.
 		state = model.TerminalWorking
 	}
 	return &Terminal{
-		ID:       id,
-		SpaceID:  spaceID,
-		Title:    title,
-		session:  spec.session,
+		ID:            id,
+		SpaceID:       spaceID,
+		Title:         title,
+		session:       spec.session,
+		launchedAgent: spec.agent,
+
 		shellPID: c.Process.Pid,
 		pty:      p,
 		cmd:      c,
@@ -504,12 +517,13 @@ func (t *Terminal) setOSCProgress(s string) {
 // the case a session-only grammar could not reach.
 //
 // Only *how* a tab is resolved differs, and only because the answer is already
-// known for one of them: a session's agent comes from the binding chartr recorded
-// when it launched it, while an ad-hoc shell's has to be read off whatever holds
-// the PTY's foreground. Everything downstream of the resolution is shared.
+// known for one of them: a tab chartr launched an agent in takes its agent from
+// that launch, while an ad-hoc shell's has to be read off whatever holds the PTY's
+// foreground. Everything downstream of the resolution is shared.
 func (t *Terminal) sample(eng *detect.Engine) bool {
 	t.mu.Lock()
 	alive, isSession := t.alive, t.session != nil
+	launched := t.launchedAgent
 	prevPgrp, prevAgent := t.lastPgrp, t.agent
 	t.mu.Unlock()
 
@@ -517,25 +531,27 @@ func (t *Terminal) sample(eng *detect.Engine) bool {
 		return t.sampleGone(isSession)
 	}
 
-	// A session does not need to be identified by inspection: chartr launched its
-	// agent and recorded which adapter it ran, so the binding *is* the answer. That
-	// is both cheaper and steadier than reading the PTY — and it keeps the ioctl and
-	// the `ps` off session PTYs entirely, as they always were.
-	if isSession {
+	// A tab chartr launched does not need to be identified by inspection: chartr
+	// started the binary and recorded which adapter it ran, so the launch *is* the
+	// answer. That is both cheaper and steadier than reading the PTY — and it keeps
+	// the ioctl and the `ps` off those PTYs entirely, as they always were. It is the
+	// launch that decides this, not the ticket: a ticketless launch knows its agent
+	// exactly as well as a session does.
+	if launched != "" {
 		agent := ""
-		if a := t.session.Agent; eng.Known(a) {
-			agent = a
+		if eng.Known(launched) {
+			agent = launched
 		}
 		t.seatAgent(agent, prevAgent)
 		if agent != "" {
 			return t.sampleAgent(agent, eng)
 		}
-		// A session running an agent we ship no manifest for (kimi, opencode and pi
-		// are ticket 02's) is still an agent tab. The shell grammar cannot speak for
-		// it — a session's root process *is* the agent, so it holds the foreground
-		// for its whole life and the foreground-group signal would read a permanent,
-		// wrong "idle". It keeps what it has always read: working while alive.
-		return t.sampleUnknownSession()
+		// A launch of an agent we ship no manifest for (kimi, opencode and pi are
+		// ticket 02's) is still an agent tab. The shell grammar cannot speak for it —
+		// the tab's root process *is* the agent, so it holds the foreground for its
+		// whole life and the foreground-group signal would read a permanent, wrong
+		// "idle". It keeps what a session has always read: working while alive.
+		return t.sampleLaunchedAgent()
 	}
 
 	// An ad-hoc shell is the case that has to be inspected: the operator typed
@@ -585,10 +601,10 @@ func (t *Terminal) seatAgent(agent, prev string) {
 	t.pub = newPublisher(time.Now())
 }
 
-// sampleUnknownSession is the fallback for a live session running an agent chartr
-// has no manifest for: working, exactly as every session read before detection
-// existed.
-func (t *Terminal) sampleUnknownSession() bool {
+// sampleLaunchedAgent is the fallback for a live tab chartr launched an agent in
+// that it has no manifest for: working, exactly as every session read before
+// detection existed.
+func (t *Terminal) sampleLaunchedAgent() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.state == model.TerminalWorking {
