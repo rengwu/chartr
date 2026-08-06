@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [04, 07]
+claimed_by: s4aac98c813a3
+claimed_at: 2026-08-06T19:29:34Z
 ---
 
 # The new-shell control
