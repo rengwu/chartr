@@ -7,7 +7,7 @@
 BIN := bin/chartr
 
 .PHONY: build web go-build dev-backend dev-web check test vet clean \
-        webview bundle dmg appimage snapshot release
+        webview bundle dmg appimage snapshot release vendor-skills
 
 ## build: frontend then the self-contained binary with the SPA embedded.
 build: web go-build
@@ -52,6 +52,45 @@ vet:
 ## socket and HTTP, not the built SPA.
 test:
 	go test ./...
+
+## vendor-skills: refresh the vendored copy of the default skill source.
+##
+## The seed under `internal/sources/assets/chartr-skills/` is a **checked-in copy
+## of a pinned ref**, so a release's contents are a function of the commit and the
+## test suite never needs network. This target is the whole refresh procedure:
+## clone the skills repo at a ref, replace the vendored directory wholesale (so a
+## skill deleted upstream actually disappears from the seed), and rewrite the pin
+## constant `SeedCommit` in `internal/sources/seed.go` to the commit it landed on.
+## Nothing else may edit that constant.
+##
+##     make vendor-skills                     # upstream at its default branch
+##     make vendor-skills SKILLS_REF=v2       # upstream at a tag or branch
+##     make vendor-skills SKILLS_REPO=~/src/chartr-skills   # a local checkout
+##
+## Review the diff and commit it like any other source change; then run the usual
+## `go vet ./... && go test ./...` before pushing, since the seed's bytes are what
+## a first run's role sessions are told.
+SKILLS_REPO ?= https://github.com/rengwu/chartr-skills.git
+SKILLS_REF  ?=
+SEED_DIR    := internal/sources/assets/chartr-skills
+SEED_FILE   := internal/sources/seed.go
+
+vendor-skills:
+	@set -eu; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	if [ -n "$(SKILLS_REF)" ]; then \
+	  git clone --depth 1 --single-branch --branch "$(SKILLS_REF)" "$(SKILLS_REPO)" "$$tmp/skills"; \
+	else \
+	  git clone --depth 1 --single-branch "$(SKILLS_REPO)" "$$tmp/skills"; \
+	fi; \
+	commit=$$(git -C "$$tmp/skills" rev-parse HEAD); \
+	rm -rf "$$tmp/skills/.git"; \
+	rm -rf "$(SEED_DIR)"; \
+	mkdir -p "$$(dirname "$(SEED_DIR)")"; \
+	mv "$$tmp/skills" "$(SEED_DIR)"; \
+	perl -pi -e "s/^const SeedCommit = \".*\"$$/const SeedCommit = \"$$commit\"/" "$(SEED_FILE)"; \
+	echo "vendored $(SKILLS_REPO) at $$commit into $(SEED_DIR)"
 
 ## snapshot: build the supported binaries locally without publishing, exactly as
 ## a release would (goreleaser, cgo-free), into build/goreleaser. Useful for
