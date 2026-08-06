@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01, 03, 05]
+claimed_by: s2d0aa507bc6e
+claimed_at: 2026-08-06T08:02:14Z
 ---
 
 # Migrating off the layer model
