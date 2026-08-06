@@ -83,6 +83,12 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   failure-mode table under test; nothing consumes it yet. The default row's path is
   `<configDir>/sources/chartr-skills` (`DefaultPath`), its two extra scalars already
   persist, and `Refresh` refuses it — the seeded→pinned conversion is ticket 05's.
+- [The conventions ruleset](tickets/03-the-conventions-ruleset.md) — chartr's
+  format-only write contract is embedded, materialized under the config root, and
+  reconciled again before every composition; `preferences.md` is created empty once
+  and never rewritten, failing composition visibly when unreadable. `mapscan` now
+  reads `.plan/maps/` only. The `Contract` it returns is not yet a payload part —
+  that is ticket 07's.
 
 ## Not yet specified
 
