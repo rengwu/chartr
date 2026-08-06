@@ -89,6 +89,13 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   and never rewritten, failing composition visibly when unreadable. `mapscan` now
   reads `.plan/maps/` only. The `Contract` it returns is not yet a payload part —
   that is ticket 07's.
+- [The launched-agent split](tickets/04-the-launched-agent-split.md) — `Terminal`
+  gains `launchedAgent`; `sample()`'s identification and `newProc`'s working seed
+  key on it, every other `session != nil` site is untouched, and
+  `sampleUnknownSession` is now `sampleLaunchedAgent`. An on-ramp tab on an
+  unmanifested agent no longer reads idle for life and no longer flashes idle at
+  boot. Note: the engine *does* ship a manifest for `kimi` at HEAD, so it is not a
+  valid unmanifested agent to hand-test with.
 
 ## Not yet specified
 

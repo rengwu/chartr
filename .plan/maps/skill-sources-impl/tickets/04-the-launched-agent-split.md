@@ -52,3 +52,67 @@ answer what you actually observed.
 the process group; a tab on an unmanifested agent tracks its real state instead of
 reading idle for its whole life; there is no idle flash at launch; and every other
 `session != nil` site is unchanged. `go vet` and `go test` pass.
+
+## Answer
+
+The split landed exactly in the shape the ticket fixed. `launchSpec` gains an
+`agent` field, `Terminal` gains `launchedAgent`, and both openers set it:
+`OpenSession` from `s.Agent`, and `OpenOnRamp` from a new trailing `agent`
+parameter that `internal/server/terminals.go` fills with `spec.Adapter` — the same
+value the spawn path already puts in `Session.Agent`, so a session and an on-ramp
+on the same registered agent now resolve to the identical string.
+
+Two sites moved, and only two:
+
+- **`sample()`'s identification branch** now keys on `launched != ""` instead of
+  `isSession`, and calls `eng.Known(launched)` rather than `eng.Known(t.session.Agent)`.
+  A chartr-launched tab therefore never reaches `foreground()` or
+  `procGroupNames()` at all — the whole inspection block is below the early return.
+- **`newProc`'s working-state seed** now keys on `spec.agent != ""`.
+
+`sampleUnknownSession` is renamed `sampleLaunchedAgent` (only its name and doc
+changed; the body is untouched) and is now reached from both paths. The doc
+comments on `sample()`, `launchSpec` and `newProc` were reworded off "a session"
+onto "a tab chartr launched", since that is now the actual predicate.
+
+Everything else reading `session != nil` is byte-for-byte unchanged:
+`isLiveSession` (the one-session gate), `pinOnDeath`, `sampleGone`'s dead-vs-exited
+call, `sessionTitle`, the `Session` on the pushed model in `manager.go:403`, and
+`clock.go`'s run-clock binding. No tab-kind enum was introduced.
+
+**Done-when, clause by clause.** `sample()` identifies from `launchedAgent` with no
+process-group inspection ✓. An unmanifested agent tracks instead of reading idle
+forever ✓ (observed, below). No idle flash at launch ✓ (observed). Every other
+`session != nil` site unchanged ✓. `go vet ./...` and `go test ./...` pass — the
+full suite, including `internal/server`, is green.
+
+**What I actually observed.** I did not do the hand launch in the running app, and
+I want that on the record: the session was asked to be economical, and standing up
+the cockpit, registering an unmanifested agent and driving the launcher by hand is
+a long path for a signal I could get at the same seam. Instead I ran a *throwaway*
+test — written, run, and deleted, not committed, so the spec's Testing Decisions
+call to ship no test here still holds — that drove the real
+`Manager.OpenOnRamp` → `newProc` → `sample()` path with a stub executable in a real
+PTY, exactly the `agent_test.go` technique. On an agent name the engine ships no
+manifest for:
+
+- state at open, before any sample, was `working` — **no idle flash at boot**;
+- after 2s of repeated `sample()` calls it was still `working`, with `agent=""`
+  (the engine correctly did not know it) — so it took `sampleLaunchedAgent`, not
+  the shell grammar;
+- `lastPgrp` stayed `0` across every sample — **the foreground was never read**,
+  which is the cheapness half of the fix, visible directly;
+- and the HEAD bug reproduced in the same run: `foreground(pty) == shellPID`
+  (13480 == 13480), which is precisely the condition under which `sampleShell`
+  would have returned idle for the tab's whole life.
+
+One caution for whoever does eventually eyeball this in the app: I first ran the
+throwaway with `kimi` as the unmanifested name, and the engine **did** know it —
+`agent` seated as `"kimi"` and the tab took `sampleAgent`. So the ticket's aside
+naming "kimi, opencode and pi" as unmanifested is stale at HEAD for at least
+`kimi`. It does not change any decision here — both branches are correct and both
+are now reached from the launch, not from the ticket — but a hand test that picks
+`kimi` will exercise the wrong branch and prove nothing.
+
+**Deliberately not done:** no test committed (spec's call); no web checks run, as
+the diff is Go-only and touches no frontend file; no `git push`.
