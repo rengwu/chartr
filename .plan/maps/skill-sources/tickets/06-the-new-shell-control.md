@@ -2,6 +2,8 @@
 type: prototype
 blocked_by: [02]
 assets: [new-shell-sketch.png]
+claimed_by: s0ff3f94b3192
+claimed_at: 2026-08-06T09:04:32Z
 ---
 
 # The new-shell control replaces the launcher
