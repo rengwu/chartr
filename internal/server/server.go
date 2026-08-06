@@ -118,6 +118,13 @@ func New(opts Options) (*Server, error) {
 	if err := prompt.Materialize(opts.ConfigDir); err != nil {
 		return nil, err
 	}
+	// Write chartr's file-format contract and create the operator's preferences
+	// file, both under the config root (skill-sources ticket 03). Startup is the
+	// first of two reconcile points; every composition is the other, so an upgrade
+	// updates the contract even in a process that never restarts a preview.
+	if _, err := prompt.ReconcileContract(opts.ConfigDir); err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		opts:     opts,

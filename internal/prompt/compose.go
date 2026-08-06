@@ -30,11 +30,17 @@ type Bundle struct {
 }
 
 // ComposeInput is everything Compose needs: the role, the skill-library roots
-// resolution walks, and the assembled bundle.
+// resolution walks, the config root the contract files live under, and the
+// assembled bundle.
 type ComposeInput struct {
 	Role   string
 	Roots  Roots
 	Bundle Bundle
+	// ConfigDir is the operator's config root. Composition reconciles the
+	// generated conventions and the operator's preferences against it before it
+	// assembles anything. Empty skips the reconcile, which is for tests that
+	// compose without a config root at all.
+	ConfigDir string
 }
 
 // Compose assembles the payload a session for this ticket and role would be told:
@@ -44,6 +50,16 @@ type ComposeInput struct {
 func Compose(in ComposeInput) (Payload, error) {
 	if !config.IsRole(in.Role) {
 		return Payload{}, fmt.Errorf("unknown role %q; want one of %v", in.Role, config.Roles)
+	}
+
+	// Every composition — a spawn and a preview alike — reconciles the config
+	// root's two contract files first: the generated conventions are restored to
+	// the canonical bytes, and an unreadable `preferences.md` fails the compose
+	// here rather than quietly dropping the operator's instructions. The Contract
+	// itself becomes payload parts in the two-payloads ticket; today the value of
+	// this call is the reconcile and the visible failure.
+	if _, err := ReconcileContract(in.ConfigDir); err != nil {
+		return Payload{}, err
 	}
 
 	var warnings []string
