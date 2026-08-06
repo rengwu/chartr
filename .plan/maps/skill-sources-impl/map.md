@@ -74,6 +74,11 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
 
 <!-- one line per resolved ticket: gist + link. Empty until the first ticket ships. -->
 
+- [The chartr-skills repo](tickets/01-the-chartr-skills-repo.md) — seven skills
+  re-authored against the two-clause test, `CONTRACT.md` and MIT `LICENSE`
+  written, in a new local repo at `~/Desktop/Projects/chartr-skills`; vendor
+  commit `ece028dfd19a21d6b4b990c96d0efe2fa5c83a49` identified for ticket 05.
+
 ## Not yet specified
 
 <!-- Empty. Every decision is settled in the spec; this map only executes it. A
