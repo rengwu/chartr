@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01]
+claimed_by: s5dcc337e877c
+claimed_at: 2026-08-06T07:39:26Z
 ---
 
 # Binding a ticket type to a skill
