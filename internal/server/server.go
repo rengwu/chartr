@@ -117,34 +117,24 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Materialize the skill library to disk so the operator can read and edit
-	// exactly what a session is told (ticket 08, story 45). Existing files are
-	// preserved, so edits survive a restart and compose on the next preview.
-	if err := prompt.Materialize(opts.ConfigDir); err != nil {
-		return nil, err
-	}
-	// The skill sources: the operator's ordered list, then chartr's own default
-	// source brought into the state the compiled seed describes, then the four role
-	// bindings — in that order, because a binding is seeded pointing into the
-	// default source and must not be written before that source is on disk. Both
-	// writes are quiet and both are once-only: the seed reconciles against a `.git`
-	// the operator's own fetch left behind, and the bindings seed only on a startup
-	// that finds no `[roles]` table at all (skill-sources ticket 05).
-	srcs, err := sources.Load(opts.ConfigDir)
+	// Everything chartr writes into its own config root, in one ordered sequence
+	// (see firstrun.go): the migration off the three-layer skill model, the source
+	// list, the seeded default source, the role bindings, and the generated
+	// conventions. It runs *before* the shipped library is materialized, because
+	// the migration's whole judgment is a byte comparison against the library as
+	// the operator left it — materializing first would top it back up and make an
+	// upgraded root read as untouched.
+	srcs, err := firstRun(opts.ConfigDir)
 	if err != nil {
 		return nil, err
 	}
-	if err := sources.Reconcile(opts.ConfigDir); err != nil {
-		return nil, err
-	}
-	if err := seedRoleBindings(opts.ConfigDir); err != nil {
-		return nil, err
-	}
-	// Write chartr's file-format contract and create the operator's preferences
-	// file, both under the config root (skill-sources ticket 03). Startup is the
-	// first of two reconcile points; every composition is the other, so an upgrade
-	// updates the contract even in a process that never restarts a preview.
-	if _, err := prompt.ReconcileContract(opts.ConfigDir); err != nil {
+	// Materialize the skill library to disk so the operator can read and edit
+	// exactly what a session is told (ticket 08, story 45). Existing files are
+	// preserved, so edits survive a restart and compose on the next preview. This
+	// still runs because role resolution still goes through the layer model until
+	// skill-sources ticket 07 moves it onto sources; a root the migration just
+	// renamed aside is repopulated here with chartr's own bytes, unregistered.
+	if err := prompt.Materialize(opts.ConfigDir); err != nil {
 		return nil, err
 	}
 
@@ -204,12 +194,6 @@ func New(opts Options) (*Server, error) {
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/agent", s.handleSetSpaceAgent)
-
-	// The tracker-adapter offer: install/refresh/replace writes chartr's adapter
-	// into the repo (with the operator acting on the offer as consent); dismiss
-	// silences the prompt without touching the repo.
-	s.mux.HandleFunc("POST /api/spaces/{id}/tracker-adapter", s.handleInstallTrackerAdapter)
-	s.mux.HandleFunc("POST /api/spaces/{id}/tracker-adapter/dismiss", s.handleDismissTrackerAdapter)
 	// The effective config surface (ticket 05, ADR 0014). The read half rides the
 	// per-space model push; these are the two writes it is allowed. Editing a role
 	// Opening a layer file is a POST because it launches a process, and it resolves

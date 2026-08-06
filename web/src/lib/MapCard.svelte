@@ -5,12 +5,10 @@
     Map as WMap,
     Terminal,
     Ticket,
-    TrackerAdapterOffer,
   } from "./model";
   import StarMap from "./StarMap.svelte";
   import DetailPane from "./DetailPane.svelte";
   import MapPickerCard from "./MapPickerCard.svelte";
-  import TrackerAdapterBanner from "./TrackerAdapterBanner.svelte";
   import { decideDock, type Dock } from "./starmap/dock";
   import { cameraKey } from "./mapstate";
   import { Button } from "./components/ui/button";
@@ -39,7 +37,6 @@
   let {
     maps,
     spaceId,
-    trackerAdapter,
     lastAgent,
     agents,
     terminals = [],
@@ -61,10 +58,6 @@
     // The space these maps belong to — threaded to the detail pane so its payload
     // preview can fetch (ticket 08).
     spaceId: string;
-    // chartr's tracker-adapter offer for this space. Only the clean first-write
-    // case (absent) is rendered here — as the empty picker's prompt, since that
-    // space has no maps yet; the maintenance states stay a chrome banner upstream.
-    trackerAdapter?: TrackerAdapterOffer;
     // The space's remembered agent and the global library (ticket 02): handed to
     // the detail pane so the spawn buttons can name and pick which agent runs.
     lastAgent?: string;
@@ -452,26 +445,6 @@
             {#each maps as m (m.slug)}
               <MapPickerCard map={m} onopen={() => (slug = m.slug)} />
             {/each}
-          </div>
-        </div>
-      {:else if trackerAdapter?.state === "absent"}
-        <!-- No maps here yet because chartr can't write any until its tracker
-             adapter is installed — so the absent offer *is* this empty state,
-             surfaced where maps live rather than as a chrome banner. The offer
-             sits at the top with the standing /wayfinder hint beneath it (install
-             first, then chart); dismissing the offer drops it from the snapshot,
-             falling through to the plain hint below. -->
-        <div class="flex min-h-full flex-col p-3">
-          <TrackerAdapterBanner {spaceId} offer={trackerAdapter} />
-          <!-- The hint fills the space under the offer and centres in it, both
-               ways, so the banner stays pinned to the top while the standing
-               /wayfinder guidance sits centred beneath. -->
-          <div class="grid flex-1 place-items-center">
-            <p class="max-w-xs text-center text-xs text-muted-foreground">
-              No maps in this space yet — chart one with <code class="font-mono"
-                >/wayfinder</code
-              > in a shell.
-            </p>
           </div>
         </div>
       {:else}

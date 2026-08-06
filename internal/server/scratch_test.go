@@ -44,9 +44,6 @@ func TestSnapshotAlwaysCarriesAThinScratchSpace(t *testing.T) {
 		t.Errorf("Scratch is not thin: maps=%d skills=%d layers=%d",
 			len(scratch.Maps), len(scratch.Skills), len(scratch.Layers))
 	}
-	if scratch.TrackerAdapter != nil {
-		t.Errorf("Scratch carries a tracker-adapter offer: %+v", scratch.TrackerAdapter)
-	}
 	if len(scratch.Terminals) != 0 {
 		t.Errorf("fresh Scratch carries %d terminals, want none", len(scratch.Terminals))
 	}
@@ -209,12 +206,6 @@ func TestRepoScopedEndpointsRefuseScratch(t *testing.T) {
 		{"respawn a dead session", func() (int, string) { return h.Respawn(id, "sess") }},
 		{"release a dead session", func() (int, string) { return h.Release(id, "sess") }},
 		{"release a ticket", func() (int, string) { return h.ReleaseTicket(id, "some-map", 1) }},
-		{"install the tracker adapter", func() (int, string) {
-			return h.Post("/api/spaces/"+id+"/tracker-adapter", nil)
-		}},
-		{"dismiss the tracker-adapter offer", func() (int, string) {
-			return h.Post("/api/spaces/"+id+"/tracker-adapter/dismiss", nil)
-		}},
 		{"open a config layer", func() (int, string) {
 			return h.Post("/api/spaces/"+id+"/config/open", map[string]string{"layer": "user-config"})
 		}},

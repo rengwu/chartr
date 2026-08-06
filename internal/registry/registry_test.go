@@ -174,7 +174,7 @@ func TestMigrationFreezesTodaysOrder(t *testing.T) {
 	// Any write persists the freeze. Reloading must read the order off disk, not
 	// re-derive it.
 	first := r.List()[0]
-	if err := r.SetTrackerDismissed(first.ID, true); err != nil {
+	if err := r.SetLastAgent(first.ID, "claude"); err != nil {
 		t.Fatalf("forcing a save: %v", err)
 	}
 	orders := storedOrders(t, dir)
@@ -246,7 +246,7 @@ func TestPinnedKeyIsIgnoredAndDroppedOnSave(t *testing.T) {
 		t.Fatalf("order = %v, want the stored %v — a stale pinned key must move nothing", got, want)
 	}
 
-	if err := r.SetTrackerDismissed(r.List()[0].ID, true); err != nil {
+	if err := r.SetLastAgent(r.List()[0].ID, "claude"); err != nil {
 		t.Fatalf("forcing a save: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "spaces.toml"))
@@ -283,7 +283,7 @@ func TestGappedOrdersKeepTheirSequenceAndDensify(t *testing.T) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 
-	if err := r.SetTrackerDismissed(r.List()[0].ID, true); err != nil {
+	if err := r.SetLastAgent(r.List()[0].ID, "claude"); err != nil {
 		t.Fatalf("forcing a save: %v", err)
 	}
 	orders := storedOrders(t, dir)

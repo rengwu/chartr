@@ -25,6 +25,7 @@
 package prompt
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -97,20 +98,6 @@ const (
 
 //go:embed assets/skills
 var assets embed.FS
-
-// trackerAdapterTemplate is the `docs/agents/issue-tracker.md` chartr installs
-// into a watched repo so a vanilla wayfinder-family skill writes maps in chartr's
-// convention (local markdown under `.plan/maps/`) rather than its own `.scratch/`
-// default. It restates the same format the `tracker-convention` skill carries;
-// the two must stay in lockstep.
-//
-//go:embed assets/issue-tracker.md
-var trackerAdapterTemplate string
-
-// TrackerAdapter returns the tracker-adapter template chartr writes to
-// `docs/agents/issue-tracker.md` in a registered space. It is the seam
-// Matt-Pocock-family skills read to discover this repo's tracker.
-func TrackerAdapter() string { return trackerAdapterTemplate }
 
 // Roots are the three skill-library roots resolution walks, lowest precedence
 // first. Any of them may be empty, which simply means that layer defines nothing.
@@ -456,6 +443,80 @@ func Materialize(configDir string) error {
 		}
 	}
 	return nil
+}
+
+// MatchesShipped reports whether the materialized library at dir is still exactly
+// what Materialize would write — the same file set, byte for byte, README
+// included. An absent or empty directory reads as a match: there is nothing there
+// an operator could have edited. An unreadable one reads as a mismatch, because
+// the only thing this answer gates is whether chartr may move the directory
+// aside, and a directory it cannot read is one it must leave alone.
+//
+// This is the byte comparison the skill-sources migration borrows for its one
+// call site (ticket 06). It goes with the shipped library in ticket 09; nothing
+// else should grow a dependency on it.
+func MatchesShipped(dir string) bool {
+	if dir == "" {
+		return true
+	}
+	have, ok := treeFiles(dir)
+	if !ok {
+		return false
+	}
+	if len(have) == 0 {
+		return true
+	}
+	want := map[string][]byte{"README.md": []byte(readmeText())}
+	for _, name := range Names() {
+		files, ok := embeddedFiles(name)
+		if !ok {
+			continue
+		}
+		for rel, b := range files {
+			want[name+"/"+rel] = b
+		}
+	}
+	if len(want) != len(have) {
+		return false
+	}
+	for rel, b := range want {
+		if !bytes.Equal(b, have[rel]) {
+			return false
+		}
+	}
+	return true
+}
+
+// treeFiles reads every file below dir, keyed by slash-separated relative path.
+// An absent directory is an empty set rather than a failure — the first-run
+// state. Reports false only when the walk itself failed.
+func treeFiles(dir string) (map[string][]byte, bool) {
+	files := map[string][]byte{}
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		files[filepath.ToSlash(rel)] = b
+		return nil
+	})
+	if err != nil {
+		return nil, false
+	}
+	return files, true
 }
 
 // Launch composes an on-ramp skill's payload: the named skill's resolved body
