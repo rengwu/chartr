@@ -1,6 +1,8 @@
 ---
 type: grilling
 blocked_by: [01, 04]
+claimed_by: s2ec1358a7a62
+claimed_at: 2026-08-06T04:39:26Z
 ---
 
 # The two core payloads
