@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: []
+claimed_by: s86c8778648d2
+claimed_at: 2026-08-06T15:38:37Z
 ---
 
 # The sources registry
