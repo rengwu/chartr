@@ -35,7 +35,7 @@ A PTY running an agent CLI against exactly one ticket, wired by a pre-injected p
 _Avoid_: run, job, task, terminal
 
 **Role**:
-What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. It selects a skill and shapes the payload; it does not resolve to an agent.
+What a session is spawned to do — grill, prototype, research, or implement. Follows from the ticket's own `type:` (`grilling`, `prototype`, `research`, `task`), which the spawn gate offers pre-selected while leaving all four to the operator. It is the key a **binding** names a skill under, it shapes the payload, and it is recorded on the claim; it does not itself select a skill, and it does not resolve to an agent.
 _Avoid_: mode, kind, job type
 
 **Agent**:
@@ -53,6 +53,14 @@ _Avoid_: memory, prompt context, preamble
 **Source**:
 A place skills come from — a local folder or a pinned git checkout — that the operator registers by name in an ordered list under their config root. Position in the list *is* resolution order: a bare skill name takes the first hit among the enabled sources, and a `Source/skill` reference addresses one source exactly and never falls through. The synthetic `chartr-skills` row sits last and cannot be removed or reordered.
 _Avoid_: layer, repo, provider, registry entry
+
+**Binding**:
+The line saying which skill a role spawns with — one `role = "Source/skill"` row in the `[roles]` table of the user config, always source-qualified and never a bare name. Seeded once with four rows on a first startup and never auto-refilled: a row the operator deleted makes that role refuse until it is rebound. A binding that resolves to nothing refuses the spawn outright, before any claim commit.
+_Avoid_: mapping, assignment, role config
+
+**Seed**:
+chartr's own skills, vendored into the binary as a checked-in copy of a pinned commit and materialized under the config root as the `chartr-skills` source, so a first run can spawn offline. The directory is in one of two states, read off the filesystem: no `.git` means chartr's bytes, reconciled against the compiled seed at every startup; a `.git` means the operator pinned it with a fetch and chartr never writes there again. Deleting the directory is the reset. Refresh with `make vendor-skills`; the shipped copy lives in `internal/sources/assets/chartr-skills/`.
+_Avoid_: bundled skills, defaults, shipped library
 
 **Skill library**:
 The chartr-owned, hackable skills — the common core, one per role, the ideate on-ramp, the tracker convention, and the four method skills (`wayfinder`, `domain-modeling`, `to-spec`, `to-tickets`) — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. The method skills ship in the library but are never auto-composed into a session payload. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard. The shipped copy lives in `internal/prompt/assets/skills/`; re-fitting upstream updates follows `docs/skill-sync.md`.

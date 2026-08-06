@@ -202,10 +202,31 @@ func claimMessage(rel string, c claim) string {
 	fmt.Fprintf(&b, "Role: %s\n", c.Role)
 	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
 	for _, sk := range c.Skills {
-		fmt.Fprintf(&b, "Skill: %s=%s:%s\n", sk.Name, sk.Layer, sk.Hash)
+		fmt.Fprintf(&b, "Skill: %s\n", skillTrailer(sk))
 	}
 	fmt.Fprintf(&b, "Chartr-Write: true")
 	return b.String()
+}
+
+// skillTrailer renders one composed skill's provenance for the claim commit.
+//
+// A skill that came from a registered source reads `<name>=<source>`, with
+// `@<commit>` appended where that source carries a pin — the source name replaces
+// the layer, and the commit is what makes the trailer *fetchable*: a teammate
+// reading the history can get the exact bytes the session was told, which a
+// content hash could only ever have told them differed. A `dir` source has no
+// commit, and the trailer honestly stops at the source's name.
+//
+// The layer form survives for the core, which is still chartr's own embedded
+// skill rather than a sourced one; it goes when the layer model does.
+func skillTrailer(sk prompt.Skill) string {
+	if sk.Source == "" {
+		return fmt.Sprintf("%s=%s:%s", sk.Name, sk.Layer, sk.Hash)
+	}
+	if sk.Commit == "" {
+		return fmt.Sprintf("%s=%s", sk.Name, sk.Source)
+	}
+	return fmt.Sprintf("%s=%s@%s", sk.Name, sk.Source, sk.Commit)
 }
 
 var reTicketFile = regexp.MustCompile(`^(\d+)-(.+)\.md$`)
