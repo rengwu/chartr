@@ -38,22 +38,27 @@ func Git(t testing.TB, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// WriteMap writes a map body to .plan/<slug>/map.md under repo, creating
+// WriteMap writes a map body to .plan/maps/<slug>/map.md under repo, creating
 // directories as needed. It does not commit — a test that wants the map in
 // history commits it explicitly, and one testing discovery-by-notice drops it
 // while chartr is watching.
 func WriteMap(t testing.TB, repo, slug, body string) string {
 	t.Helper()
-	return WriteFile(t, repo, filepath.Join(".plan", slug, "map.md"), body)
+	return WriteFile(t, repo, filepath.Join(MapDir(slug), "map.md"), body)
 }
 
-// WriteTicket writes a ticket file at .plan/<slug>/tickets/<filename> under
+// WriteTicket writes a ticket file at .plan/maps/<slug>/tickets/<filename> under
 // repo. It does not commit — discovery reads the working tree, so a test drives
 // derivation by dropping files exactly as a session or a `git pull` would.
 func WriteTicket(t testing.TB, repo, slug, filename, body string) string {
 	t.Helper()
-	return WriteFile(t, repo, filepath.Join(".plan", slug, "tickets", filename), body)
+	return WriteFile(t, repo, filepath.Join(MapDir(slug), "tickets", filename), body)
 }
+
+// MapDir is a map's repo-relative directory under the fixed root discovery
+// enforces: .plan/maps/<slug>/. Tests that name a file inside a map go through
+// it rather than spelling the root out, so the root is written once.
+func MapDir(slug string) string { return filepath.Join(".plan", "maps", slug) }
 
 // StubAgent installs a fake agent CLI named `name` on PATH for the rest of the
 // test — the "stub agent CLI on PATH" the spawn tests drive against (spec, Testing

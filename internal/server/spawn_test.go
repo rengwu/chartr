@@ -109,7 +109,7 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
 
 	// --- The claim commit: pathspec-limited to the one ticket, with trailers. ---
-	rel := filepath.Join(".plan", "widget", "tickets", "01-first.md")
+	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
 	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
 	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
 		t.Errorf("claim commit touched %v, want exactly [%s]", got, rel)

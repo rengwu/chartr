@@ -61,11 +61,14 @@ func hasMap(s model.Space, slug string) bool {
 
 // A map dropped into a registered space from outside — a hosted shell, an
 // external terminal, a `git pull` — appears in the snapshot with no refresh
-// action (story 11), under both the flat `.plan/<slug>/` layout and the
-// nested `.plan/maps/<slug>/` one (story 12). The test dials the control
-// socket before dropping anything and waits for the pushes to arrive on their
-// own: discovery is by notice.
-func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
+// action (story 11). The test dials the control socket before dropping anything
+// and waits for the pushes to arrive on their own: discovery is by notice.
+//
+// It also pins the fixed root the conventions declare (skill-sources ticket 03):
+// only `.plan/maps/<slug>/` is a map. The old flat layout and anything nested
+// deeper are not discovered, knowingly — a contract that states a root while the
+// parser accepts any layout is not a contract.
+func TestMapAppearsByNoticeUnderTheFixedRootOnly(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
@@ -79,25 +82,22 @@ func TestMapAppearsByNoticeBothLayouts(t *testing.T) {
 	defer cc.Close()
 	cc.ReadSnapshot(ctx(t)) // drain the initial snapshot
 
-	// Flat layout: .plan/<slug>/. Drop it from outside; wait for the notice.
-	chartrtest.WriteMap(t, repo, "flat-map", mapBody)
-	chartrtest.WriteTicket(t, repo, "flat-map", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	cc.WaitFor(ctx(t), func(m model.Model) bool {
-		return hasMap(findSpace(t, m, resp.ID), "flat-map")
-	})
+	// Two maps chartr must never see: the old flat `.plan/<slug>/` layout, and one
+	// nested a level too deep. Written first, so the wait below would already have
+	// had every chance to notice them.
+	chartrtest.WriteFile(t, repo, filepath.Join(".plan", "flat-map", "map.md"), mapBody)
+	chartrtest.WriteFile(t, repo, filepath.Join(".plan", "maps", "outer", "deep-map", "map.md"), mapBody)
 
-	// Nested layout: .plan/maps/<slug>/. Neither layout is hard-coded — the same
-	// discovery finds a map by its map.md wherever wayfinder wrote it.
-	nested := filepath.Join("maps", "nested-map")
-	chartrtest.WriteFile(t, repo, filepath.Join(".plan", nested, "map.md"), mapBody)
-	chartrtest.WriteFile(t, repo, filepath.Join(".plan", nested, "tickets", "01-first.md"), ticket(1, "First", "[]", "task", ""))
+	// The fixed root: .plan/maps/<slug>/. Drop it from outside; wait for the notice.
+	chartrtest.WriteMap(t, repo, "nested-map", mapBody)
+	chartrtest.WriteTicket(t, repo, "nested-map", "01-first.md", ticket(1, "First", "[]", "task", ""))
 	last := cc.WaitFor(ctx(t), func(m model.Model) bool {
 		return hasMap(findSpace(t, m, resp.ID), "nested-map")
 	})
 
 	s := findSpace(t, last, resp.ID)
-	if !hasMap(s, "flat-map") || !hasMap(s, "nested-map") {
-		t.Errorf("want both layouts discovered; maps = %v", mapSlugs(s))
+	if hasMap(s, "flat-map") || hasMap(s, "deep-map") || hasMap(s, "outer") {
+		t.Errorf("a map.md outside .plan/maps/<slug>/ was discovered; maps = %v", mapSlugs(s))
 	}
 }
 

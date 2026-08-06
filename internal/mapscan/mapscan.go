@@ -3,13 +3,15 @@
 // the ported model layer (internal/wayfinder): where maps live, how a malformed
 // one is tolerated, and how derived status crosses onto the wire.
 //
-// Two rules shape it. Discovery is layout-agnostic — it reads wherever wayfinder
-// writes, finding a map by the presence of its map.md rather than by a
-// hard-coded path, so both the flat `.plan/<slug>/` layout and the nested
-// `.plan/maps/<slug>/` one are found without either being wired in (story 12).
-// And a malformed map is rendered as-is with its malformation surfaced, never
-// refused (story 17): a ticket that will not parse becomes a surfaced defect and
-// the rest of the map still derives.
+// Two rules shape it. Discovery enforces the one root chartr's conventions
+// declare: a map is a directory holding a map.md directly under `.plan/maps/`,
+// and nothing anywhere else is a map (skill-sources ticket 03). Stating a fixed
+// root in the write contract while the parser accepts any nested layout is what
+// both previous attempts at that contract did wrong; compatibility with the old
+// flat `.plan/<slug>/` layout is knowingly dropped. And a malformed map is
+// rendered as-is with its malformation surfaced, never refused (story 17): a
+// ticket that will not parse becomes a surfaced defect and the rest of the map
+// still derives.
 package mapscan
 
 import (
@@ -22,17 +24,17 @@ import (
 	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
-// planDir is the one fixed point: wayfinder roots its maps under `.plan/`. What
-// sits *below* it — a map directory directly, or nested under `maps/` — is the
-// convention chartr follows rather than hard-codes.
-const planDir = ".plan"
+// mapsDir is the fixed, non-configurable root chartr's conventions declare:
+// `.plan/maps/<slug>/`. It is stated in the write contract and enforced here, so
+// the two cannot drift.
+var mapsDir = filepath.Join(".plan", "maps")
 
-// Discover finds every wayfinder map under repoRoot's `.plan/` and derives each
-// into a model.Map, ordered for the sidebar (finished maps last, then by slug).
-// The result is never nil. A repo with no `.plan/` yields an empty slice, not an
-// error — a mapless space is normal.
+// Discover finds every wayfinder map under repoRoot's `.plan/maps/` and derives
+// each into a model.Map, ordered for the sidebar (finished maps last, then by
+// slug). The result is never nil. A repo with no `.plan/maps/` yields an empty
+// slice, not an error — a mapless space is normal.
 func Discover(repoRoot string) []model.Map {
-	dirs := mapDirs(filepath.Join(repoRoot, planDir))
+	dirs := mapDirs(filepath.Join(repoRoot, mapsDir))
 	maps := make([]model.Map, 0, len(dirs))
 	for _, dir := range dirs {
 		maps = append(maps, deriveMap(dir))
@@ -48,31 +50,27 @@ func Discover(repoRoot string) []model.Map {
 	return maps
 }
 
-// mapDirs walks a `.plan/` tree and returns every directory that directly holds
-// a map.md, in path order. Finding one stops the descent into it — a map's own
-// tickets/ and assets/ never nest another map — which is what lets one walk
-// handle both the flat `.plan/<slug>/` layout and the nested `.plan/maps/<slug>/`
-// one without naming either.
-func mapDirs(planRoot string) []string {
-	var dirs []string
-	_ = filepath.WalkDir(planRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			// An unreadable subtree (permissions, a vanished dir mid-walk) is
-			// skipped, never fatal: discovery surfaces what it can read.
-			if d != nil && d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-		if _, statErr := os.Stat(filepath.Join(path, "map.md")); statErr == nil {
-			dirs = append(dirs, path)
-			return filepath.SkipDir
-		}
+// mapDirs lists the immediate children of `.plan/maps/` that hold a map.md, in
+// path order. It is one directory read, not a walk: a map lives exactly one level
+// down, so a `map.md` nested any deeper — inside a map's own tickets/ or assets/,
+// or under some other tree an operator keeps below `.plan/` — is not a map and is
+// not looked for. An absent or unreadable `.plan/maps/` yields nothing, never an
+// error: a mapless space is normal and discovery surfaces what it can read.
+func mapDirs(mapsRoot string) []string {
+	entries, err := os.ReadDir(mapsRoot)
+	if err != nil {
 		return nil
-	})
+	}
+	var dirs []string
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		dir := filepath.Join(mapsRoot, ent.Name())
+		if _, statErr := os.Stat(filepath.Join(dir, "map.md")); statErr == nil {
+			dirs = append(dirs, dir)
+		}
+	}
 	sort.Strings(dirs)
 	return dirs
 }
