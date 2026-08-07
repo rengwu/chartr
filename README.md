@@ -126,7 +126,6 @@ New in `v0.2.2`:
       with a UTF-8 parsing bug.
 - [x] **Sidebar ordering.** Drag spaces to reorder them, or move the selected
       space with `⌥↑` / `⌥↓`. The order is saved across restarts.
-      [Spec](.plan/maps/sidebar-order/spec.md).
 - [x] **Scratch space.** Open a shell in your home directory without registering
       a repository. Scratch is shown only while a shell is open and keeps its
       sidebar position.
@@ -134,12 +133,10 @@ New in `v0.2.2`:
       long-running session finishes, blocks or exits. Notifications work when the
       cockpit is closed, and the tab stays marked until you return. Configure the
       timing or turn the feature off in `notify.toml`.
-      [Spec](.plan/maps/session-notifications/spec.md).
 - [x] **Browser trust boundary.** Both websockets are scoped to the address
       chartr is listening on, every route refuses a `Host` it is not bound to,
       and writes require a JSON content type — so a web page on another origin
       cannot drive the cockpit or reach a terminal.
-      [Map](.plan/maps/websocket-origin-fix/map.md).
 - [x] **A warning on a wide bind.** Binding somewhere other than loopback says so
       at startup, and [SECURITY.md](SECURITY.md) names what that exposes and how
       to report a vulnerability.
@@ -172,7 +169,6 @@ Not yet:
       instead of always using the home directory.
 - [ ] **Agent status gaps.** Some prompts can still appear idle while waiting for
       input, including opencode's rejection-feedback prompt.
-      [Map](.plan/maps/agent-state-detection/map.md).
 - [ ] **Payload preview scrolling.** Expanded previews do not scroll correctly.
 - [ ] **Ticket details.** Fix markdown rendering and make ticket references
       clickable.
