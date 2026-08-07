@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -561,5 +562,58 @@ func TestAGitSourceClonesRefreshesAndResolves(t *testing.T) {
 	}
 	if _, err := os.Stat(after.Path); !os.IsNotExist(err) {
 		t.Fatalf("chartr's own checkout goes with the row: %v", err)
+	}
+}
+
+// A path typed the way it is typed in a shell means the same thing here. Without
+// the expansion a leading `~` reaches filepath.Abs as a relative segment and is
+// joined onto chartr's working directory, producing a row that points at nothing
+// and reads `unavailable` for a reason the operator cannot see.
+func TestRegisteringATildePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
+
+	cfg := t.TempDir()
+	r := load(t, cfg)
+
+	if err := os.MkdirAll(filepath.Join(home, "skills", "grill"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "skills", "grill", "SKILL.md"),
+		[]byte("---\nname: grill\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := r.RegisterDir("Mine", "~/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, "skills"); s.Path != want {
+		t.Fatalf("~/skills resolved to %q, want %q", s.Path, want)
+	}
+	// And it is the expanded path that persists — the file is read by chartr, not
+	// by a shell, so a stored `~` would have to be re-expanded on every load.
+	body, err := os.ReadFile(filepath.Join(cfg, "sources.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "~") {
+		t.Fatalf("sources.toml stored an unexpanded path:\n%s", body)
+	}
+	if st, ok := r.Walk("Mine"); !ok || st.Status != sources.StatusOK || len(st.Skills) != 1 {
+		t.Fatalf("the registered path does not walk: %+v", st)
+	}
+
+	// A bare `~` is the home directory itself; a `~` anywhere else is an ordinary
+	// directory name and is left alone.
+	s, err = r.RegisterDir("Home", "~")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Path != home {
+		t.Fatalf("~ resolved to %q, want %q", s.Path, home)
 	}
 }

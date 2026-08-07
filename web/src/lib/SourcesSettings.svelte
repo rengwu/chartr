@@ -204,7 +204,8 @@
           />
         </div>
         <p class="pl-[3.875rem] text-[0.7rem] text-muted-foreground">
-          Your folder, edited by you. chartr only reads it.
+          Your folder, edited by you — chartr only reads it. Absolute, or
+          <code class="font-mono">~/</code> for your home directory.
         </p>
       {:else}
         <div class="flex items-center gap-1.5">
