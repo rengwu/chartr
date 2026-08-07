@@ -1,5 +1,16 @@
 # Commit ownership splits; chartr only ever appends
 
+> **The set of lifecycle writes changed with review's deletion; the discipline
+> did not.** Promotion at approval and rejection demotion at abandonment are
+> gone along with the gate ([0004](0004-derived-ticket-state-and-proposed-answer.md)).
+> chartr owns exactly two lifecycle commits today: the **claim at spawn**
+> (`writeClaimCommit`) and the **release** of a dead session's claim back to the
+> frontier (`writeReleaseCommit`), both in `internal/server/claim.go`. Everything
+> this record actually decided holds for both, unchanged and verbatim —
+> pathspec-limited `git commit --only -- <ticket>`, structured trailers, never an
+> amend, never a push, git as the whole audit trail. Read "promotion" and
+> "demotion" below as historical; read the discipline as current.
+
 chartr commits, deterministically, exactly the lifecycle writes it owns — the claim at spawn, the promotion at approval, the rejection demotion at abandonment — each a **pathspec-limited commit** touching only the ticket file, so a live session's staged work can never be swept into a gate commit. The implementing agent commits its own work plus its `## Proposed Answer`, shaped by prompt convention (message format, granularity, never push) that chartr verifies after the fact and surfaces when violated, but cannot and does not enforce.
 
 chartr **never rewrites history and never pushes**: no amend, no automatic reset or revert, no remote. Promotion is its own commit rather than an amend of the session's — proposed-then-blessed stays visible. Undoing rejected work is the human's act; the review hub offers revert (and reset, when the rejected commits are verifiably the tip) as optional levers a human pulls.

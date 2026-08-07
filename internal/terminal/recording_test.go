@@ -17,11 +17,11 @@ import (
 
 // recordingsDir holds the real PTY captures of every agent in the roster. The
 // engine is tested against recorded agent bytes rather than hand-written strings,
-// because hand-written strings encode what we *think* an agent draws. Ticket 04 is
-// the proof: three of the four manifests written from herdr's data and from the
-// braille shape claude and kimi share turned out to describe signals their agents
-// never emit, and every one of those bugs read as a working agent gone idle.
-const recordingsDir = "../../.plan/maps/agent-state-detection/assets"
+// because hand-written strings encode what we *think* an agent draws. That is not
+// hypothetical: three of the four manifests originally written from second-hand
+// data and from the braille shape claude and kimi share described signals their
+// agents never emit, and every one of those bugs read as a working agent gone idle.
+const recordingsDir = "testdata"
 
 // chunk is one recorded PTY read: when it arrived, and the bytes.
 type chunk struct {

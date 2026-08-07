@@ -1,5 +1,25 @@
 # Ticket state is derived from `.plan`; `## Proposed Answer` is promoted at the gate
 
+> **The gate half is retired; the derivation half stands.** The `simplify`
+> effort deleted review, and with it everything this record built on top of it:
+> there is no approval step, no promotion, no rejection demotion, and no
+> `proposed` status. A ticket is **resolved when its session writes `## Answer`** —
+> nothing blesses it, and a dependent unblocks the moment it lands. `##
+> Proposed Answer` is now an *unknown heading* that settles nothing: a ticket
+> carrying one derives `open`, or `claimed` if a claim marker survived
+> (`internal/wayfinder/parse.go`, `Derive`). Files still carrying one are
+> in-flight wreckage, deliberately ignored rather than migrated.
+>
+> **What stands unchanged** is this record's actual decision — the state split.
+> Ticket state lives in the `.plan/` markdown and is derived, session state is
+> chartr's own and lives nowhere near the map, and chartr learns a session
+> finished by watching the file rather than asking the agent. That is still
+> exactly how it works. Read every mention below of a gate, a promotion, a
+> blessing or `proposed` as historical.
+>
+> See [0015](0015-map-kind-removed-role-comes-from-the-ticket.md), which turns
+> on the same deletion.
+
 State splits in two, with no overlap and no dual-writing. **Ticket state** lives in the `.plan/` markdown and is *derived* by the reused model layer — the agent writes, chartr watches. **Session state** (which agent, which PTY, running or dead) is chartr's own and lives nowhere near the map.
 
 This also answers how an agent-agnostic chartr knows a session finished: it does not ask the agent. Resolution already *is*, by wayfinder's own design, an `## Answer` appearing in the ticket file — so chartr watches `.plan/` and re-derives.
