@@ -627,16 +627,18 @@
       </span>
       <!-- The new-shell control (skill-sources ticket 08): one split button
            where the launcher and the `+` shell button used to sit side by
-           side. The row is shorter for it, and the branch chip — which
-           doubles as the spacer — gains the width. The row's own click just
-           selects the space, which either action does anyway, so the caret
-           deliberately does not stop propagation; the body does, because it
-           has a handler of its own to protect. -->
+           side. The caret chooses what the body runs — a plain shell or a
+           free session on a registered agent — and the body runs it. The row
+           is shorter for it, and the branch chip — which doubles as the
+           spacer — gains the width. The row's own click just selects the
+           space, which either action does anyway, so the caret deliberately
+           does not stop propagation; the body does, because it has a handler
+           of its own to protect. -->
       <NewShellButton
         {agents}
         disabled={opening}
         ariaLabel="Open a shell in {space.name}"
-        title="Open a plain shell in {space.name} — nothing is injected. The caret starts a free session on a registered agent instead."
+        title="Open a plain shell in {space.name} — nothing is injected. Pick an agent from the caret to launch a free session with this button instead."
         onshell={onopenshell}
         onfree={onfreesession}
         {onregister}

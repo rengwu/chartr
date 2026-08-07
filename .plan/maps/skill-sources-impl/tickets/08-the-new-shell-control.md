@@ -124,6 +124,34 @@ step was needed.
 - *All checks* — `go vet ./...`, `go test ./...`, and `check`/`build`/`vitest` in
   `web/` all clean.
 
+### A settled decision the operator reopened, after the fact
+
+**The body is no longer fixed to `empty shell`.** The ticket settles this
+explicitly — "the button body is `empty shell` — the zero-decision action, and
+what keeps the static label honest, since a body that launched the last-used agent
+would make 'new shell' lie about what a click does". The operator looked at the
+built control and asked for the opposite: *"the dropdown should act like a
+selector, not a launcher. once selected, the shell/model-injected session can be
+launched with the main button."* That is a human's call on a design decision, so
+it is taken, and it is recorded here rather than quietly absorbed — a later reader
+comparing the ticket to the code needs to find this paragraph.
+
+What it changes: the menu is one `DropdownMenu.RadioGroup` spanning both halves —
+`new shell` and the agents are the same kind of choice, so exactly one is checked
+and the divider groups rather than separates. Picking a row only *chooses*.
+The body then **relabels itself to the choice** and runs it on click.
+
+The ticket's objection is answered rather than overruled: the label lies only if
+it stays static while the action moves, and here it does not — the button reads
+`new shell` or `claude-opus`, and that is exactly what a click does. What is
+genuinely given up is the guarantee that the leftmost control in the actions row
+is *always* a plain shell, one click, no reading required. The selection is
+component state defaulting to the plain shell, so a reload restores that; it is
+not seeded from the server's `lastAgent`, which keeps the ticket's "no remembered
+last-agent for free sessions" rule intact. An agent that is deregistered or leaves
+PATH while selected falls back to the plain shell rather than leaving the body
+pointed at something that cannot run.
+
 ### What moved beyond the ticket's list, and why
 
 **`SpacePane.svelte` also hosted a `SkillLauncher`.** Its empty-state pane ("No
