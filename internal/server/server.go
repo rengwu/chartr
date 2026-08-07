@@ -263,6 +263,12 @@ func New(opts Options) (*Server, error) {
 	// a restart restores the operator's spaces without a re-register.
 	s.rebuild()
 
+	// The standing `CHARTR.md` at each registered space's root (chartr-md, ticket
+	// 01). It goes here rather than in firstRun because firstRun takes a config
+	// root and knows nothing about the space registry; both it and the source list
+	// are loaded above, and this runs before the server serves.
+	s.reconcileChartrDoc()
+
 	return s, nil
 }
 
