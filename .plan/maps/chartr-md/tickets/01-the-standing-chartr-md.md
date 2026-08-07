@@ -109,3 +109,92 @@ Rules for the fan-out:
   unchanged.
 - `go vet ./...`, `go test ./...`, and in `web/` the `check` and `build` scripts
   plus `vitest`, all pass.
+
+## Answer
+
+`CHARTR.md` now stands at the root of every registered non-scratch space,
+carrying the free session's brief minus the one clause that is only true of a
+shell chartr opened, excluded through `.git/info/exclude`, and reconciled at
+startup and on each of the five sources mutations.
+
+### The split, and the sentence that was false
+
+`internal/prompt/assets/core-free.md` became `assets/core-space.md` and lost its
+tail. The opening was rephrased from *"the cockpit that opened this terminal"* to
+*"the cockpit that drives this repository"*, which is true whether chartr
+launched the reader or the reader wandered in; the two sentences that follow —
+maps derived from `.plan/maps/`, one agent session per ticket — were already true
+of both readers and are untouched. The free-only clause is now
+`freeCoreTail` (*"This shell is one chartr opened with no ticket and no role."*),
+a const beside the embed, appended by `ComposeFree` alone.
+
+`ComposeFree` and the new `ComposeStanding(configDir, reg)` are two one-line
+wrappers over a shared `composeSpace(configDir, reg, tail)`, so the four parts,
+their order and every content rule are the same code and cannot drift apart. The
+recommended shape, taken as recommended.
+
+### Where it goes
+
+`internal/server/chartrmd.go`: `reconcileChartrDoc` composes once — the document
+has no per-space input at all — and fans the bytes out over `s.reg.List()`,
+skipping `Scratch`. Each space gets `writeChartrDoc`: skip silently if the
+directory is not there, compare bytes and write only on a difference (via
+`writeOwnerFile`, 0600, same reasoning as the per-session payload), then
+`ensureGitExclude`. The exclude is a literal line scan over
+`.git/info/exclude`, appended once, existing bytes preserved verbatim and a
+missing trailing newline repaired before the append; `.git` that is not a
+directory means skip the exclude and still write the document. Nothing returns an
+error to a caller — a failed space is logged and converges on the next trigger.
+
+Call sites: `server.New` after the registry and `firstRun` are both loaded and
+before `Serve` (not `firstRun`, which takes a config root and knows no registry),
+and one explicit call in each of the five handlers in `sourcesapi.go` after their
+`rebuild()`. Not inside `rebuild()`. `handleRestoreRoleBinding` is deliberately
+*not* a trigger: bindings do not appear in the document.
+
+### Done-when, clause by clause
+
+- **A `/new` agent finds it, and the first sentence is true of them.** The
+  document opens *"chartr is the cockpit that drives this repository"*;
+  `TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt` asserts that prefix and
+  asserts the absence of both *"opened this terminal"* and *"This shell"*.
+  `TestStandingPayloadGolden` asserts the same at the composer, and that the free
+  payload still carries the clause the standing one drops.
+- **`git status` clean, tracked `.gitignore` unmodified.** Same test: the space
+  is a real repository with a committed `.gitignore`, and after the reconcile
+  `git status --porcelain` is empty and `git show HEAD:.gitignore` is unchanged.
+- **All five source mutations rewrite it.**
+  `TestSourcesMutationRewritesTheStandingDoc` drives register and toggle through
+  HTTP and reads the resulting document out of the space; reorder is exercised as
+  the no-op case below. Remove and refresh share the identical two-line call site
+  and are not separately driven — refresh needs a git remote, which this test
+  would have to build to assert a line of code already asserted four times.
+- **A golden.** `internal/prompt/testdata/standing-payload.golden.md`, beside the
+  free one, written by the same `-update` flag and `checkGolden`. The free golden
+  moved by exactly the split (opening rephrased, tail its own paragraph).
+- **The five tests named.** Exclude appended once across two runs (a second
+  `Start` on the same config root); an existing exclude keeping its bytes,
+  including the no-trailing-newline case; scratch receiving nothing (`HOME`
+  pointed at a temp dir, so the assertion is real rather than a guess about the
+  developer's home); an unreachable space not failing a sources mutation (a
+  registered repo deleted before the register call, which still returns 200); and
+  no `https://` in the document, asserted in both the server and prompt tests.
+- **The per-session path untouched.** `writeSessionPayload`, the `*` ignore and
+  `adapter.Opener` are not in the diff, and `spawn_test.go` / `payload_test.go`
+  are unchanged.
+- **Checks.** `go vet ./...` and `go test ./...` pass; in `web/`, `check` (0
+  errors, 0 warnings), `vitest` (194 passed) and `build` pass. No UI changed.
+
+### Deliberately not done, and one thing worth watching
+
+- **Registration is still not a trigger**, so a just-registered space has no
+  `CHARTR.md` until the next restart or sources change. The map holds this open on
+  purpose; the test asserts the gap exists rather than papering over it, so
+  closing it later will fail that assertion loudly.
+- **`mine`'s no-op reorder** is how the write-only-on-difference rule is tested:
+  the mtime must not move. Worth knowing that `Reorder` takes only the
+  *non-default* names — the seeded source is held outside the reorderable rows —
+  which is not obvious from the handler.
+- **Nothing routes an agent to this file.** Discovery remains hopeful, as charted.
+  The only new lever a future ticket has is the operator saying "read CHARTR.md",
+  and `CLAUDE.md`/`AGENTS.md` stay out of scope.
