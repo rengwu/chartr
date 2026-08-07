@@ -63,6 +63,13 @@ func (s *Server) repoSpace(w http.ResponseWriter, r *http.Request) (registry.Ent
 // action so its outcome — including an announced `git init` — surfaces in the
 // response (ADR 0010, story 2), and the new space also lands in the pushed
 // snapshot via rebuild.
+//
+// It is also the third trigger for the standing `CHARTR.md` (chartr-md, ticket
+// 01, amended). A newly registered space would otherwise carry no document until
+// the next restart or sources change, which is exactly the window an operator
+// registers a repository and opens an agent in it. The reconcile runs *after*
+// `Register`, so the `git init` it may have just performed is already there for
+// the exclude to be written into.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
@@ -83,6 +90,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":        entry.ID,

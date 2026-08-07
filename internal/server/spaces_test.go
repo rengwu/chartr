@@ -96,6 +96,14 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 // De-registering forgets the entry and touches nothing in the repository — not
 // git, not the working tree, not committed config (story 4). Registering must
 // likewise write nothing into the repo: the registry lives in user config.
+//
+// The one exception is the standing `CHARTR.md` (chartr-md, ticket 01), which
+// registration writes at the root and locally excludes. It is filtered out of
+// the tree comparison rather than asserted away, because everything story 4 is
+// actually protecting still holds around it and is still asserted here: HEAD
+// does not move, `git status` does not change, no committed config appears, and
+// the operator's own files are untouched. A git-invisible per-machine file that
+// no clone will ever see is not the destruction this test exists to catch.
 func TestForgetNotDestroy(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -447,6 +455,9 @@ func worktreeFiles(t *testing.T, repo string) []string {
 			return nil
 		}
 		rel, _ := filepath.Rel(repo, path)
+		if rel == "CHARTR.md" {
+			return nil // chartr's own standing brief, locally excluded and never committed
+		}
 		out = append(out, rel)
 		return nil
 	})
