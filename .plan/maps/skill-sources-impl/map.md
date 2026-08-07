@@ -106,6 +106,15 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   `/ideate`, `prompt.Ideate`, the on-ramp/needs-context frontmatter and the
   context modal are gone; `prompt.Launch` survives unused for ticket 09.
   Note: tickets 05, 06 and 07 resolved without adding their line here.
+- [The cut](tickets/09-the-cut.md) — the layer model is deleted: the three roots,
+  the resolver, the shipped `assets/skills` embed, the hash/fork/stale machinery,
+  `Materialize`, `prompt.Launch`, the `skill:` open hatch and `model.ResolvedSkill`
+  all go, and `prompt.go` drops from 594 lines to 125. The ticket core moves to
+  `assets/core-ticket.md` and its trailer reads `core=chartr`. ADR 0017 is written
+  and `docs/skill-sync.md` deleted in the same commit; ADR 0009 is now wholly
+  historical. **Ticket 06's rename-aside branch went with the byte comparison it
+  rested on** — an existing `builtin-skills/` is registered in place; see the
+  ticket for why that loses nothing. **The release freeze lifts.**
 
 ## Not yet specified
 
