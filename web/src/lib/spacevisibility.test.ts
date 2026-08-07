@@ -19,7 +19,6 @@ function space(id: string, scratch: boolean, terminals: Terminal[]): Space {
     path: scratch ? '/home/operator' : `/repos/${id}`,
     scratch: scratch || undefined,
     dirty: false,
-    skills: [],
     layers: [],
     maps: [],
     terminals,

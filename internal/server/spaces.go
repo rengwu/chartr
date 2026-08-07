@@ -11,7 +11,6 @@ import (
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/mapscan"
 	"github.com/rengwu/chartr/internal/model"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 )
 
@@ -253,7 +252,6 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	return model.Model{
 		Spaces: spaces,
 		Config: s.globalLayers(),
-		Skills: s.resolvedSkills(""),
 		Agents: agentLibrary(userTOML),
 		// The known-CLI probe is a $PATH check, like the folder chooser above: it is
 		// a property of the machine, resolved fresh on every rebuild so a newly
@@ -349,7 +347,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 			Name:      "Scratch",
 			Scratch:   true,
 			Path:      e.Path,
-			Skills:    []model.ResolvedSkill{},
 			Layers:    []model.ConfigLayer{},
 			Maps:      []model.Map{},
 			Terminals: terminals,
@@ -363,11 +360,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 
 	maps := mapscan.Discover(e.Path)
 
-	// Fold in the skill library's own notices — a fork behind the shipped default
-	// (story 23) — beside the agent-library warnings, so both live problems are
-	// surfaced on the space without the operator opening settings.
 	warnings := append([]string{}, agentWarnings...)
-	warnings = append(warnings, prompt.LibraryWarnings(s.skillRoots(e.Path))...)
 	// The per-machine config parse warnings are global, but they surface where the
 	// operator is, the way the agent-library warnings do.
 	warnings = append(warnings, configWarnings...)
@@ -379,8 +372,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 		Branch:    gitBranch(e.Path),
 		Dirty:     gitDirty(e.Path),
 		LastAgent: e.LastAgent,
-		Skills:    s.resolvedSkills(e.Path),
-		Layers:    s.spaceLayers(e.Path),
+		Layers:    []model.ConfigLayer{},
 		Maps:      maps,
 		Terminals: terminals,
 		Warnings:  warnings,

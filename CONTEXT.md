@@ -66,10 +66,6 @@ _Avoid_: mapping, assignment, role config
 chartr's own skills, vendored into the binary as a checked-in copy of a pinned commit and materialized under the config root as the `chartr-skills` source, so a first run can spawn offline. The directory is in one of two states, read off the filesystem: no `.git` means chartr's bytes, reconciled against the compiled seed at every startup; a `.git` means the operator pinned it with a fetch and chartr never writes there again. Deleting the directory is the reset. Refresh with `make vendor-skills`; the shipped copy lives in `internal/sources/assets/chartr-skills/`.
 _Avoid_: bundled skills, defaults, shipped library
 
-**Skill library**:
-The chartr-owned, hackable skills — the common core, one per role, the ideate on-ramp, the tracker convention, and the four method skills (`wayfinder`, `domain-modeling`, `to-spec`, `to-tickets`) — vendored from the wayfinder skills as standard `SKILL.md` directories and resolved through space → user → built-in layers at spawn by whole-skill shadowing. The method skills ship in the library but are never auto-composed into a session payload. Plain markdown on disk, editable by the operator and reusable in any agent CLI that reads the standard. The shipped copy lives in `internal/prompt/assets/skills/`; re-fitting upstream updates follows `docs/skill-sync.md`.
-_Avoid_: prompt library, prompts, templates, system prompts
-
 **Cockpit**:
 chartr's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
 _Avoid_: dashboard, IDE, console, GUI
@@ -98,13 +94,9 @@ _Avoid_: pty stream, data channel
 The operator's registered agents — the only execution config there is. Global and local: one set in the operator's own uncommitted file, shared by every space. An empty library is the starting state and refuses every spawn, ideate included, until one is registered.
 _Avoid_: agent registry, profiles, presets
 
-**Committed skills**:
-The versioned skill overlays a space carries in `.chartr/skills/` — shared, portable, and winning over user skills for *content*. It is the only chartr config a space commits: there is no committed *execution* config, so nothing about how an agent runs is ever versioned into a repository.
-_Avoid_: workspace config, project config, repo config
-
 **Conventions**:
 chartr's file-format contract: one generated `conventions.md` under the config root stating the fixed `.plan/maps/` layout, the permanent ticket numbering, `map.md`'s five sections, the recognized frontmatter, the structural headings, the derived-status table and the frontier. **Format only** — it never says how to interview, decide, decompose or behave; that is a skill's job. chartr owns the bytes: they are rewritten at startup and reconciled again before every composition, so it is the one thing in the config root an operator cannot shadow, disable or reorder away, and an edit lasts until the next compose. Discovery enforces the one rule it can — the fixed root — and the lint stays advisory.
-_Avoid_: tracker convention, tracker adapter, ruleset, format skill, template
+_Avoid_: tracker convention, ruleset, format skill, template
 
 **Preferences**:
 The operator's own standing instructions, in `preferences.md` beside the conventions. chartr creates it empty once and never writes it again; its bytes are appended to every payload verbatim, unranked and unmerged. A contradictory preference can make an agent write a map chartr cannot read — accepted, because the file is the operator's control surface, not chartr's. An unreadable one fails composition rather than being silently dropped.

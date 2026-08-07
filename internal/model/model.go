@@ -22,12 +22,6 @@ type Model struct {
 	// than repeated under each one, and the settings route reads them as the
 	// global half of the effective config surface (ADR 0014). Never nil.
 	Config []ConfigLayer `json:"config"`
-	// Skills is the skill library as it resolves with no space in play — the
-	// built-in floor with the operator's own forks over it. It is what every space
-	// starts from before its committed library shadows anything, so the settings
-	// route can answer "what are my skills, and where do they live" without a
-	// space registered at all. Never nil.
-	Skills []ResolvedSkill `json:"skills"`
 	// Agents is the operator's registered agent library — named launch specs a
 	// role in any space may be assigned to. Global rather than per space (it lives
 	// in the operator's own config and is never committed), so it is derived once
@@ -94,24 +88,6 @@ type NotifyPrefs struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// ResolvedSkill is one skill of the library as it resolves for a space: which
-// layer won its whole directory (whole-skill shadowing), and whether a fork has
-// fallen behind the shipped default. It is the positive statement of resolution —
-// "your grill resolves from: user" — not just the warning (story 34).
-type ResolvedSkill struct {
-	Name  string `json:"name"`
-	Layer string `json:"layer"`
-	// Dir is where the winning directory sits, or empty when no layer defines it
-	// on disk and the copy embedded in the binary is the floor.
-	Dir         string `json:"dir,omitempty"`
-	Description string `json:"description,omitempty"`
-	// ForkedFrom is the shipped content hash a shadowing skill recorded in its
-	// frontmatter; Stale is true once the shipped default has moved past it. A
-	// stale fork is surfaced, never auto-merged.
-	ForkedFrom string `json:"forkedFrom,omitempty"`
-	Stale      bool   `json:"stale,omitempty"`
-}
-
 // Space is one registry entry in the pushed model: normally a registered git
 // repository chartr drives, or the one flagged synthetic Scratch entry. Spaces
 // arrive already ordered — in the operator's own stored order, which nothing but
@@ -143,12 +119,10 @@ type Space struct {
 	// remembered* on the client, which is what re-opens the picker rather than
 	// substituting something (story 19). Empty until the first spawn.
 	LastAgent string `json:"lastAgent,omitempty"`
-	// Skills are the space's resolved skill library — every skill with the layer
-	// that won its whole directory and its stale-fork state. Never nil on the wire.
-	Skills []ResolvedSkill `json:"skills"`
-	// Layers are this space's own config files — its committed skill library — each
-	// with its path. The layers it shares with every other space live on
-	// Model.Config.
+	// Layers are this space's own config files, each with its path. Nothing puts a
+	// layer here since the committed skill library went with the layer model
+	// (ADR 0017); the layers a space shares with every other one live on
+	// Model.Config. Never nil on the wire.
 	Layers []ConfigLayer `json:"layers"`
 	// Maps are the space's discovered wayfinder maps (ticket 03), derived live
 	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
@@ -426,5 +400,5 @@ type Agent struct {
 // but non-nil slices so the JSON snapshot is always well-formed arrays rather
 // than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Skills: []ResolvedSkill{}, Agents: []Agent{}, Detected: []string{}}
+	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Agents: []Agent{}, Detected: []string{}}
 }

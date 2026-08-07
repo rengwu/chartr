@@ -12,7 +12,6 @@ import (
 
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 )
 
@@ -24,53 +23,33 @@ import (
 
 // The layer names the client may ask about. A name is a token the server
 // resolves to a path; the client never sends a path, so a local server can never
-// be talked into opening an arbitrary file (story 45). `skill:<name>` reaches the
-// winning directory of one resolved skill.
+// be talked into opening an arbitrary file (story 45).
 const (
-	layerUserConfig      = "user-config"
-	layerTerminalConfig  = "terminal-config"
-	layerNotifyConfig    = "notify-config"
-	layerBuiltinSkills   = "builtin-skills"
-	layerUserSkills      = "user-skills"
-	layerWorkspaceSkills = "workspace-skills"
-	layerSkillPrefix     = "skill:"
+	layerUserConfig     = "user-config"
+	layerTerminalConfig = "terminal-config"
+	layerNotifyConfig   = "notify-config"
 )
 
 // globalLayers are the files the operator's config lives in, shared by every
-// space: the agent library, terminal and notification prefs, and the two skill
-// libraries that are not a space's own. They are derived once per rebuild rather
-// than repeated under each space.
+// space: the agent library and the terminal and notification prefs. They are
+// derived once per rebuild rather than repeated under each space.
 //
-// Every user-scoped layer lives under one roof — the operator's config root
-// (`~/.config/chartr`): the agent library (`user.toml`), terminal customization
-// (`terminal.toml`), the operator's own skills (`skills/`), and the materialized
-// built-in library (`builtin-skills/`). The surface lists each as its own path so
-// the operator can open exactly the file a layer resolves from.
+// Every one of them lives under one roof — the operator's config root
+// (`~/.config/chartr`). The skill libraries are gone from this list with the
+// layer model itself (ADR 0017): skills come from registered sources, whose
+// paths the sources section owns.
 //
 // `terminal.toml` is per-machine terminal customization, read on every rebuild
 // into the snapshot's resolved prefs. It is listed here so the Settings surface
 // can open it in the operator's editor through exactly the same named-layer
 // action — read-value-plus-open-file, never a second config store.
 func (s *Server) globalLayers() []model.ConfigLayer {
-	roots := prompt.RootsFor(s.opts.ConfigDir, "")
 	return []model.ConfigLayer{
-		layerAt(layerBuiltinSkills, "built-in", "skills", roots.Builtin),
 		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.ConfigDir, userConfigName)),
 		layerAt(layerTerminalConfig, "user", "terminal",
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
 		layerAt(layerNotifyConfig, "user", "notifications",
 			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
-		layerAt(layerUserSkills, "user", "skills", roots.User),
-	}
-}
-
-// spaceLayers are the layers a space carries in its own repository. Execution is
-// no longer among them — there is no committed config file (ticket 05) — so what
-// remains is the space's committed skill library (ADR 0009's content half).
-func (s *Server) spaceLayers(repoDir string) []model.ConfigLayer {
-	return []model.ConfigLayer{
-		layerAt(layerWorkspaceSkills, "workspace", "skills",
-			s.skillRoots(repoDir).Workspace),
 	}
 }
 
@@ -82,68 +61,23 @@ func layerAt(name, layer, holds, path string) model.ConfigLayer {
 // resolveLayerPath turns a layer name into an absolute path, server-side. An
 // unknown name is refused rather than treated as a path — that refusal is the
 // whole security property of the open action.
-func (s *Server) resolveLayerPath(name string, e registry.Entry) (string, error) {
-	if skill, ok := strings.CutPrefix(name, layerSkillPrefix); ok {
-		return s.resolveSkillDir(skill, e.Path)
-	}
-	for _, l := range append(s.globalLayers(), s.spaceLayers(e.Path)...) {
-		if l.Name == name {
-			return l.Path, nil
-		}
-	}
-	return "", fmt.Errorf("unknown config layer %q", name)
+func (s *Server) resolveLayerPath(name string, _ registry.Entry) (string, error) {
+	return s.resolveGlobalLayerPath(name)
 }
 
-// resolveGlobalLayerPath is the same resolution with no space in play: the
-// layers every space shares, and skills resolved through the built-in and user
-// roots alone. The global scope of the settings route is reachable before any
-// space is registered, so its open action cannot be routed through a space id.
+// resolveGlobalLayerPath is the same resolution with no space in play. Every
+// layer left is the operator's own config file, so the two resolutions have
+// collapsed into one; the space-scoped route survives because the client still
+// asks through a space id. The global scope of the settings route is reachable
+// before any space is registered, so its open action cannot be routed through
+// one.
 func (s *Server) resolveGlobalLayerPath(name string) (string, error) {
-	if skill, ok := strings.CutPrefix(name, layerSkillPrefix); ok {
-		return s.resolveSkillDir(skill, "")
-	}
 	for _, l := range s.globalLayers() {
 		if l.Name == name {
 			return l.Path, nil
 		}
 	}
 	return "", fmt.Errorf("unknown config layer %q", name)
-}
-
-// resolveSkillDir names the directory that actually won a skill, so "open the
-// grill skill" opens the copy a session would read rather than a layer that lost.
-// A skill resolving from the binary's embedded floor opens the materialized
-// built-in directory, which is where an edit belongs.
-func (s *Server) resolveSkillDir(name, repoDir string) (string, error) {
-	for _, known := range prompt.Names() {
-		if known != name {
-			continue
-		}
-		if sk, ok := prompt.Resolve(name, s.skillRoots(repoDir)); ok && sk.Dir != "" {
-			return sk.Dir, nil
-		}
-		return filepath.Join(s.skillRoots(repoDir).Builtin, name), nil
-	}
-	return "", fmt.Errorf("unknown skill %q", name)
-}
-
-// resolvedSkills is the space's whole skill library with the layer that won each
-// directory — the positive "your grill resolves from: user" the surface shows
-// beside the stale-fork warning (story 34).
-func (s *Server) resolvedSkills(repoDir string) []model.ResolvedSkill {
-	lib := prompt.Library(s.skillRoots(repoDir))
-	out := make([]model.ResolvedSkill, 0, len(lib))
-	for _, sk := range lib {
-		out = append(out, model.ResolvedSkill{
-			Name:        sk.Name,
-			Layer:       sk.Layer,
-			Dir:         sk.Dir,
-			Description: sk.Description,
-			ForkedFrom:  sk.ForkedFrom,
-			Stale:       sk.Stale,
-		})
-	}
-	return out
 }
 
 // handleOpenLayer opens a config layer in the operator's editor — the escape

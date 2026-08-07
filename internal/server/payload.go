@@ -90,15 +90,6 @@ func (s *Server) handleFreePayloadPreview(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, payload)
 }
 
-// skillRoots is the one place the three skill-library layers are named: the
-// materialized built-in library under the data root, the operator's local library
-// under their config root, and the space's committed library in its repo. Every
-// composition and every library read goes through it, so the layering is fixed
-// once rather than reassembled per call site.
-func (s *Server) skillRoots(repoDir string) prompt.Roots {
-	return prompt.RootsFor(s.opts.ConfigDir, repoDir)
-}
-
 // blockersOf gathers a ticket's blockers with their answers pulled inline from
 // the same map (ADR 0005), mirroring the detail pane's inline-blocker reading: a
 // blocker resolved in this map contributes its answer prose; one that names a

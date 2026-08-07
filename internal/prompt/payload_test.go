@@ -275,3 +275,12 @@ func checkGolden(t *testing.T, name, got, configDir string) {
 		t.Errorf("the composed payload no longer matches %s.\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
 	}
 }
+
+func contains(hay []string, needle string) bool {
+	for _, s := range hay {
+		if strings.Contains(s, needle) {
+			return true
+		}
+	}
+	return false
+}
