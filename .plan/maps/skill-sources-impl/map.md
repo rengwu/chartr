@@ -115,6 +115,14 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   historical. **Ticket 06's rename-aside branch went with the byte comparison it
   rested on** — an existing `builtin-skills/` is registered in place; see the
   ticket for why that loses nothing. **The release freeze lifts.**
+- [The sources settings section](tickets/10-the-sources-settings-section.md) —
+  `SourcesSettings.svelte` on the global scope carries the six designed actions
+  and nothing else; `sources.toml`, `conventions.md` and `preferences.md` join
+  `user.toml` as openable layers, and the free payload previews through
+  `PayloadPreview`'s new `free` mode. All three decisions the screen is
+  load-bearing for are carried by copy on the rows. `getting-started.md`,
+  `CLAUDE.md` and three `CONTEXT.md` entries are rewritten against what shipped.
+  Not hand-run: the screen's appearance, and a real git registration and refresh.
 
 ## Not yet specified
 
