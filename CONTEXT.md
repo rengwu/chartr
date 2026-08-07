@@ -91,7 +91,7 @@ _Avoid_: pty stream, data channel
 ### Configuration
 
 **Agent library**:
-The operator's registered agents — the only execution config there is. Global and local: one set in the operator's own uncommitted file, shared by every space. An empty library is the starting state and refuses every spawn, ideate included, until one is registered.
+The operator's registered agents — the only execution config there is. Global and local: one set in the operator's own uncommitted file, shared by every space. An empty library is the starting state and refuses every spawn — a free session included — until one is registered.
 _Avoid_: agent registry, profiles, presets
 
 **Conventions**:
@@ -103,11 +103,11 @@ The operator's own standing instructions, in `preferences.md` beside the convent
 _Avoid_: user prompt, custom instructions, overrides, settings
 
 **User config**:
-The operator's local, uncommitted chartr config under the state root. It carries the agent library and is keyed to this machine, never a space's repository.
+The operator's local, uncommitted chartr config under the state root. It carries the agent library and the `[roles]` bindings, and is keyed to this machine, never a space's repository.
 _Avoid_: local settings, overrides
 
 **Settings surface**:
-The global settings route: the agent library and the paths of the files behind it, each openable in the operator's editor. Read-value-plus-open-file, never a second config store — there is nothing left to explain about layers.
+The global settings route: the agent library, the skill sources in resolution order, the four role bindings, and the paths of the files behind all of it, each openable in the operator's editor. Six things are edited inline — register a source, remove one, toggle it, reorder, refresh a git source, restore a role binding to its default — and everything else is read-value-plus-open-file, never a second config store. It is also where the free payload previews, and where a silently migrated source first becomes visible.
 _Avoid_: settings screen, preferences, config panel, options
 
 ### Ticket lifecycle

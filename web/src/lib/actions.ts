@@ -163,6 +163,73 @@ export function previewPayload(
   ) as Promise<import('./model').Payload>
 }
 
+// previewFreePayload composes what a *free* session is told: the same seam, the
+// same modal, four parts, and no ticket or role to choose. It names no space —
+// a free payload holds no live fact about one, which is why it hangs off the
+// settings surface rather than a space card.
+export function previewFreePayload(): Promise<import('./model').Payload> {
+  return send('GET', '/api/payload/free') as Promise<import('./model').Payload>
+}
+
+// The skill-source list's six actions. Each returns only its own result; the new
+// list arrives over the control socket as a fresh snapshot, so nothing here is
+// applied optimistically and a refusal leaves the rendered list untouched.
+
+// registerSource appends a folder or a git repository of skills to the list. The
+// kind is declared, never inferred from what was typed. Registering a `git`
+// source with git absent from PATH is refused at the gate, naming why, before a
+// row is written — so the thrown message is the whole story.
+export function registerSource(src: {
+  name: string
+  kind: 'dir' | 'git'
+  path?: string
+  url?: string
+  ref?: string
+}): Promise<{ name: string; path: string }> {
+  return send('POST', '/api/config/sources', src) as Promise<{ name: string; path: string }>
+}
+
+// removeSource drops a row and touches nothing it pointed at: a dir source is
+// the operator's own folder, and a git checkout under `sources/` is left where
+// it is — chartr does not collect them.
+export function removeSource(name: string): Promise<unknown> {
+  return send('DELETE', `/api/config/sources/${encodeURIComponent(name)}`)
+}
+
+// setSourceEnabled toggles a source off without losing it or its position.
+export function setSourceEnabled(name: string, enabled: boolean): Promise<unknown> {
+  return send('PUT', `/api/config/sources/${encodeURIComponent(name)}/enabled`, { enabled })
+}
+
+// reorderSources rewrites the list order, which *is* resolution order. The whole
+// list goes every time; the server refuses anything that is not a permutation of
+// what it holds, so a stale view cannot half-apply a move.
+export function reorderSources(names: string[]): Promise<unknown> {
+  return send('POST', '/api/config/sources/reorder', { names })
+}
+
+// refreshSource moves a git source to the tip of its ref and records the new
+// pin. It resets chartr's checkout: local edits inside it are discarded, which
+// is why the row says so beside the action.
+export function refreshSource(name: string): Promise<{ name: string; commit: string; fetched: string }> {
+  return send('POST', `/api/config/sources/${encodeURIComponent(name)}/refresh`) as Promise<{
+    name: string
+    commit: string
+    fetched: string
+  }>
+}
+
+// restoreRoleBinding writes a role's seeded binding back into `user.toml`. It is
+// the only recovery for a deleted binding — nothing refills one at startup,
+// because a missing row is a legitimate way to make a role refuse until it is
+// rebound. Binding a role to anything else is an edit of `user.toml`.
+export function restoreRoleBinding(role: string): Promise<{ role: string; ref: string }> {
+  return send('POST', `/api/config/roles/${encodeURIComponent(role)}/restore`) as Promise<{
+    role: string
+    ref: string
+  }>
+}
+
 // SpawnResult is the spawn action's own response — the session it started, the
 // resolved agent and args, and the payload hash the claim commit recorded. The
 // live session tab arrives separately over the control socket.

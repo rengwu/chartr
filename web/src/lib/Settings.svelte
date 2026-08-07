@@ -1,8 +1,18 @@
 <script lang="ts">
-  import type { Agent, ConfigLayer, NotifyPrefs, Space, TerminalPrefs } from './model'
+  import type {
+    Agent,
+    ConfigLayer,
+    NotifyPrefs,
+    RoleBinding,
+    Source,
+    Space,
+    TerminalPrefs,
+  } from './model'
   import { settingsHash, type SettingsScope } from './route'
   import { createConfigLayer, openConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
+  import SourcesSettings from './SourcesSettings.svelte'
+  import PayloadPreview from './PayloadPreview.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
   import NotifySettings from './NotifySettings.svelte'
   import { Button } from './components/ui/button'
@@ -19,6 +29,9 @@
     config,
     agents,
     detected,
+    sources,
+    roles,
+    gitAvailable = false,
     terminalPrefs,
     notifyPrefs,
     scope,
@@ -35,6 +48,13 @@
     // The known agent CLIs found on this machine's PATH — the advisory hint the
     // agent library renders beneath the adapter input when registering one.
     detected: string[]
+    // The operator's ordered skill-source list and the four role bindings that
+    // resolve through it — the sources section on the global scope. In
+    // resolution order off the snapshot; nothing here re-sorts them.
+    sources: Source[]
+    roles: RoleBinding[]
+    // Whether a git source can be registered on this machine at all.
+    gitAvailable?: boolean
     // The operator's resolved terminal customization off the snapshot — read-only
     // here, rendered by the Terminal section on the global scope. Per-machine
     // cosmetic settings belong beside the user config, not under a space.
@@ -70,6 +90,10 @@
 
   let busy = $state<string | null>(null)
   let note = $state<string | null>(null)
+  // The free payload's preview hangs here rather than off a space card: it holds
+  // no live fact about a space, and this is the only place the operator watches
+  // their own preferences.md land in an assembled document.
+  let previewFree = $state(false)
 
   // The layers that can be stamped from a defaults template rather than only
   // opened. A layer that does not exist yet has nothing for the editor to open, so
@@ -186,6 +210,17 @@
                is — and the files it lives among, openable in the operator's editor. -->
           <AgentLibrary {agents} {detected} />
 
+          <!-- Where skills come from, and which skill each role is spawned with.
+               The section is load-bearing: it explains an orphaned checkout, it
+               is the only recovery for a deleted role binding, and it is what
+               makes the silent first-run migration discoverable at all. -->
+          <SourcesSettings
+            {sources}
+            {roles}
+            {gitAvailable}
+            onPreviewFree={() => (previewFree = true)}
+          />
+
           <!-- Per-machine cosmetics, beside the user config rather than under a
                space: what terminal.toml has in force, and the file itself. -->
           <TerminalSettings prefs={terminalPrefs} layer={terminalLayer} {layerRow} />
@@ -194,8 +229,10 @@
           <section class="flex flex-col gap-2">
             <h2 class="text-xs font-semibold">Files on disk</h2>
             <p class="text-xs leading-relaxed text-muted-foreground">
-              Where your config lives. All local, never committed, and per-machine — your agent
-              library sits in one file, your skill forks in a second root.
+              Where your config lives. All local, never committed, and per-machine. Anything the
+              controls above don't edit, you edit here —
+              <code class="font-mono">conventions.md</code> is the exception: chartr generates it and
+              rewrites it on every composition, so read it rather than edit it.
             </p>
             {#each files as l (l.name)}
               {@render layerRow(l)}
@@ -237,6 +274,11 @@
     </ScrollArea.Root>
   </div>
 </div>
+
+<!-- The free payload, through the same seam and the same modal a ticket's
+     preview uses — four parts, no ticket and no role to choose. -->
+<PayloadPreview free open={previewFree} onClose={() => (previewFree = false)} />
+
 
 {#snippet layerRow(l: ConfigLayer)}
   <div class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">

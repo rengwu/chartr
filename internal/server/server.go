@@ -203,6 +203,17 @@ func New(opts Options) (*Server, error) {
 	// registered at all.
 	s.mux.HandleFunc("PUT /api/config/agents/{name}", s.handleSetAgent)
 	s.mux.HandleFunc("DELETE /api/config/agents/{name}", s.handleDeleteAgent)
+	// The skill-source list (ticket 10): the six actions the sources section
+	// offers, all global for the same reason the agent library is. Everything
+	// else about `sources.toml` is an open-the-file action on the named layer
+	// above — these routes are the whole of what the surface edits.
+	s.mux.HandleFunc("POST /api/config/sources", s.handleRegisterSource)
+	s.mux.HandleFunc("POST /api/config/sources/reorder", s.handleReorderSources)
+	s.mux.HandleFunc("DELETE /api/config/sources/{name}", s.handleRemoveSource)
+	s.mux.HandleFunc("PUT /api/config/sources/{name}/enabled", s.handleSetSourceEnabled)
+	s.mux.HandleFunc("POST /api/config/sources/{name}/refresh", s.handleRefreshSource)
+	// Restoring a deleted role binding, which nothing does automatically.
+	s.mux.HandleFunc("POST /api/config/roles/{role}/restore", s.handleRestoreRoleBinding)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part origin provenance. Read-only, so a GET;
 	// the composition reads the sources and the map fresh off disk each time.

@@ -153,13 +153,55 @@ export interface Space {
 // ConfigLayer is one file or directory the operator's config lives in. `name` is
 // the server-side token the open action resolves — the client never sends a path.
 // `holds` is what the file carries: the agent library, the per-machine terminal
-// customization, or machine-wide notification timing.
+// customization, machine-wide notification timing, the skill-source list,
+// chartr's generated write contract, or the operator's own preferences.
 export interface ConfigLayer {
   name: string
   layer: Layer
-  holds: 'agents' | 'terminal' | 'notifications'
+  holds: 'agents' | 'terminal' | 'notifications' | 'sources' | 'conventions' | 'preferences'
   path: string
   exists: boolean
+}
+
+// Source is one row of the skill-source list: what the operator registered, plus
+// what a walk of it found on this rebuild. Position in `Model.sources` *is*
+// resolution order — the list is rendered in arrival order and never sorted.
+export interface Source {
+  name: string
+  // 'dir' is a folder the operator owns and edits; 'git' is a checkout *chartr*
+  // owns, which a refresh resets — the row has to say so, because the answer to
+  // "I want to edit this" is a dir source, not an edit inside the checkout.
+  kind: 'dir' | 'git'
+  path: string
+  url?: string
+  ref?: string
+  commit?: string
+  // RFC3339, absent when never fetched.
+  fetched?: string
+  enabled: boolean
+  // The synthetic `chartr-skills` row: always last, never removable and never
+  // reorderable. `seeded` distinguishes chartr's shipped bytes from a checkout a
+  // refresh has since pinned.
+  default?: boolean
+  seeded?: boolean
+  status: 'ok' | 'unavailable' | 'empty'
+  skills: string[]
+  // The subset of `skills` an earlier enabled source already claimed at the bare
+  // name. They stay reachable through the qualified `Source/skill` form.
+  shadowed?: string[]
+  warnings?: string[]
+}
+
+// RoleBinding is one role beside the skill it is bound to. An empty `ref` is a
+// deleted binding — a legitimate state that makes the role refuse to spawn, and
+// one nothing refills automatically; the restore control is its only recovery.
+export interface RoleBinding {
+  role: Role
+  ref: string
+  default: string
+  // Whether `ref` names a skill some enabled source yields today. Bound-but-
+  // unresolvable is the other way a role refuses, and the row tells them apart.
+  resolves: boolean
 }
 
 export interface Model {
@@ -176,6 +218,15 @@ export interface Model {
   // fresh operator need not recall exact binary names. A suggestion, never a
   // constraint: any binary can be registered whether or not it is here.
   detected: string[]
+  // The operator's ordered skill-source list, each row with what a walk of it
+  // just found. In resolution order — first enabled source to yield a name wins.
+  sources: Source[]
+  // The four role bindings as they stand in `user.toml`, each beside the default
+  // a restore would write.
+  roles: RoleBinding[]
+  // Whether `git` is on this machine's PATH. A git source cannot be registered
+  // without it, and the refusal is at the gate — before a row is written.
+  gitAvailable: boolean
   // Whether this machine can raise a native OS folder chooser for "add a space".
   // A machine capability, not state: true on macOS, true on Linux with zenity or
   // kdialog, false otherwise — and it is what decides whether New Space opens the
