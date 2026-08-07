@@ -10,14 +10,27 @@ import (
 	"github.com/rengwu/chartr/internal/sources"
 )
 
-// freeCoreText is the free session's core: chartr's own account of what it is,
-// embedded rather than sourced because a session told nothing about how to
-// behave must still be told what launched it. It is one sentence, and it is held
-// to the same test as every other sentence chartr writes in its own voice — it is
-// still true if the agent does nothing about it.
+// spaceCoreText is chartr's own account of what it is, embedded rather than
+// sourced because a session told nothing about how to behave must still be told
+// what it is sitting in. It is one sentence, and it is held to the same test as
+// every other sentence chartr writes in its own voice — it is still true if the
+// agent does nothing about it.
 //
-//go:embed assets/core-free.md
-var freeCoreText string
+// It says nothing about how *this* reader arrived, because it has two readers
+// with different histories: a free session chartr launched, and an agent chartr
+// never touched reading the standing `CHARTR.md` at the root of a space. What is
+// true of both is the middle — maps derived from `.plan/maps/`, one session per
+// ticket — and that is the whole of this asset.
+//
+//go:embed assets/core-space.md
+var spaceCoreText string
+
+// freeCoreTail is the one clause only a free session can be told: chartr opened
+// its terminal, and opened it with nothing in hand. It sits beside the asset
+// rather than in it because the standing document must not carry it — a `/new`
+// agent's shell was not opened by chartr at all, and a document whose first
+// paragraph is false to its reader is worth less than no document.
+const freeCoreTail = "This shell is one chartr opened with no ticket and no role."
 
 // Blocker is one of a ticket's blockers as the context bundle carries it: its
 // number, title, and its resolved answer pulled inline (ADR 0005). The server
@@ -138,14 +151,44 @@ func Compose(in ComposeInput) (Payload, error) {
 // block and the preferences bytes, and that is all — which is why this takes no
 // space at all, only the config root and the registry.
 func ComposeFree(configDir string, reg *sources.Registry) (Payload, error) {
+	return composeSpace(configDir, reg, freeCoreTail)
+}
+
+// ComposeStanding assembles the standing document chartr keeps at the root of
+// every registered space — the same four parts a free session is told, minus the
+// one clause that is only true of a shell chartr opened.
+//
+// Its reader is an agent chartr never launched: one started with `/new`, one the
+// operator opened in their own terminal, one that compacted its brief away and
+// came back for it. Nothing routes such an agent here; the file works on the
+// agent's curiosity, and failing that on the operator saying "read CHARTR.md".
+//
+// Like the free payload it carries **no live fact about the space** — no map
+// list, no frontier, no branch. That rule binds harder here, not softer: a
+// standing file is written at startup and at a sources change and read at some
+// unrelated later moment, so anything in it that could go stale certainly will.
+func ComposeStanding(configDir string, reg *sources.Registry) (Payload, error) {
+	return composeSpace(configDir, reg, "")
+}
+
+// composeSpace is the shared body of the two space-level payloads: chartr's
+// core plus an optional tail, the conventions pointer, the operator's
+// preferences, and the sources block. Both take no space at all, only the config
+// root and the registry, which is what makes the standing document identical in
+// every space and composable once for all of them.
+func composeSpace(configDir string, reg *sources.Registry, tail string) (Payload, error) {
 	contract, err := ReconcileContract(configDir)
 	if err != nil {
 		return Payload{}, err
 	}
 
+	core := strings.TrimSpace(spaceCoreText)
+	if tail != "" {
+		core += "\n\n" + tail
+	}
 	parts := []Part{{
 		Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core",
-		Text: strings.TrimSpace(freeCoreText),
+		Text: core,
 	}}
 	parts = append(parts, contractParts(contract)...)
 	srcPart, warnings := sourcesPart(reg)

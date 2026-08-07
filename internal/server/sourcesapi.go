@@ -22,6 +22,14 @@ import (
 // back over the control socket rather than being patched optimistically in the
 // browser. The registry is the authority on what is legal — this file maps its
 // errors onto status codes and does no validation of its own.
+//
+// The five source mutations also reconcile the standing `CHARTR.md` in every
+// registered space (chartr-md, ticket 01), because the sources block is half of
+// what that document says. It is called explicitly rather than folded into
+// rebuild(): rebuild also fires on terminal churn and space registration, and
+// the trigger set for the standing document is deliberately narrower than that.
+// Restoring a role binding is not one of the five — bindings do not appear in
+// the document.
 
 // sourceStates converts the registry's walked rows into their wire mirror. The
 // walk is uncached, so this is a fresh read of every source root on every
@@ -146,6 +154,7 @@ func (s *Server) handleRegisterSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 	writeJSON(w, http.StatusOK, map[string]any{"name": src.Name, "path": src.Path})
 }
 
@@ -160,6 +169,7 @@ func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 	writeJSON(w, http.StatusOK, map[string]any{"name": name, "removed": true})
 }
 
@@ -181,6 +191,7 @@ func (s *Server) handleSetSourceEnabled(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 	writeJSON(w, http.StatusOK, map[string]any{"name": name, "enabled": body.Enabled})
 }
 
@@ -200,6 +211,7 @@ func (s *Server) handleReorderSources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 	writeJSON(w, http.StatusOK, map[string]any{"reordered": true})
 }
 
@@ -214,6 +226,7 @@ func (s *Server) handleRefreshSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rebuild()
+	s.reconcileChartrDoc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": src.Name, "commit": src.Commit, "fetched": src.Fetched.UTC().Format(time.RFC3339),
 	})

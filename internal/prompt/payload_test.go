@@ -150,6 +150,48 @@ func TestFreePayloadGolden(t *testing.T) {
 	}
 }
 
+// The standing document chartr keeps at every space's root (chartr-md, ticket
+// 01): the free payload's four parts minus the one clause only a shell chartr
+// opened can be told. Its first sentence has to be true in the mouth of a file
+// read by an agent chartr never launched — that is the failure this golden
+// exists to catch, and the same "every sentence is still true if the agent does
+// nothing" test governs every line below it.
+func TestStandingPayloadGolden(t *testing.T) {
+	dir, reg, _ := fixture(t)
+
+	p, err := prompt.ComposeStanding(dir, reg)
+	if err != nil {
+		t.Fatalf("ComposeStanding: %v", err)
+	}
+	checkGolden(t, "standing-payload.golden.md", p.Markdown, dir)
+
+	// The standing document is the free payload with the launch clause dropped and
+	// nothing else changed — no extra part, no live fact about the space, and no
+	// fetchable address for an agent running with permissions skipped.
+	free, err := prompt.ComposeFree(dir, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Parts) != len(free.Parts) {
+		t.Fatalf("the standing document has %d parts, the free payload %d", len(p.Parts), len(free.Parts))
+	}
+	for i := range p.Parts {
+		if p.Parts[i].Name != free.Parts[i].Name || p.Parts[i].Origin != free.Parts[i].Origin {
+			t.Errorf("part %d = %s/%s, want the free payload's %s/%s",
+				i, p.Parts[i].Name, p.Parts[i].Origin, free.Parts[i].Name, free.Parts[i].Origin)
+		}
+	}
+	if strings.Contains(p.Markdown, "opened this terminal") || strings.Contains(p.Markdown, "This shell") {
+		t.Errorf("the standing document claims chartr opened the reader's shell:\n%s", p.Markdown)
+	}
+	if !strings.Contains(free.Markdown, "This shell") {
+		t.Errorf("the free payload lost the clause that is true only of it:\n%s", free.Markdown)
+	}
+	if strings.Contains(p.Markdown, "https://") {
+		t.Errorf("a source URL reached the standing document:\n%s", p.Markdown)
+	}
+}
+
 // The two things that make the free payload vary, and the only two: the sources
 // block and the preferences bytes. Everything else is the same in an empty tree
 // and a tree mid-effort.
