@@ -102,7 +102,8 @@ large diff; `/simplify` is worth a pass on 07, 08 and 10.
   a free session on the repurposed `/launch` route through `ComposeFree` and
   `OpenFree`, titled by the agent's registered name and outside the one-session
   gate. **The operator reopened the fixed body after the fact**: the caret is a
-  selector, the body launches and relabels to the selection — see the ticket. `/ideate`, `prompt.Ideate`, the on-ramp/needs-context frontmatter and the
+  selector, the body launches and relabels to the selection — see the ticket.
+  `/ideate`, `prompt.Ideate`, the on-ramp/needs-context frontmatter and the
   context modal are gone; `prompt.Launch` survives unused for ticket 09.
   Note: tickets 05, 06 and 07 resolved without adding their line here.
 
