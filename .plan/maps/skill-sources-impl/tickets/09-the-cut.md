@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [06, 07, 08]
+claimed_by: s651a9e000f26
+claimed_at: 2026-08-07T04:54:19Z
 ---
 
 # The cut
