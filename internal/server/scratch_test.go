@@ -40,9 +40,8 @@ func TestSnapshotAlwaysCarriesAThinScratchSpace(t *testing.T) {
 		t.Errorf("Scratch carries repository state: branch=%q dirty=%v lastAgent=%q",
 			scratch.Branch, scratch.Dirty, scratch.LastAgent)
 	}
-	if len(scratch.Maps) != 0 || len(scratch.Skills) != 0 || len(scratch.Layers) != 0 {
-		t.Errorf("Scratch is not thin: maps=%d skills=%d layers=%d",
-			len(scratch.Maps), len(scratch.Skills), len(scratch.Layers))
+	if len(scratch.Maps) != 0 || len(scratch.Layers) != 0 {
+		t.Errorf("Scratch is not thin: maps=%d layers=%d", len(scratch.Maps), len(scratch.Layers))
 	}
 	if len(scratch.Terminals) != 0 {
 		t.Errorf("fresh Scratch carries %d terminals, want none", len(scratch.Terminals))

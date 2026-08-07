@@ -180,8 +180,6 @@ Not yet:
       change the bindings.
 - [ ] **Settings page.** Reorganize the page to make settings easier to find and
       manage.
-- [ ] **Bundled skills.** Improve how included skills are copied to agents.
-      [Today](docs/skill-sync.md).
 
 No hosted service or user accounts are planned. chartr does not send usage data.
 

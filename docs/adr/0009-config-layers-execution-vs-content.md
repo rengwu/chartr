@@ -12,6 +12,12 @@
 > agent runs can arrive by `git pull`. Read every "binding" below as historical;
 > the prompt/skill halves are current.
 
+> **Content half superseded by [0017](0017-skills-come-from-registered-sources.md)
+> (`skill-sources`).** The skill layers are gone — chartr ships no library and
+> resolves none; skills come from an ordered list of operator-registered sources,
+> and `.chartr/skills/` is inert. With the execution half already superseded above,
+> **this ADR is wholly historical**: nothing below is operative policy.
+
 Two layers of chartr config live in different places for different reasons. **Committed workspace config** sits in the space's repo (the file ADR 0007 already established for map-kind) and is shared, versioned, portable. **Local user config** lives under the operator's home, is never committed, and is per-machine. When both speak to the same thing, which wins is **not uniform** — and that asymmetry is the decision:
 
 - **Role→agent bindings resolve user-over-workspace.** A committed binding names a concrete CLI and model, which is an *execution/environment* fact — it may name an agent the operator never installed, or a model they don't want to pay for. It must yield to local reality, so the user layer wins. This is also what makes the absent-agent case solvable by configuration rather than by editing someone else's committed file.

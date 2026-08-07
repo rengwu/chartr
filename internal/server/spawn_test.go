@@ -13,7 +13,6 @@ import (
 	"github.com/rengwu/chartr/internal/chartrtest"
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/wayfinder"
 )
 
@@ -125,12 +124,13 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 		"Args: --model sonnet",
 		"Role: implement",
 		"Payload-SHA256: " + sp.PayloadSha,
-		// The content provenance, one line per composed skill. The core is still
-		// chartr's own embedded skill and reads as its layer and directory hash; the
-		// role came from a registered source and reads as the source's name, with
-		// `@<commit>` where that source carries a pin — the seeded default carries
-		// none until the operator fetches it (skill-sources ticket 05).
-		"Skill: core=built-in:" + prompt.ShippedHash("core"),
+		// The content provenance, one line per composed skill. The core is chartr's
+		// own embedded text and names chartr itself; the role came from a registered
+		// source and reads as the source's name, with `@<commit>` where that source
+		// carries a pin — the seeded default carries none until the operator fetches
+		// it (skill-sources ticket 05). Which bytes either was is fixed by
+		// Payload-SHA256 above (ADR 0017).
+		"Skill: core=chartr",
 		"Skill: implement=chartr-skills",
 	} {
 		if !strings.Contains(msg, want) {

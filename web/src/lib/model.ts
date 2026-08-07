@@ -2,10 +2,9 @@
 // `model.Model` exactly; it is the whole state a snapshot carries, replaced
 // wholesale on every push (ADR 0010). Later tickets grow both sides together.
 
-// Layer names where a skill resolved from — the shipped floor, the operator's own
-// fork, or a space's committed library. Skill resolution is the content half of
-// the config story; execution is no longer layered at all (agents.ts).
-export type Layer = 'built-in' | 'workspace' | 'user'
+// Where a config file sits. Only the operator's own root is left: skills come
+// from registered sources and execution is not layered at all (agents.ts).
+export type Layer = 'user'
 
 // Agent is one entry of the operator's registered agent library: a named,
 // complete way to run a harness — the binary, whatever flags that harness wants
@@ -142,42 +141,23 @@ export interface Space {
   // agent reads as *nothing remembered* here, which re-opens the picker rather
   // than substituting one. Absent until the space's first spawn.
   lastAgent?: string
-  // The resolved skill library: every skill with the layer that won its whole
-  // directory and its stale-fork state (story 34).
-  skills: ResolvedSkill[]
-  // This space's own config files — its committed skill library. The layers it
-  // shares with every space live on `Model.config`.
+  // This space's own config files. Nothing puts a layer here since the committed
+  // skill library went with the layer model; the layers a space shares with every
+  // other one live on `Model.config`.
   layers: ConfigLayer[]
   maps: Map[]
   terminals: Terminal[]
   warnings?: string[]
 }
 
-// ResolvedSkill is one skill of the library as it resolves for a space: which
-// layer won its whole directory (whole-skill shadowing), and whether a fork has
-// fallen behind the shipped default. The positive statement of resolution —
-// "your grill resolves from: user" — not just the warning.
-export interface ResolvedSkill {
-  name: string
-  layer: Layer
-  // Where the winning directory sits; absent when the copy embedded in the binary
-  // is the floor.
-  dir?: string
-  description?: string
-  // The shipped content hash a shadowing skill recorded in its frontmatter, and
-  // whether the shipped default has since moved past it.
-  forkedFrom?: string
-  stale?: boolean
-}
-
 // ConfigLayer is one file or directory the operator's config lives in. `name` is
 // the server-side token the open action resolves — the client never sends a path.
-// `holds` is what the file carries: the agent library, skills, or the per-machine
-// terminal customization, or machine-wide notification timing.
+// `holds` is what the file carries: the agent library, the per-machine terminal
+// customization, or machine-wide notification timing.
 export interface ConfigLayer {
   name: string
   layer: Layer
-  holds: 'agents' | 'skills' | 'terminal' | 'notifications'
+  holds: 'agents' | 'terminal' | 'notifications'
   path: string
   exists: boolean
 }
@@ -185,12 +165,8 @@ export interface ConfigLayer {
 export interface Model {
   spaces: Space[]
   // The config files that are not any one space's: the operator's agent library
-  // and the two skill libraries.
+  // and their terminal and notification preferences.
   config: ConfigLayer[]
-  // The skill library as it resolves with no space in play — the built-in floor
-  // with the operator's own forks over it. What every space starts from before
-  // its committed library shadows anything.
-  skills: ResolvedSkill[]
   // The operator's registered agent library — named launch specs a spawn picks
   // from at the gate. Global: it lives in the operator's own config and is never
   // committed, so it is the same list whatever space is in view.

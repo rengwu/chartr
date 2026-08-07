@@ -3,7 +3,7 @@ package prompt
 import (
 	_ "embed"
 	"fmt"
-	"path"
+
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
@@ -158,21 +158,22 @@ func ComposeFree(configDir string, reg *sources.Registry) (Payload, error) {
 	}, nil
 }
 
-// embeddedCore is the ticket session's core, read straight out of the binary.
-// It does not resolve through the skill layers and is not a source's to shadow:
-// it is chartr's own voice, and the claim trailer records it by the shipped hash
-// the running binary carries.
+// ticketCoreText is the ticket session's core: the ground rules every session
+// working a ticket inherits. Like the free core it is embedded rather than
+// sourced — it is chartr's own voice, and not a source's to shadow (ADR 0017).
+//
+//go:embed assets/core-ticket.md
+var ticketCoreText string
+
+// embeddedCore is the ticket session's core, read straight out of the binary. It
+// resolves through no source, so the claim trailer records it as `core=chartr`;
+// which bytes that was is fixed by `Payload-SHA256` on the same commit.
 func embeddedCore() Skill {
-	b, err := assets.ReadFile(path.Join(embedRoot, CoreSkill, skillFile))
-	if err != nil {
-		return Skill{Name: CoreSkill, Layer: LayerBuiltin}
-	}
-	meta, body := splitFrontmatter(string(b))
+	meta, body := splitFrontmatter(ticketCoreText)
 	return Skill{
 		Name:        CoreSkill,
-		Layer:       LayerBuiltin,
+		Source:      OriginChartr,
 		Description: meta["description"],
-		Hash:        ShippedHash(CoreSkill),
 		Body:        strings.TrimSpace(body),
 	}
 }

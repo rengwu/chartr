@@ -30,17 +30,6 @@ func layer(t *testing.T, layers []model.ConfigLayer, name string) model.ConfigLa
 	return model.ConfigLayer{}
 }
 
-func skill(t *testing.T, s model.Space, name string) model.ResolvedSkill {
-	t.Helper()
-	for _, sk := range s.Skills {
-		if sk.Name == name {
-			return sk
-		}
-	}
-	t.Fatalf("skill %q not in space %s (%d skills)", name, s.Name, len(s.Skills))
-	return model.ResolvedSkill{}
-}
-
 // The pushed model carries the surface: the operator's registered agent library,
 // and the path of every file behind it. A repository that still carries a
 // pre-cut `.chartr/config.toml` (old role bindings and a stale `[maps.*]` table)
@@ -82,52 +71,23 @@ args = ["--model", "opus"]
 		t.Errorf("a space carrying a stale .chartr/config.toml warned: %v", s.Warnings)
 	}
 
-	// Every file behind the library names where it lives — the shared ones on the
-	// model, the space's committed skill library on the space.
+	// Every file behind the library names where it lives.
 	if got, want := layer(t, snap.Config, "user-config").Path, filepath.Join(h.ConfigDir, "user.toml"); got != want {
 		t.Errorf("user config path = %q, want %q", got, want)
 	}
 	if got := layer(t, snap.Config, "user-config").Holds; got != "agents" {
 		t.Errorf("user config holds %q, want agents", got)
 	}
-	if got, want := layer(t, snap.Config, "user-skills").Path, filepath.Join(h.ConfigDir, "skills"); got != want {
-		t.Errorf("user skills path = %q, want %q", got, want)
+	// Neither execution nor skills is a committed layer any more: the space
+	// carries no config file of its own at all (ADR 0017).
+	if len(s.Layers) != 0 {
+		t.Errorf("the surface still lists space-scoped config layers: %+v", s.Layers)
 	}
-	if got, want := layer(t, snap.Config, "builtin-skills").Path, filepath.Join(h.ConfigDir, "builtin-skills"); got != want {
-		t.Errorf("built-in skills path = %q, want %q", got, want)
-	}
-	if got, want := layer(t, s.Layers, "workspace-skills").Path, filepath.Join(repo, ".chartr/skills"); got != want {
-		t.Errorf("workspace skills path = %q, want %q", got, want)
-	}
-	// Execution is no longer a committed layer: the space carries no config file.
-	for _, l := range s.Layers {
-		if l.Name == "workspace-config" {
-			t.Errorf("the surface still lists a committed workspace-config layer: %+v", l)
+	// The retired skill layers are gone from the global list with them.
+	for _, l := range snap.Config {
+		if l.Holds == "skills" {
+			t.Errorf("the surface still lists a skill layer: %+v", l)
 		}
-	}
-}
-
-// A fork whose recorded `forked_from` no longer matches the shipped default is
-// carried on the skill itself and surfaced as a warning — skill resolution is the
-// content half of the config story, untouched by this cut (story 34).
-func TestResolvedSkillCarriesStaleFork(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteFile(t, repo, ".chartr/skills/grill/SKILL.md",
-		"---\nname: grill\ndescription: forked\nforked_from: deadbeef\n---\n\nMine.\n")
-
-	resp := register(t, h, repo)
-	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
-
-	sk := skill(t, s, "grill")
-	if sk.Layer != "workspace" {
-		t.Errorf("forked grill resolves from %q, want workspace", sk.Layer)
-	}
-	if sk.ForkedFrom != "deadbeef" || !sk.Stale {
-		t.Errorf("forked grill: forkedFrom=%q stale=%v, want deadbeef and stale", sk.ForkedFrom, sk.Stale)
-	}
-	if !hasSubstring(s.Warnings, "grill") {
-		t.Errorf("a stale fork produced no warning; warnings = %v", s.Warnings)
 	}
 }
 
@@ -156,23 +116,17 @@ func TestOpenResolvesNamedLayersOnly(t *testing.T) {
 		t.Errorf("the editor was handed %q, want the server-resolved %q", got, want)
 	}
 
-	// A named skill directory resolves to the layer that actually won it.
-	code, body = h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "skill:implement"})
-	if code != 200 {
-		t.Fatalf("open skill:implement = %d, body %s", code, body)
-	}
-	if !strings.Contains(body, filepath.Join(h.ConfigDir, "builtin-skills", "implement")) {
-		t.Errorf("skill:implement resolved to %s, want the materialized built-in copy", body)
-	}
-
-	// Anything not a name the server knows is refused — including a path and the
-	// name the retired committed-config layer used to answer to.
+	// Anything not a name the server knows is refused — including a path and every
+	// name the retired committed-config and skill layers used to answer to.
 	for _, bad := range []string{
 		"/etc/passwd",
 		"../../../../etc/passwd",
+		"skill:implement",
 		"skill:../../etc/passwd",
-		"skill:no-such-skill",
 		"workspace-config",
+		"workspace-skills",
+		"user-skills",
+		"builtin-skills",
 		"",
 	} {
 		if code, _ := h.Post("/api/spaces/"+resp.ID+"/config/open",
@@ -189,35 +143,29 @@ func TestOpenAbsentLayerSurfacesThePath(t *testing.T) {
 	repo := chartrtest.NewSpaceRepo(t)
 	resp := register(t, h, repo)
 
-	// The space's committed skill library does not exist yet.
-	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "workspace-skills"})
+	// The operator has never written a notification config.
+	code, body := h.Post("/api/spaces/"+resp.ID+"/config/open", map[string]string{"layer": "notify-config"})
 	if code != 200 {
-		t.Fatalf("open absent workspace-skills = %d, body %s", code, body)
+		t.Fatalf("open absent notify-config = %d, body %s", code, body)
 	}
 	if !strings.Contains(body, `"exists":false`) || !strings.Contains(body, `"opened":"none"`) {
 		t.Errorf("open of an absent layer = %s, want it surfaced as absent", body)
 	}
-	want := filepath.Join(repo, ".chartr/skills")
+	want := filepath.Join(h.ConfigDir, "notify.toml")
 	if !strings.Contains(body, want) {
 		t.Errorf("open of an absent layer did not surface its path: %s", body)
 	}
 	if _, err := os.Stat(want); !os.IsNotExist(err) {
-		t.Error("opening an absent layer created the directory")
+		t.Error("opening an absent layer created the file")
 	}
 }
 
-// The global half of the surface stands on its own: the agent library and the
-// skill library both resolve with no space in play, so "what are my agents and
-// skills and where do they live" is answerable with nothing registered — and the
-// open action for those layers is reachable without borrowing a space id.
+// The global half of the surface stands on its own: the agent library resolves
+// with no space in play, so "what are my agents and where do they live" is
+// answerable with nothing registered — and the open action for those layers is
+// reachable without borrowing a space id.
 func TestGlobalLayersResolveWithoutASpace(t *testing.T) {
-	// A user fork shadows one whole skill directory; everything else stands on the
-	// shipped floor. It is in place before the server starts, since nothing but a
-	// registered space would prompt a rebuild here.
-	configDir := t.TempDir()
-	chartrtest.WriteFile(t, filepath.Join(configDir, "skills"), "grill/SKILL.md",
-		"---\nname: grill\ndescription: mine\n---\n\nMy grill.\n")
-	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	h := chartrtest.Start(t)
 	chartrtest.WriteFile(t, h.ConfigDir, "user.toml", "[agents.house]\nadapter = \"claude\"\n")
 	// Nudge a rebuild so the freshly written library is on the snapshot.
 	register(t, h, chartrtest.NewSpaceRepo(t))
@@ -226,41 +174,22 @@ func TestGlobalLayersResolveWithoutASpace(t *testing.T) {
 	if len(snap.Agents) != 1 || snap.Agents[0].Name != "house" {
 		t.Fatalf("global library = %+v, want the one registered agent", snap.Agents)
 	}
-	if len(snap.Skills) == 0 {
-		t.Fatal("the global scope lists no skills; it should never take a space to read the library")
-	}
-	global := func(name string) model.ResolvedSkill {
-		t.Helper()
-		for _, sk := range snap.Skills {
-			if sk.Name == name {
-				return sk
-			}
-		}
-		t.Fatalf("skill %q not in the global library (%d skills)", name, len(snap.Skills))
-		return model.ResolvedSkill{}
-	}
-	if got, want := global("grill").Layer, "user"; got != want {
-		t.Errorf("forked grill resolves from %q, want %q", got, want)
-	}
-	if got, want := global("core").Layer, "built-in"; got != want {
-		t.Errorf("core resolves from %q, want %q", got, want)
-	}
 
 	// The space-less open resolves the same named layers, and refuses everything
 	// else exactly as the per-space one does.
 	record := stubEditor(t)
-	code, body := h.Post("/api/config/open", map[string]string{"layer": "skill:grill"})
+	code, body := h.Post("/api/config/open", map[string]string{"layer": "user-config"})
 	if code != 200 {
-		t.Fatalf("open skill:grill = %d, body %s", code, body)
+		t.Fatalf("open user-config = %d, body %s", code, body)
 	}
-	want := filepath.Join(h.ConfigDir, "skills", "grill")
+	want := filepath.Join(h.ConfigDir, "user.toml")
 	if !strings.Contains(body, want) {
-		t.Errorf("open skill:grill = %s, want the user fork at %q", body, want)
+		t.Errorf("open user-config = %s, want the agent library at %q", body, want)
 	}
 	if got := waitForFile(t, record); !strings.Contains(got, want) {
 		t.Errorf("the editor was handed %q, want the server-resolved %q", got, want)
 	}
-	for _, bad := range []string{"/etc/passwd", "skill:../../etc/passwd", "workspace-config", "workspace-skills", ""} {
+	for _, bad := range []string{"/etc/passwd", "skill:grill", "workspace-config", "workspace-skills", "user-skills", ""} {
 		if code, _ := h.Post("/api/config/open", map[string]string{"layer": bad}); code != 400 {
 			t.Errorf("global open %q = %d, want 400 — only global names resolve here", bad, code)
 		}

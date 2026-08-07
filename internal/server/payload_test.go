@@ -61,13 +61,13 @@ func partNames(p prompt.Payload) []string {
 func segText(part prompt.Part) string { return part.Text }
 
 // skillSource renders a SKILL.md: the standard frontmatter contract over a body,
-// with any extra frontmatter lines (a `forked_from:`) folded in.
+// with any extra frontmatter lines folded in.
 func skillSource(name, extra, body string) string {
 	return fmt.Sprintf("---\nname: %s\ndescription: a test %s skill\n%s---\n\n%s\n", name, name, extra, body)
 }
 
-// writeUserSkill defines a skill in the operator's local library (the user layer)
-// under their config root.
+// writeUserSkill drops a skill directory under `<configDir>/skills/` — the
+// retired user layer, which nothing resolves any more.
 func writeUserSkill(t *testing.T, configDir, name, extra, body string) {
 	t.Helper()
 	dir := filepath.Join(configDir, "skills", name)

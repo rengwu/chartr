@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/sources"
 )
 
@@ -98,47 +97,22 @@ func TestMigrationSkipsAnEmptyLegacySkillsDirectory(t *testing.T) {
 	}
 }
 
-// A materialized built-in library nobody edited is chartr's own bytes: it is
-// moved out of the way and registered nowhere. The move is a rename, never a
-// delete — the comparison it rests on is the only thing standing between an
-// operator's fork and its deletion.
-func TestMigrationRenamesAnUntouchedBuiltinLibraryAside(t *testing.T) {
-	root := oldRoot(t)
-	if err := prompt.Materialize(root); err != nil {
-		t.Fatalf("materializing the shipped library: %v", err)
-	}
-
-	chartrtest.Start(t, chartrtest.WithConfigDir(root))
-
-	if rows := migratedRows(t, root); len(rows) != 0 {
-		t.Errorf("migrated rows = %+v, want none for an untouched built-in library", rows)
-	}
-	aside := filepath.Join(root, "builtin-skills.migrated")
-	if _, err := os.Stat(aside); err != nil {
-		t.Fatalf("the untouched built-in library was not renamed aside: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(aside, "core", "SKILL.md")); err != nil {
-		t.Errorf("the renamed-aside directory lost its contents: %v", err)
-	}
-}
-
-// One edited byte anywhere makes the library the operator's, and an operator's
-// edit lives nowhere else: it survives exactly where it is and becomes a row —
-// after the legacy row, which is the relative order the old model gave them.
-func TestMigrationKeepsAnEditedBuiltinLibraryInPlace(t *testing.T) {
+// A materialized built-in library is now kept exactly where it is and registered
+// as an ordinary folder, after the legacy row — the relative order the old model
+// gave them.
+//
+// The cut (ticket 09) deleted the embedded shipped library, and with it the byte
+// comparison this used to split two ways: an untouched copy was renamed aside and
+// only a diverging one was registered. With nothing left to compare against, the
+// branch that touches nothing on disk is the only honest one, and it is the
+// direction ticket 06 already argued for — keeping too much is the right error to
+// make. An empty or absent directory still contributes no row, exactly like the
+// legacy one.
+func TestMigrationRegistersTheBuiltinLibraryInPlace(t *testing.T) {
 	root := oldRoot(t)
 	writeSkill(t, filepath.Join(root, "skills"), "implement", "---\nname: implement\n---\n\nmine.\n")
-	if err := prompt.Materialize(root); err != nil {
-		t.Fatalf("materializing the shipped library: %v", err)
-	}
-	edited := filepath.Join(root, "builtin-skills", "core", "SKILL.md")
-	b, err := os.ReadFile(edited)
-	if err != nil {
-		t.Fatalf("reading a materialized skill: %v", err)
-	}
-	if err := os.WriteFile(edited, append(b, '!'), 0o600); err != nil {
-		t.Fatalf("editing a materialized skill: %v", err)
-	}
+	builtin := filepath.Join(root, "builtin-skills")
+	writeSkill(t, builtin, "core", "---\nname: core\n---\n\nmy edited core.\n")
 
 	chartrtest.Start(t, chartrtest.WithConfigDir(root))
 
@@ -150,16 +124,31 @@ func TestMigrationKeepsAnEditedBuiltinLibraryInPlace(t *testing.T) {
 		t.Fatalf("migrated order = %q, %q; want %q before %q",
 			rows[0].Name, rows[1].Name, "Legacy skills", "Migrated built-in skills")
 	}
-	if rows[1].Path != filepath.Join(root, "builtin-skills") {
-		t.Errorf("built-in row path = %q, want it left where it was", rows[1].Path)
+	if rows[1].Kind != sources.KindDir || rows[1].Path != builtin {
+		t.Errorf("built-in row = %+v, want a dir source left where it was (%s)", rows[1], builtin)
 	}
 	if _, err := os.Stat(filepath.Join(root, "builtin-skills.migrated")); !os.IsNotExist(err) {
-		t.Errorf("an edited built-in library was renamed aside anyway: stat error = %v", err)
+		t.Errorf("the built-in library was moved aside; nothing may move it now: stat error = %v", err)
 	}
-	// The edit itself survives — the whole reason this half is kept in place.
-	after, err := os.ReadFile(edited)
-	if err != nil || after[len(after)-1] != '!' {
-		t.Errorf("the operator's edit did not survive the migration (err = %v)", err)
+	// The operator's bytes survive untouched — the whole reason this is kept in place.
+	after, err := os.ReadFile(filepath.Join(builtin, "core", "SKILL.md"))
+	if err != nil || !strings.Contains(string(after), "my edited core") {
+		t.Errorf("the operator's copy did not survive the migration (err = %v)", err)
+	}
+}
+
+// An empty built-in directory answers the discovery walk with nothing, so it
+// contributes no row rather than a permanently `empty` one.
+func TestMigrationSkipsAnEmptyBuiltinLibrary(t *testing.T) {
+	root := oldRoot(t)
+	if err := os.MkdirAll(filepath.Join(root, "builtin-skills"), 0o700); err != nil {
+		t.Fatalf("creating the built-in directory: %v", err)
+	}
+
+	chartrtest.Start(t, chartrtest.WithConfigDir(root))
+
+	if rows := migratedRows(t, root); len(rows) != 0 {
+		t.Errorf("migrated rows = %+v, want none from an empty built-in directory", rows)
 	}
 }
 

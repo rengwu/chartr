@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/notify"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/sources"
 	"github.com/rengwu/chartr/internal/terminal"
@@ -38,8 +37,9 @@ type Options struct {
 	// user-scoped setting: the space
 	// registry (`spaces.toml`), the agent library (`user.toml`), terminal
 	// customization (`terminal.toml`), notification timing (`notify.toml`), the
-	// operator's own skills (`skills/`), and the materialized built-in library
-	// (`builtin-skills/`). Defaults to the OS user config dir; tests point it at a
+	// source list (`sources.toml`) and the skill sources under `sources/`, and the
+	// generated `conventions.md` beside the operator's own `preferences.md`.
+	// Defaults to the OS user config dir; tests point it at a
 	// temp dir so a developer's own config never leaks into a run.
 	ConfigDir string
 	// Notifier fires the OS notification that reports an ended run. It defaults to
@@ -120,21 +120,9 @@ func New(opts Options) (*Server, error) {
 	// Everything chartr writes into its own config root, in one ordered sequence
 	// (see firstrun.go): the migration off the three-layer skill model, the source
 	// list, the seeded default source, the role bindings, and the generated
-	// conventions. It runs *before* the shipped library is materialized, because
-	// the migration's whole judgment is a byte comparison against the library as
-	// the operator left it — materializing first would top it back up and make an
-	// upgraded root read as untouched.
+	// conventions.
 	srcs, err := firstRun(opts.ConfigDir)
 	if err != nil {
-		return nil, err
-	}
-	// Materialize the skill library to disk so the operator can read and edit
-	// exactly what a session is told (ticket 08, story 45). Existing files are
-	// preserved, so edits survive a restart and compose on the next preview. This
-	// still runs because role resolution still goes through the layer model until
-	// skill-sources ticket 07 moves it onto sources; a root the migration just
-	// renamed aside is repopulated here with chartr's own bytes, unregistered.
-	if err := prompt.Materialize(opts.ConfigDir); err != nil {
 		return nil, err
 	}
 

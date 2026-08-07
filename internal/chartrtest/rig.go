@@ -45,10 +45,10 @@ type Chartr struct {
 	DataDir string
 	// ConfigDir is the operator's local config root the server was given (a temp
 	// dir unless overridden): the registry (`spaces.toml`), agent library
-	// (`user.toml`), terminal customization (`terminal.toml`), the operator's own
-	// skills (`skills/`), and the materialized built-in library
-	// (`builtin-skills/`). It is a temp dir by default so a run never reads — or is
-	// coloured by — the developer's own config.
+	// (`user.toml`), terminal customization (`terminal.toml`), the source list
+	// (`sources.toml`) and the skill sources under `sources/`. It is a temp dir by
+	// default so a run never reads — or is coloured by — the developer's own
+	// config.
 	ConfigDir string
 
 	t    testing.TB
@@ -68,7 +68,7 @@ type startOptions struct {
 }
 
 // WithConfigDir overrides the operator's config root (default: a fresh temp
-// dir), whose `skills/` is the user layer of the skill library.
+// dir). Point it at a root pre-populated the old way to drive the migration.
 func WithConfigDir(dir string) Option {
 	return func(o *startOptions) { o.server.ConfigDir = dir }
 }

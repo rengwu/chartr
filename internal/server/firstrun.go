@@ -26,12 +26,9 @@ const (
 	// `<configDir>/skills/`. chartr owns the bytes under its own config root, so
 	// this one gets an active migration.
 	legacySkillsDir = "skills"
-	// materializedBuiltinDir is where the shipped library is materialized. It
-	// mirrors prompt's own unexported name; both go in ticket 09.
+	// materializedBuiltinDir is where the retired layer model materialized the
+	// shipped library. Nothing writes it any more; the migration only reads it.
 	materializedBuiltinDir = "builtin-skills"
-	// migratedBuiltinDir is where an untouched materialized library is renamed
-	// aside to, for the operator to remove or ignore. It is registered nowhere.
-	migratedBuiltinDir = "builtin-skills.migrated"
 
 	// The names the migrated rows carry in the operator's list. `Legacy skills`
 	// first, `Migrated built-in skills` second, both before the default row: the
@@ -104,37 +101,26 @@ func migrateSkillLayers(configDir string) error {
 	legacy := filepath.Join(configDir, legacySkillsDir)
 	registerLegacy := sources.HasSkills(legacy)
 
-	// The materialized shipped library is compared once against the copy this
-	// build embeds. Byte-identical, empty or absent: it is chartr's own bytes and
-	// nothing is lost by moving it out of the way. Diverging anywhere: an
-	// operator edited it, that edit lives nowhere else, and it survives in place
-	// as a registered source.
+	// The materialized shipped library gets the same fate as the legacy one: if it
+	// holds a skill it becomes a registered `dir` source, left exactly where it is.
 	//
-	// The untouched case is deliberately a *rename* and not a delete. It is the
-	// only irreversible operation in this migration, it runs once, it is silent,
-	// and it rests entirely on the comparison above being right — a stray
-	// directory nobody cleans up and a wrong delete of someone's only copy are not
-	// comparable.
+	// **This is where the cut (ticket 09) landed on ticket 06's design.** That
+	// ticket split this directory two ways — byte-identical to shipped, renamed
+	// aside and unregistered; diverging anywhere, registered in place — on a
+	// comparison against the embedded shipped library. The cut deletes that embed,
+	// so there is no longer anything to compare against and the rename-aside branch
+	// has no test it could rest on. Registering unconditionally is the branch that
+	// touches nothing on disk, which is the direction ticket 06 itself argued for:
+	// keeping too much is the right error to make, and nothing in this effort
+	// destroys data.
+	//
+	// In practice nothing is lost. Ticket 07 had already changed the embedded set
+	// and the core's bytes, so the comparison answered "diverging" for every
+	// already-materialized library on a real machine, and the release freeze means
+	// no build between 06 and 09 ever shipped — the rename-aside branch was
+	// unreachable on every upgrade path an operator can actually be on.
 	builtin := filepath.Join(configDir, materializedBuiltinDir)
-	builtinExists := false
-	if _, err := os.Stat(builtin); err == nil {
-		builtinExists = true
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("reading the built-in skill library before migrating: %w", err)
-	}
-	registerBuiltin := builtinExists && !prompt.MatchesShipped(builtin)
-	if builtinExists && !registerBuiltin {
-		aside := filepath.Join(configDir, migratedBuiltinDir)
-		// A destination that already exists is left alone rather than merged into
-		// or replaced: the directory being moved is byte-identical to what chartr
-		// ships, so leaving it where it is costs nothing and clobbering something
-		// the operator may have kept costs everything.
-		if _, err := os.Stat(aside); os.IsNotExist(err) {
-			if err := os.Rename(builtin, aside); err != nil {
-				return fmt.Errorf("moving the built-in skill library aside: %w", err)
-			}
-		}
-	}
+	registerBuiltin := sources.HasSkills(builtin)
 
 	r, err := sources.Load(configDir)
 	if err != nil {
