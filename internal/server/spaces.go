@@ -257,6 +257,14 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// a property of the machine, resolved fresh on every rebuild so a newly
 		// installed harness shows up without a restart. Never nil for the wire.
 		Detected: detectedAgents(),
+		// The source list is walked fresh here for exactly the reason the agent
+		// probe is: it is a read of the filesystem, and a snapshot that cached it
+		// would show a stale skill count the moment a source changed underneath.
+		Sources: s.sourceStates(),
+		Roles:   s.roleBindingRows(),
+		// Whether a git source can be registered at all. Same shape as the two
+		// probes above — a PATH check, resolved per rebuild, never cached.
+		GitAvailable: config.LookPath("git"),
 		Terminal: modelTerminalPrefs(termPrefs),
 		Notify: model.NotifyPrefs{
 			After:   notifyPrefs.After.String(),

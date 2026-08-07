@@ -46,6 +46,20 @@ type Model struct {
 	// `notify.toml`. Durations ride as Go duration strings so the read-only config
 	// surface shows the same units the file accepts rather than nanoseconds.
 	Notify NotifyPrefs `json:"notify"`
+	// Sources is the operator's ordered skill-source list, each row with what a
+	// walk of it just found. List position *is* resolution order, so the settings
+	// section renders it in the order it arrives and never sorts it. Never nil.
+	Sources []Source `json:"sources"`
+	// Roles is the four role bindings as they stand in `user.toml`, each beside
+	// the default a restore would write. A deleted binding rides with an empty
+	// Ref: the only recovery for one is the restore control on the settings
+	// surface, because nothing refills it automatically (ticket 03). Never nil.
+	Roles []RoleBinding `json:"roles"`
+	// GitAvailable is whether `git` is on this machine's PATH — the same probe
+	// that refuses a git registration at the gate, resolved fresh on every
+	// rebuild so an operator who installs git mid-run is not left staring at a
+	// disabled control.
+	GitAvailable bool `json:"gitAvailable"`
 	// NativePicker is whether this machine can raise an OS folder chooser for
 	// "add a space" — always true on macOS, true on Linux with zenity or kdialog
 	// installed, false otherwise. It is capability, not state, so it never
@@ -67,9 +81,11 @@ type ConfigLayer struct {
 	// Layer is which of the three layers this file is (built-in, workspace, user),
 	// matching the provenance badges on the values it can set.
 	Layer string `json:"layer"`
-	// Holds names what this layer can set: "agents" (the operator's agent library),
-	// "skills", "terminal" (terminal customization), or "notifications" (the
-	// machine-wide run clock). Each lives in its own file and the surface shows
+	// Holds names what this layer can set: "agents" (the operator's agent
+	// library), "terminal" (terminal customization), "notifications" (the
+	// machine-wide run clock), "sources" (the skill-source list), "conventions"
+	// (chartr's generated write contract) or "preferences" (the operator's own
+	// standing instructions). Each lives in its own file and the surface shows
 	// that split rather than implying one file.
 	Holds string `json:"holds"`
 	// Path is the absolute location on disk, and Exists whether anything is there
@@ -77,6 +93,61 @@ type ConfigLayer struct {
 	// *would* go.
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
+}
+
+// Source is one row of the skill-source list on the wire — what the operator
+// registered, plus what a walk of it just found. It mirrors sources.State rather
+// than re-exporting it, which keeps this package the leaf every other one writes
+// into. Position in Model.Sources is resolution order and carries no field.
+type Source struct {
+	Name string `json:"name"`
+	// Kind is "dir" (a folder the operator owns) or "git" (a checkout chartr
+	// owns, which a refresh resets).
+	Kind string `json:"kind"`
+	// Path is the local directory the walk read, always present so the row can
+	// name where the skills came from. URL, Ref, Commit and Fetched are a git
+	// row's own; Fetched rides as RFC3339 and is empty when never fetched.
+	Path    string `json:"path"`
+	URL     string `json:"url,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	Commit  string `json:"commit,omitempty"`
+	Fetched string `json:"fetched,omitempty"`
+	Enabled bool   `json:"enabled"`
+	// Default marks the synthetic `chartr-skills` row: always last, never
+	// removable and never reorderable.
+	Default bool `json:"default,omitempty"`
+	// Seeded is true while the default row is still chartr's own bytes rather
+	// than a checkout — the difference between "shipped with this build" and
+	// "fetched ⟨date⟩ — ⟨sha⟩".
+	Seeded bool `json:"seeded,omitempty"`
+	// Status is "ok", "unavailable" (the path is gone) or "empty" (the path is
+	// there and yields no skills).
+	Status string `json:"status"`
+	// Skills are the skill names this source yields, in walk order, and Shadowed
+	// the subset an earlier enabled source already claimed. A source every one of
+	// whose skills is shadowed contributes nothing at the bare name and the row
+	// says so.
+	Skills   []string `json:"skills"`
+	Shadowed []string `json:"shadowed,omitempty"`
+	// Warnings is what the walk itself lost — a duplicate basename inside this
+	// one source, where sorted walk order wins.
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// RoleBinding is one of the four roles beside the skill it is bound to. Ref is
+// empty when the binding was deleted, which is a legitimate state: the role
+// refuses to spawn until it is rebound, and Default is what the restore control
+// on the settings surface would write back.
+type RoleBinding struct {
+	Role string `json:"role"`
+	Ref  string `json:"ref"`
+	// Default is the seeded binding for this role — always a source-qualified
+	// ref, so a restore is a write of a known string and never a re-derivation.
+	Default string `json:"default"`
+	// Resolves is whether Ref names a skill some enabled source yields today. A
+	// bound-but-unresolvable ref is the other way a role refuses, and the row
+	// tells the two apart.
+	Resolves bool `json:"resolves"`
 }
 
 // NotifyPrefs is the resolved notify.toml value on the wire. Unlike terminal
@@ -400,5 +471,8 @@ type Agent struct {
 // but non-nil slices so the JSON snapshot is always well-formed arrays rather
 // than nulls.
 func Empty() Model {
-	return Model{Spaces: []Space{}, Config: []ConfigLayer{}, Agents: []Agent{}, Detected: []string{}}
+	return Model{
+		Spaces: []Space{}, Config: []ConfigLayer{}, Agents: []Agent{},
+		Detected: []string{}, Sources: []Source{}, Roles: []RoleBinding{},
+	}
 }

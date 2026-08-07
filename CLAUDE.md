@@ -5,10 +5,16 @@ Guidance for Claude Code sessions working in this repo.
 ## Wayfinder maps in this repo
 
 This repo plans with wayfinder maps under `.plan/maps/`, and it is a space chartr
-watches. The maps are plain local-markdown — the vendored `tracker-convention`
-skill's adapter, with nothing added on top. Chart with `/wayfinder` and graduate
-with `/to-tickets` exactly as you would anywhere else; chartr notices the new
-directory and offers it live. There is no chartr-side registration step.
+watches. `.plan/maps/<slug>/` is the fixed layout — chartr's `conventions.md`
+states the whole file-format contract, and discovery reads that root and no
+other. Chart with the `wayfinder` skill and graduate with `to-tickets`; chartr
+notices the new directory and offers it live. There is no chartr-side
+registration step.
+
+Skills come from **registered sources**, not from this repo — chartr ships none
+(ADR 0017). The set chartr seeds itself with is vendored at
+`internal/sources/assets/chartr-skills/`, refreshed with `make vendor-skills`;
+edit those skills in their own repo, never in the vendored copy.
 
 ## Frontend design system (`web/`)
 

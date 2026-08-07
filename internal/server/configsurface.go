@@ -12,7 +12,9 @@ import (
 
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/sources"
 )
 
 // The settings surface: the agent library (agents.go) and the paths of the files
@@ -28,6 +30,9 @@ const (
 	layerUserConfig     = "user-config"
 	layerTerminalConfig = "terminal-config"
 	layerNotifyConfig   = "notify-config"
+	layerSources        = "sources-config"
+	layerConventions    = "conventions"
+	layerPreferences    = "preferences"
 )
 
 // globalLayers are the files the operator's config lives in, shared by every
@@ -50,6 +55,15 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
 		layerAt(layerNotifyConfig, "user", "notifications",
 			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
+		// The three files the sources section owns. `sources.toml` is edited
+		// through that section's controls and openable here for everything they
+		// deliberately do not edit; `conventions.md` is chartr's generated write
+		// contract, reconciled on every composition and so read-only in practice;
+		// `preferences.md` is the operator's own and is the one of the three they
+		// are expected to write in.
+		layerAt(layerSources, "user", "sources", sources.FilePath(s.opts.ConfigDir)),
+		layerAt(layerConventions, "user", "conventions", prompt.ConventionsPath(s.opts.ConfigDir)),
+		layerAt(layerPreferences, "user", "preferences", prompt.PreferencesPath(s.opts.ConfigDir)),
 	}
 }
 

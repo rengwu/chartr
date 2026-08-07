@@ -36,8 +36,8 @@ configuration:
 `claude` · `codex` · `opencode` · `kimi` · `grok` · `pi`
 
 Install one the normal way for that tool and confirm it runs in your own shell
-before continuing. Anything else on `PATH` works too — register it from the
-sidebar's skill launcher via **Register an agent…**.
+before continuing. Anything else on `PATH` works too — press `,` for settings and
+register it under **Agents**.
 
 ## 3. Launch
 
@@ -59,9 +59,9 @@ the default `127.0.0.1` unless you mean to expose it. chartr warns at startup
 when the address it bound is not loopback.
 
 Your config lives at `~/.config/chartr` (or `$XDG_CONFIG_HOME/chartr`) — the
-registry of spaces, your agent library, terminal theme. That path is **global**,
-not per-`-data-dir`, so `-data-dir` moves runtime state but every invocation
-shares one set of registered spaces.
+registry of spaces, your agent library, your skill sources, terminal theme. That
+path is **global**, not per-`-data-dir`, so `-data-dir` moves runtime state but
+every invocation shares one set of registered spaces.
 
 ## 4. Register your first space
 
@@ -77,16 +77,21 @@ map half.
 
 ## 5. Chart a map
 
-From the sidebar's skill launcher, run **`wayfinder`** and describe what you want
-built in the context box. The planning agent interviews you, then writes a map
-to `.plan/maps/<slug>/`.
+Open the space card's **new shell** menu and pick an agent. That starts a **free
+session**: an agent in a plain shell, told what chartr is, the file format it
+should write, your own preferences, and what skills your sources hold — and
+nothing about how to behave. Ask it to run **`wayfinder`** and describe what you
+want built. It interviews you, then writes a map to `.plan/maps/<slug>/`.
 
 Whatever it writes draws as a **star-map the moment it hits disk** — you don't
 reload or import anything.
 
-When the plan is settled, run **`to-tickets`** to graduate it into numbered
-ticket files. Those tickets, and their blocker edges, are what the star-map
-draws.
+When the plan is settled, ask it to run **`to-tickets`** to graduate the map into
+numbered ticket files. Those tickets, and their blocker edges, are what the
+star-map draws.
+
+The button's body — rather than its caret — opens a plain shell with nothing
+injected at all, for when you just want a terminal.
 
 ## 6. Spawn off the frontier
 
@@ -109,19 +114,51 @@ chartr's only writes to your repo are the **claim** and **release** commits on
 the ticket file. The map on disk is the state — delete chartr tomorrow and your
 plan is still sitting in markdown.
 
+## 8. Bring your own skills
+
+chartr ships **no skills**. What a session is told to do comes from a **source**:
+a folder on your machine, or a git repository chartr clones and pins. You
+register them in settings under **Skill sources**, and the list's order *is*
+resolution order — the first enabled source holding a name wins, and the loser
+stays reachable as `Source/skill`.
+
+One source is always there: `chartr-skills`, chartr's own set, seated last so
+anything you register outranks it. It ships inside the binary so a first run
+works offline; refresh it once and it becomes an ordinary pinned checkout.
+
+Four roles — grill, prototype, research, implement — are each **bound** to one
+source-qualified skill, seeded on your first run. Rebind one by editing
+`user.toml`; if you delete a row that role refuses to spawn until you put it
+back, and **Restore default** in the same section is how.
+
+Two cautions the settings screen repeats:
+
+- A **git** source is chartr's checkout, not a workspace. A refresh discards
+  anything you edited inside it. If you want to edit skills, fork them into a
+  folder and register that as a `dir` source.
+- Those checkouts live under `sources/`. If you lose `sources.toml` they are
+  orphaned — chartr does not collect them, and deleting them is yours to do.
+
+**Free session payload** in the same section shows exactly what a free session is
+told, `preferences.md` included. It is the one place you can watch your own
+standing instructions land in an assembled document.
+
 ## Where things live
 
 | Thing | Path |
 | --- | --- |
 | Registered spaces, agent library, terminal theme | `~/.config/chartr/` |
-| Your skill forks | `~/.config/chartr/skills/` |
+| Your skill sources, in resolution order | `~/.config/chartr/sources.toml` |
+| Git checkouts chartr owns, and its own seeded set | `~/.config/chartr/sources/` |
+| chartr's file-format contract (generated — read it, don't edit it) | `~/.config/chartr/conventions.md` |
+| Your standing instructions, appended to every payload | `~/.config/chartr/preferences.md` |
 | Maps and tickets | `<your repo>/.plan/maps/` |
 
-Press `,` or the ⚙ in the sidebar header to see what the config layers actually
-resolve to, and to open any of these files in `$EDITOR`.
+Press `,` or the ⚙ in the sidebar header to reach all of it, and to open any of
+these files in `$EDITOR`.
 
 ## Next
 
 - [Design system](design-system.md) — if you're touching the UI
-- [ADRs](adr/) — why the thing is shaped the way it is
-- [`skills/README.md`](../skills/README.md) — the skill layer and how to fork one
+- [ADRs](adr/) — why the thing is shaped the way it is; start with
+  [0017](adr/0017-skills-come-from-registered-sources.md) for where skills come from
