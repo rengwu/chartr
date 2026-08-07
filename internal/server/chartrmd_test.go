@@ -44,10 +44,9 @@ func countExcludeLines(t *testing.T, repo string) int {
 }
 
 // The whole destination in one test: a registered space carries the document at
-// its root, the document is true in the mouth of an agent chartr did not launch,
-// and `git status` in that space is clean without the tracked `.gitignore` being
-// touched. Registration is deliberately not a trigger, so the space is
-// reconciled by the restart — which is also what proves startup is a trigger.
+// its root the moment it is registered, the document is true in the mouth of an
+// agent chartr did not launch, and `git status` in that space is clean without
+// the tracked `.gitignore` being touched.
 func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 	cfg := t.TempDir()
 	repo := chartrtest.NewSpaceRepo(t)
@@ -57,11 +56,9 @@ func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
 	register(t, h, repo)
-	if _, err := os.Stat(filepath.Join(repo, "CHARTR.md")); !os.IsNotExist(err) {
-		t.Errorf("registration wrote the standing document; it is deliberately not a trigger (%v)", err)
-	}
-
-	chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
+	// Registration is a trigger in its own right: the operator adds a repository
+	// and opens an agent in it in the same minute, so waiting for the next restart
+	// would mean the document is missing exactly when it is first wanted.
 	doc := readDoc(t, repo)
 
 	// The first sentence has to be true of an agent chartr never launched.
@@ -90,11 +87,19 @@ func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 		t.Errorf("the space's tracked .gitignore was modified: %q", got)
 	}
 
-	// A second reconcile is the same reconcile: the line is matched literally, so
-	// it is appended once and never twice.
+	// Restarting against the same config root reconciles the persisted registry —
+	// the startup trigger — and a second reconcile is the same reconcile: the line
+	// is matched literally, so it is appended once and never twice.
+	if err := os.Remove(filepath.Join(repo, "CHARTR.md")); err != nil {
+		t.Fatal(err)
+	}
 	chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
+	readDoc(t, repo)
 	if got := countExcludeLines(t, repo); got != 1 {
 		t.Errorf("after a second run .git/info/exclude carries the ignore line %d times, want 1", got)
+	}
+	if status := chartrtest.Git(t, repo, "status", "--porcelain"); status != "" {
+		t.Errorf("the space is dirty after a second run:\n%s", status)
 	}
 }
 
@@ -152,7 +157,7 @@ func TestSourcesMutationRewritesTheStandingDoc(t *testing.T) {
 	register(t, h, repo)
 	register(t, h, gone)
 	h = chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
-	readDoc(t, repo) // the startup trigger, before the mutation under test
+	readDoc(t, repo) // already reconciled, before the mutation under test
 
 	// One registered space is unreachable from here on. It converges on the next
 	// startup or sources change; it never fails one.

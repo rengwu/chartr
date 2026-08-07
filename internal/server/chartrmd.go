@@ -38,9 +38,15 @@ const (
 )
 
 // reconcileChartrDoc composes the standing document once and writes it into
-// every registered space. It is called from exactly two places — startup, and
-// each of the five sources mutations — and deliberately *not* from rebuild(),
-// which also fires on terminal churn and space registration.
+// every registered space. It is called from three places — startup, each of the
+// five sources mutations, and a space registration — and deliberately *not* from
+// rebuild(), which also fires on terminal churn and would make the trigger set
+// unbounded.
+//
+// Registration was not a trigger as ticket 01 was charted, and became one on the
+// operator's call: the gap it left was precisely the moment an operator adds a
+// repository and opens an agent in it, so the document would be missing exactly
+// when it is first wanted.
 //
 // It never returns an error. A space that cannot be written is a space that
 // converges on the next startup or sources change, and neither the server coming
