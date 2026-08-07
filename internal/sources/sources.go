@@ -502,7 +502,7 @@ func (r *Registry) RegisterDir(name, path string) (Source, error) {
 	if !validName(name) {
 		return Source{}, fmt.Errorf("%w (got %q)", ErrBadName, name)
 	}
-	abs, err := filepath.Abs(path)
+	abs, err := filepath.Abs(expandHome(path))
 	if err != nil {
 		return Source{}, fmt.Errorf("sources: resolving %q: %w", path, err)
 	}
@@ -519,6 +519,33 @@ func (r *Registry) RegisterDir(name, path string) (Source, error) {
 		return Source{}, err
 	}
 	return s, nil
+}
+
+// expandHome resolves a leading `~` against the operator's home directory, so a
+// path typed the way it is typed in a shell means the same thing here. It is
+// done at registration and the *expanded* path is what persists: the row has to
+// name a real directory for the walk, and `sources.toml` is read by chartr
+// rather than by a shell. Only a leading `~` or `~/` counts — `~user` is another
+// account's home and resolving it is not this package's business, and a `~`
+// anywhere else in the path is a legitimate directory name.
+//
+// Without this a `~/skills` reaches filepath.Abs as a relative path and is
+// silently joined onto chartr's working directory, producing a row that points
+// at nothing and reads `unavailable` for a reason the operator cannot see.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		// Nothing better to do than leave it alone: the registration then fails
+		// visibly as an unavailable path rather than resolving somewhere wrong.
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	return filepath.Join(home, path[2:])
 }
 
 // Remove forgets a source. A dir source's folder is untouched; a git source's
