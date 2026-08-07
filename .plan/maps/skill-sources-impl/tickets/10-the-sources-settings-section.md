@@ -1,6 +1,8 @@
 ---
 type: task
 blocked_by: [09]
+claimed_by: sfccf652981ed
+claimed_at: 2026-08-07T06:29:03Z
 ---
 
 # The sources settings section, and the documentation pass
