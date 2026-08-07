@@ -198,3 +198,34 @@ and one explicit call in each of the five handlers in `sourcesapi.go` after thei
 - **Nothing routes an agent to this file.** Discovery remains hopeful, as charted.
   The only new lever a future ticket has is the operator saying "read CHARTR.md",
   and `CLAUDE.md`/`AGENTS.md` stay out of scope.
+
+## Amendment (2026-08-07 — operator-approved): registration is a third trigger
+
+The answer above shipped the two charted triggers and left the map's open item —
+*"a newly registered space gets no `CHARTR.md` until the next restart"* — exactly
+as charted. The operator hit it immediately: registering a space wrote nothing,
+which is the one moment the document is most wanted, since adding a repository
+and opening an agent in it are the same minute's work. On their call,
+registration is now a trigger.
+
+- `handleRegister` calls `reconcileChartrDoc()` after its `rebuild()`, placed
+  after `reg.Register` so an announced `git init` has already happened and there
+  is a `.git/info/exclude` to write into. `rebuild()` itself is still not the
+  hook — the trigger set is now three named call sites, not "whatever rebuilds".
+- The test that pinned the old behaviour is inverted:
+  `TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt` now reads the document
+  straight after `register` and deletes it before the restart, so startup is
+  still proved a trigger rather than merely re-observed.
+- **A story 4 assertion had to be narrowed, and that is worth a human's eye.**
+  `TestForgetNotDestroy` asserted that registering writes *nothing* into the
+  repo. It now filters `CHARTR.md` out of the tree comparison. Everything that
+  claim protects is still asserted around it — HEAD unmoved, `git status`
+  unchanged, no committed config, the operator's own files untouched — and the
+  file is per-machine, locally excluded and never committed. But the flat form of
+  story 4's promise is no longer literally true, and this map is where that was
+  decided; if story 4's promise is meant to be absolute, this is the place to
+  reopen it.
+
+The map's "Not yet specified" entry for this is now closed. The other two —
+`preferences.md` propagation and whether the file should point at the live map —
+still stand.

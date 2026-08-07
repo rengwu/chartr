@@ -61,16 +61,11 @@ which is the one whose `git status` the destination clause is about.
 
 - **The standing `CHARTR.md`.** The free brief minus its launch clause, at every
   registered non-scratch space's root, ignored through `.git/info/exclude`,
-  reconciled at startup and on each sources mutation —
-  [01](tickets/01-the-standing-chartr-md.md).
+  reconciled at startup, on each sources mutation, and — by amendment — on space
+  registration — [01](tickets/01-the-standing-chartr-md.md).
 
 ## Not yet specified
 
-- **A newly registered space gets no `CHARTR.md` until the next restart.** Space
-  registration is deliberately not a trigger, so an agent spawned in a
-  just-registered space finds nothing at the root. Whether registration becomes a
-  third trigger, or the gap is closed some other way, is open and held back on
-  purpose.
 - **How a `preferences.md` edit propagates.** chartr never sees the write — the
   operator edits it in their own editor — so nothing short of a hash check at a
   read point or a filewatcher catches it. Out of scope here by decision; the
