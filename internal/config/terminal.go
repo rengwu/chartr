@@ -12,174 +12,153 @@ import (
 )
 
 // DefaultTerminalTOML is the built-in terminal customization baked into the
-// binary. It is the fallback the server resolves when the operator has no
-// per-machine `terminal.toml` of their own: a missing file no longer means
-// "today's bare look" but this default. An operator who writes their own file
-// still takes full control — the file is the single source of truth (spec), so
-// their file replaces this default wholesale rather than layering over it.
+// binary — the fallback the server resolves when the operator has no
+// per-machine `terminal.toml` of their own. An operator who writes their
+// own file replaces this default wholesale (single source of truth) rather
+// than layering over it.
 //
 //go:embed terminal.default.toml
 var DefaultTerminalTOML []byte
 
 // ScaffoldTerminalTOML is the self-documenting starter the Settings surface
-// writes when the operator asks to create their `terminal.toml` from defaults.
-// Unlike DefaultTerminalTOML — the minimal canon the binary resolves against — it
-// spells out *every* key with its default value: the handful that make up today's
-// look sit uncommented (so creating the file changes nothing), and the rest are
-// commented with their own defaults for the operator to uncomment and tweak. Its
-// uncommented keys resolve to the same prefs as DefaultTerminalTOML, which
-// TestScaffoldMatchesDefault pins so the two cannot drift.
+// writes when the operator creates `terminal.toml` from defaults. Unlike
+// DefaultTerminalTOML, it spells out every key: the handful making up
+// today's look sit uncommented (so creating the file changes nothing), the
+// rest commented with their defaults to uncomment and tweak.
+// TestScaffoldMatchesDefault pins the two to the same resolved prefs.
 //
 //go:embed terminal.scaffold.toml
 var ScaffoldTerminalTOML []byte
 
-// Terminal customization: a single per-machine `terminal.toml`, beside the agent
-// library in the operator's own config, that fully customizes every terminal
-// island. It is the single source of truth — never committed, never per space —
-// and it follows the same philosophy as the agent library: a pure parse produces
-// a resolved value plus warnings, the terminal always runs, and a bad value falls
-// back to a default with a warning rather than breaking the terminal.
+// Terminal customization: a single per-machine `terminal.toml`, beside the
+// agent library, fully customizing every terminal island. Single source of
+// truth — never committed, never per space — following the agent library's
+// philosophy: a pure parse produces a resolved value plus warnings, the
+// terminal always runs, a bad value falls back to default with a warning.
 //
-// This is Seam 1 of the effort (spec, Testing Decisions): file contents in, a
-// resolved TerminalPrefs plus warnings out. The client resolve seam in
-// `web/src/lib/tokens.ts` turns these prefs into the concrete xterm options and
-// theme the island consumes; an unset colour slot resolves against the live
-// design tokens over there, which is why the colours here stay strings the parse
-// only validates, never token-resolves. Ticket 01 lands the spine — font family,
-// font size, and background/foreground colour — and every later ticket widens the
-// struct without changing its shape.
+// File contents in, resolved TerminalPrefs plus warnings out. The client
+// resolve seam in `web/src/lib/tokens.ts` turns prefs into concrete xterm
+// options and theme; an unset colour slot resolves against live design
+// tokens there, which is why colours here stay strings the parse only
+// validates, never token-resolves.
 
-// TerminalPrefs is the resolved terminal customization for this machine, as it
-// rides the model snapshot. Every field is a pref the file set; a field left at
-// its zero value is *unset*, and the client falls it through to the app default
-// (a colour to the live design token, the font to the bundled family). This is
-// how a partial file still looks intentional — the resolve happens once, at the
-// token seam, exactly as `buildTheme` resolves colours today.
+// TerminalPrefs is the resolved terminal customization for this machine, as
+// it rides the model snapshot. Every field is a pref the file set; a field
+// left at its zero value is unset, and the client falls it through to the
+// app default (a colour to the live design token, the font to the bundled
+// family) — the resolve happens once, at the token seam.
 //
-// Theme layering (ticket 02, spec Theme layering) lives entirely on the client:
-// this side carries a validated preset *name* plus whatever explicit per-slot
-// colours the file set, and the resolve seam stacks tokens → named preset →
-// explicit slots. The palettes themselves are client data (tokens.ts PRESETS), so
-// here Preset is only a name the parse checks against the bundled set.
+// Theme layering lives entirely on the client: this side carries a
+// validated preset name plus whatever explicit per-slot colours the file
+// set, and the resolve seam stacks tokens → named preset → explicit slots.
+// Palettes are client data (tokens.ts PRESETS); Preset here is only a name
+// the parse checks against the bundled set.
 type TerminalPrefs struct {
-	// FontFamily is the CSS font-family string the terminal renders in. Empty
-	// falls through to the bundled default; a non-bundled family is the operator's
-	// own risk (it depends on their OS), so the parse does not police it. The client
-	// resolve seam knows which families are bundled (tokens.ts BUNDLED_FONTS) and
-	// stacks a custom family ahead of the system fallback.
+	// FontFamily is the CSS font-family string. Empty falls through to the
+	// bundled default; a non-bundled family is the operator's own risk.
+	// The client resolve seam knows which families are bundled
+	// (tokens.ts BUNDLED_FONTS) and stacks a custom family ahead of the
+	// system fallback.
 	FontFamily string `json:"fontFamily,omitempty"`
-	// FontSize is the cell font size in px. Zero is unset; a non-positive value is
-	// refused with a warning and left unset.
+	// FontSize is the cell font size in px. Zero is unset; non-positive
+	// warns and stays unset.
 	FontSize float64 `json:"fontSize,omitempty"`
-	// FontWeight and FontWeightBold are the normal- and bold-weight glyph weights,
-	// each a normalised string: "normal", "bold", or a numeric "100".."900". Empty is
-	// unset; a value that is neither keyword nor an integer in 1..1000 is refused
-	// with a warning. Stored as a string so the numeric and keyword forms share one
-	// wire field; the client passes a keyword straight through and a numeric string
-	// as a number.
+	// FontWeight and FontWeightBold are normal/bold glyph weights, each a
+	// normalised string: "normal", "bold", or "100".."900". Empty is
+	// unset; neither keyword nor 1..1000 integer warns. Stored as a
+	// string so numeric and keyword forms share one wire field.
 	FontWeight     string `json:"fontWeight,omitempty"`
 	FontWeightBold string `json:"fontWeightBold,omitempty"`
-	// LineHeight multiplies the cell height (1.0 is the default). Zero is unset; a
-	// non-positive value is refused with a warning.
+	// LineHeight multiplies the cell height (1.0 default). Zero is unset;
+	// non-positive warns.
 	LineHeight float64 `json:"lineHeight,omitempty"`
-	// LetterSpacing adds horizontal space between cells in px. Zero is unset and the
-	// xterm default; a negative value (tighter) is legitimate, so the parse accepts
-	// any number.
+	// LetterSpacing adds horizontal space between cells in px. Zero is
+	// unset (xterm default); negative (tighter) is legitimate.
 	LetterSpacing float64 `json:"letterSpacing,omitempty"`
 
-	// Ligatures enables the ligatures addon on this terminal. Tri-state: nil is unset
-	// (off — today's behaviour), an explicit value turns it on or off. Turning it on
-	// forces that terminal off the GPU (WebGL) renderer and onto the canvas renderer,
-	// because the ligatures addon and WebGL cannot coexist; the client also suppresses
-	// it unless the resolved font family is a bundled one (a non-bundled family has no
-	// asset to read ligature data from). Both of those decisions live at the resolve
-	// seam — this side only carries the flag.
+	// Ligatures enables the ligatures addon. Tri-state: nil is unset
+	// (off), explicit turns it on or off. On forces that terminal onto
+	// the canvas renderer (ligatures and WebGL can't coexist), and the
+	// client suppresses it unless the font is a bundled one.
 	Ligatures *bool `json:"ligatures,omitempty"`
 
-	// CursorStyle is the active-cursor shape — "block", "bar", or "underline". Empty
-	// is unset; any other value warns. CursorBlink is a tri-state (nil unset, so the
-	// island's alive-gated default stands); an explicit false stops the blink even on
-	// a live shell. CursorInactiveStyle is the shape when the terminal is unfocused —
-	// "outline", "block", "bar", "underline", or "none". CursorWidth is the bar
-	// cursor's width in px; zero is unset, a non-positive value warns.
+	// CursorStyle is "block", "bar", or "underline"; empty unset, other
+	// values warn. CursorBlink is tri-state (nil unset, island default
+	// stands); explicit false stops blink even on a live shell.
+	// CursorInactiveStyle is the unfocused shape — "outline", "block",
+	// "bar", "underline", "none". CursorWidth is the bar cursor's width
+	// in px; zero unset, non-positive warns.
 	CursorStyle         string  `json:"cursorStyle,omitempty"`
 	CursorBlink         *bool   `json:"cursorBlink,omitempty"`
 	CursorInactiveStyle string  `json:"cursorInactiveStyle,omitempty"`
 	CursorWidth         float64 `json:"cursorWidth,omitempty"`
 
-	// Scrollback is how many lines of history the terminal keeps; zero is unset
-	// (the xterm default stands), a negative value warns. ScrollSensitivity and
-	// FastScrollSensitivity scale a wheel tick and a fast-scroll wheel tick; each is
-	// unset at zero and warns when non-positive. FastScrollModifier is the key that
-	// engages fast scroll — "alt", "ctrl", "shift", or "none"; any other value warns.
-	// SmoothScrollDuration is the smooth-scroll animation length in ms; zero is unset
-	// (no smoothing), a negative value warns.
+	// Scrollback is history line count; zero unset, negative warns.
+	// ScrollSensitivity/FastScrollSensitivity scale a wheel tick / fast
+	// wheel tick; unset at zero, warn if non-positive.
+	// FastScrollModifier engages fast scroll — "alt", "ctrl", "shift",
+	// "none"; other values warn. SmoothScrollDuration is animation length
+	// in ms; zero unset (no smoothing), negative warns.
 	Scrollback            float64 `json:"scrollback,omitempty"`
 	ScrollSensitivity     float64 `json:"scrollSensitivity,omitempty"`
 	FastScrollModifier    string  `json:"fastScrollModifier,omitempty"`
 	FastScrollSensitivity float64 `json:"fastScrollSensitivity,omitempty"`
 	SmoothScrollDuration  float64 `json:"smoothScrollDuration,omitempty"`
 
-	// MinimumContrastRatio nudges low-contrast glyph/background pairs apart until they
-	// clear this ratio (1..21, where 1 is the unset default and does nothing). A value
-	// outside that range warns and stays unset.
+	// MinimumContrastRatio nudges low-contrast glyph/background pairs
+	// apart until they clear this ratio (1..21; 1 is unset/no-op).
+	// Outside that range warns and stays unset.
 	MinimumContrastRatio float64 `json:"minimumContrastRatio,omitempty"`
 
-	// Unicode11 gates the unicode11 addon, which the island lazily imports and
-	// activates at mount for correct wide-glyph and emoji widths. Tri-state: nil is
-	// unset (the addon stays off, today's behaviour), an explicit value turns it on
-	// or off.
+	// Unicode11 gates the unicode11 addon (lazily imported, activated at
+	// mount for correct wide-glyph/emoji widths). Tri-state: nil unset
+	// (off), explicit turns it on or off.
 	Unicode11 *bool `json:"unicode11,omitempty"`
 
-	// The scrollbar. xterm exposes no options for its viewport scrollbar, so these
-	// ride to the client as CSS custom properties on the island host rather than as
-	// xterm options — the parse's job is only to validate them. ScrollbarWidth is in
-	// px (zero unset, non-positive warns); Thumb and Track are `#hex` (empty unset,
-	// falling through to the chrome's own scrollbar styling); AutoHide is a tri-state
-	// that fades the thumb out until the island is hovered.
+	// The scrollbar. xterm exposes no viewport-scrollbar options, so
+	// these ride as CSS custom properties on the island host — the
+	// parse's job is only to validate. ScrollbarWidth in px (zero unset,
+	// non-positive warns); Thumb/Track are `#hex` (empty unset); AutoHide
+	// is tri-state, fading the thumb until hovered.
 	ScrollbarWidth    float64 `json:"scrollbarWidth,omitempty"`
 	ScrollbarThumb    string  `json:"scrollbarThumb,omitempty"`
 	ScrollbarTrack    string  `json:"scrollbarTrack,omitempty"`
 	ScrollbarAutoHide *bool   `json:"scrollbarAutoHide,omitempty"`
 
-	// Padding around the terminal grid, per side in px. Like the scrollbar this is
-	// CSS, not an xterm option: it lands on the island host, and the island refits so
-	// the shell reflows to the column count the padded box actually holds. Zero is
-	// unset *and* the default (today's look is flush to the pane edge), so only a
-	// negative value warns.
+	// Padding around the terminal grid, per side in px. Also CSS, not an
+	// xterm option — lands on the island host, which refits so the shell
+	// reflows to the padded column count. Zero is unset and the default;
+	// only negative warns.
 	PaddingTop    float64 `json:"paddingTop,omitempty"`
 	PaddingRight  float64 `json:"paddingRight,omitempty"`
 	PaddingBottom float64 `json:"paddingBottom,omitempty"`
 	PaddingLeft   float64 `json:"paddingLeft,omitempty"`
 
-	// The keybinding and selection behaviours, each a tri-state so an explicit
+	// Keybinding and selection behaviours, each tri-state so explicit
 	// `false` is distinguishable from unset.
 	//
-	// ShiftEnterNewline is the Ghostty-style binding: Shift+Enter writes a literal
-	// newline into the shell instead of submitting the line (story 14). Unset means
-	// *on* — it is the capability this file exists to deliver, and every agent CLI a
-	// session runs wants it — so `shiftEnterNewline = false` is how an operator gets
-	// the plain-terminal behaviour back. The other three are unset-means-off, matching
-	// xterm's own defaults: CopyOnSelect copies a selection to the clipboard as it is
-	// made (an island behaviour — xterm has no such option), while
-	// RightClickSelectsWord and MacOptionIsMeta pass straight through as xterm options.
+	// ShiftEnterNewline: Shift+Enter writes a literal newline instead of
+	// submitting. Unset means on — every agent CLI a session runs wants
+	// it — so `shiftEnterNewline = false` restores plain-terminal
+	// behaviour. The other three are unset-means-off, matching xterm's
+	// own defaults: CopyOnSelect copies a selection to the clipboard as
+	// made (island behaviour, no xterm option); RightClickSelectsWord and
+	// MacOptionIsMeta pass straight through as xterm options.
 	ShiftEnterNewline     *bool `json:"shiftEnterNewline,omitempty"`
 	CopyOnSelect          *bool `json:"copyOnSelect,omitempty"`
 	RightClickSelectsWord *bool `json:"rightClickSelectsWord,omitempty"`
 	MacOptionIsMeta       *bool `json:"macOptionIsMeta,omitempty"`
 
-	// Preset is the bundled theme preset the operator named (normalised to its
-	// lower-case key). Empty is unset; an unknown name is refused with a warning and
-	// left unset so the default theme stands. The palette it selects is resolved on
-	// the client.
+	// Preset is the bundled theme preset name (normalised lower-case).
+	// Empty unset; unknown name warns and stays unset. The palette it
+	// selects resolves on the client.
 	Preset string `json:"preset,omitempty"`
 
-	// The theme slots. Each is empty (unset — falls through to the preset then the
-	// token-derived default at the resolve seam) or a validated `#hex`; a value that
-	// is not a colour is refused with a warning and left unset. Background,
-	// Foreground, Cursor, CursorAccent and Selection are the five base slots;
-	// Black…BrightWhite are the sixteen ANSI slots. Selection drives xterm's
-	// selectionBackground at the seam.
+	// The theme slots. Each empty (unset, falls through to preset then
+	// token default) or a validated `#hex`; a non-colour value warns and
+	// stays unset. Background, Foreground, Cursor, CursorAccent,
+	// Selection are the five base slots; Black…BrightWhite the sixteen
+	// ANSI slots. Selection drives xterm's selectionBackground.
 	Background   string `json:"background,omitempty"`
 	Foreground   string `json:"foreground,omitempty"`
 	Cursor       string `json:"cursor,omitempty"`
@@ -220,9 +199,9 @@ type rawTerminal struct {
 type rawTermFont struct {
 	Family string  `toml:"family"`
 	Size   float64 `toml:"size"`
-	// Weight and BoldWeight take either a keyword ("normal"/"bold") or a number, so
-	// they decode as an untyped value the resolve normalises — a single TOML key that
-	// accepts the two natural spellings without a type-mismatch nuking the file.
+	// Weight and BoldWeight take a keyword ("normal"/"bold") or a number,
+	// decoded untyped so the resolve normalises — one TOML key accepting
+	// both spellings without a type mismatch nuking the file.
 	Weight        interface{} `toml:"weight"`
 	BoldWeight    interface{} `toml:"boldWeight"`
 	LineHeight    float64     `toml:"lineHeight"`
@@ -253,8 +232,8 @@ type rawTermScrollbar struct {
 }
 
 // Padding is written per side rather than as a shorthand: each side is
-// independently unset-at-zero, which a `all = 8` base would muddle (an explicit
-// `top = 0` would be indistinguishable from "inherit the base").
+// independently unset-at-zero, which an `all = 8` base would muddle (an
+// explicit `top = 0` would be indistinguishable from "inherit the base").
 type rawTermPadding struct {
 	Top    float64 `toml:"top"`
 	Right  float64 `toml:"right"`
@@ -305,11 +284,10 @@ type rawTermTheme struct {
 	BrightWhite   string `toml:"brightWhite"`
 }
 
-// terminalPresets is the set of bundled theme presets an operator may name in
-// `theme.preset`. The palettes themselves are client data — tokens.ts PRESETS owns
-// the colours because the resolve seam owns colour (ADR 0010); this side only
-// validates the name so an unknown one warns instead of silently doing nothing.
-// Keep this set in lockstep with PRESETS in web/src/lib/tokens.ts.
+// terminalPresets is the set of bundled theme presets an operator may name
+// in `theme.preset`. Palettes are client data — tokens.ts PRESETS owns the
+// colours (ADR 0010); this side only validates the name. Keep in lockstep
+// with PRESETS in web/src/lib/tokens.ts.
 var terminalPresets = map[string]struct{}{
 	"dracula":         {},
 	"nord":            {},
@@ -318,27 +296,26 @@ var terminalPresets = map[string]struct{}{
 	"solarized-light": {},
 }
 
-// The closed enum sets the parse validates a slot against, each mapping the value
-// straight to the xterm option name. An unknown value warns and stays unset so the
-// island's default stands. Keep these in step with xterm's accepted values.
+// The closed enum sets the parse validates a slot against, each mapping
+// straight to the xterm option name. An unknown value warns and stays
+// unset. Keep in step with xterm's accepted values.
 var (
 	cursorStyles         = []string{"block", "bar", "underline"}
 	cursorInactiveStyles = []string{"outline", "block", "bar", "underline", "none"}
 	fastScrollModifiers  = []string{"alt", "ctrl", "shift", "none"}
 )
 
-// reColor matches the colour strings the theme slots accept — a `#rgb`, `#rrggbb`,
-// or `#rrggbbaa` hex. Named colours and oklch are deliberately out: xterm's theme
-// wants concrete colour strings, and the operator authors the file in hex the way
-// every bundled preset is written.
+// reColor matches the colour strings theme slots accept — `#rgb`,
+// `#rrggbb`, or `#rrggbbaa` hex. Named colours and oklch are deliberately
+// out: xterm's theme wants concrete colour strings, and every bundled
+// preset is written in hex.
 var reColor = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
 
-// ResolveTerminalPrefs reads the bytes of `terminal.toml` and produces the
-// resolved prefs plus any warnings. A missing (empty) file yields all defaults
-// and no warnings — today's look, unchanged. A file too malformed to decode
-// yields all defaults and one warning: the terminal must never break on a typo.
-// Each individual bad value (a non-positive size, a non-colour slot, an unknown
-// key) is dropped with a warning while every good value beside it stands.
+// ResolveTerminalPrefs reads `terminal.toml` bytes and produces resolved
+// prefs plus warnings. A missing (empty) file yields all defaults, no
+// warnings. A file too malformed to decode yields all defaults and one
+// warning — the terminal must never break on a typo. Each bad value is
+// dropped with a warning while good values beside it stand.
 func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 	if len(tomlBytes) == 0 {
 		return TerminalPrefs{}, nil
@@ -360,11 +337,11 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 	prefs.FontWeight = validWeight("font weight", raw.Font.Weight, &warnings)
 	prefs.FontWeightBold = validWeight("font boldWeight", raw.Font.BoldWeight, &warnings)
 	prefs.LineHeight = validPositive("font lineHeight", raw.Font.LineHeight, &warnings)
-	// LetterSpacing accepts any number — a negative value tightens the tracking and
-	// is legitimate, so there is nothing to validate; zero is unset.
+	// LetterSpacing accepts any number — negative tightens tracking and
+	// is legitimate; zero is unset.
 	prefs.LetterSpacing = raw.Font.LetterSpacing
-	// Ligatures is a boolean TOML rejects a non-boolean for, and an absent key stays
-	// nil (unset); the renderer/font gating it drives lives on the client.
+	// Ligatures: TOML rejects a non-boolean, an absent key stays nil
+	// (unset); the renderer/font gating it drives lives on the client.
 	prefs.Ligatures = raw.Font.Ligatures
 
 	prefs.CursorStyle = validEnum("cursor style", raw.Cursor.Style, cursorStyles, &warnings)
@@ -394,9 +371,8 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 	prefs.PaddingBottom = validNonNegative("padding bottom", raw.Padding.Bottom, &warnings)
 	prefs.PaddingLeft = validNonNegative("padding left", raw.Padding.Left, &warnings)
 
-	// The key and selection behaviours are booleans: TOML's own decode rejects a
-	// non-boolean, and an absent key stays nil (unset), so there is nothing left to
-	// validate here.
+	// Keys and selection behaviours are booleans: TOML's decode rejects a
+	// non-boolean, an absent key stays nil (unset) — nothing left to validate.
 	prefs.ShiftEnterNewline = raw.Keys.ShiftEnterNewline
 	prefs.CopyOnSelect = raw.Keys.CopyOnSelect
 	prefs.RightClickSelectsWord = raw.Keys.RightClickSelectsWord
@@ -409,9 +385,9 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 
 	prefs.Preset = validPreset(raw.Theme.Preset, &warnings)
 
-	// Every theme slot validates the same way — a `#hex` lands, anything else warns
-	// by its dotted key and stays unset for the client to fall through. The order
-	// here is documentation only; each slot is independent.
+	// Every theme slot validates the same way — a `#hex` lands, anything
+	// else warns by dotted key and stays unset. Order here is
+	// documentation only; each slot is independent.
 	for _, sl := range []struct {
 		key string
 		raw string
@@ -442,9 +418,8 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 		*sl.dst = validColour(sl.key, sl.raw, &warnings)
 	}
 
-	// Unknown keys are the operator's typos or settings a later ticket has not
-	// taught the parse yet: surfaced, never fatal. Undecoded reports each in a
-	// stable dotted path.
+	// Unknown keys are typos or settings the parse doesn't know yet:
+	// surfaced, never fatal. Undecoded reports each in a stable dotted path.
 	for _, key := range md.Undecoded() {
 		warnings = append(warnings, fmt.Sprintf(
 			"terminal.toml has an unknown setting %q; it is ignored", key.String()))
@@ -454,10 +429,9 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 	return prefs, warnings
 }
 
-// validPreset normalises a preset name (trim + lower-case) and keeps it if it is
-// one of the bundled presets, otherwise warning by name and leaving it unset so
-// the default theme stands. The normalised key is what rides the snapshot, so the
-// client's PRESETS lookup is a direct hit.
+// validPreset normalises a preset name (trim + lower-case) and keeps it if
+// bundled, otherwise warns by name and leaves it unset. The normalised key
+// rides the snapshot, so the client's PRESETS lookup is a direct hit.
 func validPreset(value string, warnings *[]string) string {
 	name := strings.TrimSpace(value)
 	if name == "" {
@@ -483,9 +457,8 @@ func presetNames() []string {
 	return names
 }
 
-// validColour keeps a colour slot if it is a hex colour, and otherwise warns by
-// its dotted key and leaves the slot unset so the client falls it through to the
-// token default.
+// validColour keeps a colour slot if it's a hex colour, otherwise warns by
+// dotted key and leaves it unset.
 func validColour(key, value string, warnings *[]string) string {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -499,9 +472,9 @@ func validColour(key, value string, warnings *[]string) string {
 	return v
 }
 
-// validEnum keeps a value if it is one of the allowed options (after a trim), and
-// otherwise warns by its key — naming the options — and leaves it unset so the
-// island default stands. An empty value is unset and silent.
+// validEnum keeps a value if it's one of the allowed options (after trim),
+// otherwise warns by key, naming the options, and leaves it unset. An
+// empty value is unset and silent.
 func validEnum(key, value string, allowed []string, warnings *[]string) string {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -517,10 +490,9 @@ func validEnum(key, value string, allowed []string, warnings *[]string) string {
 	return ""
 }
 
-// validPositive keeps a number if it is strictly positive; zero is unset (the
-// default stands, silently) and a negative value warns. This is the rule for a
-// size, a line height, a cursor width, and a scroll sensitivity — anything where a
-// non-positive value is meaningless.
+// validPositive keeps a number if strictly positive; zero is unset
+// (silent), negative warns. The rule for size, line height, cursor width,
+// scroll sensitivity — anything non-positive is meaningless.
 func validPositive(key string, value float64, warnings *[]string) float64 {
 	switch {
 	case value == 0:
@@ -534,9 +506,9 @@ func validPositive(key string, value float64, warnings *[]string) float64 {
 	}
 }
 
-// validNonNegative keeps a number that is zero-or-more; zero is unset (the default
-// stands) and only a negative value warns. This is the rule for a scrollback line
-// count and a smooth-scroll duration, where zero is a legitimate-but-default value.
+// validNonNegative keeps a number zero-or-more; zero is unset, only
+// negative warns. The rule for scrollback line count and smooth-scroll
+// duration, where zero is legitimate-but-default.
 func validNonNegative(key string, value float64, warnings *[]string) float64 {
 	if value < 0 {
 		*warnings = append(*warnings, fmt.Sprintf(
@@ -546,9 +518,9 @@ func validNonNegative(key string, value float64, warnings *[]string) float64 {
 	return value
 }
 
-// validRange keeps a number inside [lo, hi]; the range's low bound doubles as the
-// unset value (e.g. a minimum-contrast-ratio of 1 does nothing), so a value equal to
-// lo is treated as unset. A value outside the range warns and stays unset.
+// validRange keeps a number inside [lo, hi]; lo doubles as the unset value
+// (e.g. minimum-contrast-ratio of 1 does nothing), so a value equal to lo
+// is unset. Outside the range warns and stays unset.
 func validRange(key string, value, lo, hi float64, warnings *[]string) float64 {
 	if value == 0 || value == lo {
 		return 0 // unset
@@ -561,11 +533,10 @@ func validRange(key string, value, lo, hi float64, warnings *[]string) float64 {
 	return value
 }
 
-// validWeight normalises a font weight that may be written as a keyword ("normal" or
-// "bold") or as a number (an integer 1..1000). It returns the canonical string — the
-// keyword as-is, or the integer rendered back to a string — so the wire carries one
-// field the client can read as a keyword or parse as a number. An out-of-range or
-// unrecognised value warns and stays unset.
+// validWeight normalises a font weight written as a keyword ("normal" or
+// "bold") or an integer 1..1000, returning the canonical string so the wire
+// carries one field the client reads as keyword or number. Out-of-range or
+// unrecognised warns and stays unset.
 func validWeight(key string, value interface{}, warnings *[]string) string {
 	warn := func(shown string) string {
 		*warnings = append(*warnings, fmt.Sprintf(

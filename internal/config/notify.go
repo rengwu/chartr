@@ -9,26 +9,27 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// The shipped machine-wide notification defaults. They are defined with the
-// config that resolves them, then re-exported by terminal beside the clock so
-// there is one value for the file, snapshot and machine to share.
+// The shipped machine-wide notification defaults, defined with the config
+// that resolves them and re-exported by terminal beside the clock, so
+// there's one value for file, snapshot and machine to share.
 const (
 	DefaultNotifyAfter  = 60 * time.Second
 	DefaultNotifySettle = 10 * time.Second
 )
 
-// ScaffoldNotifyTOML is the self-documenting notify.toml the Settings surface
-// creates. Every key is commented, so writing these bytes changes nothing while
-// still putting the file's ownership and exact defaults in the operator's editor.
+// ScaffoldNotifyTOML is the self-documenting notify.toml the Settings
+// surface creates. Every key is commented, so writing it changes nothing
+// while putting the file's ownership and exact defaults in the operator's
+// editor.
 //
 //go:embed notify.scaffold.toml
 var ScaffoldNotifyTOML []byte
 
 // NotifyPrefs is the resolved notification rule for this machine. Unlike
-// TerminalPrefs, every field has a concrete default: absence means 60 seconds,
-// 10 seconds and enabled. rawNotify keeps all three values untyped so one key
-// with the wrong TOML type can be dropped independently instead of making the
-// decoder discard good neighbours.
+// TerminalPrefs, every field has a concrete default: absence means 60
+// seconds, 10 seconds and enabled. rawNotify keeps all three untyped so a
+// wrong TOML type on one key can be dropped independently, not take good
+// neighbours down with it.
 type NotifyPrefs struct {
 	After   time.Duration
 	Settle  time.Duration
@@ -41,11 +42,11 @@ type rawNotify struct {
 	Enabled interface{} `toml:"enabled"`
 }
 
-// ResolveNotifyPrefs parses one per-machine notify.toml. Missing keys retain
-// their defaults; an invalid key retains only that key's default and produces
-// one warning naming both the file and the key. Syntax too malformed to identify
-// a key falls back wholesale with one file-level warning. Nothing here can make
-// the cockpit fail to build its model.
+// ResolveNotifyPrefs parses one per-machine notify.toml. Missing keys keep
+// their defaults; an invalid key keeps only its own default and warns by
+// name. Syntax too malformed to identify a key falls back wholesale with
+// one file-level warning — nothing here can make the cockpit fail to build
+// its model.
 func ResolveNotifyPrefs(tomlBytes []byte) (NotifyPrefs, []string) {
 	prefs := NotifyPrefs{
 		After:   DefaultNotifyAfter,

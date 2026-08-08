@@ -10,40 +10,38 @@ import (
 	"github.com/rengwu/chartr/internal/adapter"
 )
 
-// The agent library: named launch specs the operator registers once and picks
-// from at the moment of spawning. It is the *only* execution config — there are
-// no role→agent bindings and no committed execution layer, so nothing about how
+// The agent library: named launch specs the operator registers once and
+// picks from at spawn time. It's the *only* execution config — no
+// role→agent bindings, no committed execution layer, so nothing about how
 // an agent runs can arrive by `git pull`.
 //
-// An agent is a *complete, self-describing way to run a harness* — the binary,
-// whatever flags that harness wants, and how it takes its opening prompt. Nothing
-// here knows anything about any particular CLI: flags are an opaque list the
-// operator types, because chartr cannot know what `--model sonnet`,
-// `--dangerously-skip-permissions`, or `--sandbox danger-full-access` mean to the
-// harness that defines them, and pretending to would make the library exactly as
-// agent-specific as ADR 0002 refused to be. The model is in that list like
-// everything else: it is a flag, and it was never anything more.
+// An agent is a complete, self-describing way to run a harness — binary,
+// whatever flags it wants, and how it takes its opening prompt. Flags are
+// an opaque list the operator types: chartr can't know what `--model
+// sonnet` or `--dangerously-skip-permissions` mean to the harness defining
+// them, and pretending to would make the library as agent-specific as ADR
+// 0002 refused to be. The model is in that list like everything else — just
+// a flag.
 //
-// The library is **global and local**: one `[agents.<name>]` table set in the
-// operator's own config, shared by every space, and never committed. Which agents
-// exist on this machine is a property of the machine (its PATH, its logins, how
-// much rope its operator wants), so nothing in a repository can hand a teammate a
-// permission-skipping agent on `git pull`. An empty library is the starting state,
-// not an error, and refuses every spawn until the operator registers one.
+// The library is global and local: one `[agents.<name>]` table in the
+// operator's own config, shared by every space, never committed. Which
+// agents exist on this machine is a property of the machine, so nothing in
+// a repository can hand a teammate a permission-skipping agent on `git
+// pull`. An empty library is the starting state, not an error.
 
 // Agent is one registered launch spec. Adapter is the only required field:
 // everything a harness wants beyond its own name is Args and Env.
 type Agent struct {
 	Adapter string   `json:"adapter"`
 	Args    []string `json:"args,omitempty"`
-	// Env is the environment set on the launch, as `KEY=VALUE` entries — the half
-	// of "how I run this harness" that is not expressible as a flag, because the
-	// CLI reads it rather than parsing it (agentenv.go). As opaque as Args, but for
-	// a leading `~/` in a value, which expands on resolve.
+	// Env is the environment set on the launch, as `KEY=VALUE` entries —
+	// the half of "how I run this harness" not expressible as a flag,
+	// since the CLI reads it rather than parsing it (agentenv.go). As
+	// opaque as Args, except a leading `~/` in a value expands on resolve.
 	Env []string `json:"env,omitempty"`
-	// Prompt is how the opener reaches this harness — `argv`, `type`, or a flag
-	// name like `--prompt` (adapter.ParseDelivery). Empty leaves the adapter's own
-	// default in force.
+	// Prompt is how the opener reaches this harness — `argv`, `type`, or a
+	// flag name like `--prompt` (adapter.ParseDelivery). Empty leaves the
+	// adapter's default in force.
 	Prompt string `json:"prompt,omitempty"`
 }
 
@@ -53,12 +51,11 @@ type Agent struct {
 type ResolvedAgent struct {
 	Name string `json:"name"`
 	Agent
-	// LaunchEnv is the environment a spawn actually hands the process: the embedded
-	// Agent.Env with its tildes expanded. The two are kept apart deliberately. The
-	// spec's Env is what the operator typed and what the editing surface must round
-	// trip — an edit that saved the expanded form back would quietly replace their
-	// `~/.claude2` with one machine's absolute path — while this is what only the
-	// launch and the command preview may read.
+	// LaunchEnv is the environment a spawn actually hands the process: the
+	// embedded Agent.Env with tildes expanded. Kept apart deliberately —
+	// Env is what the operator typed and what the editing surface must
+	// round trip; saving the expanded form back would quietly replace
+	// `~/.claude2` with one machine's absolute path.
 	LaunchEnv []string `json:"launchEnv,omitempty"`
 	Present   bool     `json:"present"`
 	Missing   string   `json:"missing,omitempty"`
@@ -88,14 +85,13 @@ type rawAgent struct {
 	Prompt  string   `toml:"prompt"`
 }
 
-// ResolveAgents reads the operator's agent library, in name order, with each
-// agent's PATH presence probed. It takes the user config alone because the
-// library is global: it is the same answer for every space, and for no space at
-// all, which is what the settings surface's global scope asks for.
+// ResolveAgents reads the operator's agent library, in name order, with
+// each agent's PATH presence probed. Takes the user config alone because
+// the library is global — the same answer for every space, and for none.
 //
-// It never errors. A malformed file, an agent with no adapter, or an unreadable
-// prompt delivery is dropped with a warning and the rest of the library stands —
-// one bad table must not cost the operator every agent they registered.
+// It never errors: a malformed file, an agent with no adapter, or an
+// unreadable prompt delivery is dropped with a warning and the rest of the
+// library stands.
 func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, []string) {
 	if onPath == nil {
 		onPath = LookPath
@@ -122,9 +118,9 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 				"agent %q has an unreadable prompt delivery: %s; the adapter's default stands", name, err))
 			a.Prompt = ""
 		}
-		// The environment resolves here, tildes expanded, and lands beside the spec
-		// rather than inside it: the launch and the command preview read the expanded
-		// form, the editing surface reads what the operator typed.
+		// Resolved here with tildes expanded, landing beside the spec
+		// rather than inside it: launch and command preview read the
+		// expanded form, the editing surface reads what was typed.
 		env, envWarnings := resolveEnv(name, a.Env, home)
 		warnings = append(warnings, envWarnings...)
 		r := ResolvedAgent{
@@ -134,10 +130,10 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 		}
 		r.Present = onPath(r.Adapter)
 		if !r.Present {
-			// The full path is named because it always works and nothing else the
-			// operator can see says so: exec.LookPath consults PATH only for a bare
-			// name, and takes any name containing a separator as the binary itself.
-			// It is the one answer that does not depend on how chartr was launched.
+			// The full path is named because it always works regardless of
+			// how chartr was launched: exec.LookPath consults PATH only
+			// for a bare name, and takes any name with a separator as the
+			// binary itself.
 			r.Missing = fmt.Sprintf("%q isn't on your PATH; install it, or give this agent the binary's full path", r.Adapter)
 		}
 		out = append(out, r)
@@ -145,9 +141,9 @@ func ResolveAgents(userTOML []byte, onPath func(string) bool) ([]ResolvedAgent, 
 	return out, warnings
 }
 
-// parseAgents decodes the library out of the user config. A file too malformed to
-// decode is already surfaced by the binding resolver reading the same bytes, so
-// this one stays quiet about it rather than doubling the warning.
+// parseAgents decodes the library out of the user config. A file too
+// malformed to decode is already surfaced by the binding resolver reading
+// the same bytes, so this one stays quiet rather than doubling the warning.
 func parseAgents(userTOML []byte) (map[string]rawAgent, []string) {
 	if len(userTOML) == 0 {
 		return nil, nil
@@ -167,25 +163,22 @@ func parseAgents(userTOML []byte) (map[string]rawAgent, []string) {
 	return af.Agents, warnings
 }
 
-// knownAgentCLIs is the curated list the registration surface probes to *suggest*
-// binaries the operator likely means — a hint, never a menu. It is the one place
-// this effort brushes ADR 0002, and it stays on the correct side of the line: the
-// only fact asserted about any name here is "this binary is on your PATH", which
-// is not agent-specific knowledge. chartr claims nothing about what any of these
-// do or what flags they take, any binary at all can be registered whether or not
-// it appears here, and no per-CLI flag UI is built on this list. It exists only so
-// a fresh operator does not have to remember exact spellings.
+// knownAgentCLIs is the curated list the registration surface probes to
+// *suggest* binaries the operator likely means — a hint, never a menu. The
+// only fact asserted about any name here is "this binary is on your PATH",
+// not agent-specific knowledge: chartr claims nothing about what these do
+// or what flags they take, any binary can be registered whether or not it
+// appears here, and no per-CLI UI is built on this list. It exists only so
+// a fresh operator doesn't have to remember exact spellings.
 var knownAgentCLIs = []string{
 	"claude", "codex", "gemini", "cursor-agent", "aider",
 	"goose", "amp", "opencode", "crush", "qwen",
 }
 
-// DetectAgents reports which of the known agent CLIs are resolvable on PATH, in
-// the curated order, so the surface can render them as helper text beneath the
-// adapter input. It reuses the same LookPath probe a binding presence check does
-// (onPath defaults to LookPath when nil) and asserts nothing beyond existence.
-// The result is advisory: an empty return simply means none of the names it knows
-// are installed, not that nothing can be registered.
+// DetectAgents reports which known agent CLIs are resolvable on PATH, in
+// curated order, so the surface can render them as helper text beneath the
+// adapter input. Advisory only: an empty return means none of the known
+// names are installed, not that nothing can be registered.
 func DetectAgents(onPath func(string) bool) []string {
 	if onPath == nil {
 		onPath = LookPath
@@ -199,10 +192,10 @@ func DetectAgents(onPath func(string) bool) []string {
 	return found
 }
 
-// ValidAgentName reports whether a name is one the library can hold. The rule is
-// the intersection of what reads well in a picker and what needs no quoting as a
-// TOML key: letters, digits, hyphen, underscore. Refusing here is what keeps the
-// writer from ever having to escape a name into a table header.
+// ValidAgentName reports whether a name is one the library can hold: letters,
+// digits, hyphen, underscore — what reads well in a picker and needs no
+// quoting as a TOML key. Refusing here keeps the writer from ever having to
+// escape a name into a table header.
 func ValidAgentName(name string) error {
 	if name == "" {
 		return fmt.Errorf("an agent needs a name")
@@ -220,12 +213,10 @@ func ValidAgentName(name string) error {
 	return nil
 }
 
-// ValidAgent checks a spec the surface is about to write: an adapter to launch, a
-// prompt delivery the adapter seam can read, and an environment shaped like an
-// environment. Everything else — which flags a harness wants, whether it has a
-// model at all, what any variable means to it — is the operator's business and
-// deliberately unchecked. A flag or a variable this package has never heard of is
-// the normal case, not an error.
+// ValidAgent checks a spec the surface is about to write: an adapter to
+// launch, a prompt delivery the adapter seam can read, an environment
+// shaped like an environment. Everything else — flags, model, what a
+// variable means — is the operator's business and deliberately unchecked.
 func ValidAgent(a Agent) error {
 	if strings.TrimSpace(a.Adapter) == "" {
 		return fmt.Errorf("an agent needs an adapter — the CLI to launch")
@@ -239,8 +230,8 @@ func ValidAgent(a Agent) error {
 	return ValidAgentEnv(a.Env)
 }
 
-// decodeTOML decodes into v, reporting success. A file too malformed to decode
-// declares nothing — it is already surfaced as malformed on resolve, and the
+// decodeTOML decodes into v, reporting success. A file too malformed to
+// decode declares nothing — already surfaced as malformed on resolve, and
 // writers treat "declares nothing" as "safe to append a well-formed table to".
 func decodeTOML(data []byte, v any) bool {
 	_, err := toml.Decode(string(data), v)

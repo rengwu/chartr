@@ -1,10 +1,10 @@
-// Package config owns chartr's local configuration: the operator's registered
-// agent library (agents.go) and the closed set of roles a session is spawned to
-// do. Execution is chosen per spawn from the library — there are no role→agent
-// bindings, no committed execution layer, and nothing about how an agent runs can
-// arrive by `git pull`. A
-// role still picks a skill, derives a default from a ticket's type, and drives the
-// AFK/HITL quiet hint; it simply no longer resolves to an agent.
+// Package config owns chartr's local configuration: the operator's
+// registered agent library (agents.go) and the closed set of roles a
+// session is spawned to do. Execution is chosen per spawn from the
+// library — no role→agent bindings, no committed execution layer, so
+// nothing about how an agent runs can arrive by `git pull`. A role still
+// picks a skill, derives a default from a ticket's type, and drives the
+// AFK/HITL quiet hint; it just no longer resolves to an agent.
 package config
 
 import (
@@ -14,8 +14,8 @@ import (
 )
 
 // Role is one of the closed set of things a session is spawned to do (ADR
-// 0002). The set is fixed here; anything outside it is one caller's mistake with
-// one answer rather than each entry point's own.
+// 0002). Fixed here; anything outside it is one caller's mistake with one
+// answer, not each entry point's own.
 type Role string
 
 const (
@@ -25,16 +25,15 @@ const (
 	RoleImplement Role = "implement"
 )
 
-// Roles is the closed role set in a stable display order. It is the set every
-// ticket offers a session in: what a ticket *is* picks the default role, and the
+// Roles is the closed role set in stable display order — the set every
+// ticket offers a session in: what a ticket is picks the default role, the
 // operator picks from all four at the gate.
 var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 
-// IsRole reports whether a string names one of the four roles, exactly (the set
-// is case-sensitive, as every producer of it is). Every surface that takes a
-// role from outside — the spawn action's request body, the payload preview's —
-// checks it here, so an unknown role is one caller's mistake with one answer
-// rather than each entry point's own.
+// IsRole reports whether a string names one of the four roles exactly
+// (case-sensitive). Every surface taking a role from outside — the spawn
+// action's request body, the payload preview's — checks it here, so an
+// unknown role is one caller's mistake with one answer.
 func IsRole(role string) bool {
 	for _, r := range Roles {
 		if string(r) == role {
@@ -45,13 +44,11 @@ func IsRole(role string) bool {
 }
 
 // RoleForTicketType returns the role a ticket of this type spawns as. The
-// method's four ticket types map one-to-one onto the four roles, which is the
-// per-ticket fact a map's kind used to approximate uniformly; an unrecognised
-// type falls to implement, the same default the frontend has always used.
+// four ticket types map one-to-one onto the four roles; an unrecognised
+// type falls to implement, the frontend's longstanding default.
 //
-// This takes wayfinder's own types rather than restating the strings: wayfinder
-// imports nothing of ours, so there is no cycle to dodge and no second copy of
-// the mapping to drift.
+// Takes wayfinder's own types rather than restating the strings: wayfinder
+// imports nothing of ours, so no cycle to dodge and no second copy to drift.
 func RoleForTicketType(t wayfinder.Type) Role {
 	switch t {
 	case wayfinder.TypeGrilling:
