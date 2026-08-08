@@ -4,7 +4,6 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import NewShellButton from './NewShellButton.svelte'
-  import AsciiFlow from './AsciiFlow.svelte'
   import { openSpaceFolder } from './actions'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
@@ -493,45 +492,24 @@
           <Terminal term={activeTerm} prefs={terminalPrefs} />
         {/key}
       {:else}
-        <!-- `isolate` makes this empty state its own stacking context, so the
-             flow field at -z-10 sits under the copy and the controls while still
-             painting over the pane behind it. The island reads the pointer off
-             this region — the canvas itself is inert. -->
-        <div
-          class="relative isolate flex h-full flex-col items-center justify-center gap-2 overflow-hidden p-6 text-center"
-        >
-          <AsciiFlow class="-z-10" />
-          <!-- The copy and its controls ride on a plate that carries no colour
-               of its own — it only blurs what passes under it. The flow field
-               reads through at full strength, just out of focus, so the water
-               never sharpens into glyphs that compete with the text. The radius
-               clips the blur, so the plate still reads as a rounded pane. -->
-          <div
-            class="relative flex flex-col items-center gap-2 rounded-lg px-6 py-4 backdrop-blur-[2px]"
-          >
-            <p class="text-sm text-muted-foreground">No shell open in this space.</p>
-            <div class="flex flex-wrap items-center justify-center gap-2">
-              <!-- The same one control the space card carries (skill-sources
-                   ticket 08): the caret chooses a plain shell or a registered
-                   agent, and the body runs the choice. -->
-              <NewShellButton
-                {agents}
-                size="sm"
-                title="Open a plain shell — nothing is injected. Pick an agent from the caret to launch a free session with this button instead."
-                onshell={onOpenShell}
-                onfree={onFreeSession}
-                onregister={onRegisterAgent}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                aria-pressed={mapShown}
-                onclick={toggleMap}
-              >
-                <Sparkle weight={mapShown ? 'fill' : 'regular'} />
-                {mapShown ? 'Hide Maps' : 'View Maps'}
-              </Button>
-            </div>
+        <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+          <p class="text-sm text-muted-foreground">No shell open in this space.</p>
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <!-- The same one control the space card carries (skill-sources
+                 ticket 08): the caret chooses a plain shell or a registered
+                 agent, and the body runs the choice. -->
+            <NewShellButton
+              {agents}
+              size="sm"
+              title="Open a plain shell — nothing is injected. Pick an agent from the caret to launch a free session with this button instead."
+              onshell={onOpenShell}
+              onfree={onFreeSession}
+              onregister={onRegisterAgent}
+            />
+            <Button variant="outline" size="sm" aria-pressed={mapShown} onclick={toggleMap}>
+              <Sparkle weight={mapShown ? 'fill' : 'regular'} />
+              {mapShown ? 'Hide Maps' : 'View Maps'}
+            </Button>
           </div>
         </div>
       {/if}
