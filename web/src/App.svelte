@@ -39,6 +39,7 @@
     Gear,
     FolderOpen,
     MagnifyingGlass,
+    TerminalWindow,
   } from "phosphor-svelte";
 
   // The one control socket for this browser. The chrome renders whatever the
@@ -312,7 +313,10 @@
       const t = Math.min(1, (box.top + SCROLL_EDGE - clientY) / SCROLL_EDGE);
       listEl.scrollTop -= SCROLL_SPEED * t;
     } else if (clientY > box.bottom - SCROLL_EDGE) {
-      const t = Math.min(1, (clientY - (box.bottom - SCROLL_EDGE)) / SCROLL_EDGE);
+      const t = Math.min(
+        1,
+        (clientY - (box.bottom - SCROLL_EDGE)) / SCROLL_EDGE,
+      );
       listEl.scrollTop += SCROLL_SPEED * t;
     }
   }
@@ -343,7 +347,11 @@
     const current = spaces.map((s) => s.id);
     // A drop back where it started, or ⌥↑ on the first row: an ordinary outcome,
     // and the honest response is to write nothing at all.
-    if (ids.length === current.length && ids.every((id, i) => id === current[i])) return;
+    if (
+      ids.length === current.length &&
+      ids.every((id, i) => id === current[i])
+    )
+      return;
     try {
       await reorderSpaces(ids);
     } catch (e) {
@@ -496,14 +504,22 @@
     space: Space;
     t: Terminal;
     verb: string;
-    run: (spaceId: string, sessionId: string, force?: boolean) => Promise<unknown>;
+    run: (
+      spaceId: string,
+      sessionId: string,
+      force?: boolean,
+    ) => Promise<unknown>;
   } | null>(null);
 
   async function haltAction(
     space: Space,
     t: Terminal,
     verb: string,
-    run: (spaceId: string, sessionId: string, force?: boolean) => Promise<unknown>,
+    run: (
+      spaceId: string,
+      sessionId: string,
+      force?: boolean,
+    ) => Promise<unknown>,
     force = false,
   ) {
     selectSpace(space.id);
@@ -609,10 +625,7 @@
            the sketch's split header. In the native macOS shell this tier also
            fills the title-bar strip; the left inset leaves the real traffic-light
            buttons clear and seats the wordmark immediately beside them. -->
-      <div
-        class="cockpit-bar justify-start gap-2 bg-transparent"
-        class:pl-20={titleBarH > 0}
-      >
+      <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
         <img
           src="/brandmark.svg"
           alt=""
@@ -620,7 +633,8 @@
           height="20"
           class="size-5 shrink-0 grayscale"
         />
-        <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
+        <span class="truncate text-sm font-semibold tracking-tight">chartr</span
+        >
       </div>
 
       <!-- Search is its own compact row below the brand, followed by the
@@ -646,10 +660,26 @@
       </div>
 
       <div class="flex items-center justify-between gap-2 px-2 pt-2 pb-1">
-        <span class="px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span
+          class="px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
+        >
           Spaces
         </span>
         <div class="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={opening || control.model === null}
+            aria-label="Open a new Scratch shell"
+            title="Open a new Scratch shell"
+            onclick={openScratchShell}
+          >
+            {#if opening}
+              <CircleNotch class="animate-spin" />
+            {:else}
+              <TerminalWindow />
+            {/if}
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -660,22 +690,6 @@
             onclick={addSpace}
           >
             {#if picking}
-              <CircleNotch class="animate-spin" />
-            {:else if nativePicker}
-              <FolderOpen />
-            {:else}
-              <Plus />
-            {/if}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={opening || control.model === null}
-            aria-label="Open a new Scratch shell"
-            title="Open a new Scratch shell"
-            onclick={openScratchShell}
-          >
-            {#if opening}
               <CircleNotch class="animate-spin" />
             {:else}
               <Plus />
@@ -688,17 +702,22 @@
         <div class="px-3 pb-1" role={addError ? "alert" : "status"}>
           <div class="flex items-center gap-1.5 text-[0.7rem]">
             {#if addError}
-              <p class="min-w-0 flex-1 truncate text-destructive" title={addError}>
+              <p
+                class="min-w-0 flex-1 truncate text-destructive"
+                title={addError}
+              >
                 {addError}
               </p>
             {:else if addNotice}
-              <p class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground">
+              <p
+                class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground"
+              >
                 <span class="shrink-0">Added</span>
                 <span
                   dir="rtl"
                   class="min-w-0 flex-1 truncate text-left font-mono"
-                  title={addNotice.path}
-                >{addNotice.path}</span><span class="shrink-0">.</span>
+                  title={addNotice.path}>{addNotice.path}</span
+                ><span class="shrink-0">.</span>
               </p>
             {/if}
             <Button
@@ -722,13 +741,17 @@
       {/if}
 
       {#if control.model === null}
-        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">Connecting…</p>
+        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
+          Connecting…
+        </p>
       {:else if spaces.length === 0}
-        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">No spaces yet.</p>
+        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
+          No spaces yet.
+        </p>
       {:else}
         <div
           bind:this={listEl}
-          class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
+          class="sidebar-scroll mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pr-1"
         >
           {#each filtered as space (space.id)}
             <SpaceCard
@@ -748,7 +771,8 @@
               onjumphalt={() => jumpToHalt(space)}
               onforget={() => forget(space)}
               onendshell={(t) => endShell(space, t)}
-              onhalt={(t, verb) => haltAction(space, t, verb, HALT_ACTIONS[verb])}
+              onhalt={(t, verb) =>
+                haltAction(space, t, verb, HALT_ACTIONS[verb])}
               onopenshell={() => openShell(space)}
             />
           {:else}
@@ -856,9 +880,9 @@
        operator gets their own OS chooser and never sees this. -->
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
     <p class="mb-3 text-xs text-muted-foreground">
-      No folder chooser was found on this machine, so point chartr at a
-      project folder by pasting its absolute path. If it isn’t a git repository
-      yet, one is initialized there, announced.
+      No folder chooser was found on this machine, so point chartr at a project
+      folder by pasting its absolute path. If it isn’t a git repository yet, one
+      is initialized there, announced.
     </p>
     <RegisterForm
       variant="inline"
@@ -882,7 +906,11 @@
       are, and you can add it back any time.
     </p>
     <div class="mt-4 flex justify-end gap-2">
-      <Button variant="outline" size="sm" onclick={() => (pendingForget = null)}>
+      <Button
+        variant="outline"
+        size="sm"
+        onclick={() => (pendingForget = null)}
+      >
         Cancel
       </Button>
       <Button variant="destructive" size="sm" onclick={confirmForget}>
@@ -916,13 +944,17 @@
   >
     <div class="space-y-4 text-sm">
       <p class="text-muted-foreground">
-        {pendingHalt ? `To ${pendingHalt.verb} this session` : "This"} would run two agents in
-        <strong class="font-medium text-foreground">the same working tree</strong>. There is no
-        branch or worktree between them, so they can overwrite each other's uncommitted
-        edits with no conflict to resolve.
+        {pendingHalt ? `To ${pendingHalt.verb} this session` : "This"} would run
+        two agents in
+        <strong class="font-medium text-foreground"
+          >the same working tree</strong
+        >. There is no branch or worktree between them, so they can overwrite
+        each other's uncommitted edits with no conflict to resolve.
       </p>
       <div class="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onclick={() => (pendingHalt = null)}>Cancel</Button>
+        <Button variant="ghost" size="sm" onclick={() => (pendingHalt = null)}
+          >Cancel</Button
+        >
         <Button
           variant="default"
           size="sm"
@@ -931,7 +963,9 @@
             if (p) haltAction(p.space, p.t, p.verb, p.run, true);
           }}
         >
-          {pendingHalt ? `${pendingHalt.verb[0].toUpperCase()}${pendingHalt.verb.slice(1)} anyway` : "Continue"}
+          {pendingHalt
+            ? `${pendingHalt.verb[0].toUpperCase()}${pendingHalt.verb.slice(1)} anyway`
+            : "Continue"}
         </Button>
       </div>
     </div>

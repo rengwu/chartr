@@ -9,44 +9,49 @@
    design. The document boots dark (index.html <html class="dark">).
    ============================================================================ */
 
-@import 'tailwindcss';
+@import "tailwindcss";
 
 /* Self-hosted IBM Plex woff2 subsets (latin) — bundled into the go:embed dist,
    no CDN or runtime fetch (offline binary, ADR 0010 / map constraint). */
 @font-face {
-  font-family: 'IBM Plex Sans';
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('./assets/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+  src: url("./assets/fonts/ibm-plex-sans-latin-400-normal.woff2")
+    format("woff2");
 }
 @font-face {
-  font-family: 'IBM Plex Sans';
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url('./assets/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+  src: url("./assets/fonts/ibm-plex-sans-latin-500-normal.woff2")
+    format("woff2");
 }
 @font-face {
-  font-family: 'IBM Plex Sans';
+  font-family: "IBM Plex Sans";
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('./assets/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+  src: url("./assets/fonts/ibm-plex-sans-latin-600-normal.woff2")
+    format("woff2");
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: "IBM Plex Mono";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('./assets/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  src: url("./assets/fonts/ibm-plex-mono-latin-400-normal.woff2")
+    format("woff2");
 }
 @font-face {
-  font-family: 'IBM Plex Mono';
+  font-family: "IBM Plex Mono";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url('./assets/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  src: url("./assets/fonts/ibm-plex-mono-latin-500-normal.woff2")
+    format("woff2");
 }
 
 /* Map the semantic tokens onto Tailwind's --color-* / --font-* / --radius-*
@@ -86,8 +91,8 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -211,6 +216,20 @@
     padding-inline: 0.5rem;
     border-bottom: 1px solid var(--border);
     background: var(--card);
+  }
+  /* The sidebar's brand row is chrome, not a bordered content bar — it only
+     needs the same tier height as the .cockpit-bars across the stage so the
+     sidebar's top edge lines up with the space header's. Sharing --bar-h
+     without the rest of .cockpit-bar (border, --card fill) means this never
+     has to fight those off with per-instance overrides. */
+  .brand-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: var(--bar-h);
+    min-height: var(--bar-h);
+    flex: none;
+    padding-inline: 0.5rem;
   }
   /* The map picker's resolution meter — a genuinely new shared pattern (a ticket
      has no other bar), so it earns the one token-driven component class the
@@ -412,12 +431,31 @@
     background: var(--terminal-scrollbar-track, transparent);
   }
   .terminal-island .xterm-viewport::-webkit-scrollbar-thumb {
-    background-color: var(--terminal-scrollbar-thumb-idle, var(--terminal-scrollbar-thumb, var(--border)));
+    background-color: var(
+      --terminal-scrollbar-thumb-idle,
+      var(--terminal-scrollbar-thumb, var(--border))
+    );
     border-radius: var(--radius-sm);
     transition: background-color 120ms ease;
   }
   .terminal-island:hover .xterm-viewport::-webkit-scrollbar-thumb {
     background-color: var(--terminal-scrollbar-thumb, var(--border));
+  }
+
+  /* The sidebar's space list: a thin, always-on thumb with no track colour of
+     its own — the list is tall enough that the thumb is a standing wayfinding
+     cue for how far down the list the operator is, not a transient hint.
+     `scrollbar-color` is left unset for the same WebKit-drops-the-pseudo-elements
+     reason noted above. */
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: var(--radius-sm);
   }
 
   body {
