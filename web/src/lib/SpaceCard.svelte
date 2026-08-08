@@ -294,11 +294,13 @@
     ></div>
   {/if}
 
-  <!-- Identity: the space's name, with the forget action pinned top-right.
-       Ambient cross-space attention (ticket 14, story 8) rides on the name
-       line — a wants-you flag (a session halted) and a liveness dot,
-       both echoing the same signals the queue pulls and the session
-       cards below already carry in detail. Neither ever re-sorts the
+  <!-- Identity: the space's name, with the open-shell and forget actions
+       pinned top-right, beside the title rather than on a row of their own
+       — the `+` is the one action a card exists to offer, so it rides where
+       the eye already lands. Ambient cross-space attention (ticket 14, story
+       8) rides on the name line — a wants-you flag (a session halted) and a
+       liveness dot, both echoing the same signals the queue pulls and the
+       session cards below already carry in detail. Neither ever re-sorts the
        card; muscle memory over this list holds — and now the operator's
        own arrangement is the only thing that sets it. -->
   <div class="flex items-start gap-1">
@@ -343,21 +345,38 @@
       <span class="truncate">{space.name}</span>
     </span>
     <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
-         it carries no forget control rather than one that would be refused. -->
+         it carries neither the open-shell control nor a forget control that
+         would be refused. -->
     {#if !space.scratch}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class="-mt-0.5 -mr-0.5 hover:text-destructive"
-        aria-label="Remove space"
-        title="Remove from this list (your files stay put)"
-        onclick={(e) => {
-          e.stopPropagation();
-          onforget();
-        }}
-      >
-        <X />
-      </Button>
+      <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          disabled={opening}
+          class="hover:text-primary"
+          aria-label="Open a shell in {space.name}"
+          title="Open a plain shell in {space.name} — nothing is injected."
+          onclick={(e) => {
+            e.stopPropagation();
+            onopenshell();
+          }}
+        >
+          <Plus />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="hover:text-destructive"
+          aria-label="Remove space"
+          title="Remove from this list (your files stay put)"
+          onclick={(e) => {
+            e.stopPropagation();
+            onforget();
+          }}
+        >
+          <X />
+        </Button>
+      </span>
     {/if}
   </div>
 
@@ -371,7 +390,7 @@
        same emphasis the card takes, one step stronger — is what says
        which row is showing. -->
   {#if space.terminals.length}
-    <ul class="flex flex-col">
+    <ul class="flex flex-col gap-0.5">
       {#each space.terminals as t (t.id)}
         {@const isActive = selected && activeTermId === t.id}
         {@const unseen = showsFinishedDot(t, isActive)}
@@ -540,37 +559,5 @@
         </li>
       {/each}
     </ul>
-  {/if}
-
-  <!-- The one ticketless on-ramp: a `+` that opens a plain shell, aligned to
-       the card's right edge. Branch information deliberately does not appear in
-       the sidebar; the card is for the space and its running sessions. -->
-  {#if !space.scratch}
-    <div class="flex justify-end">
-      <!-- One button, one action: a plain shell. The split button that used to
-           stand here also picked an agent to start a free session on, and the
-           card is not the place for a choice — a space row is a place you
-           *land*, and the agent pickers live where the work is named: the
-           star-map's spawn, and the same split button on the stage's empty
-           state. The `+` is a secondary fill rather than an outline, because
-           the card that hosts it no longer draws borders and an outlined
-           control on a borderless plate reads as the last hairline left
-           over. The row's own click just selects the space, which opening a
-           shell does anyway, but the handler still stops propagation so the
-           two never race. -->
-      <Button
-        variant="secondary"
-        size="icon-xs"
-        disabled={opening}
-        aria-label="Open a shell in {space.name}"
-        title="Open a plain shell in {space.name} — nothing is injected."
-        onclick={(e) => {
-          e.stopPropagation();
-          onopenshell();
-        }}
-      >
-        <Plus />
-      </Button>
-    </div>
   {/if}
 </div>
