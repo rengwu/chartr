@@ -1,35 +1,27 @@
-// Package sources is the skill-source registry: the operator's ordered list of
-// places skills come from, replacing the layer model's three fixed roots and its
-// closed name set. A source is a local folder or a pinned git checkout; the list's
-// position *is* resolution order, so which skill wins is something the operator
-// reads rather than infers.
+// Package sources is the skill-source registry: the operator's ordered list
+// of places skills come from. A source is a local folder or a pinned git
+// checkout; list position is resolution order.
 //
-// The list lives in `sources.toml` under the config root as an array of tables.
-// There is no order field — and therefore no densification, no duplicate-order
-// case and no legacy decode. Identity is the operator's own name: trimmed, 1–64
-// characters of letters, digits, space, hyphen or underscore, no `/` (reserved by
-// the qualified form `Source/skill`), unique case-insensitively. `enabled` sits on
-// the row and is written only when false.
+// The list lives in `sources.toml` under the config root as an array of
+// tables, no order field. Identity is the operator's name: trimmed, 1–64
+// letters/digits/space/hyphen/underscore, no `/` (reserved by the qualified
+// form `Source/skill`), unique case-insensitively. `enabled` is written only
+// when false.
 //
-// The `chartr-skills` row is synthetic: never written as a row, always last, not
-// removable and not reorderable. Only its scalars persist beside the rows — its
-// toggle, and the commit and timestamp a refresh records. What lands at its path
-// is the seed's business, not this package's.
+// The `chartr-skills` row is synthetic: never written as a row, always
+// last, not removable or reorderable. Only its scalars persist beside the
+// rows — toggle, commit, refresh timestamp.
 //
-// The stance is the space registry's — written atomically at 0600 under a 0700
-// root, temp-then-rename, and a missing or unparseable file is the default row
-// alone: the first-run state, not an error. Losing the file costs re-registration
-// and never work, with one honest asymmetry: git checkouts are orphaned by the
-// loss and chartr does not collect them. None of that registry's machinery is
-// borrowed — the hashed id, the dense order and the legacy decode exist there
-// because its rows serialise sorted by path and key per-space state by id, and
-// neither pressure exists here.
+// Written atomically (0600 under a 0700 root, temp-then-rename) like the
+// space registry; a missing or unparseable file is just the default row —
+// first-run state, not an error. Losing the file costs re-registration, with
+// one asymmetry: git checkouts are orphaned and not collected.
 //
-// Discovery is a bounded, uncached walk: a skill is any directory at depth 1–3
-// below a source root holding `SKILL.md` at its top level, and the walk never
-// descends into one that has it — everything below is that skill's supporting
-// files. Every caller walks; the walk stats directories and reads no file, so a
-// skill folder created a second ago is usable in the very next spawn.
+// Discovery is a bounded, uncached walk: a skill is any directory at depth
+// 1–3 below a source root holding `SKILL.md` at its top level; the walk
+// never descends into one that has it. Every caller walks fresh — stats
+// only, no file reads — so a skill folder created a second ago is usable in
+// the very next spawn.
 package sources
 
 import (

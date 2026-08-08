@@ -11,37 +11,34 @@ import (
 	"strings"
 )
 
-// The seed: chartr's own `chartr-skills` repo, vendored as a checked-in copy of a
-// pinned ref and materialized under the config root so a first run can spawn a
-// role-typed session with no network at all.
+// The seed: chartr's own `chartr-skills` repo, vendored as a checked-in copy
+// of a pinned ref and materialized under the config root so a first run can
+// spawn a role-typed session with no network at all.
 //
-// It is a checked-in copy rather than a build step that clones, because a
-// release's contents must be a function of the commit and a fetching build would
-// make the test suite need network; and rather than a submodule, because
-// `go install` and source tarballs carry none, so the binary would ship with an
-// empty default source and a first run would have no role skills. `make
-// vendor-skills` is the whole refresh procedure — see its comment in the Makefile.
+// Checked in rather than cloned at build time, so a release's contents stay
+// a function of the commit and tests don't need network. Not a submodule,
+// since `go install` and source tarballs carry none — the binary would ship
+// with an empty default source. `make vendor-skills` is the whole refresh
+// procedure (see the Makefile).
 //
-// The default source's directory is in exactly one of two states, read off the
-// filesystem rather than recorded anywhere:
+// The default source's directory is in exactly one of two states, read off
+// the filesystem rather than recorded anywhere:
 //
 //	seeded — no `.git`     — chartr owns the bytes, reconciled at every startup
 //	pinned — `.git` present — the operator owns them, chartr never writes there
 //
-// The seed records nothing about itself on disk. Its identity is SeedCommit,
-// compiled in: an on-disk marker would be a second source of truth whose only
-// distinctive behaviour is going stale. Deleting the directory is therefore the
-// whole reset story — it covers reset, repair, and a directory an operator
-// wrecked, and needs no action anywhere in the UI.
+// The seed records nothing about itself on disk; its identity is
+// SeedCommit, compiled in. Deleting the directory is the whole reset
+// story — covers reset, repair, and operator damage — with no UI action
+// needed.
 
 // SeedCommit is the ref the vendored copy under assets/ was taken at. `make
 // vendor-skills` rewrites this line; nothing else may.
 const SeedCommit = "ece028dfd19a21d6b4b990c96d0efe2fa5c83a49"
 
-// SeedURL is where a refresh of the default source fetches from — the upstream of
-// the vendored copy. It is a var rather than a const only so a test can point the
-// seeded→pinned conversion at a local repository instead of the network; nothing
-// in chartr reassigns it.
+// SeedURL is where a refresh of the default source fetches from. It's a var
+// only so a test can point the seeded→pinned conversion at a local
+// repository instead of the network; nothing in chartr reassigns it.
 var SeedURL = "https://github.com/rengwu/chartr-skills.git"
 
 //go:embed assets/chartr-skills
@@ -49,17 +46,17 @@ var seedFS embed.FS
 
 const seedRoot = "assets/chartr-skills"
 
-// Reconcile brings the default source's directory into the state the compiled
-// seed describes, and is called at every startup.
+// Reconcile brings the default source's directory into the state the
+// compiled seed describes, called at every startup.
 //
-// A `.git` inside it means the operator has pinned it with a fetch, and chartr
-// never writes there again: an upgrade must not silently revert an ownership the
-// operator asserted. Otherwise the whole directory is compared — file set and
-// bytes — against the embedded copy and **replaced wholesale** when anything
-// differs, temp-then-rename. Wholesale rather than per-file so a skill deleted
-// upstream actually disappears; an operator who edited a seeded skill loses that
-// edit at the next startup, which is the same stance the generated conventions
-// take, and the answer to "I want to edit these" is a `dir` source of their own.
+// A `.git` inside it means the operator pinned it, and chartr never writes
+// there again — an upgrade must not silently revert that. Otherwise the
+// whole directory is compared against the embedded copy and **replaced
+// wholesale** when anything differs, temp-then-rename. Wholesale rather
+// than per-file so a skill deleted upstream actually disappears; an
+// operator who edited a seeded skill loses that edit next startup — same
+// stance as the generated conventions. The answer to "I want to edit
+// these" is a `dir` source of their own.
 func Reconcile(configDir string) error {
 	if configDir == "" {
 		return nil

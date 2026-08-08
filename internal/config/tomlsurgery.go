@@ -2,13 +2,13 @@ package config
 
 import "strings"
 
-// Comment-preserving TOML line surgery: enough of TOML to find one table and one
-// key inside it — table headers, quoted keys, comments, and values that run past
-// their first line — treating anything it does not recognise as opaque text to
-// leave alone. The agent-library writer (useragent.go) edits the operator's own
-// file through these, so comments, key order, spacing, and unrelated tables
-// survive every edit, and a shape this editor does not understand is refused with
-// a pointer at a hand edit rather than rewritten blind.
+// Comment-preserving TOML line surgery: enough of TOML to find one table
+// and one key inside it — headers, quoted keys, comments, multi-line
+// values — treating anything unrecognised as opaque text to leave alone.
+// The agent-library writer (useragent.go) edits the operator's file
+// through these, so comments, key order, spacing, and unrelated tables
+// survive every edit; a shape this editor doesn't understand is refused
+// with a pointer at a hand edit rather than rewritten blind.
 
 // splitLines splits a file into lines and reports the line ending it uses, so a
 // rewrite hands back the operator's own convention rather than normalising it.
@@ -82,10 +82,10 @@ func bracketDelta(line string) int {
 	return d
 }
 
-// insertPoint picks where a new key goes inside an existing table: after the
-// last key already there, so the addition reads as the newest line rather than
-// jumping the queue — and immediately after the header when the table is empty.
-// Either way nothing already in the file moves.
+// insertPoint picks where a new key goes inside an existing table: after
+// the last key already there, so the addition reads as the newest line —
+// or immediately after the header when the table is empty. Nothing
+// already in the file moves.
 func insertPoint(lines []string, start, end int) int {
 	at := start + 1
 	for i := start + 1; i < end; i++ {
@@ -145,9 +145,9 @@ func parseKeyName(line string) (string, bool) {
 	return path[0], true
 }
 
-// splitKeyPath splits a dotted TOML key path into its segments, unquoting basic
-// and literal string keys. It reports false on anything it cannot read, so an
-// exotic header is skipped rather than half-understood.
+// splitKeyPath splits a dotted TOML key path into its segments, unquoting
+// basic and literal string keys. Reports false on anything unreadable, so
+// an exotic header is skipped rather than half-understood.
 func splitKeyPath(s string) ([]string, bool) {
 	var out []string
 	var seg strings.Builder

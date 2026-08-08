@@ -7,22 +7,21 @@ import (
 	"strings"
 )
 
-// The write half of the agent library. It works through the comment-preserving
-// TOML line surgery in tomlsurgery.go: the operator's file is *theirs* — comments,
-// key order, spacing, and unrelated tables survive every edit — and a shape this
-// editor does not understand is refused with a pointer at a hand edit rather than
-// rewritten blind.
+// The write half of the agent library. Works through the comment-preserving
+// TOML line surgery in tomlsurgery.go: the operator's file is theirs —
+// comments, key order, spacing, unrelated tables survive every edit — and
+// a shape this editor doesn't understand is refused with a pointer at a
+// hand edit rather than rewritten blind.
 //
-// Registering an agent writes the global `[agents.<name>]` table in the user's own
-// config, never a repository's committed one. That is the whole safety property of
-// the library's placement: an agent carrying `--dangerously-skip-permissions` is
-// something an operator grants themselves on one machine, and cannot arrive from a
-// `git pull`.
+// Registering an agent writes the global `[agents.<name>]` table in the
+// user's own config, never a repository's committed one — the whole safety
+// property of the library's placement: an agent carrying
+// `--dangerously-skip-permissions` is something an operator grants
+// themselves on one machine, and cannot arrive from a `git pull`.
 
-// SetUserAgent registers or updates one named agent, returning the new user-config
-// bytes. Every field is written, and a field set to its zero value is removed
-// rather than written empty, so an agent that drops its flags reads as an agent
-// with none rather than one with an empty list.
+// SetUserAgent registers or updates one named agent, returning the new
+// user-config bytes. A field at its zero value is removed rather than
+// written empty, so an agent that drops its flags reads as one with none.
 func SetUserAgent(existing []byte, name string, a Agent) ([]byte, error) {
 	if err := ValidAgentName(name); err != nil {
 		return nil, err
@@ -42,19 +41,19 @@ func SetUserAgent(existing []byte, name string, a Agent) ([]byte, error) {
 		return appendAgentTable(existing, name, a), nil
 	}
 
-	// Set each field in place — replacing the line where it already sits, appending
-	// where it does not, deleting where the agent no longer carries it — so an edit
-	// through the surface leaves the operator's own comments inside the table.
+	// Set each field in place — replace where it already sits, append
+	// where it doesn't, delete where the agent no longer carries it — so
+	// an edit leaves the operator's own comments inside the table.
 	for _, f := range agentFields(a) {
 		lines, end = setKeyInTable(lines, start, end, f.key, f.render, f.set)
 	}
 	return []byte(strings.Join(lines, eol)), nil
 }
 
-// DeleteUserAgent removes one agent's table entirely, and touches nothing else in
-// the operator's file — no other table is rewritten as a side effect of a delete.
-// A space that last spawned with this agent simply reads it as nothing remembered
-// on its next snapshot and reopens the picker.
+// DeleteUserAgent removes one agent's table entirely and touches nothing
+// else — no other table is rewritten as a side effect. A space that last
+// spawned with this agent reads it as nothing remembered on its next
+// snapshot and reopens the picker.
 func DeleteUserAgent(existing []byte, name string) ([]byte, error) {
 	if err := ValidAgentName(name); err != nil {
 		return nil, err
@@ -64,8 +63,8 @@ func DeleteUserAgent(existing []byte, name string) ([]byte, error) {
 	if !found {
 		return existing, nil // already gone; nothing to do
 	}
-	// Take the blank lines the table left behind with it, so repeated register and
-	// delete cycles cannot slowly fill the file with gaps.
+	// Take the blank lines the table left behind, so repeated
+	// register/delete cycles can't slowly fill the file with gaps.
 	for start > 0 && strings.TrimSpace(lines[start-1]) == "" && (end >= len(lines) || strings.TrimSpace(lines[end]) == "") {
 		start--
 	}
@@ -85,10 +84,9 @@ func agentFields(a Agent) []agentField {
 		{key: "adapter", render: "adapter = " + strconv.Quote(a.Adapter), set: true},
 		{key: "prompt", render: "prompt = " + strconv.Quote(a.Prompt), set: a.Prompt != ""},
 		{key: "args", render: renderList("args", a.Args), set: len(a.Args) > 0},
-		// The environment is written exactly as the operator typed it, tilde and all:
-		// expansion happens on the way out (agentenv.go), so their file keeps reading
-		// as the shell line they had in mind rather than as a machine-specific
-		// absolute path they never wrote.
+		// The environment is written exactly as typed, tilde and all —
+		// expansion happens on the way out (agentenv.go), so the file
+		// keeps reading as the shell line the operator had in mind.
 		{key: "env", render: renderList("env", a.Env), set: len(a.Env) > 0},
 	}
 }
@@ -121,9 +119,9 @@ func setKeyInTable(lines []string, start, end int, key, render string, set bool)
 	}
 }
 
-// appendAgentTable adds the table for an agent that has none, in the same style
-// as the binding writer: a blank line off whatever precedes it, then the table.
-// The name is validated to need no quoting, so the header is written bare.
+// appendAgentTable adds the table for an agent that has none, in the same
+// style as the binding writer: a blank line, then the table. The name is
+// validated to need no quoting, so the header is written bare.
 func appendAgentTable(existing []byte, name string, a Agent) []byte {
 	var b bytes.Buffer
 	b.Write(existing)
@@ -142,9 +140,9 @@ func appendAgentTable(existing []byte, name string, a Agent) []byte {
 	return b.Bytes()
 }
 
-// agentDeclared reports whether the config already registers this agent in some
-// other TOML shape than the canonical table — the case the writer refuses rather
-// than duplicating a key the decoder would reject wholesale.
+// agentDeclared reports whether the config already registers this agent in
+// some other TOML shape than the canonical table — the case the writer
+// refuses rather than duplicating a key the decoder would reject wholesale.
 func agentDeclared(existing []byte, name string) bool {
 	var af agentsFile
 	if len(existing) == 0 || !decodeTOML(existing, &af) {
