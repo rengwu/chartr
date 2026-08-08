@@ -6,7 +6,6 @@
   import { showsFinishedDot } from "./unseen";
   import {
     X,
-    Circle,
     XCircle,
     CircleNotch,
     Play,
@@ -439,13 +438,14 @@
             }}
           >
             <!-- Status indicator. A tab with no known agent in front: a
-                 spinner while working, an open ring idle, an error mark once
-                 it exits. A tab with a known agent reads the agent's own
-                 broadcast state — the same spinner and ring, plus a held
-                 pause mark when it is blocked waiting on its human. A dead
-                 session freezes under a grey mark. Working is the one state
-                 that cannot also be unseen — nothing has finished yet — so it
-                 alone keeps a fixed weight. -->
+                 spinner while working, an error mark once it exits — idle
+                 shows nothing, the same quiet default the card header uses.
+                 A tab with a known agent reads the agent's own broadcast
+                 state — the same spinner, plus a held pause mark when it is
+                 blocked waiting on its human. A dead session freezes under a
+                 grey mark. Working is the one state that cannot also be
+                 unseen — nothing has finished yet — so it alone keeps a
+                 fixed weight. -->
             {#if t.status === "working"}
               <CircleNotch
                 class="size-3.5 shrink-0 animate-spin text-primary"
@@ -468,12 +468,6 @@
                 class="size-3.5 shrink-0 {tone}"
                 {weight}
                 aria-label="exited{away}"
-              />
-            {:else}
-              <Circle
-                class="size-3.5 shrink-0 {tone}"
-                {weight}
-                aria-label="idle{away}"
               />
             {/if}
 
