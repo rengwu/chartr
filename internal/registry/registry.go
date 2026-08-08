@@ -1,6 +1,6 @@
 // Package registry is the space registry: the operator's list of registered
 // spaces plus the one synthetic Scratch entry, held in memory as a rebuildable
-// index rather than a source of truth (ticket 02, ADR 0003, ADR 0009). Everything
+// index rather than a source of truth (ticket 02, ADR 0003). Everything
 // authoritative — maps, committed workspace config, git history — lives in the
 // repositories; the registry holds only registered paths, the operator's sidebar
 // order, and each space's local recency. Losing it costs re-adding folders, never

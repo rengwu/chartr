@@ -8,11 +8,17 @@ Guidance for Claude Code sessions working in this repo.
   in. Each term carries an _Avoid_ list of the near-synonyms it exists to
   displace. Use its words in code, comments, commits and tickets; if a term you
   need is missing, that is worth raising rather than inventing a synonym for.
-- **`docs/adr/`** — 17 numbered decision records. **Read the banner first**: a
-  superseded or partly-retired record keeps its body unedited and states at the
-  top what is no longer true, so the body alone will mislead you. 0004 and 0008
-  are the ones to know — review was deleted, so there is no approval gate, no
-  promotion, and no `proposed` status anywhere.
+- **`docs/adr/`** — 17 numbered decision records, in three states. Most are
+  live. **0004, 0008, 0011, 0013 are partly retired**: the body stands unedited
+  and a banner at the top names what is no longer true, so *read the banner
+  first* — the body alone will mislead you. **0007, 0009, 0014 are tombstones**:
+  wholly superseded, collapsed to what was decided and where the live decision
+  went. Numbers are permanent references and are never reused; a collapsed
+  record's full body is in `git log -p` on its file.
+
+  The one to know: review was deleted, so there is no approval gate, no
+  promotion, and no `proposed` status anywhere. A ticket resolves when its
+  session writes `## Answer`.
 - **`docs/design-system.md`** — required before any UI change (see below).
 
 Code comments carry the *why* and are load-bearing; several exist to stop a

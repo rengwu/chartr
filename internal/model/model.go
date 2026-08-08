@@ -19,8 +19,8 @@ type Model struct {
 	// Config are the config layers that are not a space's own — the operator's
 	// one local config file and the two skill libraries above and below it. They
 	// participate in resolving every space, so they are derived once here rather
-	// than repeated under each one, and the settings route reads them as the
-	// global half of the effective config surface (ADR 0014). Never nil.
+	// than repeated under each one, and the settings route reads them as its
+	// global half. Never nil.
 	Config []ConfigLayer `json:"config"`
 	// Agents is the operator's registered agent library — named launch specs a
 	// role in any space may be assigned to. Global rather than per space (it lives
@@ -75,7 +75,7 @@ type Model struct {
 // every layer names where on disk it lives.
 //
 // Name is the server-side token the open action resolves — the client never
-// sends a path, only one of these names (ADR 0014).
+// sends a path, only one of these names.
 type ConfigLayer struct {
 	Name string `json:"name"`
 	// Layer is which of the three layers this file is (built-in, workspace, user),

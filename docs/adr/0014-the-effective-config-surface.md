@@ -1,65 +1,28 @@
 # One global settings route shows what the layers resolve, and edits only role bindings into the user layer
 
-> **Superseded by the `agent-selection` effort.** This surface was built on
-> per-field provenance across three
-> layers, which no longer exists: role bindings and the committed execution layer
-> are gone, and execution is chosen per spawn from the operator's agent library
-> (ADR 0009's execution half is superseded alongside this). What replaces the
-> surface is smaller and needs no ADR — the agent library plus the paths of the
-> files behind it, each openable in the editor. Of the machinery below, only the
-> named-layer open action survives, now resolving skill directories and the
-> agent-library file alone; the read-of-bindings, the inline binding editor
-> (`config.SetUserBinding`), and the layer/provenance badges are all removed. The
-> account below is retained as the record of what the surface used to be.
+> **Superseded in full by the `agent-selection` effort. Nothing here is
+> operative.** What replaced it is small enough to need no ADR of its own.
 
-chartr's configuration resolves through three documented layers that nobody could see. The **effective config surface** is the answer: a single global route — the cockpit's first real route — that renders every value the layers resolve, with the layer it came from and the file that layer lives in. Its governing constraint is **legibility first**: it explains the config that already exists and **never becomes a second config store**.
+**What was decided:** that chartr's three config layers resolved invisibly, and
+the fix was one global settings route rendering every effective value beside the
+layer it came from and the file that layer lives in — legibility first, and
+**never a second config store**. It edited exactly one thing, role bindings, and
+only into the user layer.
 
-**The route is a hash prefix, not a router.** `App.svelte` reads `#/settings` in one `$derived` (`web/src/lib/route.ts` is a parser and its inverse), with `#/settings/s=<spaceId>` and `#/settings/user` as the two scopes. The star deep-link scheme (`#s=<id>&m=<slug>&t=<num>`) has no leading slash, so the two schemes are disjoint by construction and neither has to know about the other. Entry is a ⚙ in the sidebar header or `,`; exit is Esc, the ⚙ again, or selecting a space. Rejected: a routing library for one route; and keeping *both* a per-space drawer and a global screen — `SpacePane`'s bindings button now navigates here, so config has one home.
+**Why it is gone:** the surface was built on per-field provenance across three
+layers, and those layers no longer exist (see
+[0009](0009-config-layers-execution-vs-content.md), superseded alongside it).
+Role bindings and the committed execution layer are deleted; execution is chosen
+per spawn from the operator's agent library. The read-of-bindings, the inline
+binding editor (`config.SetUserBinding`) and the layer/provenance badges are all
+removed. Only the open-this-file action survives, now resolving skill
+directories and the agent-library file.
 
-**The route renders over the space cockpit, not in place of it in the tree.** The terminal and the star-map are imperative islands (ADR 0010); unmounting them to read config would cost a socket re-attach and the map's open state. So the pane stays mounted underneath and takes an `active` prop that makes it inert: it handles no keystrokes, and it stops reflecting its selection into the URL, which the route owns while it is up.
+**Where the live surface is:** the settings route today is the agent library,
+the registered skill sources in resolution order, the four role→**skill**
+bindings 0017 introduced (not the role→*agent* bindings this record edited,
+which are gone), and the paths of the files behind all of it —
+read-value-plus-open-file, holding the original "never a second config store"
+constraint. See `CONTEXT.md` → *Settings surface*.
 
-**The read path rides the existing per-space model push.** `Server.deriveSpace` already folded bindings (per-field provenance and the PATH probe), map kinds and warnings into `model.Space`; this adds `Space.Skills` — every skill with the layer that won its whole directory and its stale-fork state — computed next to the bindings loop, plus the path of every participating layer: a space's own two on `Space.Layers`, the three shared by every space on `Model.Config`. Nothing here is fetched separately and nothing is client-derived. The payload preview stays the separate on-demand fetch it already was, and the surface links into it rather than rebuilding the assembly.
-
-**The global scope stands on its own.** The user scope is reachable with nothing registered, so it cannot be a view onto a space: alongside the shared layers it lists `Model.Skills` — the library resolved with no repo in play (the built-in floor with the operator's forks over it), the same push, derived once — so "what are my skills and where do they live" never requires registering a space to find out. Its open action goes through `POST /api/config/open`, which resolves the global names only; borrowing a space's id to open the operator's own files would have made the answer depend on state the question does not involve.
-
-**One split the surface must tell honestly.** Role bindings resolve from `<dataDir>/user.toml`, while the *user skill layer* lives under `<configDir>/skills/`. These are one "user layer" in ADR 0009's sense but two files, because the two halves were adopted a ticket apart. The surface shows both paths rather than implying a single file — the point of the screen is to stop guessing where a value lives.
-
-**The edit boundary is one setting, one direction.** Only role bindings are inline-editable, and only into the **user layer** (`[spaces."<path>".roles.<role>]`) — bindings resolve user-over-workspace (ADR 0009), so the user layer *is* their home, and a local UI must never write committed workspace config it labels "workspace" on a teammate's behalf. The write (`config.SetUserBinding`) is **key-level and comment-preserving**: it works on the file's own lines to set, replace, or delete one key, leaving every surrounding byte — comments, key ordering, spacing, unrelated tables — intact, and appends a table in `DeclareMapKind`'s style only when the target table is absent. This is strictly harder than `DeclareMapKind`, which only ever appends to a slug it has proven absent. **Clearing a field reveals the layer beneath it**, so editing is reversible rather than a one-way ratchet, and the handler rebuilds so the new value and its new provenance reflect straight back with no optimistic client state.
-
-**Everything else is read-value-plus-open-file.** `POST …/config/open` (per space, and `POST /api/config/open` for the layers that are nobody's) launches `$VISUAL`, then `$EDITOR`, then the OS opener, and finally surfaces the absolute path — a headless environment still tells the operator where the file is. It resolves a **named layer server-side** (`workspace-config`, `user-config`, `builtin-skills`, `user-skills`, `workspace-skills`, `skill:<name>`) and never a path from the client, so a local server cannot be talked into opening an arbitrary file. A layer with nothing on disk yet is reported with its path and nothing is created.
-
-**The explanation is the badges.** Provenance tags, one line of layering, and links that open the `core` / `tracker-convention` skills — the canonical account of resolution — plus the ADR reference. Rejected: an in-app diagram or tutorial, which is a docs problem that rots against the skills that actually define the method.
-
-## Consequences
-
-- **The surface can only show what the layers resolve.** With autopilot gone (simplify, ticket 03) there is no ad-hoc preference left, and inventing a key-value table for one would be the second config system this ADR refuses. A genuine preference earns a layer and a home when it actually appears.
-- **Map kind stays classify-only.** It is rendered read-only here and the surface links to the star-map's picker, where a human confirms it (ADR 0007). There is deliberately no second path to set it.
-- **Runtime session state and secrets are absent by design.** Config stays config; no credentials box becomes a new attack surface.
-- **Editing beyond bindings does not exist yet.** Everything else is open-the-file. A second setting that actually churns earns inline editing then, not speculatively now.
-- **The binding writer understands one TOML shape.** A role already bound through an inline table or a dotted key is refused with a message pointing at a hand edit, rather than gaining a duplicate table the decoder would reject wholesale. The line editor is a few hundred lines that must stay honest about what it does not parse.
-- **`args` is edited as a whitespace-separated list.** An argument containing a space has to be written in the file; the surface says so rather than silently mangling it.
-
-## Considered options
-
-- **A per-space drawer, kept alongside a global screen** — rejected: two homes for one set of values, and the per-space one could never show the global user file.
-- **A routing library** — rejected: one route, ~15 lines of parsing, and a dependency that would outlive the reason for it.
-- **Writing the workspace layer when a value's provenance is workspace** — rejected: it would let a local UI silently edit shared, committed content, which is exactly the confusion ADR 0009's asymmetry exists to prevent. The user layer always wins for bindings, so it is always the correct target.
-- **Decode-and-re-encode the user's TOML** — rejected: it would normalise away comments, ordering and spacing on every edit. The file is the operator's to read and hand-edit (the hackability stance); a UI edit must leave it looking like theirs.
-- **Accepting a path from the client on the open action** — rejected: a loopback server that opens any path on request is an arbitrary-file-open primitive. Named layers only.
-- **An ad-hoc preferences table** — rejected: the "second config system" the surface exists to avoid.
-- **Rebuilding the payload assembly on this screen** — rejected: the payload preview already answers "what would a session be told"; the surface links to it.
-
-## Amendment: the map-kind row and the `DeclareMapKind` comparison lapse (kind-cut, ticket 04)
-
-**Map kind is removed from chartr entirely** (ADR 0015, superseding 0007),
-so the consequence "map kind stays classify-only" has no subject: there is no
-read-only kind row on this surface, no classify action to link out to, and the
-star-map picker it pointed at no longer classifies anything. The consequence's
-actual content — *this surface edits role bindings and nothing else* — is
-unchanged and is what the bullet should now be read for.
-
-The edit-boundary paragraph compares `config.SetUserBinding`'s difficulty against
-`config.DeclareMapKind`, which is deleted. The comparison still holds, stated in
-its own terms: appending a whole table after a blank line, to a slug already
-proven absent, is strictly easier than the key-level, comment-preserving edit
-`SetUserBinding` performs on an existing table.
+*Original record in `git log -p -- docs/adr/0014-the-effective-config-surface.md`.*

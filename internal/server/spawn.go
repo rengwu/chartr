@@ -255,7 +255,7 @@ func agentSpec(res config.Resolution, agent string) (launchSpec, int, error) {
 // emptyLibraryMessage is the refusal a spawn, ideate, or respawn gives when the
 // operator has registered no agents at all: the one place the wall says both what
 // is wrong and where to fix it, since an empty library is chartr's starting state
-// (ADR 0009) and the frontend renders the same empty state from agentchoice.ts.
+// and the frontend renders the same empty state from agentchoice.ts.
 const emptyLibraryMessage = "no agents are registered — register one in settings before you can spawn"
 
 // launchSession runs the spawn mechanics: it composes the payload fresh

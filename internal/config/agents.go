@@ -12,7 +12,8 @@ import (
 
 // The agent library: named launch specs the operator registers once and picks
 // from at the moment of spawning. It is the *only* execution config — there are
-// no role bindings and no committed layer (ADR 0009 as superseded).
+// no role→agent bindings and no committed execution layer, so nothing about how
+// an agent runs can arrive by `git pull`.
 //
 // An agent is a *complete, self-describing way to run a harness* — the binary,
 // whatever flags that harness wants, and how it takes its opening prompt. Nothing

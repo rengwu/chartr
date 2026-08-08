@@ -182,10 +182,10 @@ func New(opts Options) (*Server, error) {
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/agent", s.handleSetSpaceAgent)
-	// The effective config surface (ticket 05, ADR 0014). The read half rides the
-	// per-space model push; these are the two writes it is allowed. Editing a role
-	// Opening a layer file is a POST because it launches a process, and it resolves
-	// a *named* layer server-side — never a path from the client.
+	// The settings surface (ticket 05). The read half rides the per-space model
+	// push, so opening a layer file is the only write it gets. It is a POST because
+	// it launches a process, and it resolves a *named* layer server-side — never a
+	// path from the client.
 	s.mux.HandleFunc("POST /api/spaces/{id}/config/open", s.handleOpenLayer)
 	// The same open, for the layers that belong to no space — the operator's own
 	// config file and the global skill library. The global scope is reachable with
