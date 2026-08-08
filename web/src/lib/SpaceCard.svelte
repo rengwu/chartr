@@ -6,7 +6,6 @@
   import { showsFinishedDot } from "./unseen";
   import {
     X,
-    Check,
     Circle,
     XCircle,
     CircleNotch,
@@ -16,7 +15,6 @@
     ArrowUUpLeft,
     Warning,
     PauseCircle,
-    GitBranchIcon,
   } from "phosphor-svelte";
 
   // The three choices a dead session offers. The card names the choice; the
@@ -146,7 +144,7 @@
     suppressClick = false;
     if (!reorderable || !e.isPrimary || e.button !== 0) return;
     // Controls inside the card own their own gestures — the forget button, the
-    // branch copy, the new-shell menu, and the session rows, which are click
+    // new-shell action, and the session rows, which are click
     // targets that switch the shell in view. A press on one is never a grab, and
     // each shows the pointer rather than the card's open hand: the affordance
     // and what the press actually does have to agree.
@@ -211,31 +209,6 @@
     ongrabdrop();
   }
 
-  // Copy-to-clipboard for the branch chip. The card sets `select-none` — it is a
-  // click target, and drag-selecting inside one is noise — so this button is the
-  // *only* way the branch name leaves the UI, not a shortcut alongside manual
-  // selection. That is why the failure is shown rather than swallowed the way the
-  // terminal's copy-on-select swallows it: there, a denied clipboard still leaves
-  // you a selection to ⌘C; here it would leave nothing at all.
-  // `navigator.clipboard` needs a secure context, so a harness opened over plain
-  // http on a LAN address lands in exactly that case.
-  let copied = $state<{ ok: boolean } | null>(null);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-
-  async function copyToClipboard(text: string) {
-    let ok = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      ok = true;
-    } catch {
-      ok = false;
-    }
-    copied = { ok };
-    clearTimeout(copiedTimer);
-    copiedTimer = setTimeout(() => {
-      copied = null;
-    }, 1200);
-  }
 </script>
 
 <!-- One space, a faintly filled plate on the sidebar surface (its own
@@ -252,10 +225,8 @@
      sessions and its actions all read as one object rather than a
      header you must aim at. Selected emphasis rides --primary, the one
      emphasis token; the chrome is monochrome. Because the whole card is a click target,
-     it is `select-none` throughout — name, sessions, branch. Dragging
-     a selection across a thing you click is noise, and the branch —
-     the one string actually worth lifting — has its own copy button
-     instead. The path stays the card's tooltip. -->
+     it is `select-none` throughout. Dragging a selection across a thing
+     you click is noise. The path stays the card's tooltip. -->
 <div
   bind:this={cardEl}
   role="button"
@@ -323,8 +294,7 @@
     ></div>
   {/if}
 
-  <!-- Identity: the space's name, with the forget
-       action pinned top-right (the branch rides the action row below).
+  <!-- Identity: the space's name, with the forget action pinned top-right.
        Ambient cross-space attention (ticket 14, story 8) rides on the name
        line — a wants-you flag (a session halted) and a liveness dot,
        both echoing the same signals the queue pulls and the session
@@ -572,56 +542,11 @@
     </ul>
   {/if}
 
-  <!-- Actions: the one ticketless on-ramp — a `+` that opens a plain shell,
-       nothing injected — sharing its row with the branch, which doubles as
-       the spacer that pushes it right. The branch is a real ghost
-       Button rather than a bare span with a handler: it is a control
-       inside a control, so it earns the same hover, focus ring and
-       keyboard reach every other action in this row has. The size
-       variants all set a fixed height and `shrink-0`, so this one
-       overrides both — it still has to truncate and still has to be
-       the spacer.
-
-       Scratch honours neither: it is not a repository, so a
-       branch chip would tell the operator something false, and the
-       on-ramp cannot act on a space with no map and no repository. That
-       empties the row, so the row itself does not render — the card's
-       own `gap-2` would otherwise leave a blank strip under the shells.
-       The shell rows above stay, and so does the grab: it is reorderable
-       and its shells are selectable like any other space's. -->
+  <!-- The one ticketless on-ramp: a `+` that opens a plain shell, aligned to
+       the card's right edge. Branch information deliberately does not appear in
+       the sidebar; the card is for the space and its running sessions. -->
   {#if !space.scratch}
-    <div class="flex items-center gap-1">
-      <span
-        class="flex min-w-0 flex-1 items-center gap-1.5 text-[0.6rem] text-muted-foreground"
-      >
-        {#if space.branch}
-          <Button
-            variant="ghost"
-            class="-mx-1 h-auto min-w-0 shrink justify-start gap-1.5 rounded-sm px-1 py-0.5 text-[0.6rem] font-normal text-muted-foreground hover:text-foreground [&_svg:not([class*='size-'])]:size-3"
-            aria-label="Copy branch name"
-            title={copied
-              ? copied.ok
-                ? "Copied"
-                : "Couldn’t copy — clipboard unavailable"
-              : `Copy branch — ${space.branch}`}
-            onclick={(e) => {
-              e.stopPropagation();
-              void copyToClipboard(space.branch ?? "");
-            }}
-          >
-            {#if copied}
-              {#if copied.ok}
-                <Check class="text-primary" />
-              {:else}
-                <Warning class="text-destructive" />
-              {/if}
-            {:else}
-              <GitBranchIcon />
-            {/if}
-            <span class="truncate font-mono">{space.branch}</span>
-          </Button>
-        {/if}
-      </span>
+    <div class="flex justify-end">
       <!-- One button, one action: a plain shell. The split button that used to
            stand here also picked an agent to start a free session on, and the
            card is not the place for a choice — a space row is a place you

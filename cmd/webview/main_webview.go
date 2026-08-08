@@ -149,6 +149,12 @@ func run(dataDir string) error {
 	// its branding where it has always been.
 	if h := installTitleBar(w); h > 0 {
 		w.Init(fmt.Sprintf("window.__chartrTitleBar=%d;", h))
+		// The page reports the exact live boxes of clickable controls in its
+		// top strip. Everything outside those boxes remains native drag surface.
+		_ = w.Bind("__chartrSetTitleBarButtonRects", func(rects []titleBarButtonRect) error {
+			setTitleBarButtonRects(w, rects)
+			return nil
+		})
 	}
 
 	// A link clicked in terminal output goes to the operator's real browser. The

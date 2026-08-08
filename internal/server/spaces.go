@@ -116,6 +116,26 @@ func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleOpenSpace reveals a registered repository in the platform's folder
+// browser. It resolves the path from the registry id and deliberately bypasses
+// the editor preference used for config files: this action means "show folder".
+func (s *Server) handleOpenSpace(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	opener := osOpener()
+	if opener == "" {
+		httpError(w, http.StatusInternalServerError, "no folder opener is available on this platform")
+		return
+	}
+	if err := start(opener, e.Path); err != nil {
+		httpError(w, http.StatusInternalServerError, "opening space folder: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleReorder applies the operator's sidebar arrangement: one endpoint taking
 // the complete ordered list of space ids, never a per-row move. The whole list
 // is what the drag and the keyboard both send, so there is one write path, the
@@ -273,7 +293,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// Whether a git source can be registered at all. Same shape as the two
 		// probes above — a PATH check, resolved per rebuild, never cached.
 		GitAvailable: config.LookPath("git"),
-		Terminal: modelTerminalPrefs(termPrefs),
+		Terminal:     modelTerminalPrefs(termPrefs),
 		Notify: model.NotifyPrefs{
 			After:   notifyPrefs.After.String(),
 			Settle:  notifyPrefs.Settle.String(),
