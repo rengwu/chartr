@@ -23,30 +23,36 @@ package main
 // full-screen edges behave exactly as they do on any other window — none of
 // which a hand-rolled "follow the mouse" loop would get right.
 //
-// The one carve-out is a no-drag zone at the strip's right corner, where the
-// cockpit pins its config gear: hitTest: returns nil there so the click falls
-// through to the WKWebView (the HTML button) instead of starting a window drag.
-// The zone is a fixed width from the right edge — wide enough for the icon
-// button and its padding, far from the centred branding — because the drag view
-// has no knowledge of the page's layout beyond "the gear lives in that corner".
+// The page reports the exact rectangles of every live clickable control in the
+// strip. Those rectangles pass through to the web view; every other point stays
+// on this view and therefore drags, even as labels resize or controls appear and
+// disappear.
 @interface WFDragView : NSView
+@property(nonatomic, copy) NSArray<NSValue *> *buttonRects;
 @end
 
-// The right-corner passthrough for the cockpit's config gear, in points. Sized
-// flush to the gear's footprint in App.svelte: an icon-sm button (size-6, 24px)
-// inset 6px from the right edge, so its left edge lands 30px in. Anything wider
-// would needlessly steal draggable strip beside the button.
-static const CGFloat kWFRightNoDragZone = 30.0;
+// There is one native window per process, and its drag view has the same lifetime
+// as the process's main loop.
+static WFDragView *gWFDragView = nil;
 
 @implementation WFDragView
 
-// Let the config gear pinned to the far-right corner take its own click: for a
-// point in that zone, pass through (return nil) so hit-testing continues down to
-// the WKWebView and the page's button. Everywhere else the strip drags.
+// Pass through only a page-reported clickable rectangle. AppKit's own window
+// buttons sit above this view and continue to take their clicks first.
 - (NSView *)hitTest:(NSPoint)point {
   NSView *hit = [super hitTest:point];
-  if (hit == self && point.x >= NSMaxX([self frame]) - kWFRightNoDragZone) {
-    return nil;
+  if (hit == self) {
+    // AppKit supplies `point` in this view's superview coordinates. The page's
+    // rectangles were converted into this drag view's local coordinates, so
+    // compare like with like. X happens to be identical because the strip begins
+    // at the frame's left edge; Y is not, which is why comparing `point`
+    // directly made every real button click miss its passthrough rectangle.
+    NSPoint localPoint = [self convertPoint:point fromView:[self superview]];
+    for (NSValue *value in self.buttonRects) {
+      if (NSPointInRect(localPoint, [value rectValue])) {
+        return nil;
+      }
+    }
   }
   return hit;
 }
@@ -79,6 +85,24 @@ static const CGFloat kWFRightNoDragZone = 30.0;
 }
 
 @end
+
+// Replace the drag view's passthrough list from CSS-pixel rectangles measured
+// from the viewport's top-left. NSView coordinates start at the bottom-left, so
+// each y value is flipped inside the title strip as it is copied.
+static void wfSetTitleBarButtonRects(double *values, int count) {
+  WFDragView *drag = gWFDragView;
+  if (drag == nil) {
+    return;
+  }
+  NSMutableArray<NSValue *> *rects = [NSMutableArray arrayWithCapacity:count];
+  CGFloat stripHeight = NSHeight([drag bounds]);
+  for (int i = 0; i < count; i++) {
+    double *v = values + (i * 4);
+    NSRect rect = NSMakeRect(v[0], stripHeight - (v[1] + v[3]), v[2], v[3]);
+    [rects addObject:[NSValue valueWithRect:rect]];
+  }
+  drag.buttonRects = rects;
+}
 
 // wfInstallTitleBar hands the window's top strip to the cockpit: the native
 // title bar stops drawing itself and the web content extends underneath it, so
@@ -157,6 +181,8 @@ static double wfInstallTitleBar(void *ptr) {
   NSRect frame = [themeFrame frame];
   WFDragView *drag = [[WFDragView alloc]
       initWithFrame:NSMakeRect(0, NSHeight(frame) - h, NSWidth(frame), h)];
+  drag.buttonRects = @[];
+  gWFDragView = drag;
   [drag setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
   if (titlebar != nil) {
     [themeFrame addSubview:drag positioned:NSWindowBelow relativeTo:titlebar];
@@ -187,4 +213,25 @@ func installTitleBar(w webview.WebView) int {
 	// Points are CSS pixels on macOS whatever the backing scale, so this rounds
 	// rather than converts.
 	return int(math.Round(h))
+}
+
+// setTitleBarButtonRects is called by a webview binding, whose handler already
+// runs on the native UI thread. Apply the rectangles immediately: dispatching a
+// second time from inside that callback can leave the drag overlay holding its
+// previous (or empty) list while the page is already interactive. The C call
+// copies every coordinate before returning, so the Go slice is never retained
+// across the cgo boundary.
+func setTitleBarButtonRects(_ webview.WebView, rects []titleBarButtonRect) {
+	values := make([]C.double, 0, len(rects)*4)
+	for _, rect := range rects {
+		values = append(values,
+			C.double(rect.X), C.double(rect.Y),
+			C.double(rect.Width), C.double(rect.Height),
+		)
+	}
+	if len(values) == 0 {
+		C.wfSetTitleBarButtonRects(nil, 0)
+		return
+	}
+	C.wfSetTitleBarButtonRects((*C.double)(unsafe.Pointer(&values[0])), C.int(len(rects)))
 }

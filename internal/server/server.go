@@ -178,6 +178,9 @@ func New(opts Options) (*Server, error) {
 	// dense 0..n-1 order every save writes.
 	s.mux.HandleFunc("POST /api/spaces/reorder", s.handleReorder)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}", s.handleDeregister)
+	// Open the registered repository in the operator's folder browser. The id is
+	// resolved server-side; no path supplied by the page reaches the OS opener.
+	s.mux.HandleFunc("POST /api/spaces/{id}/open", s.handleOpenSpace)
 	// The remembered agent, set directly rather than only as a side effect of a
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.

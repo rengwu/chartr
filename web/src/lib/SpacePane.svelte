@@ -5,15 +5,15 @@
   import MapCard from './MapCard.svelte'
   import NewShellButton from './NewShellButton.svelte'
   import AsciiFlow from './AsciiFlow.svelte'
+  import { openSpaceFolder } from './actions'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { openingFor, paneState, rememberPane } from './mapstate'
-  import { Warning, Sparkle, Gear } from 'phosphor-svelte'
+  import { Warning, Sparkle, FolderOpen, Check } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
-  // identity (name and path) plus the stage-level controls — warnings, the
-  // star-map toggle, and the cockpit-wide way into config, pinned to the far
-  // right of the chrome rather than sitting beside the branding — over the
+  // identity (name plus folder/path actions) and the stage-level controls —
+  // warnings and the star-map toggle, pinned to the far right — over the
   // terminal. The sidebar now owns session selection (its space cards list each shell), so the
   // active shell arrives as a prop and this pane simply renders it: no tab strip,
   // no per-pane action bar. A mapless space is fully usable this way (story 29).
@@ -31,7 +31,6 @@
     active = true,
     onOpenShell,
     onFreeSession,
-    onOpenSettings,
     onRegisterAgent,
     onspawned,
   }: {
@@ -56,13 +55,6 @@
     // control here picks the agent and hands the name up; there is no skill and no
     // context line to settle.
     onFreeSession: (agent: string) => void
-    // The cockpit-wide way into the config surface (ticket 05), owned by the
-    // enclosing App — the route is App's, this pane just carries the control at
-    // the right end of its title bar. Absent in the macOS shell, where the
-    // window's own title bar carries the gear at its far-right corner instead
-    // (App.svelte); a plain browser tab has no such bar, so the control lands
-    // here.
-    onOpenSettings?: () => void
     // Where an empty-library spawn or launch control sends the operator: agent
     // registration (the user scope of the settings surface). Owned by App like the
     // route above; every agent picker beneath this pane routes its empty state
@@ -72,6 +64,35 @@
     // 09), so the enclosing App can make the new session's tab active.
     onspawned?: (sessionId: string) => void
   } = $props()
+
+  // The space name copies its path, with the folder action beside it. Feedback
+  // stays on those controls so the compact header does not grow a transient
+  // second line.
+  let pathFeedback = $state<'copied' | 'copy-error' | 'open-error' | null>(null)
+  let pathFeedbackTimer: ReturnType<typeof setTimeout> | undefined
+
+  function showPathFeedback(next: typeof pathFeedback) {
+    pathFeedback = next
+    clearTimeout(pathFeedbackTimer)
+    pathFeedbackTimer = setTimeout(() => (pathFeedback = null), 1400)
+  }
+
+  async function revealSpace() {
+    try {
+      await openSpaceFolder(space.id)
+    } catch {
+      showPathFeedback('open-error')
+    }
+  }
+
+  async function copySpacePath() {
+    try {
+      await navigator.clipboard.writeText(space.path)
+      showPathFeedback('copied')
+    } catch {
+      showPathFeedback('copy-error')
+    }
+  }
 
   // A deep link names a star (spec): #s=<spaceId>&m=<mapSlug>&t=<ticketNum>, or
   // &mat=1 for the map material, or &maps=1 for the picker. Parsed once at init — the
@@ -372,8 +393,8 @@
 
 <svelte:window onkeydown={onKey} />
 
-<!-- The space's stage: a full-width title bar (the space's identity — name and
-     path) over a row of its subpanes. The identity lives here, one level above
+<!-- The space's stage: a full-width title bar (the space's name and path
+     actions) over a row of its subpanes. The identity lives here, one level above
      the panes, so the hierarchy reads "space › {terminals, map}": each pane
      carries only its own chrome. A floating map overlays the panes row but never
      this header — the panes row is its positioning context, and it sits below.
@@ -385,17 +406,44 @@
      context of its own — leaked its z-30 chrome through settings. -->
 <div class="isolate flex h-full min-h-0 flex-col">
   <header class="cockpit-bar justify-between">
-    <div class="flex min-w-0 items-baseline gap-2" title={space.path}>
-      <span class="truncate text-sm font-semibold">{space.name}</span>
-      <code class="truncate font-mono text-[0.7rem] text-muted-foreground">{space.path}</code>
+    <div class="flex min-w-0 items-center gap-1" title={space.path}>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="-ml-1 min-w-0 shrink justify-start px-1 text-sm font-semibold"
+        aria-label="Copy path for {space.name}"
+        title={pathFeedback === 'copied'
+          ? 'Copied'
+          : pathFeedback === 'copy-error'
+            ? 'Couldn’t copy — clipboard unavailable'
+            : `Copy ${space.path}`}
+        onclick={copySpacePath}
+      >
+        <span class="truncate">{space.name}</span>
+        {#if pathFeedback === 'copied'}
+          <Check class="shrink-0" />
+        {:else if pathFeedback === 'copy-error'}
+          <Warning class="shrink-0 text-destructive" />
+        {/if}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Open {space.name} in the folder browser"
+        title={pathFeedback === 'open-error' ? 'Couldn’t open the folder' : `Open ${space.path}`}
+        onclick={revealSpace}
+      >
+        {#if pathFeedback === 'open-error'}
+          <Warning class="text-destructive" />
+        {:else}
+          <FolderOpen />
+        {/if}
+      </Button>
     </div>
 
-    <!-- The stage-level controls, right-aligned: any surfaced warnings, the one
-         star-map show/hide toggle — lifted here now that the terminal has no
-         action bar — and, in a plain browser tab, the cockpit-wide gear into the
-         config surface (each space card keeps its own ⚙ for that space's scope).
-         The macOS shell carries that gear in the window's title bar instead, so
-         onOpenSettings is absent and the button below does not render. -->
+    <!-- The stage-level controls, right-aligned: surfaced warnings and the one
+         star-map show/hide toggle. Settings lives at the bottom of the sidebar,
+         so this end of the bar stays dedicated to the active space. -->
     <div class="flex items-center gap-1.5">
       {#if warnings.length}
         <span
@@ -419,17 +467,6 @@
           onclick={toggleMap}
         >
           <Sparkle weight={mapShown ? 'fill' : 'regular'} /> Map
-        </Button>
-      {/if}
-      {#if onOpenSettings}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Config"
-          title="Your agents, and where the files behind them live (,)"
-          onclick={onOpenSettings}
-        >
-          <Gear />
         </Button>
       {/if}
     </div>

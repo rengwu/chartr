@@ -10,3 +10,7 @@ import webview "github.com/webview/webview_go"
 // wrong would be worse than the native one. Reporting zero is how the cockpit
 // learns to render nothing.
 func installTitleBar(webview.WebView) int { return 0 }
+
+// Non-macOS shells keep their window manager's title bar, so the page never
+// reports button rectangles there. Keep the seam complete for all webview builds.
+func setTitleBarButtonRects(webview.WebView, []titleBarButtonRect) {}

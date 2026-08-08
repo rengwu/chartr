@@ -205,6 +205,9 @@ func TestRepoScopedEndpointsRefuseScratch(t *testing.T) {
 		{"open a config layer", func() (int, string) {
 			return h.Post("/api/spaces/"+id+"/config/open", map[string]string{"layer": "user-config"})
 		}},
+		{"open its folder", func() (int, string) {
+			return h.Post("/api/spaces/"+id+"/open", nil)
+		}},
 		{"set the remembered agent", func() (int, string) {
 			return h.Put("/api/spaces/"+id+"/agent", map[string]string{"agent": "stub"})
 		}},

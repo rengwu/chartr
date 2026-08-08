@@ -29,10 +29,17 @@
   import { acknowledgesFinishedRun } from "./lib/unseen";
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
-  import { nativeTitleBarHeight } from "./lib/titlebar";
+  import { nativeTitleBarHeight, trackTitleBarButtons } from "./lib/titlebar";
   import { configurableSpaces, visibleSpaces } from "./lib/spacevisibility";
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
-  import { Plus, X, CircleNotch, Gear, FolderOpen, TerminalWindow } from "phosphor-svelte";
+  import {
+    Plus,
+    X,
+    CircleNotch,
+    Gear,
+    FolderOpen,
+    MagnifyingGlass,
+  } from "phosphor-svelte";
 
   // The one control socket for this browser. The chrome renders whatever the
   // latest snapshot holds and reacts to every push (ADR 0010).
@@ -53,7 +60,7 @@
 
   // The last settings scope the operator was on, remembered across leaving the
   // surface (the hash is cleared on exit, so the scope would otherwise be lost).
-  // The cockpit-wide gear reopens onto this, so a click lands you back where you
+  // The sidebar Settings control reopens onto this, so a click lands you back where you
   // were rather than forcing any particular submenu. Null until the first visit.
   let lastSettingsScope = $state<SettingsScope | null>(null);
   $effect(() => {
@@ -92,6 +99,7 @@
 
   onMount(() => {
     control.connect();
+    const stopTrackingTitleBarButtons = trackTitleBarButtons(titleBarH);
     // A deep link names its space (#s=<id>&…); select it up front so the linked
     // star seats as soon as the space arrives over the socket (ticket 07). The
     // rest of the link — map and star — is applied inside the space's pane.
@@ -101,6 +109,7 @@
     window.addEventListener("hashchange", onHash);
     return () => {
       window.removeEventListener("hashchange", onHash);
+      stopTrackingTitleBarButtons();
       control.close();
     };
   });
@@ -221,7 +230,6 @@
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.path.toLowerCase().includes(q) ||
-        (s.branch ?? "").toLowerCase().includes(q) ||
         s.terminals.some(
           (t) =>
             t.proc.toLowerCase().includes(q) ||
@@ -590,26 +598,21 @@
 <svelte:window onkeydown={onGlobalKey} />
 
 <div class="flex h-full min-h-0 flex-col">
-  {#if titleBarH}
-    <!-- The window's title bar, ours to draw (macOS shell only). Its height is
-         the strip the shell freed, so the three native window buttons — still
-         AppKit's, drawn over this — sit centred at the left, and the branding
-         centres in the full window width, clear of them. The whole strip drags
-         the window because AppKit still owns its mouse events (WFDragView).
-
-         The one exception is the config gear pinned to the far-right corner: the
-         native drag view carves a no-drag zone there (titlebar_darwin.go) so the
-         click falls through to this button instead of moving the window. It is
-         the cockpit-wide way into settings, which in a plain browser tab (no
-         title bar) rides the space stage's header instead. -->
-    <header
-      class="relative flex shrink-0 select-none items-center justify-center border-b border-border bg-card"
-      style="height: {titleBarH}px"
+  <div
+    class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]"
+    style={titleBarH ? `--bar-h: ${Math.max(titleBarH, 40)}px` : undefined}
+  >
+    <aside
+      class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
     >
-      <span class="flex min-w-0 items-center gap-2">
-        <!-- `grayscale` desaturates the mark in CSS rather than shipping a second
-             drawing: brandmark.svg is the coloured product mark (favicon, app
-             icon), and the chrome it sits in is monochrome. -->
+      <!-- The brand and the active space now share the one top tier, matching
+           the sketch's split header. In the native macOS shell this tier also
+           fills the title-bar strip; the left inset leaves the real traffic-light
+           buttons clear and seats the wordmark immediately beside them. -->
+      <div
+        class="cockpit-bar justify-start gap-2 bg-transparent"
+        class:pl-20={titleBarH > 0}
+      >
         <img
           src="/brandmark.svg"
           alt=""
@@ -618,62 +621,103 @@
           class="size-5 shrink-0 grayscale"
         />
         <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
-      </span>
-      <!-- Centred with a flex wrapper, not a `-translate-y-1/2` on the button:
-           the button's own press state nudges it with `translate-y-px`, and
-           Tailwind composes both through one translate variable, so a centring
-           transform would be clobbered on mousedown and the gear would jump. -->
-      <div class="absolute inset-y-0 right-1.5 flex items-center">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Config"
-          title="Your agents, and where the files behind them live (,)"
-          onclick={() => openSettings(lastSettingsScope ?? { kind: "default" })}
-        >
-          <Gear />
-        </Button>
       </div>
-    </header>
-  {/if}
 
-  <div class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]">
-    <aside
-      class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-    >
-      <!-- Branding: a home for the cockpit, above the spaces list. The mark and
-           the name — the cockpit-wide way into the config surface (ticket 05)
-           sits at the far top-right of the chrome instead, past the stage's Map
-           toggle (SpacePane).
-
-           In the macOS shell the window's title bar carries the branding instead,
-           centred over the whole window; repeating it here would be the same name
-           twice within 40px. -->
-      {#if !titleBarH}
-        <div class="cockpit-bar gap-2 bg-transparent">
-          <img
-            src="/brandmark.svg"
-            alt=""
-            width="20"
-            height="20"
-            class="size-5 shrink-0 grayscale"
+      <!-- Search is its own compact row below the brand, followed by the
+           section label and the two global creation actions. This keeps adding
+           spaces and opening Scratch close to the list they affect. -->
+      <div class="flex items-center gap-2 px-2 pt-2">
+        <div class="relative min-w-0 flex-1">
+          <MagnifyingGlass
+            aria-hidden="true"
+            class="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground"
           />
-          <span class="truncate text-sm font-semibold tracking-tight">chartr</span>
-        </div>
-      {/if}
-
-      {#if spaces.length > 0}
-        <div class="cockpit-bar justify-between gap-2 bg-transparent">
           <Input
             type="text"
-            class="h-7"
-            placeholder="Filter spaces and sessions…"
+            class="h-8 pl-7"
+            placeholder="Search"
             bind:value={filter}
             spellcheck="false"
             autocapitalize="off"
             autocomplete="off"
             aria-label="Filter spaces and sessions"
           />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 px-2 pt-2 pb-1">
+        <span class="px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase">
+          Spaces
+        </span>
+        <div class="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={picking || control.model === null}
+            aria-label="Add a space"
+            title="Add a space"
+            aria-expanded={nativePicker ? undefined : showAdd}
+            onclick={addSpace}
+          >
+            {#if picking}
+              <CircleNotch class="animate-spin" />
+            {:else if nativePicker}
+              <FolderOpen />
+            {:else}
+              <Plus />
+            {/if}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={opening || control.model === null}
+            aria-label="Open a new Scratch shell"
+            title="Open a new Scratch shell"
+            onclick={openScratchShell}
+          >
+            {#if opening}
+              <CircleNotch class="animate-spin" />
+            {:else}
+              <Plus />
+            {/if}
+          </Button>
+        </div>
+      </div>
+
+      {#if addNotice || addError}
+        <div class="px-3 pb-1" role={addError ? "alert" : "status"}>
+          <div class="flex items-center gap-1.5 text-[0.7rem]">
+            {#if addError}
+              <p class="min-w-0 flex-1 truncate text-destructive" title={addError}>
+                {addError}
+              </p>
+            {:else if addNotice}
+              <p class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground">
+                <span class="shrink-0">Added</span>
+                <span
+                  dir="rtl"
+                  class="min-w-0 flex-1 truncate text-left font-mono"
+                  title={addNotice.path}
+                >{addNotice.path}</span><span class="shrink-0">.</span>
+              </p>
+            {/if}
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss"
+              onclick={() => {
+                addNotice = null;
+                addError = null;
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+          {#if addNotice?.gitInited}
+            <p class="text-[0.65rem] leading-snug text-muted-foreground">
+              Wasn’t a git repository — a new one was initialized there.
+            </p>
+          {/if}
         </div>
       {/if}
 
@@ -715,82 +759,19 @@
         </div>
       {/if}
 
-      <!-- The effective config surface (ticket 05) is entered per space — each
-           space card carries its own ⚙ — or with `,`; this stickied footer
-           keeps only what is genuinely cross-space: adding a new one. Always
-           available, even with zero spaces registered — it's the only way in. -->
-      <div class="flex flex-col gap-2 border-t border-sidebar-border p-2">
-        <!-- The register outcome lands here, next to the control that caused it:
-             the announced `git init` and every refusal. Dismissible, because it
-             is a report on a finished action and nothing depends on it. -->
-        {#if addNotice || addError}
-          <div class="flex flex-col gap-0.5" role={addError ? "alert" : "status"}>
-            <div class="flex items-center gap-1.5 text-[0.7rem]">
-              {#if addError}
-                <p class="min-w-0 flex-1 truncate text-destructive" title={addError}>
-                  {addError}
-                </p>
-              {:else if addNotice}
-                <!-- The path front-truncates (dir="rtl" flips which end the
-                     ellipsis eats from) so the project name at its end stays
-                     visible instead of the drive/user segments at its front. -->
-                <p class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground">
-                  <span class="shrink-0">Added</span>
-                  <span
-                    dir="rtl"
-                    class="min-w-0 flex-1 truncate text-left font-mono"
-                    title={addNotice.path}
-                  >{addNotice.path}</span
-                  ><span class="shrink-0">.</span>
-                </p>
-              {/if}
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Dismiss"
-                onclick={() => {
-                  addNotice = null;
-                  addError = null;
-                }}
-              >
-                <X />
-              </Button>
-            </div>
-            {#if addNotice?.gitInited}
-              <p class="text-[0.65rem] leading-snug text-muted-foreground">
-                Wasn’t a git repository — a new one was initialized there.
-              </p>
-            {/if}
-          </div>
-        {/if}
+      <!-- Settings is the persistent footer destination from the sketch. -->
+      <div class="border-t border-sidebar-border p-2">
         <Button
-          variant="outline"
+          variant={route.settings ? "secondary" : "ghost"}
           size="sm"
-          class="w-full"
-          disabled={picking || control.model === null}
-          aria-expanded={nativePicker ? undefined : showAdd}
-          onclick={addSpace}
+          class="w-full justify-start"
+          aria-pressed={route.settings}
+          onclick={() => {
+            if (route.settings) leaveSettings();
+            else openSettings(lastSettingsScope ?? { kind: "default" });
+          }}
         >
-          {#if picking}
-            <CircleNotch class="animate-spin" /> Choosing…
-          {:else if nativePicker}
-            <FolderOpen /> New Space
-          {:else}
-            <Plus /> New Space
-          {/if}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="w-full"
-          disabled={opening || control.model === null}
-          onclick={openScratchShell}
-        >
-          {#if opening}
-            <CircleNotch class="animate-spin" /> Opening…
-          {:else}
-            <TerminalWindow /> New Scratch Shell
-          {/if}
+          <Gear /> Settings
         </Button>
       </div>
     </aside>
@@ -836,9 +817,6 @@
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
           onFreeSession={(agent) => freeSession(selected, agent)}
-          onOpenSettings={titleBarH
-            ? undefined
-            : () => openSettings(lastSettingsScope ?? { kind: "default" })}
           onRegisterAgent={() => openSettings({ kind: "user" })}
           onspawned={(id) => (activeTermId = id)}
         />

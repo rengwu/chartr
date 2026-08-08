@@ -82,6 +82,13 @@ export function deregisterSpace(id: string): Promise<void> {
   return send('DELETE', `/api/spaces/${encodeURIComponent(id)}`) as Promise<void>
 }
 
+// Open a registered space in the platform's folder browser. The client sends
+// only the registry id; the server resolves the trusted path, so this control
+// cannot be turned into an arbitrary local-path opener.
+export function openSpaceFolder(id: string): Promise<void> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/open`) as Promise<void>
+}
+
 // reorderSpaces sets the sidebar arrangement: the *complete* ordered list of
 // space ids, never a per-row move. One endpoint takes the whole list, so the
 // pointer drag and the keyboard share a single write path; the write is
