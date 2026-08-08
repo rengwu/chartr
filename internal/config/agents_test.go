@@ -7,8 +7,8 @@ import (
 	"github.com/rengwu/chartr/internal/config"
 )
 
-// The agent library — the only execution config there is (ADR 0009 as
-// superseded). Every assertion is on the bytes the writer leaves in the
+// The agent library — the only execution config there is. Every assertion is on
+// the bytes the writer leaves in the
 // operator's file and on what config.ResolveAgents then makes of them: the two
 // public seams. The assertions that matter are the ones a curated flag list could
 // never make — whatever the operator typed is what launches, whether or not this

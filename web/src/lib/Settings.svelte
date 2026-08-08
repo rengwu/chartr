@@ -22,8 +22,8 @@
   // The settings surface (ticket 05): the agent library and the paths of the files
   // behind it, each openable in the operator's own editor. There is no committed
   // execution layer and nothing to explain about resolution any more — the library
-  // is the whole of execution config (ADR 0009 as superseded, ADR 0014 retired).
-  // Everything here traces back to a file; nothing is invented state.
+  // is the whole of execution config. Everything here traces back to a file;
+  // nothing is invented state.
   let {
     spaces,
     config,

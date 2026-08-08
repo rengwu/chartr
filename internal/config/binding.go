@@ -2,7 +2,7 @@
 // agent library (agents.go) and the closed set of roles a session is spawned to
 // do. Execution is chosen per spawn from the library — there are no role→agent
 // bindings, no committed execution layer, and nothing about how an agent runs can
-// arrive by `git pull` (ADR 0009 as superseded by the agent-selection effort). A
+// arrive by `git pull`. A
 // role still picks a skill, derives a default from a ticket's type, and drives the
 // AFK/HITL quiet hint; it simply no longer resolves to an agent.
 package config
