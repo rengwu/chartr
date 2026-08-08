@@ -699,7 +699,6 @@
               ongrabend={endDrag}
               selected={selected?.id === space.id}
               activeTermId={activeTerm?.id ?? null}
-              agents={agentLibrary}
               onselect={() => selectSpace(space.id)}
               onselectsession={(t) => selectSession(space, t)}
               onjumphalt={() => jumpToHalt(space)}
@@ -707,8 +706,6 @@
               onendshell={(t) => endShell(space, t)}
               onhalt={(t, verb) => haltAction(space, t, verb, HALT_ACTIONS[verb])}
               onopenshell={() => openShell(space)}
-              onfreesession={(agent) => freeSession(space, agent)}
-              onregister={() => openSettings({ kind: "user" })}
             />
           {:else}
             <p class="px-2 py-1.5 text-xs text-muted-foreground">
