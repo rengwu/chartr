@@ -59,6 +59,25 @@ func (s *Server) repoSpace(w http.ResponseWriter, r *http.Request) (registry.Ent
 	return e, true
 }
 
+// handleSyncSkills is the manual mirror refresh behind the cockpit's "Sync
+// skills" control: it reconciles this space's `.chartr/skills` mirror against
+// the enabled sources on demand — old skills pruned, current ones (re)written in
+// place — the same reconcile the spawn barrier runs, brought forward so an
+// ad-hoc session chartr did not spawn reads a fresh tree. repoSpace refuses
+// Scratch (no repository to mirror into), and a server with no source registry
+// reconciles to nothing rather than erroring.
+func (s *Server) handleSyncSkills(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	if err := s.ensureSkillsCurrent(e); err != nil {
+		httpError(w, http.StatusInternalServerError, "syncing skills: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleRegister registers a folder as a space. Registration is a plain HTTP
 // action so its outcome — including an announced `git init` — surfaces in the
 // response (ADR 0010, story 2), and the new space also lands in the pushed
@@ -89,6 +108,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Seed the new space's skill mirror straight away so an agent opened in it
+	// before any spawn still reads the enabled sources' skills. Best-effort: the
+	// space is registered regardless, and the spawn barrier is the correctness
+	// path — a mirror hiccup here must not fail the registration the operator
+	// asked for. The mirror is gitignored, so this writes nothing a teammate sees.
+	_ = s.ensureSkillsCurrent(entry)
 	s.rebuild()
 	s.reconcileChartrDoc()
 

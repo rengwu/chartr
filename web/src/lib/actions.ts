@@ -89,6 +89,14 @@ export function openSpaceFolder(id: string): Promise<void> {
   return send('POST', `/api/spaces/${encodeURIComponent(id)}/open`) as Promise<void>
 }
 
+// Reconcile this space's `.chartr/skills` mirror against the enabled sources
+// now, rather than waiting on the next spawn barrier — the manual prewarm behind
+// the cockpit's sync control. Old skills are pruned and current ones (re)written
+// server-side; the refreshed state rides back on the control snapshot.
+export function syncSkills(id: string): Promise<void> {
+  return send('POST', `/api/spaces/${encodeURIComponent(id)}/skills/sync`) as Promise<void>
+}
+
 // reorderSpaces sets the sidebar arrangement: the *complete* ordered list of
 // space ids, never a per-row move. One endpoint takes the whole list, so the
 // pointer drag and the keyboard share a single write path; the write is
