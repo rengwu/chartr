@@ -2,6 +2,7 @@
   import type { Space, Terminal } from "./model";
   import type { DropEdge } from "./reorder";
   import { Button } from "./components/ui/button";
+  import * as ContextMenu from "./components/ui/context-menu";
   import { spaceAttention, spaceLiveness } from "./attention";
   import { showsFinishedDot } from "./unseen";
   import {
@@ -14,6 +15,7 @@
     ArrowUUpLeft,
     Warning,
     PauseCircle,
+    PencilSimple,
   } from "phosphor-svelte";
 
   // The three choices a dead session offers. The card names the choice; the
@@ -37,6 +39,7 @@
     onselectsession,
     onjumphalt,
     onforget,
+    onrename,
     onendshell,
     onhalt,
     onopenshell,
@@ -80,6 +83,9 @@
     // The halt flag doubles as the jump: the chrome deep-links the halted ticket.
     onjumphalt: () => void;
     onforget: () => void;
+    // Right-click → Rename: the chrome owns the little name editor and the action,
+    // so the card only reports the intent, the same way the forget button does.
+    onrename: () => void;
     onendshell: (t: Terminal) => void;
     onhalt: (t: Terminal, verb: HaltVerb) => void;
     onopenshell: () => void;
@@ -210,6 +216,12 @@
 
 </script>
 
+<!-- The card plate is a snippet so it can render either bare (Scratch, which
+     has no repository to act on) or wrapped in a right-click menu (every
+     registered space). The `data-space-id` and the whole drag gesture live on
+     the plate itself, so the sidebar's hit test and reorder are unchanged
+     whichever way it renders. -->
+{#snippet cardPlate()}
 <!-- One space, a faintly filled plate on the sidebar surface (its own
      token family — not the bg-card content surface). The fill, not a
      hairline, is what separates one card from the next: the sidebar
@@ -344,8 +356,8 @@
       <span class="truncate">{space.name}</span>
     </span>
     <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
-         it carries neither the open-shell control nor a forget control that
-         would be refused. -->
+         it carries no open-shell control. Removing a space lives on the
+         right-click menu now (rename/close), not a button on the card. -->
     {#if !space.scratch}
       <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
         <Button
@@ -361,19 +373,6 @@
           }}
         >
           <Plus />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          class="hover:text-destructive"
-          aria-label="Remove space"
-          title="Remove from this list (your files stay put)"
-          onclick={(e) => {
-            e.stopPropagation();
-            onforget();
-          }}
-        >
-          <X />
         </Button>
       </span>
     {/if}
@@ -555,3 +554,32 @@
     </ul>
   {/if}
 </div>
+{/snippet}
+
+{#if space.scratch}
+  <!-- Scratch is rebuilt from nothing on every run, so there is nothing to
+       rename and nothing to close — it renders as a bare plate with no menu. -->
+  {@render cardPlate()}
+{:else}
+  <!-- Right-clicking the plate opens the space's actions. `class="contents"`
+       keeps the trigger out of layout entirely — the plate stays the sidebar's
+       flex item and its measured `[data-space-id]` row — so adding the menu
+       changes nothing about spacing, dragging, or the drop indicator. The
+       contextmenu event bubbles from the plate up to this ancestor, so the
+       card's own pointer/click handlers are left completely untouched. -->
+  <ContextMenu.Root>
+    <ContextMenu.Trigger class="contents">
+      {@render cardPlate()}
+    </ContextMenu.Trigger>
+    <ContextMenu.Content class="w-40">
+      <ContextMenu.Item onSelect={onrename}>
+        <PencilSimple />
+        Rename
+      </ContextMenu.Item>
+      <ContextMenu.Item variant="destructive" onSelect={onforget}>
+        <X />
+        Close
+      </ContextMenu.Item>
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+{/if}

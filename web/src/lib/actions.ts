@@ -109,6 +109,15 @@ export function setSpaceAgent(id: string, agent: string): Promise<void> {
   return send('PUT', `/api/spaces/${encodeURIComponent(id)}/agent`, { agent }) as Promise<void>
 }
 
+// renameSpace sets the operator's own display name for a space, persisted per-path
+// in the registry. It is presentation only — nothing on disk is renamed, the path
+// and id are untouched — so it reads as a saved label the moment it is set. An
+// empty name clears the override, and the space reads by its folder basename
+// again. The new label rides the next model snapshot as `space.name`.
+export function renameSpace(id: string, name: string): Promise<void> {
+  return send('PUT', `/api/spaces/${encodeURIComponent(id)}/name`, { name }) as Promise<void>
+}
+
 // openTerminal opens an ad-hoc shell in the space's working tree (story 29) and
 // returns its terminal id — the key the terminal socket attaches by. The new tab
 // also arrives over the control socket.

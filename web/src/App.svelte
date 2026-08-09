@@ -14,6 +14,7 @@
     pickFolder,
     registerSpace,
     reorderSpaces,
+    renameSpace,
     ActionError,
     LIVE_SESSION,
   } from "./lib/actions";
@@ -403,6 +404,41 @@
     pendingForget = space;
   }
 
+  // The rename editor: the space being renamed, the draft label its field holds,
+  // and a handle to the field so opening the modal seats the caret in it with the
+  // current name selected — overtyping is the common case. Renaming is
+  // presentation only (it persists per-path and changes nothing on disk), so it
+  // is a light one-field editor rather than a confirmation.
+  let renaming = $state<Space | null>(null);
+  let renameDraft = $state("");
+  let renameInput = $state<HTMLInputElement | null>(null);
+
+  function startRename(space: Space) {
+    renaming = space;
+    renameDraft = space.name;
+  }
+
+  async function confirmRename() {
+    const space = renaming;
+    if (!space) return;
+    const name = renameDraft.trim();
+    renaming = null;
+    // Nothing to persist if the label is unchanged; an empty name clears the
+    // override, so it is sent whenever it differs from what the card shows.
+    if (name === space.name) return;
+    try {
+      await renameSpace(space.id, name);
+    } catch (e) {
+      actionError = `Couldn’t rename “${space.name}”: ${(e as Error).message}`;
+    }
+  }
+
+  // The folder basename behind a space's path — the label a cleared rename falls
+  // back to, shown as the field's placeholder so the empty-to-revert path reads.
+  function baseName(path: string): string {
+    return path.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? path;
+  }
+
   async function confirmForget() {
     const space = pendingForget;
     pendingForget = null;
@@ -770,6 +806,7 @@
               onselectsession={(t) => selectSession(space, t)}
               onjumphalt={() => jumpToHalt(space)}
               onforget={() => forget(space)}
+              onrename={() => startRename(space)}
               onendshell={(t) => endShell(space, t)}
               onhalt={(t, verb) =>
                 haltAction(space, t, verb, HALT_ACTIONS[verb])}
@@ -917,6 +954,46 @@
         Remove
       </Button>
     </div>
+  </Modal>
+
+  <!-- Renaming a space is presentation only — it changes the label the sidebar
+       shows and nothing on disk — so it is a light one-field editor rather than a
+       confirmation. The caret opens in the field with the current name selected;
+       submitting empty clears the custom name back to the folder basename. -->
+  <Modal
+    open={renaming !== null}
+    title="Rename “{renaming?.name ?? ''}”"
+    onClose={() => (renaming = null)}
+    onOpenAutoFocus={(e) => {
+      e.preventDefault();
+      renameInput?.focus();
+      renameInput?.select();
+    }}
+  >
+    <form
+      onsubmit={(e) => {
+        e.preventDefault();
+        confirmRename();
+      }}
+    >
+      <Input
+        bind:ref={renameInput}
+        bind:value={renameDraft}
+        placeholder={renaming ? baseName(renaming.path) : ""}
+        aria-label="Space name"
+      />
+      <div class="mt-4 flex justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          onclick={() => (renaming = null)}
+        >
+          Cancel
+        </Button>
+        <Button variant="default" size="sm" type="submit">Save</Button>
+      </div>
+    </form>
   </Modal>
 
   <!-- Every action failure that used to be an `alert()`. One surface, dismissed
