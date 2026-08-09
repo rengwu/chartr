@@ -55,6 +55,9 @@ func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 	chartrtest.Git(t, repo, "commit", "-qm", "the repository's own ignore file")
 
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
+	// chartr ships no source of its own (ADR 0018), so give this config root one to
+	// inventory in the document.
+	h.SeedSkills(t)
 	register(t, h, repo)
 	// Registration is a trigger in its own right: the operator adds a repository
 	// and opens an agent in it in the same minute, so waiting for the next restart
@@ -173,7 +176,7 @@ func TestSourcesMutationRewritesTheStandingDoc(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("register source = %d, body %s (an unreachable space must not fail a settings save)", code, body)
 	}
-	if doc := readDoc(t, repo); !strings.Contains(doc, "`mine` at `"+skills+"` — spelunk") {
+	if doc := readDoc(t, repo); !strings.Contains(doc, "`mine` at `.chartr/skills/mine` — spelunk") {
 		t.Errorf("the registered source did not reach the standing document:\n%s", doc)
 	}
 
