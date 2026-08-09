@@ -68,22 +68,22 @@ func write(t *testing.T, cfg, body string) {
 
 // --- the file itself -------------------------------------------------------
 
-func TestAMissingFileIsTheDefaultRowAlone(t *testing.T) {
+func TestAMissingFileIsAnEmptyList(t *testing.T) {
 	r := load(t, t.TempDir())
-	if got := sourceNames(r.List()); len(got) != 1 || got[0] != sources.DefaultName {
-		t.Fatalf("list = %v, want just the default row", got)
+	if got := sourceNames(r.List()); len(got) != 0 {
+		t.Fatalf("list = %v, want an empty list", got)
 	}
 	if w := r.Warnings(); len(w) != 0 {
 		t.Fatalf("a missing file is the first-run state, not a warning: %v", w)
 	}
 }
 
-func TestAnUnparseableFileIsTheDefaultRowAlone(t *testing.T) {
+func TestAnUnparseableFileIsAnEmptyList(t *testing.T) {
 	cfg := t.TempDir()
 	write(t, cfg, "[[source]\nname = \"broken\"\n")
 	r := load(t, cfg)
-	if got := sourceNames(r.List()); len(got) != 1 || got[0] != sources.DefaultName {
-		t.Fatalf("list = %v, want just the default row", got)
+	if got := sourceNames(r.List()); len(got) != 0 {
+		t.Fatalf("list = %v, want an empty list", got)
 	}
 	if len(r.Warnings()) == 0 {
 		t.Fatal("an unparseable file degrades with a warning")
@@ -100,24 +100,18 @@ func TestPositionInTheFileIsResolutionOrder(t *testing.T) {
 	if _, err := r.RegisterDir("Second", lib); err != nil {
 		t.Fatal(err)
 	}
-	if got := sourceNames(r.List()); strings.Join(got, ",") != "First,Second,"+sources.DefaultName {
+	if got := sourceNames(r.List()); strings.Join(got, ",") != "First,Second" {
 		t.Fatalf("list = %v", got)
 	}
 
 	if err := r.Reorder([]string{"Second", "First"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := sourceNames(load(t, cfg).List()); strings.Join(got, ",") != "Second,First,"+sources.DefaultName {
+	if got := sourceNames(load(t, cfg).List()); strings.Join(got, ",") != "Second,First" {
 		t.Fatalf("reordered list = %v", got)
 	}
 	if err := r.Reorder([]string{"Second"}); !errors.Is(err, sources.ErrBadReorder) {
 		t.Fatalf("a partial reorder is refused: %v", err)
-	}
-	if err := r.Reorder([]string{"Second", sources.DefaultName}); !errors.Is(err, sources.ErrProtected) {
-		t.Fatalf("the default row is not reorderable: %v", err)
-	}
-	if err := r.Remove(sources.DefaultName); !errors.Is(err, sources.ErrProtected) {
-		t.Fatalf("the default row is not removable: %v", err)
 	}
 }
 
@@ -173,7 +167,7 @@ path = "`+b+`"
 `)
 	r := load(t, cfg)
 	list := r.List()
-	if len(list) != 2 || list[0].Path != a {
+	if len(list) != 1 || list[0].Path != a {
 		t.Fatalf("first row wins: %v", sourceNames(list))
 	}
 	if w := r.Warnings(); len(w) != 1 || !strings.Contains(w[0], "house") {
@@ -199,7 +193,7 @@ kind = "dir"
 path = "`+lib+`"
 `)
 	r := load(t, cfg)
-	if got := sourceNames(r.List()); strings.Join(got, ",") != "Fine,"+sources.DefaultName {
+	if got := sourceNames(r.List()); strings.Join(got, ",") != "Fine" {
 		t.Fatalf("the rest of the list stands: %v", got)
 	}
 	if w := r.Warnings(); len(w) != 2 {
@@ -207,23 +201,21 @@ path = "`+lib+`"
 	}
 }
 
-func TestARowNamedChartrSkillsIsDropped(t *testing.T) {
+func TestChartrSkillsIsNowAnOrdinaryName(t *testing.T) {
 	cfg, lib := t.TempDir(), t.TempDir()
-	write(t, cfg, `
-[[source]]
-name = "chartr-skills"
-kind = "dir"
-path = "`+lib+`"
-`)
+	skillAt(t, lib, "grill")
 	r := load(t, cfg)
-	if got := sourceNames(r.List()); len(got) != 1 || got[0] != sources.DefaultName {
-		t.Fatalf("list = %v, want the synthetic row alone", got)
+	// chartr ships no default source (ADR 0018), so `chartr-skills` is a name like
+	// any other: the operator may register their own copy of chartr's skills under
+	// it, and it is neither reserved nor seated last.
+	if _, err := r.RegisterDir("chartr-skills", lib); err != nil {
+		t.Fatalf("chartr-skills is a registerable name now: %v", err)
 	}
-	if w := r.Warnings(); len(w) != 1 || !strings.Contains(w[0], sources.DefaultName) {
-		t.Fatalf("the drop is warned about by name: %v", w)
+	if got := sourceNames(load(t, cfg).List()); len(got) != 1 || got[0] != "chartr-skills" {
+		t.Fatalf("list = %v", got)
 	}
-	if _, err := r.RegisterDir(sources.DefaultName, lib); !errors.Is(err, sources.ErrDuplicateName) {
-		t.Fatalf("registering the reserved name is refused: %v", err)
+	if _, err := r.Resolve("chartr-skills/grill"); err != nil {
+		t.Fatalf("the registered source resolves: %v", err)
 	}
 }
 
@@ -241,7 +233,7 @@ func TestADuplicateSourceNameAtRegistrationIsRefused(t *testing.T) {
 			t.Fatalf("%q is not a source name: %v", bad, err)
 		}
 	}
-	if got := len(load(t, cfg).List()); got != 2 {
+	if got := len(load(t, cfg).List()); got != 1 {
 		t.Fatalf("a refused registration wrote a row: %d rows", got)
 	}
 }
@@ -292,7 +284,7 @@ func TestAVanishedDirPathKeepsItsRow(t *testing.T) {
 	if st.Status != sources.StatusUnavailable || len(st.Skills) != 0 {
 		t.Fatalf("status = %q with %d skills, want unavailable and none", st.Status, len(st.Skills))
 	}
-	if got := sourceNames(load(t, cfg).List()); len(got) != 2 {
+	if got := sourceNames(load(t, cfg).List()); len(got) != 1 {
 		t.Fatalf("the row is never auto-removed: %v", got)
 	}
 }
@@ -424,7 +416,7 @@ func TestRemovingASourceLeavesItsFolderAlone(t *testing.T) {
 	if err := r.Remove("house"); err != nil {
 		t.Fatal(err)
 	}
-	if got := sourceNames(load(t, cfg).List()); len(got) != 1 {
+	if got := sourceNames(load(t, cfg).List()); len(got) != 0 {
 		t.Fatalf("list = %v", got)
 	}
 	if _, err := os.Stat(filepath.Join(lib, "grill", "SKILL.md")); err != nil {
@@ -479,7 +471,7 @@ commit = "abc123def456"
 	if !errors.Is(err, sources.ErrGitMissing) {
 		t.Fatalf("registering a git source is refused at the gate: %v", err)
 	}
-	if got := len(load(t, cfg).List()); got != 2 {
+	if got := len(load(t, cfg).List()); got != 1 {
 		t.Fatalf("the refusal wrote a row: %d rows", got)
 	}
 	if _, err := r.Resolve("Pinned/grill"); err != nil {
@@ -502,7 +494,7 @@ func TestACloneFailingPartwayLeavesNeitherRowNorDirectory(t *testing.T) {
 	if !strings.Contains(err.Error(), "no-such-repo") {
 		t.Fatalf("git's own error is reported: %v", err)
 	}
-	if got := len(load(t, cfg).List()); got != 1 {
+	if got := len(load(t, cfg).List()); got != 0 {
 		t.Fatalf("a failed clone wrote a row: %d rows", got)
 	}
 	entries, _ := os.ReadDir(filepath.Join(cfg, "sources"))

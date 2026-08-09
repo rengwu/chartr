@@ -36,21 +36,15 @@ func writeSkill(t *testing.T, root, name, body string) {
 	}
 }
 
-// migratedRows is the operator's own list — the default row is synthetic and
-// always last, so it is dropped here to keep the assertions about what migrated.
+// migratedRows is the operator's own list. chartr ships no default row any more
+// (ADR 0018), so the whole list is what migrated.
 func migratedRows(t *testing.T, configDir string) []sources.Source {
 	t.Helper()
 	r, err := sources.Load(configDir)
 	if err != nil {
 		t.Fatalf("loading the migrated source list: %v", err)
 	}
-	var out []sources.Source
-	for _, s := range r.List() {
-		if !s.Default {
-			out = append(out, s)
-		}
-	}
-	return out
+	return r.List()
 }
 
 // The user layer of the old model becomes an ordinary registered folder, so an

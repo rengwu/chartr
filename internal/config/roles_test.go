@@ -117,7 +117,7 @@ func TestSetUserRoleRefusesABareName(t *testing.T) {
 	if err == nil {
 		t.Fatal("a bare binding was accepted")
 	}
-	if !strings.Contains(err.Error(), "chartr-skills/grill") {
+	if !strings.Contains(err.Error(), "Source/grill") {
 		t.Errorf("the refusal does not show the qualified form: %v", err)
 	}
 	if _, err := config.SetUserRole(nil, config.Role("charting"), "mine/chart"); err == nil {

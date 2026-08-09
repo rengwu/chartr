@@ -668,6 +668,7 @@ func TestSpawnRefusesAnUnknownOrAbsentAgentWithoutClaiming(t *testing.T) {
 func TestSpaceRemembersTheAgentItSpawnedWith(t *testing.T) {
 	configDir := t.TempDir()
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
+	h.SeedSkills(t) // chartr ships no skills (ADR 0018); the operator's setup, so implement resolves
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)

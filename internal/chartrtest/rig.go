@@ -23,6 +23,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -65,12 +67,31 @@ type Option func(*startOptions)
 type startOptions struct {
 	server server.Options
 	addr   string
+	// configOverridden records that a test brought its own config root, which
+	// suppresses the default skill-source seeding: such a test drives first-run,
+	// migration, or empty-list behaviour and manages its own sources.
+	configOverridden bool
+	// noSkills suppresses the default seeding even for a temp config root, for the
+	// rare test that wants a genuinely empty source list.
+	noSkills bool
 }
 
 // WithConfigDir overrides the operator's config root (default: a fresh temp
-// dir). Point it at a root pre-populated the old way to drive the migration.
+// dir). Point it at a root pre-populated the old way to drive the migration. A
+// test that brings its own root also opts out of the default skill seeding.
 func WithConfigDir(dir string) Option {
-	return func(o *startOptions) { o.server.ConfigDir = dir }
+	return func(o *startOptions) {
+		o.server.ConfigDir = dir
+		o.configOverridden = true
+	}
+}
+
+// WithoutSkills starts with a genuinely empty source list — no seeded skills and
+// no bindings. chartr ships none of its own (ADR 0018); Start otherwise stands in
+// for the operator's one-time setup by registering a `chartr-skills` dir source
+// and binding the four roles, which is the environment most tests assume.
+func WithoutSkills() Option {
+	return func(o *startOptions) { o.noSkills = true }
 }
 
 // WithBindAddress starts chartr on a given address rather than the default
@@ -152,12 +173,75 @@ func Start(t testing.TB, opts ...Option) *Chartr {
 		}
 	})
 
-	return &Chartr{
+	h := &Chartr{
 		BaseURL:   "http://" + dialableAuthority(ln.Addr()),
 		DataDir:   sopts.server.DataDir,
 		ConfigDir: sopts.server.ConfigDir,
 		t:         t,
 		logs:      logs,
+	}
+
+	// chartr ships no skills (ADR 0018), so a fresh install has an empty source
+	// list and unbound roles. The old test environment always had chartr's seeded
+	// source and four bindings, and most tests are written against that; Start
+	// recreates it — a `chartr-skills` dir source and the four bindings — for a
+	// default (temp) config root. A test with its own root, or WithoutSkills, gets
+	// the genuine empty first-run state instead.
+	if !sopts.configOverridden && !sopts.noSkills {
+		h.SeedSkills(t)
+	}
+
+	return h
+}
+
+// SkillSource is the name Start (and SeedSkills) registers the stand-in skill
+// source under. It is an ordinary `dir` source the operator could have registered
+// themselves — chartr no longer ships one.
+const SkillSource = "chartr-skills"
+
+// SeedSkills stands in for the operator's one-time setup: it registers a `dir`
+// source of the standard role skills and binds the four roles into it. It is what
+// Start does by default, exposed so a WithConfigDir test can opt back into a
+// working skill environment. Bindings are written straight to `user.toml`, which
+// every composition re-reads.
+func (h *Chartr) SeedSkills(t testing.TB) {
+	t.Helper()
+	dir := t.TempDir()
+	// One body per skill, each carrying a marker a test can read; the implement
+	// skill names the implementation map, which a payload test asserts reaches the
+	// composed document.
+	bodies := map[string]string{
+		"grill":      "Grill the plan until only load-bearing decisions remain.",
+		"prototype":  "Prototype the risky part first.",
+		"research":   "Research the question and write what you found.",
+		"implement":  "Implement the ticket against its implementation map.",
+		"wayfinder":  "Chart a wayfinder map of tickets.",
+		"to-spec":    "Turn the interview into a spec.",
+		"to-tickets": "Decompose the spec into tickets.",
+	}
+	for name, body := range bodies {
+		d := filepath.Join(dir, name)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("chartrtest: seeding skill %s: %v", name, err)
+		}
+		src := "---\nname: " + name + "\ndescription: the " + name + " skill\n---\n\n" + body + "\n"
+		if err := os.WriteFile(filepath.Join(d, "SKILL.md"), []byte(src), 0o644); err != nil {
+			t.Fatalf("chartrtest: seeding skill %s: %v", name, err)
+		}
+	}
+	if code, body := h.Post("/api/config/sources", map[string]string{
+		"name": SkillSource, "kind": "dir", "path": dir,
+	}); code != 200 {
+		t.Fatalf("chartrtest: registering the skills source: %d %s", code, body)
+	}
+
+	// Bind the four roles into it, preserving anything already in user.toml.
+	path := filepath.Join(h.ConfigDir, "user.toml")
+	existing, _ := os.ReadFile(path)
+	roles := "\n[roles]\ngrill = \"" + SkillSource + "/grill\"\nprototype = \"" + SkillSource +
+		"/prototype\"\nresearch = \"" + SkillSource + "/research\"\nimplement = \"" + SkillSource + "/implement\"\n"
+	if err := os.WriteFile(path, append(existing, []byte(roles)...), 0o600); err != nil {
+		t.Fatalf("chartrtest: writing role bindings: %v", err)
 	}
 }
 

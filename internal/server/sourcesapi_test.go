@@ -41,10 +41,10 @@ func sourceNames(m model.Model) []string {
 const skillBody = "---\nname: s\ndescription: a skill\n---\n\nbody\n"
 
 // The whole of what the section does to a folder source: register it, see its
-// skill count, move it above the default, toggle it off, and remove it — all
-// without hand-editing TOML, which is the Done-when in one test.
+// skill count, reorder, toggle it off, and remove it — all without hand-editing
+// TOML. Starts from an empty list (chartr ships none, ADR 0018).
 func TestSourcesSectionDrivesTheList(t *testing.T) {
-	h := chartrtest.Start(t)
+	h := chartrtest.Start(t, chartrtest.WithoutSkills())
 
 	dir := t.TempDir()
 	writeSkill(t, dir, "grill", skillBody)
@@ -65,21 +65,14 @@ func TestSourcesSectionDrivesTheList(t *testing.T) {
 	if !got.Enabled {
 		t.Error("a freshly registered source is disabled")
 	}
-	// The default row is always last, and it is the one row that never moves.
-	if names := sourceNames(snap); names[len(names)-1] != sources.DefaultName {
-		t.Errorf("source order = %v, want %s last", names, sources.DefaultName)
+	if names := sourceNames(snap); len(names) != 1 || names[0] != "mine" {
+		t.Errorf("source list = %v, want just the registered row", names)
+	}
+	if len(got.Shadowed) != 0 {
+		t.Errorf("the only source shadows nothing, got %v", got.Shadowed)
 	}
 
-	// A new row lands ahead of the synthetic default, so it is *its* `grill` that
-	// wins and nothing of its own is shadowed — order is the whole of which skill
-	// wins, and it is the one thing the section lets the operator edit about it.
-	if len(got.Shadowed) != 0 {
-		t.Errorf("%q sits ahead of the default row and shadows nothing, got %v", got.Name, got.Shadowed)
-	}
-	if got := findSource(t, snap, sources.DefaultName); len(got.Shadowed) == 0 {
-		t.Error("the default row's grill is not marked shadowed by the row ahead of it")
-	}
-	// A reorder names the operator's whole list; the default row is not part of it.
+	// A reorder names the operator's whole list.
 	if code, body := h.Post("/api/config/sources/reorder", map[string]any{
 		"names": []string{"mine"},
 	}); code != 200 {
@@ -94,54 +87,15 @@ func TestSourcesSectionDrivesTheList(t *testing.T) {
 		t.Error("the row is still enabled after being toggled off")
 	}
 
-	// Removing it drops the row and leaves the operator's folder untouched — a
-	// dir source is theirs, and chartr deletes nothing it does not own.
+	// Removing it drops the row and leaves the operator's folder untouched.
 	if code, body := h.Delete("/api/config/sources/mine"); code != 200 {
 		t.Fatalf("remove = %d, body %s", code, body)
 	}
-	if names := sourceNames(h.Snapshot(ctx(t))); len(names) != 1 || names[0] != sources.DefaultName {
-		t.Errorf("after removal sources = %v, want the default row alone", names)
+	if names := sourceNames(h.Snapshot(ctx(t))); len(names) != 0 {
+		t.Errorf("after removal sources = %v, want an empty list", names)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "grill", "SKILL.md")); err != nil {
 		t.Errorf("removing the row deleted the operator's folder: %v", err)
-	}
-}
-
-// The default row is protected in exactly two ways and no more: it cannot be
-// removed and it cannot be reordered. It still toggles like any other.
-func TestTheDefaultSourceRowIsProtected(t *testing.T) {
-	h := chartrtest.Start(t)
-
-	if code, body := h.Delete("/api/config/sources/" + sources.DefaultName); code != 400 {
-		t.Errorf("removing the default row = %d, want 400 (body %s)", code, body)
-	}
-	if code, _ := h.Post("/api/config/sources/reorder", map[string]any{
-		"names": []string{sources.DefaultName},
-	}); code != 400 {
-		t.Errorf("reordering the default row = %d, want 400", code)
-	}
-	if code, body := h.Put("/api/config/sources/"+sources.DefaultName+"/enabled",
-		map[string]any{"enabled": false}); code != 200 {
-		t.Fatalf("disabling the default row = %d, body %s", code, body)
-	}
-	if findSource(t, h.Snapshot(ctx(t)), sources.DefaultName).Enabled {
-		t.Error("the default row did not toggle off")
-	}
-}
-
-// The default row reads "shipped with this build" until a refresh pins it, which
-// the section renders off `seeded` rather than by inspecting the filesystem.
-func TestTheDefaultSourceReadsAsShipped(t *testing.T) {
-	h := chartrtest.Start(t)
-	got := findSource(t, h.Snapshot(ctx(t)), sources.DefaultName)
-	if !got.Seeded {
-		t.Error("the freshly seeded default row does not read as shipped")
-	}
-	if !got.Default || got.Commit != "" {
-		t.Errorf("default row = %+v, want the synthetic row with no pin", got)
-	}
-	if len(got.Skills) == 0 {
-		t.Error("the seeded default row yields no skills")
 	}
 }
 
@@ -156,11 +110,8 @@ func TestASourceRegisteredBeforeFirstOpenIsVisible(t *testing.T) {
 	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
 	snap := h.Snapshot(ctx(t))
 	names := sourceNames(snap)
-	if len(names) < 2 {
-		t.Fatalf("the migrated source is not in the list: %v", names)
-	}
-	if names[len(names)-1] != sources.DefaultName {
-		t.Errorf("source order = %v, want %s last", names, sources.DefaultName)
+	if len(names) != 1 || names[0] != "Legacy skills" {
+		t.Fatalf("the migrated source is not the whole list: %v", names)
 	}
 	if got := findSource(t, snap, "Legacy skills"); got.Path != legacy || len(got.Skills) != 1 {
 		t.Errorf("the migrated row = %+v, want %s with one skill", got, legacy)
@@ -190,57 +141,6 @@ func TestAGitSourceIsRefusedWithoutGit(t *testing.T) {
 			t.Error("a row was written for a refused registration")
 		}
 	}
-}
-
-// A deleted role binding has exactly one recovery, and it is this control. The
-// deletion itself is legitimate — nothing refills it at startup — so the test
-// asserts both halves: it stays gone across a rebuild, and the restore writes it
-// back to the seeded ref.
-func TestRestoringADeletedRoleBinding(t *testing.T) {
-	configDir := t.TempDir()
-	h := chartrtest.Start(t, chartrtest.WithConfigDir(configDir))
-
-	// Delete the implement binding the way an operator would: edit the file.
-	path := filepath.Join(configDir, "user.toml")
-	before := userConfig(t, configDir)
-	after := strings.ReplaceAll(before, "implement = \"chartr-skills/implement\"\n", "")
-	if after == before {
-		t.Fatalf("the seeded implement binding is not in user.toml:\n%s", before)
-	}
-	if err := os.WriteFile(path, []byte(after), 0o600); err != nil {
-		t.Fatalf("writing user.toml: %v", err)
-	}
-
-	// It reads as unbound, and nothing puts it back on its own.
-	role := findRole(t, h.Snapshot(ctx(t)), "implement")
-	if role.Ref != "" {
-		t.Errorf("implement = %q after deletion, want unbound", role.Ref)
-	}
-	if role.Default != "chartr-skills/implement" {
-		t.Errorf("implement default = %q", role.Default)
-	}
-
-	if code, body := h.Post("/api/config/roles/implement/restore", nil); code != 200 {
-		t.Fatalf("restore = %d, body %s", code, body)
-	}
-	role = findRole(t, h.Snapshot(ctx(t)), "implement")
-	if role.Ref != "chartr-skills/implement" || !role.Resolves {
-		t.Errorf("implement = %+v after restore, want the seeded ref, resolving", role)
-	}
-	if !strings.Contains(userConfig(t, configDir), `implement = "chartr-skills/implement"`) {
-		t.Error("the restore did not reach user.toml")
-	}
-}
-
-func findRole(t *testing.T, m model.Model, role string) model.RoleBinding {
-	t.Helper()
-	for _, r := range m.Roles {
-		if r.Role == role {
-			return r
-		}
-	}
-	t.Fatalf("role %q not in snapshot (%d roles)", role, len(m.Roles))
-	return model.RoleBinding{}
 }
 
 // The four config files the section opens, each resolved server-side from a

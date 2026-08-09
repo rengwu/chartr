@@ -23,20 +23,41 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the payload golden files")
 
-// fixture builds a real config root with the seeded default source materialized
-// in it, which is what both payloads are composed against: the goldens then carry
-// the actual skill inventory a fresh install has, not a hand-written stand-in.
+// grillMarker is the identifiable body line of the test grill skill — used to
+// prove the skill's bytes themselves travelled into the payload.
+const grillMarker = "GRILL-BODY-MARKER"
+
+// fixture builds a real config root and a registered `dir` source of skills the
+// payloads are composed against. chartr ships none of its own (ADR 0018), so the
+// test provides the source: the goldens carry that source's inventory, not a
+// shipped one.
 func fixture(t *testing.T) (string, *sources.Registry, config.RoleBindings) {
 	t.Helper()
 	dir := t.TempDir()
-	if err := sources.Reconcile(dir); err != nil {
-		t.Fatalf("seeding the default source: %v", err)
-	}
+	skills := t.TempDir()
+	writeSkill(t, skills, "grill", grillMarker)
 	reg, err := sources.Load(dir)
 	if err != nil {
 		t.Fatalf("loading sources: %v", err)
 	}
-	return dir, reg, config.RoleBindings{"grill": sources.DefaultBinding("grill")}
+	if _, err := reg.RegisterDir("house", skills); err != nil {
+		t.Fatalf("registering the skills source: %v", err)
+	}
+	return dir, reg, config.RoleBindings{"grill": "house/grill"}
+}
+
+// writeSkill lays down a minimal skill directory: rel below root, a SKILL.md with
+// frontmatter and an identifiable body line.
+func writeSkill(t *testing.T, root, name, body string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "---\nname: " + name + "\ndescription: the " + name + " skill\n---\n\n" + body + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The ticket payload: chartr's core, the bound role skill's body concatenated
@@ -72,7 +93,7 @@ func TestTicketPayloadGolden(t *testing.T) {
 	// the source that yielded the body.
 	wantParts := []struct{ name, kind, origin string }{
 		{"core", "prompt", "chartr"},
-		{"grill", "prompt", "chartr-skills"},
+		{"grill", "prompt", "house"},
 		{"conventions", "prompt", "chartr"},
 		{"preferences", "prompt", "operator"},
 		{"sources", "context", "context"},
@@ -95,22 +116,17 @@ func TestTicketPayloadGolden(t *testing.T) {
 	// The role body is concatenated, not pointed at — that is what makes the claim
 	// trailer's skill record mean *this text ran* — and no origin line sits above
 	// it, because the badge and the trailer both carry that already.
-	seeded, err := os.ReadFile(filepath.Join(sources.DefaultPath(dir), "grill", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(p.Parts[1].Text, grillMarker) {
+		t.Errorf("the grill part does not carry the skill body (%q):\n%s", grillMarker, p.Parts[1].Text)
 	}
-	marker := firstProseLine(t, string(seeded))
-	if !strings.Contains(p.Parts[1].Text, marker) {
-		t.Errorf("the grill part does not carry the seeded body (%q):\n%s", marker, p.Parts[1].Text)
-	}
-	if !strings.Contains(p.Markdown, marker) {
+	if !strings.Contains(p.Markdown, grillMarker) {
 		t.Errorf("the composed document points at the role skill instead of carrying it:\n%s", p.Markdown)
 	}
 
 	// The claim trailer's record: chartr's core by the shipped hash the running
 	// binary carries, the role by the source that resolved it.
-	if len(p.Skills) != 2 || p.Skills[0].Name != "core" || p.Skills[1].Source != "chartr-skills" {
-		t.Errorf("composed skills = %+v, want the core then a chartr-skills grill", p.Skills)
+	if len(p.Skills) != 2 || p.Skills[0].Name != "core" || p.Skills[1].Source != "house" {
+		t.Errorf("composed skills = %+v, want the core then the house grill", p.Skills)
 	}
 
 	if _, err := prompt.Compose(prompt.ComposeInput{Role: "nonesuch", ConfigDir: dir, Sources: reg}); err == nil {
@@ -223,7 +239,7 @@ func TestFreePayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
 	if !strings.Contains(got.Markdown, "PREFER-THIS") {
 		t.Errorf("the operator's preferences did not reach the free payload:\n%s", got.Markdown)
 	}
-	if !strings.Contains(got.Markdown, "`mine` at `"+extra+"` — spelunk") {
+	if !strings.Contains(got.Markdown, "`mine` at `"+sources.MirrorDir+"/mine` — spelunk") {
 		t.Errorf("a registered source did not reach the sources block:\n%s", got.Markdown)
 	}
 	if got.Markdown == base.Markdown {
@@ -243,7 +259,7 @@ func TestFreePayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
 	if strings.Contains(off.Markdown, "spelunk") {
 		t.Errorf("a disabled source appeared in the sources block:\n%s", off.Markdown)
 	}
-	if strings.Contains(off.Markdown, sources.SeedURL) || strings.Contains(off.Markdown, "https://") {
+	if strings.Contains(off.Markdown, "https://") {
 		t.Errorf("a source URL reached the payload:\n%s", off.Markdown)
 	}
 }
@@ -270,27 +286,6 @@ func TestUnavailableSourceWarns(t *testing.T) {
 	if !contains(p.Warnings, "ghost") || !contains(p.Warnings, "unavailable") {
 		t.Errorf("a vanished source did not warn: %v", p.Warnings)
 	}
-}
-
-// firstProseLine picks a line out of a skill file that identifies its body —
-// used to prove the seeded bytes themselves travelled into the payload rather
-// than something that merely looks like them.
-func firstProseLine(t *testing.T, src string) string {
-	t.Helper()
-	seenFence := 0
-	for _, l := range strings.Split(src, "\n") {
-		l = strings.TrimSpace(l)
-		if l == "---" {
-			seenFence++
-			continue
-		}
-		if seenFence < 2 || l == "" || strings.HasPrefix(l, "#") {
-			continue
-		}
-		return l
-	}
-	t.Fatal("no prose line in the skill file")
-	return ""
 }
 
 // checkGolden compares a composed document with its golden, with the throwaway
