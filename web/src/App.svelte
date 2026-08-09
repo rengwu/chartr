@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { flip } from "svelte/animate";
   import { ControlSocket } from "./lib/control.svelte";
   import type { Space, Terminal } from "./lib/model";
   import {
@@ -18,7 +19,8 @@
     ActionError,
     LIVE_SESSION,
   } from "./lib/actions";
-  import { dropIndex, dropTarget, reorder, type DropEdge } from "./lib/reorder";
+  import { reorder } from "./lib/reorder";
+  import { dndzone, type DndEvent } from "svelte-dnd-action";
   import RegisterForm from "./lib/RegisterForm.svelte";
   import SpaceCard from "./lib/SpaceCard.svelte";
   import SpacePane from "./lib/SpacePane.svelte";
@@ -242,143 +244,116 @@
 
   // --- Reordering the sidebar ------------------------------------------------
   //
-  // The operator's arrangement is theirs to set, and there is exactly *one*
-  // write path for it: resolve the move to a complete ordered list of ids and
-  // post that. The pointer drag and the keyboard both end in `applyOrder`, so
-  // the keyboard is not a second implementation. Nothing is applied optimistically
-  // — the new arrangement arrives as a fresh snapshot over the control socket,
-  // like every other action's result. That snapshot is fast because the server
-  // republishes the one it holds permuted rather than deriving a new one
-  // (hub.reorderSpaces); the round trip is what the drop waits on, so a rebuild's
-  // per-space `git status` would be felt as the sidebar lagging the operator's hand.
+  // The operator's arrangement is theirs to set, and there is exactly *one* write
+  // path for it: resolve the move to a complete ordered list of ids and post that
+  // (`applyOrder`). The pointer drag and the keyboard both end there, so the
+  // keyboard is not a second implementation.
   //
-  // The gesture is pointer events under pointer capture, not HTML5 drag-and-drop
-  // — see SpaceCard's drag block for why. The consequence here is that a card
-  // reports a viewport Y and this file resolves it: capture routes every move to
-  // the row that was grabbed, so no other card ever sees the pointer — and only
-  // the sidebar knows the list anyway.
+  // The drag itself is svelte-dnd-action (`use:dndzone` on the list below): it owns
+  // the whole gesture — a card lifts under the pointer while the rest slide apart
+  // around the gap (FLIP), on pointer, touch, and its own keyboard mode. We hand it
+  // the visible list and take the reordered one back on `consider` (live, during
+  // the drag) and `finalize` (the drop). The reorder is optimistic: the cards
+  // settle into the new order at once, and the drop still writes the whole list and
+  // waits for the fresh snapshot over the control socket to confirm it — that
+  // snapshot is fast because the server republishes the one it holds permuted
+  // rather than rebuilding (hub.reorderSpaces).
+  //
+  // This was hand-rolled on pointer capture before, which fought the FLIP reorder:
+  // moving the captured node into its new slot mid-drag dropped the capture, and
+  // the drag cut off as it crossed a row. The library owns the gesture now, so the
+  // cards are plain again — no per-card pointer handlers.
 
-  // The row being dragged and the row it is hovering over, held by *id* rather
-  // than by index: a snapshot can land mid-drag (a space registered elsewhere,
-  // a session opening), and an index captured on grab would then name a
-  // different row by the time it is dropped. Both null when no drag is in flight.
-  let dragId = $state<string | null>(null);
-  let dropAt = $state<{ overId: string; edge: DropEdge } | null>(null);
+  // The list svelte-dnd-action owns: the visible list, but assignable, because the
+  // library reorders it in place through the events below. It tracks `filtered`
+  // whenever no drag is in flight (the effect), and the library drives it while one
+  // is.
+  let dndItems = $state<Space[]>([]);
+  // True between the first `consider` and the `finalize`: the window in which the
+  // library, not an incoming snapshot, owns `dndItems`.
+  let dndDragging = $state(false);
+  // The order a just-dropped move committed, held until the confirming snapshot
+  // shows it. Without it the cards would snap back to the pre-drop order the instant
+  // the drag ends (the snapshot not yet here), then forward again when it lands.
+  let pendingOrder = $state<string[] | null>(null);
 
-  // The scroll container the rows live in. The drag hit-tests against the DOM
-  // rather than against measurements taken on grab, because the list can scroll
-  // (and a snapshot can land) mid-drag; reading the rows each frame is a handful
-  // of rects on a sidebar, and it is never wrong.
-  let listEl = $state<HTMLElement | null>(null);
-  // The pointer's last known viewport Y, and the frame loop that reads it. The
-  // loop, not the move event, is what resolves the drop: the operator holding
-  // still at the edge of a scrolling list is still changing where the row lands,
-  // so the answer has to be recomputed per frame rather than per move.
-  let pointerY = 0;
-  let dragFrame = 0;
-
-  // How close to an edge of the list starts an auto-scroll, and how fast it runs
-  // at full deflection. Pointer capture replaced HTML5 drag-and-drop, which
-  // scrolled a scrollable drop target for us; this is that behaviour, kept.
-  const SCROLL_EDGE = 40;
-  const SCROLL_SPEED = 14;
-
-  // Where the drop would land if the pointer were released now. Every Y resolves
-  // to *something* — above the first row is its leading edge, below the last is
-  // its trailing one, and the gutters between rows fall to the row below. There
-  // is deliberately no horizontal test: the operator dragging out over the
-  // terminal pane, or clear off the window, still means the position the sidebar
-  // is showing them.
-  function resolveDrop(clientY: number) {
-    if (listEl === null || dragId === null) return;
-    // The dragged row rides the pointer, so its own rect is no longer where the
-    // list says it is — it is not a reference for anything.
-    const rows = [...listEl.querySelectorAll<HTMLElement>("[data-space-id]")]
-      .filter((row) => row.dataset.spaceId !== dragId)
-      .map((row) => {
-        const box = row.getBoundingClientRect();
-        return { id: row.dataset.spaceId!, top: box.top, bottom: box.bottom };
-      });
-    const next = dropTarget(rows, clientY);
-    if (next === null) return;
-    // Same answer as last frame: leave `dropAt` alone. Reassigning it would
-    // invalidate every card's `dropEdge` sixty times a second for no change.
-    if (dropAt?.overId === next.overId && dropAt.edge === next.edge) return;
-    dropAt = next;
+  // Reorder a list by a list of ids, dropping ids that have since left and
+  // appending any that arrived — so a snapshot landing mid-hold can neither drop
+  // nor duplicate a card.
+  function orderBy(list: Space[], ids: string[]): Space[] {
+    const byId = new Map(list.map((s) => [s.id, s]));
+    const held = ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
+    const extra = list.filter((s) => !ids.includes(s.id));
+    return [...held, ...extra];
   }
 
-  function autoScroll(clientY: number) {
-    if (listEl === null) return;
-    const box = listEl.getBoundingClientRect();
-    if (clientY < box.top + SCROLL_EDGE) {
-      const t = Math.min(1, (box.top + SCROLL_EDGE - clientY) / SCROLL_EDGE);
-      listEl.scrollTop -= SCROLL_SPEED * t;
-    } else if (clientY > box.bottom - SCROLL_EDGE) {
-      const t = Math.min(
-        1,
-        (clientY - (box.bottom - SCROLL_EDGE)) / SCROLL_EDGE,
-      );
-      listEl.scrollTop += SCROLL_SPEED * t;
+  // Keep `dndItems` in step with the source of truth — except while the library
+  // holds it (a snapshot must not yank the cards out from under the pointer), and
+  // except across the drop-to-snapshot gap, where the committed order stands over
+  // the freshest data until the snapshot catches up (an exact id match) or a failed
+  // write releases it.
+  $effect(() => {
+    const current = filtered;
+    if (dndDragging) return;
+    if (pendingOrder !== null) {
+      const ids = current.map((s) => s.id);
+      const landed =
+        ids.length === pendingOrder.length &&
+        ids.every((id, i) => id === pendingOrder![i]);
+      if (landed) {
+        pendingOrder = null;
+      } else {
+        dndItems = orderBy(current, pendingOrder);
+        return;
+      }
     }
-  }
+    dndItems = current;
+  });
 
-  function dragTick() {
-    dragFrame = 0;
-    if (dragId === null) return;
-    autoScroll(pointerY);
-    resolveDrop(pointerY);
-    dragFrame = requestAnimationFrame(dragTick);
-  }
+  // The flip duration for the reflow, dropped to nothing when the operator has
+  // asked for less motion. Shared by the dndzone and the `animate:flip` on each row.
+  const reduceMotion =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const flipDurationMs = reduceMotion ? 0 : 120;
 
-  function startDrag(id: string, clientY: number) {
-    dragId = id;
-    pointerY = clientY;
-    resolveDrop(clientY);
-    if (dragFrame === 0) dragFrame = requestAnimationFrame(dragTick);
-  }
-
-  // Dragging is inert while the filter box is non-empty. A drop position within
-  // a filtered subset does not describe a position in the whole list, and mapping
-  // one onto the other would invent a rule nothing else in the product makes — so
-  // the handles are disabled instead. It gates the keyboard move as well as the
-  // drag: both write the whole list, so both need the whole list in view.
+  // Dragging is inert while the filter box is non-empty. A drop position within a
+  // filtered subset does not describe a position in the whole list, and mapping one
+  // onto the other would invent a rule nothing else in the product makes — so the
+  // drag is disabled instead. It gates the keyboard move as well, since both write
+  // the whole list and so both need the whole list in view.
   const reorderable = $derived(filter.trim() === "");
+
+  // The library reorders `dndItems` and hands it back: live during the drag
+  // (consider) and once on the drop (finalize). Only the drop commits.
+  function handleDndConsider(e: CustomEvent<DndEvent<Space>>) {
+    dndDragging = true;
+    dndItems = e.detail.items;
+  }
+  function handleDndFinalize(e: CustomEvent<DndEvent<Space>>) {
+    dndItems = e.detail.items;
+    dndDragging = false;
+    const ids = e.detail.items.map((s) => s.id);
+    // Hold the committed order on screen until the snapshot confirms it (the effect
+    // above), so the drop does not bounce.
+    pendingOrder = ids;
+    void applyOrder(ids);
+  }
 
   async function applyOrder(ids: string[]) {
     const current = spaces.map((s) => s.id);
     // A drop back where it started, or ⌥↑ on the first row: an ordinary outcome,
     // and the honest response is to write nothing at all.
-    if (
-      ids.length === current.length &&
-      ids.every((id, i) => id === current[i])
-    )
+    if (ids.length === current.length && ids.every((id, i) => id === current[i]))
       return;
     try {
       await reorderSpaces(ids);
     } catch (e) {
+      // The write failed, so the held order is a fiction — drop it and let the
+      // sidebar fall back to the server's truth.
+      pendingOrder = null;
       actionError = `Couldn’t save the new order: ${(e as Error).message}`;
     }
-  }
-
-  function endDrag() {
-    dragId = null;
-    dropAt = null;
-    if (dragFrame !== 0) cancelAnimationFrame(dragFrame);
-    dragFrame = 0;
-  }
-
-  function dropDragged() {
-    const id = dragId;
-    const at = dropAt;
-    endDrag();
-    if (id === null || at === null) return;
-    const ids = spaces.map((s) => s.id);
-    const from = ids.indexOf(id);
-    const over = ids.indexOf(at.overId);
-    // Either row having left the sidebar since the grab, the drop describes
-    // nothing; the arrangement stands as it is.
-    if (from < 0 || over < 0) return;
-    void applyOrder(reorder(ids, from, dropIndex(from, over, at.edge)));
   }
 
   // ⌥↑ / ⌥↓ move the selected space, emitting the same whole-list write a drag
@@ -593,17 +568,9 @@
   // stored sidebar order, never the filtered view — a keyboard shortcut should
   // not depend on what's typed in the filter box.
   function onGlobalKey(e: KeyboardEvent) {
-    // Esc abandons a reorder in flight, the one thing it did for free under
-    // HTML5 drag-and-drop. It is read ahead of `isEditingTarget` because a drag
-    // is a modal gesture: focus may well still be in the terminal the operator
-    // clicked before reaching for the sidebar, and Esc means the drag. Clearing
-    // the chrome's state is the whole cancel — the card drops its lift on the
-    // spot, and the release it is still holding resolves to nothing.
-    if (e.key === "Escape" && dragId !== null) {
-      e.preventDefault();
-      endDrag();
-      return;
-    }
+    // A pointer/keyboard reorder in flight is svelte-dnd-action's own modal
+    // gesture now, and it cancels on Esc itself — the chrome no longer tracks a
+    // drag to abandon here.
     if (isEditingTarget()) return;
     // ⌥↑ / ⌥↓ move the selected space in the sidebar (story 9) — the same write
     // the drag emits, so reordering is not mouse-only. It is read ahead of the
@@ -784,40 +751,54 @@
         <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
           No spaces yet.
         </p>
+      {:else if filtered.length === 0}
+        <p class="px-3 py-2 text-xs text-muted-foreground">
+          No spaces match “{filter}”.
+        </p>
       {:else}
-        <div
-          bind:this={listEl}
+        <!-- The reorder is svelte-dnd-action: the section is the drop zone, each
+             row is an item keyed by space id, and `animate:flip` (same duration)
+             does the slide. `consider` drives the live reflow, `finalize` commits.
+             Disabled while filtering — a position within a subset does not describe
+             one in the whole list. The default drop-zone outline is cleared; the
+             chrome is monochrome and marks nothing with a raw colour. -->
+        <section
           class="sidebar-scroll mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pr-1"
+          use:dndzone={{
+            items: dndItems,
+            flipDurationMs,
+            dragDisabled: !reorderable,
+            dropTargetStyle: {},
+            // Resolve the drop slot from the cursor, not the dragged card's
+            // centre. Space cards vary a lot in height (a card with several
+            // sessions dwarfs a bare one), and centre-based detection makes a tall
+            // card's midpoint sweep across several short ones at once — the drop
+            // overshoots and jumps rows. Cursor-based detection tracks the hand.
+            useCursorForDetection: true,
+          }}
+          onconsider={handleDndConsider}
+          onfinalize={handleDndFinalize}
         >
-          {#each filtered as space (space.id)}
-            <SpaceCard
-              {space}
-              {opening}
-              {reorderable}
-              dragged={dragId === space.id}
-              dropEdge={dropAt?.overId === space.id ? dropAt.edge : null}
-              ongrabstart={(clientY) => startDrag(space.id, clientY)}
-              ongrabmove={(clientY) => (pointerY = clientY)}
-              ongrabdrop={dropDragged}
-              ongrabend={endDrag}
-              selected={selected?.id === space.id}
-              activeTermId={activeTerm?.id ?? null}
-              onselect={() => selectSpace(space.id)}
-              onselectsession={(t) => selectSession(space, t)}
-              onjumphalt={() => jumpToHalt(space)}
-              onforget={() => forget(space)}
-              onrename={() => startRename(space)}
-              onendshell={(t) => endShell(space, t)}
-              onhalt={(t, verb) =>
-                haltAction(space, t, verb, HALT_ACTIONS[verb])}
-              onopenshell={() => openShell(space)}
-            />
-          {:else}
-            <p class="px-2 py-1.5 text-xs text-muted-foreground">
-              No spaces match “{filter}”.
-            </p>
+          {#each dndItems as space (space.id)}
+            <div animate:flip={{ duration: flipDurationMs }}>
+              <SpaceCard
+                {space}
+                {opening}
+                selected={selected?.id === space.id}
+                activeTermId={activeTerm?.id ?? null}
+                onselect={() => selectSpace(space.id)}
+                onselectsession={(t) => selectSession(space, t)}
+                onjumphalt={() => jumpToHalt(space)}
+                onforget={() => forget(space)}
+                onrename={() => startRename(space)}
+                onendshell={(t) => endShell(space, t)}
+                onhalt={(t, verb) =>
+                  haltAction(space, t, verb, HALT_ACTIONS[verb])}
+                onopenshell={() => openShell(space)}
+              />
+            </div>
           {/each}
-        </div>
+        </section>
       {/if}
 
       <!-- Settings is the persistent footer destination from the sketch. -->
