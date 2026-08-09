@@ -116,20 +116,25 @@ plan is still sitting in markdown.
 
 ## 8. Bring your own skills
 
-chartr ships **no skills**. What a session is told to do comes from a **source**:
-a folder on your machine, or a git repository chartr clones and pins. You
-register them in settings under **Skill sources**, and the list's order *is*
-resolution order — the first enabled source holding a name wins, and the loser
-stays reachable as `Source/skill`.
+chartr ships **no skills** — none, not even its own (ADR 0018). What a session is
+told to do comes from a **source**: a folder on your machine, or a git repository
+chartr clones and pins. You register them in settings under **Skill sources**,
+and the list's order *is* resolution order — the first enabled source holding a
+name wins, and the loser stays reachable as `Source/skill`.
 
-One source is always there: `chartr-skills`, chartr's own set, seated last so
-anything you register outranks it. It ships inside the binary so a first run
-works offline; refresh it once and it becomes an ordinary pinned checkout.
+The list starts **empty**. chartr's own skills — grill, prototype, research,
+implement, and the rest — live in an ordinary repo you register like any other;
+they get no special seat. Until you register a source, there is nothing to spawn.
 
 Four roles — grill, prototype, research, implement — are each **bound** to one
-source-qualified skill, seeded on your first run. Rebind one by editing
-`user.toml`; if you delete a row that role refuses to spawn until you put it
-back, and **Restore default** in the same section is how.
+source-qualified skill in `user.toml`. Nothing is seeded, so on a first run every
+role is **unbound** and refuses to spawn until you bind it against a source you
+registered. Edit `user.toml` to bind or rebind one.
+
+When a session starts, chartr copies the skills into a gitignored
+`.chartr/skills/` inside your repo — the **mirror** — and points the agent there,
+so a sandboxed agent reads them from inside its own working tree. It is
+per-machine and never committed.
 
 Two cautions the settings screen repeats:
 
@@ -149,7 +154,7 @@ standing instructions land in an assembled document.
 | --- | --- |
 | Registered spaces, agent library, terminal theme | `~/.config/chartr/` |
 | Your skill sources, in resolution order | `~/.config/chartr/sources.toml` |
-| Git checkouts chartr owns, and its own seeded set | `~/.config/chartr/sources/` |
+| Git checkouts chartr owns (one per registered git source) | `~/.config/chartr/sources/` |
 | chartr's file-format contract (generated — read it, don't edit it) | `~/.config/chartr/conventions.md` |
 | Your standing instructions, appended to every payload | `~/.config/chartr/preferences.md` |
 | Maps and tickets | `<your repo>/.plan/maps/` |

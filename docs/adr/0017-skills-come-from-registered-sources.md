@@ -1,5 +1,17 @@
 # Skills come from registered sources; chartr ships none
 
+> **The list model stands; two of its details are superseded by
+> [0018](0018-skill-mirror-and-no-seed.md).** The seeded `chartr-skills` default
+> source this record kept for offline first-run is **deleted** — chartr ships no
+> skills at all now, the source list starts empty, and roles start unbound with no
+> default to seed or restore. And the consequence below that
+> `<space>/.chartr/skills/` "goes inert" is **reversed**: sessions now read a
+> gitignored, per-machine **mirror** of every enabled source's skills at exactly
+> that path, so a sandboxed agent can reach the skills a payload names. Read "a
+> default source, seeded from the binary" and "given up: the committed workspace
+> layer" below as historical; everything else — the ordered list, precedence,
+> qualified bindings, the trust model, retired reproducibility — is current.
+
 Supersedes the content half of [0009](0009-config-layers-execution-vs-content.md).
 
 chartr no longer ships a skill library, and no longer resolves one. The three

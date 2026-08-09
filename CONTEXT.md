@@ -51,20 +51,20 @@ The per-agent shim that knows how to launch one agent CLI, inject its prompt and
 _Avoid_: driver, plugin, backend, integration
 
 **Context bundle**:
-The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, and the sources block (the enabled sources in resolution order, each with its local path and the skill names found there). Assembled fresh each time and never accumulated. It is the data half of a payload: it renders below the `# Context` rule, after every instruction.
+The orientation injected into a session at spawn — the map body, the ticket, its blockers' answers, and the sources block (the enabled sources in resolution order, each with its path in the repo-local mirror and the skill names found there). Assembled fresh each time and never accumulated. It is the data half of a payload: it renders below the `# Context` rule, after every instruction.
 _Avoid_: memory, prompt context, preamble
 
 **Source**:
-A place skills come from — a local folder or a pinned git checkout — that the operator registers by name in an ordered list under their config root. Position in the list *is* resolution order: a bare skill name takes the first hit among the enabled sources, and a `Source/skill` reference addresses one source exactly and never falls through. The synthetic `chartr-skills` row sits last and cannot be removed or reordered.
+A place skills come from — a local folder or a pinned git checkout — that the operator registers by name in an ordered list under their config root. Position in the list *is* resolution order: a bare skill name takes the first hit among the enabled sources, and a `Source/skill` reference addresses one source exactly and never falls through. chartr ships none of its own (ADR 0018): every source is one the operator registered, and an empty list is the first-run state.
 _Avoid_: layer, repo, provider, registry entry
 
 **Binding**:
-The line saying which skill a role spawns with — one `role = "Source/skill"` row in the `[roles]` table of the user config, always source-qualified and never a bare name. Seeded once with four rows on a first startup and never auto-refilled: a row the operator deleted makes that role refuse until it is rebound. A binding that resolves to nothing refuses the spawn outright, before any claim commit.
+The line saying which skill a role spawns with — one `role = "Source/skill"` row in the `[roles]` table of the user config, always source-qualified and never a bare name. chartr seeds none: with no shipped skills there is nothing to bind to, so every role starts unbound and refuses to spawn until the operator binds it against a source they registered. A binding that resolves to nothing refuses the spawn outright, before any claim commit.
 _Avoid_: mapping, assignment, role config
 
-**Seed**:
-chartr's own skills, vendored into the binary as a checked-in copy of a pinned commit and materialized under the config root as the `chartr-skills` source, so a first run can spawn offline. The directory is in one of two states, read off the filesystem: no `.git` means chartr's bytes, reconciled against the compiled seed at every startup; a `.git` means the operator pinned it with a fetch and chartr never writes there again. Deleting the directory is the reset. Refresh with `make vendor-skills`; the shipped copy lives in `internal/sources/assets/chartr-skills/`.
-_Avoid_: bundled skills, defaults, shipped library
+**Mirror**:
+The repo-local copy of every enabled source's skills, written to `<space>/.chartr/skills/<source>/<skill>/` and reconciled in place before each session (regular files only, symlinks skipped), so an agent sandboxed to its own working tree can read the skills a payload names. Gitignored and per-machine, never committed — the same footing as `CHARTR.md`. The payload's sources block points at it with repo-relative paths.
+_Avoid_: cache, workspace layer, checkout, index, materialized library
 
 **Cockpit**:
 chartr's interface — the star-map, the ticket pane, and the multiplexed terminals, nested under a space.
@@ -107,7 +107,7 @@ The operator's local, uncommitted chartr config under the state root. It carries
 _Avoid_: local settings, overrides
 
 **Settings surface**:
-The global settings route: the agent library, the skill sources in resolution order, the four role bindings, and the paths of the files behind all of it, each openable in the operator's editor. Six things are edited inline — register a source, remove one, toggle it, reorder, refresh a git source, restore a role binding to its default — and everything else is read-value-plus-open-file, never a second config store. It is also where the free payload previews, and where a silently migrated source first becomes visible.
+The global settings route: the agent library, the skill sources in resolution order, the four role bindings, and the paths of the files behind all of it, each openable in the operator's editor. Five things are edited inline — register a source, remove one, toggle it, reorder, refresh a git source — and everything else is read-value-plus-open-file, never a second config store. It is also where the free payload previews, and where a silently migrated source first becomes visible.
 _Avoid_: settings screen, preferences, config panel, options
 
 ### Ticket lifecycle
