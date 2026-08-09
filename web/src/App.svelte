@@ -141,6 +141,17 @@
   // resolved server-side, so a fresh operator sees real suggestions.
   const detected = $derived(control.model?.detected ?? []);
 
+  // Whether a manual skill sync would write anything: at least one enabled source
+  // that resolved and yields a skill. The mirror copies exactly this set, so with
+  // nothing here a sync is a no-op — the cockpit's sync control disables itself
+  // and says "Nothing to sync" rather than spinning on empty. Global like the
+  // sources list, so it is read once and handed to whichever space is in view.
+  const canSyncSkills = $derived(
+    (control.model?.sources ?? []).some(
+      (s) => s.enabled && s.status === "ok" && s.skills.length > 0,
+    ),
+  );
+
   let selectedId = $state<string | null>(null);
   // The active shell, lifted here from the pane: the sidebar's session rows are
   // now what selects a terminal, so the pane just renders whichever one is active.
@@ -855,6 +866,7 @@
           space={selected}
           agents={agentLibrary}
           {activeTerm}
+          {canSyncSkills}
           terminalPrefs={control.model?.terminal}
           active={!route.settings}
           onOpenShell={() => openShell(selected)}

@@ -262,6 +262,12 @@ func New(opts Options) (*Server, error) {
 	// a live, ticketless tab told the free payload, with no map or ticket lookup, no
 	// claim, no lifecycle, ended only by the human, exactly like an ad-hoc shell.
 	s.mux.HandleFunc("POST /api/spaces/{id}/launch", s.handleFree)
+	// The operator's manual mirror refresh (the "Sync skills" control): reconcile
+	// this space's `.chartr/skills` against the enabled sources now, rather than
+	// waiting on the next spawn barrier — the prewarm for an ad-hoc session chartr
+	// did not spawn. Correctness still rides on the barrier; this only brings the
+	// refresh forward.
+	s.mux.HandleFunc("POST /api/spaces/{id}/skills/sync", s.handleSyncSkills)
 	// Everything else is the embedded SPA, with a client-routing fallback.
 	s.mux.Handle("/", spaHandler(dist))
 

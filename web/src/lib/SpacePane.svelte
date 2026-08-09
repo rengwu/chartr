@@ -4,11 +4,11 @@
   import Terminal from './Terminal.svelte'
   import MapCard from './MapCard.svelte'
   import NewShellButton from './NewShellButton.svelte'
-  import { openSpaceFolder } from './actions'
+  import { openSpaceFolder, syncSkills } from './actions'
   import { Button } from './components/ui/button'
   import { isEditingTarget } from './keys'
   import { openingFor, paneState, rememberPane } from './mapstate'
-  import { Warning, Sparkle, FolderOpen, Check } from 'phosphor-svelte'
+  import { Warning, Sparkle, FolderOpen, Check, ArrowsClockwise, CircleNotch } from 'phosphor-svelte'
 
   // The stage for the selected space: a full-width title bar carrying the space's
   // identity (name plus folder/path actions) and the stage-level controls —
@@ -26,6 +26,7 @@
     space,
     agents,
     activeTerm,
+    canSyncSkills = false,
     terminalPrefs,
     active = true,
     onOpenShell,
@@ -39,6 +40,11 @@
     // pick the agent it will run.
     agents: Agent[]
     activeTerm: Term | null
+    // Whether a manual skill sync would write anything — at least one enabled
+    // source yields a skill (App reads the sources list once and hands it down).
+    // The sync control disables itself and says "Nothing to sync" when false,
+    // rather than firing a reconcile that copies nothing.
+    canSyncSkills?: boolean
     // The operator's resolved terminal customization off the model snapshot —
     // global (per-machine `terminal.toml`), fed into the terminal island at the
     // token seam. A change to it remounts the island (see the `{#key}` below).
@@ -81,6 +87,31 @@
       await openSpaceFolder(space.id)
     } catch {
       showPathFeedback('open-error')
+    }
+  }
+
+  // The manual skill sync (beside the folder action): reconcile this space's
+  // `.chartr/skills` mirror against the enabled sources now. The button spins and
+  // goes inert for the duration — one sync at a time — and a failure surfaces on
+  // the control itself for a beat, the same shape the folder action uses, so the
+  // header never grows a second line for it. The refreshed state rides back on
+  // the control snapshot; there is nothing to reflect here beyond the outcome.
+  let syncing = $state(false)
+  let syncError = $state(false)
+  let syncErrorTimer: ReturnType<typeof setTimeout> | undefined
+
+  async function runSkillSync() {
+    if (syncing) return
+    syncing = true
+    syncError = false
+    clearTimeout(syncErrorTimer)
+    try {
+      await syncSkills(space.id)
+    } catch {
+      syncError = true
+      syncErrorTimer = setTimeout(() => (syncError = false), 1400)
+    } finally {
+      syncing = false
     }
   }
 
@@ -438,6 +469,32 @@
           <FolderOpen />
         {/if}
       </Button>
+      <!-- Manual skill sync, beside the folder action. Absent over Scratch (no
+           repository to mirror into, like the map toggle), disabled when no
+           enabled source yields a skill — there is nothing to copy — and inert
+           while a sync is in flight. -->
+      {#if !mapless}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={syncing || !canSyncSkills}
+          aria-label="Sync skills into this space"
+          title={syncError
+            ? 'Couldn’t sync skills'
+            : canSyncSkills
+              ? 'Sync skills into this space'
+              : 'Nothing to sync — no enabled source yields a skill'}
+          onclick={runSkillSync}
+        >
+          {#if syncing}
+            <CircleNotch class="animate-spin" />
+          {:else if syncError}
+            <Warning class="text-destructive" />
+          {:else}
+            <ArrowsClockwise />
+          {/if}
+        </Button>
+      {/if}
     </div>
 
     <!-- The stage-level controls, right-aligned: surfaced warnings and the one

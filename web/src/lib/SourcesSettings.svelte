@@ -63,6 +63,12 @@
   type Draft = { name: string; kind: 'dir' | 'git'; path: string; url: string; ref: string }
   let draft = $state<Draft | null>(null)
 
+  // The git URL a fresh registration starts on — chartr's own skills repo, the
+  // one an operator most often wants first now that nothing is seeded (ADR 0018).
+  // A prefilled default, not a pin: it rides in the `url` field the moment the
+  // operator switches the kind to `git`, and it is theirs to clear or replace.
+  const defaultSourceURL = 'https://github.com/rengwu/chartr-skills'
+
   const kindLabels: Record<Draft['kind'], string> = {
     dir: 'folder on this machine',
     git: 'git repository',
@@ -135,7 +141,7 @@
         <Eye /> free session payload
       </Button>
       {#if !draft}
-        <Button variant="ghost" size="xs" onclick={() => (draft = { name: '', kind: 'dir', path: '', url: '', ref: '' })}>
+        <Button variant="ghost" size="xs" onclick={() => (draft = { name: '', kind: 'dir', path: '', url: defaultSourceURL, ref: '' })}>
           <Plus /> register a source
         </Button>
       {/if}

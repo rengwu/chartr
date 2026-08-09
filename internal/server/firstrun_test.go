@@ -192,10 +192,14 @@ func TestMigrationWritesNothingIntoASpaceAndReportsNothing(t *testing.T) {
 	register(t, h, space)
 	h.Snapshot(ctx(t))
 
-	// The in-repo workspace layer goes inert exactly as silently as it goes
-	// unread: untouched, unregistered, unmentioned.
-	if _, err := os.Stat(filepath.Join(space, ".chartr", "skills", "implement", "SKILL.md")); err != nil {
-		t.Errorf("the workspace skill layer was disturbed: %v", err)
+	// `.chartr/skills` is now chartr's per-machine skill mirror, owned outright
+	// (ADR 0018) — the one path it shares with the retired workspace layer. A
+	// register now reconciles that directory to the enabled sources (none here,
+	// so it empties), which reclaims the stale flat legacy layer rather than
+	// preserving it. The mirror is gitignored, so this reclaim commits nothing;
+	// the migration is still silent about it (asserted below).
+	if _, err := os.Stat(filepath.Join(space, ".chartr", "skills", "implement", "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("the legacy workspace layer survived the register-time mirror: stat err = %v", err)
 	}
 	for _, s := range migratedRows(t, root) {
 		if s.Path == filepath.Join(space, ".chartr", "skills") {
