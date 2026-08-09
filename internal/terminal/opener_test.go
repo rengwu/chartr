@@ -27,7 +27,7 @@ func TestTypedOpenerSubmitsWithCarriageReturn(t *testing.T) {
 	shrinkOpenerTiming(t)
 
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
-	agent, args, env := rawModeAgent(log)
+	agent, args, env := rawModeAgent(t, log)
 
 	m := NewManager(nil, nil)
 	defer m.Shutdown()
@@ -54,7 +54,7 @@ func TestEmptyOpenerTypesNothing(t *testing.T) {
 	shrinkOpenerTiming(t)
 
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
-	agent, args, env := rawModeAgent(log)
+	agent, args, env := rawModeAgent(t, log)
 
 	m := NewManager(nil, nil)
 	defer m.Shutdown()
@@ -87,10 +87,16 @@ const rawAgentLogEnv = "CHARTR_TEST_RAW_AGENT_LOG"
 // reader that could restore terminal settings. Its invisible title is emitted
 // only after raw mode is active, giving awaitReady the same paint signal a real
 // TUI provides.
-func rawModeAgent(log string) (string, []string, []string) {
-	return os.Args[0], []string{"-test.run=^TestRawModeAgentProcess$"}, []string{rawAgentLogEnv + "=" + log}
+func rawModeAgent(t *testing.T, log string) (string, []string, []string) {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("finding test executable: %v", err)
+	}
+	return executable, []string{"-test.run=^TestRawModeAgentProcess$"}, []string{rawAgentLogEnv + "=" + log}
 }
 
+// This is not a real test. It is the helper process launched by rawModeAgent.
 func TestRawModeAgentProcess(_ *testing.T) {
 	log := os.Getenv(rawAgentLogEnv)
 	if log == "" {
