@@ -594,3 +594,59 @@ func TestLastActiveIsStillRead(t *testing.T) {
 		t.Errorf("last_active = %v, want %v", e.LastActive, want)
 	}
 }
+
+// A rename overrides the space's display name, persists per-path across a save
+// and reload, and clears back to nothing when set empty — presentation only, so
+// it moves no row and touches no path.
+func TestRenamePersistsAndClears(t *testing.T) {
+	dir := writeRegistry(t, `
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+`)
+	r := load(t, dir)
+	id := r.List()[0].ID
+
+	if err := r.Rename(id, "  Widget API  "); err != nil {
+		t.Fatalf("renaming: %v", err)
+	}
+	// The name is trimmed and applied, and nothing else about the sidebar moves.
+	if got := r.List()[0].Name; got != "Widget API" {
+		t.Errorf("name after rename = %q, want %q", got, "Widget API")
+	}
+	if got := paths(r.List()); !equal(got, []string{"/repos/alpha", "/repos/beta"}) {
+		t.Errorf("rename reordered the sidebar: %v", got)
+	}
+
+	// It survives a reload — the override lives in the file, keyed by the path.
+	if got := load(t, dir).List()[0].Name; got != "Widget API" {
+		t.Errorf("name after reload = %q, want %q", got, "Widget API")
+	}
+
+	// An empty name (after trimming) clears the override; the reloaded entry
+	// carries no name at all, so the folder basename stands again.
+	if err := r.Rename(id, "   "); err != nil {
+		t.Fatalf("clearing the name: %v", err)
+	}
+	if got := load(t, dir).List()[0].Name; got != "" {
+		t.Errorf("name after clear = %q, want empty", got)
+	}
+}
+
+// Scratch carries no persisted row to name, so a rename of it is a no-op rather
+// than an error — the same shape Deregister gives it.
+func TestRenameScratchIsANoOp(t *testing.T) {
+	r := load(t, t.TempDir())
+	if err := r.Rename(registry.ScratchID, "Home"); err != nil {
+		t.Fatalf("renaming Scratch: %v", err)
+	}
+	for _, e := range r.List() {
+		if e.Scratch && e.Name != "" {
+			t.Errorf("Scratch took a name %q; it should carry none", e.Name)
+		}
+	}
+}

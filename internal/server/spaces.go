@@ -211,6 +211,32 @@ func (s *Server) handleSetSpaceAgent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleRenameSpace sets a space's display name, or clears the override when the
+// body carries an empty name so the folder basename reads again. It is
+// presentation only — the rename changes nothing but the label the sidebar shows,
+// which is why it takes no confirmation and needs no place in the settings
+// surface. Repo-scoped like the agent setter above: Scratch carries no persisted
+// row to name, so the guard refuses it here rather than let a stale client try.
+func (s *Server) handleRenameSpace(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.reg.Rename(e.ID, body.Name); err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.rebuild()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // rebuild recomputes the whole derived model from the registry and current
 // config on disk, and pushes it to every browser. It is the one place the
 // registry slice of the model is published, called after every mutating action,
@@ -401,9 +427,17 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 	// operator is, the way the agent-library warnings do.
 	warnings = append(warnings, configWarnings...)
 
+	// The folder basename is the default label; the operator's own rename, when
+	// they have set one, stands in for it. Purely presentation — the path and id
+	// below are untouched, so every action still resolves by them.
+	name := filepath.Base(e.Path)
+	if e.Name != "" {
+		name = e.Name
+	}
+
 	return model.Space{
 		ID:        e.ID,
-		Name:      filepath.Base(e.Path),
+		Name:      name,
 		Path:      e.Path,
 		Branch:    gitBranch(e.Path),
 		Dirty:     gitDirty(e.Path),

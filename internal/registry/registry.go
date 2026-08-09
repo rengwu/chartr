@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,14 @@ type Entry struct {
 	// as it stands and read as nothing remembered, so deleting an agent costs no
 	// registry surgery.
 	LastAgent string `toml:"last_agent,omitempty"`
+	// Name is the operator's own display name for the space, overriding the folder
+	// basename the sidebar shows by default. It is presentation only — purely how
+	// the space reads in the chrome, changing nothing about the path, the id, or
+	// what any action does — and it belongs here for the same reasons Order and
+	// LastAgent do: per-space, per-machine, chartr-owned and rebuildable, keyed by
+	// the path-derived id so a re-register of the same folder lines back up with
+	// it. Empty means no override: the folder basename stands.
+	Name string `toml:"name,omitempty"`
 }
 
 // Registry is the in-memory registry backed by <dataDir>/spaces.toml. It is
@@ -404,6 +413,29 @@ func (r *Registry) SetLastAgent(id, name string) error {
 		return nil
 	}
 	e.LastAgent = name
+	r.entries[id] = e
+	return r.saveLocked()
+}
+
+// Rename sets a space's display name, or clears the override when name is empty
+// (after trimming) so the folder basename stands again. Presentation only: it
+// touches nothing but this one field, so it never reorders the sidebar or moves a
+// row. Renaming an unknown ID, or setting the name already held, is a no-op.
+// Scratch is rebuilt from nothing on every run and carries no persisted row, so
+// there is nothing here to rename — the repo-scoped action guard refuses it, and
+// this stays a no-op for it besides.
+func (r *Registry) Rename(id, name string) error {
+	name = strings.TrimSpace(name)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if id == ScratchID {
+		return nil
+	}
+	e, ok := r.entries[id]
+	if !ok || e.Name == name {
+		return nil
+	}
+	e.Name = name
 	r.entries[id] = e
 	return r.saveLocked()
 }

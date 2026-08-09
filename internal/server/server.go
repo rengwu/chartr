@@ -185,6 +185,11 @@ func New(opts Options) (*Server, error) {
 	// spawn — the action footer's agent selector persists the operator's pick the
 	// moment they make it, so it reads as a saved setting, not a pending choice.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/agent", s.handleSetSpaceAgent)
+	// The operator's own display name for a space, persisted per-path in the
+	// registry. Presentation only — it renames nothing on disk — so it is a plain
+	// setter beside the agent one above; an empty name clears the override back to
+	// the folder basename.
+	s.mux.HandleFunc("PUT /api/spaces/{id}/name", s.handleRenameSpace)
 	// The settings surface (ticket 05). The read half rides the per-space model
 	// push, so opening a layer file is the only write it gets. It is a POST because
 	// it launches a process, and it resolves a *named* layer server-side — never a
