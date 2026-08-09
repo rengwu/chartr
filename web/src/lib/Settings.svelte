@@ -230,9 +230,7 @@
             <h2 class="text-xs font-semibold">Files on disk</h2>
             <p class="text-xs leading-relaxed text-muted-foreground">
               Where your config lives. All local, never committed, and per-machine. Anything the
-              controls above don't edit, you edit here —
-              <code class="font-mono">conventions.md</code> is the exception: chartr generates it and
-              rewrites it on every composition, so read it rather than edit it.
+              controls above don't edit, you edit here.
             </p>
             {#each files as l (l.name)}
               {@render layerRow(l)}

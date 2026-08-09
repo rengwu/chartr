@@ -81,6 +81,13 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		httpError(w, http.StatusInternalServerError, "syncing skills into the space: "+err.Error())
 		return
 	}
+	// The same barrier for the space's copy of the write contract: the free
+	// payload points at `.chartr/TRACKER-CONVENTION.md` by a repo-relative path,
+	// so the bytes there must be current before this session launches.
+	if err := s.ensureConventionsCurrent(e); err != nil {
+		httpError(w, http.StatusInternalServerError, "syncing the write contract into the space: "+err.Error())
+		return
+	}
 
 	payload, err := prompt.ComposeFree(s.opts.ConfigDir, s.srcs)
 	if err != nil {

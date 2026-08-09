@@ -97,6 +97,24 @@ func (s *Server) ensureSkillsCurrent(e registry.Entry) error {
 	return err
 }
 
+// ensureConventionsCurrent reconciles a space's own copy of the file-format
+// contract at `.chartr/TRACKER-CONVENTION.md` (prompt.ConventionsRelPath) to
+// the embedded canonical bytes. It runs at the same barrier ensureSkillsCurrent
+// does and for the same reason: a payload names this path rather than an
+// absolute one under the operator's config root precisely so a session
+// sandboxed to its own space can read it, which only holds if the bytes are
+// actually there before that session starts.
+//
+// A scratch space is skipped for the reason ensureSkillsCurrent skips it: it
+// follows the operator's home directory, which is not a space's repository to
+// write a contract copy into.
+func (s *Server) ensureConventionsCurrent(e registry.Entry) error {
+	if e.Scratch {
+		return nil
+	}
+	return prompt.ReconcileSpaceConventions(e.Path)
+}
+
 // writeChartrDoc puts the document at the space root and makes git ignore it.
 //
 // An unreachable space — a deleted directory, an unmounted volume — is skipped

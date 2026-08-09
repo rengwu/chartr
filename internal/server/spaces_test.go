@@ -12,7 +12,6 @@ import (
 
 	"github.com/rengwu/chartr/internal/chartrtest"
 	"github.com/rengwu/chartr/internal/model"
-	"github.com/rengwu/chartr/internal/sources"
 )
 
 // The registry at the process boundary: register with an announced git init,
@@ -453,11 +452,12 @@ func worktreeFiles(t *testing.T, repo string) []string {
 			if d.Name() == ".git" {
 				return filepath.SkipDir // git's own internals are not the working tree
 			}
-			if rel, _ := filepath.Rel(repo, path); rel == filepath.FromSlash(sources.MirrorDir) {
-				// chartr's per-machine skill mirror, self-gitignored and owned
-				// outright — same footing as CHARTR.md below. It is not the
-				// operator's tree, so register/forget writing it is not a change to
-				// what they committed. git status stays the real "not destroy" guard.
+			if rel, _ := filepath.Rel(repo, path); rel == ".chartr" {
+				// chartr's whole per-machine directory — the skill mirror, the run
+				// directory, the space's copy of the write contract — self-gitignored
+				// and owned outright, same footing as CHARTR.md below. It is not the
+				// operator's tree, so register/forget writing into it is not a change
+				// to what they committed. git status stays the real "not destroy" guard.
 				return filepath.SkipDir
 			}
 			return nil

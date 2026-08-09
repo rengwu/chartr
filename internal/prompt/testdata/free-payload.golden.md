@@ -4,7 +4,7 @@ per ticket.
 
 This shell is one chartr opened with no ticket and no role.
 
-A file under `.plan/maps/` is read by chartr only where it follows the format stated at `<config>/conventions.md`.
+A file under `.plan/maps/` is read by chartr only where it follows the format stated at `.chartr/TRACKER-CONVENTION.md`.
 
 ---
 

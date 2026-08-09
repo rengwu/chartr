@@ -35,7 +35,7 @@ reader: what you did, why, and what you deliberately did not do.
 
 GRILL-BODY-MARKER
 
-A file under `.plan/maps/` is read by chartr only where it follows the format stated at `<config>/conventions.md`.
+A file under `.plan/maps/` is read by chartr only where it follows the format stated at `.chartr/TRACKER-CONVENTION.md`.
 
 Never use emoji in a commit message.
 

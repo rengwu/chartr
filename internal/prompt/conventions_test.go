@@ -9,11 +9,12 @@ import (
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
-// The config root's two contract files (skill-sources ticket 03): the generated
-// conventions, which chartr owns and restores, and the operator's preferences,
-// which chartr creates once and never writes again.
+// The config root's one contract file: the operator's preferences, which
+// chartr creates once and never writes again (skill-sources ticket 03). The
+// conventions half of what used to be a two-file contract here now lives
+// per-space instead — see conventions_space_test.go.
 
-func TestAFreshConfigRootGetsBothContractFiles(t *testing.T) {
+func TestAFreshConfigRootGetsThePreferencesFile(t *testing.T) {
 	dir := t.TempDir()
 
 	got, err := prompt.ReconcileContract(dir)
@@ -21,61 +22,11 @@ func TestAFreshConfigRootGetsBothContractFiles(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	if got.ConventionsPath != filepath.Join(dir, "conventions.md") {
-		t.Errorf("conventions path = %q", got.ConventionsPath)
-	}
 	if got.Preferences != "" {
 		t.Errorf("fresh preferences = %q, want empty", got.Preferences)
 	}
-	b, err := os.ReadFile(got.ConventionsPath)
-	if err != nil {
-		t.Fatalf("read conventions: %v", err)
-	}
-	if string(b) != prompt.Conventions() {
-		t.Error("materialized conventions differ from the embedded bytes")
-	}
 	if _, err := os.Stat(prompt.PreferencesPath(dir)); err != nil {
 		t.Fatalf("preferences.md not created: %v", err)
-	}
-}
-
-func TestAnEditedConventionsFileIsRestored(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := prompt.ReconcileContract(dir); err != nil {
-		t.Fatalf("reconcile: %v", err)
-	}
-
-	path := prompt.ConventionsPath(dir)
-	if err := os.WriteFile(path, []byte("the operator's own rules\n"), 0o600); err != nil {
-		t.Fatalf("edit conventions: %v", err)
-	}
-	if _, err := prompt.ReconcileContract(dir); err != nil {
-		t.Fatalf("reconcile after edit: %v", err)
-	}
-
-	b, _ := os.ReadFile(path)
-	if string(b) != prompt.Conventions() {
-		t.Error("an edited conventions file was not restored to the canonical bytes")
-	}
-}
-
-// The conventions file is a parser contract, so composing anything restores it —
-// not only a restart. This is the guarantee that makes an upgrade take effect in
-// a running cockpit.
-func TestComposingRestoresTheConventionsFile(t *testing.T) {
-	dir, reg, bindings := fixture(t)
-
-	path := prompt.ConventionsPath(dir)
-	if err := os.WriteFile(path, []byte("truncated"), 0o600); err != nil {
-		t.Fatalf("seed edited conventions: %v", err)
-	}
-
-	if _, err := prompt.Compose(prompt.ComposeInput{Role: "grill", ConfigDir: dir, Sources: reg, Bindings: bindings}); err != nil {
-		t.Fatalf("compose: %v", err)
-	}
-	b, _ := os.ReadFile(path)
-	if string(b) != prompt.Conventions() {
-		t.Error("composing did not restore the conventions file")
 	}
 }
 
@@ -148,6 +99,36 @@ func TestAnUnreadablePreferencesFileFailsComposition(t *testing.T) {
 	}
 }
 
+// A payload names the contract by a path relative to the space it will run in,
+// not an absolute one under the operator's config root — the whole point of
+// moving it out of ConfigDir (see conventions_space_test.go): a session
+// sandboxed to its own working tree can resolve a relative path but not one
+// that leaves the repo.
+func TestComposedPayloadPointsAtTheRelativeConventionsPath(t *testing.T) {
+	dir, reg, bindings := fixture(t)
+
+	p, err := prompt.Compose(prompt.ComposeInput{Role: "grill", ConfigDir: dir, Sources: reg, Bindings: bindings})
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	var text string
+	for _, part := range p.Parts {
+		if part.Name == "conventions" {
+			text = part.Text
+		}
+	}
+	if text == "" {
+		t.Fatal("no conventions part in the composed payload")
+	}
+	if !strings.Contains(text, "`"+prompt.ConventionsRelPath+"`") {
+		t.Errorf("conventions sentence = %q, want it to name %q", text, prompt.ConventionsRelPath)
+	}
+	if strings.Contains(text, dir) {
+		t.Errorf("conventions sentence names the config root:\n%s", text)
+	}
+}
+
 // The document states the rules chartr's own code keeps. These are the two the
 // parser enforces, so a drift between the text and the code shows up here.
 func TestTheConventionsStateTheRulesTheParserKeeps(t *testing.T) {
@@ -162,5 +143,13 @@ func TestTheConventionsStateTheRulesTheParserKeeps(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("conventions do not mention %q", want)
 		}
+	}
+}
+
+// ConventionsRelPath is what every payload and every space's materialized copy
+// have to agree on: the same path, relative, under `.chartr/`.
+func TestConventionsRelPathIsUnderTheSpaceLocalDirectory(t *testing.T) {
+	if want := filepath.ToSlash(prompt.ConventionsRelPath); want != ".chartr/TRACKER-CONVENTION.md" {
+		t.Errorf("ConventionsRelPath = %q, want .chartr/TRACKER-CONVENTION.md", want)
 	}
 }

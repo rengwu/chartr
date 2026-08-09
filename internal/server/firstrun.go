@@ -55,10 +55,13 @@ func firstRun(configDir string) (*sources.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	// chartr's file-format contract, and the operator's own preferences file, both
-	// under the config root (skill-sources ticket 03). Startup is the first of two
-	// reconcile points; every composition is the other, so an upgrade updates the
-	// contract even in a process that never restarts a preview.
+	// The operator's own preferences file, under the config root (skill-sources
+	// ticket 03). Startup is the first of two reconcile points; every composition
+	// is the other, so a preferences file the operator deletes mid-run is
+	// recreated even in a process that never restarts a preview. The file-format
+	// contract that used to be reconciled here too now lives per-space instead —
+	// ensureConventionsCurrent reconciles it, at the same call sites that keep the
+	// skill mirror current.
 	if _, err := prompt.ReconcileContract(configDir); err != nil {
 		return nil, err
 	}

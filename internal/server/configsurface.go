@@ -31,7 +31,6 @@ const (
 	layerTerminalConfig = "terminal-config"
 	layerNotifyConfig   = "notify-config"
 	layerSources        = "sources-config"
-	layerConventions    = "conventions"
 	layerPreferences    = "preferences"
 )
 
@@ -55,14 +54,16 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
 		layerAt(layerNotifyConfig, "user", "notifications",
 			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
-		// The three files the sources section owns. `sources.toml` is edited
-		// through that section's controls and openable here for everything they
-		// deliberately do not edit; `conventions.md` is chartr's generated write
-		// contract, reconciled on every composition and so read-only in practice;
-		// `preferences.md` is the operator's own and is the one of the three they
-		// are expected to write in.
+		// The two files the sources section owns. `sources.toml` is edited through
+		// that section's controls and openable here for everything it deliberately
+		// does not edit; `preferences.md` is the operator's own and is the one of
+		// the two they are expected to write in. The generated write contract used
+		// to be a third file here (`conventions.md`, under this same config root);
+		// it now lives per-space at `.chartr/TRACKER-CONVENTION.md` so a session
+		// sandboxed to its own space can read it, which took it out of the
+		// operator's config root and off this list — it has no single global path
+		// left to name.
 		layerAt(layerSources, "user", "sources", sources.FilePath(s.opts.ConfigDir)),
-		layerAt(layerConventions, "user", "conventions", prompt.ConventionsPath(s.opts.ConfigDir)),
 		layerAt(layerPreferences, "user", "preferences", prompt.PreferencesPath(s.opts.ConfigDir)),
 	}
 }
