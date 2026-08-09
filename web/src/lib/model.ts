@@ -179,11 +179,6 @@ export interface Source {
   // RFC3339, absent when never fetched.
   fetched?: string
   enabled: boolean
-  // The synthetic `chartr-skills` row: always last, never removable and never
-  // reorderable. `seeded` distinguishes chartr's shipped bytes from a checkout a
-  // refresh has since pinned.
-  default?: boolean
-  seeded?: boolean
   status: 'ok' | 'unavailable' | 'empty'
   skills: string[]
   // The subset of `skills` an earlier enabled source already claimed at the bare
@@ -192,13 +187,13 @@ export interface Source {
   warnings?: string[]
 }
 
-// RoleBinding is one role beside the skill it is bound to. An empty `ref` is a
-// deleted binding — a legitimate state that makes the role refuse to spawn, and
-// one nothing refills automatically; the restore control is its only recovery.
+// RoleBinding is one role beside the skill it is bound to. An empty `ref` is an
+// unbound role — the first-run state now that chartr seeds no bindings, and a
+// legitimate later state too: the role refuses to spawn until the operator binds
+// it against a source they registered.
 export interface RoleBinding {
   role: Role
   ref: string
-  default: string
   // Whether `ref` names a skill some enabled source yields today. Bound-but-
   // unresolvable is the other way a role refuses, and the row tells them apart.
   resolves: boolean
@@ -221,8 +216,8 @@ export interface Model {
   // The operator's ordered skill-source list, each row with what a walk of it
   // just found. In resolution order — first enabled source to yield a name wins.
   sources: Source[]
-  // The four role bindings as they stand in `user.toml`, each beside the default
-  // a restore would write.
+  // The four role bindings as they stand in `user.toml`, each beside whether it
+  // resolves. An unbound role rides with an empty ref.
   roles: RoleBinding[]
   // Whether `git` is on this machine's PATH. A git source cannot be registered
   // without it, and the refusal is at the gate — before a row is written.

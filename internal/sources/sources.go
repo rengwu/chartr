@@ -2,18 +2,20 @@
 // of places skills come from. A source is a local folder or a pinned git
 // checkout; list position is resolution order.
 //
+// chartr ships no skills of its own (ADR 0017): there is no synthetic default
+// row and nothing seeded into the binary. An empty list is the first-run state,
+// and a role bound to nothing refuses its spawn until the operator registers a
+// source — chartr's own skills included, which now live in an ordinary repo the
+// operator registers like any other.
+//
 // The list lives in `sources.toml` under the config root as an array of
 // tables, no order field. Identity is the operator's name: trimmed, 1–64
 // letters/digits/space/hyphen/underscore, no `/` (reserved by the qualified
 // form `Source/skill`), unique case-insensitively. `enabled` is written only
 // when false.
 //
-// The `chartr-skills` row is synthetic: never written as a row, always
-// last, not removable or reorderable. Only its scalars persist beside the
-// rows — toggle, commit, refresh timestamp.
-//
 // Written atomically (0600 under a 0700 root, temp-then-rename) like the
-// space registry; a missing or unparseable file is just the default row —
+// space registry; a missing or unparseable file is just an empty list —
 // first-run state, not an error. Losing the file costs re-registration, with
 // one asymmetry: git checkouts are orphaned and not collected.
 //
@@ -39,11 +41,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 )
-
-// DefaultName is the fixed name of the synthetic default source. It is reserved:
-// a hand-edited row claiming it is dropped, because the name belongs to the row
-// chartr always seats last.
-const DefaultName = "chartr-skills"
 
 // The two kinds of source. `kind` is declared, never inferred — two kinds in one
 // table, because two tables could not interleave and resolution is one ordered
@@ -78,14 +75,12 @@ var (
 	ErrDuplicateName = errors.New("sources: a source by that name is already registered")
 	ErrBadName       = errors.New("sources: a source name is 1-64 characters of letters, digits, space, hyphen or underscore, and may not contain '/'")
 	ErrGitMissing    = errors.New("sources: git is not on PATH")
-	ErrProtected     = errors.New("sources: the default source cannot be removed or reordered")
 	ErrBadReorder    = errors.New("sources: a reorder must name every registered source exactly once")
 )
 
 // Source is one entry in the list: what the operator registered, plus the git
-// state a pinned checkout carries on its own row. Enabled and Default are held
-// in memory rather than read off the row as-is — Enabled because it is written
-// only when false, Default because the default row is never written at all.
+// state a pinned checkout carries on its own row. Enabled is held in memory
+// rather than read off the row as-is, because it is written only when false.
 type Source struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
@@ -98,9 +93,6 @@ type Source struct {
 	Commit  string    `json:"commit,omitempty"`
 	Fetched time.Time `json:"fetched,omitempty"`
 	Enabled bool      `json:"enabled"`
-	// Default marks the synthetic `chartr-skills` row: always last, not
-	// removable, not reorderable.
-	Default bool `json:"default,omitempty"`
 }
 
 // Skill is one directory a walk found: its basename, where it sits, and which
@@ -133,7 +125,6 @@ type Registry struct {
 
 	mu       sync.Mutex
 	rows     []Source // the operator's rows, in file order — resolution order
-	def      Source   // the synthetic default row, always last
 	warnings []string // what the load dropped, and why
 }
 
@@ -151,25 +142,12 @@ type row struct {
 	Enabled *bool      `toml:"enabled,omitempty"`
 }
 
-// file is the document. The default row's scalars sit beside the rows rather
-// than among them — a [[source]] row means "a source the operator registered",
+// file is the document: an array of the operator's registered sources, nothing
+// beside them. A `[[source]]` row means "a source the operator registered",
 // which is what keeps deleting this file and re-registering those sources a
-// complete recovery. They are declared before Sources because a scalar cannot
-// follow an array of tables in TOML.
+// complete recovery.
 type file struct {
-	DefaultEnabled *bool      `toml:"default_enabled,omitempty"`
-	DefaultCommit  string     `toml:"default_commit,omitempty"`
-	DefaultFetched *time.Time `toml:"default_fetched,omitempty"`
-
 	Sources []row `toml:"source"`
-}
-
-// DefaultPath is where the default source's skills live: a named directory
-// beside the git checkouts, which are keyed by hash and cannot collide with it.
-// What lands there — the seed, or a checkout the operator pinned — is the seed's
-// business.
-func DefaultPath(configDir string) string {
-	return filepath.Join(configDir, checkoutsDir, DefaultName)
 }
 
 // FilePath is where the list lives. It is exported because the absence of this
@@ -191,20 +169,13 @@ func HasSkills(dir string) bool {
 	return len(discover(dir, 1)) > 0
 }
 
-// Load reads the list under configDir. A missing or unparseable file is the
-// default row alone — the first-run state, not an error — and a row this package
-// cannot read is dropped with a warning while the rest of the list stands.
+// Load reads the list under configDir. A missing or unparseable file is an empty
+// list — the first-run state, not an error — and a row this package cannot read
+// is dropped with a warning while the rest of the list stands.
 func Load(configDir string) (*Registry, error) {
 	r := &Registry{
 		configDir: configDir,
 		path:      filepath.Join(configDir, fileName),
-		def: Source{
-			Name:    DefaultName,
-			Kind:    KindGit,
-			Path:    DefaultPath(configDir),
-			Enabled: true,
-			Default: true,
-		},
 	}
 
 	data, err := os.ReadFile(r.path)
@@ -213,16 +184,8 @@ func Load(configDir string) (*Registry, error) {
 	}
 	var f file
 	if err := toml.Unmarshal(data, &f); err != nil {
-		r.warnings = append(r.warnings, fmt.Sprintf("%s could not be parsed (%v); reading it as a fresh list with the default source alone", r.path, err))
+		r.warnings = append(r.warnings, fmt.Sprintf("%s could not be parsed (%v); reading it as an empty list", r.path, err))
 		return r, nil
-	}
-
-	if f.DefaultEnabled != nil {
-		r.def.Enabled = *f.DefaultEnabled
-	}
-	r.def.Commit = f.DefaultCommit
-	if f.DefaultFetched != nil {
-		r.def.Fetched = *f.DefaultFetched
 	}
 
 	seen := map[string]bool{}
@@ -249,9 +212,6 @@ func readRow(in row) (Source, string) {
 	name := strings.TrimSpace(in.Name)
 	if !validName(name) {
 		return Source{}, fmt.Sprintf("a source named %q was dropped: %v", in.Name, ErrBadName)
-	}
-	if strings.EqualFold(name, DefaultName) {
-		return Source{}, fmt.Sprintf("a row named %q was dropped: that name belongs to the default source", in.Name)
 	}
 	switch in.Kind {
 	case KindDir:
@@ -307,8 +267,8 @@ func (r *Registry) Warnings() []string {
 }
 
 // List returns the whole list in resolution order: the operator's rows in file
-// order, then the synthetic default row. Disabled sources are listed — the
-// screen shows them; only resolution skips them.
+// order. Disabled sources are listed — the screen shows them; only resolution
+// skips them.
 func (r *Registry) List() []Source {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -316,12 +276,10 @@ func (r *Registry) List() []Source {
 }
 
 func (r *Registry) listLocked() []Source {
-	out := make([]Source, 0, len(r.rows)+1)
-	out = append(out, r.rows...)
-	return append(out, r.def)
+	return append([]Source(nil), r.rows...)
 }
 
-// Get returns one source by name, case-insensitively, including the default row.
+// Get returns one source by name, case-insensitively.
 func (r *Registry) Get(name string) (Source, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -329,7 +287,7 @@ func (r *Registry) Get(name string) (Source, bool) {
 }
 
 func (r *Registry) getLocked(name string) (Source, bool) {
-	for _, s := range r.listLocked() {
+	for _, s := range r.rows {
 		if strings.EqualFold(s.Name, name) {
 			return s, true
 		}
@@ -445,11 +403,11 @@ func discover(dir string, depth int) []string {
 }
 
 // Resolve takes both forms of reference. A bare name searches enabled sources in
-// file order and then the default row, first hit winning. A `Source/skill`
-// reference addresses one source exactly and **never falls through**: naming a
-// source and silently receiving a different source's skill is worse than an
-// error. A disabled source is skipped by both forms, and a qualified reference
-// into one says so, because that is the failure fixed in a click.
+// file order, first hit winning. A `Source/skill` reference addresses one source
+// exactly and **never falls through**: naming a source and silently receiving a
+// different source's skill is worse than an error. A disabled source is skipped
+// by both forms, and a qualified reference into one says so, because that is the
+// failure fixed in a click.
 func (r *Registry) Resolve(ref string) (Skill, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -541,14 +499,10 @@ func expandHome(path string) string {
 }
 
 // Remove forgets a source. A dir source's folder is untouched; a git source's
-// checkout is chartr's own, so it goes with the row. The default row cannot be
-// removed.
+// checkout is chartr's own, so it goes with the row.
 func (r *Registry) Remove(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if strings.EqualFold(strings.TrimSpace(name), DefaultName) {
-		return ErrProtected
-	}
 	for i, s := range r.rows {
 		if !strings.EqualFold(s.Name, name) {
 			continue
@@ -565,15 +519,11 @@ func (r *Registry) Remove(name string) error {
 	return fmt.Errorf("%w: no source named %q", ErrNotFound, name)
 }
 
-// SetEnabled parks a source without removing it, the default row included:
-// disabled means one thing, and both forms of resolution skip it.
+// SetEnabled parks a source without removing it: disabled means one thing, and
+// both forms of resolution skip it.
 func (r *Registry) SetEnabled(name string, enabled bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if strings.EqualFold(strings.TrimSpace(name), DefaultName) {
-		r.def.Enabled = enabled
-		return r.saveLocked()
-	}
 	for i, s := range r.rows {
 		if strings.EqualFold(s.Name, name) {
 			r.rows[i].Enabled = enabled
@@ -586,8 +536,7 @@ func (r *Registry) SetEnabled(name string, enabled bool) error {
 // Reorder sets the list to names: the whole ordered list, applied as file order.
 // It is deliberately not a per-row move — a full-list write is idempotent and
 // cannot leave the list half-moved when the operator drags twice in quick
-// succession. The default row is not part of it: it is always last. The list is
-// validated in full before anything is touched.
+// succession. The list is validated in full before anything is touched.
 func (r *Registry) Reorder(names []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -603,9 +552,6 @@ func (r *Registry) Reorder(names []string) error {
 	seen := map[string]bool{}
 	for _, n := range names {
 		key := strings.ToLower(strings.TrimSpace(n))
-		if key == strings.ToLower(DefaultName) {
-			return ErrProtected
-		}
 		s, ok := byName[key]
 		if !ok {
 			return fmt.Errorf("%w: no source named %q", ErrBadReorder, n)
@@ -626,13 +572,9 @@ func (r *Registry) Reorder(names []string) error {
 	return nil
 }
 
-// freeNameLocked refuses a name already taken, case-insensitively, and the
-// reserved default name — before anything is created on disk. The caller holds
-// r.mu.
+// freeNameLocked refuses a name already taken, case-insensitively, before
+// anything is created on disk. The caller holds r.mu.
 func (r *Registry) freeNameLocked(name string) error {
-	if strings.EqualFold(name, DefaultName) {
-		return fmt.Errorf("%w: %q is the default source's name", ErrDuplicateName, DefaultName)
-	}
 	for _, s := range r.rows {
 		if strings.EqualFold(s.Name, name) {
 			return fmt.Errorf("%w: %q", ErrDuplicateName, s.Name)
@@ -665,15 +607,6 @@ func (r *Registry) saveLocked() error {
 	}
 
 	f := file{Sources: make([]row, 0, len(r.rows))}
-	if !r.def.Enabled {
-		off := false
-		f.DefaultEnabled = &off
-	}
-	f.DefaultCommit = r.def.Commit
-	if !r.def.Fetched.IsZero() {
-		t := r.def.Fetched.UTC()
-		f.DefaultFetched = &t
-	}
 	for _, s := range r.rows {
 		out := row{Name: s.Name, Kind: s.Kind, URL: s.URL, Ref: s.Ref, Commit: s.Commit, Path: s.Path}
 		if !s.Fetched.IsZero() {
