@@ -267,6 +267,15 @@ const emptyLibraryMessage = "no agents are registered — register one in settin
 // failure after the claim leaves the claim standing (never rolled back) for the
 // death halt to resolve.
 func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
+	// The sync barrier (skill-sources mirror): bring the space's `.chartr/skills/`
+	// into line with the enabled sources *before* composing, so the mirror paths
+	// the payload names are backed by current bytes an agent sandboxed to its own
+	// tree can read. It runs before the claim, so a mirror that cannot be written
+	// refuses the spawn rather than launching against a stale or missing view.
+	if err := s.ensureSkillsCurrent(in.entry); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("syncing skills into the space: %w", err)
+	}
+
 	payload, err := prompt.Compose(prompt.ComposeInput{
 		Role:      in.role,
 		ConfigDir: s.opts.ConfigDir,

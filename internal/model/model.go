@@ -113,13 +113,6 @@ type Source struct {
 	Commit  string `json:"commit,omitempty"`
 	Fetched string `json:"fetched,omitempty"`
 	Enabled bool   `json:"enabled"`
-	// Default marks the synthetic `chartr-skills` row: always last, never
-	// removable and never reorderable.
-	Default bool `json:"default,omitempty"`
-	// Seeded is true while the default row is still chartr's own bytes rather
-	// than a checkout — the difference between "shipped with this build" and
-	// "fetched ⟨date⟩ — ⟨sha⟩".
-	Seeded bool `json:"seeded,omitempty"`
 	// Status is "ok", "unavailable" (the path is gone) or "empty" (the path is
 	// there and yields no skills).
 	Status string `json:"status"`
@@ -135,15 +128,12 @@ type Source struct {
 }
 
 // RoleBinding is one of the four roles beside the skill it is bound to. Ref is
-// empty when the binding was deleted, which is a legitimate state: the role
-// refuses to spawn until it is rebound, and Default is what the restore control
-// on the settings surface would write back.
+// empty when the role is unbound — the first-run state now that chartr seeds no
+// bindings, and a legitimate later state too: the role refuses to spawn until the
+// operator binds it against a source they registered.
 type RoleBinding struct {
 	Role string `json:"role"`
 	Ref  string `json:"ref"`
-	// Default is the seeded binding for this role — always a source-qualified
-	// ref, so a restore is a write of a known string and never a re-derivation.
-	Default string `json:"default"`
 	// Resolves is whether Ref names a skill some enabled source yields today. A
 	// bound-but-unresolvable ref is the other way a role refuses, and the row
 	// tells the two apart.

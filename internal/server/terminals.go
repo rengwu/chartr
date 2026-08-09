@@ -73,6 +73,15 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		return
 	}
 
+	// The sync barrier (skill-sources mirror): a free session is told the same
+	// sources block a spawn is, with the same `.chartr/skills/` paths, so it needs
+	// the mirror current before it launches. Run past the refusal above so a
+	// refused free session still writes nothing a session would.
+	if err := s.ensureSkillsCurrent(e); err != nil {
+		httpError(w, http.StatusInternalServerError, "syncing skills into the space: "+err.Error())
+		return
+	}
+
 	payload, err := prompt.ComposeFree(s.opts.ConfigDir, s.srcs)
 	if err != nil {
 		// Nothing here is the caller's input; a failure is an unreadable

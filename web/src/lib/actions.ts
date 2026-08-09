@@ -235,17 +235,6 @@ export function refreshSource(name: string): Promise<{ name: string; commit: str
   }>
 }
 
-// restoreRoleBinding writes a role's seeded binding back into `user.toml`. It is
-// the only recovery for a deleted binding — nothing refills one at startup,
-// because a missing row is a legitimate way to make a role refuse until it is
-// rebound. Binding a role to anything else is an edit of `user.toml`.
-export function restoreRoleBinding(role: string): Promise<{ role: string; ref: string }> {
-  return send('POST', `/api/config/roles/${encodeURIComponent(role)}/restore`) as Promise<{
-    role: string
-    ref: string
-  }>
-}
-
 // SpawnResult is the spawn action's own response — the session it started, the
 // resolved agent and args, and the payload hash the claim commit recorded. The
 // live session tab arrives separately over the control socket.

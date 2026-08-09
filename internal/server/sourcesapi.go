@@ -12,11 +12,11 @@ import (
 	"github.com/rengwu/chartr/internal/sources"
 )
 
-// The sources section's write half (ticket 10): the six actions the planning
-// tickets designed — register a source, remove one, toggle enabled, reorder,
-// refresh a git source, and restore a role binding to its default. Everything
-// else about the source list is an open-the-file action on `sources.toml`
-// through the existing named-layer route; there is never a second config store.
+// The sources section's write half (ticket 10): the five actions the planning
+// tickets designed — register a source, remove one, toggle enabled, reorder, and
+// refresh a git source. Everything else about the source list is an
+// open-the-file action on `sources.toml` through the existing named-layer route;
+// there is never a second config store.
 //
 // Every action ends in a rebuild, so the row the operator just changed comes
 // back over the control socket rather than being patched optimistically in the
@@ -28,8 +28,6 @@ import (
 // what that document says. It is called explicitly rather than folded into
 // rebuild(): rebuild also fires on terminal churn and space registration, and
 // the trigger set for the standing document is deliberately narrower than that.
-// Restoring a role binding is not one of the five — bindings do not appear in
-// the document.
 
 // sourceStates converts the registry's walked rows into their wire mirror. The
 // walk is uncached, so this is a fresh read of every source root on every
@@ -49,7 +47,6 @@ func (s *Server) sourceStates() []model.Source {
 			Ref:      st.Ref,
 			Commit:   st.Commit,
 			Enabled:  st.Enabled,
-			Default:  st.Default,
 			Status:   st.Status,
 			Skills:   []string{},
 			Warnings: st.Warnings,
@@ -57,10 +54,6 @@ func (s *Server) sourceStates() []model.Source {
 		if !st.Fetched.IsZero() {
 			row.Fetched = st.Fetched.UTC().Format(time.RFC3339)
 		}
-		// The default row is "shipped with this build" until its first refresh
-		// converts it into a real checkout; `Pinned` is the same test the refresh
-		// itself branches on, so the row cannot claim one state and take the other.
-		row.Seeded = st.Default && !sources.Pinned(st.Path)
 		for _, sk := range st.Skills {
 			row.Skills = append(row.Skills, sk.Name)
 			if sk.Shadowed {
@@ -73,19 +66,18 @@ func (s *Server) sourceStates() []model.Source {
 }
 
 // roleBindingRows reports the four roles as they stand in `user.toml`, each
-// beside the default a restore would write and whether the ref resolves today.
-// A deleted binding rides with an empty ref rather than being filled in: nothing
-// refills one automatically (ticket 03), and the restore control below is its
-// only recovery.
+// beside whether its ref resolves today. An unbound role rides with an empty ref:
+// chartr seeds none (ADR 0017 — it ships no skills), so a role is unbound until
+// the operator binds it, and rebinding is an edit of `user.toml` from the same
+// section.
 func (s *Server) roleBindingRows() []model.RoleBinding {
 	bound := s.roleBindings()
 	out := make([]model.RoleBinding, 0, len(config.Roles))
 	for _, r := range config.Roles {
 		ref := bound[r]
 		row := model.RoleBinding{
-			Role:    string(r),
-			Ref:     ref,
-			Default: sources.DefaultBinding(string(r)),
+			Role: string(r),
+			Ref:  ref,
 		}
 		if ref != "" && s.srcs != nil {
 			_, err := s.srcs.Resolve(ref)
@@ -107,7 +99,6 @@ func sourceStatus(err error) int {
 		return http.StatusConflict
 	case errors.Is(err, sources.ErrBadName),
 		errors.Is(err, sources.ErrGitMissing),
-		errors.Is(err, sources.ErrProtected),
 		errors.Is(err, sources.ErrBadReorder):
 		return http.StatusBadRequest
 	default:
@@ -232,35 +223,3 @@ func (s *Server) handleRefreshSource(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleRestoreRoleBinding writes a role's seeded binding back into `user.toml`.
-// It is the only recovery for a deleted binding, and it is deliberately an
-// operator action rather than a startup repair: a missing row is a legitimate
-// way to make a role refuse until it is rebound (ticket 03), so chartr restores
-// one only when asked. Rebinding a role to anything *other* than its default is
-// an edit of `user.toml`, openable from the same section.
-func (s *Server) handleRestoreRoleBinding(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("role")
-	if !config.IsRole(name) {
-		httpError(w, http.StatusBadRequest, fmt.Sprintf("unknown role %q", name))
-		return
-	}
-	role := config.Role(name)
-	ref := sources.DefaultBinding(name)
-
-	path, existing, err := s.readUserConfig()
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, "reading your config: "+err.Error())
-		return
-	}
-	next, err := config.SetUserRole(existing, role, ref)
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the role binding: "+err.Error())
-		return
-	}
-	if err := writeFileAtomic(path, next); err != nil {
-		httpError(w, http.StatusInternalServerError, "writing your config: "+err.Error())
-		return
-	}
-	s.rebuild()
-	writeJSON(w, http.StatusOK, map[string]any{"role": name, "ref": ref})
-}

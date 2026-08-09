@@ -46,21 +46,13 @@ func firstRun(configDir string) (*sources.Registry, error) {
 	if err := migrateSkillLayers(configDir); err != nil {
 		return nil, err
 	}
-	// The operator's ordered list, then chartr's own default source brought into
-	// the state the compiled seed describes, then the four role bindings — in that
-	// order, because a binding is seeded pointing into the default source and must
-	// not be written before that source is on disk. Both writes are quiet and both
-	// are once-only: the seed reconciles against a `.git` the operator's own fetch
-	// left behind, and the bindings seed only on a startup that finds no `[roles]`
-	// table at all (skill-sources ticket 05).
+	// The operator's ordered list. chartr ships no skills of its own (ADR 0017),
+	// so there is nothing to seed here and no default source to reconcile: an empty
+	// list is the honest first-run state, and the role bindings stay unwritten until
+	// the operator registers a source and binds each role. What lands in the list
+	// on a first run is only what migrateSkillLayers carried forward.
 	srcs, err := sources.Load(configDir)
 	if err != nil {
-		return nil, err
-	}
-	if err := sources.Reconcile(configDir); err != nil {
-		return nil, err
-	}
-	if err := seedRoleBindings(configDir); err != nil {
 		return nil, err
 	}
 	// chartr's file-format contract, and the operator's own preferences file, both

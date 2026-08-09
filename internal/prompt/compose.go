@@ -254,14 +254,21 @@ func contractParts(c Contract) []Part {
 }
 
 // sourcesPart renders the inventory both payloads carry identically: every
-// enabled source in resolution order with its checkout path and the skill
-// names the walk found, closing with a sentence on what happens when two
-// sources carry the same name.
+// enabled source in resolution order with the path its skills are mirrored to
+// and the skill names the walk found, closing with a sentence on what happens
+// when two sources carry the same name.
+//
+// The path printed is the source's directory *inside the mirror*
+// (`.chartr/skills/<source>`), not where the source lives on the operator's
+// disk. It is repo-relative on purpose: the mirror is what an agent sandboxed to
+// its own space can actually read, and a relative path is identical in every
+// space, which is what lets the standing document be composed once for all of
+// them. The external source path never reaches a payload.
 //
 // A git source's URL is never printed. It's a fetchable address in a
 // document handed to an agent that may be running with permissions
 // skipped, and the standing decision here is that nothing fetches
-// unattended — the path is what a session can act on, the URL is what it
+// unattended — the mirror path is what a session can act on, the URL is what it
 // should not.
 //
 // Descriptions are omitted deliberately: names fall out of the walk for
@@ -293,7 +300,7 @@ func sourcesPart(reg *sources.Registry) (Part, []string) {
 			if list == "" {
 				list = "no skills"
 			}
-			fmt.Fprintf(&b, "\n- `%s` at `%s` — %s", st.Name, st.Path, list)
+			fmt.Fprintf(&b, "\n- `%s` at `%s` — %s", st.Name, sources.MirrorDir+"/"+st.Name, list)
 		}
 	}
 

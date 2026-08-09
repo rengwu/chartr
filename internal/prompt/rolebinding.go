@@ -35,7 +35,7 @@ func bindingRef(bindings config.RoleBindings, role string) (string, error) {
 	if !strings.Contains(ref, "/") {
 		return "", fmt.Errorf(
 			"the %s role is bound to the bare name %q; a binding names a source, like %q, so that what the role runs does not follow whatever source order happens to be",
-			role, ref, sources.DefaultBinding(ref))
+			role, ref, "Source/"+ref)
 	}
 	return ref, nil
 }

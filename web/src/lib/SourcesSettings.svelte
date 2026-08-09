@@ -6,7 +6,6 @@
     registerSource,
     removeSource,
     reorderSources,
-    restoreRoleBinding,
     setSourceEnabled,
   } from './actions'
   import { reorder } from './reorder'
@@ -27,16 +26,16 @@
   } from 'phosphor-svelte'
 
   // The sources section (ticket 10): the operator's ordered list of places skills
-  // come from, and the six actions the planning tickets designed for it —
-  // register, remove, toggle, reorder, refresh, and restore a role binding.
+  // come from, and the five actions the planning tickets designed for it —
+  // register, remove, toggle, reorder, and refresh a git source.
   //
   // It is load-bearing rather than a convenience. It is where an orphaned git
-  // checkout is explained, the only recovery for a deleted role binding, and the
-  // thing the silent first-run migration is discoverable *in* — a source that was
-  // registered before the operator ever opened this screen appears here as an
+  // checkout is explained, where an unbound role is shown refusing to spawn, and
+  // the thing the silent first-run migration is discoverable *in* — a source that
+  // was registered before the operator ever opened this screen appears here as an
   // ordinary row, which is the whole of what "quiet, not hidden" means.
   //
-  // The editable/open-the-file line is ADR 0014's: the six actions are inline,
+  // The editable/open-the-file line is ADR 0014's: the five actions are inline,
   // and everything else is the operator's own editor on the file itself. There is
   // never a second config store.
   let {
@@ -69,10 +68,9 @@
     git: 'git repository',
   }
 
-  // The operator's own rows: everything but the synthetic default, which is
-  // always last and never moves. Reorder sends the whole list, so the default is
-  // appended back before the call.
-  const movable = $derived(sources.filter((s) => !s.default))
+  // Every source is the operator's own now — chartr ships none (ADR 0017) — so
+  // the whole list reorders. Position is resolution order; reorder sends it whole.
+  const movable = $derived(sources)
 
   async function run(key: string, fn: () => Promise<unknown>, ok?: string) {
     busy = key
@@ -120,13 +118,6 @@
 
   function shortSha(commit?: string): string {
     return commit ? commit.slice(0, 7) : ''
-  }
-
-  // What the default row says about itself: chartr's shipped bytes until the
-  // first refresh clones the upstream over them, a pin from then on.
-  function defaultLine(s: Source): string {
-    if (s.seeded) return 'shipped with this build'
-    return `fetched ${fetchedOn(s.fetched)} — ${shortSha(s.commit)}`
   }
 
   function statusNote(s: Source): string {
@@ -282,33 +273,28 @@
           </span>
 
           <!-- Position is resolution order, so it is shown as the number it is
-               and moved with the two controls beside it. The default row is
-               always last and neither moves nor is removed. -->
-          {#if s.default}
-            <span class="shrink-0 text-[0.65rem] text-muted-foreground">last</span>
-          {:else}
-            <span class="shrink-0 font-mono text-[0.65rem] text-muted-foreground">{i + 1}</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Move {s.name} earlier"
-              title="Resolve earlier"
-              disabled={busy !== null || i === 0}
-              onclick={() => move(s.name, -1)}
-            >
-              <ArrowUp />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Move {s.name} later"
-              title="Resolve later"
-              disabled={busy !== null || i >= movable.length - 1}
-              onclick={() => move(s.name, 1)}
-            >
-              <ArrowDown />
-            </Button>
-          {/if}
+               and moved with the two controls beside it. -->
+          <span class="shrink-0 font-mono text-[0.65rem] text-muted-foreground">{i + 1}</span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move {s.name} earlier"
+            title="Resolve earlier"
+            disabled={busy !== null || i === 0}
+            onclick={() => move(s.name, -1)}
+          >
+            <ArrowUp />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move {s.name} later"
+            title="Resolve later"
+            disabled={busy !== null || i >= movable.length - 1}
+            onclick={() => move(s.name, 1)}
+          >
+            <ArrowDown />
+          </Button>
 
           {#if s.kind === 'git'}
             <Button
@@ -323,29 +309,23 @@
             </Button>
           {/if}
 
-          {#if !s.default}
-            <Button
-              variant={confirming === s.name ? 'destructive' : 'ghost'}
-              size={confirming === s.name ? 'xs' : 'icon-xs'}
-              aria-label="Remove {s.name}"
-              title="Remove this source from the list"
-              disabled={busy !== null}
-              onclick={() => {
-                if (confirming !== s.name) {
-                  confirming = s.name
-                  return
-                }
-                void run(s.name, () => removeSource(s.name))
-              }}
-            >
-              {#if confirming === s.name}Remove?{:else}<Trash />{/if}
-            </Button>
-          {/if}
+          <Button
+            variant={confirming === s.name ? 'destructive' : 'ghost'}
+            size={confirming === s.name ? 'xs' : 'icon-xs'}
+            aria-label="Remove {s.name}"
+            title="Remove this source from the list"
+            disabled={busy !== null}
+            onclick={() => {
+              if (confirming !== s.name) {
+                confirming = s.name
+                return
+              }
+              void run(s.name, () => removeSource(s.name))
+            }}
+          >
+            {#if confirming === s.name}Remove?{:else}<Trash />{/if}
+          </Button>
         </div>
-
-        {#if s.default}
-          <p class="text-[0.7rem] text-muted-foreground">{defaultLine(s)}</p>
-        {/if}
 
         {#if s.kind === 'git'}
           <!-- The line that will otherwise bite someone: this directory is
@@ -415,18 +395,6 @@
           </span>
         {/if}
       </span>
-      {#if b.ref !== b.default}
-        <Button
-          variant="outline"
-          size="xs"
-          class="shrink-0"
-          title="Bind {b.role} back to {b.default}"
-          disabled={busy !== null}
-          onclick={() => run(b.role, () => restoreRoleBinding(b.role), `${b.role} → ${b.default}`)}
-        >
-          Restore default
-        </Button>
-      {/if}
     </div>
   {/each}
 </section>

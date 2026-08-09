@@ -75,13 +75,6 @@ func (r *Registry) RegisterGit(name, url, ref string) (Source, error) {
 // fetches unattended, and the only report is the new short sha on the returned
 // row. The checkout is chartr's, not a workspace: a refresh discards local edits
 // inside it, and the answer to "I want to edit this" is a `dir` source.
-//
-// The default source takes the same path with one extra state at the front: while
-// it is still seeded there is nothing to fetch into, so the first refresh clones
-// the seed's upstream over chartr's bytes and the source becomes the operator's
-// pinned checkout. The commit and timestamp it records are the two scalars beside
-// the default toggle, which is what lets the settings row read "fetched ⟨date⟩ —
-// ⟨sha⟩" rather than "shipped with this build" without inspecting the filesystem.
 func (r *Registry) Refresh(name string) (Source, error) {
 	s, ok := r.Get(name)
 	if !ok {
@@ -94,33 +87,13 @@ func (r *Registry) Refresh(name string) (Source, error) {
 		return Source{}, err
 	}
 
-	var commit string
-	var err error
-	switch {
-	case s.Default && !Pinned(s.Path):
-		// The seeded→pinned conversion, which happens exactly once: there is no
-		// checkout to fetch into yet, only chartr's own bytes, so the first refresh
-		// clones the upstream over them. From here the `.git` it leaves behind is
-		// what stops the startup reconcile writing there ever again, and every later
-		// refresh takes the ordinary fetch path below.
-		commit, _, err = cloneInto(s.Path, SeedURL, s.Ref)
-	default:
-		commit, err = fetchInto(s.Path, s.Name, s.Ref)
-	}
+	commit, err := fetchInto(s.Path, s.Name, s.Ref)
 	if err != nil {
 		return Source{}, err
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if s.Default {
-		r.def.Commit = commit
-		r.def.Fetched = time.Now().UTC()
-		if err := r.saveLocked(); err != nil {
-			return Source{}, err
-		}
-		return r.def, nil
-	}
 	for i := range r.rows {
 		if !strings.EqualFold(r.rows[i].Name, s.Name) {
 			continue

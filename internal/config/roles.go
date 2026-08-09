@@ -12,10 +12,13 @@ import (
 // library.
 //
 //	[roles]
-//	grill = "chartr-skills/grill"
-//	prototype = "chartr-skills/prototype"
-//	research = "chartr-skills/research"
-//	implement = "chartr-skills/implement"
+//	grill = "my-skills/grill"
+//	prototype = "my-skills/prototype"
+//	research = "my-skills/research"
+//	implement = "my-skills/implement"
+//
+// where `my-skills` is a source the operator registered — chartr ships none
+// of its own (ADR 0017).
 //
 // Flat, not a subtable — a binding is one fact. Always qualified, never
 // bare — a bare name resolved through source order would silently change
@@ -23,10 +26,9 @@ import (
 // own `grill`, with no line in the file showing it. This package holds the
 // string; resolving it against sources is the composer's job.
 //
-// Seeded once, on the first startup with no `[roles]` table at all, and
-// never auto-refilled: a deleted row is a legitimate way to make a role
-// refuse until rebound, so recovery is explicit, not something a restart
-// quietly undoes.
+// chartr writes no bindings on a first run: with no shipped skills there is
+// nothing to bind to, so every role starts unbound and refuses its spawn
+// until the operator binds it against a source they registered.
 
 // rolesFile is the binding half of the operator's config: a flat table of
 // role → source-qualified skill reference.
@@ -79,7 +81,7 @@ func SetUserRole(existing []byte, role Role, ref string) ([]byte, error) {
 	if !strings.Contains(ref, "/") {
 		return nil, fmt.Errorf(
 			"a role binds to a source-qualified skill like %q, not the bare name %q — a bare name would follow whatever source order happens to be",
-			"chartr-skills/"+ref, ref)
+			"Source/"+ref, ref)
 	}
 
 	lines, eol := splitLines(existing)

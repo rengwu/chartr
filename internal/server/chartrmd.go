@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/rengwu/chartr/internal/prompt"
+	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/sources"
 )
 
 // The standing `CHARTR.md` (chartr-md, ticket 01): the brief a free session is
@@ -73,6 +75,26 @@ func (s *Server) reconcileChartrDoc() {
 			log.Printf("chartr: writing %s in %s: %v", chartrDocName, e.Path, err)
 		}
 	}
+}
+
+// ensureSkillsCurrent reconciles a space's skill mirror — the repo-local copy of
+// every enabled source's skills under `.chartr/skills/` — so a session about to
+// launch, and an ad-hoc agent reading the standing document, both read current
+// skills from inside the working tree. It is the barrier the spawn and
+// free-session paths run *before* composing a payload: a local source can change
+// on disk between two spawns with no chartr trigger, and "current at launch" is
+// the whole contract the mirror keeps.
+//
+// A scratch space is skipped for the reason CHARTR.md is: it follows the
+// operator's home directory, which is not a space's repository to write a mirror
+// into. A server built without a source registry (as some tests are) reconciles
+// nothing.
+func (s *Server) ensureSkillsCurrent(e registry.Entry) error {
+	if s.srcs == nil || e.Scratch {
+		return nil
+	}
+	_, err := s.srcs.Mirror(filepath.Join(e.Path, sources.MirrorDir))
+	return err
 }
 
 // writeChartrDoc puts the document at the space root and makes git ignore it.
