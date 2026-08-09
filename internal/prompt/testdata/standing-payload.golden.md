@@ -2,7 +2,7 @@ chartr is the cockpit that drives this repository: it derives maps of tickets fr
 the files under `.plan/maps/` in this working tree and spawns one agent session
 per ticket.
 
-A file under `.plan/maps/` is read by chartr only where it follows the format stated at `<config>/conventions.md`.
+A file under `.plan/maps/` is read by chartr only where it follows the format stated at `.chartr/TRACKER-CONVENTION.md`.
 
 ---
 

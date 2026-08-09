@@ -83,10 +83,13 @@ type ConfigLayer struct {
 	Layer string `json:"layer"`
 	// Holds names what this layer can set: "agents" (the operator's agent
 	// library), "terminal" (terminal customization), "notifications" (the
-	// machine-wide run clock), "sources" (the skill-source list), "conventions"
-	// (chartr's generated write contract) or "preferences" (the operator's own
-	// standing instructions). Each lives in its own file and the surface shows
-	// that split rather than implying one file.
+	// machine-wide run clock), "sources" (the skill-source list) or
+	// "preferences" (the operator's own standing instructions). Each lives in
+	// its own file and the surface shows that split rather than implying one
+	// file. chartr's generated write contract is not among these — it
+	// materializes per-space at `.chartr/TRACKER-CONVENTION.md` rather than
+	// under the operator's config root, so it has no single global layer to
+	// name here.
 	Holds string `json:"holds"`
 	// Path is the absolute location on disk, and Exists whether anything is there
 	// yet. A layer that does not exist is still listed: it is where the value

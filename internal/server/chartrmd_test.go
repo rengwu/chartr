@@ -134,6 +134,37 @@ func TestStandingDocKeepsAnExistingGitExclude(t *testing.T) {
 	}
 }
 
+// The space-local write contract (conventions moved out of the operator's
+// config root, so a session sandboxed to its own space can read it). A
+// registered space carries its own current copy at `.chartr/TRACKER-
+// CONVENTION.md` the moment it is registered, the standing document's
+// conventions sentence names that same relative path, and `git status` in
+// that space is clean without the tracked `.gitignore` being touched — the
+// same three guarantees the standing document itself gives.
+func TestConventionsLandInARegisteredSpace(t *testing.T) {
+	cfg := t.TempDir()
+	repo := chartrtest.NewSpaceRepo(t)
+
+	h := chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
+	register(t, h, repo)
+
+	b, err := os.ReadFile(filepath.Join(repo, ".chartr", "TRACKER-CONVENTION.md"))
+	if err != nil {
+		t.Fatalf("reading the space's write contract: %v", err)
+	}
+	if !strings.Contains(string(b), ".plan/maps/") {
+		t.Errorf("the materialized contract does not look like the conventions text:\n%s", b)
+	}
+
+	if doc := readDoc(t, repo); !strings.Contains(doc, "`.chartr/TRACKER-CONVENTION.md`") {
+		t.Errorf("the standing document does not point at the space-local contract:\n%s", doc)
+	}
+
+	if status := chartrtest.Git(t, repo, "status", "--porcelain"); status != "" {
+		t.Errorf("the write contract dirtied the space:\n%s", status)
+	}
+}
+
 // Scratch follows the operator's home directory, which is not chartr's to write
 // into and not necessarily a git repository at all.
 func TestScratchSpaceGetsNoStandingDoc(t *testing.T) {

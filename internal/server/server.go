@@ -38,7 +38,10 @@ type Options struct {
 	// registry (`spaces.toml`), the agent library (`user.toml`), terminal
 	// customization (`terminal.toml`), notification timing (`notify.toml`), the
 	// source list (`sources.toml`) and the skill sources under `sources/`, and the
-	// generated `conventions.md` beside the operator's own `preferences.md`.
+	// operator's own `preferences.md`. The generated write contract used to live
+	// here too (`conventions.md`); it is now materialized per-space instead (see
+	// prompt.ReconcileSpaceConventions), so a session sandboxed to its own space
+	// can read it.
 	// Defaults to the OS user config dir; tests point it at a
 	// temp dir so a developer's own config never leaks into a run.
 	ConfigDir string
@@ -119,8 +122,8 @@ func New(opts Options) (*Server, error) {
 	}
 	// Everything chartr writes into its own config root, in one ordered sequence
 	// (see firstrun.go): the migration off the three-layer skill model, the source
-	// list, the seeded default source, the role bindings, and the generated
-	// conventions.
+	// list, the seeded default source, the role bindings, and the operator's own
+	// preferences file.
 	srcs, err := firstRun(opts.ConfigDir)
 	if err != nil {
 		return nil, err

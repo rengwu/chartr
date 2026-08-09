@@ -225,32 +225,34 @@ func embeddedCore() Skill {
 	}
 }
 
-// contractParts are the two config-root documents every payload carries,
-// in order: conventions as a path, operator's preferences as bytes.
+// contractParts are the two documents every payload carries, in order:
+// conventions as a path, operator's preferences as bytes.
 //
 // Conventions are pointed at rather than inlined: a location is a
 // capability that survives being ignored, where "read this" is an
-// instruction whose whole content is what the agent should do. The
-// sentence states the consequence — a map file chartr can't parse is a
-// map file chartr doesn't see.
+// instruction whose whole content is what the agent should do. The path is
+// ConventionsRelPath — relative to the space, identical in every one of them —
+// rather than an absolute location under the config root, so a session
+// sandboxed to its own working tree can resolve it and the same sentence
+// composes for every space. The sentence states the consequence — a map file
+// chartr can't parse is a map file chartr doesn't see.
 //
 // `preferences.md` is the exception: the operator's own voice, unwrapped,
 // unlabelled and unranked, permitted to contradict everything above it.
 // Always a part, even empty, so the preview shows where the file lands.
 func contractParts(c Contract) []Part {
-	var parts []Part
-	if c.ConventionsPath != "" {
-		parts = append(parts, Part{
+	return []Part{
+		{
 			Name: "conventions", Kind: "prompt", Origin: OriginChartr, Label: "contract",
 			Text: fmt.Sprintf(
 				"A file under `.plan/maps/` is read by chartr only where it follows the format stated at `%s`.",
-				c.ConventionsPath),
-		})
+				ConventionsRelPath),
+		},
+		{
+			Name: "preferences", Kind: "prompt", Origin: OriginOperator, Label: "preferences",
+			Text: c.Preferences,
+		},
 	}
-	return append(parts, Part{
-		Name: "preferences", Kind: "prompt", Origin: OriginOperator, Label: "preferences",
-		Text: c.Preferences,
-	})
 }
 
 // sourcesPart renders the inventory both payloads carry identically: every

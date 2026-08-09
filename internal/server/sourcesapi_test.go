@@ -143,9 +143,11 @@ func TestAGitSourceIsRefusedWithoutGit(t *testing.T) {
 	}
 }
 
-// The four config files the section opens, each resolved server-side from a
+// The three config files the section opens, each resolved server-side from a
 // *name* — the client never sends a path, which is the whole security property
-// of the open action.
+// of the open action. `conventions.md` used to be a fourth here; it is not any
+// more, since it moved out of the config root to a per-space file with no
+// single global path to name (see conventions.go and TestConventionsLandInARegisteredSpace).
 func TestTheSourcesFilesAreOpenableByName(t *testing.T) {
 	h := chartrtest.Start(t)
 	snap := h.Snapshot(ctx(t))
@@ -153,7 +155,6 @@ func TestTheSourcesFilesAreOpenableByName(t *testing.T) {
 	want := map[string]string{
 		"sources-config": "sources.toml",
 		"user-config":    "user.toml",
-		"conventions":    "conventions.md",
 		"preferences":    "preferences.md",
 	}
 	seen := map[string]bool{}

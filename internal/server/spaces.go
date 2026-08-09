@@ -63,9 +63,12 @@ func (s *Server) repoSpace(w http.ResponseWriter, r *http.Request) (registry.Ent
 // skills" control: it reconciles this space's `.chartr/skills` mirror against
 // the enabled sources on demand — old skills pruned, current ones (re)written in
 // place — the same reconcile the spawn barrier runs, brought forward so an
-// ad-hoc session chartr did not spawn reads a fresh tree. repoSpace refuses
-// Scratch (no repository to mirror into), and a server with no source registry
-// reconciles to nothing rather than erroring.
+// ad-hoc session chartr did not spawn reads a fresh tree. It also reconciles
+// this space's copy of the write contract at `.chartr/TRACKER-CONVENTION.md`
+// alongside it, since both are repo-local generated files an agent sandboxed to
+// this space depends on. repoSpace refuses Scratch (no repository to mirror
+// into), and a server with no source registry reconciles the skills half to
+// nothing rather than erroring.
 func (s *Server) handleSyncSkills(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.repoSpace(w, r)
 	if !ok {
@@ -73,6 +76,10 @@ func (s *Server) handleSyncSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.ensureSkillsCurrent(e); err != nil {
 		httpError(w, http.StatusInternalServerError, "syncing skills: "+err.Error())
+		return
+	}
+	if err := s.ensureConventionsCurrent(e); err != nil {
+		httpError(w, http.StatusInternalServerError, "syncing the write contract: "+err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -114,6 +121,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// path — a mirror hiccup here must not fail the registration the operator
 	// asked for. The mirror is gitignored, so this writes nothing a teammate sees.
 	_ = s.ensureSkillsCurrent(entry)
+	// Same seeding, same best-effort footing, for the space's copy of the write
+	// contract — the file CHARTR.md's conventions sentence is about to point at.
+	_ = s.ensureConventionsCurrent(entry)
 	s.rebuild()
 	s.reconcileChartrDoc()
 

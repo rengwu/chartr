@@ -275,6 +275,12 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 	if err := s.ensureSkillsCurrent(in.entry); err != nil {
 		return nil, http.StatusInternalServerError, fmt.Errorf("syncing skills into the space: %w", err)
 	}
+	// The same barrier for the space's copy of the write contract: the payload is
+	// about to point an agent at `.chartr/TRACKER-CONVENTION.md` by a repo-relative
+	// path, so the bytes there must be current before that agent can read it.
+	if err := s.ensureConventionsCurrent(in.entry); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("syncing the write contract into the space: %w", err)
+	}
 
 	payload, err := prompt.Compose(prompt.ComposeInput{
 		Role:      in.role,
