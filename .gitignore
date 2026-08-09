@@ -54,6 +54,8 @@
 # ignored wholesale rather than rule by rule. Unanchored, so it catches a space
 # nested below the repo root as well as one at it.
 .chartr/
+.claude/
+CLAUDE.md
 
 # handoffs are local-only. restricted here as they may contain sensitive info.
 .plan/handoffs
