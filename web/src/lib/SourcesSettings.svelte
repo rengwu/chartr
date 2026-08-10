@@ -10,6 +10,7 @@
     setSourceEnabled,
   } from "./actions";
   import { Button } from "./components/ui/button";
+  import { toast } from "./components/ui/sonner";
   import { Badge } from "./components/ui/badge";
   import { Input } from "./components/ui/input";
   import { Checkbox } from "./components/ui/checkbox";
@@ -54,7 +55,6 @@
     onPreviewFree: () => void;
   } = $props();
 
-  let note = $state<string | null>(null);
   let busy = $state<string | null>(null);
   // The row awaiting a second click before it is removed. Registering is cheap to
   // undo, removing a git source is not — the checkout stays on disk but the URL
@@ -70,12 +70,9 @@
   };
   let draft = $state<Draft | null>(null);
 
-  // The git URL a fresh registration starts on — chartr's own skills repo, the
-  // one an operator most often wants first now that nothing is seeded (ADR 0018).
-  // A prefilled default, not a pin: it rides in the `url` field the moment the
-  // operator switches the kind to `git`, and it is theirs to clear or replace.
-  const defaultSourceURL = "https://github.com/rengwu/chartr-skills";
-
+  // The registration form opens blank — chartr's own skills repo is pre-registered
+  // on a fresh install now (it lands as an ordinary row), so there is no default to
+  // ride in the `url` field here.
   const kindLabels: Record<Draft["kind"], string> = {
     dir: "folder on this machine",
     git: "git repository",
@@ -148,25 +145,26 @@
   }
 
   async function commitOrder(names: string[]) {
-    note = null;
     try {
       await reorderSources(names);
     } catch (e) {
       // The write failed, so the held order is a fiction — drop it and let the
       // next snapshot restore the server's truth.
       pendingOrder = null;
-      note = e instanceof ActionError ? e.message : (e as Error).message;
+      toast.error(e instanceof ActionError ? e.message : (e as Error).message);
     }
   }
 
+  // Every source action's outcome surfaces as a toast now (App.svelte's Toaster),
+  // centered over the main panel — the refusal that used to sit in an inline note
+  // line, and the "Refreshed X." confirmation alike.
   async function run(key: string, fn: () => Promise<unknown>, ok?: string) {
     busy = key;
-    note = null;
     try {
       await fn();
-      if (ok) note = ok;
+      if (ok) toast.success(ok);
     } catch (e) {
-      note = e instanceof ActionError ? e.message : (e as Error).message;
+      toast.error(e instanceof ActionError ? e.message : (e as Error).message);
     } finally {
       busy = null;
       confirming = null;
@@ -230,7 +228,7 @@
               name: "",
               kind: "dir",
               path: "",
-              url: defaultSourceURL,
+              url: "",
               ref: "",
             })}
         >
@@ -246,14 +244,6 @@
     >. chartr ships none of them itself. Registered on this machine and never
     committed.
   </p>
-
-  {#if note}
-    <p
-      class="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs"
-    >
-      {note}
-    </p>
-  {/if}
 
   {#if draft}
     <form
@@ -458,11 +448,15 @@
                     <Badge variant="outline">shadowed</Badge>
                   {/if}
                 </span>
+                <!-- A remote is identified by the URL the operator trusted, not
+                     by the opaque checkout path chartr happens to clone it into;
+                     a local folder is identified by its path, which is the folder
+                     itself. -->
                 <code
                   class="truncate font-mono text-[0.65rem] text-muted-foreground"
-                  title={s.path}
+                  title={s.kind === "git" ? (s.url ?? s.path) : s.path}
                 >
-                  {s.path}
+                  {s.kind === "git" ? (s.url ?? s.path) : s.path}
                 </code>
               </span>
 

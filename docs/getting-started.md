@@ -116,20 +116,23 @@ plan is still sitting in markdown.
 
 ## 8. Bring your own skills
 
-chartr ships **no skills** — none, not even its own (ADR 0018). What a session is
-told to do comes from a **source**: a folder on your machine, or a git repository
-chartr clones and pins. You register them in settings under **Skill sources**,
-and the list's order *is* resolution order — the first enabled source holding a
-name wins, and the loser stays reachable as `Source/skill`.
+chartr ships **no skills** inside the binary — none, not even its own (ADR 0018).
+What a session is told to do comes from a **source**: a folder on your machine, or
+a git repository chartr clones and pins. You manage them in settings under **Skill
+sources**, and the list's order *is* resolution order — the first enabled source
+holding a name wins, and the loser stays reachable as `Source/skill`.
 
-The list starts **empty**. chartr's own skills — grill, prototype, research,
-implement, and the rest — live in an ordinary repo you register like any other;
-they get no special seat. Until you register a source, there is nothing to spawn.
+A **fresh install pre-registers one source for you**: chartr's own skills repo,
+`rengwu/chartr-skills` — grill, prototype, research, implement, and the rest —
+cloned into an ordinary `git` row you can remove, refresh or reorder like any
+other. It gets no special seat in resolution; it is just a URL chartr fills in so
+your first run has something to spawn from. (A first run with no network or no
+`git` comes up with an empty list instead; register a source by hand.)
 
-Four roles — grill, prototype, research, implement — are each **bound** to one
-source-qualified skill in `user.toml`. Nothing is seeded, so on a first run every
-role is **unbound** and refuses to spawn until you bind it against a source you
-registered. Edit `user.toml` to bind or rebind one.
+Roles — grill, prototype, research, implement — are each **bound** to one
+source-qualified skill in `user.toml`. On a first run they are **unbound** and
+refuse to spawn until you bind them against a source; bind them in settings, or
+edit `user.toml` by hand.
 
 When a session starts, chartr copies the skills into a gitignored
 `.chartr/skills/` inside your repo — the **mirror** — and points the agent there,

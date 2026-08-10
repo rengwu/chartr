@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -36,24 +37,46 @@ const (
 	// carries forward.
 	legacySourceName  = "Legacy skills"
 	migratedBuiltinNm = "Migrated built-in skills"
+
+	// DefaultSkillSourceName and DefaultSkillSourceURL are the git source a fresh
+	// install pre-registers so it can spawn from the first run — chartr's own
+	// skills repo. It is an ordinary `git` source, cloned like any other and the
+	// operator's to remove, refresh or reorder; chartr still ships no skills of its
+	// own inside the binary. The real entrypoints set the URL on server.Options;
+	// tests leave it empty (see Options.DefaultSourceURL) so the suite never clones
+	// over the network.
+	DefaultSkillSourceName = "chartr-skills"
+	DefaultSkillSourceURL  = "https://github.com/rengwu/chartr-skills"
 )
 
 // firstRun brings the config root up to the state this build expects and returns
 // the loaded source list. It runs at every startup; each step carries its own
 // idempotence, and the whole migration half fires exactly once per machine, on
 // the absence of `sources.toml`.
-func firstRun(configDir string) (*sources.Registry, error) {
-	if err := migrateSkillLayers(configDir); err != nil {
+func firstRun(configDir, defaultSourceURL string) (*sources.Registry, error) {
+	fresh, err := migrateSkillLayers(configDir)
+	if err != nil {
 		return nil, err
 	}
-	// The operator's ordered list. chartr ships no skills of its own (ADR 0017),
-	// so there is nothing to seed here and no default source to reconcile: an empty
-	// list is the honest first-run state, and the role bindings stay unwritten until
-	// the operator registers a source and binds each role. What lands in the list
-	// on a first run is only what migrateSkillLayers carried forward.
+	// The operator's ordered list. chartr ships no skills inside the binary (ADR
+	// 0017), but a fresh install pre-registers chartr's own skills repo as an
+	// ordinary `git` source so the very first run has something to spawn from —
+	// theirs to remove, refresh or reorder like any other. What else lands in the
+	// list on a first run is only what migrateSkillLayers carried forward.
 	srcs, err := sources.Load(configDir)
 	if err != nil {
 		return nil, err
+	}
+	// Only on the run that first writes `sources.toml` (the same signal the layer
+	// migration fires on), and only when an entrypoint asked for it — tests leave
+	// the URL empty so the suite never clones. Best-effort: a fresh install with no
+	// network or no `git` still comes up, just with an empty list the operator
+	// fills in from Settings, rather than failing to start.
+	if fresh && defaultSourceURL != "" {
+		if _, err := srcs.RegisterGit(DefaultSkillSourceName, defaultSourceURL, ""); err != nil {
+			log.Printf("chartr: could not pre-register the default skill source %q (%v); "+
+				"register a source in Settings to spawn", defaultSourceURL, err)
+		}
 	}
 	// The operator's own preferences file, under the config root (skill-sources
 	// ticket 03). Startup is the first of two reconcile points; every composition
@@ -76,16 +99,18 @@ func firstRun(configDir string) (*sources.Registry, error) {
 // without a word, going inert as silently as it goes unread.
 //
 // It fires on the absence of `sources.toml` and always leaves that file behind,
-// even with nothing to migrate, so it cannot fire twice.
-func migrateSkillLayers(configDir string) error {
+// even with nothing to migrate, so it cannot fire twice. The returned bool is
+// that same "this is the first run on this machine" signal, so firstRun can
+// pre-register the default source exactly when the migration itself fired.
+func migrateSkillLayers(configDir string) (bool, error) {
 	if configDir == "" {
-		return nil
+		return false, nil
 	}
 	switch _, err := os.Stat(sources.FilePath(configDir)); {
 	case err == nil:
-		return nil // the list exists: this machine has already been through here
+		return false, nil // the list exists: this machine has already been through here
 	case !os.IsNotExist(err):
-		return fmt.Errorf("reading the source list before migrating: %w", err)
+		return false, fmt.Errorf("reading the source list before migrating: %w", err)
 	}
 
 	// The old user layer becomes an ordinary `dir` source, but only if it holds
@@ -119,20 +144,23 @@ func migrateSkillLayers(configDir string) error {
 
 	r, err := sources.Load(configDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if registerLegacy {
 		if _, err := r.RegisterDir(legacySourceName, legacy); err != nil {
-			return fmt.Errorf("migrating %s: %w", legacy, err)
+			return false, fmt.Errorf("migrating %s: %w", legacy, err)
 		}
 	}
 	if registerBuiltin {
 		if _, err := r.RegisterDir(migratedBuiltinNm, builtin); err != nil {
-			return fmt.Errorf("migrating %s: %w", builtin, err)
+			return false, fmt.Errorf("migrating %s: %w", builtin, err)
 		}
 	}
 	// Written even when neither row applies: the file's absence is the signal this
 	// migration fires on, so a machine with nothing to migrate must still leave
 	// one behind.
-	return r.Save()
+	if err := r.Save(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
