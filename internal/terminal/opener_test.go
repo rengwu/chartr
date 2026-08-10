@@ -2,7 +2,9 @@ package terminal
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -20,18 +22,18 @@ import (
 // CR→NL translation cannot forge the byte under test.
 func TestTypedOpenerSubmitsWithCarriageReturn(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the stub agent is a POSIX shell script")
+		t.Skip("the raw-mode stub requires POSIX stty")
 	}
 	shrinkOpenerTiming(t)
 
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
-	agent := rawModeAgent(t, log)
+	agent, args, env := rawModeAgent(t, log)
 
 	m := NewManager(nil, nil)
 	defer m.Shutdown()
 
 	const opener = "Read the file /tmp/payload.md in full"
-	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, nil, opener, Session{
+	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, args, env, opener, Session{
 		MapSlug: "m", TicketNum: 1, Role: "implement", Agent: "stub",
 	}, false); err != nil {
 		t.Fatalf("opening the session: %v", err)
@@ -47,17 +49,17 @@ func TestTypedOpenerSubmitsWithCarriageReturn(t *testing.T) {
 // must type nothing at all — not a stray return into a TUI that was already told.
 func TestEmptyOpenerTypesNothing(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("the stub agent is a POSIX shell script")
+		t.Skip("the raw-mode stub requires POSIX stty")
 	}
 	shrinkOpenerTiming(t)
 
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
-	agent := rawModeAgent(t, log)
+	agent, args, env := rawModeAgent(t, log)
 
 	m := NewManager(nil, nil)
 	defer m.Shutdown()
 
-	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, nil, nil, "", Session{
+	if _, err := m.OpenSession("space", t.TempDir(), "s1", agent, args, env, "", Session{
 		MapSlug: "m", TicketNum: 1, Role: "implement", Agent: "stub",
 	}, false); err != nil {
 		t.Fatalf("opening the session: %v", err)
@@ -69,8 +71,8 @@ func TestEmptyOpenerTypesNothing(t *testing.T) {
 	}
 }
 
-// shrinkOpenerTiming collapses the readiness waits so a test that drives a stub
-// drawing nothing does not sit out the production grace period.
+// shrinkOpenerTiming collapses the readiness waits so the stub tests do not sit
+// out production-sized settle, grace, and submit intervals.
 func shrinkOpenerTiming(t *testing.T) {
 	t.Helper()
 	settle, grace, submit := openerSettle, openerGrace, openerSubmit
@@ -78,18 +80,48 @@ func shrinkOpenerTiming(t *testing.T) {
 	t.Cleanup(func() { openerSettle, openerGrace, openerSubmit = settle, grace, submit })
 }
 
-// rawModeAgent installs a stub agent that turns off the line discipline (as every
-// real TUI does) and copies its stdin verbatim to a log, so the test reads the
-// exact bytes chartr typed rather than the kernel's translation of them.
-func rawModeAgent(t *testing.T, log string) string {
+const rawAgentLogEnv = "CHARTR_TEST_RAW_AGENT_LOG"
+
+// rawModeAgent relaunches this test binary as a stub agent. The child enters raw
+// mode and reads stdin itself, avoiding a shell between the stty call and the
+// reader that could restore terminal settings. Its invisible title is emitted
+// only after raw mode is active, giving awaitReady the same paint signal a real
+// TUI provides.
+func rawModeAgent(t *testing.T, log string) (string, []string, []string) {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "stub-agent")
-	script := fmt.Sprintf("#!/bin/sh\nstty raw -echo 2>/dev/null\ncat >> %q\n", log)
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing the stub agent: %v", err)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("finding test executable: %v", err)
 	}
-	return path
+	return executable, []string{"-test.run=^TestRawModeAgentProcess$"}, []string{rawAgentLogEnv + "=" + log}
+}
+
+// This is not a real test. It is the helper process launched by rawModeAgent.
+func TestRawModeAgentProcess(_ *testing.T) {
+	log := os.Getenv(rawAgentLogEnv)
+	if log == "" {
+		return
+	}
+
+	cmd := exec.Command("stty", "raw", "-echo")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "setting raw mode: %v\n", err)
+		os.Exit(2)
+	}
+
+	f, err := os.OpenFile(log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "opening keystroke log: %v\n", err)
+		os.Exit(2)
+	}
+	_, _ = fmt.Fprint(os.Stdout, "\x1b]0;ready\a")
+	if _, err := io.Copy(f, os.Stdin); err != nil {
+		fmt.Fprintf(os.Stderr, "recording keystrokes: %v\n", err)
+		os.Exit(2)
+	}
+	_ = f.Close()
+	os.Exit(0)
 }
 
 func waitForFile(t *testing.T, path, want string, within time.Duration) string {
