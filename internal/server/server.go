@@ -223,6 +223,8 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("DELETE /api/config/sources/{name}", s.handleRemoveSource)
 	s.mux.HandleFunc("PUT /api/config/sources/{name}/enabled", s.handleSetSourceEnabled)
 	s.mux.HandleFunc("POST /api/config/sources/{name}/refresh", s.handleRefreshSource)
+	// The role picker's one write: bind a role to a chosen skill or to `auto`.
+	s.mux.HandleFunc("PUT /api/config/roles/{role}", s.handleSetRoleBinding)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part origin provenance. Read-only, so a GET;
 	// the composition reads the sources and the map fresh off disk each time.

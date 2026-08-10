@@ -125,6 +125,22 @@ func TestSetUserRoleRefusesABareName(t *testing.T) {
 	}
 }
 
+// "auto" is the one bare word the writer accepts: it names no source because
+// following source order is exactly what it asks for. It round-trips like any
+// other binding.
+func TestSetUserRoleAcceptsAuto(t *testing.T) {
+	out, err := config.SetUserRole(nil, config.RoleGrill, config.RoleBindingAuto)
+	if err != nil {
+		t.Fatalf("the auto sentinel was refused: %v", err)
+	}
+	if !strings.Contains(string(out), `grill = "auto"`) {
+		t.Errorf("the auto binding was not written:\n%s", out)
+	}
+	if b, _ := config.ReadRoleBindings(out); b[config.RoleGrill] != config.RoleBindingAuto {
+		t.Errorf("the auto binding does not read back: %q", b[config.RoleGrill])
+	}
+}
+
 // An unparseable file reads as no table, which seeds a fresh one rather than
 // erroring — the same degradation every other read of this file takes.
 func TestReadRoleBindingsToleratesRubbish(t *testing.T) {

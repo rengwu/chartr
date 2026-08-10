@@ -24,7 +24,9 @@ import (
 // bare — a bare name resolved through source order would silently change
 // what a role runs whenever sources reorder or a higher source ships its
 // own `grill`, with no line in the file showing it. This package holds the
-// string; resolving it against sources is the composer's job.
+// string; resolving it against sources is the composer's job. The composer
+// tries the explicit binding first, then falls back to the role's accepted
+// skill names in source order so a repo that ships the right names works.
 //
 // chartr writes no bindings on a first run: with no shipped skills there is
 // nothing to bind to, so every role starts unbound and refuses its spawn
@@ -78,10 +80,10 @@ func SetUserRole(existing []byte, role Role, ref string) ([]byte, error) {
 	if ref == "" {
 		return nil, fmt.Errorf("the %s role needs a skill to bind to", role)
 	}
-	if !strings.Contains(ref, "/") {
+	if ref != RoleBindingAuto && !strings.Contains(ref, "/") {
 		return nil, fmt.Errorf(
-			"a role binds to a source-qualified skill like %q, not the bare name %q — a bare name would follow whatever source order happens to be",
-			"Source/"+ref, ref)
+			"a role binds to a source-qualified skill like %q or the word %q, not the bare name %q — a bare name would follow whatever source order happens to be",
+			"Source/"+ref, RoleBindingAuto, ref)
 	}
 
 	lines, eol := splitLines(existing)

@@ -193,10 +193,21 @@ export interface Source {
 // it against a source they registered.
 export interface RoleBinding {
   role: Role
+  // The stored value: `auto` (no preference — resolve by source precedence), a
+  // `Source/skill` ref (pinned), or empty (unbound, refuses to spawn).
   ref: string
   // Whether `ref` names a skill some enabled source yields today. Bound-but-
   // unresolvable is the other way a role refuses, and the row tells them apart.
   resolves: boolean
+  // The `Source/skill` a spawn would actually run today — the pin itself when it
+  // resolves, or the precedence winner when `ref` is `auto`. Empty when nothing
+  // resolves. Shown beside the role so "no preference" is never a mystery.
+  resolved: string
+  // Every `Source/skill` an enabled source offers that this role accepts, in
+  // resolution order — the options the picker lists beneath "no preference". A
+  // pinned ref rides here too even when it is not an alias match, so the picker
+  // always has an option matching what is set.
+  candidates: string[]
 }
 
 export interface Model {

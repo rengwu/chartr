@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/model"
 )
 
 // The seed and the role bindings at the process boundary. Both of these writes
@@ -43,23 +44,34 @@ func TestUnresolvableBindingRefusesTheSpawnWithoutClaiming(t *testing.T) {
 		},
 		{
 			name:    "skill missing from the source",
-			binding: "chartr-skills/nonesuch",
-			wantIn:  []string{"grill role", "chartr-skills/nonesuch", "has no skill"},
+			binding: "mine/grill",
+			wantIn:  []string{"grill role", "mine/grill", "has no skill"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := chartrtest.Start(t)
+			// Start without the seeded stand-in source, so the only binding in play is
+			// the pin under test.
+			h := chartrtest.Start(t, chartrtest.WithoutSkills())
 			repo := chartrtest.NewSpaceRepo(t)
 			chartrtest.WriteMap(t, repo, "widget", mapBody)
 			chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "grilling", ""))
 			chartrtest.StubAgent(t, "claude")
+
+			src := t.TempDir()
+			writeSkill(t, src, "spelunk", "---\nname: spelunk\n---\n\na skill with no grill alias\n")
+			if code, body := h.Post("/api/config/sources", map[string]string{
+				"name": "mine", "kind": "dir", "path": src,
+			}); code != 200 {
+				t.Fatalf("registering source: %d %s", code, body)
+			}
+
 			resp := register(t, h, repo)
 			registerAgent(t, h, "claude", map[string]any{"adapter": "claude"})
 
-			// Rebind by hand. Bindings are read fresh at every composition, so this
-			// reaches the very next spawn with no restart.
+			// Pin the grill role to a skill the source does not carry. A pin never
+			// falls back to another source, so the spawn refuses.
 			cfg := userConfig(t, h.ConfigDir)
-			cfg = strings.Replace(cfg, `grill = "chartr-skills/grill"`, `grill = "`+tc.binding+`"`, 1)
+			cfg = cfg + "\n[roles]\ngrill = \"" + tc.binding + "\"\n"
 			chartrtest.WriteFile(t, h.ConfigDir, "user.toml", cfg)
 
 			code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "grill", "claude")
@@ -113,4 +125,132 @@ func TestSpawnRefusedWhenTheBoundSourceIsDisabled(t *testing.T) {
 	if _, err := gitHEAD(repo); err == nil {
 		t.Error("a refused spawn wrote a claim commit")
 	}
+}
+
+// An "auto" binding resolves by precedence: the role's accepted skill names are
+// searched across enabled sources in order, so any repo that ships the right
+// names satisfies the role with no exact ref to hand-pick.
+func TestSpawnResolvesThroughAutoBinding(t *testing.T) {
+	h := chartrtest.Start(t, chartrtest.WithoutSkills())
+	repo := chartrtest.NewSpaceRepo(t)
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "grilling", ""))
+	chartrtest.StubAgent(t, "claude")
+
+	// Register a source that has no skill named "grill" but does have an accepted
+	// grill alias.
+	src := t.TempDir()
+	writeSkill(t, src, "grill-me", "---\nname: grill-me\n---\n\nalias-grill-body\n")
+	if code, body := h.Post("/api/config/sources", map[string]string{
+		"name": "mine", "kind": "dir", "path": src,
+	}); code != 200 {
+		t.Fatalf("registering source: %d %s", code, body)
+	}
+
+	resp := register(t, h, repo)
+	registerAgent(t, h, "claude", map[string]any{"adapter": "claude"})
+
+	// Set the role to resolve by precedence; it should find mine/grill-me by alias
+	// and spawn successfully with no exact ref named.
+	cfg := userConfig(t, h.ConfigDir)
+	cfg = cfg + "\n[roles]\ngrill = \"auto\"\n"
+	chartrtest.WriteFile(t, h.ConfigDir, "user.toml", cfg)
+
+	code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "grill", "claude")
+	if code != 200 {
+		t.Fatalf("spawn through auto resolution = %d, body %s", code, body)
+	}
+
+	// The payload preview shows the resolved skill body, not the spawn response.
+	_, p, _ := getPayload(t, h, resp.ID, "widget", 1, "grill")
+	grill := findPart(t, p, "grill")
+	if grill.Origin != "mine" {
+		t.Errorf("alias fallback resolved from %s, want mine", grill.Origin)
+	}
+	if len(p.Skills) < 2 || p.Skills[1].Name != "grill-me" {
+		t.Errorf("alias fallback resolved to skill %q, want grill-me", p.Skills[1].Name)
+	}
+	if !strings.Contains(grill.Text, "alias-grill-body") {
+		t.Errorf("spawn did not run the alias skill body:\n%s", grill.Text)
+	}
+
+	// The claim commit was written because the spawn succeeded.
+	if _, err := gitHEAD(repo); err != nil {
+		t.Errorf("a successful spawn wrote no claim commit: %v", err)
+	}
+}
+
+// The role picker's data and its one write: every enabled source that ships a
+// skill the role accepts is offered as a candidate in precedence order, "no
+// preference" writes the auto sentinel that resolves by that order, and pinning a
+// lower-precedence source overrides it. An unknown role is refused.
+func TestRolePickerListsCandidatesAndBinds(t *testing.T) {
+	h := chartrtest.Start(t, chartrtest.WithoutSkills())
+
+	a := t.TempDir()
+	writeSkill(t, a, "grill", "---\nname: grill\n---\n\nbody-a\n")
+	b := t.TempDir()
+	writeSkill(t, b, "grill-me", "---\nname: grill-me\n---\n\nbody-b\n")
+	for _, s := range []struct{ name, path string }{{"repo-a", a}, {"repo-b", b}} {
+		if code, body := h.Post("/api/config/sources", map[string]string{
+			"name": s.name, "kind": "dir", "path": s.path,
+		}); code != 200 {
+			t.Fatalf("registering %s: %d %s", s.name, code, body)
+		}
+	}
+
+	// Both grill-alias skills are offered, in precedence (registration) order.
+	grill := findRoleBinding(t, h.Snapshot(ctx(t)).Roles, "grill")
+	if got := grill.Candidates; len(got) != 2 || got[0] != "repo-a/grill" || got[1] != "repo-b/grill-me" {
+		t.Fatalf("grill candidates = %v, want [repo-a/grill repo-b/grill-me]", got)
+	}
+
+	// "No preference" writes the auto sentinel and resolves by precedence.
+	if code, body := h.Put("/api/config/roles/grill", map[string]string{"ref": "auto"}); code != 200 {
+		t.Fatalf("bind auto: %d %s", code, body)
+	}
+	grill = findRoleBinding(t, h.Snapshot(ctx(t)).Roles, "grill")
+	// Auto resolves to the precedence winner — the higher source's skill.
+	if grill.Ref != "auto" || grill.Resolved != "repo-a/grill" || !grill.Resolves {
+		t.Errorf("after auto: ref=%q resolved=%q resolves=%v, want auto/repo-a/grill/true",
+			grill.Ref, grill.Resolved, grill.Resolves)
+	}
+
+	// Pinning the lower-precedence source overrides the order: it resolves to
+	// exactly that skill, not the precedence winner.
+	if code, body := h.Put("/api/config/roles/grill", map[string]string{"ref": "repo-b/grill-me"}); code != 200 {
+		t.Fatalf("pin repo-b: %d %s", code, body)
+	}
+	grill = findRoleBinding(t, h.Snapshot(ctx(t)).Roles, "grill")
+	if grill.Ref != "repo-b/grill-me" || grill.Resolved != "repo-b/grill-me" || !grill.Resolves {
+		t.Errorf("after pin: ref=%q resolved=%q resolves=%v, want repo-b/grill-me pinned and resolved",
+			grill.Ref, grill.Resolved, grill.Resolves)
+	}
+
+	// Disabling the pinned source makes the pin unresolved — no fallback to the
+	// still-enabled repo-a, because a pin is a pin.
+	if code, body := h.Put("/api/config/sources/repo-b/enabled", map[string]any{"enabled": false}); code != 200 {
+		t.Fatalf("disable repo-b: %d %s", code, body)
+	}
+	grill = findRoleBinding(t, h.Snapshot(ctx(t)).Roles, "grill")
+	if grill.Resolved != "" || grill.Resolves {
+		t.Errorf("pin into a disabled source resolved to %q (resolves %v), want unresolved",
+			grill.Resolved, grill.Resolves)
+	}
+
+	// An unknown role is refused before any write.
+	if code, _ := h.Put("/api/config/roles/bogus", map[string]string{"ref": "auto"}); code != 400 {
+		t.Errorf("binding a bogus role = %d, want 400", code)
+	}
+}
+
+func findRoleBinding(t *testing.T, rows []model.RoleBinding, role string) model.RoleBinding {
+	t.Helper()
+	for _, r := range rows {
+		if r.Role == role {
+			return r
+		}
+	}
+	t.Fatalf("no %q role in the snapshot", role)
+	return model.RoleBinding{}
 }

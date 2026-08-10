@@ -141,6 +141,18 @@ type RoleBinding struct {
 	// bound-but-unresolvable ref is the other way a role refuses, and the row
 	// tells the two apart.
 	Resolves bool `json:"resolves"`
+	// Resolved is the `Source/skill` a spawn would actually run for this role
+	// today — the pinned ref itself when it resolves, or the precedence winner
+	// when Ref is "auto". Empty when nothing resolves. The picker shows this
+	// beside the role so an operator sees what "no preference" landed on.
+	Resolved string `json:"resolved"`
+	// Candidates is every `Source/skill` an enabled source offers that the role
+	// accepts (its SkillAliases), in resolution order — what the settings picker
+	// lists beneath "no preference" so an operator can pin a lower-precedence
+	// source's skill over the one precedence would otherwise take. The currently
+	// pinned Ref rides here too even when it is not an alias match, so the picker
+	// can always show what is set.
+	Candidates []string `json:"candidates"`
 }
 
 // NotifyPrefs is the resolved notify.toml value on the wire. Unlike terminal
