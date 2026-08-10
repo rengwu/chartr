@@ -187,14 +187,6 @@ export function previewPayload(
   ) as Promise<import('./model').Payload>
 }
 
-// previewFreePayload composes what a *free* session is told: the same seam, the
-// same modal, four parts, and no ticket or role to choose. It names no space —
-// a free payload holds no live fact about one, which is why it hangs off the
-// settings surface rather than a space card.
-export function previewFreePayload(): Promise<import('./model').Payload> {
-  return send('GET', '/api/payload/free') as Promise<import('./model').Payload>
-}
-
 // The skill-source list's six actions. Each returns only its own result; the new
 // list arrives over the control socket as a fresh snapshot, so nothing here is
 // applied optimistically and a refusal leaves the rendered list untouched.

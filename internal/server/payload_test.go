@@ -271,40 +271,6 @@ func TestNeitherCoreNorRoleIsShadowableByASkillLayer(t *testing.T) {
 	}
 }
 
-// The free payload's preview takes no space, and returns the same four parts
-// whichever tree the operator happens to have registered — no map list, no
-// frontier, no ticket, no role. It is the operator's one window onto what an
-// agent chartr launches without a ticket is told.
-func TestFreePayloadPreviewIsSpaceIndependent(t *testing.T) {
-	h := chartrtest.Start(t)
-	repo := chartrtest.NewSpaceRepo(t)
-	chartrtest.WriteMap(t, repo, "widget", mapBody)
-	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	register(t, h, repo)
-
-	code, body := h.Get("/api/payload/free")
-	if code != 200 {
-		t.Fatalf("free payload preview = %d, body %s", code, body)
-	}
-	var p prompt.Payload
-	if err := json.Unmarshal([]byte(body), &p); err != nil {
-		t.Fatalf("free payload response not JSON: %v (%q)", err, body)
-	}
-
-	if got := partNames(p); !equalStrings(got, []string{"core", "conventions", "preferences", "sources"}) {
-		t.Errorf("free payload parts = %v, want core, conventions, preferences, sources", got)
-	}
-	// Not one live fact about the space it will run in.
-	for _, forbidden := range []string{"widget", "First", "frontier", ".plan/maps/widget"} {
-		if strings.Contains(p.Markdown, forbidden) {
-			t.Errorf("the free payload carries %q, a live fact about the space:\n%s", forbidden, p.Markdown)
-		}
-	}
-	if !strings.Contains(p.Markdown, "chartr is the cockpit") {
-		t.Errorf("the free payload is missing its core:\n%s", p.Markdown)
-	}
-}
-
 // The preview refuses what it cannot compose, so a bad request is a response, not
 // a surprise: an unknown or missing role, a missing space, map, or ticket.
 func TestPayloadPreviewRejectsBadInput(t *testing.T) {

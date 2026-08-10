@@ -11,7 +11,6 @@ import (
 
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/notify"
-	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/terminal"
 )
@@ -37,12 +36,12 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFree is the new-shell control's endpoint: it starts a **free session** —
-// an agent chartr launched into a space with no ticket and no role, told what
-// chartr is and what skills exist and nothing about how to behave. It is an
-// operator affordance, not a role, so it shares only the adapter's spawn primitive
-// with a real session — no map or ticket is looked up, no claim is written, and
-// the tab it seats carries no Session, so it reads and ends exactly like an ad-hoc
-// shell (never the session grammar, never the death halt).
+// an agent chartr launched into a space with no ticket, no role, and no brief. It
+// is an operator affordance, not a role, so it shares only the adapter's spawn
+// primitive with a real session — no map or ticket is looked up, no claim is
+// written, nothing is injected, and the tab it seats carries no Session, so it
+// reads and ends exactly like an ad-hoc shell (never the session grammar, never
+// the death halt).
 func (s *Server) handleFree(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.repoSpace(w, r)
 	if !ok {
@@ -60,11 +59,11 @@ func (s *Server) handleFree(w http.ResponseWriter, r *http.Request) {
 	s.launchFree(w, e, body.Agent)
 }
 
-// launchFree is the free-session spine: settle the chosen agent, compose the free
-// payload, write it to the gitignored run directory, launch the agent's TUI with
-// the read-this-file opener, and remember the agent. Every refusal is the same one
-// a spawn gives, in the same order (agent-selection ticket 04), and a refusal
-// opens nothing and writes nothing.
+// launchFree is the free-session spine: settle the chosen agent, launch its TUI
+// bare, and remember the agent. A free session injects nothing — no payload is
+// composed, written, or typed in; the operator gets a live agent tab and types
+// their first message themselves. Every refusal is the same one a spawn gives, in
+// the same order (agent-selection ticket 04), and a refusal opens nothing.
 func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent string) {
 	// The same doorstep, the same refusals, in the same order a spawn gives them.
 	spec, status, err := agentSpec(s.resolve(e), agent)
@@ -73,48 +72,22 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		return
 	}
 
-	// The sync barrier (skill-sources mirror): a free session is told the same
-	// sources block a spawn is, with the same `.chartr/skills/` paths, so it needs
-	// the mirror current before it launches. Run past the refusal above so a
-	// refused free session still writes nothing a session would.
-	if err := s.ensureSkillsCurrent(e); err != nil {
-		httpError(w, http.StatusInternalServerError, "syncing skills into the space: "+err.Error())
-		return
-	}
-	// The same barrier for the space's copy of the write contract: the free
-	// payload points at `.chartr/TRACKER-CONVENTION.md` by a repo-relative path,
-	// so the bytes there must be current before this session launches.
-	if err := s.ensureConventionsCurrent(e); err != nil {
-		httpError(w, http.StatusInternalServerError, "syncing the write contract into the space: "+err.Error())
-		return
-	}
-
-	payload, err := prompt.ComposeFree(s.opts.ConfigDir, s.srcs)
-	if err != nil {
-		// Nothing here is the caller's input; a failure is an unreadable
-		// preferences file, which is the operator's to fix on disk.
-		httpError(w, http.StatusInternalServerError, "composing the free payload: "+err.Error())
-		return
-	}
-
 	id := newSessionID()
-	promptPath, err := s.writeSessionPayload(e.Path, id, payload.Markdown)
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, "writing the free payload: "+err.Error())
-		return
-	}
 
+	// A bare launch: no opener, so `Command` returns the plain interactive argv
+	// and nothing to type in. The skill mirror and write contract are the
+	// business of a real spawn's payload (spawn.go) — a free session reads
+	// neither, so it syncs neither.
 	launch := adapter.Command(adapter.Spawn{
 		Adapter: spec.Adapter,
 		Args:    spec.Args,
-		Prompt:  adapter.Opener(promptPath),
 		Deliver: spec.Prompt,
 	})
 	// Titled by the agent's registered name — the tab is titled by the thing the
 	// operator clicked, which is the only labelling rule that never needs
 	// explaining. Three free sessions on one agent get three identical titles, as
 	// every ad-hoc shell in a space is titled `zsh` today.
-	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, spec.Name, spec.Adapter)
+	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, spec.Name, spec.Adapter)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "opening the free tab: "+err.Error())
 		return

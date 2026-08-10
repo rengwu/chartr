@@ -10,29 +10,23 @@
   // ticketless on-ramp, a split button that replaced both the skill launcher and
   // the bare `+` shell button.
   //
-  // The **caret is a selector, not a launcher**, and the **body launches what is
-  // selected**. The menu is a radio group: `new shell` (the plain shell, nothing
-  // injected), a divider, then the registered agents *in registration order* — no
-  // ranking, no model sublabels. Picking a row only *chooses*; the body then
-  // carries that choice as its label, so what a click does is always written on
-  // the button. An agent whose binary is absent from PATH sits disabled under its
-  // own reason, exactly as the spawn picker shows it.
+  // The **body is fixed to the plain shell** — the zero-decision action, nothing
+  // injected — and the **caret is a launcher, not a selector**. The menu is a
+  // plain list of the registered agents *in registration order* (no ranking, no
+  // model sublabels): clicking a row *launches a free session on that agent right
+  // away*, rather than re-pointing the body. Nothing is selected, nothing is
+  // remembered — the body always says `new shell` and always opens one.
   //
-  // The selection defaults to the plain shell — the zero-decision action — and is
-  // this control's own state, not the space's: nothing is remembered across a
-  // reload, and the server's `lastAgent` deliberately does not seed it (a free
-  // session has no claim on that memory). It sticks for as long as the card is
-  // mounted, so a second session on the same agent is one click.
-  //
-  // With an empty library the divider stays and the message routes to
-  // registration, so the menu is never a dead control.
+  // An agent whose binary is absent from PATH sits disabled under its own reason,
+  // exactly as the spawn picker shows it. With an empty library the message
+  // routes to registration, so the menu is never a dead control.
   let {
     agents,
     disabled = false,
     size = "xs",
     label = "new shell",
-    ariaLabel,
-    title,
+    ariaLabel = "Open a plain shell",
+    title = "Open a plain shell — nothing is injected.",
     // The zero-decision action: a plain shell, nothing injected.
     onshell,
     // A free session on the agent the operator clicked: a live, ticketless tab
@@ -51,16 +45,6 @@
     onfree: (agent: string) => void;
     onregister?: () => void;
   } = $props();
-
-  // Which row the body will run: the agent's name, or "" for the plain shell.
-  // Held here rather than lifted, because it decides nothing outside this button.
-  let picked = $state("");
-
-  // The effective choice. An agent that has since been deregistered, or whose
-  // binary has left PATH, silently falls back to the plain shell rather than
-  // leaving the body pointed at something that cannot run.
-  const chosen = $derived(agents.find((a) => a.name === picked && a.present));
-  const runs = $derived(chosen?.name ?? "");
 </script>
 
 <!-- One control, two hit targets: the body and the caret share an outline and
@@ -72,59 +56,46 @@
     {size}
     class="rounded-r-none border-r-0"
     {disabled}
-    aria-label={runs ? `Start a session on ${runs}` : ariaLabel}
-    title={runs
-      ? `Start a free session on ${runs} — a live, ticketless agent tab. Nothing is claimed, nothing is committed, and it ends when you end it.`
-      : title}
+    aria-label={ariaLabel}
+    {title}
     onclick={(e) => {
       e.stopPropagation();
-      if (runs) onfree(runs);
-      else onshell();
+      onshell();
     }}
   >
-    {runs || label}
+    {label}
   </Button>
   <DropdownMenu.Root>
     <DropdownMenu.Trigger
       class={cn(buttonVariants({ variant: "outline", size }), "rounded-l-none px-1")}
       {disabled}
-      aria-label="Choose what the button opens"
+      aria-label="Launch a free session on a registered agent"
     >
       <CaretDown />
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content align="end" class="min-w-48 w-auto">
-      <!-- One radio group across both halves of the menu: the plain shell and the
-           agents are the same kind of choice, so exactly one of them is checked
-           and the divider is a grouping, not a boundary between a command and a
-           setting. -->
-      <DropdownMenu.RadioGroup value={runs} onValueChange={(v) => (picked = v)}>
-        <DropdownMenu.RadioItem value="">{label}</DropdownMenu.RadioItem>
-
-        <DropdownMenu.Separator />
-
-        {#if agents.length === 0}
-          <DropdownMenu.Label
-            class="max-w-64 text-[0.7rem] leading-relaxed font-normal text-wrap text-muted-foreground"
+      {#if agents.length === 0}
+        <DropdownMenu.Label
+          class="max-w-64 text-[0.7rem] leading-relaxed font-normal text-wrap text-muted-foreground"
+        >
+          No agents registered yet.
+        </DropdownMenu.Label>
+        <DropdownMenu.Item onclick={() => onregister?.()}>Register an agent…</DropdownMenu.Item>
+      {:else}
+        {#each agents as a (a.name)}
+          <DropdownMenu.Item
+            disabled={!a.present}
+            class="flex flex-col items-start gap-0.5"
+            onclick={() => onfree(a.name)}
           >
-            No agents registered yet.
-          </DropdownMenu.Label>
-          <DropdownMenu.Item onclick={() => onregister?.()}>Register an agent…</DropdownMenu.Item>
-        {:else}
-          {#each agents as a (a.name)}
-            <DropdownMenu.RadioItem
-              value={a.name}
-              disabled={!a.present}
-              class="flex flex-col items-start gap-0.5"
-            >
-              <span class="font-medium">{a.name}</span>
-              {#if !a.present && a.missing}
-                <span class="text-[0.65rem] text-destructive">{a.missing}</span>
-              {/if}
-            </DropdownMenu.RadioItem>
-          {/each}
-        {/if}
-      </DropdownMenu.RadioGroup>
+            <span class="font-medium">{a.name}</span>
+            {#if !a.present && a.missing}
+              <span class="text-[0.65rem] text-destructive">{a.missing}</span>
+            {/if}
+          </DropdownMenu.Item>
+        {/each}
+      {/if}
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 </div>

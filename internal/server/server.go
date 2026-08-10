@@ -233,9 +233,6 @@ func New(opts Options) (*Server, error) {
 	// session would be told, with per-part origin provenance. Read-only, so a GET;
 	// the composition reads the sources and the map fresh off disk each time.
 	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
-	// The free payload's preview names no space: a free session is told nothing
-	// about the one it runs in, so the same four parts answer for every space.
-	s.mux.HandleFunc("GET /api/payload/free", s.handleFreePayloadPreview)
 	// Spawn a session (ticket 09): the tracer bullet. From a frontier ticket, the
 	// chartr writes the claim commit, composes and archives the payload, settles the
 	// chosen agent, and launches the agent's own TUI with the opener typed in — or

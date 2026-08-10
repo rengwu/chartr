@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
   import { defaultRole, ROLES, type Agent, type Payload, type PayloadPart, type Role } from './model'
-  import { previewFreePayload, previewPayload } from './actions'
+  import { previewPayload } from './actions'
   import { chooseAgent, type AgentChoice } from './agentchoice'
   import { renderMarkdown } from './markdown'
   import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
@@ -19,17 +19,8 @@
   // It answers *what will run it* as well as *what will it read* (ticket 03,
   // story 24): the agent this space would spawn with, and the command line that
   // agent produces.
-  //
-  // It has a second mode (ticket 10). A **free** session — one chartr launched
-  // into a space with no ticket — is told a different four parts, and the same
-  // seam composes them: same modal, same origin badges, no ticket and no role to
-  // choose. It hangs off the settings surface rather than a space card because
-  // the free payload holds no live fact about a space, and it is the only place
-  // the operator watches their own `preferences.md` land in an assembled
-  // document.
   let {
     open,
-    free = false,
     spaceId = '',
     mapSlug = '',
     ticketNum = 0,
@@ -40,9 +31,6 @@
     onClose,
   }: {
     open: boolean
-    // Preview the free payload instead of a ticket's. Every ticket-shaped prop
-    // below is unread in this mode.
-    free?: boolean
     spaceId?: string
     mapSlug?: string
     ticketNum?: number
@@ -72,7 +60,7 @@
   // preview instance from carrying the last ticket's choice into a new ticket.
   let wasOpen = false
   $effect(() => {
-    if (open && !wasOpen && !free) role = defaultRole(ticketType)
+    if (open && !wasOpen) role = defaultRole(ticketType)
     wasOpen = open
   })
 
@@ -89,7 +77,7 @@
     const mine = ++token
     loading = true
     error = null
-    ;(free ? previewFreePayload() : previewPayload(id, slug, num, r))
+    previewPayload(id, slug, num, r)
       .then((p) => {
         if (mine !== token) return
         payload = p
@@ -119,46 +107,32 @@
   }
 </script>
 
-<Modal {open} title={free ? 'Free session payload' : 'Payload preview'} wide {onClose}>
+<Modal {open} title="Payload preview" wide {onClose}>
   <div class="flex h-[65vh] flex-col gap-3">
-    {#if free}
-      <p class="text-xs leading-relaxed text-muted-foreground">
-        What a <strong class="font-medium text-foreground">free session</strong> is told — an agent
-        chartr launched into a space with no ticket. Four parts: what chartr is, the file-format
-        contract, your own
-        <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground">preferences.md</code>,
-        and what skills your sources hold. Nothing about how to behave, and nothing about the space
-        it runs in — which is why it names no space here.
-      </p>
-    {:else}
-      <p class="text-xs leading-relaxed text-muted-foreground">
-        What a <strong class="font-medium text-foreground">session</strong> on
-        <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground break-words"
-          >#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code
-        >
-        would be told — the core, the skill its role is bound to, the contract files and the context,
-        assembled fresh. Each block is tagged with where it came from.
-      </p>
+    <p class="text-xs leading-relaxed text-muted-foreground">
+      What a <strong class="font-medium text-foreground">session</strong> on
+      <code class="rounded bg-muted px-1 py-0.5 font-mono text-foreground break-words"
+        >#{String(ticketNum).padStart(2, '0')} · {ticketTitle}</code
+      >
+      would be told — the core, the skill its role is bound to, the contract files and the context,
+      assembled fresh. Each block is tagged with where it came from.
+    </p>
 
-      <div class="flex flex-wrap gap-1.5" role="group" aria-label="Preview role">
-        {#each ROLES as r (r)}
-          <Button
-            variant={role === r ? 'default' : 'outline'}
-            size="sm"
-            class="capitalize"
-            aria-pressed={role === r}
-            onclick={() => (role = r)}>{r}</Button
-          >
-        {/each}
-      </div>
-    {/if}
+    <div class="flex flex-wrap gap-1.5" role="group" aria-label="Preview role">
+      {#each ROLES as r (r)}
+        <Button
+          variant={role === r ? 'default' : 'outline'}
+          size="sm"
+          class="capitalize"
+          aria-pressed={role === r}
+          onclick={() => (role = r)}>{r}</Button
+        >
+      {/each}
+    </div>
 
     <!-- What will run it (ticket 03, story 24). The command comes off the agent
          library, which builds it through the same seam that builds the real argv,
-         so this preview cannot drift from the launch. A free session picks its
-         agent at the `new shell` caret instead, so this block has no answer for
-         it and is left out. -->
-    {#if !free}
+         so this preview cannot drift from the launch. -->
     <div class="rounded-md border border-border p-2.5">
       <div class="flex items-baseline justify-between gap-2">
         <span class="text-sm font-medium">
@@ -190,7 +164,6 @@
         </p>
       {/if}
     </div>
-    {/if}
 
     {#if loading}
       <p class="text-sm text-muted-foreground">Composing…</p>

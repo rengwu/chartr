@@ -25,13 +25,6 @@ import (
 //go:embed assets/core-space.md
 var spaceCoreText string
 
-// freeCoreTail is the one clause only a free session can be told: chartr
-// opened its terminal with nothing in hand. Sits beside the asset rather
-// than in it because the standing document must not carry it — a `/new`
-// agent's shell wasn't opened by chartr at all, and a document whose first
-// paragraph is false to its reader is worth less than no document.
-const freeCoreTail = "This shell is one chartr opened with no ticket and no role."
-
 // Blocker is one of a ticket's blockers as the context bundle carries it: its
 // number, title, and its resolved answer pulled inline (ADR 0005). The server
 // fills these from the derived map, so composition needs no second load.
@@ -140,25 +133,8 @@ func Compose(in ComposeInput) (Payload, error) {
 	}, nil
 }
 
-// ComposeFree assembles the payload a free session is told — an agent
-// chartr launched into a space with no ticket and no role. Four parts:
-// chartr's free core, the conventions pointer, the operator's preferences,
-// the sources block.
-//
-// It carries no live fact about the space: no map list, no frontier, no
-// branch — the same bytes in an empty tree and a tree mid-effort. The
-// agent is already in the tree and can list a directory, while a list
-// composed at spawn goes wrong the moment another session resolves a
-// ticket. What varies is the sources block and the preferences bytes —
-// which is why this takes no space at all, only the config root and the
-// registry.
-func ComposeFree(configDir string, reg *sources.Registry) (Payload, error) {
-	return composeSpace(configDir, reg, freeCoreTail)
-}
-
 // ComposeStanding assembles the standing document chartr keeps at the root
-// of every registered space — the same four parts a free session is told,
-// minus the one clause only true of a shell chartr opened.
+// of every registered space.
 //
 // Its reader is an agent chartr never launched: one started with `/new`,
 // one the operator opened in their own terminal, one that compacted its
@@ -166,29 +142,27 @@ func ComposeFree(configDir string, reg *sources.Registry) (Payload, error) {
 // file works on curiosity, and failing that on the operator saying "read
 // CHARTR.md".
 //
-// Like the free payload it carries no live fact about the space. That
-// rule binds harder here: a standing file is written at startup and at a
-// sources change, then read at some unrelated later moment, so anything
-// that could go stale certainly will.
+// It carries no live fact about the space: no map list, no frontier, no
+// branch — the same bytes in an empty tree and a tree mid-effort. A
+// standing file is written at startup and at a sources change, then read at
+// some unrelated later moment, so anything that could go stale certainly
+// will.
 func ComposeStanding(configDir string, reg *sources.Registry) (Payload, error) {
-	return composeSpace(configDir, reg, "")
+	return composeSpace(configDir, reg)
 }
 
-// composeSpace is the shared body of the two space-level payloads: chartr's
-// core plus an optional tail, the conventions pointer, the operator's
-// preferences, and the sources block. Both take no space, only the config
-// root and the registry — what makes the standing document identical in
-// every space and composable once for all of them.
-func composeSpace(configDir string, reg *sources.Registry, tail string) (Payload, error) {
+// composeSpace is the body of the standing document: chartr's core, the
+// conventions pointer, the operator's preferences, and the sources block. It
+// takes no space, only the config root and the registry — what makes the
+// standing document identical in every space and composable once for all of
+// them.
+func composeSpace(configDir string, reg *sources.Registry) (Payload, error) {
 	contract, err := ReconcileContract(configDir)
 	if err != nil {
 		return Payload{}, err
 	}
 
 	core := strings.TrimSpace(spaceCoreText)
-	if tail != "" {
-		core += "\n\n" + tail
-	}
 	parts := []Part{{
 		Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core",
 		Text: core,
