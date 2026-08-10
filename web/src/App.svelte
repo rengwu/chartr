@@ -736,6 +736,9 @@
                 onhalt={(t, verb) =>
                   haltAction(space, t, verb, HALT_ACTIONS[verb])}
                 onopenshell={() => openShell(space)}
+                onfree={(agent) => freeSession(space, agent)}
+                onregister={() => openSettings()}
+                agents={agentLibrary}
               />
             </div>
           {/each}

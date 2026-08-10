@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { Space, Terminal } from "./model";
+  import type { Space, Terminal, Agent } from "./model";
   import { Button } from "./components/ui/button";
+  import NewShellButton from "./NewShellButton.svelte";
   import * as ContextMenu from "./components/ui/context-menu";
   import { spaceAttention, spaceLiveness } from "./attention";
   import { showsFinishedDot } from "./unseen";
@@ -36,6 +37,9 @@
     onendshell,
     onhalt,
     onopenshell,
+    onfree,
+    onregister,
+    agents,
   }: {
     space: Space;
     // Whether this card is the chrome's current selection. Passed rather than
@@ -61,6 +65,13 @@
     onendshell: (t: Terminal) => void;
     onhalt: (t: Terminal, verb: HaltVerb) => void;
     onopenshell: () => void;
+    // A free session on the agent the operator picked from the shell control's
+    // caret — launched bare, exactly as the space pane's control does it.
+    onfree: (agent: string) => void;
+    // Where an empty agent library routes the operator: settings.
+    onregister: () => void;
+    // The registered agent library, for the shell control's caret list.
+    agents: Agent[];
   } = $props();
 
   // Zero-pad a ticket number for a session row's label (#01), matching the detail
@@ -179,23 +190,26 @@
     </span>
     <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
          it carries no open-shell control. Removing a space lives on the
-         right-click menu now (rename/close), not a button on the card. -->
+         right-click menu now (rename/close), not a button on the card. The `+`
+         is the body of the same split control the space pane carries: it opens a
+         plain shell, and its caret lists the registered agents to launch a free
+         session on — icon-only here, where the card header has no room for a
+         label. -->
     {#if !space.scratch}
       <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
-        <Button
+        <NewShellButton
+          {agents}
           variant="ghost"
           size="icon-xs"
           disabled={opening}
-          class="hover:text-primary"
-          aria-label="Open a shell in {space.name}"
+          ariaLabel="Open a shell in {space.name}"
           title="Open a plain shell in {space.name} — nothing is injected."
-          onclick={(e) => {
-            e.stopPropagation();
-            onopenshell();
-          }}
+          onshell={onopenshell}
+          {onfree}
+          {onregister}
         >
           <Plus />
-        </Button>
+        </NewShellButton>
       </span>
     {/if}
   </div>
