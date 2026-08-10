@@ -161,11 +161,11 @@ func TestAdHocShellAgentReadsBlockedFromScreen(t *testing.T) {
 	waitStatus(t, term, model.TerminalIdle)
 }
 
-// The other half of the collapsed grammar: a tab whose foreground is *not* a known
-// agent keeps reading exactly as it did before — idle at the prompt, working under
-// the command's own name. TestSampleTracksForegroundCommand asserts the happy
-// path; this asserts the boundary, that a plain command is never mistaken for an
-// agent and never picks up the agent grammar.
+// The other half of the grammar split: a tab whose foreground is *not* a known
+// agent reads the shell grammar — idle at the prompt, `running` (never the agent
+// grammar's `working`) under the command's own name. TestSampleTracksForegroundCommand
+// asserts the happy path; this asserts the boundary, that a plain command is never
+// mistaken for an agent and never picks up the agent grammar's `working`.
 func TestNonAgentCommandKeepsTheShellGrammar(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("foreground process groups are a unix affordance")
@@ -182,7 +182,7 @@ func TestNonAgentCommandKeepsTheShellGrammar(t *testing.T) {
 	if _, err := term.Write([]byte("sleep 5\n")); err != nil {
 		t.Fatalf("write to shell: %v", err)
 	}
-	waitStatus(t, term, model.TerminalWorking)
+	waitStatus(t, term, model.TerminalRunning)
 
 	term.mu.Lock()
 	agent, proc := term.agent, term.proc

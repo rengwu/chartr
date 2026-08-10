@@ -81,7 +81,7 @@ export interface Map {
 // the one state worth an operator's attention. `dead` belongs to sessions: a dead
 // session freezes pinned to its ticket rather than vanishing, awaiting the
 // operator's halt choice.
-export type TerminalStatus = 'idle' | 'working' | 'exited' | 'blocked' | 'dead'
+export type TerminalStatus = 'idle' | 'working' | 'running' | 'exited' | 'blocked' | 'dead'
 
 // Session is a tab's ticket binding when it is a session — a PTY running an agent
 // against exactly one ticket (ticket 09) — rather than an ad-hoc shell. It names

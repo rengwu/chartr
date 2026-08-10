@@ -68,10 +68,47 @@ func terminalStatus(m model.Model, spaceID, termID string) string {
 // means — the flag is server state, and the run may well have ended with nothing
 // attached), and focusing the tab clears it.
 func TestFinishedRunRaisesTheDotAndFocusClearsIt(t *testing.T) {
+	h := chartrtest.Start(t)
+	// A threshold and a settle small enough that one agent run is a qualifying run;
+	// the shipped 60s/10s would make this test a minute long for no more proof.
+	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\n")
+
+	// An agent run, not a shell command — only an agent's `working` opens a run on
+	// the clock, so the dot is only ever raised for one.
+	spaceID, sessionID := startStubAgentRun(t, h, chartrtest.NewSpaceRepo(t))
+
+	// The tab really was seen working — otherwise a dot that never appears would
+	// prove nothing about the rule.
+	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
+		return terminalStatus(m, spaceID, sessionID) == model.TerminalWorking
+	})
+
+	// Each poll dials its own control socket, so the snapshot this matches on is
+	// the one a browser opened after the run would read.
+	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool { return unseenDot(m, spaceID, sessionID) })
+
+	// Focusing the tab is the whole acknowledgement — there is no dismiss.
+	if code, body := h.Post("/api/spaces/"+spaceID+"/terminals/"+sessionID+"/seen", nil); code != 204 {
+		t.Fatalf("posting seen = %d, body %s", code, body)
+	}
+	// The action pushes the new model before its response returns, so this snapshot
+	// already reflects it.
+	if unseenDot(h.Snapshot(dotCtx(t)), spaceID, sessionID) {
+		t.Error("the dot survived the operator focusing the tab")
+	}
+}
+
+// A plain process raises no dot. A command in an ad-hoc shell reads `running`, not
+// the agent grammar's `working`, so it never opens a run on the clock — however
+// long it holds the foreground, the dot never appears. (The threshold that gates a
+// short agent run against a long one is the clock's own, table-tested in
+// internal/terminal; here the point is that a plain process never reaches the clock
+// at all.)
+func TestPlainProcessRaisesNoDot(t *testing.T) {
 	requireRunnableShell(t)
 	h := chartrtest.Start(t)
-	// A threshold and a settle small enough that one real command is a qualifying
-	// run; the shipped 60s/10s would make this test a minute long for no more proof.
+	// A threshold small enough that any real run would qualify, so a dot's absence is
+	// the process never opening a run, not a run too short to report.
 	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\n")
 	resp := register(t, h, chartrtest.NewSpaceRepo(t))
 
@@ -80,54 +117,19 @@ func TestFinishedRunRaisesTheDotAndFocusClearsIt(t *testing.T) {
 	defer tc.Close()
 	tc.Send(dotCtx(t), "sleep 2; echo done-$((6*7))\n")
 
-	// The tab really was seen working — otherwise a dot that never appears would
-	// prove nothing about the rule.
 	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
-		return terminalStatus(m, resp.ID, termID) == model.TerminalWorking
+		return terminalStatus(m, resp.ID, termID) == model.TerminalRunning
 	})
 	tc.ReadUntil(dotCtx(t), "done-42")
 
-	// Each poll dials its own control socket, so the snapshot this matches on is
-	// the one a browser opened after the run would read.
-	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool { return unseenDot(m, resp.ID, termID) })
-
-	// Focusing the tab is the whole acknowledgement — there is no dismiss.
-	if code, body := h.Post("/api/spaces/"+resp.ID+"/terminals/"+termID+"/seen", nil); code != 204 {
-		t.Fatalf("posting seen = %d, body %s", code, body)
-	}
-	// The action pushes the new model before its response returns, so this snapshot
-	// already reflects it.
-	if unseenDot(h.Snapshot(dotCtx(t)), resp.ID, termID) {
-		t.Error("the dot survived the operator focusing the tab")
-	}
-}
-
-// Short work stays silent: the single threshold gates the dot exactly as it gates
-// the notification, so a run under it records nothing at all.
-func TestRunUnderThresholdRaisesNoDot(t *testing.T) {
-	requireRunnableShell(t)
-	h := chartrtest.Start(t)
-	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"1m\"\nsettle = \"10ms\"\n")
-	resp := register(t, h, chartrtest.NewSpaceRepo(t))
-
-	termID := h.OpenTerminal(resp.ID)
-	tc := h.DialTerminal(dotCtx(t), termID)
-	defer tc.Close()
-	tc.Send(dotCtx(t), "sleep 2; echo done-$((6*7))\n")
-
-	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
-		return terminalStatus(m, resp.ID, termID) == model.TerminalWorking
-	})
-	tc.ReadUntil(dotCtx(t), "done-42")
-
-	// The tab reading idle again is the sample the clock ended the run on — the
-	// decision is already made by the time this snapshot shows it — so a dot absent
-	// here is a dot that was never raised, not one that has yet to appear.
+	// The tab reading idle again is where the clock would have ended a run had one
+	// been open — so a dot absent here is a dot that was never raised, not one that
+	// has yet to appear.
 	m := h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
 		return terminalStatus(m, resp.ID, termID) == model.TerminalIdle
 	})
 	if unseenDot(m, resp.ID, termID) {
-		t.Error("a two-second run under a one-minute threshold raised a dot")
+		t.Error("a plain shell process raised a dot")
 	}
 }
 
