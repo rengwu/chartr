@@ -28,9 +28,18 @@ import (
 // belong to the operator, not to chartr. This file works on an agent's
 // curiosity. That is the accepted ceiling.
 const (
-	// chartrDocName is the file's fixed name at the space root, and the literal
-	// line written into `.git/info/exclude`.
+	// chartrDocName is the file's fixed name at the space root, and one of the
+	// literal lines written into `.git/info/exclude`.
 	chartrDocName = "CHARTR.md"
+	// chartrDirExclude is the other line ensureGitExclude guarantees: the whole
+	// per-machine `.chartr/` tree — run payloads, the skill mirror, the space's
+	// write contract — none of which is ever committed. The trailing slash is
+	// deliberate: it matches only the directory, not a stray file named `.chartr`.
+	// This is the primary ignore for that tree; the `*` markers chartr drops
+	// inside `.chartr/run` and `.chartr/skills` (internal/sources/mirror.go) are
+	// the fallback for the one case this line can't cover — a space with no `.git`
+	// directory, where ensureGitExclude skips entirely.
+	chartrDirExclude = ".chartr/"
 	// gitExcludeRel locates git's local, uncommitted ignore file under `.git` — exactly what a
 	// per-machine generated file needs. Not the space's tracked `.gitignore`:
 	// that is the repository's own file, and writing to it would leave a phantom
@@ -144,20 +153,23 @@ func writeChartrDoc(space string, doc []byte) error {
 	return ensureGitExclude(space)
 }
 
-// ensureGitExclude appends the one-line `CHARTR.md` ignore to
-// `<space>/.git/info/exclude`, creating the file and its directory if absent and
-// preserving whatever is already there. Existing lines are never rewritten or
-// reordered — the file is the operator's as much as it is chartr's.
+// ensureGitExclude appends chartr's ignore lines — the standing `CHARTR.md` and
+// the whole per-machine `.chartr/` tree — to `<space>/.git/info/exclude`,
+// creating the file and its directory if absent and preserving whatever is
+// already there. Existing lines are never rewritten or reordered — the file is
+// the operator's as much as it is chartr's — and a line already present is left
+// in place, so any number of reconciles append each line exactly once.
 //
 // Idempotence is a literal line scan, not a `git check-ignore`: chartr wrote the
-// line, so it knows exactly what it is looking for, and shelling out to git once
+// lines, so it knows exactly what it is looking for, and shelling out to git once
 // per space on every startup and every settings save to learn something it
 // already knows is a cost with no answer attached.
 //
 // If `.git` is not a directory the exclude is skipped and the document still
 // written. A worktree or a submodule has `.git` as a *file* pointing elsewhere;
 // ADR 0003 rules worktrees out, so this is a guard rather than a supported case —
-// it must not fail, and it must not follow the pointer.
+// it must not fail, and it must not follow the pointer. This is the case the `*`
+// markers inside `.chartr/` cover on their own (see chartrDirExclude).
 func ensureGitExclude(space string) error {
 	gitDir := filepath.Join(space, ".git")
 	st, err := os.Stat(gitDir)
@@ -170,22 +182,31 @@ func ensureGitExclude(space string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
+	present := make(map[string]bool)
 	for _, line := range strings.Split(string(existing), "\n") {
-		if strings.TrimSpace(line) == chartrDocName {
-			return nil
+		present[strings.TrimSpace(line)] = true
+	}
+
+	// The exclude is git's file in the operator's checkout, so it stays an
+	// ordinary repository file at 0644 — the same reasoning as the `*` marker
+	// beside the run directory.
+	next := existing
+	for _, want := range [...]string{chartrDocName, chartrDirExclude} {
+		if present[want] {
+			continue
 		}
+		if len(next) > 0 && !bytes.HasSuffix(next, []byte("\n")) {
+			next = append(next, '\n')
+		}
+		next = append(next, []byte(want+"\n")...)
+	}
+	if bytes.Equal(next, existing) {
+		return nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	// The exclude is git's file in the operator's checkout, so it stays an
-	// ordinary repository file at 0644 — the same reasoning as the `*` marker
-	// beside the run directory.
-	next := existing
-	if len(next) > 0 && !bytes.HasSuffix(next, []byte("\n")) {
-		next = append(next, '\n')
-	}
-	next = append(next, []byte(chartrDocName+"\n")...)
 	return os.WriteFile(path, next, 0o644)
 }

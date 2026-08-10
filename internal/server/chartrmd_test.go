@@ -25,10 +25,10 @@ func readDoc(t *testing.T, repo string) string {
 	return string(b)
 }
 
-// countExcludeLines reports how many times the ignore line stands in a space's
-// local git exclude — the number that has to be exactly one after any number of
-// reconciles.
-func countExcludeLines(t *testing.T, repo string) int {
+// countExcludeLines reports how many times a given ignore line stands in a
+// space's local git exclude — the number that has to be exactly one after any
+// number of reconciles.
+func countExcludeLines(t *testing.T, repo, line string) int {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
 	if err != nil {
@@ -36,7 +36,7 @@ func countExcludeLines(t *testing.T, repo string) int {
 	}
 	n := 0
 	for _, l := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(l) == "CHARTR.md" {
+		if strings.TrimSpace(l) == line {
 			n++
 		}
 	}
@@ -80,8 +80,15 @@ func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 		t.Errorf("a source URL reached the standing document:\n%s", doc)
 	}
 
-	if got := countExcludeLines(t, repo); got != 1 {
-		t.Errorf(".git/info/exclude carries the ignore line %d times, want 1", got)
+	if got := countExcludeLines(t, repo, "CHARTR.md"); got != 1 {
+		t.Errorf(".git/info/exclude carries the CHARTR.md line %d times, want 1", got)
+	}
+	// The whole `.chartr/` tree is ignored through the same local exclude — one
+	// authoritative line, so a session's run payloads, skill mirror and write
+	// contract never show up in `git status` and the tracked `.gitignore` is
+	// never touched to make it so.
+	if got := countExcludeLines(t, repo, ".chartr/"); got != 1 {
+		t.Errorf(".git/info/exclude carries the .chartr/ line %d times, want 1", got)
 	}
 	if status := chartrtest.Git(t, repo, "status", "--porcelain"); status != "" {
 		t.Errorf("the standing document dirtied the space:\n%s", status)
@@ -98,8 +105,11 @@ func TestStandingDocLandsInARegisteredSpaceAndGitIgnoresIt(t *testing.T) {
 	}
 	chartrtest.Start(t, chartrtest.WithConfigDir(cfg))
 	readDoc(t, repo)
-	if got := countExcludeLines(t, repo); got != 1 {
-		t.Errorf("after a second run .git/info/exclude carries the ignore line %d times, want 1", got)
+	if got := countExcludeLines(t, repo, "CHARTR.md"); got != 1 {
+		t.Errorf("after a second run .git/info/exclude carries the CHARTR.md line %d times, want 1", got)
+	}
+	if got := countExcludeLines(t, repo, ".chartr/"); got != 1 {
+		t.Errorf("after a second run .git/info/exclude carries the .chartr/ line %d times, want 1", got)
 	}
 	if status := chartrtest.Git(t, repo, "status", "--porcelain"); status != "" {
 		t.Errorf("the space is dirty after a second run:\n%s", status)
@@ -129,7 +139,7 @@ func TestStandingDocKeepsAnExistingGitExclude(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(b), "# mine\nscratch.txt\nCHARTR.md\n"; got != want {
+	if got, want := string(b), "# mine\nscratch.txt\nCHARTR.md\n.chartr/\n"; got != want {
 		t.Errorf(".git/info/exclude = %q, want %q", got, want)
 	}
 }
