@@ -209,14 +209,14 @@
             "name",
             draft.name,
             (v) => (draft!.name = v),
-            "claude-yolo",
+            "claude-opus-4-8",
             draft.original !== "",
           )}
           {@render textField(
             "adapter",
             draft.adapter,
             (v) => (draft!.adapter = v),
-            "the CLI to run",
+            "claude",
           )}
           <!-- The PATH probe's suggestions live here, beside the input, not in its
                placeholder — a placeholder disappears on the first keystroke, exactly
@@ -262,14 +262,14 @@
             "args",
             draft.args,
             (v) => (draft!.args = v),
-            "--model sonnet --dangerously-skip-permissions",
+            "--model claude-opus-4-8 --dangerously-skip-permissions",
           )}
 
           {@render textField(
             "env",
             draft.env,
             (v) => (draft!.env = v),
-            "ENV_VAR=value",
+            "CLAUDE_CONFIG_DIR=~/.claude",
           )}
           <!-- The tilde note sits beside the field, like the adapter's PATH hint and
                for the same reason: nothing but a shell expands a `~`, and there is no
