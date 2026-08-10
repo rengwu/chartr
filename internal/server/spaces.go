@@ -444,7 +444,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 			Name:      "Scratch",
 			Scratch:   true,
 			Path:      e.Path,
-			Layers:    []model.ConfigLayer{},
 			Maps:      []model.Map{},
 			Terminals: terminals,
 		}
@@ -477,7 +476,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 		Branch:    gitBranch(e.Path),
 		Dirty:     gitDirty(e.Path),
 		LastAgent: e.LastAgent,
-		Layers:    []model.ConfigLayer{},
 		Maps:      maps,
 		Terminals: terminals,
 		Warnings:  warnings,

@@ -34,8 +34,8 @@
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
   import { nativeTitleBarHeight, trackTitleBarButtons } from "./lib/titlebar";
-  import { configurableSpaces, visibleSpaces } from "./lib/spacevisibility";
-  import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
+  import { visibleSpaces } from "./lib/spacevisibility";
+  import { parseRoute, settingsHash } from "./lib/route";
   import {
     Plus,
     CircleNotch,
@@ -62,15 +62,6 @@
   let hash = $state(typeof location === "undefined" ? "" : location.hash);
   const route = $derived(parseRoute(hash));
 
-  // The last settings scope the operator was on, remembered across leaving the
-  // surface (the hash is cleared on exit, so the scope would otherwise be lost).
-  // The sidebar Settings control reopens onto this, so a click lands you back where you
-  // were rather than forcing any particular submenu. Null until the first visit.
-  let lastSettingsScope = $state<SettingsScope | null>(null);
-  $effect(() => {
-    if (route.settings && route.scope) lastSettingsScope = route.scope;
-  });
-
   // Navigation is a hash assignment; the hashchange listener below catches every
   // other way the bar changes (manual edits, back/forward). The local state is
   // set here too, synchronously: hashchange is delivered a task later, and until
@@ -84,15 +75,8 @@
     hash = next;
   }
 
-  function openSettings(scope?: SettingsScope) {
-    navigate(
-      settingsHash(
-        scope ??
-          (selected
-            ? { kind: "space", spaceId: selected.id }
-            : { kind: "default" }),
-      ),
-    );
+  function openSettings() {
+    navigate(settingsHash());
   }
 
   // Leaving settings is Esc, the ⚙ again, or selecting a space: the surface is a
@@ -124,13 +108,8 @@
   // ordered list without re-sorting it.
   const snapshotSpaces = $derived<Space[]>(control.model?.spaces ?? []);
   const spaces = $derived<Space[]>(visibleSpaces(snapshotSpaces));
-  // The settings surface enumerates spaces as config scopes, and Scratch has none
-  // — so it reads the unfiltered snapshot minus Scratch rather than the sidebar's
-  // list above. A Scratch space with a shell open is visible in the sidebar and
-  // still absent here.
-  const scopeSpaces = $derived<Space[]>(configurableSpaces(snapshotSpaces));
-  // The config layers shared by every space — the operator's local binding file
-  // and the two skill libraries that are not a space's own.
+  // The config layers behind the settings surface — the operator's local binding
+  // file and the two skill libraries.
   const configLayers = $derived(control.model?.config ?? []);
   // The registered agent library. Global — the same list whatever space is in
   // view — so it is read once here and handed to the settings surface, which lists
@@ -772,7 +751,7 @@
           aria-pressed={route.settings}
           onclick={() => {
             if (route.settings) leaveSettings();
-            else openSettings(lastSettingsScope ?? { kind: "default" });
+            else openSettings();
           }}
         >
           <Gear /> Settings
@@ -819,7 +798,7 @@
           active={!route.settings}
           onOpenShell={() => openShell(selected)}
           onFreeSession={(agent) => freeSession(selected, agent)}
-          onRegisterAgent={() => openSettings({ kind: "user" })}
+          onRegisterAgent={() => openSettings()}
           onspawned={(id) => (activeTermId = id)}
         />
       {/if}
@@ -831,10 +810,9 @@
            it takes no keystrokes and stops reflecting itself into the URL, and it
            is a single isolated stacking context (SpacePane), so this one z-index
            is all it takes to sit over the whole stage, chrome included. -->
-      {#if route.settings && route.scope}
+      {#if route.settings}
         <div class="absolute inset-0 z-30 bg-background">
           <Settings
-            spaces={scopeSpaces}
             config={configLayers}
             agents={agentLibrary}
             {detected}
@@ -843,8 +821,6 @@
             gitAvailable={control.model?.gitAvailable ?? false}
             terminalPrefs={control.model?.terminal}
             notifyPrefs={control.model?.notify}
-            scope={route.scope}
-            onScope={(s) => navigate(settingsHash(s))}
             onClose={leaveSettings}
           />
         </div>

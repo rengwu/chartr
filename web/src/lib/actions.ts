@@ -343,19 +343,10 @@ export interface OpenLayerResult {
   with?: string
 }
 
-// openConfigLayer opens a config file in the operator's editor. `layer` is a
+// openGlobalLayer opens a config file in the operator's editor. `layer` is a
 // *name* the server resolves to a path (`user-config`, `terminal-config`, …); a
-// local server never opens a path the client sent.
-export function openConfigLayer(id: string, layer: string): Promise<OpenLayerResult> {
-  return send('POST', `/api/spaces/${encodeURIComponent(id)}/config/open`, {
-    layer,
-  }) as Promise<OpenLayerResult>
-}
-
-// openGlobalLayer is the same open for the layers that belong to no space — the
-// operator's own config files. The settings route's
-// global scope is reachable with nothing registered, so it never borrows a space
-// id to open its own files.
+// local server never opens a path the client sent. Every config file is the
+// operator's own, so this is the one open action — it never borrows a space id.
 export function openGlobalLayer(layer: string): Promise<OpenLayerResult> {
   return send('POST', '/api/config/open', { layer }) as Promise<OpenLayerResult>
 }

@@ -200,14 +200,11 @@ func New(opts Options) (*Server, error) {
 	// setter beside the agent one above; an empty name clears the override back to
 	// the folder basename.
 	s.mux.HandleFunc("PUT /api/spaces/{id}/name", s.handleRenameSpace)
-	// The settings surface (ticket 05). The read half rides the per-space model
-	// push, so opening a layer file is the only write it gets. It is a POST because
-	// it launches a process, and it resolves a *named* layer server-side — never a
-	// path from the client.
-	s.mux.HandleFunc("POST /api/spaces/{id}/config/open", s.handleOpenLayer)
-	// The same open, for the layers that belong to no space — the operator's own
-	// config file and the global skill library. The global scope is reachable with
-	// nothing registered, so it cannot borrow a space id to open its own files.
+	// The settings surface (ticket 05). The read half rides the model push, so
+	// opening a config file is the only write it gets. It is a POST because it
+	// launches a process, and it resolves a *named* layer server-side — never a
+	// path from the client. Every layer is the operator's own config file,
+	// reachable with nothing registered, so it never borrows a space id.
 	s.mux.HandleFunc("POST /api/config/open", s.handleOpenGlobalLayer)
 	// Stamp a global config file from its defaults template — the companion to the
 	// open action for a layer that does not exist yet. Named-layer resolution and a

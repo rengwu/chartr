@@ -2,10 +2,6 @@
 // `model.Model` exactly; it is the whole state a snapshot carries, replaced
 // wholesale on every push (ADR 0010). Later tickets grow both sides together.
 
-// Where a config file sits. Only the operator's own root is left: skills come
-// from registered sources and execution is not layered at all (agents.ts).
-export type Layer = 'user'
-
 // Agent is one entry of the operator's registered agent library: a named,
 // complete way to run a harness — the binary, whatever flags that harness wants
 // (its model among them), and how it takes its opening prompt. The library is
@@ -141,10 +137,6 @@ export interface Space {
   // agent reads as *nothing remembered* here, which re-opens the picker rather
   // than substituting one. Absent until the space's first spawn.
   lastAgent?: string
-  // This space's own config files. Nothing puts a layer here since the committed
-  // skill library went with the layer model; the layers a space shares with every
-  // other one live on `Model.config`.
-  layers: ConfigLayer[]
   maps: Map[]
   terminals: Terminal[]
   warnings?: string[]
@@ -157,7 +149,6 @@ export interface Space {
 // chartr's generated write contract, or the operator's own preferences.
 export interface ConfigLayer {
   name: string
-  layer: Layer
   holds: 'agents' | 'terminal' | 'notifications' | 'sources' | 'conventions' | 'preferences'
   path: string
   exists: boolean
