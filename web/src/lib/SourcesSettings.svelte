@@ -16,6 +16,7 @@
   import { Checkbox } from "./components/ui/checkbox";
   import * as Select from "./components/ui/select";
   import * as Table from "./components/ui/table";
+  import Modal from "./Modal.svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import {
@@ -24,7 +25,6 @@
     Eye,
     Plus,
     Trash,
-    X,
   } from "phosphor-svelte";
 
   // The sources section (ticket 10): the operator's ordered list of places skills
@@ -246,127 +246,117 @@
   </p>
 
   {#if draft}
-    <form
-      class="flex flex-col gap-2.5 rounded-md border border-ring p-2.5"
-      onsubmit={submit}
-    >
-      <div class="flex items-center justify-between gap-2">
-        <span class="text-xs font-semibold">Register a source</span>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Cancel"
-          onclick={() => (draft = null)}
-        >
-          <X />
-        </Button>
-      </div>
-
-      <div class="flex items-center gap-1.5">
-        <span
-          class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
-          >name</span
-        >
-        <Input
-          class="h-7 min-w-0 flex-1 text-xs"
-          value={draft.name}
-          placeholder="my skills"
-          oninput={(e: Event) =>
-            (draft!.name = (e.currentTarget as HTMLInputElement).value)}
-        />
-      </div>
-
-      <div class="flex items-center gap-1.5">
-        <span
-          class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
-          >kind</span
-        >
-        <Select.Root type="single" bind:value={draft.kind}>
-          <Select.Trigger
+    <Modal open wide title="Register a source" onClose={() => (draft = null)}>
+      <form class="flex flex-col gap-2.5" onsubmit={submit}>
+        <div class="flex items-center gap-1.5">
+          <span
+            class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
+            >name</span
+          >
+          <Input
             class="h-7 min-w-0 flex-1 text-xs"
-            aria-label="Source kind"
-          >
-            {kindLabels[draft.kind]}
-          </Select.Trigger>
-          <Select.Content>
-            {#each Object.entries(kindLabels) as [value, label] (value)}
-              <Select.Item {value} class="text-xs">{label}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-      </div>
-
-      {#if draft.kind === "dir"}
+            value={draft.name}
+            placeholder="my skills"
+            oninput={(e: Event) =>
+              (draft!.name = (e.currentTarget as HTMLInputElement).value)}
+          />
+        </div>
+  
         <div class="flex items-center gap-1.5">
           <span
             class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
-            >path</span
+            >kind</span
           >
-          <Input
-            class="h-7 min-w-0 flex-1 font-mono text-xs"
-            value={draft.path}
-            placeholder="~/skills"
-            oninput={(e: Event) =>
-              (draft!.path = (e.currentTarget as HTMLInputElement).value)}
-          />
+          <Select.Root type="single" bind:value={draft.kind}>
+            <Select.Trigger
+              class="h-7 min-w-0 flex-1 text-xs"
+              aria-label="Source kind"
+            >
+              {kindLabels[draft.kind]}
+            </Select.Trigger>
+            <Select.Content>
+              {#each Object.entries(kindLabels) as [value, label] (value)}
+                <Select.Item {value} class="text-xs">{label}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </div>
-        <p class="pl-[3.875rem] text-[0.7rem] text-muted-foreground">
-          Your folder, edited by you — chartr only reads it. Absolute, or
-          <code class="font-mono">~/</code> for your home directory.
-        </p>
-      {:else}
-        <div class="flex items-center gap-1.5">
-          <span
-            class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
-            >url</span
+  
+        {#if draft.kind === "dir"}
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
+              >path</span
+            >
+            <Input
+              class="h-7 min-w-0 flex-1 font-mono text-xs"
+              value={draft.path}
+              placeholder="~/skills"
+              oninput={(e: Event) =>
+                (draft!.path = (e.currentTarget as HTMLInputElement).value)}
+            />
+          </div>
+          <p class="pl-[3.875rem] text-[0.7rem] text-muted-foreground">
+            Your folder, edited by you — chartr only reads it. Absolute, or
+            <code class="font-mono">~/</code> for your home directory.
+          </p>
+        {:else}
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
+              >url</span
+            >
+            <Input
+              class="h-7 min-w-0 flex-1 font-mono text-xs"
+              value={draft.url}
+              placeholder="https://github.com/someone/skills.git"
+              oninput={(e: Event) =>
+                (draft!.url = (e.currentTarget as HTMLInputElement).value)}
+            />
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
+              >ref</span
+            >
+            <Input
+              class="h-7 min-w-0 flex-1 font-mono text-xs"
+              value={draft.ref}
+              placeholder="the default branch"
+              oninput={(e: Event) =>
+                (draft!.ref = (e.currentTarget as HTMLInputElement).value)}
+            />
+          </div>
+          <!-- The only assertion of trust in a git source's whole lifetime is the
+               moment the URL is typed (ADR 0017); there is no confirm gate after
+               it, so the consequence is said here, before the clone. -->
+          <p
+            class="pl-[3.875rem] text-[0.7rem] leading-relaxed text-muted-foreground"
           >
-          <Input
-            class="h-7 min-w-0 flex-1 font-mono text-xs"
-            value={draft.url}
-            placeholder="https://github.com/someone/skills.git"
-            oninput={(e: Event) =>
-              (draft!.url = (e.currentTarget as HTMLInputElement).value)}
-          />
+            chartr clones this into its own checkout under <code class="font-mono"
+              >sources/</code
+            >
+            and runs whatever skills it holds. Pasting the URL is the trust
+            decision — nothing asks again.
+            {#if !gitAvailable}
+              <strong class="font-medium text-foreground">
+                `git` is not on this machine's PATH, so this registration will be
+                refused.
+              </strong>
+            {/if}
+          </p>
+        {/if}
+  
+        <div class="flex items-center justify-end gap-1.5">
+          <Button type="submit" size="xs" disabled={busy !== null}>
+            {busy === "register" ? "Registering…" : "Register"}
+          </Button>
+          <Button variant="ghost" size="xs" onclick={() => (draft = null)}>
+            cancel
+          </Button>
         </div>
-        <div class="flex items-center gap-1.5">
-          <span
-            class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
-            >ref</span
-          >
-          <Input
-            class="h-7 min-w-0 flex-1 font-mono text-xs"
-            value={draft.ref}
-            placeholder="the default branch"
-            oninput={(e: Event) =>
-              (draft!.ref = (e.currentTarget as HTMLInputElement).value)}
-          />
-        </div>
-        <!-- The only assertion of trust in a git source's whole lifetime is the
-             moment the URL is typed (ADR 0017); there is no confirm gate after
-             it, so the consequence is said here, before the clone. -->
-        <p
-          class="pl-[3.875rem] text-[0.7rem] leading-relaxed text-muted-foreground"
-        >
-          chartr clones this into its own checkout under <code class="font-mono"
-            >sources/</code
-          >
-          and runs whatever skills it holds. Pasting the URL is the trust
-          decision — nothing asks again.
-          {#if !gitAvailable}
-            <strong class="font-medium text-foreground">
-              `git` is not on this machine's PATH, so this registration will be
-              refused.
-            </strong>
-          {/if}
-        </p>
-      {/if}
-
-      <div class="flex justify-end">
-        <Button type="submit" size="xs" disabled={busy !== null}>
-          {busy === "register" ? "Registering…" : "Register"}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </Modal>
   {/if}
 
   <!-- The source list is a table now, in the shape of the agent library's: a
