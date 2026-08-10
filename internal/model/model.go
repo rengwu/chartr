@@ -279,11 +279,12 @@ type Terminal struct {
 	// agent, an editor). Falls back to Title where the platform can't report it.
 	Proc string `json:"proc"`
 	// Status is the tab's live activity. A tab with no known agent in its foreground
-	// reads TerminalIdle at the prompt, TerminalWorking while a command runs, and
-	// TerminalExited once the process is gone. A tab with a known agent reads the
-	// agent's own broadcast state instead — TerminalIdle / TerminalWorking /
-	// TerminalBlocked — and a session whose process died reads TerminalDead. It
-	// drives the sidebar's per-tab status indicator.
+	// reads TerminalIdle at the prompt, TerminalRunning while a command holds the
+	// foreground, and TerminalExited once the process is gone. A tab with a known
+	// agent reads the agent's own broadcast state instead — TerminalIdle /
+	// TerminalWorking / TerminalBlocked — and a session whose process died reads
+	// TerminalDead. TerminalWorking is the agent grammar's alone; a generic process
+	// reads TerminalRunning. It drives the sidebar's per-tab status indicator.
 	Status string `json:"status"`
 	// Alive is false the instant the process exits. A dead ad-hoc shell drops from
 	// the model; a dead session stays pinned (Alive false, Status TerminalDead) so
@@ -413,19 +414,24 @@ type Session struct {
 // foreground, not by whether it is a session.
 //
 // A tab with no known agent in the foreground reads the shell grammar: idle at
-// the prompt (a tick), working while a foreground command runs (a spinner),
-// exited once the process is gone.
+// the prompt (a tick), running while a foreground command holds the PTY (a
+// dev server, a build, an editor — a plain process, not an agent working a
+// task), exited once the process is gone.
 //
 // A tab with a known agent reads the agent grammar, from the evidence the agent
 // broadcasts about itself: idle when it is present but not generating, working
 // while it is, and blocked when it has stopped on a permission prompt and is
-// waiting on its human — the state worth an operator's attention. `dead` is
+// waiting on its human — the state worth an operator's attention. `working` is
+// the agent grammar's alone; a generic foreground process reads `running`
+// instead, so the indicator (and the run clock) can tell an agent churning
+// through a task from a process that merely holds the foreground. `dead` is
 // unchanged and belongs to sessions: a session whose process exits freezes in
 // place rather than vanishing, pinned to its ticket until the operator resumes,
 // respawns, or releases it.
 const (
 	TerminalIdle    = "idle"
 	TerminalWorking = "working"
+	TerminalRunning = "running"
 	TerminalExited  = "exited"
 	TerminalBlocked = "blocked"
 	TerminalDead    = "dead"

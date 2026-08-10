@@ -10,9 +10,10 @@ import (
 )
 
 // A freshly opened shell sits at its prompt: sampling reports it idle under its
-// own shell name. Running a foreground command flips it to working under that
-// command's name, and the change is observable — which is the whole basis for
-// the sidebar's live status indicator.
+// own shell name. Running a foreground command flips it to running under that
+// command's name (the shell grammar's `running`, distinct from an agent's
+// `working`), and the change is observable — which is the whole basis for the
+// sidebar's live status indicator.
 func TestSampleTracksForegroundCommand(t *testing.T) {
 	m := NewManager(nil, nil) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
@@ -30,13 +31,13 @@ func TestSampleTracksForegroundCommand(t *testing.T) {
 		t.Errorf("idle shell proc = %q, want the shell title %q", got, term.Title)
 	}
 
-	// Run a blocking foreground command; the shell goes working under its name.
+	// Run a blocking foreground command; the shell goes running under its name.
 	if _, err := term.Write([]byte("sleep 5\n")); err != nil {
 		t.Fatalf("write to shell: %v", err)
 	}
-	waitStatus(t, term, model.TerminalWorking)
+	waitStatus(t, term, model.TerminalRunning)
 	if got := m.ForSpace("s1")[0].Proc; got != "sleep" {
-		t.Errorf("working shell proc = %q, want %q", got, "sleep")
+		t.Errorf("running shell proc = %q, want %q", got, "sleep")
 	}
 }
 

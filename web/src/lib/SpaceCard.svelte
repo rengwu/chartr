@@ -7,6 +7,7 @@
   import {
     X,
     XCircle,
+    Pulse,
     CircleNotch,
     Play,
     Plus,
@@ -257,19 +258,28 @@
               }
             }}
           >
-            <!-- Status indicator. A tab with no known agent in front: a
-                 spinner while working, an error mark once it exits — idle
-                 shows nothing, the same quiet default the card header uses.
-                 A tab with a known agent reads the agent's own broadcast
-                 state — the same spinner, plus a held pause mark when it is
-                 blocked waiting on its human. A dead session freezes under a
+            <!-- Status indicator. A tab with no known agent in front: a muted
+                 static pulse mark while a plain process holds the foreground
+                 (a dev server, a build — running, not an agent working), an
+                 error mark once it exits — idle shows nothing, the same quiet
+                 default the card header uses. A tab with a known agent reads
+                 the agent's own broadcast state — the primary spinner racing
+                 while it works, plus a held pause mark when it is blocked
+                 waiting on its human. The animated primary spinner and the
+                 still muted pulse are what tell an agent churning a task apart
+                 from a process that merely runs. A dead session freezes under a
                  grey mark. Working is the one state that cannot also be
-                 unseen — nothing has finished yet — so it alone keeps a
-                 fixed weight. -->
+                 unseen — nothing has finished yet — so it alone keeps a fixed
+                 weight. -->
             {#if t.status === "working"}
               <CircleNotch
                 class="size-3.5 shrink-0 animate-spin text-primary"
                 aria-label="working"
+              />
+            {:else if t.status === "running"}
+              <Pulse
+                class="size-3.5 shrink-0 text-muted-foreground"
+                aria-label="running"
               />
             {:else if t.status === "blocked"}
               <PauseCircle

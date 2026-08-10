@@ -69,6 +69,24 @@ func awaitNotifications(t *testing.T, s *stubNotifier, n int) []notify.Notificat
 	}
 }
 
+// startStubAgentRun stubs a `claude` binary on PATH, writes a one-ticket map into
+// repo, registers it, and spawns a session against ticket 1 with it. The stub
+// holds its PTY open saying nothing, so the tab reads working while it boots and
+// settles to idle once the publisher's grace and absence confirmation pass — one
+// real agent run, made of the states the tab published. It is the run clock's only
+// driver now that a plain shell command reads `running` (never `working`) and so
+// never opens a run at all; a test that needs a run the clock reports drives it
+// through an agent, exactly as the operator's real notifiable runs are.
+func startStubAgentRun(t *testing.T, h *chartrtest.Chartr, repo string) (spaceID, sessionID string) {
+	t.Helper()
+	chartrtest.WriteMap(t, repo, "widget", mapBody)
+	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
+	chartrtest.StubAgent(t, "claude")
+	resp := register(t, h, repo)
+	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
+	return resp.ID, sp.SessionID
+}
+
 // A session that works past the threshold and settles tells the operator once,
 // naming the space it ran in, the ticket it was bound to, how it ended and how
 // long it took.
@@ -109,13 +127,18 @@ func TestFinishedSessionFiresOneOSNotification(t *testing.T) {
 	}
 }
 
-// Short work stays silent. The threshold gates the notification exactly as it
-// gates the dot, so a run under it produces neither.
-func TestRunUnderThresholdFiresNoNotification(t *testing.T) {
+// A plain process is silent. A command in an ad-hoc shell reads `running`, not the
+// agent grammar's `working`, so it never opens a run on the clock — a dev server or
+// a build finishing is not worth interrupting the operator, only an agent's turn is.
+// However long the command holds the foreground, neither the dot nor the OS
+// notification ever fires.
+func TestPlainProcessFiresNoNotification(t *testing.T) {
 	requireRunnableShell(t)
 	stub := &stubNotifier{}
 	h := chartrtest.Start(t, chartrtest.WithNotifier(stub))
-	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"1m\"\nsettle = \"10ms\"\n")
+	// A threshold so small any real run would qualify — so a silent tab proves the
+	// process never opened a run, not merely that it ran too briefly to report.
+	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\n")
 	resp := register(t, h, chartrtest.NewSpaceRepo(t))
 
 	termID := h.OpenTerminal(resp.ID)
@@ -123,49 +146,50 @@ func TestRunUnderThresholdFiresNoNotification(t *testing.T) {
 	defer tc.Close()
 	tc.Send(dotCtx(t), "sleep 2; echo done-$((6*7))\n")
 
+	// The command really does hold the foreground — the tab reads `running`, the
+	// shell grammar's state, which is the whole point: it is a run to the eye but not
+	// to the clock.
 	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
-		return terminalStatus(m, resp.ID, termID) == model.TerminalWorking
+		return terminalStatus(m, resp.ID, termID) == model.TerminalRunning
 	})
 	tc.ReadUntil(dotCtx(t), "done-42")
 
-	// The tab reading idle with no dot is the sample the clock ended the run on and
-	// decided against reporting it. Nothing is in flight — the notifier is only ever
-	// reached through an event that was never created — so nothing here is a race.
+	// Back at the prompt with no dot: the clock was never started, so there was no
+	// run to end. Nothing is in flight — the notifier is only ever reached through an
+	// event that was never created — so nothing here is a race.
 	m := h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
 		return terminalStatus(m, resp.ID, termID) == model.TerminalIdle
 	})
 	if unseenDot(m, resp.ID, termID) {
-		t.Fatal("a two-second run under a one-minute threshold ended a run at all")
+		t.Fatal("a plain shell process raised a dot")
 	}
 	if sent := stub.all(); len(sent) != 0 {
-		t.Errorf("a run under the threshold fired %d notifications: %+v", len(sent), sent)
+		t.Errorf("a plain shell process fired %d notifications: %+v", len(sent), sent)
 	}
 }
 
 // Turning notifications off turns the whole rule off at the source: no clock, so
-// no event, so neither consumer fires.
+// no event, so neither consumer fires. Driven by an agent run — one that would fire
+// were the clock enabled — so the silence isolates the disabled flag rather than a
+// process that was never notifiable in the first place.
 func TestNotificationsDisabledFireNone(t *testing.T) {
-	requireRunnableShell(t)
 	stub := &stubNotifier{}
 	h := chartrtest.Start(t, chartrtest.WithNotifier(stub))
 	chartrtest.WriteFile(t, h.ConfigDir,
 		"notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\nenabled = false\n")
-	resp := register(t, h, chartrtest.NewSpaceRepo(t))
 
-	termID := h.OpenTerminal(resp.ID)
-	tc := h.DialTerminal(dotCtx(t), termID)
-	defer tc.Close()
-	tc.Send(dotCtx(t), "sleep 2; echo done-$((6*7))\n")
+	spaceID, sessionID := startStubAgentRun(t, h, chartrtest.NewSpaceRepo(t))
 
+	// Let the agent's run complete: working while it boots, then idle once the
+	// publisher's grace and absence confirmation pass. Were the clock live this run
+	// would have fired; disabled, it created no event to fire.
 	h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
-		return terminalStatus(m, resp.ID, termID) == model.TerminalWorking
+		return terminalStatus(m, spaceID, sessionID) == model.TerminalWorking
 	})
-	tc.ReadUntil(dotCtx(t), "done-42")
-
 	m := h.SnapshotUntil(dotCtx(t), func(m model.Model) bool {
-		return terminalStatus(m, resp.ID, termID) == model.TerminalIdle
+		return terminalStatus(m, spaceID, sessionID) == model.TerminalIdle
 	})
-	if unseenDot(m, resp.ID, termID) {
+	if unseenDot(m, spaceID, sessionID) {
 		t.Error("a disabled clock raised a dot")
 	}
 	if sent := stub.all(); len(sent) != 0 {
@@ -177,17 +201,11 @@ func TestNotificationsDisabledFireNone(t *testing.T) {
 // cockpit carries on, the model is exactly what it would have been, and the
 // operator's dot is still there to find.
 func TestFailingNotifierLeavesTheCockpitWorking(t *testing.T) {
-	requireRunnableShell(t)
 	stub := &stubNotifier{err: errNoNotificationDaemon}
 	h := chartrtest.Start(t, chartrtest.WithNotifier(stub))
 	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\n")
-	resp := register(t, h, chartrtest.NewSpaceRepo(t))
 
-	termID := h.OpenTerminal(resp.ID)
-	tc := h.DialTerminal(dotCtx(t), termID)
-	defer tc.Close()
-	tc.Send(dotCtx(t), "sleep 2; echo done-$((6*7))\n")
-	tc.ReadUntil(dotCtx(t), "done-42")
+	spaceID, sessionID := startStubAgentRun(t, h, chartrtest.NewSpaceRepo(t))
 
 	awaitNotification(t, stub) // it was attempted, and it failed
 
@@ -196,8 +214,8 @@ func TestFailingNotifierLeavesTheCockpitWorking(t *testing.T) {
 	}
 	// The snapshot is untouched by the failure: the dot the same event raised is
 	// still there, and the tab is otherwise exactly as it was.
-	m := h.SnapshotUntil(dotCtx(t), func(m model.Model) bool { return unseenDot(m, resp.ID, termID) })
-	if term := terminalIn(m, resp.ID, termID); !term.Alive || term.Status == "" {
+	m := h.SnapshotUntil(dotCtx(t), func(m model.Model) bool { return unseenDot(m, spaceID, sessionID) })
+	if term := terminalIn(m, spaceID, sessionID); !term.Alive || term.Status == "" {
 		t.Errorf("the failed notification changed the tab: %+v", term)
 	}
 }
@@ -206,24 +224,19 @@ func TestFailingNotifierLeavesTheCockpitWorking(t *testing.T) {
 // notification would fill the log of the very operator the feature is failing,
 // which is why the guard is per process rather than per event.
 func TestFailingNotifierLogsOncePerProcess(t *testing.T) {
-	requireRunnableShell(t)
 	logged := captureLog(t)
 
 	stub := &stubNotifier{err: errNoNotificationDaemon}
 	h := chartrtest.Start(t, chartrtest.WithNotifier(stub))
 	chartrtest.WriteFile(t, h.ConfigDir, "notify.toml", "after = \"10ms\"\nsettle = \"10ms\"\n")
-	resp := register(t, h, chartrtest.NewSpaceRepo(t))
 
-	termID := h.OpenTerminal(resp.ID)
-	tc := h.DialTerminal(dotCtx(t), termID)
-	defer tc.Close()
 	// Two runs, one after the other, so two notifications are attempted and both
-	// fail — the second is what a per-notification log would have written twice.
-	tc.Send(dotCtx(t), "sleep 2; echo first-$((6*7))\n")
-	tc.ReadUntil(dotCtx(t), "first-42")
+	// fail — the second is what a per-notification log would have written twice. Each
+	// runs in its own space, since the one-live-session-per-space gate allows one
+	// session apiece.
+	startStubAgentRun(t, h, chartrtest.NewSpaceRepo(t))
 	awaitNotification(t, stub)
-	tc.Send(dotCtx(t), "sleep 2; echo second-$((6*7))\n")
-	tc.ReadUntil(dotCtx(t), "second-42")
+	startStubAgentRun(t, h, chartrtest.NewSpaceRepo(t))
 	awaitNotifications(t, stub, 2)
 
 	if n := strings.Count(logged(), "could not fire an OS notification"); n != 1 {

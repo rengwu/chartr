@@ -668,11 +668,14 @@ func (t *Terminal) sampleAgent(agent string, eng *detect.Engine) bool {
 	return changed
 }
 
-// sampleShell recomputes a tab with no known agent in its foreground: today's
-// grammar unchanged — idle while the shell sits at its prompt, working under the
-// name of whatever command holds the foreground. The exec that resolves that name
-// happens outside the terminal lock, and only when the foreground group actually
-// changes, so a busy shell doesn't pay for it every tick.
+// sampleShell recomputes a tab with no known agent in its foreground: idle while
+// the shell sits at its prompt, running under the name of whatever command holds
+// the foreground. The `running` state (not `working`) is what keeps a dev server
+// or a build apart from an agent churning a task, and it is why the run clock —
+// which only starts on `working` — never fires a finished notification for a
+// plain process. The exec that resolves the command name happens outside the
+// terminal lock, and only when the foreground group actually changes, so a busy
+// shell doesn't pay for it every tick.
 func (t *Terminal) sampleShell(pgrp, prevPgrp int) bool {
 	t.mu.Lock()
 	prevProc := t.proc
@@ -680,7 +683,7 @@ func (t *Terminal) sampleShell(pgrp, prevPgrp int) bool {
 
 	state, proc := model.TerminalIdle, t.Title
 	if pgrp > 0 && pgrp != t.shellPID {
-		state = model.TerminalWorking
+		state = model.TerminalRunning
 		switch {
 		case pgrp == prevPgrp && prevProc != "":
 			proc = prevProc // same foreground group — reuse the resolved name
