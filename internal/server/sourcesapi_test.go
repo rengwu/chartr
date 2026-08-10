@@ -177,16 +177,3 @@ func TestTheSourcesFilesAreOpenableByName(t *testing.T) {
 		t.Errorf("opening an unknown layer = %d, want 400", code)
 	}
 }
-
-// The free payload previews from this screen: the same seam a ticket's preview
-// uses, four parts, no ticket and no role.
-func TestTheFreePayloadPreviewsFromSettings(t *testing.T) {
-	h := chartrtest.Start(t)
-	code, body := h.Get("/api/payload/free")
-	if code != 200 {
-		t.Fatalf("free payload preview = %d, body %s", code, body)
-	}
-	if !strings.Contains(body, `"parts"`) || !strings.Contains(body, `"markdown"`) {
-		t.Errorf("the free payload preview is not a composed payload: %s", body)
-	}
-}

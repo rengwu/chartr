@@ -10,7 +10,6 @@
   import { createConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
   import SourcesSettings from './SourcesSettings.svelte'
-  import PayloadPreview from './PayloadPreview.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
   import NotifySettings from './NotifySettings.svelte'
   import { Button } from './components/ui/button'
@@ -64,10 +63,6 @@
 
   let busy = $state<string | null>(null)
   let note = $state<string | null>(null)
-  // The free payload's preview hangs here rather than off a space card: it holds
-  // no live fact about a space, and this is the only place the operator watches
-  // their own preferences.md land in an assembled document.
-  let previewFree = $state(false)
 
   // The layers that can be stamped from a defaults template rather than only
   // opened. A layer that does not exist yet has nothing for the editor to open, so
@@ -142,12 +137,7 @@
              The section is load-bearing: it explains an orphaned checkout, it
              is the only recovery for a deleted role binding, and it is what
              makes the silent first-run migration discoverable at all. -->
-        <SourcesSettings
-          {sources}
-          {roles}
-          {gitAvailable}
-          onPreviewFree={() => (previewFree = true)}
-        />
+        <SourcesSettings {sources} {roles} {gitAvailable} />
 
         <!-- Per-machine cosmetics: what terminal.toml has in force, and the file
              itself. -->
@@ -157,10 +147,6 @@
     </ScrollArea.Root>
   </div>
 </div>
-
-<!-- The free payload, through the same seam and the same modal a ticket's
-     preview uses — four parts, no ticket and no role to choose. -->
-<PayloadPreview free open={previewFree} onClose={() => (previewFree = false)} />
 
 
 {#snippet layerRow(l: ConfigLayer)}

@@ -247,23 +247,23 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string,
 	return t, nil
 }
 
-// OpenFree launches an agent in a PTY in cwd with the free payload typed in,
-// seated as a plain tab under spaceID titled by the agent the operator picked —
-// the new-shell control's spine. It shares OpenSession's launch and opener
-// mechanics but carries no Session: a free session is deliberately not a session
-// (spec, State model — "ticketless, live, sharing only the adapter's spawn
-// primitive"), so it never counts toward the one-live-session-per-space limit
-// OpenSession enforces and never freezes dead the way a session does. Its
-// activity reads like any other tab's: the agent grammar if a known agent holds
-// the foreground (it usually does), the shell grammar otherwise. id is chosen by
-// the caller, matching OpenSession's style, so the tab and the gitignored payload
-// file it points at share one identity.
+// OpenFree launches an agent bare in a PTY in cwd, seated as a plain tab under
+// spaceID titled by the agent the operator picked — the new-shell control's
+// spine. It shares OpenSession's launch mechanics but injects nothing (a free
+// session is told no brief — the operator types their first message themselves)
+// and carries no Session: a free session is deliberately not a session (spec,
+// State model — "ticketless, live, sharing only the adapter's spawn primitive"),
+// so it never counts toward the one-live-session-per-space limit OpenSession
+// enforces and never freezes dead the way a session does. Its activity reads like
+// any other tab's: the agent grammar if a known agent holds the foreground (it
+// usually does), the shell grammar otherwise. id is chosen by the caller, matching
+// OpenSession's style.
 //
 // agent is the adapter being launched — carried for the same reason a session
 // carries it: chartr chose this binary, so the sampler is told rather than made to
 // rediscover it off the PTY, and a tab on an agent with no shipped manifest reads
 // working-while-alive instead of a permanent, wrong idle.
-func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, opener, title, agent string) (*Terminal, error) {
+func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, title, agent string) (*Terminal, error) {
 	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, env: env, title: title, agent: agent})
 	if err != nil {
 		return nil, err
@@ -278,7 +278,6 @@ func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, op
 	m.mu.Unlock()
 
 	t.start(func() { m.onExit(id) })
-	typeOpener(t, opener)
 
 	m.notify()
 	return t, nil

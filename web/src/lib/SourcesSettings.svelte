@@ -22,7 +22,6 @@
   import {
     ArrowsClockwise,
     DotsSixVertical,
-    Eye,
     Plus,
     Trash,
   } from "phosphor-svelte";
@@ -44,7 +43,6 @@
     sources,
     roles,
     gitAvailable,
-    onPreviewFree,
   }: {
     // In resolution order, exactly as the server holds it — never sorted here.
     sources: Source[];
@@ -52,7 +50,6 @@
     // Whether `git` is on PATH. A git registration is refused at the gate when it
     // is not, so the form says so up front rather than after a failed clone.
     gitAvailable: boolean;
-    onPreviewFree: () => void;
   } = $props();
 
   let busy = $state<string | null>(null);
@@ -209,16 +206,12 @@
       draft = null;
     });
   }
-
 </script>
 
 <section class="flex flex-col gap-2">
   <div class="flex items-baseline justify-between gap-2">
     <h2 class="text-xs font-semibold">Skill sources</h2>
     <div class="flex items-center gap-1">
-      <Button variant="ghost" size="xs" onclick={onPreviewFree}>
-        <Eye /> free session payload
-      </Button>
       {#if !draft}
         <Button
           variant="ghost"
@@ -238,11 +231,7 @@
     </div>
   </div>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Where skills come from, in the order they resolve — the first enabled source
-    to hold a name wins, and the loser stays reachable as <code
-      class="font-mono">Source/skill</code
-    >. chartr ships none of them itself. Registered on this machine and never
-    committed.
+    Registered local and remote skill sources.
   </p>
 
   {#if draft}
@@ -261,7 +250,7 @@
               (draft!.name = (e.currentTarget as HTMLInputElement).value)}
           />
         </div>
-  
+
         <div class="flex items-center gap-1.5">
           <span
             class="w-14 shrink-0 font-mono text-[0.65rem] text-muted-foreground"
@@ -281,7 +270,7 @@
             </Select.Content>
           </Select.Root>
         </div>
-  
+
         {#if draft.kind === "dir"}
           <div class="flex items-center gap-1.5">
             <span
@@ -333,20 +322,20 @@
           <p
             class="pl-[3.875rem] text-[0.7rem] leading-relaxed text-muted-foreground"
           >
-            chartr clones this into its own checkout under <code class="font-mono"
-              >sources/</code
+            chartr clones this into its own checkout under <code
+              class="font-mono">sources/</code
             >
-            and runs whatever skills it holds. Pasting the URL is the trust
-            decision — nothing asks again.
+            and runs whatever skills it holds. Pasting the URL is the trust decision
+            — nothing asks again.
             {#if !gitAvailable}
               <strong class="font-medium text-foreground">
-                `git` is not on this machine's PATH, so this registration will be
-                refused.
+                `git` is not on this machine's PATH, so this registration will
+                be refused.
               </strong>
             {/if}
           </p>
         {/if}
-  
+
         <div class="flex items-center justify-end gap-1.5">
           <Button type="submit" size="xs" disabled={busy !== null}>
             {busy === "register" ? "Registering…" : "Register"}
@@ -540,10 +529,11 @@
   <p class="text-xs leading-relaxed text-muted-foreground">
     Which skill each role is spawned with, resolved through the list above.
     <strong class="font-medium text-foreground">No preference</strong> follows
-    source precedence — the first enabled source holding a skill the role accepts
-    wins. Pick a specific skill to override that and pin one source's, even a
-    lower one's, against the order. This writes
-    <code class="font-mono">user.toml</code>, the same file you can edit by hand.
+    source precedence — the first enabled source holding a skill the role
+    accepts wins. Pick a specific skill to override that and pin one source's,
+    even a lower one's, against the order. This writes
+    <code class="font-mono">user.toml</code>, the same file you can edit by
+    hand.
   </p>
   {#if roles.length}
     <div class="overflow-hidden rounded-md border border-border">

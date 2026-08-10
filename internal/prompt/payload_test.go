@@ -134,44 +134,14 @@ func TestTicketPayloadGolden(t *testing.T) {
 	}
 }
 
-// The free payload: four parts and nothing else. No map list, no frontier, no
-// branch for a space without `.plan/` — it holds no live fact about the space it
-// runs in, which is why it is composed from the config root and the registry
-// alone and takes no space at all.
-func TestFreePayloadGolden(t *testing.T) {
-	dir, reg, _ := fixture(t)
-
-	p, err := prompt.ComposeFree(dir, reg)
-	if err != nil {
-		t.Fatalf("ComposeFree: %v", err)
-	}
-	checkGolden(t, "free-payload.golden.md", p.Markdown, dir)
-
-	wantParts := []struct{ name, origin string }{
-		{"core", "chartr"},
-		{"conventions", "chartr"},
-		{"preferences", "operator"},
-		{"sources", "context"},
-	}
-	if len(p.Parts) != len(wantParts) {
-		t.Fatalf("free payload has %d parts, want %d: %+v", len(p.Parts), len(wantParts), p.Parts)
-	}
-	for i, want := range wantParts {
-		if got := p.Parts[i]; got.Name != want.name || got.Origin != want.origin {
-			t.Errorf("part %d = %s/%s, want %s/%s", i, got.Name, got.Origin, want.name, want.origin)
-		}
-	}
-	if p.Role != "" || p.TicketNum != 0 {
-		t.Errorf("a free payload named a role or a ticket: %q/%d", p.Role, p.TicketNum)
-	}
-}
-
 // The standing document chartr keeps at every space's root (chartr-md, ticket
-// 01): the free payload's four parts minus the one clause only a shell chartr
-// opened can be told. Its first sentence has to be true in the mouth of a file
-// read by an agent chartr never launched — that is the failure this golden
-// exists to catch, and the same "every sentence is still true if the agent does
-// nothing" test governs every line below it.
+// 01): four parts and nothing else — the core, the conventions pointer, the
+// operator's preferences, and the sources block. No map list, no frontier, no
+// branch: it holds no live fact about the space it runs in, which is why it is
+// composed from the config root and the registry alone. Its first sentence has to
+// be true in the mouth of a file read by an agent chartr never launched — that is
+// the failure this golden exists to catch, and the same "every sentence is still
+// true if the agent does nothing" test governs every line below it.
 func TestStandingPayloadGolden(t *testing.T) {
 	dir, reg, _ := fixture(t)
 
@@ -181,39 +151,40 @@ func TestStandingPayloadGolden(t *testing.T) {
 	}
 	checkGolden(t, "standing-payload.golden.md", p.Markdown, dir)
 
-	// The standing document is the free payload with the launch clause dropped and
-	// nothing else changed — no extra part, no live fact about the space, and no
-	// fetchable address for an agent running with permissions skipped.
-	free, err := prompt.ComposeFree(dir, reg)
-	if err != nil {
-		t.Fatal(err)
+	wantParts := []struct{ name, origin string }{
+		{"core", "chartr"},
+		{"conventions", "chartr"},
+		{"preferences", "operator"},
+		{"sources", "context"},
 	}
-	if len(p.Parts) != len(free.Parts) {
-		t.Fatalf("the standing document has %d parts, the free payload %d", len(p.Parts), len(free.Parts))
+	if len(p.Parts) != len(wantParts) {
+		t.Fatalf("standing document has %d parts, want %d: %+v", len(p.Parts), len(wantParts), p.Parts)
 	}
-	for i := range p.Parts {
-		if p.Parts[i].Name != free.Parts[i].Name || p.Parts[i].Origin != free.Parts[i].Origin {
-			t.Errorf("part %d = %s/%s, want the free payload's %s/%s",
-				i, p.Parts[i].Name, p.Parts[i].Origin, free.Parts[i].Name, free.Parts[i].Origin)
+	for i, want := range wantParts {
+		if got := p.Parts[i]; got.Name != want.name || got.Origin != want.origin {
+			t.Errorf("part %d = %s/%s, want %s/%s", i, got.Name, got.Origin, want.name, want.origin)
 		}
 	}
+	if p.Role != "" || p.TicketNum != 0 {
+		t.Errorf("the standing document named a role or a ticket: %q/%d", p.Role, p.TicketNum)
+	}
+	// No sentence that assumes chartr opened the reader's shell — the document is
+	// read by an agent chartr never launched — and no fetchable source URL for an
+	// agent running with permissions skipped.
 	if strings.Contains(p.Markdown, "opened this terminal") || strings.Contains(p.Markdown, "This shell") {
 		t.Errorf("the standing document claims chartr opened the reader's shell:\n%s", p.Markdown)
-	}
-	if !strings.Contains(free.Markdown, "This shell") {
-		t.Errorf("the free payload lost the clause that is true only of it:\n%s", free.Markdown)
 	}
 	if strings.Contains(p.Markdown, "https://") {
 		t.Errorf("a source URL reached the standing document:\n%s", p.Markdown)
 	}
 }
 
-// The two things that make the free payload vary, and the only two: the sources
-// block and the preferences bytes. Everything else is the same in an empty tree
-// and a tree mid-effort.
-func TestFreePayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
+// The two things that make the standing document vary, and the only two: the
+// sources block and the preferences bytes. Everything else is the same in an
+// empty tree and a tree mid-effort.
+func TestStandingPayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
 	dir, reg, _ := fixture(t)
-	base, err := prompt.ComposeFree(dir, reg)
+	base, err := prompt.ComposeStanding(dir, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,18 +203,18 @@ func TestFreePayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := prompt.ComposeFree(dir, reg)
+	got, err := prompt.ComposeStanding(dir, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(got.Markdown, "PREFER-THIS") {
-		t.Errorf("the operator's preferences did not reach the free payload:\n%s", got.Markdown)
+		t.Errorf("the operator's preferences did not reach the standing document:\n%s", got.Markdown)
 	}
 	if !strings.Contains(got.Markdown, "`mine` at `"+sources.MirrorDir+"/mine` — spelunk") {
 		t.Errorf("a registered source did not reach the sources block:\n%s", got.Markdown)
 	}
 	if got.Markdown == base.Markdown {
-		t.Error("the free payload did not change when its two inputs did")
+		t.Error("the standing document did not change when its two inputs did")
 	}
 
 	// A disabled source is not in the inventory at all, and a git source's URL is
@@ -252,7 +223,7 @@ func TestFreePayloadVariesOnlyWithSourcesAndPreferences(t *testing.T) {
 	if err := reg.SetEnabled("mine", false); err != nil {
 		t.Fatal(err)
 	}
-	off, err := prompt.ComposeFree(dir, reg)
+	off, err := prompt.ComposeStanding(dir, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +250,7 @@ func TestUnavailableSourceWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, err := prompt.ComposeFree(dir, reg)
+	p, err := prompt.ComposeStanding(dir, reg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -553,12 +553,12 @@
           <p class="text-sm text-muted-foreground">No shell open in this space.</p>
           <div class="flex flex-wrap items-center justify-center gap-2">
             <!-- The same one control the space card carries (skill-sources
-                 ticket 08): the caret chooses a plain shell or a registered
-                 agent, and the body runs the choice. -->
+                 ticket 08): the body opens a plain shell, and the caret lists the
+                 registered agents — clicking one launches a free session on it. -->
             <NewShellButton
               {agents}
               size="sm"
-              title="Open a plain shell — nothing is injected. Pick an agent from the caret to launch a free session with this button instead."
+              title="Open a plain shell — nothing is injected. Pick an agent from the caret to launch a free session on it instead."
               onshell={onOpenShell}
               onfree={onFreeSession}
               onregister={onRegisterAgent}

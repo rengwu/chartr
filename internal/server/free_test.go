@@ -10,16 +10,15 @@ import (
 
 	"github.com/rengwu/chartr/internal/chartrtest"
 	"github.com/rengwu/chartr/internal/model"
-	"github.com/rengwu/chartr/internal/prompt"
-	"github.com/rengwu/chartr/internal/sources"
 )
 
 // Ticket 08 at the process boundary: the new-shell control's agent rows. `POST
 // /launch` starts a **free session** — an agent chartr launched into a space with
-// no ticket and no role, told the free payload and nothing about how to behave.
-// It shares only the adapter's spawn primitive with a real session (no map/ticket
-// lookup, no claim, no Session, no death halt), and the tab is titled by the
-// agent's registered name — the thing the operator clicked.
+// no ticket, no role, and no brief: nothing is injected, and the operator types
+// their first message into the live TUI themselves. It shares only the adapter's
+// spawn primitive with a real session (no map/ticket lookup, no claim, no Session,
+// no death halt), and the tab is titled by the agent's registered name — the thing
+// the operator clicked.
 
 // freeAgent registers the agent these tests launch with, with a stub binary on
 // PATH, and returns that stub's delivery log. The name is deliberately not a
@@ -33,9 +32,8 @@ func freeAgent(t *testing.T, h *chartrtest.Chartr) string {
 }
 
 // A free session opens a live tab carrying no Session, titled by the agent's
-// registered name, and the free payload reaches the agent through the same
-// read-this-file opener a real session uses, byte-matching what ComposeFree
-// composes.
+// registered name, and injects nothing: the agent launches bare, no payload is
+// written to the run directory, and no opener is typed into its TUI.
 func TestFreeSessionOpensATabTitledByTheAgent(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -57,26 +55,19 @@ func TestFreeSessionOpensATabTitledByTheAgent(t *testing.T) {
 		t.Errorf("free tab title = %q, want the agent's registered name %q", tab.Title, "thinker")
 	}
 
-	promptAbs := filepath.Join(repo, ".chartr", "run", id, "payload.md")
-	got, err := os.ReadFile(promptAbs)
-	if err != nil {
-		t.Fatalf("free payload not written: %v", err)
-	}
-	reg, err := sources.Load(h.ConfigDir)
-	if err != nil {
-		t.Fatalf("loading the source registry: %v", err)
-	}
-	want, err := prompt.ComposeFree(h.ConfigDir, reg)
-	if err != nil {
-		t.Fatalf("ComposeFree: %v", err)
-	}
-	if string(got) != want.Markdown {
-		t.Errorf("free payload on disk is not the composed free payload:\ngot:\n%s\nwant:\n%s", got, want.Markdown)
+	// Nothing injected: no payload written for the tab to point at.
+	if _, err := os.Stat(filepath.Join(repo, ".chartr", "run", id)); err == nil {
+		t.Errorf("a free session wrote a payload into the run directory")
 	}
 
-	log := chartrtest.WaitForFileContains(t, deliveryLog, promptAbs, 5*time.Second)
-	if !strings.Contains(log, "Read the file") {
-		t.Errorf("the opener the agent received did not read-this-file:\n%s", log)
+	// The agent did launch — the stub records its env the moment it starts — but no
+	// opener ever reached it: no read-this-file line and nothing typed on stdin.
+	log := chartrtest.WaitForFileContains(t, deliveryLog, "env:", 5*time.Second)
+	if strings.Contains(log, "Read the file") {
+		t.Errorf("a free session injected a read-this-file opener:\n%s", log)
+	}
+	if strings.Contains(log, "stdin:") {
+		t.Errorf("a free session typed an opener into the agent's TUI:\n%s", log)
 	}
 }
 

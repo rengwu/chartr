@@ -23,10 +23,8 @@ import (
 )
 
 // sessionRunDir is the gitignored directory, inside each space, that holds live
-// sessions' composed payloads (ADR 0005 — one inspectable file per session), and
-// a free session's payload (skill-sources ticket 08), which reuses the same
-// writeSessionPayload path though it is deliberately not a session. It sits under
-// chartr's committed `.chartr/` directory but is itself never
+// sessions' composed payloads (ADR 0005 — one inspectable file per session). It
+// sits under chartr's committed `.chartr/` directory but is itself never
 // committed: chartr drops a `.gitignore` of `*` beside it so an agent's
 // `git commit -a` can never sweep a payload into the audit trail (ADR 0008).
 const sessionRunDir = ".chartr/run"
