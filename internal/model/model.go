@@ -69,18 +69,14 @@ type Model struct {
 	NativePicker bool `json:"nativePicker"`
 }
 
-// ConfigLayer is one file or directory a space's effective config resolves
-// through, named so the operator can open it. Legibility is the whole point
-// (story 36): every value the surface shows names the layer it came from, and
-// every layer names where on disk it lives.
+// ConfigLayer is one file the operator's config lives in, named so the operator
+// can open it. Legibility is the whole point (story 36): the surface names where
+// on disk each file lives.
 //
 // Name is the server-side token the open action resolves — the client never
 // sends a path, only one of these names.
 type ConfigLayer struct {
 	Name string `json:"name"`
-	// Layer is which of the three layers this file is (built-in, workspace, user),
-	// matching the provenance badges on the values it can set.
-	Layer string `json:"layer"`
 	// Holds names what this layer can set: "agents" (the operator's agent
 	// library), "terminal" (terminal customization), "notifications" (the
 	// machine-wide run clock), "sources" (the skill-source list) or
@@ -195,11 +191,6 @@ type Space struct {
 	// remembered* on the client, which is what re-opens the picker rather than
 	// substituting something (story 19). Empty until the first spawn.
 	LastAgent string `json:"lastAgent,omitempty"`
-	// Layers are this space's own config files, each with its path. Nothing puts a
-	// layer here since the committed skill library went with the layer model
-	// (ADR 0017); the layers a space shares with every other one live on
-	// Model.Config. Never nil on the wire.
-	Layers []ConfigLayer `json:"layers"`
 	// Maps are the space's discovered wayfinder maps (ticket 03), derived live
 	// from `.plan/` and re-pushed whenever the filesystem watch notices a change.
 	// Ordered for the sidebar: finished maps sort last. Never nil on the wire.

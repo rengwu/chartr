@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Space, Terminal } from './model'
-import { configurableSpaces, visibleSpaces } from './spacevisibility'
+import { visibleSpaces } from './spacevisibility'
 
 function terminal(): Terminal {
   return {
@@ -19,7 +19,6 @@ function space(id: string, scratch: boolean, terminals: Terminal[]): Space {
     path: scratch ? '/home/operator' : `/repos/${id}`,
     scratch: scratch || undefined,
     dirty: false,
-    layers: [],
     maps: [],
     terminals,
   }
@@ -39,26 +38,5 @@ describe('visible spaces', () => {
     const empty = space('alpha', false, [])
     const occupied = space('beta', false, [terminal()])
     expect(visibleSpaces([empty, occupied])).toEqual([empty, occupied])
-  })
-})
-
-describe('configurable spaces', () => {
-  it('drops Scratch, which has no config to scope', () => {
-    const alpha = space('alpha', false, [])
-    expect(configurableSpaces([alpha, space('scratch', true, [])])).toEqual([alpha])
-  })
-
-  it('drops Scratch even while it has an open shell', () => {
-    // The sidebar's visibility rule would keep this one; the settings surface
-    // reads the unfiltered list minus Scratch, which is a different question.
-    const alpha = space('alpha', false, [])
-    const occupiedScratch = space('scratch', true, [terminal()])
-    expect(configurableSpaces([alpha, occupiedScratch])).toEqual([alpha])
-  })
-
-  it('keeps every registered space in its given order', () => {
-    const alpha = space('alpha', false, [])
-    const beta = space('beta', false, [terminal()])
-    expect(configurableSpaces([beta, alpha])).toEqual([beta, alpha])
   })
 })

@@ -40,8 +40,8 @@ func TestSnapshotAlwaysCarriesAThinScratchSpace(t *testing.T) {
 		t.Errorf("Scratch carries repository state: branch=%q dirty=%v lastAgent=%q",
 			scratch.Branch, scratch.Dirty, scratch.LastAgent)
 	}
-	if len(scratch.Maps) != 0 || len(scratch.Layers) != 0 {
-		t.Errorf("Scratch is not thin: maps=%d layers=%d", len(scratch.Maps), len(scratch.Layers))
+	if len(scratch.Maps) != 0 {
+		t.Errorf("Scratch is not thin: maps=%d", len(scratch.Maps))
 	}
 	if len(scratch.Terminals) != 0 {
 		t.Errorf("fresh Scratch carries %d terminals, want none", len(scratch.Terminals))
@@ -202,9 +202,6 @@ func TestRepoScopedEndpointsRefuseScratch(t *testing.T) {
 		{"respawn a dead session", func() (int, string) { return h.Respawn(id, "sess") }},
 		{"release a dead session", func() (int, string) { return h.Release(id, "sess") }},
 		{"release a ticket", func() (int, string) { return h.ReleaseTicket(id, "some-map", 1) }},
-		{"open a config layer", func() (int, string) {
-			return h.Post("/api/spaces/"+id+"/config/open", map[string]string{"layer": "user-config"})
-		}},
 		{"open its folder", func() (int, string) {
 			return h.Post("/api/spaces/"+id+"/open", nil)
 		}},

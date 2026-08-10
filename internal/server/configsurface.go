@@ -13,7 +13,6 @@ import (
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
-	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/sources"
 )
 
@@ -49,10 +48,10 @@ const (
 // action — read-value-plus-open-file, never a second config store.
 func (s *Server) globalLayers() []model.ConfigLayer {
 	return []model.ConfigLayer{
-		layerAt(layerUserConfig, "user", "agents", filepath.Join(s.opts.ConfigDir, userConfigName)),
-		layerAt(layerTerminalConfig, "user", "terminal",
+		layerAt(layerUserConfig, "agents", filepath.Join(s.opts.ConfigDir, userConfigName)),
+		layerAt(layerTerminalConfig, "terminal",
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
-		layerAt(layerNotifyConfig, "user", "notifications",
+		layerAt(layerNotifyConfig, "notifications",
 			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
 		// The two files the sources section owns. `sources.toml` is edited through
 		// that section's controls and openable here for everything it deliberately
@@ -63,29 +62,21 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 		// sandboxed to its own space can read it, which took it out of the
 		// operator's config root and off this list — it has no single global path
 		// left to name.
-		layerAt(layerSources, "user", "sources", sources.FilePath(s.opts.ConfigDir)),
-		layerAt(layerPreferences, "user", "preferences", prompt.PreferencesPath(s.opts.ConfigDir)),
+		layerAt(layerSources, "sources", sources.FilePath(s.opts.ConfigDir)),
+		layerAt(layerPreferences, "preferences", prompt.PreferencesPath(s.opts.ConfigDir)),
 	}
 }
 
-func layerAt(name, layer, holds, path string) model.ConfigLayer {
+func layerAt(name, holds, path string) model.ConfigLayer {
 	_, err := os.Stat(path)
-	return model.ConfigLayer{Name: name, Layer: layer, Holds: holds, Path: path, Exists: err == nil}
+	return model.ConfigLayer{Name: name, Holds: holds, Path: path, Exists: err == nil}
 }
 
-// resolveLayerPath turns a layer name into an absolute path, server-side. An
-// unknown name is refused rather than treated as a path — that refusal is the
-// whole security property of the open action.
-func (s *Server) resolveLayerPath(name string, _ registry.Entry) (string, error) {
-	return s.resolveGlobalLayerPath(name)
-}
-
-// resolveGlobalLayerPath is the same resolution with no space in play. Every
-// layer left is the operator's own config file, so the two resolutions have
-// collapsed into one; the space-scoped route survives because the client still
-// asks through a space id. The global scope of the settings route is reachable
-// before any space is registered, so its open action cannot be routed through
-// one.
+// resolveGlobalLayerPath turns a layer name into an absolute path, server-side.
+// An unknown name is refused rather than treated as a path — that refusal is the
+// whole security property of the open action. Every layer is the operator's own
+// config file, reachable before any space is registered, so resolution never
+// routes through a space.
 func (s *Server) resolveGlobalLayerPath(name string) (string, error) {
 	for _, l := range s.globalLayers() {
 		if l.Name == name {
@@ -95,40 +86,16 @@ func (s *Server) resolveGlobalLayerPath(name string) (string, error) {
 	return "", fmt.Errorf("unknown config layer %q", name)
 }
 
-// handleOpenLayer opens a config layer in the operator's editor — the escape
-// hatch for everything the surface deliberately does not edit inline (story 44).
-// It resolves a *named* layer server-side and never a path from the client.
+// handleOpenGlobalLayer opens a config layer in the operator's editor — the
+// escape hatch for everything the surface deliberately does not edit inline
+// (story 44). It resolves a *named* layer server-side and never a path from the
+// client.
 //
 // The ladder is $VISUAL, then $EDITOR, then the OS opener, and finally the
 // absolute path itself: a headless or misconfigured environment still tells the
 // operator where the file is instead of failing silently. A layer that does not
 // exist yet is reported as such with its path — the surface says where the value
 // would go, and nothing is created on a read-shaped action.
-func (s *Server) handleOpenLayer(w http.ResponseWriter, r *http.Request) {
-	e, ok := s.repoSpace(w, r)
-	if !ok {
-		return
-	}
-
-	var body struct {
-		Layer string `json:"layer"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httpError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	path, err := s.resolveLayerPath(body.Layer, e)
-	if err != nil {
-		httpError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	openResolved(w, path)
-}
-
-// handleOpenGlobalLayer is handleOpenLayer for the layers that are nobody's
-// space: the operator's own config file and the two global skill libraries. Same
-// named-layer resolution, same editor ladder — it just never needs a space.
 func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Layer string `json:"layer"`

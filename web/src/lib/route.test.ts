@@ -6,13 +6,9 @@ import { mapsHash, parseRoute, settingsHash } from './route'
 // the two schemes share one address bar and must stay disjoint.
 
 describe('parseRoute', () => {
-  it('routes the settings prefix and its scopes', () => {
-    expect(parseRoute('#/settings')).toEqual({ settings: true, scope: { kind: 'default' } })
-    expect(parseRoute('#/settings/user')).toEqual({ settings: true, scope: { kind: 'user' } })
-    expect(parseRoute('#/settings/s=abc123')).toEqual({
-      settings: true,
-      scope: { kind: 'space', spaceId: 'abc123' },
-    })
+  it('routes the settings prefix', () => {
+    expect(parseRoute('#/settings')).toEqual({ settings: true })
+    expect(parseRoute('/settings')).toEqual({ settings: true })
   })
 
   it('leaves the star deep link on the cockpit', () => {
@@ -28,29 +24,15 @@ describe('parseRoute', () => {
     expect(parseRoute('#/settingsX').settings).toBe(false)
   })
 
-  it('decodes a space id and tolerates a hash with no leading #', () => {
-    expect(parseRoute('/settings/s=a%2Fb')).toEqual({
-      settings: true,
-      scope: { kind: 'space', spaceId: 'a/b' },
-    })
-  })
-
-  it('lands an unknown or empty sub-path on the settings route, not the cockpit', () => {
-    expect(parseRoute('#/settings/nonsense')).toEqual({ settings: true, scope: { kind: 'default' } })
-    expect(parseRoute('#/settings/s=')).toEqual({ settings: true, scope: { kind: 'default' } })
+  it('lands an unknown sub-path on the settings route, not the cockpit', () => {
+    expect(parseRoute('#/settings/nonsense')).toEqual({ settings: true })
+    expect(parseRoute('#/settings/user')).toEqual({ settings: true })
   })
 })
 
 describe('settingsHash', () => {
-  it('round-trips every scope through parseRoute', () => {
-    for (const scope of [
-      { kind: 'default' },
-      { kind: 'user' },
-      { kind: 'space', spaceId: 'abc' },
-      { kind: 'space', spaceId: 'a/b c' },
-    ] as const) {
-      expect(parseRoute(settingsHash(scope))).toEqual({ settings: true, scope })
-    }
+  it('round-trips through parseRoute', () => {
+    expect(parseRoute(settingsHash())).toEqual({ settings: true })
   })
 })
 
