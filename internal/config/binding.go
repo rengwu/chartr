@@ -30,6 +30,16 @@ const (
 // operator picks from all four at the gate.
 var Roles = []Role{RoleGrill, RolePrototype, RoleResearch, RoleImplement}
 
+// RoleBindingAuto is the sentinel a `[roles]` row carries to mean "resolve by
+// precedence": chartr walks the enabled sources in order and takes the first
+// that ships a skill matching the role's accepted names (SkillAliases). It is
+// the "no preference" the settings picker writes — distinct from an absent row,
+// which leaves the role unbound and refuses the spawn, and from a `Source/skill`
+// ref, which pins one source's skill against precedence. A bare word rather than
+// a qualified ref on purpose: it names no source, because following the source
+// order is exactly what it asks for.
+const RoleBindingAuto = "auto"
+
 // IsRole reports whether a string names one of the four roles exactly
 // (case-sensitive). Every surface taking a role from outside — the spawn
 // action's request body, the payload preview's — checks it here, so an
@@ -59,6 +69,26 @@ func RoleForTicketType(t wayfinder.Type) Role {
 		return RoleResearch
 	default:
 		return RoleImplement
+	}
+}
+
+// SkillAliases names the skill names each role is willing to resolve from any
+// enabled source when its explicit binding does not resolve. The operator's
+// binding is tried first; if it fails, these names are searched in source order
+// so a repo that ships the right skill names works without hand-editing the
+// binding.
+func SkillAliases(role Role) []string {
+	switch role {
+	case RoleGrill:
+		return []string{"grill", "grill-me", "grilling", "grill-with-docs"}
+	case RolePrototype:
+		return []string{"prototype"}
+	case RoleResearch:
+		return []string{"research"}
+	case RoleImplement:
+		return []string{"implement"}
+	default:
+		return nil
 	}
 }
 

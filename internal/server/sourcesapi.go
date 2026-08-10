@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rengwu/chartr/internal/config"
@@ -76,16 +77,75 @@ func (s *Server) roleBindingRows() []model.RoleBinding {
 	for _, r := range config.Roles {
 		ref := bound[r]
 		row := model.RoleBinding{
-			Role: string(r),
-			Ref:  ref,
+			Role:       string(r),
+			Ref:        ref,
+			Candidates: []string{},
 		}
-		if ref != "" && s.srcs != nil {
-			_, err := s.srcs.Resolve(ref)
-			row.Resolves = err == nil
+		if s.srcs != nil {
+			row.Candidates = roleCandidates(s.srcs, r)
+			row.Resolved = roleResolvedRef(s.srcs, r, ref)
+			row.Resolves = row.Resolved != ""
 		}
 		out = append(out, row)
 	}
 	return out
+}
+
+// roleCandidates lists every `Source/skill` an enabled source offers that the
+// role accepts (its SkillAliases), in resolution order. Shadowed losers are kept
+// — reaching one is the whole point of pinning against precedence — and a skill
+// carried under the same qualified name by two rows is listed once.
+func roleCandidates(reg *sources.Registry, role config.Role) []string {
+	aliases := config.SkillAliases(role)
+	if len(aliases) == 0 {
+		return []string{}
+	}
+	out := []string{}
+	seen := map[string]bool{}
+	for _, src := range reg.List() {
+		if !src.Enabled {
+			continue
+		}
+		st, ok := reg.Walk(src.Name)
+		if !ok {
+			continue
+		}
+		for _, sk := range st.Skills {
+			for _, n := range aliases {
+				if !strings.EqualFold(sk.Name, n) {
+					continue
+				}
+				ref := src.Name + "/" + sk.Name
+				if !seen[ref] {
+					seen[ref] = true
+					out = append(out, ref)
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// roleResolvedRef reports the `Source/skill` a spawn would actually run for this
+// role today, or "" when nothing resolves. "auto" takes the precedence winner —
+// the first candidate — while a `Source/skill` ref is a pin that resolves exactly
+// or not at all: no alias fallback, so a pin into a disabled or gone source reads
+// as unresolved rather than silently borrowing another source's skill.
+func roleResolvedRef(reg *sources.Registry, role config.Role, ref string) string {
+	if ref == "" {
+		return ""
+	}
+	if ref == config.RoleBindingAuto {
+		if c := roleCandidates(reg, role); len(c) > 0 {
+			return c[0]
+		}
+		return ""
+	}
+	if _, err := reg.Resolve(ref); err == nil {
+		return ref
+	}
+	return ""
 }
 
 // sourceStatus maps a registry error onto the status code that says what the

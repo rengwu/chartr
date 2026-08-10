@@ -6,6 +6,7 @@
     registerSource,
     removeSource,
     reorderSources,
+    setRoleBinding,
     setSourceEnabled,
   } from "./actions";
   import { Button } from "./components/ui/button";
@@ -169,6 +170,29 @@
       busy = null;
       confirming = null;
     }
+  }
+
+  // The sentinel a role carries for "no preference" — resolve by source
+  // precedence rather than pinning one source's skill. Mirrors config.RoleBindingAuto.
+  const AUTO = "auto";
+
+  // What the picker's trigger shows for a role's current binding: "no preference"
+  // for the auto sentinel, the qualified ref when one is pinned, and a plain
+  // prompt when the role is unbound and refusing to spawn.
+  function roleLabel(b: RoleBinding): string {
+    if (b.ref === AUTO) return "no preference";
+    if (!b.ref) return "choose a skill…";
+    return b.ref;
+  }
+
+  // The value the Select is controlled by. An unbound role matches no option, so
+  // the trigger falls back to its placeholder until a choice is made.
+  function roleValue(b: RoleBinding): string | undefined {
+    return b.ref || undefined;
+  }
+
+  function chooseRole(role: string, ref: string) {
+    void run(`role:${role}`, () => setRoleBinding(role, ref));
   }
 
   function submit(e: Event) {
@@ -529,36 +553,53 @@
 <section class="flex flex-col gap-2">
   <h2 class="text-xs font-semibold">Role bindings</h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Which skill each role is spawned with, resolved through the list above. The
-    explicit binding is tried first; if it does not resolve, each role also
-    accepts its own skill-name aliases across enabled sources. Bind a role to
-    something else by editing
-    <code class="font-mono">user.toml</code>; a row you delete makes that role
-    refuse to spawn until it is rebound, and this is where you put it back.
+    Which skill each role is spawned with, resolved through the list above.
+    <strong class="font-medium text-foreground">No preference</strong> follows
+    source precedence — the first enabled source holding a skill the role accepts
+    wins. Pick a specific skill to override that and pin one source's, even a
+    lower one's, against the order. This writes
+    <code class="font-mono">user.toml</code>, the same file you can edit by hand.
   </p>
   {#each roles as b (b.role)}
     <div
       class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5"
     >
       <span class="w-20 shrink-0 text-xs font-medium capitalize">{b.role}</span>
-      <span class="min-w-0 flex-1">
-        {#if b.ref}
-          <code
-            class="truncate font-mono text-[0.7rem]"
-            class:text-muted-foreground={b.resolves}
-            class:text-destructive={!b.resolves}>{b.ref}</code
+      <!-- What a spawn would actually run: the resolved `Source/skill` — the
+           precedence winner when "no preference" is chosen — or, when nothing
+           resolves, why. This is the role's status; the picker to its right is
+           only the choice. -->
+      <span class="min-w-0 flex-1 truncate">
+        {#if b.resolved}
+          <code class="font-mono text-[0.7rem] text-muted-foreground"
+            >{b.resolved}</code
           >
-          {#if !b.resolves}
-            <span class="text-[0.7rem] text-muted-foreground">
-              — no enabled source holds this skill or any accepted alias
-            </span>
-          {/if}
         {:else}
-          <span class="text-[0.7rem] text-muted-foreground">
-            not bound — this role refuses to spawn
-          </span>
+          <span class="text-[0.7rem] text-destructive"
+            >no enabled source holds this skill</span
+          >
         {/if}
       </span>
+      <Select.Root
+        type="single"
+        value={roleValue(b)}
+        onValueChange={(v) => v && chooseRole(b.role, v)}
+      >
+        <Select.Trigger
+          class="h-7 w-52 shrink-0 font-mono text-xs"
+          aria-label="Skill for the {b.role} role"
+          disabled={busy !== null}
+        >
+          <span class="truncate text-muted-foreground">{roleLabel(b)}</span>
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Item value={AUTO} class="text-xs">no preference</Select.Item>
+          {#each b.candidates as ref (ref)}
+            <Select.Item value={ref} class="font-mono text-xs">{ref}</Select.Item
+            >
+          {/each}
+        </Select.Content>
+      </Select.Root>
     </div>
   {/each}
 </section>

@@ -243,6 +243,13 @@ export function refreshSource(name: string): Promise<{ name: string; commit: str
   }>
 }
 
+// setRoleBinding pins a role to a chosen `Source/skill` ref, or to `auto` for
+// "no preference" — resolve by source precedence. Writes into the operator's own
+// `user.toml`; the row reflects back on the next snapshot.
+export function setRoleBinding(role: string, ref: string): Promise<unknown> {
+  return send('PUT', `/api/config/roles/${encodeURIComponent(role)}`, { ref })
+}
+
 // SpawnResult is the spawn action's own response — the session it started, the
 // resolved agent and args, and the payload hash the claim commit recorded. The
 // live session tab arrives separately over the control socket.
