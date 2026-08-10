@@ -354,13 +354,19 @@
     overscroll-behavior: none;
   }
 
-  /* …with one exception the universal rule gets wrong: `overflow: hidden` makes a
-     box a scroll container with *zero* scroll range, so `none` there does not stop a
-     bounce (there is none to stop) — it eats the whole gesture and refuses to chain
-     it to the pane that can scroll. The card primitive clips, so a wheel over any
-     card in a scrolling grid died on the card instead of scrolling the grid. Cards
-     never scroll themselves; hand their gestures straight to the pane behind them. */
-  [data-slot="card"] {
+  /* …with one exception the universal rule gets wrong: a box that clips its overflow
+     is a scroll container too, but with no scroll range in the axis you are spinning
+     the wheel — `overflow: hidden` clips both axes to zero, and the `overflow-x: auto`
+     a wide table scrolls on leaves the vertical axis fixed. `none` there stops no
+     bounce (there is none) — it eats the whole gesture and refuses to chain it to the
+     pane that *can* scroll. A card in a scrolling grid, a rounded-corner mask, a
+     truncated path, the accordion's height clip, the settings table: a wheel over any
+     of them died on the clip instead of scrolling the surface behind it. None of these
+     scroll under the pointer; hand their gestures straight to the pane behind them. */
+  [data-slot="card"],
+  [data-slot="table-container"],
+  .overflow-hidden,
+  .truncate {
     overscroll-behavior: auto;
   }
 
