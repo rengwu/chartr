@@ -2,8 +2,8 @@
   import type { Agent } from "./model";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Button, buttonVariants } from "$lib/components/ui/button";
-  import type { ButtonSize } from "$lib/components/ui/button";
-  import { CaretDown } from "phosphor-svelte";
+  import type { ButtonSize, ButtonVariant } from "$lib/components/ui/button";
+  import { DotsThree } from "phosphor-svelte";
   import { cn } from "$lib/utils";
 
   // The new-shell control (skill-sources ticket 08): the space card's one
@@ -24,13 +24,21 @@
     agents,
     disabled = false,
     size = "xs",
-    label = "new shell",
+    // Both halves take this variant. `outline` (the default) gives the joined,
+    // outlined split button the space pane carries; `ghost` drops the border for
+    // two plain buttons grouped together, as the space card's compact `+` wants.
+    variant = "outline",
+    label = "New Shell",
     ariaLabel = "Open a plain shell",
     title = "Open a plain shell — nothing is injected.",
+    // The body's content. Defaults to the `label` text; a caller can render an
+    // icon instead (the space card's compact `+`), keeping the caret and its
+    // agent list unchanged.
+    children,
     // The zero-decision action: a plain shell, nothing injected.
     onshell,
     // A free session on the agent the operator clicked: a live, ticketless tab
-    // told the free payload, titled by this name.
+    // launched bare and titled by this name.
     onfree,
     // Where an empty library sends the operator: the registration surface.
     onregister,
@@ -38,21 +46,24 @@
     agents: Agent[];
     disabled?: boolean;
     size?: ButtonSize;
+    variant?: ButtonVariant;
     label?: string;
     ariaLabel?: string;
     title?: string;
+    children?: import("svelte").Snippet;
     onshell: () => void;
     onfree: (agent: string) => void;
     onregister?: () => void;
   } = $props();
 </script>
 
-<!-- One control, two hit targets: the body and the caret share an outline and
-     join at the seam, so it reads as a single button with a menu rather than two
-     buttons that happen to be adjacent. -->
+<!-- One control, two hit targets: the body and the caret join at the seam (no
+     rounding, no doubled border between them), so an outlined pair reads as a
+     single button with a menu, and a ghost pair as two buttons grouped together
+     rather than two that merely happen to be adjacent. -->
 <div class="flex items-center">
   <Button
-    variant="outline"
+    {variant}
     {size}
     class="rounded-r-none border-r-0"
     {disabled}
@@ -63,15 +74,15 @@
       onshell();
     }}
   >
-    {label}
+    {#if children}{@render children()}{:else}{label}{/if}
   </Button>
   <DropdownMenu.Root>
     <DropdownMenu.Trigger
-      class={cn(buttonVariants({ variant: "outline", size }), "rounded-l-none px-1")}
+      class={cn(buttonVariants({ variant, size }), "rounded-l-none px-1")}
       {disabled}
       aria-label="Launch a free session on a registered agent"
     >
-      <CaretDown />
+      <DotsThree />
     </DropdownMenu.Trigger>
 
     <DropdownMenu.Content align="end" class="min-w-48 w-auto">
@@ -81,7 +92,9 @@
         >
           No agents registered yet.
         </DropdownMenu.Label>
-        <DropdownMenu.Item onclick={() => onregister?.()}>Register an agent…</DropdownMenu.Item>
+        <DropdownMenu.Item onclick={() => onregister?.()}
+          >Register an agent…</DropdownMenu.Item
+        >
       {:else}
         {#each agents as a (a.name)}
           <DropdownMenu.Item
