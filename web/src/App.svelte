@@ -28,6 +28,7 @@
   import Modal from "./lib/Modal.svelte";
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
+  import { Toaster, toast } from "./lib/components/ui/sonner";
   import { spaceHaltTarget } from "./lib/attention";
   import { acknowledgesFinishedRun } from "./lib/unseen";
   import { isEditingTarget } from "./lib/keys";
@@ -37,7 +38,6 @@
   import { parseRoute, settingsHash, type SettingsScope } from "./lib/route";
   import {
     Plus,
-    X,
     CircleNotch,
     Gear,
     FolderOpen,
@@ -167,19 +167,9 @@
   const nativePicker = $derived(control.model?.nativePicker ?? false);
   let showAdd = $state(false);
   let picking = $state(false);
-  // The register outcome, shown inline beside the button that started it: the
-  // announced `git init` (story 2) and every refusal. There is no modal left to
-  // carry them.
-  // Structured rather than a pre-formatted string, so the template can front-
-  // truncate the path on its own (the operator needs the project name at the
-  // end of it, not the drive/user segments at the front) without swallowing
-  // the git-init caveat into the same truncated run.
-  let addNotice = $state<{ path: string; gitInited: boolean } | null>(null);
-  let addError = $state<string | null>(null);
-
-  // addSpace is the whole add flow: name a folder in the native chooser, then
-  // register it. The two are separate calls on purpose — registration keeps the
-  // one action, and one response shape, it has always had.
+  // The register outcome — the announced `git init` (story 2) and every refusal —
+  // surfaces as a toast now (centered over the main panel), not an inline line
+  // beside the button. The git-init caveat rides along as the toast's description.
   async function addSpace() {
     if (picking) return;
     if (!nativePicker) {
@@ -187,18 +177,21 @@
       return;
     }
     picking = true;
-    addNotice = null;
-    addError = null;
     try {
       const picked = await pickFolder();
       // Dismissing the chooser is an ordinary outcome, not a failure: say nothing
       // and leave the sidebar exactly as it was.
       if (picked.cancelled || !picked.path) return;
       const res = await registerSpace(picked.path);
-      addNotice = { path: picked.path, gitInited: res.gitInited };
+      toast.success(`Added ${picked.path}`, {
+        // Announced, never silent (story 2) — but only when it actually happened.
+        description: res.gitInited
+          ? "Wasn’t a git repository — a new one was initialized there."
+          : undefined,
+      });
       selectedId = res.id;
     } catch (err) {
-      addError = err instanceof ActionError ? err.message : String(err);
+      toast.error(err instanceof ActionError ? err.message : String(err));
     } finally {
       picking = false;
     }
@@ -712,48 +705,6 @@
         </div>
       </div>
 
-      {#if addNotice || addError}
-        <div class="px-3 pb-1" role={addError ? "alert" : "status"}>
-          <div class="flex items-center gap-1.5 text-[0.7rem]">
-            {#if addError}
-              <p
-                class="min-w-0 flex-1 truncate text-destructive"
-                title={addError}
-              >
-                {addError}
-              </p>
-            {:else if addNotice}
-              <p
-                class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground"
-              >
-                <span class="shrink-0">Added</span>
-                <span
-                  dir="rtl"
-                  class="min-w-0 flex-1 truncate text-left font-mono"
-                  title={addNotice.path}>{addNotice.path}</span
-                ><span class="shrink-0">.</span>
-              </p>
-            {/if}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Dismiss"
-              onclick={() => {
-                addNotice = null;
-                addError = null;
-              }}
-            >
-              <X />
-            </Button>
-          </div>
-          {#if addNotice?.gitInited}
-            <p class="text-[0.65rem] leading-snug text-muted-foreground">
-              Wasn’t a git repository — a new one was initialized there.
-            </p>
-          {/if}
-        </div>
-      {/if}
-
       {#if control.model === null}
         <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
           Connecting…
@@ -850,9 +801,6 @@
                   <FolderOpen /> Choose a folder…
                 {/if}
               </Button>
-              {#if addError}
-                <p class="text-xs text-destructive" role="alert">{addError}</p>
-              {/if}
             </div>
           {:else}
             <RegisterForm
@@ -1040,4 +988,9 @@
       </div>
     </div>
   </Modal>
+
+  <!-- The one toast surface, centered over the main panel (app.css offsets it
+       past the sidebar). Every transient notice — the register outcome here, the
+       source and agent form refusals — surfaces through it now. -->
+  <Toaster />
 </div>

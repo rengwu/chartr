@@ -50,6 +50,13 @@ type Options struct {
 	// nothing downstream knows which OS it is on; a test substitutes a stub, which
 	// is what keeps the suite from ever shelling out to a real notifier.
 	Notifier notify.Notifier
+	// DefaultSourceURL is the git skill source a genuinely fresh install (one with
+	// no `sources.toml` yet) pre-registers, so the first run already has something
+	// to spawn from. The real entrypoints set it to DefaultSkillSourceURL; tests
+	// leave it empty, which skips the pre-registration entirely so the suite never
+	// clones over the network. Registration is best-effort — a fresh install with
+	// no network or no `git` still starts, just with an empty list.
+	DefaultSourceURL string
 	// NoWatch starts with the filesystem watch dead — the same state newWatcher
 	// falls back to when the OS watcher cannot be created (fd limits, a sandbox,
 	// an unusual filesystem). fsnotify's init cannot be made to fail portably, so
@@ -122,9 +129,9 @@ func New(opts Options) (*Server, error) {
 	}
 	// Everything chartr writes into its own config root, in one ordered sequence
 	// (see firstrun.go): the migration off the three-layer skill model, the source
-	// list, the seeded default source, the role bindings, and the operator's own
+	// list, the default source a fresh install pre-registers, and the operator's own
 	// preferences file.
-	srcs, err := firstRun(opts.ConfigDir)
+	srcs, err := firstRun(opts.ConfigDir, opts.DefaultSourceURL)
 	if err != nil {
 		return nil, err
 	}

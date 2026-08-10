@@ -2,11 +2,13 @@ package server_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/rengwu/chartr/internal/chartrtest"
+	"github.com/rengwu/chartr/internal/server"
 	"github.com/rengwu/chartr/internal/sources"
 )
 
@@ -213,6 +215,103 @@ func TestMigrationWritesNothingIntoASpaceAndReportsNothing(t *testing.T) {
 		if strings.Contains(h.Logged(), said) {
 			t.Errorf("the migration announced itself (%q): %s", said, h.Logged())
 		}
+	}
+}
+
+// gitSkillRepo builds a real git repository holding one skill and returns its
+// path, usable directly as a clone URL. It skips the test when git is absent,
+// the same gate registration itself is behind.
+func gitSkillRepo(t *testing.T, skill string) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
+	dir := t.TempDir()
+	writeSkill(t, dir, skill, "---\nname: "+skill+"\n---\n\nfrom the default source.\n")
+	for _, args := range [][]string{
+		{"init", "--quiet"},
+		{"add", "."},
+		{"-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--quiet", "-m", "skills"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
+}
+
+// A genuinely fresh install pre-registers chartr's own skills repo as an ordinary
+// git source, so the very first run already has something to spawn from — no
+// migrated rows here, just the default one, cloned and enabled and resolvable.
+func TestFreshInstallPreRegistersTheDefaultSource(t *testing.T) {
+	root := oldRoot(t)
+	origin := gitSkillRepo(t, "grill")
+
+	chartrtest.Start(t, chartrtest.WithConfigDir(root), chartrtest.WithDefaultSource(origin))
+
+	rows := migratedRows(t, root)
+	if len(rows) != 1 {
+		t.Fatalf("source list = %+v, want exactly the pre-registered default", rows)
+	}
+	got := rows[0]
+	if got.Name != server.DefaultSkillSourceName {
+		t.Errorf("default row name = %q, want %q", got.Name, server.DefaultSkillSourceName)
+	}
+	if got.Kind != sources.KindGit || got.URL != origin {
+		t.Errorf("default row = %+v, want a git source cloned from %s", got, origin)
+	}
+	if !got.Enabled {
+		t.Error("the pre-registered default is disabled; it is what a fresh install spawns from")
+	}
+	if got.Commit == "" {
+		t.Error("the pre-registered default recorded no pin")
+	}
+}
+
+// It fires only on the first run that writes the source list — the same
+// once-per-machine signal the migration uses. An operator who removes the row
+// does not have it re-cloned on the next start.
+func TestThePreRegisteredDefaultIsNotRestoredOnceRemoved(t *testing.T) {
+	root := oldRoot(t)
+	origin := gitSkillRepo(t, "grill")
+
+	chartrtest.Start(t, chartrtest.WithConfigDir(root), chartrtest.WithDefaultSource(origin))
+	if rows := migratedRows(t, root); len(rows) != 1 {
+		t.Fatalf("first start = %+v, want the pre-registered default", rows)
+	}
+
+	r, err := sources.Load(root)
+	if err != nil {
+		t.Fatalf("loading the source list: %v", err)
+	}
+	if err := r.Remove(server.DefaultSkillSourceName); err != nil {
+		t.Fatalf("removing the default row: %v", err)
+	}
+
+	chartrtest.Start(t, chartrtest.WithConfigDir(root), chartrtest.WithDefaultSource(origin))
+	if rows := migratedRows(t, root); len(rows) != 0 {
+		t.Errorf("the default was re-registered after removal: %+v", rows)
+	}
+}
+
+// A fresh install whose default clone fails — no such repo, offline, git absent —
+// still comes up, just with an empty list the operator fills in from Settings.
+// Startup never fails on this, and nothing else in the list is disturbed.
+func TestAFailingDefaultCloneStillStarts(t *testing.T) {
+	root := oldRoot(t)
+	bogus := filepath.Join(t.TempDir(), "no-such-repo")
+
+	chartrtest.Start(t, chartrtest.WithConfigDir(root), chartrtest.WithDefaultSource(bogus))
+
+	if rows := migratedRows(t, root); len(rows) != 0 {
+		t.Errorf("a failed default clone left rows behind: %+v", rows)
+	}
+	// The file's absence is the migration's fire signal, so a first run that could
+	// not clone must still leave one behind or it would try again every start.
+	if _, err := os.Stat(sources.FilePath(root)); err != nil {
+		t.Errorf("a failed default clone left no source list behind: %v", err)
 	}
 }
 

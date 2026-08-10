@@ -17,22 +17,27 @@ from the binary, sitting last, so a first run could spawn offline. That exceptio
 is deleted — the vendored skills, the embed, `make vendor-skills`, the synthetic
 default row, and the four role bindings that were seeded pointing into it.
 
-- **The source list starts empty.** A fresh install registers nothing. What lands
-  in the list on a first run is only what the layer-model migration carried
-  forward, never a source chartr put there.
-- **Roles start unbound, and stay that way until bound.** Nothing is seeded and
-  nothing restores a default, because there is no default. A role with no binding
-  refuses its spawn — the same refusal 0017 already gave a binding that resolves
-  to nothing — until the operator registers a source and binds it. The "restore
-  role binding to its default" control is gone with the default it wrote.
-- **chartr's own former skills are an ordinary source.** grill, implement,
-  prototype, research, wayfinder and the rest live in a normal repo the operator
-  registers like any other. chartr's skills are no longer privileged over anyone
-  else's — the plainest possible reading of "hackable".
+- **chartr ships no skills inside the binary.** grill, implement, prototype,
+  research, wayfinder and the rest live in a normal repo — `rengwu/chartr-skills`
+  — the operator registers like any other. chartr's skills are no longer
+  privileged over anyone else's: nothing is embedded, nothing is materialized from
+  the binary. That is the plainest possible reading of "hackable".
+- **A fresh install pre-registers that repo as an ordinary `git` source.** The one
+  run that first writes `sources.toml` clones `rengwu/chartr-skills` into a row the
+  operator can remove, refresh or reorder like any other — not a synthetic seed
+  privileged in resolution, just a URL chartr fills in for them so the first run
+  has something to spawn from. It sits alongside whatever the layer-model migration
+  carried forward. Removing the row is final: the pre-registration fires only on
+  that same once-per-machine signal, so it is never re-cloned.
 
-What this costs is stated plainly rather than smoothed over: **a first run cannot
-spawn until the operator registers a source.** The offline-first-run convenience
-the seed bought is the price of owning nothing, and it is the price we chose.
+**Amends this ADR's original "a fresh install registers nothing."** That first cut
+made the source list start genuinely empty and left every role unbound until the
+operator registered a source by hand — the price it named for owning nothing. In
+practice that price was paid on every single first run, for a repo every operator
+wanted anyway, so we now pre-register it rather than pre-fill a form and wait. The
+principle the cut was defending is intact: **nothing is embedded, and the row is
+the operator's** — a fresh install with no network or no `git` still comes up (the
+clone is best-effort), just with an empty list to fill in from Settings.
 
 ## The mirror
 

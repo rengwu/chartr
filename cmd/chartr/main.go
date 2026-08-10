@@ -53,7 +53,7 @@ func run(addr, dataDir string) error {
 	// which is a main's business and not a constructor's.
 	env.HydratePATH()
 
-	srv, err := server.New(server.Options{DataDir: dataDir})
+	srv, err := server.New(server.Options{DataDir: dataDir, DefaultSourceURL: server.DefaultSkillSourceURL})
 	if err != nil {
 		return err
 	}

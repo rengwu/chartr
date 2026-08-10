@@ -3,6 +3,7 @@
   import { setAgent, deleteAgent } from "./actions";
   import { formatArgs, parseArgs } from "./args";
   import { Button } from "./components/ui/button";
+  import { toast } from "./components/ui/sonner";
   import { Input } from "./components/ui/input";
   import * as Select from "./components/ui/select";
   import * as Table from "./components/ui/table";
@@ -68,7 +69,6 @@
   };
   let draft = $state<Draft | null>(null);
   let busy = $state<string | null>(null);
-  let note = $state<string | null>(null);
   let confirmingDelete = $state<string | null>(null);
 
   const deliveryLabels: Record<Draft["delivery"], string> = {
@@ -128,7 +128,6 @@
     if (!draft) return;
     const d = draft;
     busy = "save";
-    note = null;
     try {
       await setAgent(d.name.trim(), {
         adapter: d.adapter.trim(),
@@ -138,7 +137,10 @@
       });
       draft = null;
     } catch (e) {
-      note = (e as Error).message;
+      // A refusal surfaces as a toast — sonner's z-index clears the modal's own
+      // backdrop (app.css), so it stands over the still-open register form rather
+      // than behind it.
+      toast.error((e as Error).message);
     } finally {
       busy = null;
     }
@@ -146,12 +148,11 @@
 
   async function remove(name: string) {
     busy = name;
-    note = null;
     try {
       await deleteAgent(name);
       confirmingDelete = null;
     } catch (e) {
-      note = (e as Error).message;
+      toast.error((e as Error).message);
     } finally {
       busy = null;
     }
@@ -159,7 +160,6 @@
 
   function closeDraft() {
     draft = null;
-    note = null;
   }
 </script>
 
@@ -170,7 +170,7 @@
       <Button
         variant="ghost"
         size="xs"
-        onclick={() => ((draft = blank()), (note = null))}
+        onclick={() => (draft = blank())}
       >
         <Plus /> register an agent
       </Button>
@@ -180,14 +180,6 @@
     Set up your agents with commands and flags.
   </p>
 
-  {#if note && !draft}
-    <p
-      class="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs"
-    >
-      {note}
-    </p>
-  {/if}
-
   {#if draft}
     <Modal
       open
@@ -196,14 +188,6 @@
       onClose={closeDraft}
     >
       <div class="flex flex-col gap-3">
-        {#if note}
-          <p
-            class="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs"
-          >
-            {note}
-          </p>
-        {/if}
-
         <div class="flex flex-col gap-1.5">
           {@render textField(
             "name",
@@ -318,7 +302,7 @@
                     variant="ghost"
                     size="icon-xs"
                     aria-label="Edit {a.name}"
-                    onclick={() => ((draft = toDraft(a)), (note = null))}
+                    onclick={() => (draft = toDraft(a))}
                   >
                     <PencilSimple />
                   </Button>

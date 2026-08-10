@@ -76,7 +76,7 @@ func run(dataDir string) error {
 	// ordinary way is findable at all.
 	env.HydratePATH()
 
-	srv, err := server.New(server.Options{DataDir: dataDir})
+	srv, err := server.New(server.Options{DataDir: dataDir, DefaultSourceURL: server.DefaultSkillSourceURL})
 	if err != nil {
 		return err
 	}

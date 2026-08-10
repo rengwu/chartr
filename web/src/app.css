@@ -486,3 +486,26 @@
   right: calc(-1 * var(--terminal-padding-right, 0px));
   bottom: calc(-1 * var(--terminal-padding-bottom, 0px));
 }
+
+/* The toast surface (svelte-sonner) is centered over the *main panel*, not the
+   whole viewport: the sidebar is a fixed 16rem column (App.svelte's
+   grid-cols-[16rem_…]), so shifting the center right by half of that — 8rem —
+   lands the stack over the panel it belongs to. Sonner's own rule sets
+   `left: 50%; transform: translateX(-50%)` for a top-center toaster; this only
+   moves the `left`, leaving the transform to do the centering. Unlayered so it
+   outranks sonner's own `:global` rule without a specificity fight.
+
+   The z-index sonner ships (999999999) already clears the dialog overlay (z-50),
+   so a validation toast raised from inside a modal — the register-agent form —
+   stands over its backdrop rather than behind it. */
+[data-sonner-toaster].chartr-toaster[data-x-position="center"] {
+  left: calc(50% + 8rem);
+}
+
+/* Errors wear the same destructive token the inline messages did, so a refused
+   registration still reads as a refusal — the one spot of colour on an otherwise
+   monochrome toast. */
+[data-sonner-toast][data-type="error"] {
+  --normal-border: var(--destructive);
+  --normal-text: var(--destructive);
+}

@@ -86,6 +86,15 @@ func WithConfigDir(dir string) Option {
 	}
 }
 
+// WithDefaultSource points the fresh-install pre-registration at a git URL, the
+// way the real entrypoints point it at chartr's own skills repo. The rig leaves
+// it empty otherwise, so the default suite never clones over the network; a test
+// that wants to drive the pre-registration passes a local (e.g. `file://`) repo
+// here. Pair it with WithConfigDir so the run is a genuine first run.
+func WithDefaultSource(url string) Option {
+	return func(o *startOptions) { o.server.DefaultSourceURL = url }
+}
+
 // WithoutSkills starts with a genuinely empty source list — no seeded skills and
 // no bindings. chartr ships none of its own (ADR 0018); Start otherwise stands in
 // for the operator's one-time setup by registering a `chartr-skills` dir source
