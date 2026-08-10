@@ -14,6 +14,7 @@
   import { Input } from "./components/ui/input";
   import { Checkbox } from "./components/ui/checkbox";
   import * as Select from "./components/ui/select";
+  import * as Table from "./components/ui/table";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import {
@@ -560,46 +561,68 @@
     lower one's, against the order. This writes
     <code class="font-mono">user.toml</code>, the same file you can edit by hand.
   </p>
-  {#each roles as b (b.role)}
-    <div
-      class="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5"
-    >
-      <span class="w-20 shrink-0 text-xs font-medium capitalize">{b.role}</span>
-      <!-- What a spawn would actually run: the resolved `Source/skill` — the
-           precedence winner when "no preference" is chosen — or, when nothing
-           resolves, why. This is the role's status; the picker to its right is
-           only the choice. -->
-      <span class="min-w-0 flex-1 truncate">
-        {#if b.resolved}
-          <code class="font-mono text-[0.7rem] text-muted-foreground"
-            >{b.resolved}</code
-          >
-        {:else}
-          <span class="text-[0.7rem] text-destructive"
-            >no enabled source holds this skill</span
-          >
-        {/if}
-      </span>
-      <Select.Root
-        type="single"
-        value={roleValue(b)}
-        onValueChange={(v) => v && chooseRole(b.role, v)}
-      >
-        <Select.Trigger
-          class="h-7 w-52 shrink-0 font-mono text-xs"
-          aria-label="Skill for the {b.role} role"
-          disabled={busy !== null}
-        >
-          <span class="truncate text-muted-foreground">{roleLabel(b)}</span>
-        </Select.Trigger>
-        <Select.Content>
-          <Select.Item value={AUTO} class="text-xs">no preference</Select.Item>
-          {#each b.candidates as ref (ref)}
-            <Select.Item value={ref} class="font-mono text-xs">{ref}</Select.Item
-            >
+  {#if roles.length}
+    <div class="overflow-hidden rounded-md border border-border">
+      <Table.Root class="table-fixed">
+        <Table.Header>
+          <Table.Row class="hover:bg-transparent">
+            <Table.Head class="w-24">Role</Table.Head>
+            <Table.Head>Resolved</Table.Head>
+            <Table.Head class="w-52">Skill</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each roles as b (b.role)}
+            <Table.Row>
+              <Table.Cell class="truncate text-xs font-medium capitalize">
+                {b.role}
+              </Table.Cell>
+              <!-- What a spawn would actually run: the resolved `Source/skill` —
+                   the precedence winner when "no preference" is chosen — or, when
+                   nothing resolves, why. This is the role's status; the picker to
+                   its right is only the choice. -->
+              <Table.Cell class="truncate">
+                {#if b.resolved}
+                  <code class="font-mono text-[0.7rem] text-muted-foreground"
+                    >{b.resolved}</code
+                  >
+                {:else}
+                  <span class="text-[0.7rem] text-destructive"
+                    >no enabled source holds this skill</span
+                  >
+                {/if}
+              </Table.Cell>
+              <Table.Cell>
+                <Select.Root
+                  type="single"
+                  value={roleValue(b)}
+                  onValueChange={(v) => v && chooseRole(b.role, v)}
+                >
+                  <Select.Trigger
+                    class="h-7 w-full font-mono text-xs"
+                    aria-label="Skill for the {b.role} role"
+                    disabled={busy !== null}
+                  >
+                    <span class="truncate text-muted-foreground"
+                      >{roleLabel(b)}</span
+                    >
+                  </Select.Trigger>
+                  <Select.Content>
+                    <Select.Item value={AUTO} class="text-xs"
+                      >no preference</Select.Item
+                    >
+                    {#each b.candidates as ref (ref)}
+                      <Select.Item value={ref} class="font-mono text-xs"
+                        >{ref}</Select.Item
+                      >
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
+              </Table.Cell>
+            </Table.Row>
           {/each}
-        </Select.Content>
-      </Select.Root>
+        </Table.Body>
+      </Table.Root>
     </div>
-  {/each}
+  {/if}
 </section>
