@@ -445,7 +445,10 @@
 <div class="isolate flex h-full min-h-0 flex-col">
   <header class="cockpit-bar justify-between">
     <div class="flex min-w-0 items-center gap-1">
-      <Tooltip.Root>
+      <!-- disableCloseOnTriggerClick: the click *is* the copy action, and its
+           feedback ("Copied") lives in this same tooltip — bits-ui's default
+           close-on-click would hide it before the operator ever saw it. -->
+      <Tooltip.Root disableCloseOnTriggerClick>
         <Tooltip.Trigger>
           {#snippet child({ props })}
             <Button
