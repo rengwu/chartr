@@ -84,9 +84,9 @@ func TestUnresolvableBindingRefusesTheSpawnWithoutClaiming(t *testing.T) {
 				}
 			}
 
-			// Nothing was claimed: HEAD is still unborn and the ticket is takeable.
-			if _, err := gitHEAD(repo); err == nil {
-				t.Error("a refused spawn wrote a claim commit")
+			// Nothing was claimed: the audit log is empty and the ticket is takeable.
+			if n := auditCount(t, repo); n != 0 {
+				t.Errorf("a refused spawn recorded %d audit entries, want none", n)
 			}
 			tk := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1)
 			if tk.Status != "open" || !tk.Frontier {
@@ -122,8 +122,8 @@ func TestSpawnRefusedWhenTheBoundSourceIsDisabled(t *testing.T) {
 			t.Errorf("the refusal does not say %q:\n%s", want, body)
 		}
 	}
-	if _, err := gitHEAD(repo); err == nil {
-		t.Error("a refused spawn wrote a claim commit")
+	if n := auditCount(t, repo); n != 0 {
+		t.Errorf("a refused spawn recorded %d audit entries, want none", n)
 	}
 }
 
@@ -174,9 +174,9 @@ func TestSpawnResolvesThroughAutoBinding(t *testing.T) {
 		t.Errorf("spawn did not run the alias skill body:\n%s", grill.Text)
 	}
 
-	// The claim commit was written because the spawn succeeded.
-	if _, err := gitHEAD(repo); err != nil {
-		t.Errorf("a successful spawn wrote no claim commit: %v", err)
+	// The claim was recorded because the spawn succeeded.
+	if n := auditCount(t, repo); n != 1 {
+		t.Errorf("a successful spawn recorded %d audit entries, want the one claim", n)
 	}
 }
 

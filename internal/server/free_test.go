@@ -168,26 +168,22 @@ func TestFreeSessionRemembersTheAgent(t *testing.T) {
 	}
 }
 
-// No claim commit is ever written and no ticket's status ever moves — a free
-// session is not a session, so nothing about the map changes when one opens.
-func TestFreeSessionWritesNoClaimCommit(t *testing.T) {
+// No claim is ever recorded and no ticket's status ever moves — a free session is
+// not a session, so nothing about the map changes when one opens.
+func TestFreeSessionWritesNoClaim(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	freeAgent(t, h)
 
-	// A committed baseline so "no commit" is a real assertion, not just "no
-	// commits exist yet".
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	chartrtest.Git(t, repo, "add", "-A")
-	chartrtest.Git(t, repo, "commit", "-q", "-m", "baseline")
-	before := commitCount(t, repo)
+	before := auditCount(t, repo)
 
 	resp := register(t, h, repo)
 	h.Launch(resp.ID, "thinker")
 
-	if after := commitCount(t, repo); after != before {
-		t.Errorf("a free session wrote a commit: HEAD went from %s to %s commits", before, after)
+	if after := auditCount(t, repo); after != before {
+		t.Errorf("a free session recorded a claim: audit records went from %d to %d", before, after)
 	}
 	if st := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1).Status; st != "open" {
 		t.Errorf("a free session changed an unrelated ticket's status to %q, want open", st)

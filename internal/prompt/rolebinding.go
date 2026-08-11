@@ -16,7 +16,7 @@ import (
 //
 // Everything here is refusal-shaped on purpose. **An unresolvable binding refuses
 // the spawn**: composition returns an error, and the spawn path already aborts on
-// a composition error before it writes the claim commit, so a role bound to
+// a composition error before it writes the claim, so a role bound to
 // nothing costs the operator a message and never a half-claimed ticket. The error
 // names the role, the recorded binding string, and which shape it hit — a source
 // that is disabled, a source that is gone, or a skill missing from the source

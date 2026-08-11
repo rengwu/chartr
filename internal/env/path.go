@@ -7,7 +7,7 @@
 // bare name to go-pty, which lets exec.Command run the same lookup. Setting
 // a child's Env doesn't redirect that — Go resolves the binary out of the
 // parent's PATH first — so probe and spawn agree by construction. That's
-// what lets registration refuse a binary before the claim commit is
+// what lets registration refuse a binary before the claim is
 // written, instead of stranding a claim on a launch that was never going to
 // start (ADR 0008).
 //

@@ -40,7 +40,7 @@ export interface Ticket {
   status: TicketStatus
   blockedBy?: number[]
   frontier: boolean
-  // The claim the ticket file carries: the session id stamped by the claim commit
+  // The claim the ticket file carries: the session id stamped by the claim
   // and when (RFC 3339). Present only while `claimed`, and read straight off the
   // frontmatter — so a claim written by a chartr that has since restarted, or on
   // another machine entirely, reads exactly as a local one does.
@@ -124,13 +124,6 @@ export interface Space {
   path: string
   // The one synthetic Scratch entry is flagged; registered spaces omit this.
   scratch?: boolean
-  // The working tree's current git branch (or a short detached-HEAD sha), read
-  // live. Absent when it can't be determined — the sidebar omits it then.
-  branch?: string
-  // True when the working tree carries uncommitted changes — a session's or a
-  // shell's debris. A badge, never a spawn gate (story 68): the operator decides
-  // whether the debris is harmless; chartr spawns into it all the same.
-  dirty: boolean
   // The registered agent this space last spawned with — the remembered choice the
   // next spawn reuses. State, never config: nothing edits it, and it arrives
   // exactly as the server holds it. A name that no longer matches a registered

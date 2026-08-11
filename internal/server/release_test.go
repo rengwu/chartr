@@ -14,24 +14,16 @@ import (
 // Release keyed on the ticket: the way back for a claim whose session tab no
 // longer exists. The halt's three actions all reach a claim through the dead tab
 // holding it, and tabs live in memory — so a chartr restart, a dismissed tab, or a
-// claim committed on another machine leaves a ticket stuck `claimed` with nothing
+// claim stamped by another chartr leaves a ticket stuck `claimed` with nothing
 // able to clear it. These tests drive that state directly (a ticket file that
 // already carries a claim, from a chartr that is not this one) rather than
 // simulating a restart, because that is exactly what the orphan looks like on disk.
 
 // claimedTicket is a ticket file already carrying a claim in its frontmatter —
-// what a claim commit leaves behind, and what outlives the chartr that wrote it.
+// what a claim stamp leaves behind, and what outlives the chartr that wrote it.
 func claimedTicket(num int, slug, sessionID, at string) string {
 	return "---\ntype: task\nblocked_by: []\nclaimed_by: " + sessionID +
 		"\nclaimed_at: " + at + "\n---\n\n# " + slug + "\n\n## Question\nQ.\n"
-}
-
-// commitAll makes the fixture the repo's first commit, so a release afterwards is
-// a genuine second commit whose touched paths can be read back.
-func commitAll(t *testing.T, repo string) {
-	t.Helper()
-	chartrtest.Git(t, repo, "add", "-A")
-	chartrtest.Git(t, repo, "commit", "-q", "-m", "fixture")
 }
 
 // The claim travels on the wire. Without claimed_by/claimed_at on the model there
@@ -44,7 +36,6 @@ func TestClaimedTicketCarriesItsClaimOnTheModel(t *testing.T) {
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md",
 		claimedTicket(1, "First", "sess-gone", "2026-07-20T09:00:00Z"))
-	commitAll(t, repo)
 
 	resp := register(t, h, repo)
 	tk := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1)
@@ -59,7 +50,7 @@ func TestClaimedTicketCarriesItsClaimOnTheModel(t *testing.T) {
 }
 
 // The orphan is releasable: a claim held by a session this chartr has never seen
-// clears back to the frontier, recorded as its own pathspec-limited commit — the
+// clears back to the frontier, recorded as a line in the space's audit log — the
 // same write the halt's release makes, reached by the ticket instead of the tab.
 func TestReleaseTicketClearsAnOrphanedClaim(t *testing.T) {
 	h := chartrtest.Start(t)
@@ -68,7 +59,6 @@ func TestReleaseTicketClearsAnOrphanedClaim(t *testing.T) {
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md",
 		claimedTicket(1, "First", "sess-gone", "2026-07-20T09:00:00Z"))
-	commitAll(t, repo)
 
 	resp := register(t, h, repo)
 	if code, body := h.ReleaseTicket(resp.ID, "widget", 1); code != 200 {
@@ -83,21 +73,19 @@ func TestReleaseTicketClearsAnOrphanedClaim(t *testing.T) {
 		t.Errorf("release left the claim on the model: {by:%q at:%q}", tk.ClaimedBy, tk.ClaimedAt)
 	}
 
-	if n := commitCount(t, repo); n != "2" {
-		t.Errorf("commits after release = %s, want 2 (fixture + release)", n)
-	}
-	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
-	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
-	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
-		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
-	}
 	if body := ticketFileBody(t, repo, "widget", "01-first.md"); strings.Contains(body, "claimed_by") {
 		t.Errorf("release left claimed_by on the ticket:\n%s", body)
 	}
-	// The released session is named in the commit, read off the ticket's own
-	// frontmatter — by construction there is no tab left to ask.
-	if msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B"); !strings.Contains(msg, "sess-gone") {
-		t.Errorf("release commit does not name the released session:\n%s", msg)
+	// A single release record naming the released session, read off the ticket's
+	// own frontmatter — by construction there is no tab left to ask. The orphan's
+	// original claim was stamped by another chartr, so it left no record here.
+	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
+	recs := auditRecords(t, repo)
+	if len(recs) != 1 || recs[0].Event != "release" || recs[0].Ticket != rel {
+		t.Fatalf("audit records after release = %+v, want one release of %s", recs, rel)
+	}
+	if recs[0].Session != "sess-gone" {
+		t.Errorf("release record names %q, want the released session sess-gone", recs[0].Session)
 	}
 }
 
@@ -135,15 +123,14 @@ func TestReleaseTicketRefusedWhenNotClaimed(t *testing.T) {
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	commitAll(t, repo)
 
 	resp := register(t, h, repo)
 	code, body := h.ReleaseTicket(resp.ID, "widget", 1)
 	if code != 409 {
 		t.Fatalf("release of an unclaimed ticket = %d, body %s", code, body)
 	}
-	if n := commitCount(t, repo); n != "1" {
-		t.Errorf("refused release still committed: %s commits", n)
+	if n := auditCount(t, repo); n != 0 {
+		t.Errorf("refused release still recorded: %d audit records", n)
 	}
 }
 

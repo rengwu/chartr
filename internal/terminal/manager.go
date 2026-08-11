@@ -197,7 +197,7 @@ func (m *Manager) Open(spaceID, cwd string) (*Terminal, error) {
 // of a shell, and has the one-line opener typed into it once it is up — the
 // intervention channel is a live TUI, so the opener arrives as the session's first
 // keystrokes, not an argv flag (spec, Sessions and adapters). id is chosen by the
-// caller (the same id the claim commit and payload archive are keyed by), so the
+// caller (the same id the claim and payload archive are keyed by), so the
 // whole spawn refers to one session everywhere.
 //
 // It refuses with ErrSessionExists if the space already has a live session, unless

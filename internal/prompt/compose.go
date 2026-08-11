@@ -88,7 +88,7 @@ func Compose(in ComposeInput) (Payload, error) {
 
 	// The role resolves through the operator's binding table into their
 	// sources. An unresolvable binding stops here — the whole enforcement:
-	// the spawn path aborts before the claim commit.
+	// the spawn path aborts before the claim.
 	role, err := resolveRoleSkill(in.Sources, in.Bindings, in.Role)
 	if err != nil {
 		return Payload{}, err

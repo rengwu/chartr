@@ -31,7 +31,7 @@ const sessionRunDir = ".chartr/run"
 
 // handleSpawn is the product's tracer bullet (ticket 09): from a frontier ticket
 // it wires the whole chain — settle the chosen agent, hard-block a missing or
-// unregistered one, compose the payload, write the claim commit, drop the
+// unregistered one, compose the payload, write the claim, drop the
 // gitignored payload and its archived copy, and launch the agent's own TUI with
 // the read-this-file opener typed in. The session seats as a tab bound to exactly
 // one ticket.
@@ -137,7 +137,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// From here the mechanics are shared with respawn (ticket 10): compose the
-	// payload, write the claim commit, drop the gitignored and archived copies, and
+	// payload, write the claim, drop the gitignored and archived copies, and
 	// launch the TUI. A fresh spawn mints a new session id.
 	result, status, err := s.launchSession(sessionLaunch{
 		entry:     e,
@@ -307,11 +307,12 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		return nil, http.StatusNotFound, err
 	}
 
-	// The claim commit — chartr's one write here (ADR 0008), pathspec-limited
-	// to the ticket file and carrying the agent and payload-hash trailers. On a
-	// respawn the ticket already carries a stale claim; stampClaim replaces it, so
-	// the new session id supersedes the dead one.
-	if err := writeClaimCommit(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
+	// The claim — chartr's one write here (ADR 0008, revised): it stamps the ticket
+	// file and appends the agent and payload-hash provenance to the space's audit
+	// log, running no VCS command of its own. On a respawn the ticket already
+	// carries a stale claim; stampClaim replaces it, so the new session id
+	// supersedes the dead one.
+	if err := writeClaim(in.entry.Path, ticketPath, in.sessionID, claimedAt, claim{
 		SessionID:  in.sessionID,
 		Role:       in.role,
 		Agent:      in.spec.Name,
@@ -320,7 +321,7 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		PayloadSHA: payloadSHA,
 		Skills:     payload.Skills,
 	}); err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim commit: %w", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("writing the claim: %w", err)
 	}
 
 	payloadPath, err := s.writeSessionPayload(in.entry.Path, in.sessionID, payload.Markdown)

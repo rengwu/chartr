@@ -28,7 +28,6 @@ function space(id: string, extra: Partial<Space> = {}): Space {
     id,
     name: id,
     path: `/${id}`,
-    dirty: false,
     maps: [],
     terminals: [],
     ...extra,

@@ -146,9 +146,8 @@
   const nativePicker = $derived(control.model?.nativePicker ?? false);
   let showAdd = $state(false);
   let picking = $state(false);
-  // The register outcome — the announced `git init` (story 2) and every refusal —
-  // surfaces as a toast now (centered over the main panel), not an inline line
-  // beside the button. The git-init caveat rides along as the toast's description.
+  // The register outcome — a success and every refusal — surfaces as a toast now
+  // (centered over the main panel), not an inline line beside the button.
   async function addSpace() {
     if (picking) return;
     if (!nativePicker) {
@@ -162,12 +161,7 @@
       // and leave the sidebar exactly as it was.
       if (picked.cancelled || !picked.path) return;
       const res = await registerSpace(picked.path);
-      toast.success(`Added ${picked.path}`, {
-        // Announced, never silent (story 2) — but only when it actually happened.
-        description: res.gitInited
-          ? "Wasn’t a git repository — a new one was initialized there."
-          : undefined,
-      });
+      toast.success(`Added ${picked.path}`);
       selectedId = res.id;
     } catch (err) {
       toast.error(err instanceof ActionError ? err.message : String(err));
@@ -773,8 +767,8 @@
             <div class="flex w-full max-w-sm flex-col items-start gap-3">
               <h1 class="text-lg font-semibold">Register your first space</h1>
               <p class="text-sm text-muted-foreground">
-                Point chartr at a project folder. If it isn’t a git repository
-                yet, one is initialized there — announced, never silent.
+                Point chartr at a project folder. Any folder works — chartr reads
+                and writes files there and leaves version control to you.
               </p>
               <Button disabled={picking} onclick={addSpace}>
                 {#if picking}
@@ -838,8 +832,8 @@
   <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
     <p class="mb-3 text-xs text-muted-foreground">
       No folder chooser was found on this machine, so point chartr at a project
-      folder by pasting its absolute path. If it isn’t a git repository yet, one
-      is initialized there, announced.
+      folder by pasting its absolute path. Any folder works — version control is
+      left to you.
     </p>
     <RegisterForm
       variant="inline"

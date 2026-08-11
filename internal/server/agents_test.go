@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -64,21 +65,18 @@ func TestRegisteredAgentDrivesTheSpawn(t *testing.T) {
 		t.Errorf("the registered agent's argv did not reach the process in order.\nwant %v\ngot:\n%s", want, log)
 	}
 
-	// The claim commit records what actually ran — the argv, not an agent-and-model
-	// pair, so the permission and sandbox flags are in the audit trail beside the
-	// model rather than invisible to it.
-	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
-	for _, w := range []string{
-		// The name the operator registered, and the binary it stands for: the name
-		// says which of their agents was chosen, the adapter says what that means
-		// on any other machine.
-		"Agent: harness-yolo",
-		"Adapter: some-harness",
-		"Args: -m big --dangerously-skip-permissions --sandbox danger-full-access",
-	} {
-		if !strings.Contains(msg, w) {
-			t.Errorf("claim commit missing %q:\n%s", w, msg)
-		}
+	// The claim's audit record captures what actually ran — the argv, not an
+	// agent-and-model pair, so the permission and sandbox flags are in the audit
+	// trail beside the model rather than invisible to it.
+	rec := onlyAuditRecord(t, repo)
+	// The name the operator registered, and the binary it stands for: the name says
+	// which of their agents was chosen, the adapter says what that means on any
+	// other machine.
+	if rec.Agent != "harness-yolo" || rec.Adapter != "some-harness" {
+		t.Errorf("audit agent/adapter = %q/%q, want harness-yolo/some-harness", rec.Agent, rec.Adapter)
+	}
+	if got, want := strings.Join(rec.Args, " "), "-m big --dangerously-skip-permissions --sandbox danger-full-access"; got != want {
+		t.Errorf("audit args = %q, want %q", got, want)
 	}
 }
 
@@ -130,8 +128,8 @@ func TestOneLibraryServesEverySpace(t *testing.T) {
 
 	// Nothing was written into either repository: the library is the operator's.
 	for _, repo := range []string{repoA, repoB} {
-		if _, err := gitHEAD(repo); err == nil {
-			t.Errorf("%s grew a commit from a library edit", repo)
+		if n := auditCount(t, repo); n != 0 {
+			t.Errorf("%s recorded %d audit entries from a library edit, want none", repo, n)
 		}
 	}
 }
@@ -226,18 +224,23 @@ func TestAgentEnvReachesTheProcessExpanded(t *testing.T) {
 		t.Errorf("wire env = %q, want it as typed so an edit cannot rewrite the operator's tilde", got)
 	}
 
-	sp := spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "harness-alt")
-	payloadAbs := filepath.Join(repo, ".chartr", "run", sp.SessionID, "payload.md")
-	log := chartrtest.WaitForFileContains(t, delivery, payloadAbs, 5*time.Second)
-
+	spawnWithAgent(t, h, resp.ID, "widget", 1, "implement", "harness-alt")
+	// The stub records the environment last, after the argv (which carries the
+	// opener). Waiting until both env lines are on disk therefore guarantees the
+	// whole launch is captured — an opener-only wait could snapshot the log after
+	// the argv but before the env dump, a race that surfaces once the claim write
+	// ahead of the launch is a fast file append rather than a git commit.
 	for _, want := range []string{
 		"env: CLAUDE_CONFIG_DIR=" + home + "/.claude2",
 		"env: ANTHROPIC_BASE_URL=https://proxy.internal",
 	} {
-		if !strings.Contains(log, want) {
-			t.Errorf("the launched process never got %q:\n%s", want, log)
-		}
+		chartrtest.WaitForFileContains(t, delivery, want, 5*time.Second)
 	}
+	b, err := os.ReadFile(delivery)
+	if err != nil {
+		t.Fatalf("reading the delivery log: %v", err)
+	}
+	log := string(b)
 	if strings.Contains(log, "env: CLAUDE_CONFIG_DIR=~/") {
 		t.Errorf("the tilde reached the agent unexpanded — it would create a directory named `~`:\n%s", log)
 	}
@@ -247,16 +250,18 @@ func TestAgentEnvReachesTheProcessExpanded(t *testing.T) {
 		t.Errorf("an environment entry was passed as an argument:\n%s", log)
 	}
 
-	// The claim commit records the argv but never the environment. That trailer is
-	// committed to the operator's repository, and an environment is where a token
-	// would be — the one place in this feature where less is recorded on purpose.
-	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
-	if !strings.Contains(msg, "Args: --fast") {
-		t.Errorf("claim commit lost the argv it always recorded:\n%s", msg)
+	// The claim's audit record captures the argv but never the environment. The
+	// record rides into the operator's repository, and an environment is where a
+	// token would be — the one place in this feature where less is recorded on
+	// purpose.
+	rec := onlyAuditRecord(t, repo)
+	if got := strings.Join(rec.Args, " "); got != "--fast" {
+		t.Errorf("audit record lost the argv it always captures: %q", got)
 	}
+	blob := strings.Join(append([]string{rec.Agent, rec.Adapter, rec.PayloadSHA}, append(rec.Args, rec.Skills...)...), " ")
 	for _, leak := range []string{"CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "proxy.internal"} {
-		if strings.Contains(msg, leak) {
-			t.Errorf("the claim commit recorded the agent's environment (%q) into the repository:\n%s", leak, msg)
+		if strings.Contains(blob, leak) {
+			t.Errorf("the audit record captured the agent's environment (%q) into the repository:\n%s", leak, blob)
 		}
 	}
 }

@@ -17,13 +17,15 @@ import (
 )
 
 // Ticket 09 at the process boundary: the spawn tracer bullet. With a stub agent
-// CLI on PATH, spawning a frontier ticket writes the claim commit (pathspec +
-// trailers), drops the gitignored payload whose content matches the preview,
-// archives a per-session copy, and delivers the read-this-file opener to the
-// agent — landing a live session tab bound to exactly one ticket. Binding
-// a role to a missing binary hard-blocks that one spawn with the specific message
-// and blocks nothing else. Every assertion is on what the design makes public —
-// HTTP responses, the control-socket snapshot, the filesystem, and git history.
+// CLI on PATH, spawning a frontier ticket stamps the ticket's claim and records
+// the spawn's provenance as a line in `.plan/audit.jsonl` (no VCS commit of
+// chartr's own — ADR 0008, revised), drops the gitignored payload whose content
+// matches the preview, archives a per-session copy, and delivers the
+// read-this-file opener to the agent — landing a live session tab bound to
+// exactly one ticket. Binding a role to a missing binary hard-blocks that one
+// spawn with the specific message and blocks nothing else. Every assertion is on
+// what the design makes public — HTTP responses, the control-socket snapshot, and
+// the filesystem.
 
 // spawnResp is the spawn action's own result.
 type spawnResp struct {
@@ -81,6 +83,55 @@ func gitIgnored(repo, rel string) bool {
 	return cmd.Run() == nil
 }
 
+// auditRecord mirrors one JSON line of `.plan/audit.jsonl` — the provenance a
+// spawn or release records now that chartr writes no VCS commit of its own.
+type auditRecord struct {
+	At         string   `json:"at"`
+	Event      string   `json:"event"`
+	Ticket     string   `json:"ticket"`
+	Session    string   `json:"session"`
+	Role       string   `json:"role"`
+	Agent      string   `json:"agent"`
+	Adapter    string   `json:"adapter"`
+	Args       []string `json:"args"`
+	PayloadSHA string   `json:"payloadSHA"`
+	Skills     []string `json:"skills"`
+}
+
+// onlyAuditRecord reads the space's audit log and asserts it holds exactly one
+// record, returning it — the common shape for a single-spawn test.
+func onlyAuditRecord(t *testing.T, repo string) auditRecord {
+	t.Helper()
+	recs := auditRecords(t, repo)
+	if len(recs) != 1 {
+		t.Fatalf("audit log has %d records, want exactly one: %+v", len(recs), recs)
+	}
+	return recs[0]
+}
+
+// auditRecords reads the space's audit log, returning every record in order — nil
+// when the log does not exist, which is the "nothing was claimed" state a refused
+// spawn must leave behind.
+func auditRecords(t *testing.T, repo string) []auditRecord {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repo, ".plan", "audit.jsonl"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("reading audit log: %v", err)
+	}
+	var recs []auditRecord
+	for _, line := range nonEmptyLines(string(b)) {
+		var r auditRecord
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			t.Fatalf("audit line not JSON: %v (%q)", err, line)
+		}
+		recs = append(recs, r)
+	}
+	return recs
+}
+
 func sessionTab(s model.Space) *model.Terminal {
 	for i := range s.Terminals {
 		if s.Terminals[i].Session != nil {
@@ -107,40 +158,46 @@ func TestSpawnWiresTheWholeChain(t *testing.T) {
 	resp := register(t, h, repo)
 	sp := mustSpawn(t, h, resp.ID, "widget", 1, "implement")
 
-	// --- The claim commit: pathspec-limited to the one ticket, with trailers. ---
+	// --- The claim's audit record: one line in .plan/audit.jsonl carrying the
+	// spawn's full provenance. chartr writes no commit of its own — the record and
+	// the ticket stamp ride into the operator's own next commit. ---
 	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
-	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
-	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
-		t.Errorf("claim commit touched %v, want exactly [%s]", got, rel)
+	recs := auditRecords(t, repo)
+	if len(recs) != 1 {
+		t.Fatalf("audit log has %d records, want exactly the one claim: %+v", len(recs), recs)
 	}
-	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
-	for _, want := range []string{
-		"Session: " + sp.SessionID,
-		// The registered name the operator chose, and the binary and flags it
-		// stands for: the name says which of their agents ran, the adapter and args
-		// say what that means on any other machine.
-		"Agent: claude",
-		"Adapter: claude",
-		"Args: --model sonnet",
-		"Role: implement",
-		"Payload-SHA256: " + sp.PayloadSha,
-		// The content provenance, one line per composed skill. The core is chartr's
-		// own embedded text and names chartr itself; the role came from a registered
-		// source and reads as the source's name, with `@<commit>` where that source
-		// carries a pin — the seeded default carries none until the operator fetches
-		// it (skill-sources ticket 05). Which bytes either was is fixed by
-		// Payload-SHA256 above (ADR 0017).
-		"Skill: core=chartr",
-		"Skill: implement=chartr-skills",
-	} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("claim commit message missing trailer %q:\n%s", want, msg)
+	rec := recs[0]
+	if rec.Event != "claim" || rec.Ticket != rel {
+		t.Errorf("audit record = event %q ticket %q, want a claim of %s", rec.Event, rec.Ticket, rel)
+	}
+	if rec.Session != sp.SessionID {
+		t.Errorf("audit session = %q, want %q", rec.Session, sp.SessionID)
+	}
+	// The registered name the operator chose, and the binary and flags it stands
+	// for: the name says which of their agents ran, the adapter and args say what
+	// that means on any other machine.
+	if rec.Agent != "claude" || rec.Adapter != "claude" {
+		t.Errorf("audit agent/adapter = %q/%q, want claude/claude", rec.Agent, rec.Adapter)
+	}
+	if strings.Join(rec.Args, " ") != "--model sonnet" {
+		t.Errorf("audit args = %v, want [--model sonnet]", rec.Args)
+	}
+	if rec.Role != "implement" {
+		t.Errorf("audit role = %q, want implement", rec.Role)
+	}
+	if rec.PayloadSHA != sp.PayloadSha {
+		t.Errorf("audit payloadSHA = %q, want %q", rec.PayloadSHA, sp.PayloadSha)
+	}
+	// The content provenance, one entry per composed skill. The core is chartr's
+	// own embedded text and names chartr itself; the role came from a registered
+	// source and reads as the source's name, with `@<commit>` where that source
+	// carries a pin — the seeded default carries none until the operator fetches
+	// it (skill-sources ticket 05). Which bytes either was is fixed by payloadSHA
+	// above (ADR 0017).
+	for _, want := range []string{"core=chartr", "implement=chartr-skills"} {
+		if !hasSubstring(rec.Skills, want) {
+			t.Errorf("audit skills %v missing %q", rec.Skills, want)
 		}
-	}
-	// No config-layer provenance: the explicit-agent path consults no layers, so
-	// the `*-From` trailers are gone with the binding they described.
-	if strings.Contains(msg, "-From:") {
-		t.Errorf("claim commit carries config-layer provenance for an explicit agent:\n%s", msg)
 	}
 
 	// The ticket now derives `claimed`.
@@ -218,10 +275,10 @@ func TestSpawnWithoutAnAgentIsRefusedAndBlocksNothingElse(t *testing.T) {
 		t.Errorf("refusal does not say an agent must be picked: %s", body)
 	}
 
-	// Nothing was written: no commit (HEAD is still unborn), and the ticket is
-	// still open with no session tab.
-	if _, err := gitHEAD(repo); err == nil {
-		t.Errorf("a refused spawn should write no claim commit, but HEAD exists")
+	// Nothing was written: the audit log has no claim, and the ticket is still open
+	// with no session tab.
+	if recs := auditRecords(t, repo); len(recs) != 0 {
+		t.Errorf("a refused spawn wrote %d audit records, want none: %+v", len(recs), recs)
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "open" {
@@ -262,10 +319,10 @@ func TestSpawnRefusedWhenLibraryEmpty(t *testing.T) {
 		t.Errorf("empty-library refusal is not the specific message: %s", body)
 	}
 
-	// The space is exactly as it was: no claim commit, ticket open, no tab, and no
+	// The space is exactly as it was: no claim recorded, ticket open, no tab, and no
 	// payload dropped into the run directory.
-	if _, err := gitHEAD(repo); err == nil {
-		t.Errorf("a refused spawn wrote a claim commit against an empty library")
+	if recs := auditRecords(t, repo); len(recs) != 0 {
+		t.Errorf("an empty-library refusal wrote %d audit records, want none: %+v", len(recs), recs)
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "open" {
@@ -541,13 +598,6 @@ func nonEmptyLines(s string) []string {
 	return out
 }
 
-func gitHEAD(repo string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", "HEAD")
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
-}
-
 // Ticket 01 at the process boundary: the agent is chosen at the moment of
 // spawning. The request may name a registered agent, that agent runs instead of
 // whatever the role was bound to, and the space quietly remembers the choice.
@@ -603,16 +653,18 @@ func TestSpawnWithAnExplicitAgentLaunchesThatAgent(t *testing.T) {
 		t.Errorf("the role's bound adapter ran even though an agent was named:\n%s", b)
 	}
 
-	// The claim carries the local name *and* what it means anywhere else.
-	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
-	for _, w := range []string{
-		"Agent: harness-yolo",
-		"Adapter: some-harness",
-		"Args: -m big --dangerously-skip-permissions",
-	} {
-		if !strings.Contains(msg, w) {
-			t.Errorf("claim commit missing trailer %q:\n%s", w, msg)
-		}
+	// The claim's audit record carries the local name *and* what it means anywhere
+	// else.
+	recs := auditRecords(t, repo)
+	if len(recs) != 1 {
+		t.Fatalf("audit log has %d records, want the one claim: %+v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec.Agent != "harness-yolo" || rec.Adapter != "some-harness" {
+		t.Errorf("audit agent/adapter = %q/%q, want harness-yolo/some-harness", rec.Agent, rec.Adapter)
+	}
+	if strings.Join(rec.Args, " ") != "-m big --dangerously-skip-permissions" {
+		t.Errorf("audit args = %v, want [-m big --dangerously-skip-permissions]", rec.Args)
 	}
 }
 
@@ -651,9 +703,9 @@ func TestSpawnRefusesAnUnknownOrAbsentAgentWithoutClaiming(t *testing.T) {
 		})
 	}
 
-	// No claim commit — HEAD is still unborn — and the ticket is still takeable.
-	if _, err := gitHEAD(repo); err == nil {
-		t.Errorf("a refused spawn should write no claim commit, but HEAD exists")
+	// No claim recorded, and the ticket is still takeable.
+	if recs := auditRecords(t, repo); len(recs) != 0 {
+		t.Errorf("a refused spawn wrote %d audit records, want none: %+v", len(recs), recs)
 	}
 	tk := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1)
 	if tk.Status != "open" || !tk.Frontier {

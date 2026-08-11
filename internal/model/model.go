@@ -160,8 +160,8 @@ type NotifyPrefs struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// Space is one registry entry in the pushed model: normally a registered git
-// repository chartr drives, or the one flagged synthetic Scratch entry. Spaces
+// Space is one registry entry in the pushed model: normally a folder the
+// operator registered, or the one flagged synthetic Scratch entry. Spaces
 // arrive already ordered — in the operator's own stored order, which nothing but
 // an explicit reorder moves — so the sidebar renders them without re-sorting.
 type Space struct {
@@ -171,19 +171,9 @@ type Space struct {
 	// omit it; consumers that offer repository actions use it as their guard.
 	Scratch bool `json:"scratch,omitempty"`
 	// Path is the absolute working directory. For a registered space it is the
-	// working-tree root; for Scratch it is the operator's home directory.
+	// folder the operator registered; for Scratch it is the operator's home
+	// directory.
 	Path string `json:"path"`
-	// Branch is the working tree's current git branch — the checked-out ref's
-	// short name, or a short sha for a detached HEAD — read live on each rebuild.
-	// Empty when it can't be determined; the sidebar simply omits it then. A
-	// label, never a guarantee.
-	Branch string `json:"branch,omitempty"`
-	// Dirty is true when the working tree carries uncommitted changes — modified,
-	// staged, or untracked files a session or an ad-hoc shell left behind. It is a
-	// badge, never a spawn gate (spec, Git and the gate; story 68): the operator
-	// decides whether the debris is harmless, and chartr spawns into it all
-	// the same. A label, not a guarantee — empty on a tree it cannot read.
-	Dirty bool `json:"dirty"`
 	// LastAgent is the registered agent this space last spawned with — the
 	// remembered choice the next spawn reuses (stories 12, 13, 20). It is state,
 	// not config: nothing edits it, and it is reported exactly as the registry
@@ -252,7 +242,7 @@ type Ticket struct {
 	// every blocker resolved.
 	Frontier bool `json:"frontier"`
 	// ClaimedBy and ClaimedAt are the claim the ticket file carries — the session
-	// id stamped by the claim commit and when. Both are empty for every status but
+	// id stamped by the claim and when. Both are empty for every status but
 	// `claimed`, and both are read straight off the frontmatter, so a claim written
 	// on another machine (or by a chartr that has since restarted) travels exactly
 	// as a local one does. They are what lets the frontier show *who* holds a

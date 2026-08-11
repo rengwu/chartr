@@ -36,9 +36,8 @@ func TestSnapshotAlwaysCarriesAThinScratchSpace(t *testing.T) {
 	if scratch.Path != home {
 		t.Errorf("Scratch path = %q, want home directory %q", scratch.Path, home)
 	}
-	if scratch.Branch != "" || scratch.Dirty || scratch.LastAgent != "" {
-		t.Errorf("Scratch carries repository state: branch=%q dirty=%v lastAgent=%q",
-			scratch.Branch, scratch.Dirty, scratch.LastAgent)
+	if scratch.LastAgent != "" {
+		t.Errorf("Scratch carries session state: lastAgent=%q", scratch.LastAgent)
 	}
 	if len(scratch.Maps) != 0 {
 		t.Errorf("Scratch is not thin: maps=%d", len(scratch.Maps))

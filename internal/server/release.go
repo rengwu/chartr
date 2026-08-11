@@ -15,7 +15,7 @@ import (
 // in memory. A chartr restart drops every tab while the claim on disk survives, so
 // the ticket derives `claimed`, falls off the frontier, and the three halt actions
 // that could have cleared it are unreachable: the ticket is stuck with no way back.
-// The same dead end is reached by a claim committed on another machine, or one
+// The same dead end is reached by a claim stamped on another machine, or one
 // whose dead tab the operator dismissed.
 //
 // So release is offered a second way in — same write, same commit, addressed by
@@ -78,10 +78,10 @@ func (s *Server) handleReleaseTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	// The commit names the session being released, read off the ticket's own
+	// The audit record names the session being released, read off the ticket's own
 	// frontmatter — the claim is the only thing that knows, since by construction
 	// there may be no tab left to ask.
-	if err := writeReleaseCommit(e.Path, ticketPath, tk.ClaimedBy); err != nil {
+	if err := writeRelease(e.Path, ticketPath, tk.ClaimedBy); err != nil {
 		httpError(w, http.StatusInternalServerError, "releasing the claim: "+err.Error())
 		return
 	}

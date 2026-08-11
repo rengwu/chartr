@@ -55,7 +55,6 @@ async function send(method: string, path: string, body?: unknown): Promise<unkno
 export interface RegisterResult {
   id: string
   path: string
-  gitInited: boolean
 }
 
 export function registerSpace(path: string): Promise<RegisterResult> {
@@ -64,8 +63,8 @@ export function registerSpace(path: string): Promise<RegisterResult> {
 
 // pickFolder raises the operator's own OS folder chooser and resolves to the
 // folder they named, or `cancelled` when they dismiss it. It registers nothing —
-// the caller posts the returned path through registerSpace — so the announced
-// `git init` and every refusal keep the one response shape they already have.
+// the caller posts the returned path through registerSpace — so registration and
+// every refusal keep the one response shape they already have.
 //
 // The request stays open for as long as the dialog does, which is exactly the
 // point: the chooser is modal to the operator, not to the page.
@@ -243,7 +242,7 @@ export function setRoleBinding(role: string, ref: string): Promise<unknown> {
 }
 
 // SpawnResult is the spawn action's own response — the session it started, the
-// resolved agent and args, and the payload hash the claim commit recorded. The
+// resolved agent and args, and the payload hash the claim recorded. The
 // live session tab arrives separately over the control socket.
 export interface SpawnResult {
   sessionId: string
@@ -255,7 +254,7 @@ export interface SpawnResult {
 }
 
 // spawnSession spawns a session on a frontier ticket (ticket 09): chartr
-// writes the claim commit, composes and archives the payload, and launches the
+// writes the claim, composes and archives the payload, and launches the
 // chosen agent's TUI with the read-this-file opener typed in. A blocked spawn — an
 // absent agent, a held ticket — surfaces as a thrown ActionError carrying the
 // chartr's specific message, whatever chartr's reason was.
@@ -314,9 +313,9 @@ export function releaseSession(spaceId: string, sessionId: string): Promise<unkn
 // releaseTicket clears a claim addressed by the ticket that carries it rather than
 // by the session holding it — the way back for a claim whose tab is gone: a chartr
 // restart (tabs live in memory, the claim on disk does not), a dismissed dead tab,
-// or a claim committed on another machine. Same write and same commit as
-// releaseSession; refused with LIVE_SESSION while a live session still holds the
-// ticket, which is the one case where the claim is not stale at all.
+// or a claim stamped on another machine. Same write as releaseSession; refused
+// with LIVE_SESSION while a live session still holds the ticket, which is the one
+// case where the claim is not stale at all.
 export function releaseTicket(spaceId: string, slug: string, num: number): Promise<unknown> {
   return send(
     'POST',

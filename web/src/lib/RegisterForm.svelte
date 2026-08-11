@@ -28,11 +28,7 @@
     notice = null
     try {
       const res = await registerSpace(p)
-      // The git-init announcement lives here, on the action's own response —
-      // announced, never silent (story 2).
-      notice = res.gitInited
-        ? `Registered — ${p} wasn’t a git repository, so a new one was initialized there.`
-        : `Registered ${p}.`
+      notice = `Registered ${p}.`
       path = ''
       onRegistered?.(res.id)
     } catch (err) {
@@ -47,8 +43,8 @@
   {#if variant === 'first-run'}
     <h1 class="text-lg font-semibold">Register your first space</h1>
     <p class="text-sm text-muted-foreground">
-      Point chartr at a project folder. If it isn’t a git repository yet, one is
-      initialized there — announced, never silent.
+      Point chartr at a project folder. Any folder works — chartr reads and
+      writes files there and leaves version control to you.
     </p>
   {/if}
 

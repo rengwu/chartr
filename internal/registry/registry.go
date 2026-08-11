@@ -1,15 +1,18 @@
 // Package registry is the space registry: the operator's list of registered
 // spaces plus the one synthetic Scratch entry, held in memory as a rebuildable
 // index rather than a source of truth (ticket 02, ADR 0003). Everything
-// authoritative — maps, committed workspace config, git history — lives in the
-// repositories; the registry holds only registered paths, the operator's sidebar
-// order, and each space's local recency. Losing it costs re-adding folders, never
-// work (their arrangement included), so a deleted spaces.toml is not an error:
-// the operator re-registers and each repo picks up exactly as it sits.
+// authoritative — maps, committed workspace config — lives in the space folders;
+// the registry holds only registered paths, the operator's sidebar order, and
+// each space's local recency. Losing it costs re-adding folders, never work
+// (their arrangement included), so a deleted spaces.toml is not an error: the
+// operator re-registers and each folder picks up exactly as it sits.
 //
-// Registering a folder that is not yet a git repository runs `git init`,
-// announced and never silent (story 2). De-registering forgets the entry and
-// touches nothing in the repository — forget, not destroy (story 4).
+// Registering runs no version-control command of its own: chartr does not init,
+// commit, or otherwise touch the operator's VCS (ADR 0008, revised), so a plain
+// folder, a git repo, a jujutsu or mercurial tree, and a subdirectory deep inside
+// a monorepo all register the same way — the selected folder becomes a space and
+// nothing on disk is turned into a repository. De-registering forgets the entry
+// and touches nothing in the folder — forget, not destroy (story 4).
 package registry
 
 import (
@@ -18,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -266,34 +268,27 @@ func sortByOrder(entries []Entry) {
 	})
 }
 
-// Register makes path a space. It cleans the path to an absolute form, requires
-// it to be an existing directory, and — if it is not already a git repository —
-// runs `git init` there, reporting that it did so (never silent). A new space
-// appends: it takes max(order)+1, because the stored order belongs to the
-// operator and registering a repo is not a rearrangement. Registering an
-// already-registered path just refreshes its recency and leaves it where it sits.
-// The bool result is whether a `git init` was run.
-func (r *Registry) Register(path string) (Entry, bool, error) {
+// Register makes path a space. It cleans the path to an absolute form and
+// requires it to be an existing directory; it runs no version-control command
+// and never turns the folder into a repository (ADR 0008, revised), so a folder
+// deep inside a monorepo registers as itself rather than sprouting a nested
+// repo. A new space appends: it takes max(order)+1, because the stored order
+// belongs to the operator and registering a folder is not a rearrangement.
+// Registering an already-registered path just refreshes its recency and leaves
+// it where it sits.
+func (r *Registry) Register(path string) (Entry, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return Entry{}, false, fmt.Errorf("registry: resolving %q: %w", path, err)
+		return Entry{}, fmt.Errorf("registry: resolving %q: %w", path, err)
 	}
 	abs = filepath.Clean(abs)
 
 	info, err := os.Stat(abs)
 	if err != nil {
-		return Entry{}, false, fmt.Errorf("registry: %q is not a folder I can register: %w", path, err)
+		return Entry{}, fmt.Errorf("registry: %q is not a folder I can register: %w", path, err)
 	}
 	if !info.IsDir() {
-		return Entry{}, false, fmt.Errorf("registry: %q is a file, not a folder", path)
-	}
-
-	gitInited := false
-	if !isGitRepo(abs) {
-		if err := gitInit(abs); err != nil {
-			return Entry{}, false, err
-		}
-		gitInited = true
+		return Entry{}, fmt.Errorf("registry: %q is a file, not a folder", path)
 	}
 
 	id := spaceID(abs)
@@ -308,9 +303,9 @@ func (r *Registry) Register(path string) (Entry, bool, error) {
 	err = r.saveLocked()
 	r.mu.Unlock()
 	if err != nil {
-		return Entry{}, false, err
+		return Entry{}, err
 	}
-	return e, gitInited, nil
+	return e, nil
 }
 
 // Deregister forgets a space: it removes the registry entry and its local order
@@ -536,18 +531,3 @@ func spaceID(absPath string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-func isGitRepo(dir string) bool {
-	// A .git entry (directory for a normal clone, a file for a linked worktree)
-	// marks the repository root; chartr registers repository roots.
-	_, err := os.Stat(filepath.Join(dir, ".git"))
-	return err == nil
-}
-
-func gitInit(dir string) error {
-	cmd := exec.Command("git", "init")
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("registry: git init in %s failed: %w\n%s", dir, err, out)
-	}
-	return nil
-}

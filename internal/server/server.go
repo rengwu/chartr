@@ -234,7 +234,7 @@ func New(opts Options) (*Server, error) {
 	// the composition reads the sources and the map fresh off disk each time.
 	s.mux.HandleFunc("GET /api/spaces/{id}/maps/{slug}/tickets/{num}/payload", s.handlePayloadPreview)
 	// Spawn a session (ticket 09): the tracer bullet. From a frontier ticket, the
-	// chartr writes the claim commit, composes and archives the payload, settles the
+	// chartr writes the claim, composes and archives the payload, settles the
 	// chosen agent, and launches the agent's own TUI with the opener typed in — or
 	// hard-blocks the one spawn when the chosen agent is unregistered or absent. A
 	// plain HTTP action so a refusal (missing agent, a ticket off the frontier)
