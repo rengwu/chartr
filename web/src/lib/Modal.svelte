@@ -12,6 +12,7 @@
     title,
     onClose,
     wide = false,
+    form = false,
     onOpenAutoFocus,
     children,
   }: {
@@ -21,6 +22,9 @@
     // A wider card with a scrollable body, for content-heavy modals like the
     // payload preview; the default stays the compact form the forms use.
     wide?: boolean
+    // A middle width for label/input forms (register source, register agent) —
+    // roomier than the compact default but without the payload preview's girth.
+    form?: boolean
     // Opt out of the primitive's opening focus to put the caret somewhere of the
     // caller's choosing — a modal built around one field wants that field, not
     // the dialog shell.
@@ -35,7 +39,10 @@
 
 <Dialog.Root {open} {onOpenChange}>
   <Dialog.Content
-    class={cn('flex max-h-[85vh] flex-col overflow-hidden', wide ? 'sm:max-w-2xl' : 'sm:max-w-sm')}
+    class={cn(
+      'flex max-h-[85vh] flex-col overflow-hidden',
+      wide ? 'sm:max-w-2xl' : form ? 'sm:max-w-md' : 'sm:max-w-sm',
+    )}
     {onOpenAutoFocus}
   >
     <Dialog.Header>

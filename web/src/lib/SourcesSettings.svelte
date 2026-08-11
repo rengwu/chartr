@@ -3,6 +3,7 @@
   import {
     ActionError,
     openSkill,
+    pickFolder,
     refreshSource,
     registerSource,
     removeSource,
@@ -23,7 +24,9 @@
   import { flip } from "svelte/animate";
   import {
     ArrowsClockwise,
+    CircleNotch,
     DotsSixVertical,
+    FolderOpen,
     LinkSimple,
     Plus,
     Trash,
@@ -46,6 +49,7 @@
     sources,
     roles,
     gitAvailable,
+    nativePicker = false,
   }: {
     // In resolution order, exactly as the server holds it — never sorted here.
     sources: Source[];
@@ -53,9 +57,14 @@
     // Whether `git` is on PATH. A git registration is refused at the gate when it
     // is not, so the form says so up front rather than after a failed clone.
     gitAvailable: boolean;
+    // Whether this machine has an OS folder chooser (App.svelte's own flag for
+    // the "Add a space" picker) — reused here so a dir source's path is chosen
+    // the same way rather than only ever typed.
+    nativePicker?: boolean;
   } = $props();
 
   let busy = $state<string | null>(null);
+  let picking = $state(false);
   // The row awaiting a second click before it is removed. Registering is cheap to
   // undo, removing a git source is not — the checkout stays on disk but the URL
   // and pin do not, so it asks twice.
@@ -211,6 +220,23 @@
     });
   }
 
+  // Raises the operator's own OS folder chooser (the same one "Add a space"
+  // uses) rather than making them type or paste the path by hand.
+  async function pickPath() {
+    if (picking || !draft) return;
+    picking = true;
+    try {
+      const picked = await pickFolder(
+        "Choose a folder to register as a skill source",
+      );
+      if (!picked.cancelled && picked.path && draft) draft.path = picked.path;
+    } catch (e) {
+      toast.error(e instanceof ActionError ? e.message : (e as Error).message);
+    } finally {
+      picking = false;
+    }
+  }
+
   function submit(e: Event) {
     e.preventDefault();
     if (!draft) return;
@@ -255,7 +281,7 @@
   </p>
 
   {#if draft}
-    <Modal open wide title="Register a source" onClose={() => (draft = null)}>
+    <Modal open form title="Register a source" onClose={() => (draft = null)}>
       <form class="flex flex-col gap-2.5" onsubmit={submit}>
         <div class="flex items-center gap-1.5">
           <span
@@ -304,6 +330,23 @@
               oninput={(e: Event) =>
                 (draft!.path = (e.currentTarget as HTMLInputElement).value)}
             />
+            {#if nativePicker}
+              <Button
+                type="button"
+                variant="outline"
+                class="shrink-0"
+                disabled={picking}
+                onclick={pickPath}
+              >
+                {#if picking}
+                  <CircleNotch class="animate-spin" data-icon="inline-start" />
+                  Choosing…
+                {:else}
+                  <FolderOpen data-icon="inline-start" />
+                  Select folder
+                {/if}
+              </Button>
+            {/if}
           </div>
           <p class="pl-[3.875rem] text-[0.7rem] text-muted-foreground">
             Your folder, edited by you — chartr only reads it. Absolute, or
@@ -357,12 +400,10 @@
         {/if}
 
         <div class="flex items-center justify-end gap-1.5">
-          <Button type="submit" size="xs" disabled={busy !== null}>
+          <Button type="submit" disabled={busy !== null}>
             {busy === "register" ? "Registering…" : "Register"}
           </Button>
-          <Button variant="ghost" size="xs" onclick={() => (draft = null)}>
-            Cancel
-          </Button>
+          <Button variant="ghost" onclick={() => (draft = null)}>Cancel</Button>
         </div>
       </form>
     </Modal>

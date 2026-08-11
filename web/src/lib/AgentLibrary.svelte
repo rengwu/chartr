@@ -179,7 +179,7 @@
   {#if draft}
     <Modal
       open
-      wide
+      form
       title={draft.original ? "Edit agent" : "Register new agent"}
       onClose={closeDraft}
     >
@@ -261,13 +261,10 @@
         </div>
 
         <div class="flex items-center justify-end gap-1.5">
-          <Button
-            variant="default"
-            size="xs"
-            disabled={busy !== null}
-            onclick={save}>Save</Button
+          <Button variant="default" disabled={busy !== null} onclick={save}
+            >Save</Button
           >
-          <Button variant="ghost" size="xs" onclick={closeDraft}>Cancel</Button>
+          <Button variant="ghost" onclick={closeDraft}>Cancel</Button>
         </div>
       </div>
     </Modal>

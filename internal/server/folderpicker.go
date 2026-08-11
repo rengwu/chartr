@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -29,6 +30,12 @@ import (
 // the operator may go hunting through a deep tree — but finite, so a dialog
 // abandoned behind a window cannot hold the picker lock forever.
 const pickTimeout = 10 * time.Minute
+
+// defaultPickPrompt is what the chooser says when the caller names nothing
+// more specific — "Add a space" is still the picker's original and most common
+// caller. Any other caller (the sources form registering a dir source) sends
+// its own prompt so the dialog reads as what it is actually for.
+const defaultPickPrompt = "Choose a project folder to add as a space"
 
 // errPickCancelled is the operator dismissing the chooser. It is an outcome,
 // not a failure: the handler answers it as "no folder chosen" rather than an
@@ -59,7 +66,7 @@ type pickerCommand struct {
 // macOS uses osascript, which is always present. Windows is deliberately
 // unhandled: the shipping targets are macOS and Linux, and a Windows operator
 // gets the typed-path form rather than a half-tested chooser.
-func nativePicker(startDir string) (pickerCommand, bool) {
+func nativePicker(startDir, prompt string) (pickerCommand, bool) {
 	switch runtime.GOOS {
 	case "darwin":
 		// `choose folder` returns an HFS-style alias; `POSIX path of` converts it to
@@ -67,7 +74,8 @@ func nativePicker(startDir string) (pickerCommand, bool) {
 		// chooser where the operator most likely wants to be rather than wherever
 		// the app happened to leave it.
 		script := fmt.Sprintf(
-			`POSIX path of (choose folder with prompt "Choose a project folder to add as a space" default location (POSIX file %s))`,
+			`POSIX path of (choose folder with prompt %s default location (POSIX file %s))`,
+			appleScriptString(prompt),
 			appleScriptString(startDir),
 		)
 		return pickerCommand{name: "osascript", args: []string{"-e", script}}, true
@@ -76,14 +84,14 @@ func nativePicker(startDir string) (pickerCommand, bool) {
 			return pickerCommand{name: path, args: []string{
 				"--file-selection",
 				"--directory",
-				"--title=Add a space",
+				"--title=" + prompt,
 				"--filename=" + ensureTrailingSep(startDir),
 			}}, true
 		}
 		if path, err := exec.LookPath("kdialog"); err == nil {
 			return pickerCommand{name: path, args: []string{
 				"--getexistingdirectory", startDir,
-				"--title", "Add a space",
+				"--title", prompt,
 			}}, true
 		}
 	}
@@ -121,8 +129,8 @@ func pickStartDir() string {
 // pickFolder raises the native chooser and returns the absolute folder the
 // operator named. It returns errPickCancelled when they dismiss it, and
 // errNoPicker when this machine has no chooser at all.
-func pickFolder(ctx context.Context) (string, error) {
-	cmd, ok := nativePicker(pickStartDir())
+func pickFolder(ctx context.Context, prompt string) (string, error) {
+	cmd, ok := nativePicker(pickStartDir(), prompt)
 	if !ok {
 		return "", errNoPicker
 	}
@@ -170,7 +178,21 @@ func (s *Server) handlePickFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.pickLock.Unlock()
 
-	path, err := pickFolder(r.Context())
+	// The caller may name what the dialog says it is choosing for — "Add a
+	// space" and "register a skill source" want different words on the same
+	// chooser. An absent or empty body keeps the original wording.
+	var body struct {
+		Prompt string `json:"prompt"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	prompt := body.Prompt
+	if prompt == "" {
+		prompt = defaultPickPrompt
+	}
+
+	path, err := pickFolder(r.Context(), prompt)
 	switch {
 	case errors.Is(err, errPickCancelled):
 		// Dismissing the chooser is an ordinary outcome, so it is a 200 the client

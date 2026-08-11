@@ -27,6 +27,7 @@
     sources,
     roles,
     gitAvailable = false,
+    nativePicker = false,
     notifyPrefs,
     onClose,
   }: {
@@ -45,6 +46,9 @@
     roles: RoleBinding[]
     // Whether a git source can be registered on this machine at all.
     gitAvailable?: boolean
+    // Whether this machine has an OS folder chooser — threaded down to the
+    // sources form so a dir source's path can be picked, not only typed.
+    nativePicker?: boolean
     // The resolved notify.toml values are read-only here, on the same terms as
     // terminal customization: show what is in force and open the owning file.
     notifyPrefs?: NotifyPrefs
@@ -132,7 +136,7 @@
              The section is load-bearing: it explains an orphaned checkout, it
              is the only recovery for a deleted role binding, and it is what
              makes the silent first-run migration discoverable at all. -->
-        <SourcesSettings {sources} {roles} {gitAvailable} />
+        <SourcesSettings {sources} {roles} {gitAvailable} {nativePicker} />
 
         <!-- Per-machine cosmetics: what terminal.toml has in force, and the file
              itself. -->
