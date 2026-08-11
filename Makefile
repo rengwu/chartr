@@ -216,6 +216,8 @@ bundle:
 	minos=$$(otool -l "$$app/Contents/MacOS/chartr" 2>/dev/null \
 		| awk '/minos/ { print $$2; exit }'); \
 	[ -n "$$minos" ] || minos=$(MACAPP_MACOS); \
+	year=$$(printf '%s' '$(WEBVIEW_DATE)' | sed -n 's/^\([0-9]\{4\}\).*/\1/p'); \
+	[ -n "$$year" ] || year=$$(date +%Y); \
 	printf '%s\n' \
 		'<?xml version="1.0" encoding="UTF-8"?>' \
 		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
@@ -230,6 +232,7 @@ bundle:
 		'	<key>CFBundleIconFile</key><string>chartr</string>' \
 		"	<key>CFBundleShortVersionString</key><string>$$short</string>" \
 		'	<key>CFBundleVersion</key><string>$(WEBVIEW_VERSION)</string>' \
+		"	<key>NSHumanReadableCopyright</key><string>Copyright © $$year John Goh Rengwu. All rights reserved.</string>" \
 		"	<key>LSMinimumSystemVersion</key><string>$$minos</string>" \
 		'	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>' \
 		'	<key>NSHighResolutionCapable</key><true/>' \
