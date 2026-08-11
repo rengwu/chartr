@@ -361,7 +361,7 @@
             {busy === "register" ? "Registering…" : "Register"}
           </Button>
           <Button variant="ghost" size="xs" onclick={() => (draft = null)}>
-            cancel
+            Cancel
           </Button>
         </div>
       </form>
@@ -517,18 +517,13 @@
                   <div class="flex items-center justify-end gap-1.5">
                     <Button
                       variant="destructive"
-                      size="xs"
                       disabled={busy !== null}
                       onclick={() => run(s.name, () => removeSource(s.name))}
                     >
-                      remove
+                      Remove
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onclick={() => (confirming = null)}
-                    >
-                      cancel
+                    <Button variant="ghost" onclick={() => (confirming = null)}>
+                      Cancel
                     </Button>
                   </div>
                 </div>

@@ -167,10 +167,7 @@
   <div class="flex items-baseline justify-between gap-2">
     <h2 class="text-xs font-semibold">Agents</h2>
     {#if !draft}
-      <Button
-        variant="outline"
-        onclick={() => (draft = blank())}
-      >
+      <Button variant="outline" onclick={() => (draft = blank())}>
         <Plus /> New Agent
       </Button>
     {/if}
@@ -268,9 +265,9 @@
             variant="default"
             size="xs"
             disabled={busy !== null}
-            onclick={save}>save</Button
+            onclick={save}>Save</Button
           >
-          <Button variant="ghost" size="xs" onclick={closeDraft}>cancel</Button>
+          <Button variant="ghost" size="xs" onclick={closeDraft}>Cancel</Button>
         </div>
       </div>
     </Modal>
@@ -320,34 +317,30 @@
               </Table.Cell>
             </Table.Row>
             {#if confirmingDelete === a.name}
-              <Table.Row class="bg-muted/50 hover:bg-muted/50">
-                <Table.Cell colspan={3} class="whitespace-normal">
-                  <div
-                    class="flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <p class="text-[0.7rem]">
-                      Delete {a.name}?
-                    </p>
-                    <div class="flex shrink-0 items-center gap-1.5">
-                      <Button
-                        variant="destructive"
-                        size="xs"
-                        disabled={busy !== null}
-                        onclick={() => remove(a.name)}
-                      >
-                        delete
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onclick={() => (confirmingDelete = null)}
-                      >
-                        cancel
-                      </Button>
-                    </div>
+              <Modal
+                open
+                title="Delete agent"
+                onClose={() => (confirmingDelete = null)}
+              >
+                <div class="flex flex-col gap-3">
+                  <p class="text-xs">Delete {a.name}?</p>
+                  <div class="flex items-center justify-end gap-1.5">
+                    <Button
+                      variant="destructive"
+                      disabled={busy !== null}
+                      onclick={() => remove(a.name)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onclick={() => (confirmingDelete = null)}
+                    >
+                      Cancel
+                    </Button>
                   </div>
-                </Table.Cell>
-              </Table.Row>
+                </div>
+              </Modal>
             {/if}
           {/each}
         </Table.Body>
