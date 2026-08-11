@@ -191,13 +191,28 @@
   // beside it.
   const mapOpen = $derived(mapShown && !mapless)
 
-  // A stable identity for the current terminal prefs: the terminal island keys its
+  // A stable identity for the current terminal prefs: the retained pool keys its
   // remount on this string, so editing `terminal.toml` (a new snapshot with
-  // different prefs) tears the island down and mounts it afresh with the new
+  // different prefs) tears its islands down and mounts them afresh with the new
   // options resolved at the seam. The whole prefs object goes in — preset, font,
   // and every colour slot — so any field the file changes forces the remount
   // without this list having to track the growing slot set.
   const terminalPrefsKey = $derived(JSON.stringify(terminalPrefs ?? {}))
+
+  // A terminal becomes part of this space's retained pool on first visit. Keeping
+  // the record lazy avoids opening sockets/renderers for sessions the operator has
+  // never looked at; switching spaces clears it, which bounds the pool naturally
+  // to the one space on stage. Preference changes need no special state here: the
+  // existing key below remounts every retained island as one simple operation.
+  let retainedSpaceId = $state<string | undefined>(undefined)
+  let retainedTerminals = $state<Record<string, true>>({})
+  $effect(() => {
+    if (space.id !== retainedSpaceId) {
+      retainedSpaceId = space.id
+      retainedTerminals = {}
+    }
+    if (activeTerm) retainedTerminals[activeTerm.id] = true
+  })
 
   // A selection belongs to one map: when the open map *changes*, drop it (and any
   // open material) so the island never carries a ticket number from a different
@@ -587,13 +602,26 @@
       style={mapOpen && dock ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px` : ''}
     >
       {#if activeTerm}
-        <!-- Remount the island on a terminal switch *or* a prefs change: the
-             terminal customization is fed in at mount (tokens.ts resolve seam), so
-             editing `terminal.toml` re-applies by tearing down and re-mounting,
-             and the terminal socket replays scrollback on re-attach — nothing is
-             lost (spec, Island reactivity — remount on change). -->
-        {#key `${activeTerm.id} ${terminalPrefsKey}`}
-          <Terminal term={activeTerm} prefs={terminalPrefs} />
+        <!-- Retain every visited terminal in this space and swap only visibility:
+             its xterm buffer, viewport, selection, find state, and socket survive a
+             session switch. The one prefs key remains deliberately broad and
+             simple — any resolved terminal.toml change remounts the whole retained
+             pool so all islands read the new mount-time options. -->
+        {#key terminalPrefsKey}
+          {#each space.terminals ?? [] as term (term.id)}
+            {#if retainedTerminals[term.id]}
+              {@const isActive = term.id === activeTerm.id}
+              <div
+                class="absolute inset-0"
+                class:invisible={!isActive}
+                class:pointer-events-none={!isActive}
+                aria-hidden={isActive ? undefined : 'true'}
+                inert={!isActive}
+              >
+                <Terminal {term} prefs={terminalPrefs} active={isActive} />
+              </div>
+            {/if}
+          {/each}
         {/key}
       {:else}
         <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">

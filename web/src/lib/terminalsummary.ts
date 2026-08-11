@@ -1,5 +1,5 @@
 import type { TerminalPrefs } from './model'
-import { buildTerminalOptions, resolveRenderer } from './tokens'
+import { buildTerminalOptions, DEFAULT_TERMINAL_SCROLLBACK, resolveRenderer } from './tokens'
 
 // The read half of the Settings surface's Terminal section (ticket 08): the
 // operator's *effective* terminal settings, grouped for display. It is a pure
@@ -31,10 +31,10 @@ export interface TerminalSettingGroup {
   rows: TerminalSettingRow[]
 }
 
-// xterm's own documented defaults for the options the resolve deliberately leaves
-// alone when a pref is unset (`setOpt` never writes `undefined`). They are stated
-// here only so an unset row can show the value actually in force; the resolve
-// itself still passes nothing, so xterm remains the authority.
+// Defaults in force for options the operator leaves unset. Most are xterm's own
+// documented defaults (`setOpt` never writes `undefined`); scrollback is chartr's
+// deliberate agent-friendly default at the resolve seam. They live here only so
+// an unset row can show the value the terminal actually mounts with.
 const XTERM_DEFAULTS = {
   fontWeight: 'normal',
   fontWeightBold: 'bold',
@@ -43,7 +43,7 @@ const XTERM_DEFAULTS = {
   cursorStyle: 'block',
   cursorInactiveStyle: 'outline',
   cursorWidth: '1 px',
-  scrollback: '1000 lines',
+  scrollback: `${DEFAULT_TERMINAL_SCROLLBACK} lines`,
   scrollSensitivity: '1',
   fastScrollModifier: 'alt',
   fastScrollSensitivity: '5',

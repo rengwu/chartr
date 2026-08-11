@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildTerminalOptions,
+  DEFAULT_TERMINAL_SCROLLBACK,
   readColor,
   readToken,
   readTokens,
@@ -211,15 +212,15 @@ describe('buildTerminalOptions', () => {
     expect(options.minimumContrastRatio).toBe(4.5)
   })
 
-  it('leaves an unset pass-through option off the options object', () => {
-    // An unset pref never overwrites xterm's own default with undefined — the key is
-    // simply absent, so xterm keeps its built-in value.
+  it('leaves unset pass-through options alone and applies chartr scrollback', () => {
+    // Most unset prefs stay absent so xterm keeps its built-in value. Scrollback is
+    // the deliberate exception: chartr supplies an agent-friendly default.
     seedTokens()
     const { options } = buildTerminalOptions({})
     expect('fontWeight' in options).toBe(false)
     expect('cursorStyle' in options).toBe(false)
     expect('cursorBlink' in options).toBe(false)
-    expect('scrollback' in options).toBe(false)
+    expect(options.scrollback).toBe(DEFAULT_TERMINAL_SCROLLBACK)
     expect('minimumContrastRatio' in options).toBe(false)
   })
 

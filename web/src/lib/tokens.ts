@@ -76,6 +76,12 @@ export function readTokens<K extends string>(
 const DEFAULT_FONT_STACK =
   "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
+// Agent sessions produce substantially more history than an ordinary shell. Keep
+// enough client-side lines that reading above a live run does not immediately hit
+// xterm's eviction boundary, while staying conservative when several terminal
+// islands are retained in one space. An explicit terminal.toml value still wins.
+export const DEFAULT_TERMINAL_SCROLLBACK = 10_000
+
 // The curated set of fonts the app actually ships (self-hosted, no CDN — CLAUDE.md),
 // keyed by the lower-case name an operator writes in `font.family`. A bundled name
 // resolves to a clean stack that is guaranteed to render offline; a family that is
@@ -430,10 +436,10 @@ export function buildTerminalOptions(
     theme,
   }
 
-  // Every remaining pref maps 1:1 onto an xterm option, and is set only when the
-  // file actually carried it — an unset value leaves xterm's own default in place,
-  // so a partial file still behaves like today. The server has already validated
-  // each value (enum, range, sign), so the resolve is a straight pass-through.
+  // Every remaining pref maps 1:1 onto an xterm option. Most are set only when the
+  // file carried them; scrollback alone has a chartr default because agent history
+  // outgrows xterm's shell-oriented one. The server has already validated each
+  // value (enum, range, sign), so explicit values are straight pass-throughs.
   setOpt(options, 'fontWeight', resolveWeight(p.fontWeight))
   setOpt(options, 'fontWeightBold', resolveWeight(p.fontWeightBold))
   setOpt(options, 'lineHeight', positive(p.lineHeight))
@@ -448,7 +454,7 @@ export function buildTerminalOptions(
   )
   setOpt(options, 'cursorWidth', positive(p.cursorWidth))
 
-  setOpt(options, 'scrollback', positive(p.scrollback))
+  setOpt(options, 'scrollback', positive(p.scrollback) ?? DEFAULT_TERMINAL_SCROLLBACK)
   setOpt(options, 'scrollSensitivity', positive(p.scrollSensitivity))
   setOpt(options, 'fastScrollModifier', enumOpt(p.fastScrollModifier, ['alt', 'ctrl', 'shift', 'none']))
   setOpt(options, 'fastScrollSensitivity', positive(p.fastScrollSensitivity))
@@ -596,8 +602,8 @@ function setOpt<K extends keyof ITerminalOptions>(
 }
 
 // The numeric guards mirror the server's validation so the resolve is defensive on
-// its own — an unset (zero / undefined) value returns undefined and the option is
-// left at xterm's default. `positive` wants > 0 (a zero scrollback or duration means
+// its own — an unset (zero / undefined) value returns undefined and lets the caller
+// choose its default. `positive` wants > 0 (a zero scrollback or duration means
 // "the default"), and `inRange` treats the low bound as the unset value.
 function positive(n: number | undefined): number | undefined {
   return typeof n === 'number' && n > 0 ? n : undefined
