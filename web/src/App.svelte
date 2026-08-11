@@ -29,6 +29,7 @@
   import { Button } from "./lib/components/ui/button";
   import { Input } from "./lib/components/ui/input";
   import { Toaster, toast } from "./lib/components/ui/sonner";
+  import { TooltipProvider } from "./lib/components/ui/tooltip";
   import { spaceHaltTarget } from "./lib/attention";
   import { acknowledgesFinishedRun } from "./lib/unseen";
   import { isEditingTarget } from "./lib/keys";
@@ -593,6 +594,7 @@
 
 <svelte:window onkeydown={onGlobalKey} />
 
+<TooltipProvider>
 <div class="flex h-full min-h-0 flex-col">
   <div
     class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]"
@@ -967,3 +969,4 @@
        source and agent form refusals — surfaces through it now. -->
   <Toaster />
 </div>
+</TooltipProvider>
