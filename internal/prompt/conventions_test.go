@@ -129,8 +129,9 @@ func TestComposedPayloadPointsAtTheRelativeConventionsPath(t *testing.T) {
 	}
 }
 
-// The document states the rules chartr's own code keeps. These are the two the
-// parser enforces, so a drift between the text and the code shows up here.
+// The document states the rules chartr's own code keeps. Pin the reader-facing
+// syntax too: vague mentions let the contract drift to a link or edge form the
+// parser cannot read.
 func TestTheConventionsStateTheRulesTheParserKeeps(t *testing.T) {
 	text := prompt.Conventions()
 	for _, want := range []string{
@@ -139,6 +140,9 @@ func TestTheConventionsStateTheRulesTheParserKeeps(t *testing.T) {
 		"## Done when",
 		"## Ruled out",
 		"frontier",
+		"](./tickets/02-ticket-slug.md)",
+		"<clears-with: 04>",
+		"`out_of_scope` or missing blocker does not clear an edge",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("conventions do not mention %q", want)
