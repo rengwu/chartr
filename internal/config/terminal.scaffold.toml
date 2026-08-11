@@ -37,7 +37,7 @@ size = 13                      # cell font size in px. Must be > 0.
 
 [scrolling]
 sensitivity = 3                # wheel-tick scale. Must be > 0.
-# scrollback           = 1000  # lines of history kept. 0 is unset. Must be >= 0.
+# scrollback          = 10000  # lines of history kept. 0 is unset. Must be >= 0.
 # fastScrollModifier   = "alt" # fast-scroll key: "alt", "ctrl", "shift", "none".
 # fastScrollSensitivity = 5    # fast-scroll wheel-tick scale. Must be > 0.
 # smoothScrollDuration = 0     # smooth-scroll animation in ms; 0 is no smoothing.

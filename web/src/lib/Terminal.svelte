@@ -27,9 +27,13 @@
   // options at the token seam (tokens.ts), never read inside the renderer, and the
   // island fully remounts when it changes: a keyed `{#key}` wrapper in the chrome
   // tears this component down and mounts a fresh one, so each mount reads the
-  // current prefs once and the terminal socket replays scrollback on re-attach —
-  // nothing is lost (spec, Island reactivity — remount on change).
-  let { term, prefs }: { term: Terminal; prefs?: TerminalPrefs } = $props()
+  // current prefs once and the terminal socket performs its bounded, best-effort
+  // scrollback replay on re-attach (spec, Island reactivity — remount on change).
+  let {
+    term,
+    prefs,
+    active = true,
+  }: { term: Terminal; prefs?: TerminalPrefs; active?: boolean } = $props()
 
   // The island is two elements, and the split is load-bearing rather than
   // decorative: `host` carries the operator's padding (and, with it, the theme's
@@ -47,9 +51,10 @@
   // widget below in `.terminal-island` is chrome. These are the seam between them:
   // the widget calls the handlers, they drive the addon, and the addon's result event
   // flows back into the count/index the widget reads — the widget never touches the
-  // renderer (ADR 0010). All of it is transient UI, not config: the island fully
-  // remounts on any prefs/term change, so a fresh mount always starts closed.
+  // renderer (ADR 0010). It belongs to the retained island rather than config, so
+  // it survives a session switch and resets when prefs remount or the tab closes.
   let xtermRef: Xterm | undefined
+  let fitRef: FitAddon | undefined
   let searchAddon: SearchAddon | undefined
   let searchDecorations: NonNullable<ISearchOptions['decorations']> | undefined
   let findOpen = $state(false)
@@ -57,6 +62,35 @@
   let findCase = $state(false)
   let findCount = $state(0)
   let findIndex = $state(-1)
+
+  // Retained terminals keep parsing their live PTY stream while another session
+  // is in front, but only the active island may accept input or own focus. On
+  // activation its hidden box already has the pane's real dimensions; refit on the
+  // next frame before focusing so a window/map resize that happened while it was
+  // hidden reaches the PTY exactly once, at the moment the operator returns.
+  $effect(() => {
+    const xterm = xtermRef
+    const fit = fitRef
+    const isActive = active
+    if (!xterm) return
+
+    xterm.options.disableStdin = !isActive
+    if (!isActive) {
+      xterm.blur()
+      return
+    }
+
+    const frame = requestAnimationFrame(() => {
+      if (!active || xtermRef !== xterm) return
+      try {
+        fit?.fit()
+      } catch {
+        // The island may have been removed between scheduling and this frame.
+      }
+      if (term.alive) xterm.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  })
 
   // A findNext with `incremental` grows the current selection while the operator is
   // still extending the same term; a plain findNext/findPrevious steps to the next
@@ -126,6 +160,9 @@
 
     const xterm = new Xterm({
       ...options,
+      // A retained background terminal still consumes output, but cannot consume
+      // keystrokes. The reactive activation effect keeps this option in sync.
+      disableStdin: !active,
       // The blink pref (default on) is gated by liveness: a dead shell never
       // blinks, so a frozen session reads as frozen regardless of the setting.
       cursorBlink: (options.cursorBlink ?? true) && term.alive,
@@ -137,6 +174,7 @@
     })
     xtermRef = xterm
     const fit = new FitAddon()
+    fitRef = fit
     xterm.loadAddon(fit)
 
     // Shift+Enter writes a literal newline instead of submitting (story 14). What a
@@ -282,6 +320,10 @@
     // Refit the PTY whenever the pane changes size, so the shell reflows to the
     // column rather than the geometry it happened to mount at.
     const ro = new ResizeObserver(() => {
+      // Hidden retained terminals are deliberately left at their last PTY size.
+      // Fitting all of them on every window drag would make every background TUI
+      // repaint; activation performs the one fit that terminal actually needs.
+      if (!active) return
       try {
         fit.fit()
       } catch {
@@ -291,7 +333,7 @@
     })
     ro.observe(grid)
 
-    if (term.alive) xterm.focus()
+    if (active && term.alive) xterm.focus()
 
     return () => {
       ro.disconnect()
@@ -300,6 +342,8 @@
       selectionSub?.dispose()
       ws.close()
       xterm.dispose()
+      fitRef = undefined
+      xtermRef = undefined
     }
   })
 </script>

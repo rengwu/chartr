@@ -43,7 +43,7 @@ describe('terminalSettingsSummary', () => {
     expect(find(undefined, 'Rendering', 'renderer')).toMatchObject({ value: 'GPU (WebGL)' })
     expect(find(undefined, 'Cursor', 'style')).toMatchObject({ value: 'block', set: false })
     expect(find(undefined, 'Scrolling', 'scrollback')).toMatchObject({
-      value: '1000 lines',
+      value: '10000 lines',
       set: false,
     })
   })
