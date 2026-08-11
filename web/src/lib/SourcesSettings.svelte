@@ -475,7 +475,7 @@
                     variant="ghost"
                     size="icon-xs"
                     aria-label="Refresh {s.name}"
-                    title="Fetch the tip of this ref — discards local edits inside chartr's checkout"
+                    title="Refetch the skill repository. Discards local changes, if any."
                     disabled={busy !== null}
                     onclick={() =>
                       run(
@@ -503,31 +503,36 @@
             </div>
 
             <!-- Removing a git source is not cheap to undo — the checkout stays
-                 on disk but the URL and pin do not — so it asks once, on its own
-                 full-width row, the way the agent library confirms a delete. -->
+                 on disk but the URL and pin do not — so it asks once, in a
+                 modal, rather than risking a stray click on a full-width row
+                 among draggable siblings. -->
             {#if confirming === s.name}
-              <div
-                class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/50 px-2.5 py-1.5"
+              <Modal
+                open
+                title="Remove source"
+                onClose={() => (confirming = null)}
               >
-                <p class="text-[0.7rem]">Remove {s.name} from the list?</p>
-                <div class="flex shrink-0 items-center gap-1.5">
-                  <Button
-                    variant="destructive"
-                    size="xs"
-                    disabled={busy !== null}
-                    onclick={() => run(s.name, () => removeSource(s.name))}
-                  >
-                    remove
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onclick={() => (confirming = null)}
-                  >
-                    cancel
-                  </Button>
+                <div class="flex flex-col gap-3">
+                  <p class="text-xs">Remove {s.name} from the list?</p>
+                  <div class="flex items-center justify-end gap-1.5">
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      disabled={busy !== null}
+                      onclick={() => run(s.name, () => removeSource(s.name))}
+                    >
+                      remove
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onclick={() => (confirming = null)}
+                    >
+                      cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              </Modal>
             {/if}
           </div>
         {/each}
