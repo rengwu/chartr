@@ -63,8 +63,13 @@ export function registerSpace(path: string): Promise<RegisterResult> {
 
 // pickFolder raises the operator's own OS folder chooser and resolves to the
 // folder they named, or `cancelled` when they dismiss it. It registers nothing —
-// the caller posts the returned path through registerSpace — so registration and
-// every refusal keep the one response shape they already have.
+// the caller posts the returned path through registerSpace (or registerSource)
+// — so registration and every refusal keep the one response shape they already
+// have.
+//
+// `prompt` is what the dialog says it is choosing for — "Add a space" and
+// "register a skill source" want different words on the same chooser. Omit it
+// to get the server's own default ("Add a space" wording).
 //
 // The request stays open for as long as the dialog does, which is exactly the
 // point: the chooser is modal to the operator, not to the page.
@@ -73,8 +78,8 @@ export interface PickResult {
   cancelled: boolean
 }
 
-export function pickFolder(): Promise<PickResult> {
-  return send('POST', '/api/spaces/pick') as Promise<PickResult>
+export function pickFolder(prompt?: string): Promise<PickResult> {
+  return send('POST', '/api/spaces/pick', prompt ? { prompt } : undefined) as Promise<PickResult>
 }
 
 export function deregisterSpace(id: string): Promise<void> {

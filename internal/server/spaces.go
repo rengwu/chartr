@@ -334,7 +334,9 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	// the registry, so it is resolved here on the same lookup the picker itself
 	// does rather than cached — it is a $PATH check, and the answer must not go
 	// stale if the operator installs zenity mid-run.
-	_, nativePicker := nativePicker(pickStartDir())
+	// The prompt only matters once the chooser is actually raised; the
+	// availability check builds the same command either way, so any string does.
+	_, nativePicker := nativePicker(pickStartDir(), defaultPickPrompt)
 
 	return model.Model{
 		Spaces: spaces,

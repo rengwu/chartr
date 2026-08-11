@@ -818,6 +818,7 @@
             sources={control.model?.sources ?? []}
             roles={control.model?.roles ?? []}
             gitAvailable={control.model?.gitAvailable ?? false}
+            {nativePicker}
             notifyPrefs={control.model?.notify}
             onClose={leaveSettings}
           />
