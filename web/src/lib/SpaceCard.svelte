@@ -8,7 +8,6 @@
   import {
     X,
     XCircle,
-    AsteriskSimple,
     CircleNotch,
     Play,
     Plus,
@@ -17,6 +16,8 @@
     Warning,
     PauseCircle,
     PencilSimple,
+    Skull,
+    Spinner,
   } from "phosphor-svelte";
 
   // The three choices a dead session offers. The card names the choice; the
@@ -95,7 +96,7 @@
      the plate itself, so the sidebar's hit test and reorder are unchanged
      whichever way it renders. -->
 {#snippet cardPlate()}
-<!-- One space, a faintly filled plate on the sidebar surface (its own
+  <!-- One space, a faintly filled plate on the sidebar surface (its own
      token family — not the bg-card content surface). The fill, not a
      hairline, is what separates one card from the next: the sidebar
      carries a card per space and a row per session, and a border on
@@ -111,34 +112,34 @@
      emphasis token; the chrome is monochrome. Because the whole card is a click target,
      it is `select-none` throughout. Dragging a selection across a thing
      you click is noise. The path stays the card's tooltip. -->
-<div
-  role="button"
-  tabindex="0"
-  aria-pressed={selected}
-  aria-label="Select {space.name}"
-  title={space.path}
-  data-space-id={space.id}
-  class={[
-    "relative flex flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
-    // The whole card is both the drag item (svelte-dnd-action, in the sidebar)
-    // and the click target that selects the space — a click that never moves.
-    "cursor-pointer",
-    selected
-      ? "border-primary/60 bg-sidebar-accent/50"
-      : "border-transparent bg-sidebar-accent/25 hover:bg-sidebar-accent/40",
-  ]}
-  onclick={onselect}
-  onkeydown={(e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      // Keep the drop zone's own keyboard-drag (Space to lift) from also firing
-      // when the card itself is focused: here, Enter/Space selects the space.
-      e.stopPropagation();
-      onselect();
-    }
-  }}
->
-  <!-- Identity: the space's name, with the open-shell and forget actions
+  <div
+    role="button"
+    tabindex="0"
+    aria-pressed={selected}
+    aria-label="Select {space.name}"
+    title={space.path}
+    data-space-id={space.id}
+    class={[
+      "relative flex flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
+      // The whole card is both the drag item (svelte-dnd-action, in the sidebar)
+      // and the click target that selects the space — a click that never moves.
+      "cursor-pointer",
+      selected
+        ? "border-primary/60 bg-sidebar-accent/50"
+        : "border-transparent bg-sidebar-accent/25 hover:bg-sidebar-accent/40",
+    ]}
+    onclick={onselect}
+    onkeydown={(e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        // Keep the drop zone's own keyboard-drag (Space to lift) from also firing
+        // when the card itself is focused: here, Enter/Space selects the space.
+        e.stopPropagation();
+        onselect();
+      }
+    }}
+  >
+    <!-- Identity: the space's name, with the open-shell and forget actions
        pinned top-right, beside the title rather than on a row of their own
        — the `+` is the one action a card exists to offer, so it rides where
        the eye already lands. Ambient cross-space attention (ticket 14, story
@@ -147,74 +148,74 @@
        session cards below already carry in detail. Neither ever re-sorts the
        card; muscle memory over this list holds — and now the operator's
        own arrangement is the only thing that sets it. -->
-  <div class="flex items-start gap-1">
-    <span
-      class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
-    >
-      {#if attention === "halt"}
-        <!-- The flag is also the jump: one click selects the space
+    <div class="flex items-start gap-1">
+      <span
+        class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
+      >
+        {#if attention === "halt"}
+          <!-- The flag is also the jump: one click selects the space
              and deep-links its halted ticket. Inside a card that is
              itself role="button", so the handler stops propagation
              the way the forget action does. -->
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
-          aria-label="a session halted — go to the halted ticket"
-          title="A session halted, needs a decision — go to it"
-          onclick={(e) => {
-            e.stopPropagation();
-            onjumphalt();
-          }}
-          onkeydown={(e) => {
-            // The card handles Enter/Space itself and preventDefaults
-            // it; let the button's own activation win instead.
-            if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-          }}
-        >
-          <Warning />
-        </Button>
-      {/if}
-      {#if liveness === "working"}
-        <CircleNotch
-          class="size-3 shrink-0 animate-spin text-primary"
-          aria-label="a session is working"
-        />
-      {:else if liveness === "blocked"}
-        <PauseCircle
-          class="size-3 shrink-0 text-primary"
-          aria-label="a session is blocked"
-        />
-      {/if}
-      <span class="truncate">{space.name}</span>
-    </span>
-    <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
+            aria-label="a session halted — go to the halted ticket"
+            title="A session halted, needs a decision — go to it"
+            onclick={(e) => {
+              e.stopPropagation();
+              onjumphalt();
+            }}
+            onkeydown={(e) => {
+              // The card handles Enter/Space itself and preventDefaults
+              // it; let the button's own activation win instead.
+              if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+            }}
+          >
+            <Warning />
+          </Button>
+        {/if}
+        {#if liveness === "working"}
+          <CircleNotch
+            class="size-3 shrink-0 animate-spin text-primary"
+            aria-label="a session is working"
+          />
+        {:else if liveness === "blocked"}
+          <PauseCircle
+            class="size-3 shrink-0 text-primary"
+            aria-label="a session is blocked"
+          />
+        {/if}
+        <span class="truncate">{space.name}</span>
+      </span>
+      <!-- Scratch cannot be removed — it is rebuilt from nothing on every run — so
          it carries no open-shell control. Removing a space lives on the
          right-click menu now (rename/close), not a button on the card. The `+`
          is the body of the same split control the space pane carries: it opens a
          plain shell, and its caret lists the registered agents to launch a free
          session on — icon-only here, where the card header has no room for a
          label. -->
-    {#if !space.scratch}
-      <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
-        <NewShellButton
-          {agents}
-          variant="ghost"
-          size="icon-xs"
-          disabled={opening}
-          ariaLabel="Open a shell in {space.name}"
-          title="Open a plain shell in {space.name} — nothing is injected."
-          onshell={onopenshell}
-          {onfree}
-          {onregister}
-        >
-          <Plus />
-        </NewShellButton>
-      </span>
-    {/if}
-  </div>
+      {#if !space.scratch}
+        <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
+          <NewShellButton
+            {agents}
+            variant="ghost"
+            size="icon-xs"
+            disabled={opening}
+            ariaLabel="Open a shell in {space.name}"
+            title="Open a plain shell in {space.name} — nothing is injected."
+            onshell={onopenshell}
+            {onfree}
+            {onregister}
+          >
+            <Plus />
+          </NewShellButton>
+        </span>
+      {/if}
+    </div>
 
-  <!-- Sessions: the space's open shells, one line each — status, name,
+    <!-- Sessions: the space's open shells, one line each — status, name,
        close — on no border at all. A session is a *row in a list*, not a
        card within a card, and the second line it used to carry (agent ·
        status) said in words what the status glyph says in a shape; it is
@@ -223,12 +224,12 @@
        that session, the one click that does both, and the fill — the
        same emphasis the card takes, one step stronger — is what says
        which row is showing. -->
-  {#if space.terminals.length}
-    <ul class="flex flex-col gap-0.5">
-      {#each space.terminals as t (t.id)}
-        {@const isActive = selected && activeTermId === t.id}
-        {@const unseen = showsFinishedDot(t, isActive)}
-        <!-- The finished-while-you-were-away signal (session-notifications) is
+    {#if space.terminals.length}
+      <ul class="flex flex-col gap-0.5">
+        {#each space.terminals as t (t.id)}
+          {@const isActive = selected && activeTermId === t.id}
+          {@const unseen = showsFinishedDot(t, isActive)}
+          <!-- The finished-while-you-were-away signal (session-notifications) is
              carried by the *status glyph* rather than a second dot beside it:
              the mark fills and takes `--primary`. One line has room for one
              mark, and the two were always about the same tab — the status says
@@ -236,43 +237,108 @@
              stopped. Focusing the tab clears it — there is no dismiss — which
              is why it never shows on the tab in view, and the label carries
              both halves so a screen reader hears the difference too. -->
-        {@const weight = unseen ? "fill" : "regular"}
-        {@const away = unseen ? " — finished while you were away" : ""}
-        {@const tone = unseen
-          ? "text-primary"
-          : t.status === "blocked"
+          {@const weight = unseen ? "fill" : "regular"}
+          {@const away = unseen ? " — finished while you were away" : ""}
+          {@const tone = unseen
             ? "text-primary"
-            : t.status === "exited"
-              ? "text-destructive"
-              : "text-muted-foreground"}
-        <li>
-          <div
-            role="button"
-            tabindex="0"
-            aria-pressed={isActive}
-            data-session-row
-            title={t.session
-              ? `${t.session.agent} · ${t.status}`
-              : `${t.proc} · ${t.status}`}
-            class={[
-              "flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
-              isActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "hover:bg-sidebar-accent/60",
-            ]}
-            onclick={(e) => {
-              e.stopPropagation();
-              onselectsession(t);
-            }}
-            onkeydown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
+            : t.status === "blocked"
+              ? "text-primary"
+              : t.status === "exited"
+                ? "text-destructive"
+                : "text-muted-foreground"}
+          <li>
+            <div
+              role="button"
+              tabindex="0"
+              aria-pressed={isActive}
+              data-session-row
+              title={t.session
+                ? `${t.session.agent} · ${t.status}`
+                : `${t.proc} · ${t.status}`}
+              class={[
+                "flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "hover:bg-sidebar-accent/60",
+              ]}
+              onclick={(e) => {
                 e.stopPropagation();
                 onselectsession(t);
-              }
-            }}
-          >
-            <!-- Status indicator. A tab with no known agent in front: a muted
+              }}
+              onkeydown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onselectsession(t);
+                }
+              }}
+            >
+              {#if t.session}
+                <!-- A session: its identity is the ticket it is bound to
+                   (role · #num) — told apart from an ad-hoc shell, which
+                   shows its foreground process. -->
+                <span class="min-w-0 flex-1 truncate text-xs font-medium"
+                  >{t.session.role} #{pad(t.session.ticketNum)}</span
+                >
+              {:else}
+                <span class="min-w-0 flex-1 truncate font-mono text-xs"
+                  >{t.proc}</span
+                >
+              {/if}
+
+              {#if t.session && !t.alive}
+                <!-- The death halt: a dead session is pinned to its ticket and
+                   offers exactly three choices — resume it (crash recovery),
+                   respawn a fresh session, or release the claim. chartr takes
+                   none itself. Three buttons is a lot for one line, so they
+                   ride *inside* it rather than on a second row that would
+                   exist for the one state in five: the identity beside them
+                   truncates instead, and it is the only row in the list where
+                   the name gives up width. -->
+                <span class="-my-0.5 flex shrink-0 items-center">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    class="hover:text-primary"
+                    aria-label="Resume this session"
+                    title="Attempt to resume session."
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onhalt(t, "resume");
+                    }}
+                  >
+                    <Play />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    class="hover:text-primary"
+                    aria-label="Respawn a fresh session"
+                    title="Respawn a fresh session on the same ticket."
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onhalt(t, "respawn");
+                    }}
+                  >
+                    <ArrowClockwise />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    class="hover:text-destructive"
+                    aria-label="Release the claim"
+                    title="Release the ticket claim back to the frontier."
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onhalt(t, "release");
+                    }}
+                  >
+                    <ArrowUUpLeft />
+                  </Button>
+                </span>
+              {/if}
+
+              <!-- Status indicator. A tab with no known agent in front: a muted
                  static pulse mark while a plain process holds the foreground
                  (a dev server, a build — running, not an agent working), an
                  error mark once it exits — idle shows nothing, the same quiet
@@ -285,120 +351,55 @@
                  grey mark. Working is the one state that cannot also be
                  unseen — nothing has finished yet — so it alone keeps a fixed
                  weight. -->
-            {#if t.status === "working"}
-              <CircleNotch
-                class="size-3.5 shrink-0 animate-spin text-primary"
-                aria-label="working"
-              />
-            {:else if t.status === "running"}
-              <AsteriskSimple
-                class="size-3.5 shrink-0 animate-spin [animation-duration:15s] text-muted-foreground"
-                aria-label="running"
-              />
-            {:else if t.status === "blocked"}
-              <PauseCircle
-                class="size-3.5 shrink-0 {tone}"
-                {weight}
-                aria-label="blocked{away}"
-              />
-            {:else if t.status === "dead"}
-              <XCircle
-                class="size-3.5 shrink-0 {tone}"
-                {weight}
-                aria-label="dead{away}"
-              />
-            {:else if t.status === "exited"}
-              <XCircle
-                class="size-3.5 shrink-0 {tone}"
-                {weight}
-                aria-label="exited{away}"
-              />
-            {/if}
+              {#if t.status === "working"}
+                <Spinner
+                  class="size-3.5 shrink-0 animate-spin [animation-duration:2s] text-primary"
+                  aria-label="working"
+                />
+              {:else if t.status === "running"}
+                <CircleNotch
+                  class="size-3.5 shrink-0 animate-spin [animation-duration:5s] text-muted-foreground"
+                  aria-label="running"
+                />
+              {:else if t.status === "blocked"}
+                <PauseCircle
+                  class="size-3.5 shrink-0 {tone}"
+                  {weight}
+                  aria-label="blocked{away}"
+                />
+              {:else if t.status === "dead"}
+                <Skull
+                  class="size-3.5 shrink-0 {tone}"
+                  {weight}
+                  aria-label="dead{away}"
+                />
+              {:else if t.status === "exited"}
+                <XCircle
+                  class="size-3.5 shrink-0 {tone}"
+                  {weight}
+                  aria-label="exited{away}"
+                />
+              {/if}
 
-            {#if t.session}
-              <!-- A session: its identity is the ticket it is bound to
-                   (role · #num) — told apart from an ad-hoc shell, which
-                   shows its foreground process. -->
-              <span class="min-w-0 flex-1 truncate text-xs font-medium"
-                >{t.session.role} #{pad(t.session.ticketNum)}</span
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class="-my-0.5 -mr-0.5 shrink-0 hover:text-destructive"
+                aria-label="End {t.proc}"
+                title={t.session ? "End this session" : "End this shell"}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  onendshell(t);
+                }}
               >
-            {:else}
-              <span class="min-w-0 flex-1 truncate font-mono text-xs"
-                >{t.proc}</span
-              >
-            {/if}
-
-            {#if t.session && !t.alive}
-              <!-- The death halt: a dead session is pinned to its ticket and
-                   offers exactly three choices — resume it (crash recovery),
-                   respawn a fresh session, or release the claim. chartr takes
-                   none itself. Three buttons is a lot for one line, so they
-                   ride *inside* it rather than on a second row that would
-                   exist for the one state in five: the identity beside them
-                   truncates instead, and it is the only row in the list where
-                   the name gives up width. -->
-              <span class="-my-0.5 flex shrink-0 items-center">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  class="hover:text-primary"
-                  aria-label="Resume this session"
-                  title="Resume — same-ticket crash recovery"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    onhalt(t, "resume");
-                  }}
-                >
-                  <Play />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  class="hover:text-primary"
-                  aria-label="Respawn a fresh session"
-                  title="Respawn — a fresh session on the same ticket"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    onhalt(t, "respawn");
-                  }}
-                >
-                  <ArrowClockwise />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  class="hover:text-destructive"
-                  aria-label="Release the claim"
-                  title="Release — clear the claim back to the frontier"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    onhalt(t, "release");
-                  }}
-                >
-                  <ArrowUUpLeft />
-                </Button>
-              </span>
-            {/if}
-
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              class="-my-0.5 -mr-0.5 shrink-0 hover:text-destructive"
-              aria-label="End {t.proc}"
-              title={t.session ? "End this session" : "End this shell"}
-              onclick={(e) => {
-                e.stopPropagation();
-                onendshell(t);
-              }}
-            >
-              <X />
-            </Button>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</div>
+                <X />
+              </Button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
 {/snippet}
 
 {#if space.scratch}
