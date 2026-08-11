@@ -200,10 +200,10 @@ func (s *Server) handleRespawn(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRelease clears a dead session's claim back to the frontier: the ticket
-// derives open and takeable again, recorded as its own pathspec-limited commit
-// (never an amend, never a push — ADR 0008). The pinned dead tab is then dropped.
-// This is the "abandon the attempt" answer — it retries nothing and touches no
-// prose the session wrote; the ticket file is the agent's record alone.
+// derives open and takeable again, recorded as a line in the space's audit log
+// (no VCS command of chartr's own — ADR 0008, revised). The pinned dead tab is
+// then dropped. This is the "abandon the attempt" answer — it retries nothing and
+// touches no prose the session wrote; the ticket file is the agent's record alone.
 func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request) {
 	e, info, ok := s.haltTarget(w, r)
 	if !ok {
@@ -221,7 +221,7 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	if err := writeReleaseCommit(e.Path, ticketPath, info.ID); err != nil {
+	if err := writeRelease(e.Path, ticketPath, info.ID); err != nil {
 		httpError(w, http.StatusInternalServerError, "releasing the claim: "+err.Error())
 		return
 	}

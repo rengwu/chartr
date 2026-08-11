@@ -22,8 +22,8 @@ import (
 // cover both binaries.
 //
 // The picker only *names* a folder. Registration stays the existing POST
-// /api/spaces action, so the announced `git init` and every refusal keep the
-// one response shape the register flow already has (story 2).
+// /api/spaces action, so a success and every refusal keep the one response shape
+// the register flow already has.
 
 // pickTimeout bounds how long a raised chooser may stay open. It is generous —
 // the operator may go hunting through a deep tree — but finite, so a dialog
@@ -110,8 +110,7 @@ func ensureTrailingSep(dir string) string {
 // pickStartDir is where a chooser opens. The operator's home is the honest
 // default: it is where projects live, and it is the one directory guaranteed to
 // exist. The chooser is free to navigate anywhere from there — a read-only
-// browse is strictly less power than the register action it feeds, which already
-// runs `git init` wherever it is pointed.
+// browse is strictly less power than the register action it feeds.
 func pickStartDir() string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		return home
@@ -159,7 +158,7 @@ func pickFolder(ctx context.Context) (string, error) {
 // handlePickFolder raises the operator's native folder chooser and answers with
 // the folder they named. It registers nothing: the client posts the returned
 // path to /api/spaces, so the register action stays the single place a space is
-// created and the announced `git init` keeps one response shape.
+// created and keeps one response shape.
 //
 // Only one chooser may be open at a time. A second request while one is up
 // answers 409 rather than stacking dialogs the operator would have to dismiss in

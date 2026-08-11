@@ -1,24 +1,25 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rengwu/chartr/internal/prompt"
 )
 
-// claim is everything a claim commit records: the session it claims for, the
-// agent driving it, the hash of the exact payload that session was told, and the
-// skills composed into it (with which layer won each).
+// claim is everything a claim's audit record carries: the session it claims for,
+// the agent driving it, the hash of the exact payload that session was told, and
+// the skills composed into it (with which layer won each).
 //
 // Execution is recorded as the *argv* rather than an agent-and-model pair: a
-// model is a flag like any other, and the flags are what actually ran. `Args:`
-// therefore says strictly more than a `Model:` trailer would — it carries the
+// model is a flag like any other, and the flags are what actually ran. `args`
+// therefore says strictly more than a `model` field would — it carries the
 // model where one was asked for, and the permission and sandbox flags beside it,
 // which is exactly what an audit trail is read for.
 type claim struct {
@@ -35,21 +36,20 @@ type claim struct {
 	Skills     []prompt.Skill
 }
 
-// writeClaimCommit is chartr's one lifecycle write at spawn (ADR 0008): it
-// stamps the ticket file with claimed_by/claimed_at so the ticket derives
-// `claimed`, then commits *only that file* with structured trailers. The commit is
-// pathspec-limited — `git commit --only -- <ticket>` builds it from HEAD plus the
-// one path, so whatever else sits staged in the operator's index (their own work,
-// a live session's edits) can never be swept into chartr's claim. It handles
-// a not-yet-tracked ticket (a freshly charted map) and an unborn HEAD (a first
-// commit); the caller has already settled the agent and composed the payload,
-// so this only records them.
+// writeClaim is chartr's one lifecycle write at spawn: it stamps the ticket file
+// with claimed_by/claimed_at so the ticket derives `claimed`, then records the
+// spawn's provenance in the space's audit log. It runs no version-control command
+// (ADR 0008, revised) — the ticket stamp is a plain working-tree edit and the
+// audit line is an append, so the operator bundles both into their own first
+// work commit whenever they commit, under whatever VCS they use (git, jujutsu,
+// mercurial) or none at all. It handles a respawn onto a ticket that still
+// carries a dead session's stale claim; stampClaim replaces it cleanly.
 //
-// It never rewrites history and never pushes (ADR 0008): the claim is a new
-// commit, full stop. The returned error surfaces to the operator — a repo with no
-// git identity, say — with nothing launched.
-func writeClaimCommit(repo, ticketPath, sessionID string, at string, c claim) error {
-	rel, err := filepath.Rel(repo, ticketPath)
+// The caller has already settled the agent and composed the payload, so this only
+// records them. The returned error surfaces to the operator with nothing launched
+// — a ticket on an unwritable volume, say.
+func writeClaim(space, ticketPath, sessionID string, at string, c claim) error {
+	rel, err := filepath.Rel(space, ticketPath)
 	if err != nil {
 		return fmt.Errorf("locating ticket under the space: %w", err)
 	}
@@ -63,27 +63,10 @@ func writeClaimCommit(repo, ticketPath, sessionID string, at string, c claim) er
 		return fmt.Errorf("stamping the claim onto the ticket: %w", err)
 	}
 
-	// Stage then partial-commit the one path. `git add` makes an untracked ticket
-	// known to git; `--only -- <path>` commits from HEAD plus that path alone,
-	// leaving the rest of the index untouched.
-	if out, err := git(repo, "add", "--", rel); err != nil {
-		return fmt.Errorf("staging the claim: %w\n%s", err, out)
-	}
-	if out, err := git(repo, "commit", "--only", "-m", claimMessage(rel, c), "--", rel); err != nil {
-		return fmt.Errorf("committing the claim: %w\n%s", err, out)
+	if err := appendAudit(space, claimEvent(rel, at, c)); err != nil {
+		return fmt.Errorf("recording the claim in the audit log: %w", err)
 	}
 	return nil
-}
-
-// git runs one git command in repo and returns its combined output. It shells out
-// (rather than reading .git directly, as the branch label does) because a commit
-// must honour the operator's git config — identity, hooks, signing — exactly as
-// their own commits do.
-func git(repo string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repo
-	out, err := cmd.CombinedOutput()
-	return strings.TrimSpace(string(out)), err
 }
 
 // stampClaim inserts claimed_by/claimed_at into the ticket's YAML frontmatter so
@@ -143,15 +126,15 @@ func stripClaim(src string) string {
 	return strings.Join(out, "\n")
 }
 
-// writeReleaseCommit is the death-halt's third choice: it releases a dead
-// session's claim back to the frontier (ticket 10). It strips claimed_by/claimed_at
-// from the ticket — so the ticket derives open and takeable again — and commits
-// *only that file*, the same pathspec-limited, never-amending, never-pushing
-// discipline the claim uses (ADR 0008). Recording the release as its own commit
-// keeps git the whole audit trail: the ticket's history reads claim → release, and
-// the stale claim is cleared by an operator act, never on its own.
-func writeReleaseCommit(repo, ticketPath, sessionID string) error {
-	rel, err := filepath.Rel(repo, ticketPath)
+// writeRelease is the death-halt's third choice: it releases a dead session's
+// claim back to the frontier (ticket 10). It strips claimed_by/claimed_at from
+// the ticket — so the ticket derives open and takeable again — and records the
+// release in the space's audit log. Like the claim, it runs no version-control
+// command (ADR 0008, revised): the ticket edit and the audit line ride into the
+// operator's own next commit. The stale claim is cleared by an operator act,
+// never on its own, and the audit log reads claim → release for the ticket.
+func writeRelease(space, ticketPath, sessionID string) error {
+	rel, err := filepath.Rel(space, ticketPath)
 	if err != nil {
 		return fmt.Errorf("locating ticket under the space: %w", err)
 	}
@@ -162,66 +145,99 @@ func writeReleaseCommit(repo, ticketPath, sessionID string) error {
 	if err := os.WriteFile(ticketPath, []byte(stripClaim(string(src))), 0o644); err != nil {
 		return fmt.Errorf("clearing the claim on the ticket: %w", err)
 	}
-	if out, err := git(repo, "add", "--", rel); err != nil {
-		return fmt.Errorf("staging the release: %w\n%s", err, out)
-	}
-	msg := fmt.Sprintf("Release %s back to the frontier\n\nSession: %s\nChartr-Write: true", rel, sessionID)
-	if out, err := git(repo, "commit", "--only", "-m", msg, "--", rel); err != nil {
-		return fmt.Errorf("committing the release: %w\n%s", err, out)
+	at := time.Now().UTC().Format(time.RFC3339)
+	if err := appendAudit(space, auditEvent{At: at, Event: "release", Ticket: rel, Session: sessionID}); err != nil {
+		return fmt.Errorf("recording the release in the audit log: %w", err)
 	}
 	return nil
 }
 
-// claimMessage renders the claim commit's message: a human subject naming the
-// ticket, then the trailer block ADR 0008 makes git the audit trail with —
-// session, agent, adapter, args, role, the payload content hash, and one `Skill:`
-// line per composed skill (`<name>=<layer>:<hash>`, the provenance re-keyed from
-// prompt parts to skills). The trailers are a contiguous `Key: value` block so
-// `git interpret-trailers` and `%(trailers)` parse them; a repeated key is legal
-// and reads as a list.
-func claimMessage(rel string, c claim) string {
-	var b strings.Builder
-	// The subject names what the operator chose. An agent is required to spawn, so
-	// a name is always present; the binary is the fallback for defence in depth,
-	// never a blank pair of brackets.
-	subject := c.Agent
-	if subject == "" {
-		subject = c.Adapter
-	}
-	fmt.Fprintf(&b, "Claim %s for %s (%s)\n\n", rel, c.Role, subject)
-	fmt.Fprintf(&b, "Session: %s\n", c.SessionID)
-	// A local name says which of the operator's agents was picked; the adapter and
-	// args say what that means on any machine, so all three travel.
-	if c.Agent != "" {
-		fmt.Fprintf(&b, "Agent: %s\n", c.Agent)
-	}
-	fmt.Fprintf(&b, "Adapter: %s\n", c.Adapter)
-	if len(c.Args) > 0 {
-		fmt.Fprintf(&b, "Args: %s\n", strings.Join(c.Args, " "))
-	}
-	fmt.Fprintf(&b, "Role: %s\n", c.Role)
-	fmt.Fprintf(&b, "Payload-SHA256: %s\n", c.PayloadSHA)
-	for _, sk := range c.Skills {
-		fmt.Fprintf(&b, "Skill: %s\n", skillTrailer(sk))
-	}
-	fmt.Fprintf(&b, "Chartr-Write: true")
-	return b.String()
+// auditEvent is one record in the space's audit log — the provenance a claim or
+// release used to carry in its own VCS commit, now written to `.plan/audit.jsonl`
+// (ADR 0008, revised). The log lives in the committed maps tree beside the tickets
+// it records, so it travels into the operator's own commits with no chartr-driven
+// VCS operation and under whatever VCS they use. One JSON object per line: a
+// claim carries the full spawn provenance, a release carries only the ticket and
+// the session whose stale claim was cleared.
+type auditEvent struct {
+	At      string `json:"at"`
+	Event   string `json:"event"` // "claim" or "release"
+	Ticket  string `json:"ticket"`
+	Session string `json:"session"`
+	// Claim-only provenance. Execution is the argv rather than an agent-and-model
+	// pair: the flags are what actually ran. Omitted on a release.
+	Role       string   `json:"role,omitempty"`
+	Agent      string   `json:"agent,omitempty"`
+	Adapter    string   `json:"adapter,omitempty"`
+	Args       []string `json:"args,omitempty"`
+	PayloadSHA string   `json:"payloadSHA,omitempty"`
+	Skills     []string `json:"skills,omitempty"`
 }
 
-// skillTrailer renders one composed skill's provenance for the claim commit.
+// claimEvent builds the audit record for a spawn — session, agent, adapter, args,
+// role, the payload content hash, and one entry per composed skill, the same
+// provenance the claim commit's trailers used to carry.
+func claimEvent(rel, at string, c claim) auditEvent {
+	skills := make([]string, 0, len(c.Skills))
+	for _, sk := range c.Skills {
+		skills = append(skills, skillProvenance(sk))
+	}
+	return auditEvent{
+		At:         at,
+		Event:      "claim",
+		Ticket:     rel,
+		Session:    c.SessionID,
+		Role:       c.Role,
+		Agent:      c.Agent,
+		Adapter:    c.Adapter,
+		Args:       c.Args,
+		PayloadSHA: c.PayloadSHA,
+		Skills:     skills,
+	}
+}
+
+// skillProvenance renders one composed skill's provenance for the audit log.
 //
 // A skill reads `<name>=<source>`, with `@<commit>` appended where that source
-// carries a pin — the commit is what makes the trailer *fetchable*: a teammate
-// reading the history can get the exact bytes the session was told, which the
-// retired content hash could only ever have told them differed. A `dir` source
-// has no commit, and the trailer honestly stops at the source's name; chartr's
-// own embedded core reads `core=chartr` for the same reason (ADR 0017).
-// `Payload-SHA256` on the same commit still fixes the exact bytes.
-func skillTrailer(sk prompt.Skill) string {
+// carries a pin — the commit is what makes the entry *fetchable*: a teammate
+// reading the log can get the exact bytes the session was told. A `dir` source
+// has no commit, and the entry honestly stops at the source's name; chartr's own
+// embedded core reads `core=chartr` for the same reason (ADR 0017). The record's
+// payloadSHA still fixes the exact bytes.
+func skillProvenance(sk prompt.Skill) string {
 	if sk.Commit == "" {
 		return fmt.Sprintf("%s=%s", sk.Name, sk.Source)
 	}
 	return fmt.Sprintf("%s=%s@%s", sk.Name, sk.Source, sk.Commit)
+}
+
+// auditLogRel is the space-relative path of the audit log: the committed maps
+// tree, beside the tickets whose claims and releases it records.
+var auditLogRel = filepath.Join(".plan", "audit.jsonl")
+
+// appendAudit appends one event as a JSON line to the space's audit log, creating
+// `.plan/` and the file if absent. The append is the whole write — no rewrite, no
+// truncation — so the log only ever grows and each spawn or release adds exactly
+// one line for the operator's next commit to pick up. O_APPEND makes concurrent
+// spawns' single-line writes safe without a lock.
+func appendAudit(space string, ev auditEvent) error {
+	line, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(space, auditLogRel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	return nil
 }
 
 var reTicketFile = regexp.MustCompile(`^(\d+)-(.+)\.md$`)

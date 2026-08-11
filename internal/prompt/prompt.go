@@ -72,7 +72,7 @@ type Part struct {
 }
 
 // Payload is the whole composed result for one ticket and role: parts with
-// provenance, the skills composed into it (the claim commit's provenance
+// provenance, the skills composed into it (the claim's provenance
 // trailers), warnings, and the single markdown document the parts render
 // to — exactly what a session is told.
 type Payload struct {

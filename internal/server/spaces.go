@@ -86,16 +86,15 @@ func (s *Server) handleSyncSkills(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRegister registers a folder as a space. Registration is a plain HTTP
-// action so its outcome — including an announced `git init` — surfaces in the
-// response (ADR 0010, story 2), and the new space also lands in the pushed
-// snapshot via rebuild.
+// action so its outcome surfaces in the response (ADR 0010), and the new space
+// also lands in the pushed snapshot via rebuild.
 //
 // It is also the third trigger for the standing `CHARTR.md` (chartr-md, ticket
 // 01, amended). A newly registered space would otherwise carry no document until
 // the next restart or sources change, which is exactly the window an operator
-// registers a repository and opens an agent in it. The reconcile runs *after*
-// `Register`, so the `git init` it may have just performed is already there for
-// the exclude to be written into.
+// registers a folder and opens an agent in it. The reconcile runs *after*
+// `Register`, so the newly registered folder is already known for the document to
+// be written into.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
@@ -109,7 +108,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, gitInited, err := s.reg.Register(body.Path)
+	entry, err := s.reg.Register(body.Path)
 	if err != nil {
 		// A bad path is the operator's to fix; surface it as the response.
 		httpError(w, http.StatusBadRequest, err.Error())
@@ -128,9 +127,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.reconcileChartrDoc()
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":        entry.ID,
-		"path":      entry.Path,
-		"gitInited": gitInited,
+		"id":   entry.ID,
+		"path": entry.Path,
 	})
 }
 
@@ -473,8 +471,6 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 		ID:        e.ID,
 		Name:      name,
 		Path:      e.Path,
-		Branch:    gitBranch(e.Path),
-		Dirty:     gitDirty(e.Path),
 		LastAgent: e.LastAgent,
 		Maps:      maps,
 		Terminals: terminals,

@@ -14,11 +14,11 @@ import (
 	"github.com/rengwu/chartr/internal/model"
 )
 
-// The registry at the process boundary: register with an announced git init,
-// forget-not-destroy removal, a rebuildable index, and the sidebar order — one
-// authority, the stored one, which nothing but an explicit reorder moves. Every
-// assertion is on what the design makes public — HTTP responses, control-socket
-// snapshots, the filesystem, and git — never on internals.
+// The registry at the process boundary: register a plain folder (no VCS command
+// of chartr's own), forget-not-destroy removal, a rebuildable index, and the
+// sidebar order — one authority, the stored one, which nothing but an explicit
+// reorder moves. Every assertion is on what the design makes public — HTTP
+// responses, control-socket snapshots, and the filesystem — never on internals.
 
 func ctx(t *testing.T) context.Context {
 	t.Helper()
@@ -28,9 +28,8 @@ func ctx(t *testing.T) context.Context {
 }
 
 type registerResp struct {
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	GitInited bool   `json:"gitInited"`
+	ID   string `json:"id"`
+	Path string `json:"path"`
 }
 
 func register(t *testing.T, h *chartrtest.Chartr, path string) registerResp {
@@ -57,10 +56,11 @@ func findSpace(t *testing.T, m model.Model, id string) model.Space {
 	return model.Space{}
 }
 
-// Registering a plain folder makes it a space and, because it was not yet a git
-// repository, initialises one — reported in the action's response, never silent
-// (story 2). An already-registered repo is not re-initialised.
-func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
+// Registering a plain folder makes it a space and runs no version-control command
+// of chartr's own: a folder that was not a git repository stays one exactly as it
+// was — no `.git` sprouts — so a subdirectory of a monorepo registers as itself
+// rather than becoming a nested repo (ADR 0008, revised).
+func TestRegisterPlainFolderStaysPlain(t *testing.T) {
 	h := chartrtest.Start(t)
 
 	plain := t.TempDir() // a folder, not a repo
@@ -69,11 +69,10 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 	}
 
 	resp := register(t, h, plain)
-	if !resp.GitInited {
-		t.Error("gitInited = false, want the announced git init for a non-repo folder")
-	}
-	if _, err := os.Stat(filepath.Join(plain, ".git")); err != nil {
-		t.Errorf("no .git after registering a non-repo folder: %v", err)
+
+	// chartr initialised nothing: the plain folder is still a plain folder.
+	if _, err := os.Stat(filepath.Join(plain, ".git")); !os.IsNotExist(err) {
+		t.Errorf("registering a plain folder created a .git — chartr must run no VCS command")
 	}
 
 	snap := h.Snapshot(ctx(t))
@@ -83,13 +82,6 @@ func TestRegisterInitialisesNonRepoAnnounced(t *testing.T) {
 	}
 	if s.Name != filepath.Base(plain) {
 		t.Errorf("space name = %q, want %q", s.Name, filepath.Base(plain))
-	}
-
-	// A second registration of an existing repo does not re-init.
-	repo := chartrtest.NewSpaceRepo(t)
-	resp2 := register(t, h, repo)
-	if resp2.GitInited {
-		t.Error("gitInited = true for an existing repo, want false")
 	}
 }
 
@@ -300,11 +292,11 @@ func TestReorderSetsTheSidebarAndSurvivesARestart(t *testing.T) {
 }
 
 // A reorder republishes the snapshot permuted rather than deriving a new one —
-// the sequence is the only thing it changes, and rebuilding costs a `git status`
-// and a `.plan/` scan per space, which the operator watches the sidebar wait for.
-// The risk that shortcut carries is a snapshot that keeps the order but loses
-// what hangs off each space, so this asserts the derived halves survive the move:
-// a space's discovered maps and its git branch arrive intact, in the new order.
+// the sequence is the only thing it changes, and rebuilding costs a `.plan/` scan
+// per space, which the operator watches the sidebar wait for. The risk that
+// shortcut carries is a snapshot that keeps the order but loses what hangs off
+// each space, so this asserts the derived halves survive the move: a space's
+// discovered maps arrive intact, in the new order.
 func TestReorderKeepsEachSpacesDerivedState(t *testing.T) {
 	h := chartrtest.Start(t)
 
@@ -320,9 +312,6 @@ func TestReorderKeepsEachSpacesDerivedState(t *testing.T) {
 	if len(before.Maps) != 1 {
 		t.Fatalf("maps before reorder = %d, want the one written", len(before.Maps))
 	}
-	if before.Branch == "" {
-		t.Fatal("branch before reorder is empty; the fixture is on main")
-	}
 
 	want := []string{b.ID, a.ID}
 	if code, body := h.Post("/api/spaces/reorder", map[string][]string{"ids": want}); code != 204 {
@@ -336,9 +325,6 @@ func TestReorderKeepsEachSpacesDerivedState(t *testing.T) {
 	after := findSpace(t, m, b.ID)
 	if len(after.Maps) != len(before.Maps) {
 		t.Errorf("maps after reorder = %d, want the %d it had", len(after.Maps), len(before.Maps))
-	}
-	if after.Branch != before.Branch {
-		t.Errorf("branch after reorder = %q, want the %q it had", after.Branch, before.Branch)
 	}
 	if after.Path != before.Path {
 		t.Errorf("path after reorder = %q, want %q", after.Path, before.Path)

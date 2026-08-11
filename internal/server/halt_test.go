@@ -53,11 +53,12 @@ func decodeResume(t *testing.T, body string) struct {
 // evidence the agent broadcasts about itself, asserted where that lives — the
 // engine table test and the process-boundary test in internal/terminal.
 
-// commitCount is the number of commits reachable from HEAD — one after a claim,
-// two once a release or a re-claim appends its own commit.
-func commitCount(t *testing.T, repo string) string {
+// auditCount is how many records the space's audit log holds — one after a claim,
+// two once a release or a re-claim appends its own record. Nothing is recorded
+// without an operator action.
+func auditCount(t *testing.T, repo string) int {
 	t.Helper()
-	return chartrtest.Git(t, repo, "rev-list", "--count", "HEAD")
+	return len(auditRecords(t, repo))
 }
 
 // ticketFileBody reads a ticket file's current bytes from the working tree.
@@ -94,7 +95,7 @@ func waitForDeadSession(t *testing.T, h *chartrtest.Chartr, spaceID string) mode
 
 // A session whose process exits is detected dead, stays pinned to its ticket with
 // its scrollback preserved, and chartr takes no action of its own: the claim
-// stands, no commit beyond it is written, and the dead session lingers untouched.
+// stands, nothing beyond it is recorded, and the dead session lingers untouched.
 func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -127,17 +128,17 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 		t.Errorf("dead session's scrollback did not survive; got %q", out)
 	}
 
-	// chartr took nothing on its own: the ticket still derives claimed, and
-	// only the claim commit exists — no auto-release, no auto-requeue.
+	// chartr took nothing on its own: the ticket still derives claimed, and only
+	// the claim record exists — no auto-release, no auto-requeue.
 	if st := findTicket(t, findMap(t, s, "widget"), 1).Status; st != "claimed" {
 		t.Errorf("ticket after a death = %q, want claimed (the stale claim stands)", st)
 	}
-	if n := commitCount(t, repo); n != "1" {
-		t.Errorf("commits after a death = %s, want 1 (just the claim; nothing autonomous)", n)
+	if n := auditCount(t, repo); n != 1 {
+		t.Errorf("audit records after a death = %d, want 1 (just the claim; nothing autonomous)", n)
 	}
 
 	// And it stays that way: a window later, still dead, still claimed, still one
-	// commit — no state change without an operator call.
+	// record — no state change without an operator call.
 	time.Sleep(400 * time.Millisecond)
 	s2 := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if tab2 := sessionTab(s2); tab2 == nil || tab2.Alive {
@@ -146,8 +147,8 @@ func TestDeadSessionHaltsPinnedWithScrollback(t *testing.T) {
 	if st := findTicket(t, findMap(t, s2, "widget"), 1).Status; st != "claimed" {
 		t.Errorf("ticket drifted without an operator action: %q", st)
 	}
-	if n := commitCount(t, repo); n != "1" {
-		t.Errorf("a commit appeared with no operator action: count now %s", n)
+	if n := auditCount(t, repo); n != 1 {
+		t.Errorf("a record appeared with no operator action: count now %d", n)
 	}
 }
 
@@ -179,15 +180,15 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 		t.Errorf("release left the dead tab pinned: %+v", tab.Session)
 	}
 
-	// The release is its own commit, touching exactly the ticket file, and it
-	// removed the claim.
-	if n := commitCount(t, repo); n != "2" {
-		t.Errorf("commits after release = %s, want 2 (claim + release)", n)
-	}
+	// The release appended its own audit record — claim then release for the one
+	// ticket — and it removed the claim from the ticket file.
 	rel := filepath.Join(chartrtest.MapDir("widget"), "tickets", "01-first.md")
-	files := chartrtest.Git(t, repo, "show", "--name-only", "--format=", "HEAD")
-	if got := nonEmptyLines(files); len(got) != 1 || got[0] != rel {
-		t.Errorf("release commit touched %v, want exactly [%s]", got, rel)
+	recs := auditRecords(t, repo)
+	if len(recs) != 2 || recs[0].Event != "claim" || recs[1].Event != "release" {
+		t.Fatalf("audit records after release = %+v, want claim then release", recs)
+	}
+	if recs[1].Ticket != rel {
+		t.Errorf("release record ticket = %q, want %s", recs[1].Ticket, rel)
 	}
 	if body := ticketFileBody(t, repo, "widget", "01-first.md"); strings.Contains(body, "claimed_by") {
 		t.Errorf("release left claimed_by on the ticket:\n%s", body)
@@ -195,8 +196,8 @@ func TestHaltReleaseReturnsTicketToFrontier(t *testing.T) {
 }
 
 // Respawn: a fresh session on the same ticket. A new claim supersedes the stale
-// one (re-stamped in place, its own commit), so the ticket stays claimed but by the
-// new session, and nothing is doubled.
+// one (re-stamped in place, its own audit record), so the ticket stays claimed but
+// by the new session, and nothing is doubled.
 func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
@@ -217,10 +218,11 @@ func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
 		t.Fatalf("respawn session id = %q, want a fresh id (was %q)", newSid, oldSid)
 	}
 
-	// Two commits: the original claim and the re-claim; the ticket now names the
-	// new session exactly once (re-stamped, not doubled), and still derives claimed.
-	if n := commitCount(t, repo); n != "2" {
-		t.Errorf("commits after respawn = %s, want 2 (claim + re-claim)", n)
+	// Two audit records: the original claim and the re-claim; the ticket now names
+	// the new session exactly once (re-stamped, not doubled), and still derives
+	// claimed.
+	if n := auditCount(t, repo); n != 2 {
+		t.Errorf("audit records after respawn = %d, want 2 (claim + re-claim)", n)
 	}
 	tbody := ticketFileBody(t, repo, "widget", "01-first.md")
 	if strings.Count(tbody, "claimed_by:") != 1 {
@@ -244,7 +246,7 @@ func TestHaltRespawnStartsFreshOnSameTicket(t *testing.T) {
 }
 
 // Resume: same-ticket crash recovery. The same session id relaunches on its own
-// ticket; the claim stands (no new commit), and the payload is still in place for
+// ticket; the claim stands (no new record), and the payload is still in place for
 // the agent to walk back into.
 func TestHaltResumeRelaunchesSameSession(t *testing.T) {
 	h := chartrtest.Start(t)
@@ -266,9 +268,9 @@ func TestHaltResumeRelaunchesSameSession(t *testing.T) {
 	}
 
 	// Crash recovery carries nothing across and writes nothing: the claim stands as
-	// the only commit, and the ticket still derives claimed by the same session.
-	if n := commitCount(t, repo); n != "1" {
-		t.Errorf("commits after resume = %s, want 1 (resume writes no claim)", n)
+	// the only record, and the ticket still derives claimed by the same session.
+	if n := auditCount(t, repo); n != 1 {
+		t.Errorf("audit records after resume = %d, want 1 (resume writes no claim)", n)
 	}
 	s := findSpace(t, h.Snapshot(ctx(t)), resp.ID)
 	if findTicket(t, findMap(t, s, "widget"), 1).Status != "claimed" {
@@ -313,40 +315,29 @@ func TestHaltRefusesLiveSession(t *testing.T) {
 // evidence the agent broadcasts about itself, and is asserted where that lives —
 // the engine table test and the process-boundary test in internal/terminal.
 
-// A dirtied working tree — debris a session or an ad-hoc shell left behind — is a
-// badge, never a spawn gate: the space reports dirty, and a spawn into it still
-// proceeds.
-func TestDirtyTreeBadgesButSpawnProceeds(t *testing.T) {
+// Uncommitted debris in the working tree — what a session or an ad-hoc shell
+// leaves behind — never gates a spawn: chartr inspects no version-control state,
+// so a spawn into a tree with loose changes just proceeds.
+func TestSpawnProceedsIntoADirtyTree(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
 	chartrtest.WriteTicket(t, repo, "widget", "01-first.md", ticket(1, "First", "[]", "task", ""))
-	// Commit the map and config so the tree is clean to start, then leave debris.
-	chartrtest.Git(t, repo, "add", "-A")
-	chartrtest.Git(t, repo, "commit", "-q", "-m", "seed")
 	chartrtest.StubAgent(t, "claude")
 
 	resp := register(t, h, repo)
-	if findSpace(t, h.Snapshot(ctx(t)), resp.ID).Dirty {
-		t.Fatalf("precondition: a freshly committed tree reads dirty")
-	}
 
 	// Debris left in the working tree — as a session or an ad-hoc shell would.
 	chartrtest.WriteFile(t, repo, "scratch.txt", "uncommitted debris\n")
-	if !findSpace(t, h.SnapshotUntil(ctx(t), func(m model.Model) bool {
-		return findSpace(t, m, resp.ID).Dirty
-	}), resp.ID).Dirty {
-		t.Fatalf("dirty tree not badged after leaving debris")
-	}
 
-	// The badge is not a gate: a spawn into the dirty tree still proceeds.
+	// The debris is not a gate: a spawn into the tree still proceeds.
 	registerAgent(t, h, "claude", map[string]any{"adapter": "claude"})
 	if code, body := h.SpawnWithAgent(resp.ID, "widget", 1, "implement", "claude"); code != 200 {
-		t.Fatalf("spawn into a dirty tree = %d (%s), want 200 — dirty is a badge, not a gate", code, body)
+		t.Fatalf("spawn into a tree with debris = %d (%s), want 200 — nothing gates on VCS state", code, body)
 	}
-	if findSpace(t, h.Snapshot(ctx(t)), resp.ID).Dirty != true {
-		t.Errorf("tree should still read dirty after the spawn (the debris remains)")
+	if st := findTicket(t, findMap(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), "widget"), 1).Status; st != "claimed" {
+		t.Errorf("ticket after spawn = %q, want claimed", st)
 	}
 }
 
@@ -392,12 +383,18 @@ func TestHaltRespawnReusesTheDeadSessionsAgent(t *testing.T) {
 		t.Errorf("respawn re-resolved the role's binding and launched claude:\n%s", b)
 	}
 
-	// The fresh claim records the same choice and the same mechanism as the first.
-	msg := chartrtest.Git(t, repo, "log", "-1", "--format=%B")
-	for _, w := range []string{"Agent: harness-yolo", "Adapter: some-harness", "Args: -m big --think"} {
-		if !strings.Contains(msg, w) {
-			t.Errorf("re-claim commit missing trailer %q:\n%s", w, msg)
-		}
+	// The fresh claim records the same choice and the same mechanism as the first:
+	// two audit records (claim then re-claim), the latter naming the same agent.
+	recs := auditRecords(t, repo)
+	if len(recs) != 2 {
+		t.Fatalf("audit records after respawn = %d, want 2 (claim + re-claim): %+v", len(recs), recs)
+	}
+	reclaim := recs[1]
+	if reclaim.Agent != "harness-yolo" || reclaim.Adapter != "some-harness" {
+		t.Errorf("re-claim agent/adapter = %q/%q, want harness-yolo/some-harness", reclaim.Agent, reclaim.Adapter)
+	}
+	if got := strings.Join(reclaim.Args, " "); got != "-m big --think" {
+		t.Errorf("re-claim args = %q, want %q", got, "-m big --think")
 	}
 }
 
@@ -423,7 +420,7 @@ func TestHaltRespawnRefusesWhenTheAgentIsGone(t *testing.T) {
 	}
 	oldSid := decodeSpawn(t, body).SessionID
 	waitForDeadSession(t, h, resp.ID)
-	before := commitCount(t, repo)
+	before := auditCount(t, repo)
 
 	if code, body := h.Delete("/api/config/agents/harness-yolo"); code != 200 {
 		t.Fatalf("deleting harness-yolo = %d, body %s", code, body)
@@ -438,8 +435,8 @@ func TestHaltRespawnRefusesWhenTheAgentIsGone(t *testing.T) {
 	}
 
 	// No re-claim, and the dead tab is still pinned to its ticket to retry from.
-	if after := commitCount(t, repo); after != before {
-		t.Errorf("a refused respawn wrote a commit: %s -> %s", before, after)
+	if after := auditCount(t, repo); after != before {
+		t.Errorf("a refused respawn wrote a record: %d -> %d", before, after)
 	}
 	tab := sessionTab(findSpace(t, h.Snapshot(ctx(t)), resp.ID))
 	if tab == nil || tab.ID != oldSid {
