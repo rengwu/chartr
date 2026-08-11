@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -283,3 +286,86 @@ func (s *Server) handleRefreshSource(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleOpenSkill is the role bindings row's link button: given a resolved
+// `Source/skill` ref, open what it points at. A dir source's skill is a folder
+// on the operator's own machine, revealed in Finder/Explorer/the file manager
+// exactly where it sits; a git source's skill lives in a checkout chartr owns
+// and resets on refresh, so there is nothing local worth revealing — this
+// hands back the repository's own URL instead and leaves opening it to the
+// client, the same way every other outbound link in the cockpit is opened.
+// The ref is resolved server-side through the same registry every spawn
+// resolves through, never a path the client names directly.
+func (s *Server) handleOpenSkill(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if s.srcs == nil {
+		httpError(w, http.StatusNotFound, "no sources registered")
+		return
+	}
+	sk, err := s.srcs.Resolve(body.Ref)
+	if err != nil {
+		httpError(w, sourceStatus(err), err.Error())
+		return
+	}
+	src, ok := s.srcs.Get(sk.Source)
+	if !ok {
+		httpError(w, http.StatusNotFound, fmt.Sprintf("no source named %q", sk.Source))
+		return
+	}
+
+	if src.Kind == sources.KindGit {
+		writeJSON(w, http.StatusOK, map[string]any{"kind": "remote", "url": src.URL})
+		return
+	}
+	revealSkillFile(w, filepath.Join(sk.Dir, skillFileName))
+}
+
+// skillFileName is SKILL.md — duplicated from the sources package's own
+// unexported constant of the same name rather than exported there solely for
+// this: the walk that finds a skill and the settings row that opens one are
+// different concerns, and this is the one place outside that package that
+// needs the filename.
+const skillFileName = "SKILL.md"
+
+// revealSkillFile shows a dir source's skill file selected in the operator's
+// file manager — Finder on macOS, Explorer on Windows. Neither has a portable
+// equivalent on Linux (which file manager owns "reveal" varies by desktop), so
+// there it opens the containing folder instead of guessing at one.
+func revealSkillFile(w http.ResponseWriter, path string) {
+	if _, err := os.Stat(path); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind": "local", "path": path, "exists": false, "opened": "none",
+		})
+		return
+	}
+	opened, with := revealInFileManager(path)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"kind": "local", "path": path, "exists": true, "opened": opened, "with": with,
+	})
+}
+
+// revealInFileManager never blocks on the child, the same as openInEditor: a
+// file manager window is the operator's to close, and chartr has no business
+// waiting on it.
+func revealInFileManager(path string) (how, with string) {
+	switch runtime.GOOS {
+	case "darwin":
+		if err := start("open", "-R", path); err == nil {
+			return "reveal", "open -R"
+		}
+	case "windows":
+		if err := start("explorer", "/select,"+path); err == nil {
+			return "reveal", "explorer /select"
+		}
+	default:
+		if err := start("xdg-open", filepath.Dir(path)); err == nil {
+			return "reveal", "xdg-open"
+		}
+	}
+	return "none", ""
+}

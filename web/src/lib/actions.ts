@@ -241,6 +241,22 @@ export function setRoleBinding(role: string, ref: string): Promise<unknown> {
   return send('PUT', `/api/config/roles/${encodeURIComponent(role)}`, { ref })
 }
 
+// OpenSkillResult is what the role bindings row's link button gets back for a
+// resolved `Source/skill` ref: `local` for a dir source's skill (revealed in
+// Finder/Explorer at `path`) or `remote` for a git source's (the repository's
+// own `url`, left for the caller to open — the client's job, not the server's,
+// the same split every other outbound link in the cockpit takes).
+export type OpenSkillResult =
+  | { kind: 'local'; path: string; exists: boolean; opened: 'reveal' | 'none'; with?: string }
+  | { kind: 'remote'; url: string }
+
+// openSkill resolves a `Source/skill` ref server-side — the same registry a
+// spawn resolves through, never a path or URL the client already had — and
+// opens what it points at.
+export function openSkill(ref: string): Promise<OpenSkillResult> {
+  return send('POST', '/api/config/sources/open', { ref }) as Promise<OpenSkillResult>
+}
+
 // SpawnResult is the spawn action's own response — the session it started, the
 // resolved agent and args, and the payload hash the claim recorded. The
 // live session tab arrives separately over the control socket.

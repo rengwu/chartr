@@ -2,6 +2,7 @@
   import type { RoleBinding, Source } from "./model";
   import {
     ActionError,
+    openSkill,
     refreshSource,
     registerSource,
     removeSource,
@@ -9,6 +10,7 @@
     setRoleBinding,
     setSourceEnabled,
   } from "./actions";
+  import { openExternal } from "./external";
   import { Button } from "./components/ui/button";
   import { toast } from "./components/ui/sonner";
   import { Badge } from "./components/ui/badge";
@@ -22,6 +24,7 @@
   import {
     ArrowsClockwise,
     DotsSixVertical,
+    LinkSimple,
     Plus,
     Trash,
   } from "phosphor-svelte";
@@ -191,6 +194,23 @@
     void run(`role:${role}`, () => setRoleBinding(role, ref));
   }
 
+  // The Resolved column's link button: a dir source's skill is revealed in
+  // Finder/Explorer server-side, nothing further to do here; a git source's
+  // skill has no local file worth revealing (it lives in a checkout chartr
+  // resets on refresh), so the server hands back the repository's own URL and
+  // this is what actually opens it — the same outbound-link seam every other
+  // link in the cockpit goes through.
+  function openSkillLink(ref: string) {
+    void run(`open:${ref}`, async () => {
+      const r = await openSkill(ref);
+      if (r.kind === "remote") {
+        openExternal(r.url);
+      } else if (r.opened === "none") {
+        throw new Error(`Nothing to reveal it with — it lives at ${r.path}`);
+      }
+    });
+  }
+
   function submit(e: Event) {
     e.preventDefault();
     if (!draft) return;
@@ -214,8 +234,7 @@
     <div class="flex items-center gap-1">
       {#if !draft}
         <Button
-          variant="ghost"
-          size="xs"
+          variant="outline"
           onclick={() =>
             (draft = {
               name: "",
@@ -225,13 +244,14 @@
               ref: "",
             })}
         >
-          <Plus /> register a source
+          <Plus /> New Source
         </Button>
       {/if}
     </div>
   </div>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Registered local and remote skill sources.
+    Registered skill sources, exposed to agents via <code>CHARTR.md</code>.
+    Precedence matters for skill names that exists in more than one source.
   </p>
 
   {#if draft}
@@ -513,27 +533,19 @@
         {/each}
       </div>
     </div>
+  {:else}
+    <div
+      class="flex min-h-16 items-center justify-center rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-center text-xs text-muted-foreground"
+    >
+      No registered skill sources.
+    </div>
   {/if}
-
-  <!-- Where the file is named, the orphaning is named with it (ticket 01). -->
-  <p class="text-[0.7rem] leading-relaxed text-muted-foreground">
-    This list lives in <code class="font-mono">sources.toml</code> under your
-    config root, openable below. Git checkouts sit beside it under
-    <code class="font-mono">sources/</code>; if that file is lost they are
-    orphaned, and chartr does not collect them — deleting them is yours to do.
-  </p>
 </section>
 
 <section class="flex flex-col gap-2">
   <h2 class="text-xs font-semibold">Role bindings</h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Which skill each role is spawned with, resolved through the list above.
-    <strong class="font-medium text-foreground">No preference</strong> follows
-    source precedence — the first enabled source holding a skill the role
-    accepts wins. Pick a specific skill to override that and pin one source's,
-    even a lower one's, against the order. This writes
-    <code class="font-mono">user.toml</code>, the same file you can edit by
-    hand.
+    Which skill is used as the prompt when a role is spawned.
   </p>
   {#if roles.length}
     <div class="overflow-hidden rounded-md border border-border">
@@ -557,9 +569,23 @@
                    its right is only the choice. -->
               <Table.Cell class="truncate">
                 {#if b.resolved}
-                  <code class="font-mono text-[0.7rem] text-muted-foreground"
-                    >{b.resolved}</code
-                  >
+                  <div class="flex items-center gap-1">
+                    <code
+                      class="truncate font-mono text-[0.7rem] text-muted-foreground"
+                      >{b.resolved}</code
+                    >
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      class="shrink-0 text-muted-foreground hover:text-foreground"
+                      title="Reveal this skill on disk, or open its source repository"
+                      aria-label="Reveal the skill {b.resolved} used by the {b.role} role"
+                      disabled={busy !== null}
+                      onclick={() => openSkillLink(b.resolved)}
+                    >
+                      <LinkSimple />
+                    </Button>
+                  </div>
                 {:else}
                   <span class="text-[0.7rem] text-destructive"
                     >no enabled source holds this skill</span
