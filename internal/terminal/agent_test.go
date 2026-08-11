@@ -24,6 +24,7 @@ func TestAdHocShellRunningAnAgentReadsItsTitle(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stub agent is a POSIX shell script")
 	}
+	useTestShell(t)
 
 	// A stub `claude` on PATH: paint the working glyph, hold it, then paint the
 	// idle marker and block so the tab stays live — exactly the shape of a turn.
@@ -94,6 +95,7 @@ func TestAdHocShellAgentReadsBlockedFromScreen(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stub agent is a POSIX shell script")
 	}
+	useTestShell(t)
 
 	// A stub `claude`: paint the working glyph and hold (a turn), then switch the
 	// title to ✳ (idle — what a real permission prompt shows) while painting the Bash
@@ -170,6 +172,7 @@ func TestNonAgentCommandKeepsTheShellGrammar(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("foreground process groups are a unix affordance")
 	}
+	useTestShell(t)
 
 	m := NewManager(nil, nil)
 	term, err := m.Open("s1", t.TempDir())
