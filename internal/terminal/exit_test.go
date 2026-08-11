@@ -23,6 +23,8 @@ import (
 // So this asserts the primitive directly: a process that exits on its own makes
 // its terminal report dead, and the manager's onChange fires to publish it.
 func TestExitedProcessIsReaped(t *testing.T) {
+	useTestShell(t)
+
 	reaped := make(chan struct{}, 4)
 	m := NewManager(func() { reaped <- struct{}{} }, nil)
 	defer m.Shutdown()

@@ -15,6 +15,8 @@ import (
 // `working`), and the change is observable — which is the whole basis for the
 // sidebar's live status indicator.
 func TestSampleTracksForegroundCommand(t *testing.T) {
+	useTestShell(t)
+
 	m := NewManager(nil, nil) // nil onChange: no background sampler, we drive sample() by hand
 	term, err := m.Open("s1", t.TempDir())
 	if err != nil {
@@ -39,6 +41,15 @@ func TestSampleTracksForegroundCommand(t *testing.T) {
 	if got := m.ForSpace("s1")[0].Proc; got != "sleep" {
 		t.Errorf("running shell proc = %q, want %q", got, "sleep")
 	}
+}
+
+// useTestShell keeps process-boundary tests independent of the operator's shell
+// startup files. Those tests need a prompt and foreground process groups, not the
+// user's plugins; a startup hook can briefly foreground its own command and make
+// the test observe that command instead of the one it just submitted.
+func useTestShell(t *testing.T) {
+	t.Helper()
+	t.Setenv("SHELL", "/bin/sh")
 }
 
 // waitStatus samples until the terminal reaches want or the deadline passes,
