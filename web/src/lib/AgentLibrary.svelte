@@ -168,11 +168,10 @@
     <h2 class="text-xs font-semibold">Agents</h2>
     {#if !draft}
       <Button
-        variant="ghost"
-        size="xs"
+        variant="outline"
         onclick={() => (draft = blank())}
       >
-        <Plus /> register an agent
+        <Plus /> New Agent
       </Button>
     {/if}
   </div>
@@ -355,10 +354,11 @@
       </Table.Root>
     </div>
   {:else if !draft}
-    <p class="text-xs text-muted-foreground">
-      No agents registered yet. Register one to start spawning — every session,
-      and ideate, picks an agent from this library, and there is no default.
-    </p>
+    <div
+      class="flex min-h-16 items-center justify-center rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-center text-xs text-muted-foreground"
+    >
+      No registered agents.
+    </div>
   {/if}
 </section>
 

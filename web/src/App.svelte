@@ -818,7 +818,6 @@
             sources={control.model?.sources ?? []}
             roles={control.model?.roles ?? []}
             gitAvailable={control.model?.gitAvailable ?? false}
-            terminalPrefs={control.model?.terminal}
             notifyPrefs={control.model?.notify}
             onClose={leaveSettings}
           />
