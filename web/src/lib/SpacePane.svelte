@@ -6,9 +6,17 @@
   import NewShellButton from './NewShellButton.svelte'
   import { openSpaceFolder, syncSkills } from './actions'
   import { Button } from './components/ui/button'
+  import * as Tooltip from './components/ui/tooltip'
   import { isEditingTarget } from './keys'
   import { openingFor, paneState, rememberPane } from './mapstate'
-  import { Warning, Sparkle, FolderOpen, Check, ArrowsClockwise, CircleNotch } from 'phosphor-svelte'
+  import { Warning, Sparkle, FolderOpen, Copy, ArrowsClockwise, CircleNotch } from 'phosphor-svelte'
+
+  // The folder button's label names the operator's own file browser rather than
+  // a generic "folder" — Finder on a Mac, "file browser" everywhere else, since
+  // that is the one native-picker split the app already draws elsewhere
+  // (`nativePicker` in App.svelte). Read once: the platform does not change
+  // under a running session.
+  const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform ?? navigator.userAgent ?? '')
 
   // The stage for the selected space: a full-width title bar carrying the space's
   // identity (name plus folder/path actions) and the stage-level controls —
@@ -436,64 +444,100 @@
      context of its own — leaked its z-30 chrome through settings. -->
 <div class="isolate flex h-full min-h-0 flex-col">
   <header class="cockpit-bar justify-between">
-    <div class="flex min-w-0 items-center gap-1" title={space.path}>
-      <Button
-        variant="ghost"
-        size="sm"
-        class="-ml-1 min-w-0 shrink justify-start px-1 text-sm font-semibold"
-        aria-label="Copy path for {space.name}"
-        title={pathFeedback === 'copied'
-          ? 'Copied'
-          : pathFeedback === 'copy-error'
-            ? 'Couldn’t copy — clipboard unavailable'
-            : `Copy ${space.path}`}
-        onclick={copySpacePath}
-      >
-        <span class="truncate">{space.name}</span>
-        {#if pathFeedback === 'copied'}
-          <Check class="shrink-0" />
-        {:else if pathFeedback === 'copy-error'}
-          <Warning class="shrink-0 text-destructive" />
-        {/if}
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Open {space.name} in the folder browser"
-        title={pathFeedback === 'open-error' ? 'Couldn’t open the folder' : `Open ${space.path}`}
-        onclick={revealSpace}
-      >
-        {#if pathFeedback === 'open-error'}
-          <Warning class="text-destructive" />
-        {:else}
-          <FolderOpen />
-        {/if}
-      </Button>
+    <div class="flex min-w-0 items-center gap-1">
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="sm"
+              class="-ml-1 min-w-0 shrink justify-start px-1 text-sm font-semibold"
+              aria-label="Copy path for {space.name}"
+              onclick={copySpacePath}
+            >
+              <span class="truncate">{space.name}</span>
+              {#if pathFeedback === 'copy-error'}
+                <Warning class="shrink-0 text-destructive" />
+              {/if}
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          <div class="flex flex-col gap-1">
+            <code class="rounded bg-muted px-1.5 py-1 font-mono text-[0.65rem] break-all text-foreground"
+              >{space.path}</code
+            >
+            <span class="flex items-center justify-end gap-1">
+              {#if pathFeedback === 'copy-error'}
+                <Warning class="size-3 shrink-0 text-destructive" /> Couldn’t copy — clipboard unavailable
+              {:else}
+                <Copy class="size-3 shrink-0" /> {pathFeedback === 'copied' ? 'Copied' : 'Click to copy'}
+              {/if}
+            </span>
+          </div>
+        </Tooltip.Content>
+      </Tooltip.Root>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open {space.name} in the folder browser"
+              onclick={revealSpace}
+            >
+              {#if pathFeedback === 'open-error'}
+                <Warning class="text-destructive" />
+              {:else}
+                <FolderOpen />
+              {/if}
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          {pathFeedback === 'open-error'
+            ? 'Couldn’t open the folder'
+            : isMac
+              ? 'Open in Finder'
+              : 'Open in file browser'}
+        </Tooltip.Content>
+      </Tooltip.Root>
       <!-- Manual skill sync, beside the folder action. Absent over Scratch (no
            repository to mirror into, like the map toggle), disabled when no
            enabled source yields a skill — there is nothing to copy — and inert
            while a sync is in flight. -->
       {#if !mapless}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          disabled={syncing || !canSyncSkills}
-          aria-label="Sync skills into this space"
-          title={syncError
-            ? 'Couldn’t sync skills'
-            : canSyncSkills
-              ? 'Sync skills into this space'
-              : 'Nothing to sync — no enabled source yields a skill'}
-          onclick={runSkillSync}
-        >
-          {#if syncing}
-            <CircleNotch class="animate-spin" />
-          {:else if syncError}
-            <Warning class="text-destructive" />
-          {:else}
-            <ArrowsClockwise />
-          {/if}
-        </Button>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button
+                {...props}
+                variant="ghost"
+                size="icon-sm"
+                disabled={syncing || !canSyncSkills}
+                aria-label="Sync skills into this space"
+                onclick={runSkillSync}
+              >
+                {#if syncing}
+                  <CircleNotch class="animate-spin" />
+                {:else if syncError}
+                  <Warning class="text-destructive" />
+                {:else}
+                  <ArrowsClockwise />
+                {/if}
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            {syncError
+              ? 'Couldn’t sync skills'
+              : canSyncSkills
+                ? 'Sync skills into this space'
+                : 'Nothing to sync — no enabled source yields a skill'}
+          </Tooltip.Content>
+        </Tooltip.Root>
       {/if}
     </div>
 
