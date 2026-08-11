@@ -5,7 +5,6 @@
     NotifyPrefs,
     RoleBinding,
     Source,
-    TerminalPrefs,
   } from './model'
   import { createConfigLayer, openGlobalLayer } from './actions'
   import AgentLibrary from './AgentLibrary.svelte'
@@ -28,7 +27,6 @@
     sources,
     roles,
     gitAvailable = false,
-    terminalPrefs,
     notifyPrefs,
     onClose,
   }: {
@@ -47,9 +45,6 @@
     roles: RoleBinding[]
     // Whether a git source can be registered on this machine at all.
     gitAvailable?: boolean
-    // The operator's resolved terminal customization off the snapshot — read-only
-    // here, rendered by the Terminal section.
-    terminalPrefs?: TerminalPrefs
     // The resolved notify.toml values are read-only here, on the same terms as
     // terminal customization: show what is in force and open the owning file.
     notifyPrefs?: NotifyPrefs
@@ -141,7 +136,7 @@
 
         <!-- Per-machine cosmetics: what terminal.toml has in force, and the file
              itself. -->
-        <TerminalSettings prefs={terminalPrefs} layer={terminalLayer} {layerRow} />
+        <TerminalSettings layer={terminalLayer} {layerRow} />
         <NotifySettings prefs={notifyPrefs} layer={notifyLayer} {layerRow} />
       </div>
     </ScrollArea.Root>

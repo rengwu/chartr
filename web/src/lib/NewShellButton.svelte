@@ -93,7 +93,7 @@
           No agents registered yet.
         </DropdownMenu.Label>
         <DropdownMenu.Item onclick={() => onregister?.()}
-          >Register an agent…</DropdownMenu.Item
+          >Register an agent</DropdownMenu.Item
         >
       {:else}
         {#each agents as a (a.name)}
