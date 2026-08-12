@@ -133,3 +133,13 @@ No hosted service or user accounts will ever be planned. chartr does not send an
 - [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
 - [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — my read-only map CLI and viewer; where the star-map started
 - [mattpocock/skills](https://github.com/mattpocock/skills) — the original `/wayfinder` skill and the method the maps side drives
+
+## Acknowledgements
+
+- @brownoxford for privately reporting localhost trust-boundary vulnerabilities
+  that allowed cross-origin WebSocket control of live terminals, DNS-rebinding
+  access, and CORS-simple API writes. His report led to strict Origin, Host, and
+  content-type validation, owner-only state, verified build tooling, and safer bind
+  warnings.
+- @bradymwilliams for [reporting an issue](https://github.com/rengwu/chartr/pull/5)
+  that led to improvements when opening chartr from monorepo subdirectories.
