@@ -717,7 +717,10 @@
           onfinalize={handleDndFinalize}
         >
           {#each dndItems as space (space.id)}
-            <div animate:flip={{ duration: flipDurationMs }}>
+            <div
+              class="space-dnd-item"
+              animate:flip={{ duration: flipDurationMs }}
+            >
               <SpaceCard
                 {space}
                 {opening}
