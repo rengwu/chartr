@@ -94,9 +94,16 @@ func Compose(in ComposeInput) (Payload, error) {
 		return Payload{}, err
 	}
 
-	core := embeddedCore()
+	core, err := resolveCore(in.ConfigDir)
+	if err != nil {
+		return Payload{}, err
+	}
 	parts := []Part{
-		{Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core", Text: core.Body},
+		// Origin is the core's own resolved source, not a hardcoded OriginChartr:
+		// an operator override badges as `operator` in the preview and records
+		// `core=operator` on the claim trailer, so a hacked core is visible where
+		// the shipped one reads `core=chartr`.
+		{Name: CoreSkill, Kind: "prompt", Origin: core.Source, Label: "core", Text: core.Body},
 		// The part keeps the role's name, not the bound skill's — the
 		// preview reads as "what the grill role got", and a role may bind
 		// to a skill named something else. The body is concatenated
@@ -162,9 +169,21 @@ func composeSpace(configDir string, reg *sources.Registry) (Payload, error) {
 		return Payload{}, err
 	}
 
+	// The space core resolves through the same override-with-fallback as the
+	// ticket core: `core-space.md` under the config root when present, the
+	// embedded default otherwise. It carries no frontmatter, so unlike the
+	// ticket core it is used whole — matching exactly how the embedded asset is
+	// handled.
 	core := strings.TrimSpace(spaceCoreText)
+	origin := OriginChartr
+	if override, found, err := readOverride(configDir, CoreSpaceOverrideFile); err != nil {
+		return Payload{}, err
+	} else if found {
+		core = strings.TrimSpace(override)
+		origin = OriginOperator
+	}
 	parts := []Part{{
-		Name: CoreSkill, Kind: "prompt", Origin: OriginChartr, Label: "core",
+		Name: CoreSkill, Kind: "prompt", Origin: origin, Label: "core",
 		Text: core,
 	}}
 	parts = append(parts, contractParts(contract)...)
@@ -185,18 +204,41 @@ func composeSpace(configDir string, reg *sources.Registry) (Payload, error) {
 //go:embed assets/core-ticket.md
 var ticketCoreText string
 
-// embeddedCore is the ticket session's core, read straight out of the
-// binary. Resolves through no source, so the claim trailer records it as
-// `core=chartr`; which bytes that was is fixed by `Payload-SHA256` on the
-// same commit.
-func embeddedCore() Skill {
-	meta, body := splitFrontmatter(ticketCoreText)
+// CoreTicket returns the canonical bytes of the ticket session's embedded core,
+// frontmatter and all — the starting point the Settings surface scaffolds a
+// `core-ticket.md` override from (CoreTicketOverrideFile). Compose reads the
+// override in its place when one exists; this is only for handing the operator
+// the shipped default to edit.
+func CoreTicket() string { return ticketCoreText }
+
+// CoreSpace returns the canonical bytes of the standing document's embedded
+// core, the scaffold source for a `core-space.md` override.
+func CoreSpace() string { return spaceCoreText }
+
+// resolveCore is the ticket session's core: the operator's `core-ticket.md`
+// override under configDir when present, the binary's embedded default
+// otherwise. The embedded default resolves through no source, so the claim
+// trailer records it as `core=chartr` and `Payload-SHA256` fixes which bytes on
+// the same commit; an override resolves as `core=operator`, the honest record
+// that the operator's own bytes ran. Either way frontmatter is stripped, the
+// same handling the embedded asset already gets. An unreadable override file
+// fails the compose rather than silently falling back to the shipped core.
+func resolveCore(configDir string) (Skill, error) {
+	text := ticketCoreText
+	origin := OriginChartr
+	if override, found, err := readOverride(configDir, CoreTicketOverrideFile); err != nil {
+		return Skill{}, err
+	} else if found {
+		text = override
+		origin = OriginOperator
+	}
+	meta, body := splitFrontmatter(text)
 	return Skill{
 		Name:        CoreSkill,
-		Source:      OriginChartr,
+		Source:      origin,
 		Description: meta["description"],
 		Body:        strings.TrimSpace(body),
-	}
+	}, nil
 }
 
 // contractParts are the two documents every payload carries, in order:

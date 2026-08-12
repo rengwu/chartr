@@ -78,11 +78,13 @@ func firstRun(configDir, defaultSourceURL string) (*sources.Registry, error) {
 				"register a source in Settings to spawn", defaultSourceURL, err)
 		}
 	}
-	// The operator's own preferences file, under the config root (skill-sources
-	// ticket 03). Startup is the first of two reconcile points; every composition
-	// is the other, so a preferences file the operator deletes mid-run is
-	// recreated even in a process that never restarts a preview. The file-format
-	// contract that used to be reconciled here too now lives per-space instead —
+	// The operator's own preferences file lives under the config root
+	// (skill-sources ticket 03), but chartr no longer stamps it: like the two
+	// cores it is absent until the operator creates it from Settings, and a
+	// composition reads it verbatim when present or composes empty when not. This
+	// call stays only to fail startup fast on a preferences.md that exists but
+	// cannot be read, never to create anything. The file-format contract that used
+	// to be reconciled here too now lives per-space instead —
 	// ensureConventionsCurrent reconciles it, at the same call sites that keep the
 	// skill mirror current.
 	if _, err := prompt.ReconcileContract(configDir); err != nil {

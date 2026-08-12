@@ -11,6 +11,7 @@
   import SourcesSettings from './SourcesSettings.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
   import NotifySettings from './NotifySettings.svelte'
+  import SystemPromptsSettings from './SystemPromptsSettings.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
   import { ArrowSquareOut, FilePlus, X } from 'phosphor-svelte'
@@ -60,6 +61,15 @@
   const terminalLayer = $derived(config.find((l) => l.holds === 'terminal'))
   const notifyLayer = $derived(config.find((l) => l.holds === 'notifications'))
 
+  // The three prompts the System Prompts section surfaces, in a fixed display
+  // order by their server-side names. Any an older server did not send drop out,
+  // so the section renders only what actually has a file behind it.
+  const systemPromptLayers = $derived(
+    ['core-ticket', 'core-space', 'preferences']
+      .map((name) => config.find((l) => l.name === name))
+      .filter((l): l is ConfigLayer => l !== undefined),
+  )
+
   let busy = $state<string | null>(null)
   let note = $state<string | null>(null)
 
@@ -71,7 +81,17 @@
   // template — so this only governs which rows show the button. The two
   // self-documenting per-machine prefs files have starters; the agent library and
   // skill roots grow by their own edits, not from a stamped file.
-  const creatable = new Set(['terminal-config', 'notify-config'])
+  const creatable = new Set([
+    'terminal-config',
+    'notify-config',
+    // The core overrides scaffold from chartr's shipped bytes: a missing one
+    // offers Create from defaults, stamping the embedded core for the operator
+    // to edit. Preferences scaffolds a blank file on the same terms — its default
+    // is empty, so Create recovers a deleted or moved preferences.md.
+    'core-ticket',
+    'core-space',
+    'preferences',
+  ])
 
   // The escape hatch: the server resolves the *named* layer and launches the
   // operator's editor. Where it cannot, the path itself is the answer, surfaced
@@ -142,6 +162,11 @@
              itself. -->
         <TerminalSettings layer={terminalLayer} {layerRow} />
         <NotifySettings prefs={notifyPrefs} layer={notifyLayer} {layerRow} />
+
+        <!-- The prompts chartr composes into every session: the two overridable
+             cores and the operator's own preferences, each openable and
+             creatable-from-defaults through the same shared row. -->
+        <SystemPromptsSettings layers={systemPromptLayers} {layerRow} />
       </div>
     </ScrollArea.Root>
   </div>

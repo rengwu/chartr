@@ -10,11 +10,13 @@ import (
 )
 
 // The config root's one contract file: the operator's preferences, which
-// chartr creates once and never writes again (skill-sources ticket 03). The
-// conventions half of what used to be a two-file contract here now lives
-// per-space instead — see conventions_space_test.go.
+// chartr reads verbatim and never writes (skill-sources ticket 03). Like the
+// two cores it is absent until the operator creates it from Settings; a
+// composition composes empty when it is not there. The conventions half of what
+// used to be a two-file contract here now lives per-space instead — see
+// conventions_space_test.go.
 
-func TestAFreshConfigRootGetsThePreferencesFile(t *testing.T) {
+func TestAFreshConfigRootLeavesPreferencesAbsentAndEmpty(t *testing.T) {
 	dir := t.TempDir()
 
 	got, err := prompt.ReconcileContract(dir)
@@ -25,16 +27,17 @@ func TestAFreshConfigRootGetsThePreferencesFile(t *testing.T) {
 	if got.Preferences != "" {
 		t.Errorf("fresh preferences = %q, want empty", got.Preferences)
 	}
-	if _, err := os.Stat(prompt.PreferencesPath(dir)); err != nil {
-		t.Fatalf("preferences.md not created: %v", err)
+	// chartr no longer stamps the file back: absent is a state the Settings surface
+	// shows as "not created yet" and offers Create from defaults for, the same as
+	// either core. A compose that recreated it would erase that state on the next
+	// preview.
+	if _, err := os.Stat(prompt.PreferencesPath(dir)); !os.IsNotExist(err) {
+		t.Fatalf("preferences.md should stay absent on a fresh root; stat err = %v", err)
 	}
 }
 
 func TestPreferencesAreReadVerbatimAndNeverRewritten(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := prompt.ReconcileContract(dir); err != nil {
-		t.Fatalf("reconcile: %v", err)
-	}
 
 	const own = "Always answer in Dutch.\n"
 	if err := os.WriteFile(prompt.PreferencesPath(dir), []byte(own), 0o600); err != nil {
@@ -54,10 +57,11 @@ func TestPreferencesAreReadVerbatimAndNeverRewritten(t *testing.T) {
 	}
 }
 
-func TestADeletedPreferencesFileIsRecreatedEmpty(t *testing.T) {
+func TestADeletedPreferencesFileStaysAbsentAndComposesEmpty(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := prompt.ReconcileContract(dir); err != nil {
-		t.Fatalf("reconcile: %v", err)
+	// Seed then remove it — the shape of an operator deleting or moving the file.
+	if err := os.WriteFile(prompt.PreferencesPath(dir), []byte("gone soon\n"), 0o600); err != nil {
+		t.Fatalf("seed preferences: %v", err)
 	}
 	if err := os.Remove(prompt.PreferencesPath(dir)); err != nil {
 		t.Fatalf("remove preferences: %v", err)
@@ -68,10 +72,12 @@ func TestADeletedPreferencesFileIsRecreatedEmpty(t *testing.T) {
 		t.Fatalf("reconcile after delete: %v", err)
 	}
 	if got.Preferences != "" {
-		t.Errorf("recreated preferences = %q, want empty", got.Preferences)
+		t.Errorf("preferences after delete = %q, want empty", got.Preferences)
 	}
-	if _, err := os.Stat(prompt.PreferencesPath(dir)); err != nil {
-		t.Fatalf("preferences.md not recreated: %v", err)
+	// It stays gone — recoverable from the surface's Create action, not silently
+	// re-stamped on the next reconcile.
+	if _, err := os.Stat(prompt.PreferencesPath(dir)); !os.IsNotExist(err) {
+		t.Fatalf("preferences.md was re-stamped after delete; stat err = %v", err)
 	}
 }
 
@@ -82,8 +88,8 @@ func TestAnUnreadablePreferencesFileFailsComposition(t *testing.T) {
 		t.Skip("root reads unreadable files")
 	}
 	dir, reg, bindings := fixture(t)
-	if _, err := prompt.ReconcileContract(dir); err != nil {
-		t.Fatalf("reconcile: %v", err)
+	if err := os.WriteFile(prompt.PreferencesPath(dir), []byte("secret\n"), 0o600); err != nil {
+		t.Fatalf("seed preferences: %v", err)
 	}
 	if err := os.Chmod(prompt.PreferencesPath(dir), 0o000); err != nil {
 		t.Fatalf("chmod preferences: %v", err)
