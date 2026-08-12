@@ -18,7 +18,7 @@ Plan with an agent, then chart a map of your work. Drive the map to completion, 
 
 <br clear="right">
 
-<img alt="The chartr cockpit" src="https://github.com/user-attachments/assets/4c1e4e13-e1fb-4bdd-a834-6e2d07415912" />
+<img alt="The chartr cockpit" src="https://github.com/user-attachments/assets/d69cd749-5c6e-41ef-bd78-e971b89c823b" />
 
 ## Key features
 
