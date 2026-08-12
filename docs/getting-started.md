@@ -14,10 +14,8 @@ Before you begin, install:
 Open the desktop app, or start the CLI:
 
 ```sh
-chartr
+chartr   // serves chartr at http://127.0.0.1:8787
 ```
-
-The CLI serves chartr at <http://127.0.0.1:8787>.
 
 chartr does not provide authentication. Keep the server bound to the default
 loopback address unless you intend to make it accessible over a network. See
