@@ -322,7 +322,10 @@
     const current = spaces.map((s) => s.id);
     // A drop back where it started, or ⌥↑ on the first row: an ordinary outcome,
     // and the honest response is to write nothing at all.
-    if (ids.length === current.length && ids.every((id, i) => id === current[i]))
+    if (
+      ids.length === current.length &&
+      ids.every((id, i) => id === current[i])
+    )
       return;
     try {
       await reorderSpaces(ids);
@@ -389,7 +392,12 @@
   // The folder basename behind a space's path — the label a cleared rename falls
   // back to, shown as the field's placeholder so the empty-to-revert path reads.
   function baseName(path: string): string {
-    return path.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? path;
+    return (
+      path
+        .replace(/[/\\]+$/, "")
+        .split(/[/\\]/)
+        .pop() ?? path
+    );
   }
 
   async function confirmForget() {
@@ -595,381 +603,385 @@
 <svelte:window onkeydown={onGlobalKey} />
 
 <TooltipProvider>
-<div class="flex h-full min-h-0 flex-col">
-  <div
-    class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]"
-    style={titleBarH ? `--bar-h: ${Math.max(titleBarH, 40)}px` : undefined}
-  >
-    <aside
-      class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+  <div class="flex h-full min-h-0 flex-col">
+    <div
+      class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]"
+      style={titleBarH ? `--bar-h: ${Math.max(titleBarH, 40)}px` : undefined}
     >
-      <!-- The brand and the active space now share the one top tier, matching
+      <aside
+        class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      >
+        <!-- The brand and the active space now share the one top tier, matching
            the sketch's split header. In the native macOS shell this tier also
            fills the title-bar strip; the left inset leaves the real traffic-light
            buttons clear and seats the wordmark immediately beside them. -->
-      <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
-        <img
-          src="/brandmark.svg"
-          alt=""
-          width="20"
-          height="20"
-          class="size-5 shrink-0 grayscale"
-        />
-        <span class="truncate text-sm font-semibold tracking-tight">chartr</span
-        >
-      </div>
+        <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
+          <img
+            src="/brandmark.svg"
+            alt=""
+            width="20"
+            height="20"
+            class="size-5 shrink-0 grayscale"
+          />
+          <span class="truncate text-sm font-semibold tracking-tight"
+            >chartr</span
+          >
+        </div>
 
-      <!-- Search is its own compact row below the brand, followed by the
+        <!-- Search is its own compact row below the brand, followed by the
            section label and the two global creation actions. This keeps adding
            spaces and opening Scratch close to the list they affect. -->
-      <div class="flex items-center gap-2 px-2 pt-2">
-        <div class="relative min-w-0 flex-1">
-          <MagnifyingGlass
-            aria-hidden="true"
-            class="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="text"
-            class="h-8 pl-7"
-            placeholder="Search"
-            bind:value={filter}
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            aria-label="Filter spaces and sessions"
-          />
+        <div class="flex items-center gap-2 px-2 pt-2">
+          <div class="relative min-w-0 flex-1">
+            <MagnifyingGlass
+              aria-hidden="true"
+              class="pointer-events-none absolute top-1/2 left-2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="text"
+              class="h-8 pl-7"
+              placeholder="Search"
+              bind:value={filter}
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              aria-label="Filter spaces and sessions"
+            />
+          </div>
         </div>
-      </div>
 
-      <div class="flex items-center justify-between gap-2 px-2 pt-2 pb-1">
-        <span
-          class="px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
-        >
-          Spaces
-        </span>
-        <div class="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={opening || control.model === null}
-            aria-label="Open a new Scratch shell"
-            title="Open a new Scratch shell"
-            onclick={openScratchShell}
+        <div class="flex items-center justify-between gap-2 px-2 pt-2 pb-1">
+          <span
+            class="px-1 text-[0.65rem] font-semibold tracking-wide text-muted-foreground uppercase"
           >
-            {#if opening}
-              <CircleNotch class="animate-spin" />
-            {:else}
-              <TerminalWindow />
-            {/if}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={picking || control.model === null}
-            aria-label="Add a space"
-            title="Add a space"
-            aria-expanded={nativePicker ? undefined : showAdd}
-            onclick={addSpace}
-          >
-            {#if picking}
-              <CircleNotch class="animate-spin" />
-            {:else}
-              <Plus />
-            {/if}
-          </Button>
+            Spaces
+          </span>
+          <div class="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={opening || control.model === null}
+              aria-label="Open a new Scratch shell"
+              title="Open a new Scratch shell"
+              onclick={openScratchShell}
+            >
+              {#if opening}
+                <CircleNotch class="animate-spin" />
+              {:else}
+                <TerminalWindow />
+              {/if}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={picking || control.model === null}
+              aria-label="Add a space"
+              title="Add a space"
+              aria-expanded={nativePicker ? undefined : showAdd}
+              onclick={addSpace}
+            >
+              {#if picking}
+                <CircleNotch class="animate-spin" />
+              {:else}
+                <Plus />
+              {/if}
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {#if control.model === null}
-        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
-          Connecting…
-        </p>
-      {:else if spaces.length === 0}
-        <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
-          No spaces yet.
-        </p>
-      {:else if filtered.length === 0}
-        <p class="px-3 py-2 text-xs text-muted-foreground">
-          No spaces match “{filter}”.
-        </p>
-      {:else}
-        <!-- The reorder is svelte-dnd-action: the section is the drop zone, each
+        {#if control.model === null}
+          <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
+            Connecting…
+          </p>
+        {:else if spaces.length === 0}
+          <p class="flex-1 px-3 py-2 text-xs text-muted-foreground">
+            No spaces yet.
+          </p>
+        {:else if filtered.length === 0}
+          <p class="px-3 py-2 text-xs text-muted-foreground">
+            No spaces match “{filter}”.
+          </p>
+        {:else}
+          <!-- The reorder is svelte-dnd-action: the section is the drop zone, each
              row is an item keyed by space id, and `animate:flip` (same duration)
              does the slide. `consider` drives the live reflow, `finalize` commits.
              Disabled while filtering — a position within a subset does not describe
              one in the whole list. The default drop-zone outline is cleared; the
              chrome is monochrome and marks nothing with a raw colour. -->
-        <section
-          class="sidebar-scroll mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pr-1"
-          use:dndzone={{
-            items: dndItems,
-            flipDurationMs,
-            dragDisabled: !reorderable,
-            dropTargetStyle: {},
-            // Resolve the drop slot from the cursor, not the dragged card's
-            // centre. Space cards vary a lot in height (a card with several
-            // sessions dwarfs a bare one), and centre-based detection makes a tall
-            // card's midpoint sweep across several short ones at once — the drop
-            // overshoots and jumps rows. Cursor-based detection tracks the hand.
-            useCursorForDetection: true,
-          }}
-          onconsider={handleDndConsider}
-          onfinalize={handleDndFinalize}
-        >
-          {#each dndItems as space (space.id)}
-            <div
-              class="space-dnd-item"
-              animate:flip={{ duration: flipDurationMs }}
-            >
-              <SpaceCard
-                {space}
-                {opening}
-                selected={selected?.id === space.id}
-                activeTermId={activeTerm?.id ?? null}
-                onselect={() => selectSpace(space.id)}
-                onselectsession={(t) => selectSession(space, t)}
-                onjumphalt={() => jumpToHalt(space)}
-                onforget={() => forget(space)}
-                onrename={() => startRename(space)}
-                onendshell={(t) => endShell(space, t)}
-                onhalt={(t, verb) =>
-                  haltAction(space, t, verb, HALT_ACTIONS[verb])}
-                onopenshell={() => openShell(space)}
-                onfree={(agent) => freeSession(space, agent)}
-                onregister={() => openSettings()}
-                agents={agentLibrary}
-              />
-            </div>
-          {/each}
-        </section>
-      {/if}
+          <section
+            class="sidebar-scroll mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 pr-1"
+            use:dndzone={{
+              items: dndItems,
+              flipDurationMs,
+              dragDisabled: !reorderable,
+              dropTargetStyle: {},
+              // Resolve the drop slot from the cursor, not the dragged card's
+              // centre. Space cards vary a lot in height (a card with several
+              // sessions dwarfs a bare one), and centre-based detection makes a tall
+              // card's midpoint sweep across several short ones at once — the drop
+              // overshoots and jumps rows. Cursor-based detection tracks the hand.
+              useCursorForDetection: true,
+            }}
+            onconsider={handleDndConsider}
+            onfinalize={handleDndFinalize}
+          >
+            {#each dndItems as space (space.id)}
+              <div
+                class="space-dnd-item"
+                animate:flip={{ duration: flipDurationMs }}
+              >
+                <SpaceCard
+                  {space}
+                  {opening}
+                  selected={selected?.id === space.id}
+                  activeTermId={activeTerm?.id ?? null}
+                  onselect={() => selectSpace(space.id)}
+                  onselectsession={(t) => selectSession(space, t)}
+                  onjumphalt={() => jumpToHalt(space)}
+                  onforget={() => forget(space)}
+                  onrename={() => startRename(space)}
+                  onendshell={(t) => endShell(space, t)}
+                  onhalt={(t, verb) =>
+                    haltAction(space, t, verb, HALT_ACTIONS[verb])}
+                  onopenshell={() => openShell(space)}
+                  onfree={(agent) => freeSession(space, agent)}
+                  onregister={() => openSettings()}
+                  agents={agentLibrary}
+                />
+              </div>
+            {/each}
+          </section>
+        {/if}
 
-      <!-- Settings is the persistent footer destination from the sketch. -->
-      <div class="border-t border-sidebar-border p-2">
-        <Button
-          variant={route.settings ? "secondary" : "ghost"}
-          size="sm"
-          class="w-full justify-start"
-          aria-pressed={route.settings}
-          onclick={() => {
-            if (route.settings) leaveSettings();
-            else openSettings();
-          }}
-        >
-          <Gear /> Settings
-        </Button>
-      </div>
-    </aside>
+        <!-- Settings is the persistent footer destination from the sketch. -->
+        <div class="border-t border-sidebar-border p-2">
+          <Button
+            variant={route.settings ? "secondary" : "ghost"}
+            size="sm"
+            class="w-full justify-start"
+            aria-pressed={route.settings}
+            onclick={() => {
+              if (route.settings) leaveSettings();
+              else openSettings();
+            }}
+          >
+            <Gear /> Settings
+          </Button>
+        </div>
+      </aside>
 
-    <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
-      {#if spaces.length === 0}
-        <div class="grid h-full place-items-center p-6">
-          <!-- First run is the same add action as the sidebar's, so it is the same
+      <main class="relative col-start-2 row-start-1 min-h-0 min-w-0">
+        {#if spaces.length === 0}
+          <div class="grid h-full place-items-center p-6">
+            <!-- First run is the same add action as the sidebar's, so it is the same
                chooser — a native picker the operator would only meet on their
                second space would be a picker they never meet. The typed form is
                still what a machine with no chooser gets. -->
-          {#if nativePicker}
-            <div class="flex w-full max-w-sm flex-col items-start gap-3">
-              <h1 class="text-lg font-semibold">Register your first space</h1>
-              <p class="text-sm text-muted-foreground">
-                Point chartr at a project folder. Any folder works — chartr reads
-                and writes files there and leaves version control to you.
-              </p>
-              <Button disabled={picking} onclick={addSpace}>
-                {#if picking}
-                  <CircleNotch class="animate-spin" /> Choosing…
-                {:else}
-                  <FolderOpen /> Choose a folder…
-                {/if}
-              </Button>
-            </div>
-          {:else}
-            <RegisterForm
-              variant="first-run"
-              onRegistered={(id) => (selectedId = id)}
-            />
-          {/if}
-        </div>
-      {:else if selected}
-        <SpacePane
-          space={selected}
-          agents={agentLibrary}
-          {activeTerm}
-          {canSyncSkills}
-          terminalPrefs={control.model?.terminal}
-          active={!route.settings}
-          onOpenShell={() => openShell(selected)}
-          onFreeSession={(agent) => freeSession(selected, agent)}
-          onRegisterAgent={() => openSettings()}
-          onspawned={(id) => (activeTermId = id)}
-        />
-      {/if}
+            {#if nativePicker}
+              <div class="flex w-full max-w-sm flex-col items-start gap-3">
+                <h1 class="text-lg font-semibold">Register your first space</h1>
+                <p class="text-sm text-muted-foreground">
+                  Start by pointing chartr at a folder.
+                </p>
+                <Button disabled={picking} onclick={addSpace}>
+                  {#if picking}
+                    <CircleNotch class="animate-spin" /> Choosing…
+                  {:else}
+                    <FolderOpen /> Choose a folder…
+                  {/if}
+                </Button>
+              </div>
+            {:else}
+              <RegisterForm
+                variant="first-run"
+                onRegistered={(id) => (selectedId = id)}
+              />
+            {/if}
+          </div>
+        {:else if selected}
+          <SpacePane
+            space={selected}
+            agents={agentLibrary}
+            {activeTerm}
+            {canSyncSkills}
+            terminalPrefs={control.model?.terminal}
+            active={!route.settings}
+            onOpenShell={() => openShell(selected)}
+            onFreeSession={(agent) => freeSession(selected, agent)}
+            onRegisterAgent={() => openSettings()}
+            onspawned={(id) => (activeTermId = id)}
+          />
+        {/if}
 
-      <!-- The settings route renders over the space cockpit rather than replacing
+        <!-- The settings route renders over the space cockpit rather than replacing
            it in the tree: the terminal and the star-map are imperative islands
            (ADR 0010), and tearing them down to read config would cost a re-attach
            and the map's open state. The pane below goes inert while this is up —
            it takes no keystrokes and stops reflecting itself into the URL, and it
            is a single isolated stacking context (SpacePane), so this one z-index
            is all it takes to sit over the whole stage, chrome included. -->
-      {#if route.settings}
-        <div class="absolute inset-0 z-30 bg-background">
-          <Settings
-            config={configLayers}
-            agents={agentLibrary}
-            {detected}
-            sources={control.model?.sources ?? []}
-            roles={control.model?.roles ?? []}
-            gitAvailable={control.model?.gitAvailable ?? false}
-            {nativePicker}
-            notifyPrefs={control.model?.notify}
-            onClose={leaveSettings}
-          />
-        </div>
-      {/if}
-    </main>
-  </div>
+        {#if route.settings}
+          <div class="absolute inset-0 z-30 bg-background">
+            <Settings
+              config={configLayers}
+              agents={agentLibrary}
+              {detected}
+              sources={control.model?.sources ?? []}
+              roles={control.model?.roles ?? []}
+              gitAvailable={control.model?.gitAvailable ?? false}
+              {nativePicker}
+              notifyPrefs={control.model?.notify}
+              onClose={leaveSettings}
+            />
+          </div>
+        {/if}
+      </main>
+    </div>
 
-  <!-- The typed-path modal is now the fallback and nothing else: it opens only on
+    <!-- The typed-path modal is now the fallback and nothing else: it opens only on
        a machine with no native folder chooser (Linux without zenity or kdialog,
        or Windows), where pasting a path is the only way in. Everywhere else the
        operator gets their own OS chooser and never sees this. -->
-  <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
-    <p class="mb-3 text-xs text-muted-foreground">
-      No folder chooser was found on this machine, so point chartr at a project
-      folder by pasting its absolute path. Any folder works — version control is
-      left to you.
-    </p>
-    <RegisterForm
-      variant="inline"
-      onRegistered={(id) => {
-        selectedId = id;
-        showAdd = false;
-      }}
-    />
-  </Modal>
+    <Modal open={showAdd} title="Add a space" onClose={() => (showAdd = false)}>
+      <p class="mb-3 text-xs text-muted-foreground">
+        No folder chooser was found on this machine, so point chartr at a
+        project folder by pasting its absolute path. Any folder works — version
+        control is left to you.
+      </p>
+      <RegisterForm
+        variant="inline"
+        onRegistered={(id) => {
+          selectedId = id;
+          showAdd = false;
+        }}
+      />
+    </Modal>
 
-  <!-- Removing a space is destructive-sounding enough to confirm, and the
+    <!-- Removing a space is destructive-sounding enough to confirm, and the
        confirmation is ours: dismissal (Esc, backdrop, ✕) is Cancel, so the only
        way through is the explicit button. -->
-  <Modal
-    open={pendingForget !== null}
-    title="Remove “{pendingForget?.name ?? ''}”?"
-    onClose={() => (pendingForget = null)}
-  >
-    <p class="text-xs text-muted-foreground">
-      This only takes it off your list here. Your files stay exactly where they
-      are, and you can add it back any time.
-    </p>
-    <div class="mt-4 flex justify-end gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={() => (pendingForget = null)}
-      >
-        Cancel
-      </Button>
-      <Button variant="destructive" size="sm" onclick={confirmForget}>
-        Remove
-      </Button>
-    </div>
-  </Modal>
-
-  <!-- Renaming a space is presentation only — it changes the label the sidebar
-       shows and nothing on disk — so it is a light one-field editor rather than a
-       confirmation. The caret opens in the field with the current name selected;
-       submitting empty clears the custom name back to the folder basename. -->
-  <Modal
-    open={renaming !== null}
-    title="Rename “{renaming?.name ?? ''}”"
-    onClose={() => (renaming = null)}
-    onOpenAutoFocus={(e) => {
-      e.preventDefault();
-      renameInput?.focus();
-      renameInput?.select();
-    }}
-  >
-    <form
-      onsubmit={(e) => {
-        e.preventDefault();
-        confirmRename();
-      }}
+    <Modal
+      open={pendingForget !== null}
+      title="Remove “{pendingForget?.name ?? ''}”?"
+      onClose={() => (pendingForget = null)}
     >
-      <Input
-        bind:ref={renameInput}
-        bind:value={renameDraft}
-        placeholder={renaming ? baseName(renaming.path) : ""}
-        aria-label="Space name"
-      />
+      <p class="text-xs text-muted-foreground">
+        This only takes it off your list here. Your files stay exactly where
+        they are, and you can add it back any time.
+      </p>
       <div class="mt-4 flex justify-end gap-2">
         <Button
           variant="outline"
           size="sm"
-          type="button"
-          onclick={() => (renaming = null)}
+          onclick={() => (pendingForget = null)}
         >
           Cancel
         </Button>
-        <Button variant="default" size="sm" type="submit">Save</Button>
-      </div>
-    </form>
-  </Modal>
-
-  <!-- Every action failure that used to be an `alert()`. One surface, dismissed
-       the ordinary way. -->
-  <Modal
-    open={actionError !== null}
-    title="That didn’t work"
-    onClose={() => (actionError = null)}
-  >
-    <p class="text-xs text-muted-foreground">{actionError}</p>
-    <div class="mt-4 flex justify-end">
-      <Button variant="outline" size="sm" onclick={() => (actionError = null)}>
-        Close
-      </Button>
-    </div>
-  </Modal>
-
-  <!-- Resuming or respawning into a space that already has a live session runs
-       both agents in one working tree (ADR 0003 as amended). Same warning the
-       spawn path shows, at the halt's own gate. -->
-  <Modal
-    open={pendingHalt !== null}
-    title="This space already has a live session"
-    onClose={() => (pendingHalt = null)}
-  >
-    <div class="space-y-4 text-sm">
-      <p class="text-muted-foreground">
-        {pendingHalt ? `To ${pendingHalt.verb} this session` : "This"} would run
-        two agents in
-        <strong class="font-medium text-foreground"
-          >the same working tree</strong
-        >. There is no branch or worktree between them, so they can overwrite
-        each other's uncommitted edits with no conflict to resolve.
-      </p>
-      <div class="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onclick={() => (pendingHalt = null)}
-          >Cancel</Button
-        >
-        <Button
-          variant="default"
-          size="sm"
-          onclick={() => {
-            const p = pendingHalt;
-            if (p) haltAction(p.space, p.t, p.verb, p.run, true);
-          }}
-        >
-          {pendingHalt
-            ? `${pendingHalt.verb[0].toUpperCase()}${pendingHalt.verb.slice(1)} anyway`
-            : "Continue"}
+        <Button variant="destructive" size="sm" onclick={confirmForget}>
+          Remove
         </Button>
       </div>
-    </div>
-  </Modal>
+    </Modal>
 
-  <!-- The one toast surface, centered over the main panel (app.css offsets it
+    <!-- Renaming a space is presentation only — it changes the label the sidebar
+       shows and nothing on disk — so it is a light one-field editor rather than a
+       confirmation. The caret opens in the field with the current name selected;
+       submitting empty clears the custom name back to the folder basename. -->
+    <Modal
+      open={renaming !== null}
+      title="Rename “{renaming?.name ?? ''}”"
+      onClose={() => (renaming = null)}
+      onOpenAutoFocus={(e) => {
+        e.preventDefault();
+        renameInput?.focus();
+        renameInput?.select();
+      }}
+    >
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          confirmRename();
+        }}
+      >
+        <Input
+          bind:ref={renameInput}
+          bind:value={renameDraft}
+          placeholder={renaming ? baseName(renaming.path) : ""}
+          aria-label="Space name"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onclick={() => (renaming = null)}
+          >
+            Cancel
+          </Button>
+          <Button variant="default" size="sm" type="submit">Save</Button>
+        </div>
+      </form>
+    </Modal>
+
+    <!-- Every action failure that used to be an `alert()`. One surface, dismissed
+       the ordinary way. -->
+    <Modal
+      open={actionError !== null}
+      title="That didn’t work"
+      onClose={() => (actionError = null)}
+    >
+      <p class="text-xs text-muted-foreground">{actionError}</p>
+      <div class="mt-4 flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => (actionError = null)}
+        >
+          Close
+        </Button>
+      </div>
+    </Modal>
+
+    <!-- Resuming or respawning into a space that already has a live session runs
+       both agents in one working tree (ADR 0003 as amended). Same warning the
+       spawn path shows, at the halt's own gate. -->
+    <Modal
+      open={pendingHalt !== null}
+      title="This space already has a live session"
+      onClose={() => (pendingHalt = null)}
+    >
+      <div class="space-y-4 text-sm">
+        <p class="text-muted-foreground">
+          {pendingHalt ? `To ${pendingHalt.verb} this session` : "This"} would run
+          two agents in
+          <strong class="font-medium text-foreground"
+            >the same working tree</strong
+          >. There is no branch or worktree between them, so they can overwrite
+          each other's uncommitted edits with no conflict to resolve.
+        </p>
+        <div class="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onclick={() => (pendingHalt = null)}
+            >Cancel</Button
+          >
+          <Button
+            variant="default"
+            size="sm"
+            onclick={() => {
+              const p = pendingHalt;
+              if (p) haltAction(p.space, p.t, p.verb, p.run, true);
+            }}
+          >
+            {pendingHalt
+              ? `${pendingHalt.verb[0].toUpperCase()}${pendingHalt.verb.slice(1)} anyway`
+              : "Continue"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- The one toast surface, centered over the main panel (app.css offsets it
        past the sidebar). Every transient notice — the register outcome here, the
        source and agent form refusals — surfaces through it now. -->
-  <Toaster />
-</div>
+    <Toaster />
+  </div>
 </TooltipProvider>
