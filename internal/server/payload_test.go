@@ -140,7 +140,7 @@ func TestPayloadComposesWithProvenanceAndBundle(t *testing.T) {
 	}
 
 	// The composed markdown is one document carrying prompt and context together.
-	if !strings.Contains(p.Markdown, "chartr session") {
+	if !strings.Contains(p.Markdown, "Work this chartr ticket") {
 		t.Errorf("composed markdown missing the core prompt:\n%s", p.Markdown)
 	}
 	if !strings.Contains(p.Markdown, "# Context") || !strings.Contains(p.Markdown, "USE-THE-BASE-APPROACH") {
@@ -255,7 +255,7 @@ func TestNeitherCoreNorRoleIsShadowableByASkillLayer(t *testing.T) {
 	if core.Origin != "chartr" || strings.Contains(core.Text, "USER-CORE-SKILL") {
 		t.Errorf("a user skill reached the core: %s\n%s", core.Origin, core.Text)
 	}
-	if !strings.Contains(core.Text, "chartr session") {
+	if !strings.Contains(core.Text, "Work this chartr ticket") {
 		t.Errorf("the embedded core is not what composed:\n%s", core.Text)
 	}
 	// Frontmatter is metadata for the cockpit, never payload.
