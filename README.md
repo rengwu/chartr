@@ -97,68 +97,57 @@ make dmg       # the macOS app
 The current release is **`v0.2.2`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
-chartr is still alpha. Features and file formats may change before 1.0.
+Development toward `v0.2.3` is underway. Since `v0.2.2`:
 
-New in `v0.2.2`:
+- **Bring your own skills** - Register local folders or Git repositories as
+  skill sources, then reorder, enable, refresh or remove them from Settings.
+- **Skills inside every space** - Enabled skills are mirrored into each space,
+  where sandboxed agents can read them. Fresh installs pre-register the
+  `chartr-skills` repository.
+- **Role bindings** - Let grill, prototype, research and implement resolve by
+  source order, or pin any role to a specific skill.
+- **Simpler agent launches** - Start a bare agent session from the new-shell
+  menu, while ticket sessions still receive their complete assembled context.
+- **VCS-neutral spaces** - Register any folder without initializing Git. Claims
+  and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no
+  longer runs version-control commands.
+- **Local agent context** - Every registered space gets a private `CHARTR.md`, a
+  file-format contract and a synchronized skill mirror.
+- **Refreshed cockpit** - Rename or forget spaces from a context menu, reorder
+  them with smoother drag-and-drop, and distinguish a running process from a
+  working agent at a glance.
+- **Terminal continuity** - Switching sessions now preserves each terminal's
+  scroll position.
 
-- [x] **Shift+Enter.** Insert a newline without submitting the current input.
-- [x] **Codex and Kimi.** Registration, session startup, prompt delivery and
-      status reporting were tested with the real CLIs.
-- [x] **Agent status fixes.** Recordings from real CLIs now test all six built-in
-      agents. Status rules for codex, grok, opencode and pi were corrected, along
-      with a UTF-8 parsing bug.
-- [x] **Sidebar ordering.** Drag spaces to reorder them, or move the selected
-      space with `⌥↑` / `⌥↓`. The order is saved across restarts.
-- [x] **Scratch space.** Open a shell in your home directory without registering
-      a repository. Scratch is shown only while a shell is open and keeps its
-      sidebar position.
-- [x] **Session notifications.** Receive a system notification when a
-      long-running session finishes, blocks or exits. Notifications work when the
-      cockpit is closed, and the tab stays marked until you return. Configure the
-      timing or turn the feature off in `notify.toml`.
-- [x] **Browser trust boundary.** Both websockets are scoped to the address
-      chartr is listening on, every route refuses a `Host` it is not bound to,
-      and writes require a JSON content type — so a web page on another origin
-      cannot drive the cockpit or reach a terminal.
-- [x] **A warning on a wide bind.** Binding somewhere other than loopback says so
-      at startup, and [SECURITY.md](SECURITY.md) names what that exposes and how
-      to report a vulnerability.
-- [x] **Owner-only state.** Session payloads and chartr's own state are written
-      readable by your account alone.
-- [x] **Pinned AppImage tooling.** The Linux build verifies its build tools by
-      checksum before running them.
+Still to come:
 
-Available since `v0.2.1`:
+- **Windows desktop app** - Package and test the existing WebView2 shell.
+- **AUR release** - Distribute chartr through the Arch User Repository.
+- **GitHub Issues integration** - Bring GitHub issues into the chartr workflow.
+- **Inbox mode** - Add an alternate view for tasks that need your attention.
+- **Built-in updater** - Detect new releases and provide a way to install them.
+- **Scratch location** - Make its starting directory configurable.
+- **Alternate keybindings** - Add Neovim and Emacs keybinding presets.
+- **More panes** - Add browser, source control, GitHub issues and reviews, and
+  token usage panes alongside maps.
+- **Agent onboarding** - Detect installed agent CLIs on first launch and guide
+  users through registration.
+- **Agent status coverage** - Expand live detection for third-party agents and
+  uncommon prompts.
 
-- [x] **Spaces and tabs.** Manage projects, shells and agent sessions from the
-      sidebar.
-- [x] **Maps.** View star-maps, start sessions, and claim or release tickets.
-- [x] **Release builds.** Checksummed binaries, a macOS `.dmg`, and a Linux
-      `.AppImage`.
-- [x] **Setup guide.** Instructions for installing chartr and creating a first
-      map.
-- [x] **Linux desktop app.** The `.AppImage` includes WebKitGTK and is tested on
-      a system without WebKit installed.
+Known bugs:
 
-Not yet:
+- **Folder picker** - The folder picker does not work in the browser.
+- **Ticket details** - Markdown does not render cleanly, and clicking a ticket
+  reference does not open that ticket.
+- **Notifications** - System notifications are unreliable.
+- **Claude status** - Claude reports as idle while waiting for input in a
+  multiple-choice selector.
 
-- [ ] **Windows desktop app.** Add a packaged and tested WebView2 app to the
-      release pipeline.
-- [ ] **More agent verification.** Run the full registration, startup, prompt and
-      status checks for grok, opencode and pi.
-- [ ] **Agent configuration examples.** Add a working `[agents.*]` example for
-      each provider to the setup guide.
-- [ ] **Scratch terminal location.** Allow users to choose the starting directory
-      instead of always using the home directory.
-- [ ] **Agent status gaps.** Some prompts can still appear idle while waiting for
-      input, including opencode's rejection-feedback prompt.
-- [ ] **Payload preview scrolling.** Expanded previews do not scroll correctly.
-- [ ] **Ticket details.** Fix markdown rendering and make ticket references
-      clickable.
-- [ ] **Keyboard controls.** Add shortcuts for more actions and allow users to
-      change the bindings.
-- [ ] **Settings page.** Reorganize the page to make settings easier to find and
-      manage.
+chartr is still alpha. Features and file formats may change before 1.0. See the
+[GitHub releases](https://github.com/rengwu/chartr/releases) for published release
+notes and [open issues](https://github.com/rengwu/chartr/issues) for additional
+reports.
 
 No hosted service or user accounts are planned. chartr does not send usage data.
 
