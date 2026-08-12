@@ -91,10 +91,10 @@ See
 
 ## Project status
 
-The current release is **`v0.2.2`**. Download it from the
+The current release is **`v0.2.3`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
-Development toward `v0.2.3` is underway. Implemented since `v0.2.2`:
+Highlights in `v0.2.3`:
 
 - **Bring your own skills** - Register local folders or Git repositories as
   skill sources, then reorder, refresh or remove them from Settings.
