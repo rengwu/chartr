@@ -8,6 +8,10 @@
   (Apple silicon, unsigned)
 - [Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
   (`amd64` or `arm64`)
+- [Debian / Ubuntu package](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.deb)
+  (`amd64` or `arm64`)
+- [Fedora / RPM package](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.rpm)
+  (`amd64` or `arm64`)
 - [More platforms](https://github.com/rengwu/chartr/releases)
 
 An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminal sessions.
@@ -44,7 +48,7 @@ The app is currently unsigned. If macOS blocks the first launch:
 2. Go to **System Settings → Privacy & Security → Security**.
 3. Click **Open Anyway**.
 
-### Linux
+### Linux AppImage
 
 Make the AppImage executable, then run it:
 
@@ -54,6 +58,23 @@ chmod +x chartr_linux_amd64.AppImage
 ```
 
 WebKitGTK comes bundled. An Arch release is also planned.
+
+### Debian and Ubuntu
+
+The native package uses your distribution's WebKitGTK and receives its security
+updates through apt. Ubuntu 24.04+ or Debian 13+ is required.
+
+```sh
+sudo apt install ./chartr_linux_amd64.deb
+```
+
+### Fedora
+
+The Fedora package likewise uses the distribution's WebKitGTK runtime.
+
+```sh
+sudo dnf install ./chartr_linux_amd64.rpm
+```
 
 ### Windows
 
@@ -91,6 +112,8 @@ Development toward `v0.2.3` is underway. Implemented since `v0.2.2`:
 - **VCS-neutral spaces** - Claims and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no longer runs git commands, including `git init` on new spaces.
 - **CHARTR.md** - Each space gets a `CHARTR.md` file that helps agents quickly understand
   how to work with chartr.
+- **Native Linux packages** - Install the desktop app through apt on Ubuntu and
+  Debian, or dnf on Fedora; WebKitGTK stays under the system package manager.
 - **Refreshed cockpit** - Rename and delete spaces moved into a context menu. Reorderable spaces
   with smoother drag-and-drop. Cleaner, sleeker look.
 - **Terminal continuity** - Switching sessions now preserves each terminal's

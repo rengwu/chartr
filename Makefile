@@ -1,13 +1,13 @@
 # chartr — build and checks.
 #
-# The one supported artifact is the pure-Go binary with the Svelte build
-# embedded (ADR 0010, 0011). `make build` produces it; `make check` and
-# `make test` run everything a ticket must pass before commit.
+# The portable baseline artifact is the pure-Go binary with the Svelte build
+# embedded (ADR 0010, 0011). Linux also has supported desktop packages (ADRs
+# 0011 and 0019). `make check` and `make test` run the pre-commit checks.
 
 BIN := bin/chartr
 
 .PHONY: build web go-build dev-backend dev-web check test vet clean \
-        webview bundle dmg appimage snapshot release
+        webview bundle dmg appimage linux-packages snapshot release
 
 ## build: frontend then the self-contained binary with the SPA embedded.
 build: web go-build
@@ -71,12 +71,17 @@ WEBVIEW_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || e
 WEBVIEW_COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo none)
 WEBVIEW_DATE    ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || echo unknown)
 
-## webview: build the best-effort native webview shell for the host into
-## build/shell, with a per-asset .sha256 sidecar.
+# nFPM turns the already-built native shell into distro packages; pin it so a
+# tag rebuild cannot silently change package bytes or metadata underneath us.
+NFPM_VERSION ?= v2.47.0
+
+## webview: build the native webview shell for the host into build/shell, with
+## a per-asset .sha256 sidecar.
 ##
-## This is a best-effort tier (ADR 0011): it needs cgo + a system webview library
-## and MAY fail without blocking the supported release. It builds natively — cgo
-## does not cross-compile — so the release workflow runs this once per runner.
+## It needs cgo and a system webview library and builds natively — cgo does not
+## cross-compile — so the release workflow runs this once per runner. macOS and
+## Windows consume it on the best-effort tier; Linux consumes it into the gated
+## AppImage, deb and rpm artifacts (ADRs 0011 and 0019).
 ## The sidecar is deliberately per-asset: the supported release owns
 ## checksums.txt, and a best-effort artifact must never mutate that manifest.
 ##
@@ -562,6 +567,51 @@ appimage:
 		"$$tools/appimagetool" --no-appstream "$$appdir" "$$out"; \
 	( cd build/appimage && sha256sum "$$name.AppImage" > "$$name.AppImage.sha256" ); \
 	echo "built $$out (+ .sha256) — chartr $$short, linux/$$goarch, WebKitGTK bundled"
+
+## linux-packages: package the Linux webview shell as native deb and rpm files
+## into build/packages, each with a per-asset .sha256 sidecar.
+##
+## Unlike the AppImage, these packages do not bundle GTK or WebKitGTK. apt/dnf
+## installs the platform's WebKitGTK 4.1 runtime from the dependency metadata in
+## packaging/linux/nfpm.yaml, so distro security updates service the renderer.
+## The binary is still built natively because it uses cgo; the release workflow
+## runs this target once on each Linux architecture it publishes.
+linux-packages:
+	@set -e; \
+	goos=$$(go env GOOS); goarch=$$(go env GOARCH); \
+	if [ "$$goos" != "linux" ]; then \
+		echo "deb/rpm packages are only assembled on Linux (this is $$goos); nothing to package"; \
+		exit 0; \
+	fi; \
+	$(MAKE) webview WEBVIEW_VERSION=$(WEBVIEW_VERSION) \
+		WEBVIEW_COMMIT=$(WEBVIEW_COMMIT) WEBVIEW_DATE=$(WEBVIEW_DATE); \
+	binary="build/shell/chartr-shell_$(WEBVIEW_VERSION)_linux_$${goarch}"; \
+	if [ ! -x "$$binary" ]; then \
+		echo "no shell binary at $$binary — nothing to package"; \
+		exit 0; \
+	fi; \
+	version=$$(printf '%s' '$(WEBVIEW_VERSION)' | sed 's/^v//'); \
+	case "$$version" in \
+		[0-9]*) ;; \
+		*) echo "native package version must start with a digit (got $$version)" >&2; exit 1 ;; \
+	esac; \
+	outdir="build/packages"; \
+	mkdir -p "$$outdir"; \
+	if [ -z "$${SOURCE_DATE_EPOCH:-}" ]; then \
+		SOURCE_DATE_EPOCH=$$(git show -s --format=%ct HEAD 2>/dev/null || date +%s); \
+	fi; \
+	export SOURCE_DATE_EPOCH; \
+	PACKAGE_VERSION="$$version"; PACKAGE_ARCH="$$goarch"; PACKAGE_BINARY="$$binary"; \
+	export PACKAGE_VERSION PACKAGE_ARCH PACKAGE_BINARY; \
+	for format in deb rpm; do \
+		out="$$outdir/chartr_$${version}_linux_$${goarch}.$${format}"; \
+		rm -f "$$out" "$$out.sha256"; \
+		echo "packaging $$out (system WebKitGTK)"; \
+		go run github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION) package \
+			--config packaging/linux/nfpm.yaml --packager "$$format" --target "$$out"; \
+		( cd "$$outdir" && sha256sum "$$(basename "$$out")" > "$$(basename "$$out").sha256" ); \
+	done; \
+	echo "built native Linux packages for $${goarch} (+ .sha256)"
 
 clean:
 	rm -rf $(BIN) build/

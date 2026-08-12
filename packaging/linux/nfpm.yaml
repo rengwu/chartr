@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+
+# The native Linux packages deliberately contain no GTK or WebKit libraries.
+# They are the distro-integrated counterpart to the self-contained AppImage:
+# apt/dnf owns the renderer, keeps it patched, and removes it when nothing else
+# needs it. Environment variables are supplied by `make linux-packages`.
+name: chartr
+arch: ${PACKAGE_ARCH}
+platform: linux
+version: ${PACKAGE_VERSION}
+version_schema: semver
+section: devel
+priority: optional
+maintainer: John Goh <johngohrw@gmail.com>
+description: |-
+  AI workspace with a map of your work.
+  chartr is an approachable agent multiplexer for running CLI agents and
+  commands in tabbed terminal sessions, grouped into project spaces.
+vendor: chartr
+homepage: https://github.com/rengwu/chartr
+license: MIT
+
+contents:
+  - src: ${PACKAGE_BINARY}
+    dst: /usr/bin/chartr
+    expand: true
+    file_info:
+      mode: 0755
+  - src: packaging/linux/chartr.desktop
+    dst: /usr/share/applications/io.github.rengwu.chartr.desktop
+    file_info:
+      mode: 0644
+  - src: packaging/linux/io.github.rengwu.chartr.metainfo.xml
+    dst: /usr/share/metainfo/io.github.rengwu.chartr.metainfo.xml
+    file_info:
+      mode: 0644
+  - src: web/public/icon-512.png
+    dst: /usr/share/icons/hicolor/512x512/apps/chartr.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/chartr/copyright
+    packager: deb
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/licenses/chartr/LICENSE
+    packager: rpm
+    file_info:
+      mode: 0644
+  - src: README.md
+    dst: /usr/share/doc/chartr/README.md
+    file_info:
+      mode: 0644
+
+# WebKitGTK already pulls GTK3 and the renderer's complete runtime closure on
+# both package families. The names differ, so only the dependency list needs an
+# override; the payload stays byte-for-byte identical.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.39)
+      - libwebkit2gtk-4.1-0
+  rpm:
+    depends:
+      - glibc >= 2.39
+      - webkit2gtk4.1
+
+deb:
+  compression: xz
+  fields:
+    Bugs: https://github.com/rengwu/chartr/issues
+
+rpm:
+  compression: zstd
+  group: Development/Tools
+  summary: AI workspace with a map of your work
+  packager: John Goh <johngohrw@gmail.com>

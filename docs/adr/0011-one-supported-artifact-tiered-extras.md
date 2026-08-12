@@ -1,5 +1,12 @@
 # One supported artifact; everything else is best-effort
 
+**Amended again by [0019](0019-native-deb-and-rpm-packages.md): native deb and
+rpm Linux desktop packages now join the AppImage on the supported tier.** Both
+architectures and both formats build, install and render before a tag may
+publish. The best-effort tier now means the macOS and Windows loose shells (plus
+the unsigned macOS disk image); the pure-Go browser binary remains the portable
+baseline.
+
 chartr ships as **one supported artifact**: the pure-Go binary that serves the browser frontend from its embedded Vite `dist/` (ADR 0010) — cross-compiled for macOS, Linux and Windows from a single CI job, because nothing in it requires cgo. Everything beyond it is a **best-effort tier** that may fail to build without blocking a release: the native webview shell per platform (cgo on macOS, cgo-free `go-webview2` on Windows), and native Windows itself (built and smoke-tested in CI, not driven daily; WSL2 is the documented sure path).
 
 **Amended: the Linux AppImage is a second supported artifact, and it gates the release.** The best-effort posture was the right default and it failed on exactly the case it was designed to absorb — quietly. `webview_go` pins `pkg-config: webkit2gtk-4.0`, that package left every current distro, and because the Linux shell was only ever built inside a `continue-on-error` job, `v0.1.0` shipped with no Linux app at all and no signal that anything was missing. A tier that may fail silently is indistinguishable from a tier that does not exist. So Linux's desktop app is now built, **smoke-tested against a container with no WebKit and no GTK installed**, and a failure fails the tag. What makes that gate honest is that it looks at the screen: a bundled WebKit that cannot spawn its helper processes still starts, still binds its port, still serves the SPA over loopback and still exits 0, rendering an error page where the cockpit should be — so the assertion is a screenshot's brightness, not an exit code. macOS and Windows shells keep the best-effort tier unchanged.

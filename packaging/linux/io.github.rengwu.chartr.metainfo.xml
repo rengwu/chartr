@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.rengwu.chartr</id>
+  <name>chartr</name>
+  <summary>AI workspace with a map of your work</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.rengwu">
+    <name>John Goh</name>
+  </developer>
+  <description>
+    <p>
+      chartr is an approachable agent multiplexer. Open a space, run CLI agents
+      and commands in tabbed terminal sessions, and chart a live map of the work.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.rengwu.chartr.desktop</launchable>
+  <url type="homepage">https://github.com/rengwu/chartr</url>
+  <url type="bugtracker">https://github.com/rengwu/chartr/issues</url>
+  <provides>
+    <binary>chartr</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+    <category>IDE</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+</component>
