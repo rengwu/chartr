@@ -22,14 +22,14 @@ Comes with map-charting features. Plan with an agent, then chart a map of your w
 
 ## Key features
 
-- **All agents welcome** - Works with any CLI agent. Register once, spawn effortlessly.
-- **Use your existing skills** - Register skills effortlessly, whether they live in a local folder or a remote repository.
+- **Bring your CLI agents** - Register the agents you already use, launch them easily afterwards.
+- **Use your existing skills** - Register your skills from local folders or remote git repositories.
 - **Live star-map** - Visualize your plan and track live progress on an interactive map.
-- **Pick up work easily** - Launch a ticket. An agent is spawned with all the necessary context to complete its work.
-- **Live agent state** - Know which agents are active, idle, or requiring attention — at a glance.
-- **Folders as spaces** - Terminal sessions from the same folder are grouped into filterable, sortable spaces.
-- **Notifications** - Get notified when a session needs your attention.
-- **Make it yours** - Customize terminals, tweak prompts, just hack what you don't like.
+- **Ticket-ready sessions** - Spawn an agent from a ticket with the relevant context already loaded.
+- **At-a-glance status** - See which sessions are working, idle or waiting for input.
+- **Folders as spaces** - Terminal sessions are grouped into spaces you can filter and reorder.
+- **Get notified** - Receive system notifications when a session needs you.
+- **Make it yours** - Configure terminal appearance and prompts, or hack the config to suit your workflow.
 
 ## Installation
 
