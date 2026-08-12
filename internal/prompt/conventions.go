@@ -38,10 +38,46 @@ const (
 	conventionsIgnoreName = ".gitignore"
 
 	// preferencesFile is the operator's own standing instructions, appended
-	// after the conventions in every payload. chartr creates it empty and never
-	// writes it again — the bytes are the operator's, unranked and unmerged.
+	// after the conventions in every payload. Like the two cores it is absent
+	// until the operator creates it — chartr never writes into it, and its bytes
+	// are the operator's, unranked and unmerged. A composition reads it verbatim
+	// when present and composes empty when not.
 	preferencesFile = "preferences.md"
 )
+
+// Override files an operator may drop into the config root to shadow chartr's
+// two embedded cores. Absent → the embedded default composes as before;
+// present → the operator's bytes are used verbatim, and chartr never writes
+// over the override file. The write contract is deliberately *not* on this
+// list: it is a parser contract, the one document an operator cannot shadow,
+// since a conventions doc chartr cannot re-derive its parser from would only
+// ever drift from what internal/mapscan actually reads.
+const (
+	CoreTicketOverrideFile = "core-ticket.md"
+	CoreSpaceOverrideFile  = "core-space.md"
+)
+
+// readOverride returns the operator's override for name under configDir and
+// whether one was found. An empty configDir or an absent file falls back to the
+// embedded default (found=false, nil error). An unreadable file that exists is
+// an error rather than a silent fallback: dropping bytes the operator wrote is
+// the one outcome ReconcileContract already refuses for preferences, and the
+// same rule holds for every override.
+func readOverride(configDir, name string) (text string, found bool, err error) {
+	if configDir == "" {
+		return "", false, nil
+	}
+	path := filepath.Join(configDir, name)
+	b, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		return string(b), true, nil
+	case os.IsNotExist(err):
+		return "", false, nil
+	default:
+		return "", false, fmt.Errorf("reading override %s: %w", path, err)
+	}
+}
 
 // ConventionsRelPath is where the contract is materialized, relative to a
 // space's root — identical in every space by construction. A payload names
@@ -72,20 +108,19 @@ type Contract struct {
 	Preferences string
 }
 
-// ReconcileContract brings the config root's `preferences.md` into the state a
-// composition requires, and returns its bytes for a payload to inline
-// verbatim.
+// ReconcileContract reads the config root's `preferences.md` and returns its
+// bytes for a payload to inline verbatim.
 //
-// The file is created empty when absent and **never rewritten or merged**
-// thereafter. An existing file that cannot be read fails here rather than
-// composing without it — silently dropping the operator's own instructions is
-// the one outcome that is not acceptable.
+// chartr **never writes or merges** the file. Absent is a normal state that
+// composes empty — the operator recovers it from the Settings surface (Create
+// from defaults) exactly as they would either core, so its absence is a state
+// the surface can show rather than one chartr silently papers over on the next
+// compose. An existing file that cannot be read fails here rather than composing
+// without it — silently dropping the operator's own instructions is the one
+// outcome that is not acceptable.
 func ReconcileContract(configDir string) (Contract, error) {
 	if configDir == "" {
 		return Contract{}, nil
-	}
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return Contract{}, err
 	}
 
 	prefs := PreferencesPath(configDir)
@@ -93,11 +128,10 @@ func ReconcileContract(configDir string) (Contract, error) {
 	switch {
 	case err == nil:
 	case os.IsNotExist(err):
-		// First run, or the operator deleted it: recreate it empty and treat it as
-		// empty. An absent preferences file is a normal state, not a failure.
-		if err := writeAtomic(prefs, nil); err != nil {
-			return Contract{}, err
-		}
+		// First run, deleted, or moved: absent composes as empty. chartr no longer
+		// stamps it back, so the missing state survives to the surface instead of
+		// being recreated on the next preview.
+		return Contract{}, nil
 	default:
 		return Contract{}, fmt.Errorf("reading %s: %w", prefs, err)
 	}
@@ -110,7 +144,9 @@ func ReconcileContract(configDir string) (Contract, error) {
 // `conventions.md` got under the operator's config root before it moved here:
 // missing or differing bytes are replaced atomically, so a chartr upgrade
 // updates every space's copy and an operator's edit lasts exactly until the
-// next reconcile.
+// next reconcile. Unlike the two cores, this document has no config-root
+// override: it is a parser contract, and an operator's edit here is regenerated
+// away on purpose (see the override const block).
 //
 // It writes into `.chartr/`, not the space root, and marks itself git-ignored
 // there rather than touching the repository's own tracked ignore file — the

@@ -11,6 +11,7 @@ import (
 	"github.com/rengwu/chartr/internal/chartrtest"
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/prompt"
 )
 
 // The settings surface at the process boundary (ticket 05): the agent library and
@@ -242,6 +243,51 @@ func TestCreateRefusesLayersWithoutATemplate(t *testing.T) {
 		if code != 400 {
 			t.Errorf("create %q = %d, want 400 — only templated layers create", bad, code)
 		}
+	}
+}
+
+// The prompt files ride the same surface as every other config file: each names
+// where it would live, reports itself missing until created, and scaffolds from
+// its default — the two cores from chartr's shipped bytes (the whole of what
+// "hackable" means for a core chartr otherwise only ships embedded), and
+// preferences from a blank file, its default being the operator's own unwritten
+// voice. The write contract is deliberately not among them: it is a parser
+// contract, not the operator's to shadow.
+func TestPromptOverridesSurfaceAndScaffoldFromShippedBytes(t *testing.T) {
+	h := chartrtest.Start(t)
+	register(t, h, chartrtest.NewSpaceRepo(t))
+
+	cases := []struct {
+		layer, file string
+		want        string
+	}{
+		{"core-ticket", "core-ticket.md", prompt.CoreTicket()},
+		{"core-space", "core-space.md", prompt.CoreSpace()},
+		{"preferences", "preferences.md", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.layer, func(t *testing.T) {
+			// Missing until created — composition falls back to the embedded default.
+			if layer(t, h.Snapshot(ctx(t)).Config, c.layer).Exists {
+				t.Fatalf("%s reported existing before it was created", c.layer)
+			}
+
+			path := filepath.Join(h.ConfigDir, c.file)
+			code, body := h.Post("/api/config/create", map[string]string{"layer": c.layer})
+			if code != 200 {
+				t.Fatalf("create %s = %d, body %s", c.layer, code, body)
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading created %s: %v", c.file, err)
+			}
+			if string(b) != c.want {
+				t.Errorf("created %s is not the shipped bytes verbatim", c.file)
+			}
+			if !layer(t, h.Snapshot(ctx(t)).Config, c.layer).Exists {
+				t.Errorf("%s still reported missing after it was created", c.layer)
+			}
+		})
 	}
 }
 

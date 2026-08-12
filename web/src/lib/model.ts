@@ -138,11 +138,19 @@ export interface Space {
 // ConfigLayer is one file or directory the operator's config lives in. `name` is
 // the server-side token the open action resolves — the client never sends a path.
 // `holds` is what the file carries: the agent library, the per-machine terminal
-// customization, machine-wide notification timing, the skill-source list,
-// chartr's generated write contract, or the operator's own preferences.
+// customization, machine-wide notification timing, the skill-source list, the
+// operator's own preferences, or one of the two core overrides that shadow
+// chartr's embedded bytes — the ticket core and the standing-document core.
 export interface ConfigLayer {
   name: string
-  holds: 'agents' | 'terminal' | 'notifications' | 'sources' | 'conventions' | 'preferences'
+  holds:
+    | 'agents'
+    | 'terminal'
+    | 'notifications'
+    | 'sources'
+    | 'preferences'
+    | 'ticket core'
+    | 'space core'
   path: string
   exists: boolean
 }

@@ -31,6 +31,15 @@ const (
 	layerNotifyConfig   = "notify-config"
 	layerSources        = "sources-config"
 	layerPreferences    = "preferences"
+	// The two cores chartr ships embedded and now lets an operator shadow with a
+	// file in the config root (prompt override-with-fallback). Listed here so the
+	// Settings surface can show where each override would live, open it, and
+	// scaffold it from the shipped bytes — the whole of what "hackable" means for
+	// them. Absent, chartr composes its embedded default exactly as before. The
+	// write contract is deliberately not among them: it is a parser contract, not
+	// the operator's to shadow.
+	layerCoreTicket = "core-ticket"
+	layerCoreSpace  = "core-space"
 )
 
 // globalLayers are the files the operator's config lives in, shared by every
@@ -64,6 +73,14 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 		// left to name.
 		layerAt(layerSources, "sources", sources.FilePath(s.opts.ConfigDir)),
 		layerAt(layerPreferences, "preferences", prompt.PreferencesPath(s.opts.ConfigDir)),
+		// The core overrides. Each is missing until the operator creates it —
+		// composition falls back to chartr's embedded bytes — so on a fresh
+		// install these rows read "not created yet" and offer Create from
+		// defaults.
+		layerAt(layerCoreTicket, "ticket core",
+			filepath.Join(s.opts.ConfigDir, prompt.CoreTicketOverrideFile)),
+		layerAt(layerCoreSpace, "space core",
+			filepath.Join(s.opts.ConfigDir, prompt.CoreSpaceOverrideFile)),
 	}
 }
 
@@ -117,11 +134,23 @@ func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
 // the operator asks to scaffold it from defaults. Only layers with an entry here
 // can be created through handleCreateGlobalLayer; a name with no template is
 // refused, the same shape as an unknown layer. `terminal.toml` and `notify.toml`
-// carry starters; the agent library and skill roots are grown by their own edits,
-// not stamped from a defaults file.
+// carry starters, the two cores stamp their embedded bytes, and preferences
+// stamps a blank file; the agent library and skill roots are grown by their own
+// edits, not stamped from a defaults file.
 var layerTemplates = map[string][]byte{
 	layerTerminalConfig: config.ScaffoldTerminalTOML,
 	layerNotifyConfig:   config.ScaffoldNotifyTOML,
+	// The core overrides scaffold from chartr's own shipped bytes: Create stamps
+	// the exact embedded default so the operator edits a complete, valid document
+	// rather than a blank file. chartr writes it only on this explicit action and
+	// never again — the override-with-fallback contract.
+	layerCoreTicket: []byte(prompt.CoreTicket()),
+	layerCoreSpace:  []byte(prompt.CoreSpace()),
+	// Preferences has no shipped default — its "default" is an empty file, the
+	// operator's own voice unwritten. It is templated all the same so a deleted or
+	// moved preferences.md is recoverable from the surface exactly as the cores
+	// are; Create stamps the blank file the operator then writes into.
+	layerPreferences: nil,
 }
 
 // handleCreateGlobalLayer stamps a config file from its defaults template — the
