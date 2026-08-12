@@ -1,8 +1,10 @@
 # Release pipeline (ADR 0011). A tag `vX.Y.Z` cuts a GitHub release with:
 #
-#   * the ONE supported artifact — the pure-Go, cgo-free binary that serves the
+#   * the portable baseline artifact — the pure-Go, cgo-free binary that serves the
 #     cockpit in a browser — built and checksummed by goreleaser for macOS,
 #     Linux and Windows from a single cgo-free job (the `release` job below); and
+#   * Linux desktop packages — AppImage, deb and rpm — built and smoke-tested on
+#     both published architectures before the release is created; and
 #   * best-effort native webview shells — and, on macOS, the `chartr.app` disk
 #     image packaged from that shell (ADR 0016) — built in a separate matrix job
 #     that is `continue-on-error` and depends on the release already being
@@ -38,15 +40,15 @@ jobs:
       - name: ConPTY round-trip smoke test
         run: go test -v -run TestConPTYRoundTrip ./internal/terminal
 
-  # The Linux desktop app, and a gate rather than a best-effort lane (ADR 0011 as
-  # amended). It is here, before `release`, because the failure it guards against
-  # is silent: a bundled WebKit that cannot spawn its helper processes still
+  # The Linux desktop app, and a gate rather than a best-effort lane (ADRs 0011
+  # and 0019). It is here, before `release`, because a renderer failure can be
+  # silent: a bundled WebKit that cannot spawn its helper processes still
   # starts, still binds, still serves the SPA over loopback, and still exits 0 —
   # it just renders an error page instead of the cockpit. Nothing short of
   # looking at the screen catches that, which is what scripts/smoke-appimage.sh
   # does, on a container with no webkit and no gtk installed at all.
-  linux-appimage:
-    name: linux AppImage + smoke (${{ matrix.goarch }})
+  linux-desktop:
+    name: linux AppImage + deb/rpm + smoke (${{ matrix.goarch }})
     strategy:
       fail-fast: false
       matrix:
@@ -84,22 +86,44 @@ jobs:
         run: make appimage WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
         shell: bash
 
+      # Native packages carry the same shell and frontend as the AppImage, but
+      # leave WebKitGTK to apt/dnf so distro security updates own the renderer.
+      - name: Package deb and rpm
+        run: make linux-packages WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
+        shell: bash
+
       # The gate. A failure here fails the tag.
       - name: Smoke the AppImage on a host with no WebKit
         run: scripts/smoke-appimage.sh build/appimage/chartr_${GITHUB_REF_NAME#v}_linux_${{ matrix.goarch }}.AppImage
         shell: bash
 
+      # Each native package is installed inside the distro family it targets,
+      # then tested by screenshot. In particular, the rpm test proves that the
+      # shell built on the Ubuntu runner is ABI-compatible with Fedora rather
+      # than merely trusting their common WebKit soname.
+      - name: Smoke the deb on Ubuntu 24.04
+        run: scripts/smoke-native-package.sh deb build/packages/chartr_${GITHUB_REF_NAME#v}_linux_${{ matrix.goarch }}.deb ${GITHUB_REF_NAME#v}
+        shell: bash
+
+      - name: Smoke the rpm on Fedora 44
+        run: scripts/smoke-native-package.sh rpm build/packages/chartr_${GITHUB_REF_NAME#v}_linux_${{ matrix.goarch }}.rpm ${GITHUB_REF_NAME#v}
+        shell: bash
+
       - uses: actions/upload-artifact@v4
         with:
-          name: appimage-${{ matrix.goarch }}
+          name: linux-desktop-${{ matrix.goarch }}
           path: |
             build/appimage/*.AppImage
             build/appimage/*.AppImage.sha256
+            build/packages/*.deb
+            build/packages/*.deb.sha256
+            build/packages/*.rpm
+            build/packages/*.rpm.sha256
           if-no-files-found: error
 
   release:
     name: supported binaries (cgo-free)
-    needs: [windows-smoke, linux-appimage]
+    needs: [windows-smoke, linux-desktop]
     runs-on: ubuntu-latest
     env:
       CGO_ENABLED: "0"
@@ -133,47 +157,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Attach the AppImages the gate already built and proved. They are uploaded
-  # after the release exists, like every other per-platform asset, but unlike the
-  # `shells` job below this one is NOT continue-on-error: the artifacts are known
+  # Attach the Linux desktop artifacts the gate already built and proved. They
+  # are uploaded after the release exists, like every other per-platform asset,
+  # but unlike the `shells` job below this one this is NOT continue-on-error: the
+  # artifacts are known
   # good by the time this runs, so a failure here is a real upload failure and
   # should be loud.
-  attach-appimage:
-    name: attach the Linux AppImages
-    needs: [release, linux-appimage]
+  attach-linux-desktop:
+    name: attach Linux AppImages and native packages
+    needs: [release, linux-desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: appimage-*
+          pattern: linux-desktop-*
           merge-multiple: true
-          path: appimage
+          path: linux-desktop
 
-      # The versioned images are the archival assets; the unversioned copies
+      # The versioned files are the archival assets; the unversioned copies
       # beside them are what a link can name in advance, exactly as the macOS
       # .dmg does. `/releases/latest/download/<asset>` needs an exact filename,
       # so the README's download link is only a download link if some asset
       # carries a name that does not move release to release. The architecture
       # stays in that name, and each sidecar is regenerated so the checksum
       # matches the file an operator actually pulled.
-      - name: Alias the newest AppImage per architecture
+      - name: Alias the newest Linux downloads per architecture
         shell: bash
         run: |
           set -e
           for arch in amd64 arm64; do
-            versioned=$(ls appimage/chartr_*_linux_${arch}.AppImage 2>/dev/null | head -1) || true
-            [ -n "$versioned" ] || continue
-            alias="appimage/chartr_linux_${arch}.AppImage"
-            cp "$versioned" "$alias"
-            ( cd appimage && sha256sum "chartr_linux_${arch}.AppImage" > "chartr_linux_${arch}.AppImage.sha256" )
-            echo "aliased $versioned as $alias"
+            for extension in AppImage deb rpm; do
+              versioned=$(ls linux-desktop/chartr_*_linux_${arch}.${extension} 2>/dev/null | head -1) || true
+              [ -n "$versioned" ] || continue
+              alias="linux-desktop/chartr_linux_${arch}.${extension}"
+              cp "$versioned" "$alias"
+              ( cd linux-desktop && sha256sum "chartr_linux_${arch}.${extension}" > "chartr_linux_${arch}.${extension}.sha256" )
+              echo "aliased $versioned as $alias"
+            done
           done
 
       - name: Upload to the release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # --repo, because this job deliberately does not check the tree out.
-        run: gh release upload "${GITHUB_REF_NAME}" appimage/* --clobber --repo "${{ github.repository }}"
+        run: gh release upload "${GITHUB_REF_NAME}" linux-desktop/* --clobber --repo "${{ github.repository }}"
         shell: bash
 
   # Best-effort tier (ADR 0011): the native webview shells. This whole job is

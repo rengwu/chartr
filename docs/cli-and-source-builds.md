@@ -27,3 +27,8 @@ make check
 make test
 make dmg
 ```
+
+On Linux, `make appimage` builds the self-contained desktop artifact and
+`make linux-packages` builds native deb and rpm packages. Both require the GTK3
+and WebKitGTK 4.1 development packages; native packages use the installed
+WebKitGTK runtime rather than bundling it.
