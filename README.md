@@ -4,17 +4,17 @@
 
 **AI workspace with a map of your work.**
 
-[Download macOS app](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
-(Apple silicon, unsigned)
+- [macOS app](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
+  (Apple silicon, unsigned)
+- [Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
+  (`amd64` or `arm64`)
+- [More platforms](https://github.com/rengwu/chartr/releases)
 
-[Download Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
-(`amd64` or `arm64`)
+An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminal sessions.
 
-[More platforms](https://github.com/rengwu/chartr/releases)
+Plan with an agent, then chart a map of your work. Drive the map to completion, one ticket at a time. Each ticket spawns a session with the exact context it needs to complete its task.
 
-An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminals.
-
-Comes with map-charting features. Plan with an agent, then chart a map of your work. Drive the map to completion, one ticket at a time. Each ticket spawns a session with the exact context it needs to complete its task.
+> chartr is still alpha. Features and file formats may change before 1.0.
 
 <br clear="right">
 
@@ -33,62 +33,42 @@ Comes with map-charting features. Plan with an agent, then chart a map of your w
 
 ## Installation
 
-Grab your platform's archive from the
-[releases page](https://github.com/rengwu/chartr/releases) and run it:
+Download the macOS or Linux app using the links above. Other builds are
+available on the [releases page](https://github.com/rengwu/chartr/releases).
 
-```
-chartr                 # http://127.0.0.1:8787
-chartr -addr :9000     # not loopback — see below
-chartr -data-dir ~/w   # session root (default: cwd)
-```
+### macOS
 
-chartr has **no authentication**. Reaching the port is the whole of the access
-check, and the API behind it opens shells, runs commands and spawns agents in
-your account. Binding to anything other than loopback — `-addr :9000`,
-`-addr 0.0.0.0:9000`, a LAN address — hands that to everyone who can reach the
-port. Keep the default `127.0.0.1` unless you mean to expose it; chartr warns at
-startup when you don't.
+The app is currently unsigned. If macOS blocks the first launch:
 
-Install your own agent CLIs; chartr ships none.
+1. Open chartr and click **Done**.
+2. Go to **System Settings → Privacy & Security → Security**.
+3. Click **Open Anyway**.
 
-### Linux desktop app
+### Linux
 
-Download `chartr_linux_amd64.AppImage` (or `arm64`), make it executable, run it:
+Make the AppImage executable, then run it:
 
-```
+```sh
 chmod +x chartr_linux_amd64.AppImage
 ./chartr_linux_amd64.AppImage
 ```
 
-No install, no dependencies — WebKitGTK is bundled. It borrows only what has to
-come from your machine: the GPU driver, your font configuration and your
-compositor.
+WebKitGTK comes bundled. An Arch release is also planned.
 
-Also available as `make appimage` from source, on Linux.
+### Windows
 
-### macOS first launch
+The fully-supported Windows desktop app will be coming soon.
 
-The `.dmg` is <b>unsigned</b>, so macOS blocks it once:
+### CLI usage and building from source
 
-1. Open chartr, click **Done** (_not_ **Move to Trash**).
-2. **System Settings → Privacy & Security → Security → Open Anyway**.
-
-Or `xattr -d com.apple.quarantine /Applications/chartr.app`.
-
-### From source
-
-Go 1.26+, Node 22+.
-
-```
-make build     # → bin/chartr
-make check
-make test
-make dmg       # the macOS app
-```
+See
+[CLI and source builds](docs/cli-and-source-builds.md).
 
 ## Documentation
 
 - [Getting started](docs/getting-started.md) — fresh machine to first star-map
+- [CLI and source builds](docs/cli-and-source-builds.md) — run the server or
+  build chartr locally
 - [ADRs](docs/adr/) — why it is shaped the way it is
 - [Security](SECURITY.md) — found a vulnerability? here's how to report it.
 
@@ -97,27 +77,24 @@ make dmg       # the macOS app
 The current release is **`v0.2.2`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
-Development toward `v0.2.3` is underway. Since `v0.2.2`:
+Development toward `v0.2.3` is underway. Implemented since `v0.2.2`:
 
 - **Bring your own skills** - Register local folders or Git repositories as
-  skill sources, then reorder, enable, refresh or remove them from Settings.
-- **Skills inside every space** - Enabled skills are mirrored into each space,
+  skill sources, then reorder, refresh or remove them from Settings.
+- **Skills in every space** - Enabled skills are mirrored into each space,
   where sandboxed agents can read them. Fresh installs pre-register the
   `chartr-skills` repository.
-- **Role bindings** - Let grill, prototype, research and implement resolve by
+- **Configurable Role bindings** - Let grill, prototype, research and implement resolve by
   source order, or pin any role to a specific skill.
 - **Simpler agent launches** - Start a bare agent session from the new-shell
   menu, while ticket sessions still receive their complete assembled context.
-- **VCS-neutral spaces** - Register any folder without initializing Git. Claims
-  and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no
-  longer runs version-control commands.
-- **Local agent context** - Every registered space gets a private `CHARTR.md`, a
-  file-format contract and a synchronized skill mirror.
-- **Refreshed cockpit** - Rename or forget spaces from a context menu, reorder
-  them with smoother drag-and-drop, and distinguish a running process from a
-  working agent at a glance.
+- **VCS-neutral spaces** - Claims and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no longer runs git commands, including `git init` on new spaces.
+- **CHARTR.md** - Each space gets a `CHARTR.md` file that helps agents quickly understand
+  how to work with chartr.
+- **Refreshed cockpit** - Rename and delete spaces moved into a context menu. Reorderable spaces
+  with smoother drag-and-drop. Cleaner, sleeker look.
 - **Terminal continuity** - Switching sessions now preserves each terminal's
-  scroll position.
+  scroll position. Used to be super annoying here.
 
 Still to come:
 
@@ -128,7 +105,7 @@ Still to come:
 - **Built-in updater** - Detect new releases and provide a way to install them.
 - **Scratch location** - Make its starting directory configurable.
 - **Alternate keybindings** - Add Neovim and Emacs keybinding presets.
-- **More panes** - Add browser, source control, GitHub issues and reviews, and
+- **More panes** - Add browser, source control, code review, and
   token usage panes alongside maps.
 - **Agent onboarding** - Detect installed agent CLIs on first launch and guide
   users through registration.
@@ -137,19 +114,19 @@ Still to come:
 
 Known bugs:
 
-- **Folder picker** - The folder picker does not work in the browser.
+- **Folder picker** - The folder picker does not currently work in the browser.
 - **Ticket details** - Markdown does not render cleanly, and clicking a ticket
   reference does not open that ticket.
-- **Notifications** - System notifications are unreliable.
+- **Notifications** - System notifications are sometimes unreliable. Most likely state-detection related.
 - **Claude status** - Claude reports as idle while waiting for input in a
   multiple-choice selector.
 
-chartr is still alpha. Features and file formats may change before 1.0. See the
+See the
 [GitHub releases](https://github.com/rengwu/chartr/releases) for published release
 notes and [open issues](https://github.com/rengwu/chartr/issues) for additional
 reports.
 
-No hosted service or user accounts are planned. chartr does not send usage data.
+No hosted service or user accounts will ever be planned. chartr does not send any usage data or telemetry.
 
 ## Platform support
 
@@ -185,7 +162,3 @@ driven daily, so **WSL2 is the sure path**.
 - [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
 - [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — my read-only map CLI and viewer; where the star-map started
 - [mattpocock/skills](https://github.com/mattpocock/skills) — the original `/wayfinder` skill and the method the maps side drives
-
-## Demonstration
-
-https://github.com/user-attachments/assets/60c335bb-5d9d-44c6-9798-654b1c70c626
