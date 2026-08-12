@@ -2,7 +2,7 @@
 
 <img src="./docs/assets/v4/icon-mac-1024.png" width="34%" align="right">
 
-**Agent multiplexer with a map of the work.**
+**AI workspace with a map of your work.**
 
 [Download macOS app](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
 (Apple silicon, unsigned)
@@ -12,13 +12,9 @@
 
 [More platforms](https://github.com/rengwu/chartr/releases)
 
-Chart a wayfinder map inside chartr, then drive it to completion. The plan
-renders as a star-map; take a ticket off the frontier, pick an agent, and the
-session opens with the map, the ticket, and its blockers' answers already in the
-buffer.
+An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminals.
 
-Without a map it is a plain multiplexer: projects in a sidebar, shells and agent
-CLIs in tabs.
+Comes with map-charting features. Plan with an agent, then chart a map of your work. Drive the map to completion, one ticket at a time. Each ticket spawns a session with the exact context it needs to complete its task.
 
 <br clear="right">
 
@@ -26,26 +22,14 @@ CLIs in tabs.
 
 ## Key features
 
-- **Live map view.** Files in `.plan/maps/` appear as a star-map as soon as they
-  are written.
-- **Start from a ticket.** Select an unblocked ticket, role and agent to open a
-  session with the required context already submitted.
-- **Your own CLI agents.** Register any compatible CLI on `PATH`. chartr detects claude,
-  codex, opencode, kimi, grok and pi by default.
-- **Agent status.** The sidebar shows whether each agent is working or waiting
-  for input.
-- **Sidebar ordering.** Drag spaces to reorder them. The order is saved across
-  restarts.
-- **Scratch terminals.** Open a shell in your home directory without registering
-  or initializing a repository.
-- **Session notifications.** Receive a system notification when a long-running
-  session finishes, blocks or exits. The tab stays marked until you return.
-- **File-based state.** Add an `## Answer` section to resolve a ticket. chartr
-  only writes claim and release commits to ticket files.
-- **File-based skills.** Add `SKILL.md` directories per repository or machine.
-  Launchable skills appear in the sidebar.
-- **Terminal settings.** Configure presets, colours, font, cursor, padding and
-  keybindings in TOML, including Shift+Enter for a newline.
+- **All agents welcome** - Works with any CLI agent. Register once, spawn effortlessly.
+- **Use your existing skills** - Register skills effortlessly, whether they live in a local folder or a remote repository.
+- **Live star-map** - Visualize your plan and track live progress on an interactive map.
+- **Pick up work easily** - Launch a ticket. An agent is spawned with all the necessary context to complete its work.
+- **Live agent state** - Know which agents are active, idle, or requiring attention — at a glance.
+- **Folders as spaces** - Terminal sessions from the same folder are grouped into filterable, sortable spaces.
+- **Notifications** - Get notified when a session needs your attention.
+- **Make it yours** - Customize terminals, tweak prompts, just hack what you don't like.
 
 ## Installation
 
@@ -105,9 +89,8 @@ make dmg       # the macOS app
 ## Documentation
 
 - [Getting started](docs/getting-started.md) — fresh machine to first star-map
-- [Design system](docs/design-system.md) — tokens, primitives, the chrome/island split
 - [ADRs](docs/adr/) — why it is shaped the way it is
-- [Security](SECURITY.md) — the trust boundary, and how to report a vulnerability
+- [Security](SECURITY.md) — found a vulnerability? here's how to report it.
 
 ## Project status
 
