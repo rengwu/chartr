@@ -464,6 +464,19 @@
     border-radius: var(--radius-sm);
   }
 
+  /* A space card's plate is intentionally translucent (bg-sidebar-accent/NN) —
+     it's meant to blend with the solid sidebar behind it, not with whatever
+     it happens to be floating over. svelte-dnd-action clones the dragged
+     item into a fixed-position element (id="dnd-action-dragged-el") and
+     copies the wrapper's transparent background into an inline style. Give
+     only the space-card clone an opaque sidebar-coloured backing; !important
+     is required to beat that inline style, including subsequent morphs. */
+  .space-dnd-item#dnd-action-dragged-el {
+    background-color: var(--sidebar) !important;
+    border-radius: var(--radius-lg) !important;
+    opacity: 1 !important;
+  }
+
   body {
     margin: 0;
     background-color: var(--background);
