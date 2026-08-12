@@ -43,12 +43,8 @@ A space is a project folder that contains your terminal sessions and maps.
 On the first-run screen, select **Choose a folder**. If a folder picker is not
 available, enter the absolute path to the project and select **Register**.
 
-chartr creates a `CHARTR.md` file in the space to provide local context and
-resources for agents.
-
-Ask an agent to read `CHARTR.md` when it needs information about chartr. The file
-lists the available skills and points to the conventions for writing maps and
-tickets that chartr can read.
+chartr creates `CHARTR.md` in each space. Ask agents to read it for available
+skills and chartr's map and ticket conventions.
 
 ## 4. Configure skills and roles
 
