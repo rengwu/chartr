@@ -8,10 +8,6 @@
   (Apple silicon, unsigned)
 - [Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
   (`amd64` or `arm64`)
-- [Debian / Ubuntu package](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.deb)
-  (`amd64` or `arm64`)
-- [Fedora / RPM package](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.rpm)
-  (`amd64` or `arm64`)
 - [More platforms](https://github.com/rengwu/chartr/releases)
 
 An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminal sessions.
