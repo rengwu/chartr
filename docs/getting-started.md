@@ -9,8 +9,6 @@ Before you begin, install:
 - At least one agent CLI, such as Claude Code, Codex, or OpenCode. Confirm that
   the CLI runs from your shell before you add it to chartr.
 
-chartr does not include agent CLIs.
-
 ## 1. Launch chartr
 
 Open the desktop app, or start the CLI:
@@ -27,8 +25,7 @@ loopback address unless you intend to make it accessible over a network. See
 
 ## 2. Register an agent
 
-chartr uses a local agent library. Installing an agent CLI does not add it to
-this library automatically.
+Register an installed agent CLI before using it with chartr.
 
 1. Open **Settings**.
 2. Under **Agents**, select **New Agent**.
@@ -37,19 +34,17 @@ this library automatically.
    settings.
 5. Select **Save**.
 
-The adapter field shows known CLI executables detected on your `PATH`. You can
-also register other executables.
+See [Agent registration templates](agent-registration-templates.md) for tested examples.
 
 ## 3. Add a space
 
 A space is a project folder that contains your terminal sessions and maps.
 
 On the first-run screen, select **Choose a folder**. If a folder picker is not
-available, enter the absolute path to the project and select **Register**. Use
-the **Add a space** button in the sidebar to register more folders later.
+available, enter the absolute path to the project and select **Register**.
 
-chartr creates a `CHARTR.md` file and a `.chartr/` directory in the space. These
-files provide local context and resources for agents.
+chartr creates a `CHARTR.md` file in the space to provide local context and
+resources for agents.
 
 Ask an agent to read `CHARTR.md` when it needs information about chartr. The file
 lists the available skills and points to the conventions for writing maps and
@@ -65,8 +60,8 @@ skill source. Open **Settings** and check the following:
 
 1. Under **Skill sources**, confirm that an enabled source contains the skills
    you want to use. Add a source if the list is empty.
-2. Under **Role bindings**, assign a skill to each role. Select **no preference**
-   to resolve a matching skill from the first enabled source that contains one.
+2. Under **Role bindings**, select **no preference** for each role, or assign a
+   specific skill.
 
 Free sessions do not require role bindings. Ticket sessions require a binding
 for the selected role.
@@ -83,12 +78,7 @@ for the selected role.
 The agent writes the map to `.plan/maps/<slug>/`. chartr watches this directory
 and displays valid maps automatically.
 
-Selecting **New Shell** instead of an agent opens a terminal without an injected
-prompt.
-
 ## 6. Work a ticket
-
-The frontier contains tickets whose blockers are resolved.
 
 1. Select an unblocked ticket on the map.
 2. Select a role and an agent.
@@ -99,11 +89,9 @@ its blockers. Work with the agent in its terminal tab.
 
 A ticket is complete when its file contains a non-empty `## Answer` or
 `## Ruled out` section. chartr updates the map and makes newly unblocked tickets
-available. chartr does not commit these changes; use your normal version-control
-workflow to review and commit them.
+available.
 
 ## Related documentation
 
 - [CLI and source builds](cli-and-source-builds.md)
 - [Security](../SECURITY.md)
-- [Architecture decisions](adr/)
