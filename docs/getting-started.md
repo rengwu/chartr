@@ -1,172 +1,109 @@
 # Getting started
 
-From a fresh machine to your first star-map. About five minutes, most of it
-waiting on an agent to think.
+This guide shows how to configure chartr, create a map, and start a ticket
+session.
 
-chartr ships **no agent CLIs**. You bring your own — the one hard prerequisite.
+Before you begin, install:
 
-## 1. Install
+- chartr for your platform. See [Installation](../README.md#installation).
+- At least one agent CLI, such as Claude Code, Codex, or OpenCode. Confirm that
+  the CLI runs from your shell before you add it to chartr.
 
-**macOS (Apple silicon)** — download
-[`chartr_darwin_arm64.dmg`](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
-and drag it to Applications. The `.dmg` is unsigned, so macOS blocks the first
-launch:
+chartr does not include agent CLIs.
 
-1. Open chartr, click **Done** (_not_ **Move to Trash**).
-2. **System Settings → Privacy & Security → Security → Open Anyway**.
+## 1. Launch chartr
 
-Or skip the dance entirely:
+Open the desktop app, or start the CLI:
 
-```
-xattr -d com.apple.quarantine /Applications/chartr.app
-```
-
-**Everywhere else** — grab your platform's archive from the
-[releases page](https://github.com/rengwu/chartr/releases), unpack it, and put
-`chartr` on your `PATH`. Linux and Windows get the binary only; there is no
-packaged app yet. On Windows, **WSL2 is the sure path**.
-
-**From source** — Go 1.26+ and Node 22+, then `make build` → `bin/chartr`.
-
-## 2. Install at least one agent CLI
-
-chartr drives whatever is on your `PATH`. These six are detected for you with no
-configuration:
-
-`claude` · `codex` · `opencode` · `kimi` · `grok` · `pi`
-
-Install one the normal way for that tool and confirm it runs in your own shell
-before continuing. Anything else on `PATH` works too — press `,` for settings and
-register it under **Agents**.
-
-## 3. Launch
-
-```
+```sh
 chartr
 ```
 
-The cockpit is at <http://127.0.0.1:8787>. Two flags matter:
+The CLI serves chartr at <http://127.0.0.1:8787>.
 
-```
-chartr -addr :9000       # serve somewhere else — not loopback, see below
-chartr -data-dir ~/work  # session/runtime root (default: cwd)
-```
+chartr does not provide authentication. Keep the server bound to the default
+loopback address unless you intend to make it accessible over a network. See
+[CLI and source builds](cli-and-source-builds.md) for command-line options.
 
-chartr has **no authentication**: anyone who can reach the port can open shells,
-run commands and spawn agents as you. `-addr :9000` (or any non-loopback
-address) gives that to everyone who can reach your machine on that port, so keep
-the default `127.0.0.1` unless you mean to expose it. chartr warns at startup
-when the address it bound is not loopback.
+## 2. Register an agent
 
-Your config lives at `~/.config/chartr` (or `$XDG_CONFIG_HOME/chartr`) — the
-registry of spaces, your agent library, your skill sources, terminal theme. That
-path is **global**, not per-`-data-dir`, so `-data-dir` moves runtime state but
-every invocation shares one set of registered spaces.
+chartr uses a local agent library. Installing an agent CLI does not add it to
+this library automatically.
 
-## 4. Register your first space
+1. Open **Settings**.
+2. Under **Agents**, select **New Agent**.
+3. Enter a name for the agent and the CLI executable in **adapter**.
+4. Add any required arguments, environment variables, or prompt-delivery
+   settings.
+5. Select **Save**.
 
-The cockpit opens on **Register your first space**. Paste an absolute project
-folder path and hit **Register**.
+The adapter field shows known CLI executables detected on your `PATH`. You can
+also register other executables.
 
-> If the folder isn't a git repository, chartr initializes one there. It says so
-> in the confirmation. Point it at a real project if you don't want that.
+## 3. Add a space
 
-You now have a plain multiplexer: the space in the sidebar, shells and agent
-CLIs in tabs. That is a perfectly good place to stop — everything below is the
-map half.
+A space is a project folder that contains your terminal sessions and maps.
 
-## 5. Chart a map
+On the first-run screen, select **Choose a folder**. If a folder picker is not
+available, enter the absolute path to the project and select **Register**. Use
+the **Add a space** button in the sidebar to register more folders later.
 
-Open the space card's **new shell** menu and pick an agent. That starts a **free
-session**: an agent in a plain shell, told what chartr is, the file format it
-should write, your own preferences, and what skills your sources hold — and
-nothing about how to behave. Ask it to run **`wayfinder`** and describe what you
-want built. It interviews you, then writes a map to `.plan/maps/<slug>/`.
+chartr creates a `CHARTR.md` file and a `.chartr/` directory in the space. These
+files provide local context and resources for agents.
 
-Whatever it writes draws as a **star-map the moment it hits disk** — you don't
-reload or import anything.
+Ask an agent to read `CHARTR.md` when it needs information about chartr. The file
+lists the available skills and points to the conventions for writing maps and
+tickets that chartr can read.
 
-When the plan is settled, ask it to run **`to-tickets`** to graduate the map into
-numbered ticket files. Those tickets, and their blocker edges, are what the
-star-map draws.
+## 4. Configure skills and roles
 
-The button's body — rather than its caret — opens a plain shell with nothing
-injected at all, for when you just want a terminal.
+Ticket sessions use skills assigned to four roles: grill, prototype, research,
+and implement.
 
-## 6. Spawn off the frontier
+A fresh installation normally registers the `chartr-skills` repository as a
+skill source. Open **Settings** and check the following:
 
-The **frontier** is every ticket whose blockers are all answered — the work you
-could actually start right now.
+1. Under **Skill sources**, confirm that an enabled source contains the skills
+   you want to use. Add a source if the list is empty.
+2. Under **Role bindings**, assign a skill to each role. Select **no preference**
+   to resolve a matching skill from the first enabled source that contains one.
 
-1. Click an unblocked star.
-2. Pick a role and an agent.
-3. The session opens in that agent's own TUI with the map, the ticket, and its
-   blockers' answers **already submitted** into the buffer.
+Free sessions do not require role bindings. Ticket sessions require a binding
+for the selected role.
 
-You don't paste context. That's the whole point.
+## 5. Create a map
 
-## 7. Finish a ticket
+1. Select a space.
+2. Open the menu next to **New Shell** and select a registered agent. This starts
+   a free session in the space.
+3. Ask the agent to use `wayfinder` to plan the work.
+4. Review the plan with the agent.
+5. Ask the agent to run `to-tickets` when the plan is ready.
 
-A ticket resolves when its **`## Answer`** section appears in the file. The
-agent writes it; the star turns; the tickets it was blocking join the frontier.
+The agent writes the map to `.plan/maps/<slug>/`. chartr watches this directory
+and displays valid maps automatically.
 
-chartr's only writes to your repo are the **claim** and **release** commits on
-the ticket file. The map on disk is the state — delete chartr tomorrow and your
-plan is still sitting in markdown.
+Selecting **New Shell** instead of an agent opens a terminal without an injected
+prompt.
 
-## 8. Bring your own skills
+## 6. Work a ticket
 
-chartr ships **no skills** inside the binary — none, not even its own (ADR 0018).
-What a session is told to do comes from a **source**: a folder on your machine, or
-a git repository chartr clones and pins. You manage them in settings under **Skill
-sources**, and the list's order *is* resolution order — the first enabled source
-holding a name wins, and the loser stays reachable as `Source/skill`.
+The frontier contains tickets whose blockers are resolved.
 
-A **fresh install pre-registers one source for you**: chartr's own skills repo,
-`rengwu/chartr-skills` — grill, prototype, research, implement, and the rest —
-cloned into an ordinary `git` row you can remove, refresh or reorder like any
-other. It gets no special seat in resolution; it is just a URL chartr fills in so
-your first run has something to spawn from. (A first run with no network or no
-`git` comes up with an empty list instead; register a source by hand.)
+1. Select an unblocked ticket on the map.
+2. Select a role and an agent.
+3. Start the session.
 
-Roles — grill, prototype, research, implement — are each **bound** to one
-source-qualified skill in `user.toml`. On a first run they are **unbound** and
-refuse to spawn until you bind them against a source; bind them in settings, or
-edit `user.toml` by hand.
+The session receives the map, the selected ticket, and the resolved answers from
+its blockers. Work with the agent in its terminal tab.
 
-When a session starts, chartr copies the skills into a gitignored
-`.chartr/skills/` inside your repo — the **mirror** — and points the agent there,
-so a sandboxed agent reads them from inside its own working tree. It is
-per-machine and never committed.
+A ticket is complete when its file contains a non-empty `## Answer` or
+`## Ruled out` section. chartr updates the map and makes newly unblocked tickets
+available. chartr does not commit these changes; use your normal version-control
+workflow to review and commit them.
 
-Two cautions the settings screen repeats:
+## Related documentation
 
-- A **git** source is chartr's checkout, not a workspace. A refresh discards
-  anything you edited inside it. If you want to edit skills, fork them into a
-  folder and register that as a `dir` source.
-- Those checkouts live under `sources/`. If you lose `sources.toml` they are
-  orphaned — chartr does not collect them, and deleting them is yours to do.
-
-**Free session payload** in the same section shows exactly what a free session is
-told, `preferences.md` included. It is the one place you can watch your own
-standing instructions land in an assembled document.
-
-## Where things live
-
-| Thing | Path |
-| --- | --- |
-| Registered spaces, agent library, terminal theme | `~/.config/chartr/` |
-| Your skill sources, in resolution order | `~/.config/chartr/sources.toml` |
-| Git checkouts chartr owns (one per registered git source) | `~/.config/chartr/sources/` |
-| chartr's file-format contract (generated — read it, don't edit it) | `~/.config/chartr/conventions.md` |
-| Your standing instructions, appended to every payload | `~/.config/chartr/preferences.md` |
-| Maps and tickets | `<your repo>/.plan/maps/` |
-
-Press `,` or the ⚙ in the sidebar header to reach all of it, and to open any of
-these files in `$EDITOR`.
-
-## Next
-
-- [Design system](design-system.md) — if you're touching the UI
-- [ADRs](adr/) — why the thing is shaped the way it is; start with
-  [0017](adr/0017-skills-come-from-registered-sources.md) for where skills come from
+- [CLI and source builds](cli-and-source-builds.md)
+- [Security](../SECURITY.md)
+- [Architecture decisions](adr/)

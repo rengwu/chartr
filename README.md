@@ -128,35 +128,6 @@ reports.
 
 No hosted service or user accounts will ever be planned. chartr does not send any usage data or telemetry.
 
-## Platform support
-
-One **supported** artifact: the cgo-free binary that serves the cockpit in your
-browser, green on all three OSes before a tag ships. The Linux `.AppImage` is
-built and smoke-tested as a release gate, so it ships whenever the supported
-binary does. The macOS `.dmg` is a best-effort extra: it needs cgo and system
-webview libs, and may simply be absent
-([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
-
-| Platform                  | Binary | Desktop app                             |
-| ------------------------- | ------ | --------------------------------------- |
-| macOS `arm64`             | ✅     | `.dmg`, [unsigned](#macos-first-launch) |
-| macOS `amd64`             | ✅     | none (cgo won't cross-compile)          |
-| Linux `amd64` / `arm64`   | ✅     | `.AppImage`, WebKitGTK bundled          |
-| Windows `amd64` / `arm64` | ✅     | none                                    |
-
-The Linux `.AppImage` carries its own WebKitGTK, so it does not care whether your
-distro ships `webkit2gtk-4.1`, the older `4.0`, or neither. Every tag builds it
-and runs it against a container with **no WebKit and no GTK installed**,
-screenshotting the window to prove the cockpit rendered rather than trusting an
-exit code — and that check gates the release
-([ADR 0011](docs/adr/0011-one-supported-artifact-tiered-extras.md)).
-
-Windows has no packaged app and none is scheduled; it can be built locally with
-`make webview` ([ADR 0013](docs/adr/0013-webview-shell-architecture.md)).
-
-Windows is built and its ConPTY layer is smoke-tested every change, but it isn't
-driven daily, so **WSL2 is the sure path**.
-
 ## Related projects
 
 - [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
