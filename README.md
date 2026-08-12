@@ -8,7 +8,8 @@
   (Apple silicon, unsigned)
 - [Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
   (`amd64` or `arm64`)
-- [More platforms](https://github.com/rengwu/chartr/releases)
+- [More releases](https://github.com/rengwu/chartr/releases)
+- [Getting started with chartr](docs/getting-started.md)
 
 An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminal sessions.
 
