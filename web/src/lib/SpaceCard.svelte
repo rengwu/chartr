@@ -11,6 +11,7 @@
   import {
     X,
     XCircle,
+    Circle,
     CircleNotch,
     Play,
     Plus,
@@ -175,7 +176,10 @@
     const current = space.terminals.map((t) => t.id);
     // A drop back where it started (or a keyboard move that clamped): the honest
     // response is to write nothing, and to hold nothing.
-    if (ids.length === current.length && ids.every((id, i) => id === current[i]))
+    if (
+      ids.length === current.length &&
+      ids.every((id, i) => id === current[i])
+    )
       return;
     // Hold the committed order on screen until the snapshot confirms it (the effect
     // above), so the drop does not bounce.
@@ -220,7 +224,7 @@
     title={space.path}
     data-space-id={space.id}
     class={[
-      "relative flex flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
+      "relative flex flex-col rounded-lg border p-1 transition-colors select-none",
       // The whole card is both the drag item (svelte-dnd-action, in the sidebar)
       // and the click target that selects the space — a click that never moves.
       "cursor-pointer",
@@ -250,7 +254,7 @@
        own arrangement is the only thing that sets it. -->
     <div class="flex items-start gap-1">
       <span
-        class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
+        class="flex p-1 min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
       >
         {#if attention === "halt"}
           <!-- The flag is also the jump: one click selects the space
@@ -297,7 +301,7 @@
          session on — icon-only here, where the card header has no room for a
          label. -->
       {#if !space.scratch}
-        <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
+        <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center p-1">
           <NewShellButton
             {agents}
             variant="ghost"
@@ -386,7 +390,7 @@
                 ? `${t.session.agent} · ${t.status}`
                 : `${t.proc} · ${t.status}`}
               class={[
-                "group flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
+                "group flex items-center gap-1 rounded-md px-0.5 py-1 transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent/60",
@@ -403,6 +407,62 @@
                 }
               }}
             >
+              <!-- Status indicator, pinned to the row's leading edge so every tab's
+                 state reads down a single column regardless of how its name or title
+                 wraps. It is always present — idle shows a filled neutral dot, so no
+                 row is ever missing its mark and the column never gaps. A tab with no
+                 known agent in front: that neutral dot when idle, a muted static
+                 pulse mark while a plain process holds the foreground (a dev server,
+                 a build — running, not an agent working), an error mark once it
+                 exits. A tab with a known agent reads the agent's own broadcast
+                 state — the primary spinner racing while it works, plus a held pause
+                 mark when it is blocked waiting on its human. The fast primary
+                 spinner and the slowly turning muted asterisk are what tell an agent
+                 churning a task apart from a process that merely runs. A dead session
+                 freezes under a grey mark. Working is the one state that cannot also
+                 be unseen — nothing has finished yet — so it alone keeps a fixed
+                 weight. -->
+              <!-- Fixed-size slot so the glyph occupies the same box in every
+                 state: the mark swaps but the column before the name never
+                 reflows. -->
+              <span class="flex size-3.5 shrink-0 items-center justify-center">
+                {#if t.status === "working"}
+                  <Spinner
+                    class="size-3.5 animate-spin [animation-duration:2s] text-primary"
+                    aria-label="working"
+                  />
+                {:else if t.status === "running"}
+                  <CircleNotch
+                    class="size-3.5 animate-spin [animation-duration:5s] text-muted-foreground"
+                    aria-label="running"
+                  />
+                {:else if t.status === "blocked"}
+                  <PauseCircle
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="blocked{away}"
+                  />
+                {:else if t.status === "dead"}
+                  <Skull
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="dead{away}"
+                  />
+                {:else if t.status === "exited"}
+                  <XCircle
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="exited{away}"
+                  />
+                {:else}
+                  <Circle
+                    class="size-2.5 text-muted-foreground/10"
+                    weight="fill"
+                    aria-label="idle"
+                  />
+                {/if}
+              </span>
+
               <!-- The tab's identity, and after it the generated conversation
                  title: the label keeps the width it needs to read, the title takes
                  what's left and scrolls only when it overflows. The title rides
@@ -414,7 +474,8 @@
                   <!-- A session: its identity is the ticket it is bound to
                      (role · #num) — told apart from an ad-hoc shell, which
                      shows its foreground process. -->
-                  <span class="max-w-[60%] shrink-0 truncate text-xs font-medium"
+                  <span
+                    class="max-w-[60%] shrink-0 truncate text-xs font-medium"
                     >{t.session.role} #{pad(t.session.ticketNum)}</span
                   >
                 {:else}
@@ -482,68 +543,24 @@
                 </span>
               {/if}
 
-              <!-- Status indicator. A tab with no known agent in front: a muted
-                 static pulse mark while a plain process holds the foreground
-                 (a dev server, a build — running, not an agent working), an
-                 error mark once it exits — idle shows nothing, the same quiet
-                 default the card header uses. A tab with a known agent reads
-                 the agent's own broadcast state — the primary spinner racing
-                 while it works, plus a held pause mark when it is blocked
-                 waiting on its human. The fast primary spinner and the slowly
-                 turning muted asterisk are what tell an agent churning a task
-                 apart from a process that merely runs. A dead session freezes under a
-                 grey mark. Working is the one state that cannot also be
-                 unseen — nothing has finished yet — so it alone keeps a fixed
-                 weight. -->
-              {#if t.status === "working"}
-                <Spinner
-                  class="size-3.5 shrink-0 animate-spin [animation-duration:2s] text-primary"
-                  aria-label="working"
-                />
-              {:else if t.status === "running"}
-                <CircleNotch
-                  class="size-3.5 shrink-0 animate-spin [animation-duration:5s] text-muted-foreground"
-                  aria-label="running"
-                />
-              {:else if t.status === "blocked"}
-                <PauseCircle
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="blocked{away}"
-                />
-              {:else if t.status === "dead"}
-                <Skull
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="dead{away}"
-                />
-              {:else if t.status === "exited"}
-                <XCircle
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="exited{away}"
-                />
-              {/if}
-
               <!-- The close button stays out of the way on a background tab and
                  surfaces only where ending one is a deliberate act: the row the
                  pointer is over, or the tab that is selected and in view. A row of
                  always-present ✕es across every background tab read as clutter and
-                 invited a mis-click, so it is pinned on the active row and slides in
+                 invited a mis-click, so it is shown on the active row and fades in
                  on hover / keyboard focus everywhere else.
 
-                 The reveal is a real layout shift, animated: the wrapper collapses
-                 to zero width (and cancels the row's gap with -ml-1.5) when hidden
-                 and grows to the button's width when shown, so the row's contents
-                 ease over to make room rather than the ✕ popping in on top of them.
-                 The button lives in the DOM the whole time — only the wrapper's
-                 width animates — and motion-reduce drops the transition. -->
+                 The wrapper always reserves the button's width, so nothing shifts
+                 when the ✕ appears — only its opacity animates (motion-reduce drops
+                 the transition). It stays in the DOM the whole time; while hidden it
+                 is opacity-0 and pointer-events-none so an invisible ✕ can't be
+                 mis-clicked. -->
               <span
                 class={[
-                  "-my-0.5 flex shrink-0 overflow-hidden transition-all duration-100 ease-out motion-reduce:transition-none",
+                  "-my-0.5 flex w-5 shrink-0 overflow-hidden transition-opacity duration-100 ease-out motion-reduce:transition-none",
                   isActive
-                    ? "ml-0 w-5 opacity-100"
-                    : "-ml-1.5 w-0 opacity-0 group-hover:ml-0 group-hover:w-5 group-hover:opacity-100 focus-within:ml-0 focus-within:w-5 focus-within:opacity-100",
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
                 ]}
               >
                 <Button
