@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {
     Agent,
+    AutoTitlePrefs,
     ConfigLayer,
     NotifyPrefs,
     RoleBinding,
@@ -11,6 +12,7 @@
   import SourcesSettings from './SourcesSettings.svelte'
   import TerminalSettings from './TerminalSettings.svelte'
   import NotifySettings from './NotifySettings.svelte'
+  import AutoTitleSettings from './AutoTitleSettings.svelte'
   import SystemPromptsSettings from './SystemPromptsSettings.svelte'
   import { Button } from './components/ui/button'
   import * as ScrollArea from './components/ui/scroll-area'
@@ -30,6 +32,7 @@
     gitAvailable = false,
     nativePicker = false,
     notifyPrefs,
+    autoTitlePrefs,
     onClose,
   }: {
     // The files the operator's config lives in — the agent library, `terminal.toml`,
@@ -53,6 +56,9 @@
     // The resolved notify.toml values are read-only here, on the same terms as
     // terminal customization: show what is in force and open the owning file.
     notifyPrefs?: NotifyPrefs
+    // The resolved autotitle.toml toggle, read-only here on the same terms as the
+    // notification rule.
+    autoTitlePrefs?: AutoTitlePrefs
     onClose: () => void
   } = $props()
 
@@ -60,6 +66,7 @@
   // section rather than in the generic list — it comes with the settings it holds.
   const terminalLayer = $derived(config.find((l) => l.holds === 'terminal'))
   const notifyLayer = $derived(config.find((l) => l.holds === 'notifications'))
+  const autoTitleLayer = $derived(config.find((l) => l.holds === 'autotitle'))
 
   // The three prompts the System Prompts section surfaces, in a fixed display
   // order by their server-side names. Any an older server did not send drop out,
@@ -84,6 +91,7 @@
   const creatable = new Set([
     'terminal-config',
     'notify-config',
+    'autotitle-config',
     // The core overrides scaffold from chartr's shipped bytes: a missing one
     // offers Create from defaults, stamping the embedded core for the operator
     // to edit. Preferences scaffolds a blank file on the same terms — its default
@@ -162,6 +170,11 @@
              itself. -->
         <TerminalSettings layer={terminalLayer} {layerRow} />
         <NotifySettings prefs={notifyPrefs} layer={notifyLayer} {layerRow} />
+        <AutoTitleSettings
+          prefs={autoTitlePrefs}
+          layer={autoTitleLayer}
+          {layerRow}
+        />
 
         <!-- The prompts chartr composes into every session: the two overridable
              cores and the operator's own preferences, each openable and

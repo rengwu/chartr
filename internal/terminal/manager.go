@@ -48,6 +48,22 @@ type Manager struct {
 	// onFinished is the one event seam tickets 03 and 04 consume. This ticket
 	// seats and drives the clock; a nil callback deliberately consumes nothing.
 	onFinished func(RunFinished)
+	// genTitle turns a tab's recent screen into a short label by spending a cheap
+	// model on the tab's *own* adapter — same-vendor, so a session's screen never
+	// crosses to a harness the operator didn't run it on (server side, titlegen.go).
+	// Nil is the feature-off state. It runs off the sampler on its own goroutine and
+	// must not block the sampler; ok=false means "no title this time", swallowed
+	// silently.
+	genTitle func(agent, context string) (title string, ok bool)
+	// autoTitleEnabled gates the whole feature from the operator's per-machine
+	// toggle (autotitle.toml). Default true; ConfigureAutoTitle updates it on every
+	// rebuild. Guarded by mu, read once per sample.
+	autoTitleEnabled bool
+	// titleSem caps how many title generations run at once process-wide, so a burst
+	// of tabs going idle together cannot fan out into a crowd of CLI processes. A
+	// buffered channel used as a counting semaphore; nil until the first generator
+	// is wired.
+	titleSem chan struct{}
 
 	notifyEnabled bool
 	notifyAfter   time.Duration
@@ -70,6 +86,10 @@ type Manager struct {
 const (
 	sampleInterval   = 300 * time.Millisecond
 	shellSampleEvery = 3 // 300ms × 3 ≈ the 900ms cadence shells have always had
+	// titleGenConcurrency caps how many auto-title generations run at once across
+	// the whole process. Two keeps a burst of idling tabs from spawning a crowd of
+	// CLI processes while still letting a couple of titles land promptly.
+	titleGenConcurrency = 2
 )
 
 // agentEngine is the parsed set of shipped agent manifests, built once for the
@@ -84,12 +104,13 @@ var agentEngine = detect.Builtin()
 // unit test) and, with no one to notify, the background sampler is not started.
 func NewManager(onChange func(), onFinished func(RunFinished)) *Manager {
 	m := &Manager{
-		terms:         make(map[string]*Terminal),
-		onChange:      onChange,
-		onFinished:    onFinished,
-		notifyEnabled: true,
-		notifyAfter:   DefaultNotifyAfter,
-		notifySettle:  DefaultNotifySettle,
+		terms:            make(map[string]*Terminal),
+		onChange:         onChange,
+		onFinished:       onFinished,
+		notifyEnabled:    true,
+		notifyAfter:      DefaultNotifyAfter,
+		notifySettle:     DefaultNotifySettle,
+		autoTitleEnabled: true,
 	}
 	if onChange != nil {
 		m.stop = make(chan struct{})
@@ -129,6 +150,9 @@ func (m *Manager) sampleOnce(slowTick bool) {
 	}
 	m.mu.Unlock()
 
+	// The auto-title toggle is read once per tick, not per tab.
+	titlesOn := m.genTitle != nil && m.autoTitleOn()
+
 	changed := false
 	for _, t := range terms {
 		if !slowTick && !t.hasAgent() {
@@ -137,11 +161,67 @@ func (m *Manager) sampleOnce(slowTick bool) {
 		if t.sample(agentEngine) {
 			changed = true
 		}
-		if ev := t.updateRunClock(time.Now()); ev != nil && m.onFinished != nil {
+		now := time.Now()
+		if ev := t.updateRunClock(now); ev != nil && m.onFinished != nil {
 			m.onFinished(*ev)
+		}
+		// Auto-title only tabs with an agent in front — that is where a session's
+		// worth of context to summarise exists — and only when the toggle is on and
+		// one is due (idle, screen changed, debounce elapsed). titleDue arms the
+		// scheduler, so the generation must be launched; it runs off-thread behind
+		// the concurrency cap and can't move the sampler.
+		if titlesOn && t.hasAgent() {
+			if agent, ctx, hash, ok := t.titleDue(now); ok {
+				go m.runTitleGen(t, agent, hash, ctx)
+			}
 		}
 	}
 	if changed {
+		m.notify()
+	}
+}
+
+// SetTitleGenerator wires the cheap-model title generator the sampler spends on
+// and seats the concurrency semaphore. The server sets it once after construction;
+// passing nil turns auto-titling off. It is set before the first sample matters, so
+// no lock guards it — the sampler reads it, the server writes it once at startup.
+func (m *Manager) SetTitleGenerator(gen func(agent, context string) (string, bool)) {
+	m.genTitle = gen
+	m.titleSem = make(chan struct{}, titleGenConcurrency)
+}
+
+// ConfigureAutoTitle applies the operator's per-machine auto-title toggle. Safe to
+// call on every rebuild; it flips a single guarded flag the sampler reads, so
+// turning the feature off stops new generations at once (a title already on screen
+// simply stops updating).
+func (m *Manager) ConfigureAutoTitle(enabled bool) {
+	m.mu.Lock()
+	m.autoTitleEnabled = enabled
+	m.mu.Unlock()
+}
+
+// autoTitleOn reports the toggle under the lock — the sampler's one read per tick.
+func (m *Manager) autoTitleOn() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.autoTitleEnabled
+}
+
+// runTitleGen spends the generator on one tab's context off the sampler's
+// goroutine and, on a usable title, stores it and pushes a fresh model. The
+// process-wide semaphore bounds how many run at once. A failure — the adapter
+// declined, its models exhausted, nothing generated — releases the tab's scheduler
+// and changes nothing on screen: auto-titling never surfaces an error.
+func (m *Manager) runTitleGen(t *Terminal, agent, hash, context string) {
+	m.titleSem <- struct{}{}
+	defer func() { <-m.titleSem }()
+
+	title, ok := m.genTitle(agent, context)
+	if !ok {
+		t.titleFailed()
+		return
+	}
+	if t.titleSucceeded(hash, title) {
 		m.notify()
 	}
 }
@@ -396,12 +476,15 @@ type Info struct {
 	// FinishedUnseen is the dot: this tab finished a qualifying run and the
 	// operator has not focused it since.
 	FinishedUnseen bool
+	// AutoTitle is the generated summary of the tab's recent session, empty until a
+	// generation lands (and on tabs with no agent in front, which are never titled).
+	AutoTitle string
 }
 
 // info snapshots one terminal's public shape under its own lock.
 func (t *Terminal) info() Info {
 	t.mu.Lock()
-	alive, proc, state, unseen := t.alive, t.proc, t.state, t.finishedUnseen
+	alive, proc, state, unseen, title := t.alive, t.proc, t.state, t.finishedUnseen, t.autoTitle
 	t.mu.Unlock()
 	if proc == "" {
 		proc = t.Title
@@ -411,7 +494,7 @@ func (t *Terminal) info() Info {
 	}
 	return Info{
 		ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state,
-		Alive: alive, Session: t.session, FinishedUnseen: unseen,
+		Alive: alive, Session: t.session, FinishedUnseen: unseen, AutoTitle: title,
 	}
 }
 

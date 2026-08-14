@@ -845,6 +845,7 @@
               gitAvailable={control.model?.gitAvailable ?? false}
               {nativePicker}
               notifyPrefs={control.model?.notify}
+              autoTitlePrefs={control.model?.autoTitle}
               onClose={leaveSettings}
             />
           </div>

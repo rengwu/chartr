@@ -1,0 +1,14 @@
+# Auto-generated tab titles are machine-wide server behaviour, so they live here
+# rather than in terminal.toml (terminal customization) or user.toml (execution
+# choices). This file is local to this machine, never committed and never scoped
+# to a space.
+#
+# When on, chartr summarises an idle agent tab's recent screen into a short title
+# shown after the tab's label. It does this by spending a cheap model on the tab's
+# OWN agent — a claude session is summarised by claude, a codex session by codex —
+# so a session's screen is never sent to a vendor you did not run it on. Generation
+# is debounced (a few minutes) and only runs while a tab is idle.
+#
+# Turn this off to stop all title generation — no models are spent, and tabs keep
+# just their plain label.
+# enabled = true

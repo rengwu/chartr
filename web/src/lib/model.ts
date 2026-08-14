@@ -116,6 +116,11 @@ export interface Terminal {
   // browser attached at all. Cleared by focusing the tab, which is the only
   // acknowledgement there is (`unseen.ts`).
   finishedUnseen?: boolean
+  // A generated one-line summary of the tab's recent session, shown as a muted
+  // scrolling marquee after the tab's label. Absent until a generation lands, and
+  // always absent on a tab with no agent in front or when the operator turned
+  // auto-titling off.
+  autoTitle?: string
 }
 
 export interface Space {
@@ -151,6 +156,7 @@ export interface ConfigLayer {
     | 'preferences'
     | 'ticket core'
     | 'space core'
+    | 'autotitle'
   path: string
   exists: boolean
 }
@@ -241,11 +247,20 @@ export interface Model {
   // Durations use the same strings the file accepts, and are always present
   // because absent or invalid keys have already fallen back server-side.
   notify?: NotifyPrefs
+  // The operator's resolved machine-wide auto-title toggle from autotitle.toml —
+  // whether idle agent tabs are summarised into labels. The server always sends it;
+  // optional here only so partial test fixtures need not spell it out.
+  autoTitle?: AutoTitlePrefs
 }
 
 export interface NotifyPrefs {
   after: string
   settle: string
+  enabled: boolean
+}
+
+// The resolved autotitle.toml value: the machine's one auto-title setting.
+export interface AutoTitlePrefs {
   enabled: boolean
 }
 

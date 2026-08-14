@@ -46,6 +46,9 @@ type Model struct {
 	// `notify.toml`. Durations ride as Go duration strings so the read-only config
 	// surface shows the same units the file accepts rather than nanoseconds.
 	Notify NotifyPrefs `json:"notify"`
+	// AutoTitle is the operator's resolved machine-wide auto-title toggle from
+	// `autotitle.toml` — whether chartr summarises idle agent tabs into labels.
+	AutoTitle AutoTitlePrefs `json:"autoTitle"`
 	// Sources is the operator's ordered skill-source list, each row with what a
 	// walk of it just found. List position *is* resolution order, so the settings
 	// section renders it in the order it arrives and never sorts it. Never nil.
@@ -158,6 +161,13 @@ type NotifyPrefs struct {
 	After   string `json:"after"`
 	Settle  string `json:"settle"`
 	Enabled bool   `json:"enabled"`
+}
+
+// AutoTitlePrefs is the resolved autotitle.toml value on the wire — the machine's
+// one auto-title setting. Like NotifyPrefs it is a complete value: absent or
+// invalid resolves to the shipped default (on) before it reaches here.
+type AutoTitlePrefs struct {
+	Enabled bool `json:"enabled"`
 }
 
 // Space is one registry entry in the pushed model: normally a folder the
@@ -297,6 +307,11 @@ type Terminal struct {
 	// client-side flag would show nothing in exactly that case; this one survives a
 	// reload because the server never forgot it.
 	FinishedUnseen bool `json:"finishedUnseen,omitempty"`
+	// AutoTitle is the generated one-line summary of the tab's recent session,
+	// shown as a muted marquee after the tab's label. Empty until a generation
+	// lands, and always empty on a tab with no agent in front (those are never
+	// titled) or when the operator has turned auto-titling off.
+	AutoTitle string `json:"autoTitle,omitempty"`
 }
 
 // TerminalPrefs is the operator's resolved terminal customization on the wire —

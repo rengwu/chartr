@@ -3,6 +3,7 @@
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { flip } from "svelte/animate";
   import { Button } from "./components/ui/button";
+  import Marquee from "./Marquee.svelte";
   import NewShellButton from "./NewShellButton.svelte";
   import * as ContextMenu from "./components/ui/context-menu";
   import { spaceAttention, spaceLiveness } from "./attention";
@@ -385,7 +386,7 @@
                 ? `${t.session.agent} · ${t.status}`
                 : `${t.proc} · ${t.status}`}
               class={[
-                "flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
+                "group flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent/60",
@@ -402,18 +403,32 @@
                 }
               }}
             >
-              {#if t.session}
-                <!-- A session: its identity is the ticket it is bound to
-                   (role · #num) — told apart from an ad-hoc shell, which
-                   shows its foreground process. -->
-                <span class="min-w-0 flex-1 truncate text-xs font-medium"
-                  >{t.session.role} #{pad(t.session.ticketNum)}</span
-                >
-              {:else}
-                <span class="min-w-0 flex-1 truncate font-mono text-xs"
-                  >{t.proc}</span
-                >
-              {/if}
+              <!-- The tab's identity, and after it the generated conversation
+                 title: the label keeps the width it needs to read, the title takes
+                 what's left and scrolls only when it overflows. The title rides
+                 after whatever label the row already shows — the ticket for a
+                 session, the foreground agent (claude/codex) for an ad-hoc shell —
+                 and is present only on a tab whose agent produced one. -->
+              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                {#if t.session}
+                  <!-- A session: its identity is the ticket it is bound to
+                     (role · #num) — told apart from an ad-hoc shell, which
+                     shows its foreground process. -->
+                  <span class="max-w-[60%] shrink-0 truncate text-xs font-medium"
+                    >{t.session.role} #{pad(t.session.ticketNum)}</span
+                  >
+                {:else}
+                  <span class="max-w-[60%] shrink-0 truncate font-mono text-xs"
+                    >{t.proc}</span
+                  >
+                {/if}
+                {#if t.autoTitle}
+                  <Marquee
+                    text={t.autoTitle}
+                    class="min-w-0 flex-1 text-[10px] leading-none text-muted-foreground"
+                  />
+                {/if}
+              </span>
 
               {#if t.session && !t.alive}
                 <!-- The death halt: a dead session is pinned to its ticket and
@@ -510,19 +525,41 @@
                 />
               {/if}
 
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                class="-my-0.5 -mr-0.5 shrink-0 hover:text-destructive"
-                aria-label="End {t.proc}"
-                title={t.session ? "End this session" : "End this shell"}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  onendshell(t);
-                }}
+              <!-- The close button stays out of the way on a background tab and
+                 surfaces only where ending one is a deliberate act: the row the
+                 pointer is over, or the tab that is selected and in view. A row of
+                 always-present ✕es across every background tab read as clutter and
+                 invited a mis-click, so it is pinned on the active row and slides in
+                 on hover / keyboard focus everywhere else.
+
+                 The reveal is a real layout shift, animated: the wrapper collapses
+                 to zero width (and cancels the row's gap with -ml-1.5) when hidden
+                 and grows to the button's width when shown, so the row's contents
+                 ease over to make room rather than the ✕ popping in on top of them.
+                 The button lives in the DOM the whole time — only the wrapper's
+                 width animates — and motion-reduce drops the transition. -->
+              <span
+                class={[
+                  "-my-0.5 flex shrink-0 overflow-hidden transition-all duration-100 ease-out motion-reduce:transition-none",
+                  isActive
+                    ? "ml-0 w-5 opacity-100"
+                    : "-ml-1.5 w-0 opacity-0 group-hover:ml-0 group-hover:w-5 group-hover:opacity-100 focus-within:ml-0 focus-within:w-5 focus-within:opacity-100",
+                ]}
               >
-                <X />
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  class="shrink-0 hover:text-destructive"
+                  aria-label="End {t.proc}"
+                  title={t.session ? "End this session" : "End this shell"}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    onendshell(t);
+                  }}
+                >
+                  <X />
+                </Button>
+              </span>
             </div>
           </li>
         {/each}

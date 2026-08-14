@@ -143,6 +143,14 @@ type Terminal struct {
 	// outlive the run it records.
 	finishedUnseen bool
 
+	// autoTitle is the generated one-line summary of this tab's recent session,
+	// surfaced as a muted marquee after the tab's agent label. sched is the pure
+	// hysteresis (titler.go) that decides when to (re)generate it — only while idle,
+	// unchanged-guarded, and debounced — so the paid generation runs rarely and
+	// never on the sampler's own goroutine.
+	autoTitle string
+	sched     titleSched
+
 	// grid reconstructs the terminal's visible screen server-side from the same
 	// PTY bytes the browser renders, read by the sampler for detection only (never
 	// replayed back — ADR 0010). It has its own lock, so it is reached directly
