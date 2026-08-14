@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -342,6 +343,14 @@ func (s *Server) launchSession(in sessionLaunch) (map[string]any, int, error) {
 		Prompt:  adapter.Opener(payloadPath),
 		Deliver: in.spec.Prompt,
 	})
+	// Host-side preparation the agent's own startup gates need (kimi's
+	// workspace-trust prompt exits the process when it goes unanswered). A
+	// preflight failure must not refuse the launch — the agent degrades to
+	// asking its own question in its pane, which is the pre-preflight
+	// behaviour.
+	if err := adapter.Preflight(launch.Name, in.entry.Path, in.spec.Env); err != nil {
+		log.Printf("chartr: agent preflight in %s: %v", in.entry.Path, err)
+	}
 	if _, err := s.terms.OpenSession(in.entry.ID, in.entry.Path, in.sessionID, launch.Name, launch.Args,
 		in.spec.Env, launch.TypeIn, terminal.Session{
 			MapSlug:   in.slug,

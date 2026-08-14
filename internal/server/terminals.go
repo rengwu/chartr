@@ -84,6 +84,9 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		Args:    spec.Args,
 		Deliver: spec.Prompt,
 	})
+	if err := adapter.Preflight(launch.Name, e.Path, spec.Env); err != nil {
+		log.Printf("chartr: agent preflight in %s: %v", e.Path, err)
+	}
 	// Titled by the agent's registered name — the tab is titled by the thing the
 	// operator clicked, which is the only labelling rule that never needs
 	// explaining. Three free sessions on one agent get three identical titles, as

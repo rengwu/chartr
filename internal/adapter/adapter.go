@@ -7,7 +7,10 @@
 //
 // It models exactly one thing: prompt delivery. Everything else — model,
 // permissions, sandbox — is operator-supplied args, since those flags vary
-// per harness and this package has no business guessing at them.
+// per harness and this package has no business guessing at them. The one
+// exception is host-side preparation a launch cannot survive without (kimi's
+// workspace-trust gate, which exits the process when its prompt goes
+// unanswered); that lives in preflight.go.
 //
 // # Prompt delivery
 //
