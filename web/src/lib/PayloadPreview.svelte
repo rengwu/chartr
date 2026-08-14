@@ -3,12 +3,9 @@
   import { defaultRole, type Agent, type Payload, type PayloadPart } from './model'
   import { previewPayload } from './actions'
   import { renderMarkdown } from './markdown'
-  import { Badge, type BadgeVariant } from '$lib/components/ui/badge'
   import * as Accordion from '$lib/components/ui/accordion'
   import * as ScrollArea from '$lib/components/ui/scroll-area'
   import { Warning, Quotes, Cube } from 'phosphor-svelte'
-  import { cn } from '$lib/utils'
-  import PrototypeSwitcher from './PrototypeSwitcher.svelte' // PROTOTYPE — throwaway
 
   // The payload preview (ticket 08, stories 45–49): for a chosen ticket and role,
   // exactly what a session would be told, assembled from the resolved skill
@@ -75,63 +72,12 @@
       })
   })
 
-  // The palette has one chromatic token (--destructive); origins are told apart
-  // by weight instead of hue: chartr's own embedded text is the lightest touch,
-  // the operator's preferences step up for what a human wrote, and context
-  // (assembled fresh per session) is set apart as the odd one out. Every other
-  // origin is a *registered source's name*, an open set, so the lookup keeps its
-  // fallback and a new source degrades to a plain outline rather than breaking.
-  const originVariant: Record<string, BadgeVariant> = {
-    chartr: 'outline',
-    operator: 'default',
-    context: 'ghost',
-  }
-
-  function partKindLabel(p: PayloadPart): string {
-    return p.kind === 'prompt' ? 'prompt' : 'context'
-  }
-
-  // ── PROTOTYPE (throwaway) ─────────────────────────────────────────────
-  // Three structurally-different takes on the collapsed row header, to settle
-  // "the type tags are messy — I don't know what is what." Flip with the
-  // bottom bar (?variant=A|B|C). Dev-only; fold the winner in and delete the
-  // rest (this block, PrototypeSwitcher import + component, the variant name
-  // helpers). See PrototypeSwitcher.svelte.
-  const VARIANTS = ['A', 'B', 'C']
-  const VARIANT_LABELS: Record<string, string> = {
-    A: 'Sectioned, cut redundancy',
-    B: 'Two-line, colour-coded',
-    C: 'Log-line, source token',
-  }
-  let variant = $state('A')
-  $effect(() => {
-    const v = new URLSearchParams(window.location.search).get('variant')?.toUpperCase()
-    if (v && VARIANTS.includes(v)) variant = v
-  })
-  function setVariant(v: string) {
-    variant = v
-    const url = new URL(window.location.href)
-    url.searchParams.set('variant', v)
-    history.replaceState(null, '', url)
-  }
-
-  // Label only earns its place when it says something the bold name doesn't.
-  function labelAdds(p: PayloadPart): boolean {
-    return !!p.label && p.label.toLowerCase() !== p.name.toLowerCase()
-  }
-  // The provenance pill is noise when it just echoes the section it's already in.
-  function originAdds(p: PayloadPart): boolean {
-    return p.origin !== 'context'
-  }
-  // Rough token weight of a block — chars/4 — so the operator can see which
-  // blocks dominate the context window this modal is previewing.
+  // Rough token weight of a block — chars/4 — so the operator can see at a glance
+  // which blocks dominate the context window this modal previews.
   function tokenEstimate(p: PayloadPart): string {
     const est = Math.round(p.text.length / 4)
     return est < 1000 ? `~${est} tok` : `~${(est / 1000).toFixed(1)}k tok`
   }
-  const promptParts = $derived((payload?.parts ?? []).filter((p) => p.kind === 'prompt'))
-  const contextParts = $derived((payload?.parts ?? []).filter((p) => p.kind === 'context'))
-  // ── /PROTOTYPE ────────────────────────────────────────────────────────
 </script>
 
 <Modal {open} title="Payload preview" wide {onClose}>
@@ -168,81 +114,29 @@
             </Accordion.Content>
           {/snippet}
 
-          <!-- ── PROTOTYPE (throwaway): three row-header variants ──────────── -->
-          {#if variant === 'A'}
-            <!-- A · Sectioned, redundancy cut. The prompt/context axis becomes a
-                 section header, so the far-right tag and the echoing `context`
-                 pill both vanish; name + provenance is all that's left. -->
-            {#each [{ head: 'Prompt', items: promptParts }, { head: 'Context', items: contextParts }] as group (group.head)}
-              {#if group.items.length}
-                <div class="flex flex-col gap-1.5">
-                  <span class="px-0.5 text-[0.65rem] font-medium tracking-wider text-muted-foreground uppercase">{group.head}</span>
-                  <Accordion.Root type="multiple" class="flex flex-col gap-2.5">
-                    {#each group.items as part (part.name)}
-                      <Accordion.Item value={part.name} class="rounded-md border border-border">
-                        <Accordion.Trigger class="items-center gap-2 p-2.5 hover:no-underline">
-                          <span class="text-sm font-medium">{part.name}</span>
-                          {#if originAdds(part)}<Badge variant={originVariant[part.origin] ?? 'secondary'}>{part.origin}</Badge>{/if}
-                          {#if labelAdds(part)}<span class="truncate text-[0.7rem] text-muted-foreground">{part.label}</span>{/if}
-                        </Accordion.Trigger>
-                        {@render body(part)}
-                      </Accordion.Item>
-                    {/each}
-                  </Accordion.Root>
-                </div>
-              {/if}
+          <!-- One dense line per block, read like a manifest: a leading kind icon
+               (prompt vs context), a monospace `source/` token for provenance, the
+               block name, then its token weight. All collapsed by default; the
+               grouped card and `type="multiple"` let several open at once. -->
+          <Accordion.Root type="multiple" class="flex flex-col overflow-hidden rounded-md border border-border">
+            {#each payload.parts as part (part.name)}
+              <Accordion.Item value={part.name}>
+                <Accordion.Trigger class="items-center gap-2 p-2 hover:no-underline">
+                  {#if part.kind === 'prompt'}
+                    <Quotes class="shrink-0 text-muted-foreground" aria-label="prompt" />
+                  {:else}
+                    <Cube class="shrink-0 text-muted-foreground" aria-label="context" />
+                  {/if}
+                  <span class="flex min-w-0 flex-1 items-baseline">
+                    <span class="shrink-0 font-mono text-xs text-muted-foreground">{part.origin}/</span>
+                    <span class="text-xs font-medium">{part.name}</span>
+                  </span>
+                  <span class="shrink-0 font-mono text-[0.7rem] text-muted-foreground tabular-nums">{tokenEstimate(part)}</span>
+                </Accordion.Trigger>
+                {@render body(part)}
+              </Accordion.Item>
             {/each}
-          {:else if variant === 'B'}
-            <!-- B · Two-line, colour-coded. Kind is a left accent bar, not a word;
-                 name + provenance sit on line one, the descriptive label drops to a
-                 quiet subtitle on line two. -->
-            <Accordion.Root type="multiple" class="flex flex-col gap-2.5">
-              {#each payload.parts as part (part.name)}
-                <Accordion.Item
-                  value={part.name}
-                  class={cn(
-                    'rounded-md border border-border border-l-2',
-                    part.kind === 'prompt' ? 'border-l-primary' : 'border-l-muted-foreground/50',
-                  )}
-                >
-                  <Accordion.Trigger class="items-center gap-2 p-2.5 hover:no-underline">
-                    <div class="flex min-w-0 flex-col gap-0.5">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium">{part.name}</span>
-                        <Badge variant={originVariant[part.origin] ?? 'secondary'}>{part.origin}</Badge>
-                      </div>
-                      {#if labelAdds(part)}<span class="truncate text-left text-[0.7rem] text-muted-foreground">{part.label}</span>{/if}
-                    </div>
-                  </Accordion.Trigger>
-                  {@render body(part)}
-                </Accordion.Item>
-              {/each}
-            </Accordion.Root>
-          {:else}
-            <!-- C · Log-line. One dense line per block: a leading kind icon, a
-                 monospace `source/` token for provenance, the bold name, then the
-                 faded label. Reads like a manifest. -->
-            <Accordion.Root type="multiple" class="flex flex-col overflow-hidden rounded-md border border-border">
-              {#each payload.parts as part (part.name)}
-                <Accordion.Item value={part.name}>
-                  <Accordion.Trigger class="items-center gap-2 p-2 hover:no-underline">
-                    {#if part.kind === 'prompt'}
-                      <Quotes class="shrink-0 text-muted-foreground" aria-label="prompt" />
-                    {:else}
-                      <Cube class="shrink-0 text-muted-foreground" aria-label="context" />
-                    {/if}
-                    <span class="flex min-w-0 flex-1 items-baseline">
-                      <span class="shrink-0 font-mono text-xs text-muted-foreground">{part.origin}/</span>
-                      <span class="text-xs font-medium">{part.name}</span>
-                    </span>
-                    <span class="shrink-0 font-mono text-[0.7rem] text-muted-foreground tabular-nums">{tokenEstimate(part)}</span>
-                  </Accordion.Trigger>
-                  {@render body(part)}
-                </Accordion.Item>
-              {/each}
-            </Accordion.Root>
-          {/if}
-          <!-- ── /PROTOTYPE ───────────────────────────────────────────────── -->
+          </Accordion.Root>
 
           <details class="text-xs">
             <summary class="cursor-pointer text-muted-foreground">Composed document (what gets written to the payload file)</summary>
@@ -253,9 +147,4 @@
       </ScrollArea.Root>
     {/if}
   </div>
-
-  <!-- PROTOTYPE (throwaway) — dev-only variant switcher; never ships. -->
-  {#if import.meta.env.DEV}
-    <PrototypeSwitcher variants={VARIANTS} current={variant} label={VARIANT_LABELS[variant]} onChange={setVariant} />
-  {/if}
 </Modal>
