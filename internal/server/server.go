@@ -262,6 +262,10 @@ func New(opts Options) (*Server, error) {
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals", s.handleOpenTerminal)
+	// The operator's own arrangement of a space's session tabs (scoped to the one
+	// card): the whole ordered list of that space's terminal ids, the same
+	// whole-list shape the sidebar reorder takes.
+	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/reorder", s.handleReorderTerminals)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}", s.handleCloseTerminal)
 	// The acknowledgement of a run that finished while the operator was elsewhere
 	// (session-notifications, the dot): focusing a tab clears its dot in the

@@ -15,6 +15,7 @@
     pickFolder,
     registerSpace,
     reorderSpaces,
+    reorderSessions,
     renameSpace,
     ActionError,
     LIVE_SESSION,
@@ -470,6 +471,18 @@
     }
   }
 
+  // A card reordered its own session tabs (svelte-dnd-action, the same method the
+  // sidebar uses): post the whole ordered list of that space's terminal ids. The
+  // card holds the new order on screen and drops it back if this rejects, so the
+  // one thing the chrome owes it is a rejected promise on failure — re-throw after
+  // surfacing the message. The confirming order arrives over the control socket.
+  function reorderSessionsIn(space: Space, ids: string[]): Promise<void> {
+    return reorderSessions(space.id, ids).catch((e) => {
+      actionError = `Couldn’t save the new tab order: ${(e as Error).message}`;
+      throw e;
+    });
+  }
+
   async function endShell(space: Space, t: Terminal) {
     if (activeTermId === t.id) activeTermId = null;
     try {
@@ -746,6 +759,7 @@
                   onopenshell={() => openShell(space)}
                   onfree={(agent) => freeSession(space, agent)}
                   onregister={() => openSettings()}
+                  onreorder={(ids) => reorderSessionsIn(space, ids)}
                   agents={agentLibrary}
                 />
               </div>

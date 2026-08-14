@@ -15,6 +15,12 @@ import (
 // existed, or it has already ended.
 var ErrNoTerminal = errors.New("terminal: no such terminal")
 
+// ErrBadReorder marks a terminals reorder whose ids are not exactly the space's
+// live terminals — a stale view, a foreign id, or a repeated one. Like the
+// sidebar's own reorder, it is all-or-nothing: the order is left untouched, so a
+// partial list is a client bug refused rather than a partial rearrangement.
+var ErrBadReorder = errors.New("terminal: a reorder must name every terminal in the space exactly once")
+
 // ErrSessionExists is returned when a space already has a live session and one
 // more is asked for without the operator's override. One session per space is the
 // default (spec, State model): parallelism is meant to be many spaces, never many
@@ -461,6 +467,63 @@ func (m *Manager) ForSpace(spaceID string) []Info {
 		out = append(out, t.info())
 	}
 	return out
+}
+
+// Reorder rearranges spaceID's terminals into the sequence `ids` — the whole
+// ordered list of that space's terminal ids, never a per-row move — and leaves
+// every other space's terminals exactly where they sit in the global order. A tab
+// never crosses into another space: the drag is scoped to one card, so `ids` is
+// only ever a permutation of this space's own terminals, and one that omits a
+// terminal, names an unknown id, or repeats one is refused with ErrBadReorder and
+// changes nothing (the same all-or-nothing contract the sidebar reorder keeps).
+//
+// It writes only the space's slots in the global order, in the new sequence, so a
+// foreign id between two of this space's tabs keeps its position. A reorder that
+// lands the same sequence still pushes, harmlessly — the client posts the whole
+// list on every drop, and the server does not special-case a no-op it cannot
+// cheaply tell apart from a real move.
+func (m *Manager) Reorder(spaceID string, ids []string) error {
+	m.mu.Lock()
+	// The space's terminal ids in their current global order — the set `ids` must
+	// be a permutation of.
+	current := make([]string, 0)
+	for _, id := range m.order {
+		if t := m.terms[id]; t != nil && t.SpaceID == spaceID {
+			current = append(current, id)
+		}
+	}
+	if len(ids) != len(current) {
+		m.mu.Unlock()
+		return fmt.Errorf("%w: %d ids for %d terminals", ErrBadReorder, len(ids), len(current))
+	}
+	inSpace := make(map[string]bool, len(current))
+	for _, id := range current {
+		inSpace[id] = true
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !inSpace[id] {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: no terminal %q in the space", ErrBadReorder, id)
+		}
+		if seen[id] {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: %q appears twice", ErrBadReorder, id)
+		}
+		seen[id] = true
+	}
+	// Refill the space's slots in place, in the new order; every foreign slot is
+	// left untouched.
+	next := 0
+	for i, id := range m.order {
+		if t := m.terms[id]; t != nil && t.SpaceID == spaceID {
+			m.order[i] = ids[next]
+			next++
+		}
+	}
+	m.mu.Unlock()
+	m.notify()
+	return nil
 }
 
 // isLiveSession reports whether this tab is a session (bound to a ticket) whose

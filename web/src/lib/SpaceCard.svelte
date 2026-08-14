@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Space, Terminal, Agent } from "./model";
+  import { dndzone, type DndEvent } from "svelte-dnd-action";
+  import { flip } from "svelte/animate";
   import { Button } from "./components/ui/button";
   import NewShellButton from "./NewShellButton.svelte";
   import * as ContextMenu from "./components/ui/context-menu";
@@ -40,6 +42,7 @@
     onopenshell,
     onfree,
     onregister,
+    onreorder,
     agents,
   }: {
     space: Space;
@@ -71,6 +74,13 @@
     onfree: (agent: string) => void;
     // Where an empty agent library routes the operator: settings.
     onregister: () => void;
+    // A drop (or a keyboard move) reordered this space's session tabs: the whole
+    // ordered list of the card's terminal ids, scoped to this card — the chrome
+    // posts it, exactly as it posts a sidebar reorder. The card holds the new order
+    // on screen until the confirming snapshot lands (below); a rejected promise
+    // means the write failed, and the card drops the held order back to the
+    // server's truth.
+    onreorder: (ids: string[]) => void | Promise<void>;
     // The registered agent library, for the shell control's caret list.
     agents: Agent[];
   } = $props();
@@ -84,10 +94,99 @@
   const attention = $derived(spaceAttention(space));
   const liveness = $derived(spaceLiveness(space));
 
-  // The reorder gesture lives entirely in the sidebar's svelte-dnd-action zone
-  // (App.svelte): the card is a plain plate now, both the drag item and the click
-  // target for selecting the space. A press-and-drag is the library's; a click
-  // that never moved is the select below.
+  // Two reorder gestures nest here, both svelte-dnd-action, both the same method.
+  // The *outer* zone lives in the sidebar (App.svelte): the whole card is one drag
+  // item and the click target for selecting the space. The *inner* zone is the
+  // session list below — the card owns it, so a space's tabs are the operator's to
+  // arrange within the one card. The library keeps the two apart: a press-and-drag
+  // that starts on a session row moves the row, not the card. A click that never
+  // moved is still the select.
+  //
+  // The inner reorder mirrors the sidebar's exactly (App.svelte's dndItems dance):
+  // the library owns the list live during a drag, the drop writes the whole list
+  // and holds it on screen until the confirming snapshot arrives, and an incoming
+  // snapshot never yanks the rows out from under the pointer. Scoped to this card,
+  // so `space.terminals` is both the source of truth and the id set the drag can
+  // only ever permute — a tab never leaves for another space.
+  let dndItems = $state<Terminal[]>([]);
+  // True between the first `consider` and the `finalize`: the window in which the
+  // library, not an incoming snapshot, owns `dndItems`.
+  let dragging = $state(false);
+  // The order a just-dropped move committed, held until the confirming snapshot
+  // shows it — without it the rows would snap back to the pre-drop order the instant
+  // the drag ends, then forward again when it lands.
+  let pendingOrder = $state<string[] | null>(null);
+
+  // Reorder a list by a list of ids, dropping ids that have since left and
+  // appending any that arrived — so a snapshot landing mid-hold can neither drop
+  // nor duplicate a row.
+  function orderBy(list: Terminal[], ids: string[]): Terminal[] {
+    const byId = new Map(list.map((t) => [t.id, t]));
+    const held = ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
+    const extra = list.filter((t) => !ids.includes(t.id));
+    return [...held, ...extra];
+  }
+
+  // Keep `dndItems` in step with the space's terminals — except while the library
+  // holds it (a snapshot must not yank the rows out from under the pointer), and
+  // except across the drop-to-snapshot gap, where the committed order stands over
+  // the freshest data until the snapshot catches up (an exact id match) or a failed
+  // write releases it.
+  $effect(() => {
+    const current = space.terminals;
+    if (dragging) return;
+    if (pendingOrder !== null) {
+      const ids = current.map((t) => t.id);
+      const landed =
+        ids.length === pendingOrder.length &&
+        ids.every((id, i) => id === pendingOrder![i]);
+      if (landed) {
+        pendingOrder = null;
+      } else {
+        dndItems = orderBy(current, pendingOrder);
+        return;
+      }
+    }
+    dndItems = current;
+  });
+
+  // The flip duration for the reflow, dropped to nothing when the operator has
+  // asked for less motion — shared by the dndzone and the rows' `animate:flip`.
+  const reduceMotion =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const flipDurationMs = reduceMotion ? 0 : 120;
+
+  // Nothing to arrange with fewer than two tabs, so the drag stays off — a lone
+  // row gains no grab affordance it could do nothing with.
+  const reorderable = $derived(space.terminals.length > 1);
+
+  // The library reorders `dndItems` and hands it back: live during the drag
+  // (consider) and once on the drop (finalize). Only the drop commits.
+  function handleSessionConsider(e: CustomEvent<DndEvent<Terminal>>) {
+    dragging = true;
+    dndItems = e.detail.items;
+  }
+  function handleSessionFinalize(e: CustomEvent<DndEvent<Terminal>>) {
+    dndItems = e.detail.items;
+    dragging = false;
+    const ids = e.detail.items.map((t) => t.id);
+    const current = space.terminals.map((t) => t.id);
+    // A drop back where it started (or a keyboard move that clamped): the honest
+    // response is to write nothing, and to hold nothing.
+    if (ids.length === current.length && ids.every((id, i) => id === current[i]))
+      return;
+    // Hold the committed order on screen until the snapshot confirms it (the effect
+    // above), so the drop does not bounce.
+    pendingOrder = ids;
+    void Promise.resolve(onreorder(ids)).catch(() => {
+      // The write failed, so the held order is a fiction. A refusal pushes no
+      // snapshot to fall back on, so snap the rows back to the space's own
+      // terminals here rather than waiting for one that isn't coming.
+      pendingOrder = null;
+      dndItems = space.terminals;
+    });
+  }
 </script>
 
 <!-- The card plate is a snippet so it can render either bare (Scratch, which
@@ -225,8 +324,38 @@
        same emphasis the card takes, one step stronger — is what says
        which row is showing. -->
     {#if space.terminals.length}
-      <ul class="flex flex-col gap-0.5">
-        {#each space.terminals as t (t.id)}
+      <!-- The session tabs are a svelte-dnd-action zone of their own — the same
+         method the sidebar reorders spaces with, nested one level down and scoped
+         to this card. Each row is an item keyed by its terminal id; `consider`
+         drives the live reflow, `finalize` commits, and `animate:flip` (same
+         duration) does the slide. The default drop outline is cleared — the chrome
+         is monochrome — and cursor detection tracks the hand rather than a row's
+         midpoint, matching the sidebar. The whole zone is a nested drag surface, so
+         `onpointerdown` stops the press from reaching the card's own select.
+
+         A session belongs to exactly one space and never moves between them, so
+         each card's list gets its *own* zone type keyed by the space id. Zones of
+         different types do not interconnect: a dragged row cannot leave for another
+         card (or vanish into the gap between them, which is what a shared type let
+         it do) — it only ever reorders within the card it started in. -->
+      <ul
+        class="flex flex-col gap-0.5"
+        onpointerdown={(e) => {
+          if (reorderable) e.stopPropagation();
+        }}
+        use:dndzone={{
+          items: dndItems,
+          type: `sessions-${space.id}`,
+          flipDurationMs,
+          dragDisabled: !reorderable,
+          dropFromOthersDisabled: true,
+          dropTargetStyle: {},
+          useCursorForDetection: true,
+        }}
+        onconsider={handleSessionConsider}
+        onfinalize={handleSessionFinalize}
+      >
+        {#each dndItems as t (t.id)}
           {@const isActive = selected && activeTermId === t.id}
           {@const unseen = showsFinishedDot(t, isActive)}
           <!-- The finished-while-you-were-away signal (session-notifications) is
@@ -246,7 +375,7 @@
               : t.status === "exited"
                 ? "text-destructive"
                 : "text-muted-foreground"}
-          <li>
+          <li animate:flip={{ duration: flipDurationMs }}>
             <div
               role="button"
               tabindex="0"
