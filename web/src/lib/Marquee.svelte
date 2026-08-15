@@ -1,9 +1,15 @@
 <script lang="ts">
-  // A one-line marquee that only moves when it has to: if the text fits, it sits
-  // still and truncates like any label; if it overflows, it scrolls its content in
-  // a slow, seamless loop and pauses under the pointer so it can be read. Motion is
-  // dropped entirely when the operator has asked for less of it — the text then
-  // truncates rather than scrolls, so nothing is ever hidden, only still.
+  // A one-line marquee that moves only while its row is hovered: if the text fits
+  // it sits still and truncates like any label; if it overflows it holds still and
+  // truncated until the pointer is over the row, then scrolls its content in a slow,
+  // seamless loop so the tail can be read, and freezes again the moment the pointer
+  // leaves. Motion is dropped entirely when the operator has asked for less of it —
+  // the text then truncates rather than scrolls, so nothing is ever hidden, only
+  // still.
+  //
+  // The hover trigger is the ancestor `.group` (the session row), via Tailwind's
+  // group-hover on the track — so hovering anywhere on the row, not just the title,
+  // starts it.
   //
   // It measures itself: the container's width against one copy of the text. Two
   // copies ride the track with a gap between them, and the track slides by exactly
@@ -54,7 +60,7 @@
     <!-- The moving track: two copies a gap apart, sliding by one copy-plus-gap so
        the second copy seamlessly takes the first's place. -->
     <div
-      class="marquee-track"
+      class="marquee-track [animation-play-state:paused] group-hover:[animation-play-state:running]"
       style="--marquee-shift: {shift}px; --marquee-duration: {duration}s; gap: {GAP}px;"
     >
       <span class="marquee-copy">{text}</span>
@@ -79,16 +85,18 @@
     min-width: 0;
   }
 
+  /* Longhand rather than the `animation` shorthand: the shorthand would reset
+     animation-play-state on every match, overriding the paused/running utilities
+     on the element. These leave play-state untouched, so the element's
+     group-hover utilities are the only thing that drives it. */
   .marquee-track {
     display: inline-flex;
     width: max-content;
     will-change: transform;
-    animation: marquee-scroll var(--marquee-duration) linear infinite;
-  }
-
-  /* Reading beats motion: hold the scroll while the pointer is over it. */
-  .marquee:hover .marquee-track {
-    animation-play-state: paused;
+    animation-name: marquee-scroll;
+    animation-duration: var(--marquee-duration);
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
   }
 
   .marquee-copy {
