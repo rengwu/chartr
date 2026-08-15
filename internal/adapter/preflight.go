@@ -43,19 +43,21 @@ func Preflight(adapterName, dir string, env []string) error {
 	return nil
 }
 
-// kimiHome is where the launched kimi will keep its data: KIMI_CODE_HOME when
-// the binding sets it, else the default ~/.kimi-code.
-func kimiHome(env []string) (string, error) {
-	for _, e := range env {
-		if v, ok := strings.CutPrefix(e, "KIMI_CODE_HOME="); ok && v != "" {
-			return v, nil
-		}
-	}
+// kimiHome is where the launched kimi will keep its data. It is the same
+// question the transcript reader asks of a *running* kimi, so it is the same
+// table that answers it (stateroot.go) rather than a second copy of
+// "KIMI_CODE_HOME, else ~/.kimi-code" that could drift from it. dir is the
+// directory the agent will start in, which is what a relative value would mean.
+func kimiHome(dir string, env []string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".kimi-code"), nil
+	root, ok := StateRoot("kimi", AllowedEnv(env, StateRootVars("kimi")), dir, home)
+	if !ok {
+		return "", fmt.Errorf("kimi's home cannot be resolved from its launch environment")
+	}
+	return root, nil
 }
 
 // kimiTrustWorkspace records Kimi's workspace-trust marker for dir, byte-for-byte
@@ -66,7 +68,7 @@ func kimiHome(env []string) (string, error) {
 // to prepare: kimi's first run builds its own house, and a home chartr
 // half-created would only confuse it.
 func kimiTrustWorkspace(dir string, env []string) error {
-	home, err := kimiHome(env)
+	home, err := kimiHome(dir, env)
 	if err != nil {
 		return err
 	}
