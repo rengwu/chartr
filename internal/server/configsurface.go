@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/sources"
@@ -265,6 +266,9 @@ func osOpener() string {
 
 func start(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
+	// Editors and xdg-open are host binaries; they need the operator's
+	// environment, not the AppImage bundle's loader paths.
+	cmd.Env = env.HostEnviron()
 	if err := cmd.Start(); err != nil {
 		return err
 	}

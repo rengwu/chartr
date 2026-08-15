@@ -22,6 +22,7 @@ import (
 
 	"github.com/aymanbagabas/go-pty"
 
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/terminal/detect"
 )
@@ -436,7 +437,7 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	// that is resolved out of this process's PATH before the child environment is
 	// ever consulted (the env package), which is what keeps the registration probe
 	// and the spawn agreeing.
-	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	c.Env = append(env.HostEnviron(), "TERM=xterm-256color")
 	c.Env = append(c.Env, spec.env...)
 	if err := c.Start(); err != nil {
 		_ = p.Close()

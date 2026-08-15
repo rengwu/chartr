@@ -21,6 +21,26 @@ set -e
 # resolved relative to it; nothing here may assume an absolute install prefix.
 HERE="$(dirname "$(readlink -f "$0")")"
 
+# Every variable this file points at the bundle is inherited by every process
+# chartr goes on to spawn — the folder chooser, terminal shells, agents — and
+# a host binary started under the bundle's loader path loads the bundle's
+# libraries against its own and dies in the loader before main. So the
+# operator's own values are snapshotted before anything is overwritten, and
+# chartr hands them back when it launches something on the operator's behalf
+# (internal/env.HostEnviron). ${v+x} distinguishes unset from empty: an empty
+# value is a statement (an empty XDG_DATA_DIRS means "no data dirs") and must
+# round-trip, while a variable the operator never set must come back unset.
+# The marker is what lets chartr tell "AppRun overwrote this, no snapshot"
+# apart from "not running from the bundle".
+export CHARTR_HOST_SNAPSHOT=1
+for v in LD_LIBRARY_PATH GIO_MODULE_DIR GDK_PIXBUF_MODULE_FILE \
+	GSETTINGS_SCHEMA_DIR XDG_DATA_DIRS \
+	WEBKIT_INJECTED_BUNDLE_PATH WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS; do
+	if eval "[ \"\${$v+x}\" = x ]"; then
+		eval "export CHARTR_HOST_$v=\"\${$v}\""
+	fi
+done
+
 # The bundled libraries come first so a distro that *does* ship WebKit cannot
 # half-satisfy the process with its own copy. The operator's own value is kept
 # after ours rather than discarded: this is their machine, and a

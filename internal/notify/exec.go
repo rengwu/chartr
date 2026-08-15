@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // notifyTimeout caps one delivery. Nothing here should take a tenth of it; the
@@ -45,7 +47,11 @@ func (e execNotifier) Notify(n Notification) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, c.Name, c.Args...).CombinedOutput(); err != nil {
+	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
+	// notify-send is a host binary; it needs the operator's environment, not
+	// the AppImage bundle's loader paths.
+	cmd.Env = env.HostEnviron()
+	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("notify: %s: %w: %s", c.Name, err, strings.TrimSpace(string(out)))
 	}
 	return nil

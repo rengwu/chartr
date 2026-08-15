@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/adapter"
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // This file is the server half of auto-titling: the generator the terminal Manager
@@ -81,6 +82,9 @@ func runGen(adapterName string, argv []string) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), titleGenPerTry)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, adapterName, argv...)
+	// The generator is the operator's own agent binary; it runs under the
+	// host environment, not the AppImage bundle's loader paths.
+	cmd.Env = env.HostEnviron()
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

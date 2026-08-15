@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"os/exec"
 	"runtime"
+
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // Opening a link in the operator's real browser.
@@ -35,6 +37,9 @@ func openExternalURL(raw string) error {
 		return fmt.Errorf("no way to open a URL on %s", runtime.GOOS)
 	}
 	cmd := exec.Command(opener, raw)
+	// xdg-open and the browser it launches are host binaries; they need the
+	// operator's environment, not the AppImage bundle's loader paths.
+	cmd.Env = env.HostEnviron()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
