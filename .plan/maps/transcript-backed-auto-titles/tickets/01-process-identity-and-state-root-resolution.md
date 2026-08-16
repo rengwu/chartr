@@ -67,6 +67,58 @@ must continue to compile without acquiring an implicit Unix dependency.
 
 ## Answer
 
+Built as two pieces in commit `bc4a9a0` (`feat(proc): foreground process
+identity and allowlisted state roots`), deliberately unwired — the ticket ships
+no operator-visible behavior, and ticket 02 is the first caller.
+
+- `internal/adapter/stateroot.go` is the adapter package's fourth per-agent data
+  table, beside prompt delivery, preflight and headless generation. A row names
+  the environment variables that select the state root, in precedence order,
+  plus the provider's documented default; `StateRootVars` returns a defensive
+  copy of the allowlist, `AllowedEnv` is the chokepoint that narrows a raw
+  `KEY=VALUE` environment to it, `StateRoot` resolves and normalizes the root
+  (tilde against home, relative against the process's own working directory,
+  `~user` refused), and `StateRootEnv` renders the already-normalized root back
+  into the single `KEY=VALUE` a same-profile title generation needs. Only
+  `claude` (`CLAUDE_CONFIG_DIR`, default `~/.claude`) and `kimi`
+  (`KIMI_CODE_HOME`, default `~/.kimi-code`) carry rows — both verified
+  first-hand, and preflight's former private copy of the kimi rule now reads the
+  same table so the two cannot drift. Codex, OpenCode, Pi and Grok are
+  deliberately absent until ticket 04 measures their stores; an adapter without
+  a row asks for no variables and resolves to unavailable.
+- `internal/proc` resolves a tab's foreground process group (`Foreground`, with
+  the detection engine's `Identify` as the identification seam) or a pid chartr
+  launched itself (`Launched`) to an `Agent`: adapter, pid and process group,
+  start time (stable against pid reuse), working directory, and the validated
+  state root. Group selection fails closed: two vendors in one group, two
+  indistinguishable same-adapter peers with no leader, or a wrapper that merely
+  names the agent all resolve to nothing, while a runtime-launched agent
+  (`node /opt/bin/claude`) still resolves. macOS reads identity and start from
+  `kern.proc.pid`, the environment from `kern.procargs2` (treating the
+  argv-only answer the kernel gives SIP-protected platform binaries as a
+  withheld environment, never as "no variables set"), and the working directory
+  from `lsof`; Linux reads all three from `/proc`, converting the tick-based
+  start time against `/proc/stat`'s btime. Every other platform reports
+  `ErrUnsupported` and every resolution is unavailable, with the build
+  compiling everywhere (verified for windows, linux and darwin).
+
+The privacy boundary is structural: the raw process environment is discarded
+inside the platform reader before it returns, `Agent` carries no environment at
+all, and a resolved root is validated as an existing directory before anything
+can read from it. An inaccessible or withheld environment resolves to
+unavailable rather than to the provider's default, because a process that hides
+its environment may be the one running under a custom root.
+
+Excluded: no wiring into the terminal manager or titler (ticket 03's), no
+native-title or transcript reading (ticket 02's), and no rows for the four
+unmeasured providers (ticket 04's). Verified with `make test`, `make vet`, and
+`GOOS=windows`/`GOOS=linux` builds; the pure selection/normalization rules run
+on every platform through the host seam, and the platform readers are proved
+against real processes on macOS (and Linux via the same test file), skipping by
+name with an asserted-unavailable replacement elsewhere.
+
+## Answer
+
 Built two things: a per-adapter state-root data table in `internal/adapter`, and
 a process reader in the new `internal/proc` that resolves a tab's foreground
 agent to validated facts. Nothing is wired into the cockpit — the package ships
