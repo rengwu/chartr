@@ -1,6 +1,14 @@
 package server
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/rengwu/chartr/internal/terminal"
+)
 
 func TestCleanTitle(t *testing.T) {
 	tests := []struct {
@@ -40,5 +48,39 @@ func TestCleanTitleClampsLength(t *testing.T) {
 	}
 	if len([]rune(got)) > titleMaxRunes {
 		t.Fatalf("title not clamped: %d runes", len([]rune(got)))
+	}
+}
+
+// A generation runs under the live agent's own profile: the state-root variable
+// the tab resolved reaches the subprocess, so a conversation held under a custom
+// account or configuration directory is summarised under that same one instead of
+// whichever default chartr itself was started with. The stub is a real executable
+// named `claude` on PATH that prints the variable it was given.
+func TestGenerationRunsUnderTheTabsProfile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub agent is a POSIX shell script")
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' \"$CLAUDE_CONFIG_DIR\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatalf("writing stub agent: %v", err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("CLAUDE_CONFIG_DIR", "/home/op/.claude-default")
+
+	// A short literal root: nothing is read from it — the stub only echoes what it
+	// was given — and a long temporary path would be clamped by the title contract.
+	const root = "/opt/op/.claude-work"
+	s := &Server{}
+	got, ok := s.generateCheapTitle(terminal.TitleRequest{
+		Adapter: "claude",
+		Env:     []string{"CLAUDE_CONFIG_DIR=" + root},
+		Context: "User prompt:\nwhat root am I under\n\nFinal response:\nthis one",
+	})
+	if !ok {
+		t.Fatal("the stub adapter produced no title")
+	}
+	if got != strings.TrimSpace(root) {
+		t.Fatalf("generation ran under %q, want the tab's own state root %q", got, root)
 	}
 }

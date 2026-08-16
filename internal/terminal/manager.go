@@ -48,13 +48,18 @@ type Manager struct {
 	// onFinished is the one event seam tickets 03 and 04 consume. This ticket
 	// seats and drives the clock; a nil callback deliberately consumes nothing.
 	onFinished func(RunFinished)
-	// genTitle turns a tab's recent screen into a short label by spending a cheap
-	// model on the tab's *own* adapter — same-vendor, so a session's screen never
-	// crosses to a harness the operator didn't run it on (server side, titlegen.go).
-	// Nil is the feature-off state. It runs off the sampler on its own goroutine and
-	// must not block the sampler; ok=false means "no title this time", swallowed
-	// silently.
-	genTitle func(agent, context string) (title string, ok bool)
+	// genTitle turns one completed transcript turn into a short label by spending a
+	// cheap model on the tab's *own* adapter and profile — same-vendor and same
+	// account, so a session's conversation never crosses to a harness or a login the
+	// operator didn't run it on (server side, titlegen.go). Nil is the feature-off
+	// state. It runs off the sampler on its own goroutine and must not block the
+	// sampler; ok=false means "no title this time", swallowed silently.
+	genTitle func(TitleRequest) (title string, ok bool)
+	// bindTitles matches a live agent tab to the persisted session behind it. It is
+	// seated with the production binder (titlebind.go) and replaced by tests, which
+	// is what lets the whole title behaviour be driven through the manager with no
+	// provider store, no PTY and no clock.
+	bindTitles func(*Terminal) (TitleBinding, bool)
 	// autoTitleEnabled gates the whole feature from the operator's per-machine
 	// toggle (autotitle.toml). Default true; ConfigureAutoTitle updates it on every
 	// rebuild. Guarded by mu, read once per sample.
@@ -111,6 +116,7 @@ func NewManager(onChange func(), onFinished func(RunFinished)) *Manager {
 		notifyAfter:      DefaultNotifyAfter,
 		notifySettle:     DefaultNotifySettle,
 		autoTitleEnabled: true,
+		bindTitles:       bindTranscript,
 	}
 	if onChange != nil {
 		m.stop = make(chan struct{})
@@ -150,9 +156,6 @@ func (m *Manager) sampleOnce(slowTick bool) {
 	}
 	m.mu.Unlock()
 
-	// The auto-title toggle is read once per tick, not per tab.
-	titlesOn := m.genTitle != nil && m.autoTitleOn()
-
 	changed := false
 	for _, t := range terms {
 		if !slowTick && !t.hasAgent() {
@@ -165,15 +168,14 @@ func (m *Manager) sampleOnce(slowTick bool) {
 		if ev := t.updateRunClock(now); ev != nil && m.onFinished != nil {
 			m.onFinished(*ev)
 		}
-		// Auto-title only tabs with an agent in front — that is where a session's
-		// worth of context to summarise exists — and only when the toggle is on and
-		// one is due (idle, screen changed, debounce elapsed). titleDue arms the
-		// scheduler, so the generation must be launched; it runs off-thread behind
-		// the concurrency cap and can't move the sampler.
-		if titlesOn && t.hasAgent() {
-			if agent, ctx, hash, ok := t.titleDue(now); ok {
-				go m.runTitleGen(t, agent, hash, ctx)
-			}
+	}
+	// The transcript beat rides the slow tick. A title tracks what the agent
+	// persisted, not what the screen is doing this frame, so there is nothing to
+	// gain from asking three times a second — and the beat is deliberately outside
+	// the sampling loop, because activity no longer has anything to say about it.
+	if slowTick {
+		if moved, _ := m.titleTick(terms); moved {
+			changed = true
 		}
 	}
 	if changed {
@@ -181,19 +183,46 @@ func (m *Manager) sampleOnce(slowTick bool) {
 	}
 }
 
+// titleTick advances every tab's transcript by one beat, publishes whatever
+// native titles appeared, and launches the paid generations the completed turns
+// authorized. It reports whether any tab's displayed title changed and how many
+// generations it launched.
+//
+// The toggle is read once per beat, not once per tab, and gates the whole
+// feature: off means no transcript body is read and nothing is spent. A tab with
+// no generator wired is in the same state — there is nobody to spend with.
+//
+// Generations run off this goroutine behind the process-wide concurrency cap, so
+// a burst of tabs completing turns together can neither stall the sampler nor
+// fan out into a crowd of CLI processes.
+func (m *Manager) titleTick(terms []*Terminal) (changed bool, launched int) {
+	on := m.genTitle != nil && m.autoTitleOn()
+	for _, t := range terms {
+		attempt, spend, moved := t.titleBeat(on, m.bindTitles)
+		if moved {
+			changed = true
+		}
+		if spend {
+			launched++
+			go m.runTitleGen(t, attempt)
+		}
+	}
+	return changed, launched
+}
+
 // SetTitleGenerator wires the cheap-model title generator the sampler spends on
 // and seats the concurrency semaphore. The server sets it once after construction;
 // passing nil turns auto-titling off. It is set before the first sample matters, so
 // no lock guards it — the sampler reads it, the server writes it once at startup.
-func (m *Manager) SetTitleGenerator(gen func(agent, context string) (string, bool)) {
+func (m *Manager) SetTitleGenerator(gen func(TitleRequest) (string, bool)) {
 	m.genTitle = gen
 	m.titleSem = make(chan struct{}, titleGenConcurrency)
 }
 
 // ConfigureAutoTitle applies the operator's per-machine auto-title toggle. Safe to
-// call on every rebuild; it flips a single guarded flag the sampler reads, so
-// turning the feature off stops new generations at once (a title already on screen
-// simply stops updating).
+// call on every rebuild; it flips a single guarded flag the transcript beat reads,
+// so turning the feature off stops both transcript observation and generation at
+// once (a title already on screen simply stays, and stops updating).
 func (m *Manager) ConfigureAutoTitle(enabled bool) {
 	m.mu.Lock()
 	m.autoTitleEnabled = enabled
@@ -207,21 +236,23 @@ func (m *Manager) autoTitleOn() bool {
 	return m.autoTitleEnabled
 }
 
-// runTitleGen spends the generator on one tab's context off the sampler's
-// goroutine and, on a usable title, stores it and pushes a fresh model. The
-// process-wide semaphore bounds how many run at once. A failure — the adapter
-// declined, its models exhausted, nothing generated — releases the tab's scheduler
-// and changes nothing on screen: auto-titling never surfaces an error.
-func (m *Manager) runTitleGen(t *Terminal, agent, hash, context string) {
+// runTitleGen spends the session's one attempt off the beat's goroutine and, on a
+// usable title, stores it and pushes a fresh model. The process-wide semaphore
+// bounds how many run at once.
+//
+// A failure — the adapter declined, its models were exhausted, the run was
+// cancelled, nothing usable came back — changes nothing on screen and is not
+// retried: the attempt was consumed when it was scheduled. Auto-titling never
+// surfaces an error.
+func (m *Manager) runTitleGen(t *Terminal, at titleAttempt) {
 	m.titleSem <- struct{}{}
 	defer func() { <-m.titleSem }()
 
-	title, ok := m.genTitle(agent, context)
+	title, ok := m.genTitle(at.req)
 	if !ok {
-		t.titleFailed()
 		return
 	}
-	if t.titleSucceeded(hash, title) {
+	if t.titleGenerated(at, title) {
 		m.notify()
 	}
 }
@@ -476,8 +507,10 @@ type Info struct {
 	// FinishedUnseen is the dot: this tab finished a qualifying run and the
 	// operator has not focused it since.
 	FinishedUnseen bool
-	// AutoTitle is the generated summary of the tab's recent session, empty until a
-	// generation lands (and on tabs with no agent in front, which are never titled).
+	// AutoTitle is the tab's automatic title — the agent's own native title for its
+	// session, or the one label chartr generated from its first completed turn.
+	// Empty until one of those lands, and on tabs with no agent in front, which are
+	// never titled.
 	AutoTitle string
 }
 

@@ -2,6 +2,8 @@
 type: task
 blocked_by: [02]
 undermined_by: []
+claimed_by: s7455d8faf998
+claimed_at: 2026-08-16T10:09:41Z
 ---
 
 # Transcript-driven titles replace the screen-derived gate
@@ -121,3 +123,84 @@ transcript state and no provider-specific UI.
 - The existing generator output-cleaning tests remain the contract for single-line
   titles and maximum title length, and the existing terminal activity and
   recording tests remain responsible for visible working, idle and blocked state.
+
+## Answer
+
+The behaviour change is in: `internal/transcript` is wired through the terminal
+manager to the generator, and the four screen-derived guards are deleted.
+
+**What is gone.** `titleSched` and everything it held — the worked-gate, the
+45-second startup grace, the screen-hash unchanged-guard and the 7-minute
+debounce — with the screen-tail context and the hash that keyed it. Activity
+detection is untouched and still owns the tab's visible working, idle and
+blocked state; it simply no longer says anything about spending. Nothing in the
+title path reads the grid, the OSC title or the scrollback any more.
+
+**What decides now.** A tab holds one binding to its agent's own persisted
+session and folds that session's normalized events on a beat (the sampler's slow
+tick — the cadence is nobody's contract). A native title is published the moment
+it appears and again on every change, normalized to the cockpit's one-line
+`MaxTitleRunes` contract — which the generator's own output cleaning now shares
+rather than duplicating — and blocks every paid attempt while it stands. With no
+native title, the first completed turn schedules exactly one generation. The
+attempt is marked spent when it is *scheduled*, not when it succeeds: a decline,
+an unusable answer, a cancelled run and an exhausted ladder all consume it, and
+no later turn re-arms it. A generated title is never refreshed, while a native
+title appearing later still replaces it for free — including one that lands while
+the generation is still running, which the generation then does not overwrite.
+
+**What crosses to the generator.** `TitleRequest{Adapter, Env, Context}` and
+nothing else: no tab, no screen, no transcript record. `Context` is the turn's
+prompt followed by its final visible answer inside the existing 1500-rune
+budget, *shared* rather than split down the middle — whichever side is short is
+carried whole and hands its remainder to the other, so a pasted prompt cannot eat
+the answer and a long answer cannot eat the question. `Env` is
+`adapter.StateRootEnv` for the root the live process itself resolved, appended
+last to the host environment; that is what makes generation same-profile as well
+as same-adapter, so a second Claude account's conversation is summarised under
+that account rather than under whichever profile chartr was started in.
+
+**The identity a title belongs to.** Title state is keyed by (adapter, pid): the
+adapter chartr launched with the tab's own process, or whatever holds an ad-hoc
+shell's foreground group. A change in either is a different conversation, so the
+binding, the spent attempt and the displayed title all go with the session that
+ended — which is exactly what an agent change inside an empty shell is. A tab
+whose process exits keeps the title it earned and stops being observed. The
+toggle off drops the binding while keeping the native title, the spent bit and
+whatever is displayed, so re-enabling re-binds at the *end* of the transcript
+instead of reading the backlog that accumulated while the feature was off.
+
+**Two judgement calls**, recorded because the specification does not settle them.
+A launched tab takes its adapter from the launch rather than from foreground
+identification, so an agent chartr ships no *activity* manifest for is still
+titleable once it has a transcript adapter (ticket 05). And an agent change
+clears the displayed title: leaving the old label up would show one
+conversation's title on another's tab, and a missing title is the cheaper
+failure.
+
+**Tests.** `internal/terminal/titler_test.go` drives the real manager through the
+two injected seams — a normalized transcript source and a title generator — and
+asserts only the manager snapshot's title and the number, adapter, profile and
+bounded context of generator invocations. It covers the untouched boot, the one
+generation a first turn produces, the opener turn, native publication and
+debounce-free refresh, native normalization, the never-refreshed generated title,
+the spent attempt under decline/invalid/cancelled, two tabs on two profiles, an
+unwatchable adapter, the privacy boundary (sentinels in the screen's system
+preamble, reasoning, tool call and tool result, in the OSC title and in a second
+turn of the same batch — only the titled turn's two texts reach the generator),
+the bound, the toggle, incomplete turns, process exit, the agent change, and a
+native title overtaking a pending generation. A server test runs a stub `claude`
+on PATH and proves the tab's state-root variable reaches the subprocess. The
+existing `cleanTitle` tests are unchanged and remain the single-line and
+maximum-length contract; the activity and recording tests are untouched.
+
+**Excluded.** No new transcript adapters — the five remaining providers have no
+row, so their tabs stay untitled by the same rule as any unwatchable adapter
+(ticket 05). No ADR, no new setting, and no browser change beyond the settings
+disclosure copy and two field comments: the snapshot's `autoTitle` field is
+exactly as it was.
+
+**Verified.** `make test`, `make vet`, `make check`, `go test -race` on the
+terminal and server packages, `GOOS=windows`/`GOOS=linux` builds, and the web
+unit tests (191). Not verified live against a real paid generation — that needs a
+real agent CLI completing a turn on this host.

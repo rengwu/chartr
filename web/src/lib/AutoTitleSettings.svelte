@@ -24,10 +24,14 @@
     <TextAa class="size-3.5 shrink-0" aria-hidden="true" /> Auto titles
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Summarises an idle agent tab's recent screen into a short title, shown after
-    its label. It spends a cheap model on the tab's own agent — a claude session
-    is summarised by claude, a codex session by codex — so a session's screen
-    never goes to a vendor you didn't run it on.
+    Titles an agent tab from the agent's own session, shown after its label.
+    Where the agent already has a title for the session, chartr displays that and
+    spends nothing. Otherwise it reads the first completed turn — the prompt you
+    submitted and the final visible response to it — and may send those two texts
+    to the tab's own agent, under the same account, for one short title. Nothing
+    else is read: not system instructions, hidden reasoning, tool calls or
+    results, earlier turns, or your screen. One attempt per session; off stops
+    both the reading and the spending.
     <a
       href="https://github.com/rengwu/chartr/blob/main/internal/config/autotitle.scaffold.toml"
       class="text-primary underline-offset-4 hover:underline"

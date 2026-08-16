@@ -47,7 +47,8 @@ type Model struct {
 	// surface shows the same units the file accepts rather than nanoseconds.
 	Notify NotifyPrefs `json:"notify"`
 	// AutoTitle is the operator's resolved machine-wide auto-title toggle from
-	// `autotitle.toml` — whether chartr summarises idle agent tabs into labels.
+	// `autotitle.toml` — whether chartr titles agent tabs from the sessions their
+	// agents persist.
 	AutoTitle AutoTitlePrefs `json:"autoTitle"`
 	// Sources is the operator's ordered skill-source list, each row with what a
 	// walk of it just found. List position *is* resolution order, so the settings
@@ -307,10 +308,12 @@ type Terminal struct {
 	// client-side flag would show nothing in exactly that case; this one survives a
 	// reload because the server never forgot it.
 	FinishedUnseen bool `json:"finishedUnseen,omitempty"`
-	// AutoTitle is the generated one-line summary of the tab's recent session,
-	// shown as a muted marquee after the tab's label. Empty until a generation
-	// lands, and always empty on a tab with no agent in front (those are never
-	// titled) or when the operator has turned auto-titling off.
+	// AutoTitle is the tab's automatic one-line title, shown as a muted marquee
+	// after the tab's label: the agent's own title for the session it is running,
+	// or the single label chartr generated from that session's first completed
+	// turn. Empty until one of those lands, and always empty on a tab with no
+	// agent in front (those are never titled) or when the operator has turned
+	// auto-titling off before a title arrived.
 	AutoTitle string `json:"autoTitle,omitempty"`
 }
 
