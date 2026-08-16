@@ -390,7 +390,7 @@
                 ? `${t.session.agent} · ${t.status}`
                 : `${t.proc} · ${t.status}`}
               class={[
-                "group flex items-center gap-1 rounded-md px-0.5 py-1 transition-colors",
+                "group relative flex items-center gap-1 rounded-md px-0.5 py-1 transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent/60",
@@ -468,7 +468,14 @@
                  what's left and scrolls only when it overflows. The title rides
                  after whatever label the row already shows — the ticket for a
                  session, the foreground agent (claude/codex) for an ad-hoc shell —
-                 and is present only on a tab whose agent produced one. -->
+                 and is present only on a tab whose agent produced one.
+
+                 It runs all the way to the row's trailing edge, *underneath* the
+                 close ✕ (which is taken out of the flow below rather than given a
+                 column of its own) — a title is long far more often than the ✕ is
+                 wanted, so the reading width is the one that gets the room. The
+                 marquee fades its own tail out whenever the ✕ is showing, so the
+                 two never collide. -->
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 {#if t.session}
                   <!-- A session: its identity is the ticket it is bound to
@@ -486,6 +493,7 @@
                 {#if t.autoTitle}
                   <Marquee
                     text={t.autoTitle}
+                    fadeTail={isActive}
                     class="min-w-0 flex-1 text-[10px] leading-none text-muted-foreground"
                   />
                 {/if}
@@ -500,7 +508,9 @@
                    exist for the one state in five: the identity beside them
                    truncates instead, and it is the only row in the list where
                    the name gives up width. -->
-                <span class="-my-0.5 flex shrink-0 items-center">
+                <!-- The trailing margin is the close ✕'s width: the ✕ is out of
+                   the flow (below), so these three keep clear of it themselves. -->
+                <span class="-my-0.5 mr-5 flex shrink-0 items-center">
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -550,14 +560,18 @@
                  invited a mis-click, so it is shown on the active row and fades in
                  on hover / keyboard focus everywhere else.
 
-                 The wrapper always reserves the button's width, so nothing shifts
-                 when the ✕ appears — only its opacity animates (motion-reduce drops
-                 the transition). It stays in the DOM the whole time; while hidden it
-                 is opacity-0 and pointer-events-none so an invisible ✕ can't be
-                 mis-clicked. -->
+                 It rides *over* the row's trailing edge rather than in the row's
+                 flow: reserving a column for it would cost the auto-title that width
+                 on every tab, for a control that is wanted on one. Nothing shifts
+                 when it appears — it is out of the flow, and only its opacity
+                 animates (motion-reduce drops the transition). It stays in the DOM
+                 the whole time; while hidden it is opacity-0 and pointer-events-none
+                 so an invisible ✕ can't be mis-clicked. The title running underneath
+                 is faded out by the marquee's own trailing mask, keyed to the same
+                 states. -->
               <span
                 class={[
-                  "-my-0.5 flex w-5 shrink-0 overflow-hidden transition-opacity duration-100 ease-out motion-reduce:transition-none",
+                  "absolute top-1/2 right-0.5 flex w-5 -translate-y-1/2 items-center overflow-hidden transition-opacity duration-100 ease-out motion-reduce:transition-none",
                   isActive
                     ? "opacity-100"
                     : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
