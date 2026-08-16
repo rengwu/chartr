@@ -23,3 +23,13 @@
 # Turn this off to stop all of it — no transcript is read and no model is spent.
 # A title already on screen stays there; tabs keep just their plain label.
 # enabled = true
+#
+# Keep only the free half of that. With this on, chartr still watches each agent's
+# own session and displays the title the harness itself wrote, refreshed as the
+# harness changes it — but it never sends a turn anywhere and never spends a model.
+# A session whose harness writes no title of its own simply stays untitled, and its
+# tab keeps just its plain label. Use it when you want titles where they come for
+# free and no background spending at all.
+#
+# It has no effect while `enabled = false`, which already stops both halves.
+# native_only = false

@@ -38,6 +38,10 @@ import (
 //     never refreshed — it may go stale as the conversation drifts, which is the
 //     deliberate price of never charging twice for one session.
 //
+// The second rung is optional. The operator's native-only flag (autotitle.toml)
+// keeps the first and removes the second: tabs whose harness writes its own title
+// are titled, tabs whose harness does not stay plain, and nothing is spent.
+//
 // # What a tab retains
 //
 // The session's identity and read position (inside the source), the native or
@@ -131,7 +135,14 @@ type titleState struct {
 // on is the machine-wide toggle. Off means the tab is not observed at all: the
 // binding is dropped, no transcript body is read, and nothing is spent — while a
 // title already on screen stays there, which is what the toggle has always done.
-func (t *Terminal) titleBeat(on bool, bind func(*Terminal) (TitleBinding, bool)) (attempt titleAttempt, spend, changed bool) {
+//
+// nativeOnly is the other machine-wide flag, and it cuts the ladder in half rather
+// than switching it off: the transcript is still read and native titles are still
+// published — that half was always free — but no completed turn ever authorizes a
+// generation. It leaves the session's one attempt unspent, so an operator who turns
+// the flag back off gets a title from the next completed turn rather than a tab
+// permanently barred from one.
+func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBinding, bool)) (attempt titleAttempt, spend, changed bool) {
 	t.mu.Lock()
 	agent, alive, pid := t.titleAgentLocked(), t.alive, t.titlePIDLocked()
 	if agent != t.titles.agent || pid != t.titles.pid {
@@ -191,7 +202,7 @@ func (t *Terminal) titleBeat(on bool, bind func(*Terminal) (TitleBinding, bool))
 			}
 		}
 	}
-	if turn == nil || t.titles.native != "" || t.titles.spent {
+	if turn == nil || nativeOnly || t.titles.native != "" || t.titles.spent {
 		return titleAttempt{}, false, changed
 	}
 	// The attempt is spent at the moment it is scheduled, not when it succeeds:

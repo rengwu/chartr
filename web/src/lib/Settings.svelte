@@ -56,8 +56,8 @@
     // The resolved notify.toml values are read-only here, on the same terms as
     // terminal customization: show what is in force and open the owning file.
     notifyPrefs?: NotifyPrefs
-    // The resolved autotitle.toml toggle, read-only here on the same terms as the
-    // notification rule.
+    // The resolved autotitle.toml settings, read-only here on the same terms as
+    // the notification rule.
     autoTitlePrefs?: AutoTitlePrefs
     onClose: () => void
   } = $props()

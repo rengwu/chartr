@@ -326,12 +326,13 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	s.terms.ConfigureNotifications(
 		notifyPrefs.Enabled, notifyPrefs.After, notifyPrefs.Settle)
 
-	// Auto-title is one more per-machine toggle, read and applied on every rebuild
-	// exactly like the notification rule. It gates all title generation at the
-	// source; a wrong value warns on the same surface, everything else stands.
+	// Auto-title is one more per-machine rule, read and applied on every rebuild
+	// exactly like the notification one. Its two flags gate title generation at the
+	// source — one stops the feature, the other stops only the spending; a wrong
+	// value warns on the same surface, everything else stands.
 	autoTitleTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, autotitleConfigName))
 	autoTitlePrefs, autoTitleWarnings := config.ResolveAutoTitlePrefs(autoTitleTOML)
-	s.terms.ConfigureAutoTitle(autoTitlePrefs.Enabled)
+	s.terms.ConfigureAutoTitle(autoTitlePrefs.Enabled, autoTitlePrefs.NativeOnly)
 
 	configWarnings := append([]string{}, termWarnings...)
 	configWarnings = append(configWarnings, notifyWarnings...)
@@ -373,7 +374,10 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 			Settle:  notifyPrefs.Settle.String(),
 			Enabled: notifyPrefs.Enabled,
 		},
-		AutoTitle:    model.AutoTitlePrefs{Enabled: autoTitlePrefs.Enabled},
+		AutoTitle: model.AutoTitlePrefs{
+			Enabled:    autoTitlePrefs.Enabled,
+			NativeOnly: autoTitlePrefs.NativeOnly,
+		},
 		NativePicker: nativePicker,
 	}
 }

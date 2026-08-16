@@ -248,9 +248,10 @@ export interface Model {
   // Durations use the same strings the file accepts, and are always present
   // because absent or invalid keys have already fallen back server-side.
   notify?: NotifyPrefs
-  // The operator's resolved machine-wide auto-title toggle from autotitle.toml —
-  // whether agent tabs are titled from the sessions their agents persist. The
-  // server always sends it;
+  // The operator's resolved machine-wide auto-title settings from autotitle.toml
+  // — whether agent tabs are titled from the sessions their agents persist, and
+  // whether only the titles those agents already wrote count. The server always
+  // sends it;
   // optional here only so partial test fixtures need not spell it out.
   autoTitle?: AutoTitlePrefs
 }
@@ -261,9 +262,12 @@ export interface NotifyPrefs {
   enabled: boolean
 }
 
-// The resolved autotitle.toml value: the machine's one auto-title setting.
+// The resolved autotitle.toml value: the machine's auto-title settings — whether
+// the feature runs at all, and whether it may spend a model on a session whose
+// agent wrote no title of its own.
 export interface AutoTitlePrefs {
   enabled: boolean
+  nativeOnly: boolean
 }
 
 // TerminalPrefs mirrors the Go `model.TerminalPrefs`: every field is a pref the

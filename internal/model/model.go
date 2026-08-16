@@ -165,10 +165,13 @@ type NotifyPrefs struct {
 }
 
 // AutoTitlePrefs is the resolved autotitle.toml value on the wire — the machine's
-// one auto-title setting. Like NotifyPrefs it is a complete value: absent or
-// invalid resolves to the shipped default (on) before it reaches here.
+// auto-title settings. Like NotifyPrefs it is a complete value: absent or invalid
+// resolves to the shipped defaults (on, and not native-only) before it reaches here.
 type AutoTitlePrefs struct {
 	Enabled bool `json:"enabled"`
+	// NativeOnly means titles are taken only where an agent's own session already
+	// carries one; no model is spent to write the rest.
+	NativeOnly bool `json:"nativeOnly"`
 }
 
 // Space is one registry entry in the pushed model: normally a folder the

@@ -64,6 +64,11 @@ type Manager struct {
 	// toggle (autotitle.toml). Default true; ConfigureAutoTitle updates it on every
 	// rebuild. Guarded by mu, read once per sample.
 	autoTitleEnabled bool
+	// autoTitleNativeOnly is the operator's other per-machine auto-title flag: keep
+	// observing and publishing the titles agents write themselves, but never spend a
+	// model on a session that has none. Default false. Guarded by mu, read once per
+	// sample beside the toggle above.
+	autoTitleNativeOnly bool
 	// titleSem caps how many title generations run at once process-wide, so a burst
 	// of tabs going idle together cannot fan out into a crowd of CLI processes. A
 	// buffered channel used as a counting semaphore; nil until the first generator
@@ -188,17 +193,23 @@ func (m *Manager) sampleOnce(slowTick bool) {
 // authorized. It reports whether any tab's displayed title changed and how many
 // generations it launched.
 //
-// The toggle is read once per beat, not once per tab, and gates the whole
-// feature: off means no transcript body is read and nothing is spent. A tab with
-// no generator wired is in the same state — there is nobody to spend with.
+// The two flags are read once per beat, not once per tab. The toggle gates the
+// whole feature: off means no transcript body is read and nothing is spent. A tab
+// with no generator wired is in the same state — there is nobody to spend with.
+// Native-only gates the paid half alone, so the beat still runs and still
+// publishes whatever titles the agents wrote themselves.
 //
 // Generations run off this goroutine behind the process-wide concurrency cap, so
 // a burst of tabs completing turns together can neither stall the sampler nor
 // fan out into a crowd of CLI processes.
 func (m *Manager) titleTick(terms []*Terminal) (changed bool, launched int) {
-	on := m.genTitle != nil && m.autoTitleOn()
+	enabled, nativeOnly := m.autoTitleRule()
+	// Observation needs a generator only because generation does: with native-only
+	// set there is nothing to spend with and nothing to spend, so the beat runs on a
+	// manager that has no generator wired at all.
+	on := enabled && (nativeOnly || m.genTitle != nil)
 	for _, t := range terms {
-		attempt, spend, moved := t.titleBeat(on, m.bindTitles)
+		attempt, spend, moved := t.titleBeat(on, nativeOnly, m.bindTitles)
 		if moved {
 			changed = true
 		}
@@ -219,21 +230,22 @@ func (m *Manager) SetTitleGenerator(gen func(TitleRequest) (string, bool)) {
 	m.titleSem = make(chan struct{}, titleGenConcurrency)
 }
 
-// ConfigureAutoTitle applies the operator's per-machine auto-title toggle. Safe to
-// call on every rebuild; it flips a single guarded flag the transcript beat reads,
-// so turning the feature off stops both transcript observation and generation at
-// once (a title already on screen simply stays, and stops updating).
-func (m *Manager) ConfigureAutoTitle(enabled bool) {
+// ConfigureAutoTitle applies the operator's per-machine auto-title settings. Safe
+// to call on every rebuild; it flips two guarded flags the transcript beat reads.
+// Turning the feature off stops both transcript observation and generation at once
+// (a title already on screen simply stays, and stops updating); turning native-only
+// on stops the generation alone, leaving the agents' own titles arriving as before.
+func (m *Manager) ConfigureAutoTitle(enabled, nativeOnly bool) {
 	m.mu.Lock()
-	m.autoTitleEnabled = enabled
+	m.autoTitleEnabled, m.autoTitleNativeOnly = enabled, nativeOnly
 	m.mu.Unlock()
 }
 
-// autoTitleOn reports the toggle under the lock — the sampler's one read per tick.
-func (m *Manager) autoTitleOn() bool {
+// autoTitleRule reports both flags under the lock — the sampler's one read per tick.
+func (m *Manager) autoTitleRule() (enabled, nativeOnly bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.autoTitleEnabled
+	return m.autoTitleEnabled, m.autoTitleNativeOnly
 }
 
 // runTitleGen spends the session's one attempt off the beat's goroutine and, on a

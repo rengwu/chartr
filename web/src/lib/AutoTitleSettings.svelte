@@ -16,6 +16,10 @@
 
   const rows = $derived([
     { label: "Enabled", value: (prefs?.enabled ?? true) ? "true" : "false" },
+    {
+      label: "Native only",
+      value: (prefs?.nativeOnly ?? false) ? "true" : "false",
+    },
   ]);
 </script>
 
@@ -24,14 +28,8 @@
     <TextAa class="size-3.5 shrink-0" aria-hidden="true" /> Auto titles
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Titles an agent tab from the agent's own session, shown after its label.
-    Where the agent already has a title for the session, chartr displays that and
-    spends nothing. Otherwise it reads the first completed turn — the prompt you
-    submitted and the final visible response to it — and may send those two texts
-    to the tab's own agent, under the same account, for one short title. Nothing
-    else is read: not system instructions, hidden reasoning, tool calls or
-    results, earlier turns, or your screen. One attempt per session; off stops
-    both the reading and the spending.
+    Gives each agent tab a short title from the session running in it, so you
+    can tell your tabs apart at a glance.
     <a
       href="https://github.com/rengwu/chartr/blob/main/internal/config/autotitle.scaffold.toml"
       class="text-primary underline-offset-4 hover:underline"

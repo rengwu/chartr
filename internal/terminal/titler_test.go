@@ -578,7 +578,7 @@ func TestToggleOffStopsObservationAndGeneration(t *testing.T) {
 		t.Fatalf("title = %q, want the native title published", got)
 	}
 
-	r.m.ConfigureAutoTitle(false)
+	r.m.ConfigureAutoTitle(false, false)
 	before := src.polled()
 	src.emit(humanTurn("a request while titling is off", "an answer"))
 	if launched := r.beats(3); launched != 0 {
@@ -593,11 +593,60 @@ func TestToggleOffStopsObservationAndGeneration(t *testing.T) {
 
 	// Back on, the tab is observed again — from a fresh binding, so nothing that
 	// happened while the feature was off is charged for.
-	r.m.ConfigureAutoTitle(true)
+	r.m.ConfigureAutoTitle(true, false)
 	r.beat()
 	if src.polled() == before {
 		t.Fatal("the transcript was not observed again after the toggle came back on")
 	}
+}
+
+// Native-only keeps the free half of the ladder and drops the paid one: the
+// transcript is still observed and the agent's own titles are still published,
+// while a completed turn on a session with no native title spends nothing and
+// leaves the tab plain.
+func TestNativeOnlyPublishesNativeTitlesAndSpendsNothing(t *testing.T) {
+	r := newTitleRig(t)
+	_, native := r.tab("t1", "claude")
+	_, plain := r.tab("t2", "claude")
+	r.m.ConfigureAutoTitle(true, true)
+
+	native.emit(nativeTitle("The agent's own title"))
+	plain.emit(humanTurn("a request on a session with no native title", "an answer"))
+	if launched := r.beats(3); launched != 0 {
+		t.Fatalf("native-only launched %d generations, want 0", launched)
+	}
+	if r.gen.count() != 0 {
+		t.Fatalf("native-only spent %d generations, want 0", r.gen.count())
+	}
+	if got := r.title("t1"); got != "The agent's own title" {
+		t.Fatalf("title = %q, want the native title published under native-only", got)
+	}
+	if got := r.title("t2"); got != "" {
+		t.Fatalf("title = %q, want a session with no native title left plain", got)
+	}
+	if plain.polled() == 0 {
+		t.Fatal("native-only stopped transcript observation, which is the free half")
+	}
+}
+
+// The flag bars no session permanently: it withholds the paid attempt rather than
+// consuming it, so turning it off titles the tab from the next completed turn.
+func TestNativeOnlyLeavesTheAttemptUnspent(t *testing.T) {
+	r := newTitleRig(t)
+	_, src := r.tab("t1", "claude")
+	r.m.ConfigureAutoTitle(true, true)
+
+	src.emit(humanTurn("a request while native-only was on", "an answer"))
+	if launched := r.beats(2); launched != 0 {
+		t.Fatalf("native-only launched %d generations, want 0", launched)
+	}
+
+	r.m.ConfigureAutoTitle(true, false)
+	src.emit(humanTurn("a request after native-only came off", "an answer"))
+	if launched := r.beat(); launched != 1 {
+		t.Fatalf("launched %d generations after native-only came off, want 1", launched)
+	}
+	r.awaitTitle("t1", "Generated title")
 }
 
 // Turns that never complete — still running, interrupted, ended in an error, or
