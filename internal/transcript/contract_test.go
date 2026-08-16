@@ -235,6 +235,10 @@ func (c contractCase) run(t *testing.T) {
 		}
 	})
 
+	// Note the second half of both scenarios below. A binding that *died* on a
+	// record it should have read past produces no events either, so "nothing
+	// happened" on its own would pass for the wrong reason. The turn afterwards
+	// is what tells reading past a record from failing closed on it.
 	t.Run("machinery is not conversation", func(t *testing.T) {
 		s := c.store(t)
 		s.Start()
@@ -244,6 +248,11 @@ func (c contractCase) run(t *testing.T) {
 		s.Ignored()
 		if got := w.Poll(); len(got) != 0 {
 			t.Fatalf("provider machinery produced %d event(s): %+v", len(got), got)
+		}
+		s.Turn("a question after the machinery", "an answer after the machinery")
+		got := turnsOf(w.Poll())
+		if len(got) != 1 || got[0].Prompt != "a question after the machinery" {
+			t.Fatalf("polled %+v after machinery, want the reading to have continued", got)
 		}
 	})
 
@@ -256,6 +265,11 @@ func (c contractCase) run(t *testing.T) {
 		s.SyntheticUser("/compact")
 		if got := w.Poll(); len(got) != 0 {
 			t.Fatalf("the provider's own user-role records produced %d event(s): %+v", len(got), got)
+		}
+		s.Turn("a question after the injected records", "an answer after the injected records")
+		got := turnsOf(w.Poll())
+		if len(got) != 1 || got[0].Prompt != "a question after the injected records" {
+			t.Fatalf("polled %+v after injected records, want the reading to have continued", got)
 		}
 	})
 

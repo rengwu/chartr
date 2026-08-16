@@ -176,9 +176,13 @@ type grokParams struct {
 }
 
 type grokUpdate struct {
-	SessionUpdate string       `json:"sessionUpdate"`
-	Content       *grokContent `json:"content"`
-	Meta          *struct {
+	SessionUpdate string `json:"sessionUpdate"`
+	// Content is raw because it is not one shape. On a message chunk it is a
+	// typed object, and on a tool_call_update it is a list of tool content
+	// blocks. Decoding it as either here would make the other kind unreadable —
+	// and unreadable ends a binding, over a record this adapter never reads.
+	Content json.RawMessage `json:"content"`
+	Meta    *struct {
 		PromptIndex *int `json:"promptIndex"`
 	} `json:"_meta"`
 	StopReason string `json:"stop_reason"`
@@ -269,9 +273,14 @@ func (s *grokSession) fold(line []byte, history bool) bool {
 
 // grokChunk reads one chunk's visible text. An empty string with ok=true means
 // the chunk carried something that is not text; ok=false means the chunk is not
-// the shape this adapter reads content out of.
-func grokChunk(c *grokContent) (string, bool) {
-	if c == nil || c.Type == "" {
+// the shape this adapter reads content out of — which, on the two record kinds
+// that carry a turn, is drift rather than a record to skip.
+func grokChunk(raw json.RawMessage) (string, bool) {
+	if len(raw) == 0 || raw[0] != '{' {
+		return "", false
+	}
+	var c grokContent
+	if json.Unmarshal(raw, &c) != nil || c.Type == "" {
 		return "", false
 	}
 	if c.Type != "text" {

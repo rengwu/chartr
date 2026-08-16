@@ -357,8 +357,11 @@ func (s *opencodeStore) records(prompt, response string, machinery bool) []strin
 	out := []string{
 		s.message(user, s.id, map[string]any{
 			"role": "user", "time": map[string]any{"created": s.now()},
-			"agent": "build",
-			"model": map[string]any{"providerID": "invented", "modelID": "opencode-fixture-1"},
+			// The field that is a boolean on an assistant message and a diff
+			// object here. Every real user message carries this shape.
+			"summary": map[string]any{"diffs": []any{}},
+			"agent":   "build",
+			"model":   map[string]any{"providerID": "invented", "modelID": "opencode-fixture-1"},
 		}),
 		s.part(user, s.id, map[string]any{"type": "text", "text": prompt}),
 	}

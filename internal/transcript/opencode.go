@@ -346,12 +346,22 @@ func (s *opencodeSession) title() {
 
 // opencodeMessage is a message row's data blob, narrowed to what this adapter
 // reads.
+//
+// Summary is deliberately raw. It means two different things on the two roles: a
+// boolean on an assistant message, marking a compaction summary rather than an
+// answer, and a diff object on a user message, which is an ordinary submission
+// carrying a record of what the turn changed. Decoding it as either would make
+// every message of the other role unreadable — and unreadable ends a binding.
 type opencodeMessage struct {
 	Role     string          `json:"role"`
 	ParentID string          `json:"parentID"`
 	Error    json.RawMessage `json:"error"`
-	Summary  bool            `json:"summary"`
+	Summary  json.RawMessage `json:"summary"`
 }
+
+// summarised reports whether this message is a summary of a conversation rather
+// than a part of one. Only the literal true says so.
+func (m opencodeMessage) summarised() bool { return string(m.Summary) == "true" }
 
 // opencodePart is a part row's data blob, narrowed the same way.
 type opencodePart struct {
@@ -393,7 +403,7 @@ func (s *opencodeSession) messagesAfter() (drained, ok bool) {
 			// whatever was pending is not going to be answered. A summary
 			// message is a compaction, not a person.
 			s.forget()
-			if !m.Summary {
+			if !m.summarised() {
 				s.turn = opencodeTurn{
 					user:    id,
 					answers: map[string][]int64{},
@@ -401,7 +411,7 @@ func (s *opencodeSession) messagesAfter() (drained, ok bool) {
 				}
 			}
 		case "assistant":
-			if s.turn.user != "" && m.ParentID == s.turn.user && !m.Summary {
+			if s.turn.user != "" && m.ParentID == s.turn.user && !m.summarised() {
 				s.turn.rows[id] = rowid
 				if _, seen := s.turn.answers[id]; !seen {
 					s.turn.answers[id] = nil
