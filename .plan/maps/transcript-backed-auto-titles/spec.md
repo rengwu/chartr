@@ -35,24 +35,26 @@ A native title always wins. chartr displays it as soon as the adapter exposes it
 refreshes it without a debounce, and performs no paid title generation while a
 native title is available.
 
-When there is no native title, chartr generates the first title after the first
-eligible completed human turn. It supplies only that turn's non-empty textual user
-prompt and final visible assistant text to the title generator. Later paid
-refreshes require both fifteen minutes since the previous paid attempt and three
-additional eligible completed human turns. Multiple qualifying turns are
-coalesced, and only the latest completed turn is summarized. A scheduled paid
-attempt is made at most once for a transcript turn and is never retried without a
-new eligible human turn.
+When there is no native title, chartr generates a title from the first eligible
+completed human turn observed after binding, and never generates again for that
+session. It supplies only that turn's non-empty textual user prompt and final
+visible assistant text to the title generator. There is exactly one paid attempt
+per session: failure, invalid output, cancellation, or an exhausted candidate
+ladder leaves the tab untitled, and no later turn re-arms generation. A generated
+title is never refreshed; it is a first-impression label that may go stale as the
+conversation drifts.
 
 Transcript binding is conservative. chartr derives a process identity from the
-foreground agent, resolves only adapter-specific state-root environment variables,
-and matches provider metadata such as process identity, working directory,
-process-start time, session identity, and new transcript writes. Historical turns
-establish a cursor but cannot authorize spending. A prompt written after the
-foreground process started may count even when it arrived before binding
-completed. If a binding is ambiguous, unavailable, disabled, or unreadable,
-chartr delays or skips the title. It never falls back to screen-change or
-keystroke inference.
+foreground agent, resolves only adapter-specific state-root environment
+variables, and matches a session from the working directory and observed
+transcript writes, preferring a direct provider process-to-session registry where
+one exists. Binding seats the cursor at the end of the transcript as it stands at
+that moment: historical turns can never authorize spending, and only turns
+completed after binding count. A session bound before its first write — as
+chartr-launched tabs are — sees its opening turn; a prompt already persisted
+before binding stays behind the cursor. If a binding is ambiguous, unavailable,
+disabled, or unreadable, chartr skips the title. It never falls back to
+screen-change or keystroke inference.
 
 The existing machine-wide auto-title toggle controls the complete behavior. Its
 settings copy will explain that chartr reads a narrowly matched current transcript
@@ -78,63 +80,58 @@ for titling.
 7. As an operator, I want the first title generated after the first complete
    meaningful textual turn when no native title exists, so that a new conversation
    becomes identifiable quickly.
-8. As an operator, I want later paid title refreshes to require fifteen minutes and
-   three additional human turns, so that a conversational burst does not repeatedly
-   spend on labels.
-9. As an operator, I want several turns inside that refresh window coalesced into
-   one update based on the latest completed turn, so that stale intermediate work
-   is neither titled nor charged.
-10. As an operator, I want a failed title attempt never retried for the same turn,
-    so that a rate limit, unsupported model, or malformed response cannot create a
-    background spending loop.
-11. As an operator, I want incomplete, interrupted, and error-ended turns skipped,
-    so that a partial exchange does not become the tab's description.
-12. As an operator, I want non-text-only turns skipped for paid generation, so that
+8. As an operator, I want a failed title attempt to leave the tab untitled with no
+   retry, so that a rate limit, unsupported model, or malformed response cannot
+   create a background spending loop.
+9. As an operator, I want incomplete, interrupted, and error-ended turns skipped,
+   so that a partial exchange does not become the tab's description.
+10. As an operator, I want non-text-only turns skipped for paid generation, so that
     chartr never guesses from images, audio, attachments, or opaque structured
     content.
-13. As an operator, I want generation context limited to my current prompt and the
+11. As an operator, I want generation context limited to my current prompt and the
     final visible assistant response, so that hidden reasoning, system instructions,
     tool calls, tool results, and earlier history are not sent for titling.
-14. As an operator, I want a chartr-injected opening prompt treated by the same
+12. As an operator, I want a chartr-injected opening prompt treated by the same
     transcript rule as any other top-level user turn, so that there is no separate
     fragile launch-only title path.
-15. As an operator, I want a prompt supplied on an agent's launch command to count
-    when the persisted event was written after that process started, so that an
-    initial prompted launch can receive a title.
-16. As an operator, I want slash commands, permission choices, synthetic messages,
+13. As an operator, I want prompts persisted before binding to stay behind the
+    cursor rather than be rescued by timestamp comparison, so that a manually
+    started agent's launch-command prompt simply stays untitled.
+14. As an operator, I want slash commands, permission choices, synthetic messages,
     subagent traffic, summaries, and tool-result records excluded unless they form
     an eligible top-level human text turn with a final visible response, so that
     agent machinery cannot authorize spending.
-17. As an operator, I want ticket-bound sessions, free sessions, and manually
+15. As an operator, I want ticket-bound sessions, free sessions, and manually
     launched agents inside empty shells to follow the same title rules, so that the
     feature does not depend on how the tab was opened.
-18. As an operator, I want Claude, Codex, OpenCode, Pi, Kimi, and Grok supported
+16. As an operator, I want Claude, Codex, OpenCode, Pi, Kimi, and Grok supported
     through one behavioral contract, so that provider differences do not leak into
     the cockpit.
-19. As an operator, I want two same-provider agents in the same space matched to
-    their own persisted sessions, so that one tab never displays or transmits the
+17. As an operator, I want two same-provider agents in the same space each matched
+    to their own persisted session where they can be distinguished, and both left
+    untitled where they cannot, so that one tab never displays or transmits the
     other tab's conversation.
-20. As an operator, I want multiple Claude state roots and accounts to work in
+18. As an operator, I want multiple Claude state roots and accounts to work in
     parallel, so that aliases using different configuration directories remain
     isolated.
-21. As an operator, I want chartr to derive a state root from the running agent's
+19. As an operator, I want chartr to derive a state root from the running agent's
     environment rather than scan similarly named directories, so that custom roots
     work without another configuration surface.
-22. As an operator, I want ambiguous session matching to delay or skip silently, so
+20. As an operator, I want ambiguous session matching to delay or skip silently, so
     that a missing title remains a cheap, harmless failure.
-23. As an operator, I want transcript parsing to fail closed when a provider changes
+21. As an operator, I want transcript parsing to fail closed when a provider changes
     its schema, so that an upgrade cannot turn unrelated persisted data into title
     context.
-24. As an operator, I want active transcripts tailed incrementally, so that several
+22. As an operator, I want active transcripts tailed incrementally, so that several
     open tabs do not cause repeated full-history reads or expensive database scans.
-25. As an operator, I want the auto-title toggle to stop transcript observation and
+23. As an operator, I want the auto-title toggle to stop transcript observation and
     paid generation, so that the existing control remains the single feature switch.
-26. As an operator, I want settings to explain the transcript material used for
+24. As an operator, I want settings to explain the transcript material used for
     titling, so that enabling the feature has a clear privacy boundary.
-27. As an operator, I want a title generated through the same adapter and resolved
+25. As an operator, I want a title generated through the same adapter and resolved
     provider profile as the live agent, so that a custom account's conversation is
     not sent through another account or vendor.
-28. As an operator, I want title bodies and process environments omitted from logs,
+26. As an operator, I want title bodies and process environments omitted from logs,
     so that diagnostics do not create another copy of sensitive material.
 
 ## Implementation Decisions
@@ -147,8 +144,8 @@ for titling.
   normalization. The terminal manager consumes provider-neutral events rather than
   provider storage formats.
 - The normalized event model distinguishes native-title changes, top-level human
-  turns, final visible assistant text, completion, and stable transcript turn
-  identity. It carries only what title scheduling needs.
+  turns, final visible assistant text, and completion. It carries only what
+  one-shot title scheduling needs.
 - Claude, Codex, OpenCode, Pi, Kimi, and Grok each implement the same transcript
   adapter contract. JSONL-backed providers maintain byte offsets and tolerate an
   incomplete trailing record. Database-backed providers use read-only, incremental,
@@ -157,16 +154,15 @@ for titling.
   does not publish a stable schema. Each adapter sniffs the fields it requires and
   becomes unavailable on an unknown shape instead of guessing.
 - Discovery reads metadata before message bodies. A candidate is matched from the
-  adapter, foreground process or process group, working directory, process-start
-  time, provider session identity, and observed writes. Where a provider exposes a
-  direct process-to-session registry, that mapping is preferred.
-- A binding must be unique. Ambiguous candidates remain pending and may be retried
-  cheaply as new metadata arrives. Persistent ambiguity produces no title and no
-  paid call.
-- Binding seats a cursor at the live process boundary. Existing transcript history
-  cannot authorize generation. A new event whose timestamp is at or after process
-  start remains eligible even if it was persisted before discovery completed,
-  covering an initial prompt supplied on the launch command.
+  adapter, the working directory, and observed transcript writes. Where a provider
+  exposes a direct process-to-session registry, that mapping is preferred.
+- A binding must be unique. Ambiguous candidates are re-checked when new
+  transcript writes appear. Persistent ambiguity produces no title and no paid
+  call.
+- Binding seats a cursor at the end of the transcript as it stands at binding
+  time. Existing transcript history cannot authorize generation. A session bound
+  before its first write — as chartr-launched tabs are — sees its opening turn; a
+  prompt already persisted before binding stays behind the cursor.
 - Resuming an existing persisted session may surface its native title immediately,
   but the historical conversation remains behind the spending cursor.
 - State-root discovery reads only an allowlist of environment variables defined by
@@ -177,41 +173,34 @@ for titling.
   Claude processes with different configuration-directory values resolve separate
   registries and transcript trees even when they share an executable, working
   directory, and adapter name.
-- A resolved state root is normalized before use. Session identifiers, process
-  start information, and working directory are validated before any transcript
-  body is read. chartr constructs provider paths from validated identity rather
-  than accepting an arbitrary transcript path from message content.
+- A resolved state root is normalized before use. Session identifiers and working
+  directory are validated before any transcript body is read. chartr constructs
+  provider paths from validated identity rather than accepting an arbitrary
+  transcript path from message content.
 - A native title is the preferred title whenever the active adapter can expose a
   non-empty usable value. Native titles are normalized to the cockpit's existing
   single-line length contract, published immediately when changed, and block all
   paid title generation while present. chartr does not distinguish user-assigned
   native names from provider-generated native names.
-- Native-title publication does not participate in the paid debounce or turn
-  counter. Observing and displaying an already-persisted title is always the cheap
-  path.
+- Native-title publication does not participate in any paid-generation gating.
+  Observing and displaying an already-persisted title is always the cheap path.
 - In the absence of a native title, the first eligible completed turn may schedule
   the first Chartr title immediately. An eligible turn has non-empty top-level human
   text and non-empty final visible assistant text and is not synthetic, a sidechain,
   a subagent turn, a tool result, or historical context.
-- After a Chartr title exists, another paid generation is due only when both
-  conditions hold: at least fifteen minutes have elapsed since the preceding paid
-  attempt, and at least three further eligible completed human turns have been
-  observed. The conditions form an AND gate.
-- Eligible turns that accumulate before the AND gate opens are coalesced. The most
-  recent completed turn replaces earlier pending context, while the scheduler keeps
-  the count needed to open the turn gate.
-- A transcript turn identity may launch at most one scheduled paid attempt. Failure,
-  invalid output, cancellation, or an exhausted same-adapter candidate ladder
-  consumes that attempt. A later eligible turn is required before any further
-  attempt, and the time gate continues to apply.
+- The first eligible completed turn schedules exactly one paid attempt per
+  session. Failure, invalid output, cancellation, or an exhausted same-adapter
+  candidate ladder consumes that attempt; the tab stays untitled and no later
+  turn re-arms generation. Falling through candidates inside the attempt is not
+  a second attempt.
 - The title generator receives a bounded representation of the current user prompt
   followed by the final visible assistant text. The bound stays within the existing
   small title-context budget and preserves useful text from both sides. It never
   receives system or developer instructions, hidden reasoning, tool calls, tool
   results, intermediate assistant messages, prior turns, or raw transcript records.
-- Transcript bodies are ephemeral inputs. Runtime state retains session and turn
-  identities, cursors, native or displayed title, timing, counters, and attempt
-  bookkeeping, but does not retain a second transcript history.
+- Transcript bodies are ephemeral inputs. Runtime state retains the session
+  identity, the cursor, the native or displayed title, and whether the one paid
+  attempt has been spent, but does not retain a second transcript history.
 - Paid generation remains same-adapter and also becomes same-profile. The generated
   subprocess receives only the allowlisted provider environment needed to select
   the foreground session's resolved account or state root. It does not inherit a
@@ -220,11 +209,8 @@ for titling.
 - Every supported adapter supplies native-title discovery when its store offers one
   and a safe one-shot generation recipe for the no-native-title case. If an
   installed provider version offers neither a usable native title nor a safe
-  generation command, that tab remains untitled; chartr never crosses vendors to
-  fill the gap.
-- The existing bounded same-adapter candidate ladder remains one scheduled paid
-  attempt. Falling through candidates inside that attempt is not a later scheduler
-  retry, while relaunching the scheduler for the same turn is forbidden.
+  generation command, that provider gets no adapter until it gains one; chartr
+  never crosses vendors to fill the gap.
 - The existing machine-wide auto-title toggle remains the only control. When off,
   chartr performs neither transcript-body observation nor title generation. A title
   already visible may remain displayed, matching the current toggle behavior.
@@ -241,16 +227,16 @@ for titling.
 ## Testing Decisions
 
 - Tests assert externally visible behavior: the title in a terminal manager
-  snapshot and the number, adapter/profile, turn identity, and bounded context of
-  generator invocations. They do not assert scheduler fields, parser helper calls,
+  snapshot and the number, adapter/profile, and bounded context of generator
+  invocations. They do not assert scheduler fields, parser helper calls,
   polling cadence, or storage implementation details.
 - The primary behavioral seam is the terminal manager with an injected normalized
   transcript source and injected title generator. This is the highest existing seam
   that can prove both what the cockpit displays and whether it spent a generation.
 - One shared transcript-adapter contract is exercised against sanitized fixtures
   for all six providers. The contract covers discovery metadata, native titles,
-  top-level user text, final visible assistant text, completion, stable turn IDs,
-  incremental cursors, and unknown-schema failure.
+  top-level user text, final visible assistant text, completion, incremental
+  cursors, and unknown-schema failure.
 - Fixture contents are synthetic and contain no copied personal transcript bodies,
   credentials, hidden reasoning, or real tool output. Fixtures record the provider
   format/version they represent so future schema changes are deliberate.
@@ -258,22 +244,23 @@ for titling.
   art, but drive complete normalized turn events rather than internal booleans or
   screen hashes.
 - Adapter contract tests cover partial final JSONL records, append after cursor,
-  file rotation or replacement, live database writes, unavailable stores, malformed
-  records, ignored record kinds, synthetic user-like records, and schema drift.
-- Binding tests cover a direct PID mapping, cwd and process-start matching, an
-  initial prompted launch written before binding, a resume with only historical
-  turns, two concurrent same-adapter tabs in one space, persistent ambiguity, PID
-  reuse, and a session that changes or disappears.
+  file truncation or replacement, live database writes, unavailable stores,
+  malformed records, ignored record kinds, synthetic user-like records, and schema
+  drift.
+- Binding tests cover a direct process-to-session registry mapping,
+  working-directory and observed-writes matching, a session bound before its first
+  write, a prompt persisted before binding staying behind the cursor, a resume with
+  only historical turns, two concurrent same-adapter tabs in one space, persistent
+  ambiguity, and a session that changes or disappears.
 - Environment-resolution tests cover default roots, two simultaneous custom Claude
   roots, relative or user-relative values after normalization, inaccessible process
   environments, and the guarantee that non-allowlisted variables never leave the
   process reader.
 - Scheduling tests prove: untouched boot produces zero calls; a complete first turn
-  without a native title produces one; a native title produces zero and publishes
-  immediately; native refresh bypasses the debounce; fewer than three later turns
-  do not refresh; three turns before fifteen minutes do not refresh; fifteen minutes
-  before three turns does not refresh; satisfying both generates once from the
-  latest turn; and a failed turn is never retried.
+  without a native title produces exactly one; a native title produces zero and
+  publishes immediately; native refresh bypasses the debounce; later turns after a
+  generated title produce no further calls; and a failed, invalid, or cancelled
+  attempt is never retried, even after later turns.
 - Privacy-boundary tests put recognizable sentinels in system instructions,
   reasoning, tools, earlier turns, user text, and final assistant text, then prove
   that only the latter two reach the generator and that the total context is
@@ -299,6 +286,15 @@ for titling.
   titles, clocks, spinners, or status counters when no transcript event exists.
 - Paid generation from historical turns merely because an agent session was
   resumed, rediscovered, or reattached.
+- Paid title refreshes: once a title is generated it is never updated, even as the
+  conversation drifts to other work.
+- Titling a prompt persisted before binding completed, such as a launch-command
+  prompt in a manually started agent.
+- Following transcript file rotation; truncation and replacement are handled,
+  rotation is not.
+- Building adapters for providers that expose neither a usable native title nor a
+  safe one-shot generation recipe; such a provider gains an adapter only when it
+  gains one of those.
 - Cross-vendor title generation or sending one provider's transcript through a
   different provider.
 - Reading hidden reasoning, system instructions, developer instructions, tool calls,
@@ -327,6 +323,6 @@ for titling.
 - The specification deliberately prefers false negatives over false positives:
   missing a title is harmless, while a false positive may spend money or expose the
   wrong transcript turn.
-- The fifteen-minute and three-turn thresholds govern paid refreshes only. They do
-  not delay free native-title reads or the first Chartr title when no native title
-  exists.
+- A generated title is a first-impression label. The deliberate cost of generating
+  exactly once is that a title can go stale as the conversation drifts; a native
+  title that appears later still replaces it for free.

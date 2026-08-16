@@ -4,9 +4,8 @@
 
 Every supported agent-bearing tab takes its automatic title from its own matched
 persisted session. A native provider title is displayed for free whenever one
-exists; otherwise a title is generated only from a completed human turn the
-operator actually submitted, under a first-turn rule and a fifteen-minute and
-three-turn refresh gate. No screen change, spinner, clock, boot splash, resumed
+exists; otherwise exactly one title is generated, from the first completed
+human turn the operator actually submitted after binding. No screen change, spinner, clock, boot splash, resumed
 history, or keystroke can cause a paid generation. Claude, Codex, OpenCode, Pi,
 Kimi and Grok all reach this through one behavioral contract.
 
@@ -42,14 +41,14 @@ Kimi and Grok all reach this through one behavioral contract.
 
 ## Decisions so far
 
-<!-- No tickets resolved yet. -->
+- [Foreground process identity and allowlisted state-root resolution](./tickets/01-process-identity-and-state-root-resolution.md) — `internal/proc` resolves a tab's foreground agent (or a chartr-launched pid) to pid/pgid, start time, working directory and a validated state root; the allowlist and defaults are pure per-adapter data in `internal/adapter/stateroot.go` (claude and kimi rows only; codex, opencode, pi and grok await ticket 04). Raw environments never leave the platform reader, ambiguity and unreadability resolve to unavailable, and platforms without a process reader compile to a reported-unavailable seam.
 
 ## Not yet specified
 
 - **Storage family of the five remaining providers.** Which of Codex, OpenCode,
   Pi, Kimi and Grok persist sessions as append-only JSONL and which use a
-  database decides how each adapter tails incrementally, and whether there is any
-  database-backed work at all. <clears-with: 04>
+  database decides which reader shape each adapter in ticket 05 needs.
+  <clears-with: 04>
 - **Native-title and one-shot generation coverage per provider.** Whether each
   remaining provider exposes a usable native session title, a safe headless
   one-shot generation recipe, or neither. A provider with neither leaves its tabs
