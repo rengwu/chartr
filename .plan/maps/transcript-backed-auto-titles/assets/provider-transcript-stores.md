@@ -738,6 +738,16 @@ session start, before the first prompt is submitted, so a tab bound at that
 moment should see its opening turn — but that was not verified against a live
 process in this ticket and ticket 05 should confirm it per provider.
 
+> **Corrected in ticket 05, measured against live processes.** All five create
+> their store lazily, at first submit — not at session start. Each agent's TUI
+> was started in a pty in a fresh working directory, its trust prompt accepted,
+> and left at its prompt for forty seconds: none of the five wrote a session a
+> binding could find, and OpenCode inserted no `session` row (the open question
+> its section records). So no tab on these five providers can bind before its
+> first submission, and the first turn arrives already behind the cursor. The
+> second turn is the first one that can be titled. This costs little: OpenCode
+> and Grok have real native titles that land free during that same first turn.
+
 ---
 
 ## Assignment
