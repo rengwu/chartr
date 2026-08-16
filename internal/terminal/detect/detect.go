@@ -393,4 +393,3 @@ func matchesLine(text string, re *regexp.Regexp) bool {
 	}
 	return false
 }
-

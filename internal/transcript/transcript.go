@@ -51,6 +51,7 @@
 package transcript
 
 import (
+	"io"
 	"strings"
 
 	"github.com/rengwu/chartr/internal/proc"
@@ -152,6 +153,17 @@ type Session interface {
 	Poll() ([]Event, bool)
 }
 
+// A Session that holds something open — a database handle, as OpenCode's does —
+// implements io.Closer, and the watcher releases it the moment the binding ends.
+// The JSONL adapters hold nothing between polls and implement nothing.
+
+// release closes a session that has something to release.
+func release(s Session) {
+	if c, ok := s.(io.Closer); ok {
+		c.Close()
+	}
+}
+
 // adapters is the provider table: one entry per provider whose store chartr has
 // measured first-hand. Pure data, like the adapter package's delivery, preflight
 // and generation tables — a provider is a row here and a file beside claude.go,
@@ -165,6 +177,10 @@ var adapters = map[string]Adapter{
 	"pi":     pi{},
 	"kimi":   kimi{},
 	"grok":   grok{},
+
+	// The one database-backed store of the six. Only its reader differs; it
+	// satisfies the same contract and is held to the same harness.
+	"opencode": opencode{},
 }
 
 // Supported reports whether chartr can watch an adapter's transcripts at all. A
@@ -227,9 +243,22 @@ func (w *Watcher) Poll() []Event {
 		// the session that replaced this one, if any — and a fresh binding seats
 		// at the end of the transcript, so nothing behind that cursor can be
 		// charged for twice.
+		release(w.session)
 		w.session = nil
 	}
 	return events
+}
+
+// Close ends the watch and releases whatever the binding held open. A watcher is
+// closed when its tab stops being observed — the process exited, the agent
+// changed, or the operator turned auto-titling off — and polling a closed watcher
+// simply binds again.
+func (w *Watcher) Close() {
+	if w == nil || w.session == nil {
+		return
+	}
+	release(w.session)
+	w.session = nil
 }
 
 // Session is the provider's identifier for the bound session, or "" while the

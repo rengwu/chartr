@@ -103,6 +103,7 @@ var contractCases = []contractCase{
 	{name: "pi", adapter: pi{}, store: newPiStore},
 	{name: "kimi", adapter: kimi{}, store: newKimiStore},
 	{name: "grok", adapter: grok{}, store: newGrokStore},
+	{name: "opencode", adapter: opencode{}, store: newOpencodeStore},
 }
 
 func TestAdapterContract(t *testing.T) {
