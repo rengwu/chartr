@@ -68,7 +68,7 @@ func newClaudeFixture(t *testing.T) *claudeStore {
 
 // seat points the fixture at the file its current session belongs in.
 func (s *claudeStore) seat() {
-	s.file = filepath.Join(s.root, claudeProjects, encodeProject(s.dir), s.id+claudeSuffix)
+	s.file = filepath.Join(s.root, claudeProjects, encodeProject(s.dir), s.id+jsonlSuffix)
 }
 
 // The helpers below exist for the binding tests, which need to build the
@@ -137,6 +137,13 @@ func (s *claudeStore) stale(id string) {
 // since the agent started.
 func (s *claudeStore) idle() { touch(s.t, s.file, s.started.Add(-time.Hour)) }
 
+// Peer is a second Claude tab in the same space. Claude is the one provider that
+// can tell two of them apart: its sessions/<pid>.json registry maps a live
+// process to the session it is driving.
+func (s *claudeStore) Peer() (contractStore, bool) {
+	return s.peer(s.pid+1, "99999999-8888-4777-8666-555555555555"), true
+}
+
 func (s *claudeStore) Format() string { return claudeFixtureFormat + " " + claudeFixtureVersion }
 
 func (s *claudeStore) Agent() proc.Agent {
@@ -184,12 +191,15 @@ func (s *claudeStore) Complete() {
 	s.partial = ""
 }
 
-func (s *claudeStore) Title(title string) {
+// Title writes the provider's own title record. Claude has a real one, so this
+// answers yes.
+func (s *claudeStore) Title(title string) bool {
 	s.append(s.line(map[string]any{
 		"type":      "ai-title",
 		"aiTitle":   title,
 		"sessionId": s.id,
 	}))
+	return true
 }
 
 // Ignored writes the machinery: modes, permission choices, bridge and queue

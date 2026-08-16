@@ -32,6 +32,13 @@ type contractStore interface {
 	// is given, with a state root under the test's temp directory.
 	Agent() proc.Agent
 
+	// Peer is a second agent of the same provider in the same space: the same
+	// state root and working directory, its own process and its own session. It
+	// reports whether this provider can tell the two apart — only Claude's
+	// process-to-session registry can — so the scenario asserts the right
+	// outcome for both kinds, and neither kind is allowed to leak.
+	Peer() (contractStore, bool)
+
 	// Start creates the persisted session, as the provider does at launch,
 	// carrying no completed turn yet.
 	Start()
@@ -46,8 +53,11 @@ type contractStore interface {
 	PartialTurn(prompt, response string)
 	Complete()
 
-	// Title records a change to the provider's own session title.
-	Title(title string)
+	// Title records a change to the provider's own session title, and reports
+	// whether this provider has one at all. Codex does not — its store carries
+	// no title record, and the only value that looks like one is a verbatim copy
+	// of the first user message — so its tabs take the paid path exclusively.
+	Title(title string) bool
 
 	// Ignored appends the record kinds an adapter must read past: reasoning,
 	// tool calls and results, system and developer material, subagent traffic,
@@ -86,6 +96,13 @@ type contractCase struct {
 // Grok land here as their adapters do.
 var contractCases = []contractCase{
 	{name: "claude", adapter: claude{}, store: newClaudeStore},
+	// Codex writes two incompatible record families and one build writes both,
+	// so each is a case of its own against the same adapter.
+	{name: "codex-paginated", adapter: codex{}, store: newCodexPaginatedStore},
+	{name: "codex-legacy", adapter: codex{}, store: newCodexLegacyStore},
+	{name: "pi", adapter: pi{}, store: newPiStore},
+	{name: "kimi", adapter: kimi{}, store: newKimiStore},
+	{name: "grok", adapter: grok{}, store: newGrokStore},
 }
 
 func TestAdapterContract(t *testing.T) {
@@ -113,19 +130,54 @@ func (c contractCase) run(t *testing.T) {
 		}
 	})
 
+	// A native title is the free path, so it crosses the cursor a turn cannot:
+	// displaying a title the provider already wrote costs nothing. A provider
+	// with no native title publishes none, ever — the same scenario proves both
+	// halves, so "has a title" never quietly becomes "the test was skipped".
 	t.Run("a native title survives the cursor", func(t *testing.T) {
 		s := c.store(t)
 		s.Start()
 		s.Turn("an old question", "an old answer")
-		s.Title("Persisted session name")
+		native := s.Title("Persisted session name")
 
 		w := watch(s.Agent(), c.adapter)
 		events := w.Poll()
-		if got := titlesOf(events); len(got) != 1 || got[0] != "Persisted session name" {
+		got := titlesOf(events)
+		switch {
+		case !native && len(got) != 0:
+			t.Fatalf("a provider with no native title published %q", got)
+		case native && (len(got) != 1 || got[0] != "Persisted session name"):
 			t.Fatalf("resume published titles %q, want the persisted one", got)
 		}
 		if turns := turnsOf(events); len(turns) != 0 {
 			t.Fatalf("resume emitted %d historical turn(s)", len(turns))
+		}
+	})
+
+	// A title that changes mid-session is published again, with no debounce and
+	// nothing spent — the provider renaming its own conversation, or generating
+	// a title during the first turn, is free either way.
+	t.Run("a native title change is published again", func(t *testing.T) {
+		s := c.store(t)
+		s.Start()
+		w := watch(s.Agent(), c.adapter)
+		w.Poll()
+
+		if !s.Title("The first name") {
+			return // no native title to change
+		}
+		if got := titlesOf(w.Poll()); len(got) != 1 || got[0] != "The first name" {
+			t.Fatalf("a new title published %q", got)
+		}
+		s.Title("The name it was given later")
+		if got := titlesOf(w.Poll()); len(got) != 1 || got[0] != "The name it was given later" {
+			t.Fatalf("a changed title published %q", got)
+		}
+		// The same title again is not a change, and republishing it would be
+		// noise in every consumer that watches for one.
+		s.Title("The name it was given later")
+		if got := titlesOf(w.Poll()); len(got) != 0 {
+			t.Fatalf("an unchanged title published %q", got)
 		}
 	})
 
@@ -256,6 +308,46 @@ func (c contractCase) run(t *testing.T) {
 		s.Turn("a question in the new schema", "an answer in the new schema")
 		if got := w.Poll(); len(got) != 0 {
 			t.Fatalf("an unrecognized record shape produced %+v", got)
+		}
+	})
+
+	// Two tabs of one provider in one space. Where the provider can tell them
+	// apart each sees its own conversation and only its own; where it cannot,
+	// both stay untitled. The failure this forbids is the same in both cases: one
+	// tab must never display or transmit the other's conversation.
+	t.Run("two tabs in one space never cross", func(t *testing.T) {
+		a := c.store(t)
+		a.Start()
+		b, distinct := a.Peer()
+		b.Start()
+
+		wa, wb := watch(a.Agent(), c.adapter), watch(b.Agent(), c.adapter)
+		wa.Poll()
+		wb.Poll()
+
+		a.Turn("the first tab's question", "the first tab's answer")
+		b.Turn("the second tab's question", "the second tab's answer")
+		gotA, gotB := turnsOf(wa.Poll()), turnsOf(wb.Poll())
+
+		for _, seen := range []struct {
+			tab   string
+			turns []Event
+			other string
+		}{{"first", gotA, "second"}, {"second", gotB, "first"}} {
+			for _, ev := range seen.turns {
+				if strings.Contains(ev.Prompt, seen.other) || strings.Contains(ev.Response, seen.other) {
+					t.Fatalf("the %s tab was handed the %s tab's conversation: %+v", seen.tab, seen.other, ev)
+				}
+			}
+		}
+		if !distinct {
+			if len(gotA) != 0 || len(gotB) != 0 {
+				t.Fatalf("two indistinguishable sessions bound anyway: %+v / %+v", gotA, gotB)
+			}
+			return
+		}
+		if len(gotA) != 1 || len(gotB) != 1 {
+			t.Fatalf("two distinguishable tabs polled %+v / %+v, want one turn each", gotA, gotB)
 		}
 	})
 

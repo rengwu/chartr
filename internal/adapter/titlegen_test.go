@@ -17,7 +17,12 @@ func TestGenCommand(t *testing.T) {
 		{"claude default model", "claude", "", []string{"-p", "hi"}, true},
 		{"codex with model", "codex", "gpt-5-nano", []string{"exec", "--model", "gpt-5-nano", "hi"}, true},
 		{"codex default model", "codex", "", []string{"exec", "hi"}, true},
-		{"unknown adapter", "kimi", "whatever", nil, false},
+		{"opencode with model", "opencode", "openai/gpt-5-nano", []string{"run", "-m", "openai/gpt-5-nano", "hi"}, true},
+		{"opencode default model", "opencode", "", []string{"run", "hi"}, true},
+		{"pi is ephemeral", "pi", "", []string{"--no-session", "-p", "hi"}, true},
+		{"kimi default model", "kimi", "", []string{"-p", "hi"}, true},
+		{"grok default model", "grok", "", []string{"-p", "hi"}, true},
+		{"unknown adapter", "nothing-chartr-knows", "whatever", nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,8 +65,9 @@ func TestGenLadderCheapestFirst(t *testing.T) {
 }
 
 func TestGenLadderSkipsUnknownAndDuplicates(t *testing.T) {
-	// kimi has no recipe and is dropped; a repeated adapter contributes once.
-	got := GenLadder([]string{"kimi", "claude", "claude"})
+	// An adapter chartr has no recipe for is dropped; a repeated adapter
+	// contributes once.
+	got := GenLadder([]string{"nothing-chartr-knows", "claude", "claude"})
 	for _, c := range got {
 		if c.Adapter != "claude" {
 			t.Fatalf("unexpected adapter %q in ladder %+v", c.Adapter, got)
@@ -93,10 +99,25 @@ func TestGenLadderTieBreaksByCallerOrder(t *testing.T) {
 }
 
 func TestCanGenerate(t *testing.T) {
-	if !CanGenerate("claude") || !CanGenerate("codex") {
-		t.Fatal("claude and codex should be able to generate")
+	// Every provider with a transcript adapter must also be able to spend, or a
+	// tab with no native title would have no way to a title at all.
+	for _, name := range []string{"claude", "codex", "opencode", "pi", "kimi", "grok"} {
+		if !CanGenerate(name) {
+			t.Errorf("%s has a transcript adapter but no headless recipe", name)
+		}
 	}
-	if CanGenerate("kimi") {
-		t.Fatal("kimi has no recipe")
+	if CanGenerate("nothing-chartr-knows") {
+		t.Fatal("an unmeasured harness has no recipe")
+	}
+}
+
+// A provider with no named cheap model still reaches the ladder: its single rung
+// is the CLI's own default, which is what makes a measured-but-unpriced provider
+// titleable rather than silently unspendable.
+func TestGenLadderGivesADefaultOnlyProviderOneRung(t *testing.T) {
+	got := GenLadder([]string{"grok"})
+	want := []GenCandidate{{Adapter: "grok", Rank: defaultRank}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ladder = %+v, want %+v", got, want)
 	}
 }

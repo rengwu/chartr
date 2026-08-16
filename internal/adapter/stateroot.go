@@ -32,13 +32,27 @@ import (
 // Like the other three, it is pure data plus one small resolver: teaching chartr
 // a new provider's root is a row, never a change to the caller.
 
+// stateRootVar is one environment variable that selects a root, plus the fixed
+// segment the provider appends to it.
+//
+// Most variables name the root outright and carry no suffix. Two do not:
+// OpenCode reads XDG_DATA_HOME and works in `<value>/opencode`, and Pi reads
+// PI_CODING_AGENT_DIR and keeps sessions in `<value>/sessions`. Those are the
+// provider's own path arithmetic, so it belongs beside the variable rather than
+// in a caller that would have to know which providers are special.
+type stateRootVar struct {
+	name   string
+	suffix string
+}
+
 // stateRootSpec is one adapter's state-root knowledge: the environment variables
 // that select the root, in precedence order, and the home-relative path that
 // stands when none of them is set.
 type stateRootSpec struct {
-	vars []string
+	vars []stateRootVar
 	// fallback is relative to the user's home, which is the only anchor every
-	// one of these providers documents its default against.
+	// one of these providers documents its default against. It already includes
+	// whatever suffix the variables carry, since a default is the whole path.
 	fallback string
 }
 
@@ -48,18 +62,50 @@ type stateRootSpec struct {
 // positive that reads the wrong conversation, while a missing row is a tab that
 // stays untitled.
 //
-// Codex, OpenCode, Pi and Grok are deliberately absent. Their stores are what
-// ticket 04 of the transcript-backed-auto-titles map measures, and each lands
-// here as a row when it does.
+// A "root" here is the directory a transcript adapter builds its paths from,
+// which is not always the provider's own idea of its home: Pi's root is the
+// sessions directory rather than the agent directory, because that is what its
+// two variables and its default all agree on naming.
 var stateRoots = map[string]stateRootSpec{
 	// Claude Code keeps projects/, history and its session JSONL under
 	// CLAUDE_CONFIG_DIR, defaulting to ~/.claude. This is the variable the
 	// agent library's own documentation names for a second account.
-	"claude": {vars: []string{"CLAUDE_CONFIG_DIR"}, fallback: ".claude"},
+	"claude": {vars: []stateRootVar{{name: "CLAUDE_CONFIG_DIR"}}, fallback: ".claude"},
+	// Codex keeps sessions/<Y>/<M>/<D>/rollout-*.jsonl under CODEX_HOME,
+	// defaulting to ~/.codex — the root its own --config help names. Observed
+	// against codex-cli 0.147.0.
+	"codex": {vars: []stateRootVar{{name: "CODEX_HOME"}}, fallback: ".codex"},
+	// OpenCode's data directory is the XDG one with its own name appended:
+	// `xdgData = XDG_DATA_HOME || ~/.local/share`, then `data = xdgData +
+	// "/opencode"`. OPENCODE_CONFIG_DIR selects configuration rather than data
+	// and is deliberately not here. Observed against OpenCode 1.2.27.
+	"opencode": {
+		vars:     []stateRootVar{{name: "XDG_DATA_HOME", suffix: "opencode"}},
+		fallback: ".local/share/opencode",
+	},
+	// Pi resolves its session directory in a documented order:
+	// PI_CODING_AGENT_SESSION_DIR names it outright, PI_CODING_AGENT_DIR names
+	// the agent directory it sits under, and the default is
+	// ~/.pi/agent/sessions. A --session-dir flag and a settings.json sessionDir
+	// also exist and are invisible to an environment reader; an operator using
+	// either simply gets no candidate, which costs a title and nothing else.
+	// Observed against pi 0.78.0.
+	"pi": {
+		vars: []stateRootVar{
+			{name: "PI_CODING_AGENT_SESSION_DIR"},
+			{name: "PI_CODING_AGENT_DIR", suffix: "sessions"},
+		},
+		fallback: ".pi/agent/sessions",
+	},
 	// Kimi Code keeps its data under KIMI_CODE_HOME, defaulting to
 	// ~/.kimi-code — the same root preflight.go writes a workspace-trust
-	// marker into, measured on this host against Kimi Code 0.29.0.
-	"kimi": {vars: []string{"KIMI_CODE_HOME"}, fallback: ".kimi-code"},
+	// marker into, measured on this host against Kimi Code 0.29.0 and
+	// unchanged at 0.36.1.
+	"kimi": {vars: []stateRootVar{{name: "KIMI_CODE_HOME"}}, fallback: ".kimi-code"},
+	// Grok keeps sessions/<percent-encoded-cwd>/<uuid>/ under GROK_HOME,
+	// defaulting to ~/.grok, which its shipped README states outright.
+	// Observed against grok 1.0.0.
+	"grok": {vars: []stateRootVar{{name: "GROK_HOME"}}, fallback: ".grok"},
 }
 
 // StateRootVars returns the environment variables that select adapter's state
@@ -75,7 +121,11 @@ func StateRootVars(adapter string) []string {
 	if !ok || len(spec.vars) == 0 {
 		return nil
 	}
-	return append([]string(nil), spec.vars...)
+	names := make([]string, 0, len(spec.vars))
+	for _, v := range spec.vars {
+		names = append(names, v.name)
+	}
+	return names
 }
 
 // AllowedEnv narrows a `KEY=VALUE` environment down to allow, dropping every
@@ -130,13 +180,21 @@ func StateRoot(adapter string, env map[string]string, dir, home string) (string,
 	if !ok {
 		return "", false
 	}
-	for _, name := range spec.vars {
+	for _, v := range spec.vars {
 		// Set-but-empty reads as unset. An empty path is no path, and clearing
 		// a variable by emptying it is how a launch environment says "use the
 		// default" without being able to remove the entry.
-		if v := env[name]; v != "" {
-			return normalizeRoot(v, dir, home)
+		value := env[v.name]
+		if value == "" {
+			continue
 		}
+		root, ok := normalizeRoot(value, dir, home)
+		if !ok {
+			return "", false
+		}
+		// The provider's own arithmetic, applied after normalization so a
+		// relative or user-relative value reaches the same place either way.
+		return filepath.Join(root, v.suffix), true
 	}
 	if home == "" {
 		return "", false
@@ -155,12 +213,27 @@ func StateRoot(adapter string, env map[string]string, dir, home string) (string,
 // nothing that was read has to be retained to say it. Nil for an adapter with no
 // state-root knowledge, or an empty root — in both cases there is nothing to
 // select and the caller should not be inventing one.
+//
+// A variable that names a parent is given the parent, since that is what the
+// provider will append its own segment to. A root that does not end in the
+// segment the provider would have added cannot be expressed through that
+// variable at all, and rendering it anyway would put the subprocess on a
+// different root than the tab it is summarising — so it resolves to nothing.
 func StateRootEnv(adapter, root string) []string {
 	spec, ok := stateRoots[adapter]
 	if !ok || len(spec.vars) == 0 || root == "" {
 		return nil
 	}
-	return []string{spec.vars[0] + "=" + root}
+	v := spec.vars[0]
+	value := root
+	if v.suffix != "" {
+		parent, last := filepath.Split(filepath.Clean(root))
+		if last != v.suffix || parent == "" {
+			return nil
+		}
+		value = filepath.Clean(parent)
+	}
+	return []string{v.name + "=" + value}
 }
 
 // normalizeRoot turns one raw environment value into the absolute, cleaned path

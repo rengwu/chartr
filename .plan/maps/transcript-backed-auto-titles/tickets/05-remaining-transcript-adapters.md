@@ -2,6 +2,8 @@
 type: task
 blocked_by: [03, 04]
 undermined_by: []
+claimed_by: scbdfa9e5612a
+claimed_at: 2026-08-16T10:36:14Z
 ---
 
 # Remaining transcript adapters

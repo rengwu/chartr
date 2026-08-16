@@ -57,6 +57,23 @@ var genModels = map[string][]genModel{
 		{"gpt-5-nano", 10},
 		{"gpt-5-mini", 40},
 	},
+	// The four providers below have a measured headless recipe but no model id
+	// chartr has driven first-hand, so each contributes only the default rung
+	// GenLadder appends: the flag-free invocation that runs whatever the
+	// operator's own CLI is configured for. An empty list is the honest entry —
+	// naming a cheap model chartr has never run would be the guess this table
+	// exists to avoid, and a provider gains named rungs when someone measures
+	// them.
+	//
+	// OpenCode: `opencode run <message>`.
+	"opencode": {},
+	// Pi: `pi --no-session -p <prompt>`, the only one of the five whose
+	// generation persists nothing at all.
+	"pi": {},
+	// Kimi Code: `kimi -p <prompt>`.
+	"kimi": {},
+	// Grok: `grok -p <prompt>`.
+	"grok": {},
 }
 
 // GenCandidate is one (adapter, model) the title generator may try, carrying the
@@ -139,6 +156,44 @@ func GenCommand(adapterName, model, prompt string) ([]string, bool) {
 			argv = append(argv, "--model", model)
 		}
 		return append(argv, prompt), true
+	case "opencode":
+		// `opencode run <message>` is the documented non-interactive path; -m
+		// takes a provider-qualified id. The run persists a session of its own
+		// in the same directory, which is bounded: generation only happens for
+		// a tab whose binding already stands, so it can add ambiguity for
+		// another unbound tab — and "unique or nothing" turns that into a
+		// missing title rather than a wrong one.
+		argv := []string{"run"}
+		if model != "" {
+			argv = append(argv, "-m", model)
+		}
+		return append(argv, prompt), true
+	case "pi":
+		// `pi -p <prompt>` is print mode. --no-session makes the run ephemeral,
+		// so a Pi generation writes no session file and can never become a
+		// binding candidate — the cleanest of the five.
+		argv := []string{"--no-session", "-p", prompt}
+		if model != "" {
+			argv = append(argv, "--model", model)
+		}
+		return argv, true
+	case "kimi":
+		// `kimi -p <prompt>` runs one prompt non-interactively and prints the
+		// response; -m takes a model alias.
+		argv := []string{"-p", prompt}
+		if model != "" {
+			argv = append(argv, "-m", model)
+		}
+		return argv, true
+	case "grok":
+		// `grok -p <prompt>` is headless mode. A headless run writes
+		// chat_history.jsonl but no updates.jsonl, so the adapter — which keys
+		// on updates.jsonl — ignores chartr's own generations for free.
+		argv := []string{"-p", prompt}
+		if model != "" {
+			argv = append(argv, "--model", model)
+		}
+		return argv, true
 	}
 	return nil, false
 }

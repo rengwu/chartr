@@ -1,9 +1,7 @@
 package transcript
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -67,25 +65,11 @@ type claude struct{}
 const (
 	claudeProjects = "projects"
 	claudeSessions = "sessions"
-	claudeSuffix   = ".jsonl"
 
 	// claudeRegistryCap bounds the registry entry read into memory. The real
 	// ones are a few hundred bytes; anything of a different order is not the
 	// file this adapter is looking at.
 	claudeRegistryCap = 64 << 10
-
-	// claudeHeadCap and claudeHeadRecords bound the metadata peek that confirms
-	// a candidate transcript's working directory. The boot records a session
-	// opens with carry no directory — it appears on the first record with a
-	// message or an attachment — so the peek reads a little way in, and never
-	// the whole conversation.
-	claudeHeadCap     = 64 << 10
-	claudeHeadRecords = 64
-
-	// claudeReadCap bounds one poll's read of newly appended bytes. Whatever is
-	// left over is read on the next poll, since the cursor only ever advances
-	// over records that were completely consumed.
-	claudeReadCap = 4 << 20
 
 	// claudeRegistrySlack absorbs the clock granularity between a kernel's
 	// process start time and the provider's own millisecond timestamp for the
@@ -103,15 +87,14 @@ func (claude) Bind(agent proc.Agent) (Session, bool) {
 	if reg, id, ok := claudeRegistered(agent); ok {
 		s.reg, s.id = reg, id
 	} else if id, path, found := claudeSearch(agent); found {
-		s.id, s.path = id, path
+		s.id, s.store.path = id, path
 	} else {
 		return nil, false
 	}
-	events, ok := s.seat()
-	if !ok {
+	if !s.open() {
 		return nil, false
 	}
-	s.staged = events
+	s.staged = s.drain()
 	return s, true
 }
 
@@ -124,12 +107,12 @@ type claudeSession struct {
 	dir  string
 	id   string
 
-	// path is empty until the transcript file exists. A tab chartr launched is
-	// bound during the agent's startup, before its session has been written to
-	// at all — the end of an unwritten transcript is offset zero, which is why
-	// such a tab sees its own opening turn while a resumed one does not.
-	path string
-	off  int64
+	// store is the byte-offset cursor over the transcript. Its path is empty
+	// until the file exists: a tab chartr launched is bound during the agent's
+	// startup, before its session has been written to at all — the end of an
+	// unwritten transcript is offset zero, which is why such a tab sees its own
+	// opening turn while a resumed one does not.
+	store tail
 
 	// reg is the registry entry this binding came from, watched for the moment
 	// the process moves to another session; nil when the binding was made by
@@ -138,50 +121,49 @@ type claudeSession struct {
 
 	title   string
 	pending string
-	staged  []Event
+
+	// staged holds what binding already read, until the first Poll asks for it;
+	// out is what the fold has produced during the poll in progress.
+	staged []Event
+	out    []Event
 }
 
 func (s *claudeSession) ID() string { return s.id }
 
-// seat reads the transcript as it stands and leaves the cursor at the end of the
-// last complete record, returning only what history is allowed to say: the
-// provider's own title. No historical turn becomes an event, which is the whole
-// of why a resumed session cannot be charged for work already done.
-func (s *claudeSession) seat() ([]Event, bool) {
-	if s.path == "" {
+// open seats the cursor at the end of the transcript as it stands, returning
+// only what history is allowed to say: the provider's own title. No historical
+// turn becomes an event, which is the whole of why a resumed session cannot be
+// charged for work already done.
+func (s *claudeSession) open() bool {
+	if s.store.path == "" {
 		path, ok := claudeFile(s.root, s.id, s.dir)
 		if !ok {
-			return nil, false // several files claim this session: no binding
+			return false // several files claim this session: no binding
 		}
 		if path == "" {
-			return nil, true // nothing written yet; the cursor stays at zero
+			return true // nothing written yet; the cursor stays at zero
 		}
-		s.path = path
+		s.store.path = path
 	}
-	return s.reseat()
+	if !s.store.seat(s.fold) {
+		return false
+	}
+	s.forget()
+	return true
 }
 
-// reseat re-reads the whole transcript in history mode. It runs when a binding is
-// made and again if the file is ever shorter than the cursor — a truncation or a
-// rewrite in place, after which the old offset means nothing and the only safe
-// position is the new end.
-func (s *claudeSession) reseat() ([]Event, bool) {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return nil, false
-	}
-	events, n, ok := s.consume(data, true)
-	if !ok {
-		return nil, false
-	}
-	s.off = int64(n)
-	// A turn that was already under way when the cursor was seated stays behind
-	// it whole. Its prompt was persisted before binding, so the answer that
-	// lands next is not chartr's to charge for — this is the rule that keeps a
-	// manually started agent's launch-command prompt untitled rather than
-	// rescued by comparing timestamps.
-	s.pending = ""
-	return events, true
+// forget drops the turn the fold was holding open. A turn already under way when
+// the cursor was seated stays behind it whole: its prompt was persisted before
+// binding, so the answer that lands next is not chartr's to charge for. This is
+// the rule that keeps a manually started agent's launch-command prompt untitled
+// rather than rescued by comparing timestamps.
+func (s *claudeSession) forget() { s.pending = "" }
+
+// drain takes the events the fold produced.
+func (s *claudeSession) drain() []Event {
+	out := s.out
+	s.out = nil
+	return out
 }
 
 // Poll reads whatever has been appended since the last call.
@@ -198,7 +180,7 @@ func (s *claudeSession) Poll() ([]Event, bool) {
 		}
 	}
 
-	if s.path == "" {
+	if s.store.path == "" {
 		path, ok := claudeFile(s.root, s.id, s.dir)
 		if !ok {
 			return out, false
@@ -208,94 +190,49 @@ func (s *claudeSession) Poll() ([]Event, bool) {
 		}
 		// The file appeared after this binding was seated, so everything in it
 		// is this agent's own work: read it from the start.
-		s.path = path
+		s.store.path = path
 	}
 
-	info, err := os.Stat(s.path)
-	if err != nil {
-		return out, false // the store went away
+	reseated, ok := s.store.advance(s.fold)
+	if reseated {
+		s.forget()
 	}
-	switch {
-	case info.Size() < s.off:
-		events, ok := s.reseat()
-		return append(out, events...), ok
-	case info.Size() == s.off:
-		return out, true
-	}
-
-	data, ok := claudeRead(s.path, s.off, info.Size()-s.off)
-	if !ok {
-		return out, false
-	}
-	events, n, ok := s.consume(data, false)
-	if !ok {
-		return out, false
-	}
-	s.off += int64(n)
-	return append(out, events...), true
+	return append(out, s.drain()...), ok
 }
 
-// consume normalizes every *complete* record in data and reports how many bytes
-// those records occupied. A trailing fragment with no newline is a record the
-// provider is still writing: it is left unconsumed, so the cursor stays behind
-// it and the whole record is read once it lands.
-//
-// history suppresses turn events without suppressing the title, which is the
-// difference between establishing a position in a conversation and being charged
-// for it.
-func (s *claudeSession) consume(data []byte, history bool) ([]Event, int, bool) {
-	var events []Event
-	consumed := 0
-	for {
-		i := bytes.IndexByte(data[consumed:], '\n')
-		if i < 0 {
-			return events, consumed, true
-		}
-		line := bytes.TrimSpace(data[consumed : consumed+i])
-		consumed += i + 1
-		if len(line) == 0 {
-			continue
-		}
-		ev, ok := s.record(line, history)
-		if !ok {
-			return nil, 0, false
-		}
-		events = append(events, ev...)
-	}
-}
-
-// record folds one complete JSONL record in, returning the events it produced —
-// almost always none. ok=false is the fail-closed answer: this is not a store
-// this adapter can read, and the binding ends.
-func (s *claudeSession) record(line []byte, history bool) ([]Event, bool) {
+// fold folds one complete JSONL record in, producing the events it stands for —
+// almost always none. false is the fail-closed answer: this is not a store this
+// adapter can read, and the binding ends.
+func (s *claudeSession) fold(line []byte, history bool) bool {
 	var rec claudeRecord
 	if err := json.Unmarshal(line, &rec); err != nil {
-		return nil, false // malformed, or a field whose type this adapter relies on changed
+		return false // malformed, or a field whose type this adapter relies on changed
 	}
 	if rec.Type == "" {
-		return nil, false // every record in this format is typed
+		return false // every record in this format is typed
 	}
 
 	switch rec.Type {
 	case "ai-title":
 		title := head(oneLine(rec.AITitle), textCap)
 		if title == "" || title == s.title {
-			return nil, true
+			return true
 		}
 		s.title = title
-		return []Event{{Kind: NativeTitle, Title: title}}, true
+		s.out = append(s.out, Event{Kind: NativeTitle, Title: title})
+		return true
 
 	case "user":
 		text, kinds, ok := claudeContent(rec.Message)
 		if !ok {
-			return nil, false // the shape a human turn is read out of has drifted
+			return false // the shape a human turn is read out of has drifted
 		}
 		if rec.IsSidechain || rec.IsMeta || kinds.has("tool_result") || rec.ToolUseResult != nil {
 			// Subagent traffic, tool results, and the notes Claude writes to
 			// itself in the user role — caveats, image placeholders, context
 			// readouts — are not the operator speaking, and none of them
 			// interrupts the turn they land inside.
-			return nil, true
+			return true
 		}
 		// Any other user-role record is a new act by whoever is at the keyboard:
 		// the next prompt, a slash command, an interruption notice. Whatever was
@@ -304,31 +241,32 @@ func (s *claudeSession) record(line []byte, history bool) ([]Event, bool) {
 		if claudeTyped(rec) && kinds.only("text") {
 			s.pending = head(text, textCap)
 		}
-		return nil, true
+		return true
 
 	case "assistant":
 		text, kinds, ok := claudeContent(rec.Message)
 		if !ok {
-			return nil, false
+			return false
 		}
 		if rec.IsSidechain || rec.Message.stopReason() != "end_turn" || !kinds.has("text") {
 			// A subagent, a stop to call a tool, or a finished record with
 			// nothing visible in it — Claude writes the reasoning it ended on as
 			// its own finished record and the answer in the next one. None of
 			// these ends the pending turn; only something visible does.
-			return nil, true
+			return true
 		}
 		prompt, answer := s.pending, head(text, textCap)
 		s.pending = ""
 		if history || prompt == "" || answer == "" {
-			return nil, true
+			return true
 		}
-		return []Event{{Kind: HumanTurn, Prompt: prompt, Response: answer}}, true
+		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: answer})
+		return true
 	}
 	// Every other kind is machinery — modes, permission choices, attachments,
 	// file snapshots, queue operations, summaries, whatever ships next. Reading
 	// past a kind is not a guess about it.
-	return nil, true
+	return true
 }
 
 // claudeRecord is the envelope every record shares, narrowed to the fields this
@@ -454,40 +392,22 @@ func claudeContent(m *claudeMessage) (string, blockKinds, bool) {
 }
 
 // claudeRegistry is the live process-to-session mapping for one pid, watched for
-// the moment it names a different session.
+// the moment it names a different session. It is a rewritten JSON file like
+// Kimi's and Grok's title sidecars, and is polled the same way.
 type claudeRegistry struct {
 	agent proc.Agent
-	path  string
-	mod   time.Time
-	size  int64
+	sidecar
 }
 
 // claudeRegistered reads the registry entry for an agent's pid and returns the
 // session it is driving, when the entry is this process's and not a stale one
 // left by whoever held the pid before.
 func claudeRegistered(agent proc.Agent) (*claudeRegistry, string, bool) {
-	reg := &claudeRegistry{
-		agent: agent,
-		path:  filepath.Join(agent.StateRoot, claudeSessions, strconv.Itoa(agent.PID)+".json"),
-	}
+	reg := &claudeRegistry{agent: agent}
+	reg.path = filepath.Join(agent.StateRoot, claudeSessions, strconv.Itoa(agent.PID)+".json")
 	reg.changed()
 	id, ok := reg.session()
 	return reg, id, ok
-}
-
-// changed stats the entry and reports whether it has been rewritten since the
-// last look, so an unchanged registry costs one stat per poll rather than a read
-// and a parse.
-func (r *claudeRegistry) changed() bool {
-	info, err := os.Stat(r.path)
-	if err != nil {
-		return false
-	}
-	if info.ModTime().Equal(r.mod) && info.Size() == r.size {
-		return false
-	}
-	r.mod, r.size = info.ModTime(), info.Size()
-	return true
 }
 
 // session reads the entry and returns the session uuid it names for this agent.
@@ -499,12 +419,8 @@ func (r *claudeRegistry) changed() bool {
 // before this process existed, and would otherwise hand a tab a stranger's
 // conversation.
 func (r *claudeRegistry) session() (string, bool) {
-	info, err := os.Stat(r.path)
-	if err != nil || info.IsDir() || info.Size() > claudeRegistryCap {
-		return "", false
-	}
-	data, err := os.ReadFile(r.path)
-	if err != nil {
+	data, ok := r.read(claudeRegistryCap)
+	if !ok {
 		return "", false
 	}
 	var entry struct {
@@ -540,7 +456,7 @@ func claudeFile(root, id, dir string) (string, bool) {
 	if !isUUID(id) {
 		return "", false
 	}
-	matches, err := filepath.Glob(filepath.Join(root, claudeProjects, "*", id+claudeSuffix))
+	matches, err := filepath.Glob(filepath.Join(root, claudeProjects, "*", id+jsonlSuffix))
 	if err != nil {
 		return "", false
 	}
@@ -591,10 +507,10 @@ func claudeSearch(agent proc.Agent) (string, string, bool) {
 		}
 		for _, entry := range entries {
 			name := entry.Name()
-			if entry.IsDir() || !strings.HasSuffix(name, claudeSuffix) {
+			if entry.IsDir() || !strings.HasSuffix(name, jsonlSuffix) {
 				continue
 			}
-			candidate := strings.TrimSuffix(name, claudeSuffix)
+			candidate := strings.TrimSuffix(name, jsonlSuffix)
 			if !isUUID(candidate) {
 				continue
 			}
@@ -625,35 +541,16 @@ func claudeSearch(agent proc.Agent) (string, string, bool) {
 // a few records that carry neither, so the peek reads a little way in; it never
 // reads the conversation, and nothing it finds becomes an event.
 func claudeHead(path string) (string, string, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", "", false
-	}
-	defer f.Close()
-
-	buf := make([]byte, claudeHeadCap)
-	n, err := io.ReadFull(f, buf)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return "", "", false
-	}
 	var cwd, session string
-	data := buf[:n]
-	for records := 0; records < claudeHeadRecords; records++ {
-		i := bytes.IndexByte(data, '\n')
-		if i < 0 {
-			break
-		}
-		line := bytes.TrimSpace(data[:i])
-		data = data[i+1:]
-		if len(line) == 0 {
-			continue
-		}
+	bad := false
+	ok := peek(path, func(line []byte) bool {
 		var rec struct {
 			Cwd       string `json:"cwd"`
 			SessionID string `json:"sessionId"`
 		}
 		if json.Unmarshal(line, &rec) != nil {
-			return "", "", false
+			bad = true
+			return false
 		}
 		if cwd == "" {
 			cwd = rec.Cwd
@@ -661,32 +558,12 @@ func claudeHead(path string) (string, string, bool) {
 		if session == "" {
 			session = rec.SessionID
 		}
-		if cwd != "" && session != "" {
-			break
-		}
+		return cwd == "" || session == ""
+	})
+	if !ok || bad {
+		return "", "", false
 	}
 	return cwd, session, cwd != ""
-}
-
-// claudeRead reads the bytes appended past the cursor, bounded: a poll that
-// found a very large append reads what it can and leaves the rest for the next
-// one, since the cursor only advances over records that were consumed whole.
-func claudeRead(path string, off, size int64) ([]byte, bool) {
-	if size > claudeReadCap {
-		size = claudeReadCap
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false
-	}
-	defer f.Close()
-
-	buf := make([]byte, size)
-	n, err := f.ReadAt(buf, off)
-	if err != nil && err != io.EOF {
-		return nil, false
-	}
-	return buf[:n], true
 }
 
 // oneLine flattens a provider title onto the cockpit's single-line contract; the

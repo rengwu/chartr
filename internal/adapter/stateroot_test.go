@@ -14,8 +14,14 @@ func TestStateRootVars(t *testing.T) {
 	if got, want := StateRootVars("claude"), []string{"CLAUDE_CONFIG_DIR"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("StateRootVars(claude) = %v, want %v", got, want)
 	}
-	if got := StateRootVars("codex"); got != nil {
-		t.Errorf("StateRootVars(codex) = %v, want nil until ticket 04 measures it", got)
+	// A provider whose variable names a parent still declares just the variable:
+	// the allowlist is what may be *read*, and the provider's own path
+	// arithmetic is applied after reading it.
+	if got, want := StateRootVars("opencode"), []string{"XDG_DATA_HOME"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("StateRootVars(opencode) = %v, want %v", got, want)
+	}
+	if got, want := StateRootVars("pi"), []string{"PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("StateRootVars(pi) = %v, want %v", got, want)
 	}
 	if got := StateRootVars("nothing-chartr-knows"); got != nil {
 		t.Errorf("StateRootVars(unknown) = %v, want nil", got)
@@ -132,8 +138,66 @@ func TestStateRoot(t *testing.T) {
 		want:    testHome + "/.claude",
 		wantOK:  true,
 	}, {
-		name:    "an adapter with no state-root knowledge is unavailable",
+		name:    "codex names its root directly",
 		adapter: "codex",
+		env:     map[string]string{"CODEX_HOME": "/srv/codex"},
+		want:    "/srv/codex",
+		wantOK:  true,
+	}, {
+		// The suffix case: XDG_DATA_HOME names the parent OpenCode appends its
+		// own name to, so the variable's value is never the root itself.
+		name:    "opencode appends its own segment to the variable",
+		adapter: "opencode",
+		env:     map[string]string{"XDG_DATA_HOME": "/srv/share"},
+		want:    "/srv/share/opencode",
+		wantOK:  true,
+	}, {
+		name:    "opencode's default is the whole documented path",
+		adapter: "opencode",
+		want:    testHome + "/.local/share/opencode",
+		wantOK:  true,
+	}, {
+		// A user-relative value expands before the suffix is applied, so both
+		// halves land where the provider itself would have put them.
+		name:    "a suffix applies after normalization",
+		adapter: "opencode",
+		env:     map[string]string{"XDG_DATA_HOME": "~/share"},
+		want:    testHome + "/share/opencode",
+		wantOK:  true,
+	}, {
+		name:    "pi's first variable names the sessions directory outright",
+		adapter: "pi",
+		env:     map[string]string{"PI_CODING_AGENT_SESSION_DIR": "/srv/pi-sessions"},
+		want:    "/srv/pi-sessions",
+		wantOK:  true,
+	}, {
+		name:    "pi's second variable names the directory sessions sit under",
+		adapter: "pi",
+		env:     map[string]string{"PI_CODING_AGENT_DIR": "/srv/pi"},
+		want:    "/srv/pi/sessions",
+		wantOK:  true,
+	}, {
+		name:    "pi's precedence prefers the session directory",
+		adapter: "pi",
+		env: map[string]string{
+			"PI_CODING_AGENT_SESSION_DIR": "/srv/pi-sessions",
+			"PI_CODING_AGENT_DIR":         "/srv/pi",
+		},
+		want:   "/srv/pi-sessions",
+		wantOK: true,
+	}, {
+		name:    "pi's default is its documented sessions path",
+		adapter: "pi",
+		want:    testHome + "/.pi/agent/sessions",
+		wantOK:  true,
+	}, {
+		name:    "grok carries its own variable and default",
+		adapter: "grok",
+		want:    testHome + "/.grok",
+		wantOK:  true,
+	}, {
+		name:    "an adapter with no state-root knowledge is unavailable",
+		adapter: "nothing-chartr-knows",
 		wantOK:  false,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -185,12 +249,31 @@ func TestStateRootEnvRoundTrips(t *testing.T) {
 	}
 }
 
+// A variable that names a parent is handed the parent, so the subprocess
+// resolves the same root the live tab did rather than one segment below it.
+func TestStateRootEnvUnwindsASuffix(t *testing.T) {
+	root := "/srv/share/opencode"
+	env := StateRootEnv("opencode", root)
+	if len(env) != 1 || env[0] != "XDG_DATA_HOME=/srv/share" {
+		t.Fatalf("StateRootEnv = %v, want the parent XDG_DATA_HOME names", env)
+	}
+	back, ok := StateRoot("opencode", AllowedEnv(env, StateRootVars("opencode")), testDir, testHome)
+	if !ok || back != root {
+		t.Fatalf("round trip = %q (%v), want %q", back, ok, root)
+	}
+}
+
 func TestStateRootEnvHasNothingToSay(t *testing.T) {
-	if got := StateRootEnv("codex", "/srv/codex"); got != nil {
-		t.Errorf("StateRootEnv(codex) = %v, want nil — no row, nothing to select", got)
+	if got := StateRootEnv("nothing-chartr-knows", "/srv/elsewhere"); got != nil {
+		t.Errorf("StateRootEnv(unknown) = %v, want nil — no row, nothing to select", got)
 	}
 	if got := StateRootEnv("claude", ""); got != nil {
 		t.Errorf("StateRootEnv with no root = %v, want nil rather than an invented one", got)
+	}
+	// A root that is not under a directory the provider would have appended its
+	// own segment to cannot be said through that variable at all.
+	if got := StateRootEnv("opencode", "/srv/share/somewhere-else"); got != nil {
+		t.Errorf("StateRootEnv(opencode) = %v, want nil for a root the variable cannot express", got)
 	}
 }
 
@@ -218,7 +301,7 @@ func TestStateRootHonoursVariableOrder(t *testing.T) {
 	orig := stateRoots
 	t.Cleanup(func() { stateRoots = orig })
 	stateRoots = map[string]stateRootSpec{
-		"two": {vars: []string{"FIRST", "SECOND"}, fallback: ".two"},
+		"two": {vars: []stateRootVar{{name: "FIRST"}, {name: "SECOND"}}, fallback: ".two"},
 	}
 	env := map[string]string{"FIRST": "/one", "SECOND": "/two"}
 	for range 20 {

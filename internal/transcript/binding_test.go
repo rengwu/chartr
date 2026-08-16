@@ -256,13 +256,13 @@ func TestASessionThatDisappearsGoesQuiet(t *testing.T) {
 	}
 }
 
-// An agent chartr holds no transcript knowledge of is not watchable at all,
-// which is how the four unmeasured providers behave until their adapters land.
+// An agent chartr holds no transcript knowledge of is not watchable at all: an
+// unmeasured harness costs its tabs a title and nothing else.
 func TestUnknownAdaptersAreNotWatchable(t *testing.T) {
 	s := newClaudeFixture(t)
 	s.Start()
 	agent := s.Agent()
-	agent.Adapter = "codex"
+	agent.Adapter = "nothing-chartr-knows"
 
 	if Supported(agent.Adapter) {
 		t.Fatalf("%s reports transcript support with no adapter behind it", agent.Adapter)

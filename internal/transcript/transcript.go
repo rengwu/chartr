@@ -157,12 +157,14 @@ type Session interface {
 // and generation tables — a provider is a row here and a file beside claude.go,
 // never a branch in the watcher.
 //
-// Codex, OpenCode, Pi, Kimi and Grok are deliberately absent. Their stores are
-// what ticket 04 of the transcript-backed-auto-titles map measures, and each
-// lands here when its adapter does. An agent whose adapter has no row is
-// unwatchable, which costs its tabs a title and nothing else.
+// An agent whose adapter has no row is unwatchable, which costs its tabs a title
+// and nothing else.
 var adapters = map[string]Adapter{
 	"claude": claude{},
+	"codex":  codex{},
+	"pi":     pi{},
+	"kimi":   kimi{},
+	"grok":   grok{},
 }
 
 // Supported reports whether chartr can watch an adapter's transcripts at all. A
