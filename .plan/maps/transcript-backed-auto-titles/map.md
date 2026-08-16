@@ -45,17 +45,18 @@ Kimi and Grok all reach this through one behavioral contract.
 
 - [Normalized transcript events, the adapter contract, and the Claude adapter](./tickets/02-transcript-events-contract-and-claude-adapter.md) — `internal/transcript` owns discovery, binding, incremental reading and normalization behind two provider-neutral events (a native title, a completed top-level human turn) and one `Adapter`/`Session` contract a shared harness holds every provider to; Claude is the first implementation, binding through its `sessions/<pid>.json` process registry (working directory and session-start guard against pid reuse) or, failing that, working directory plus writes observed since the agent started, always unique or nothing. Native titles come from the store's own `ai-title` records, not the registry's session handle; cursors are byte offsets seated at the transcript's end at binding time, so history and a prompt persisted before binding stay behind them while a tab bound before its first write sees its opening turn; malformed, typeless and drifted records end a binding rather than being parsed on a guess.
 
+- [Transcript stores for Codex, OpenCode, Pi, Kimi and Grok](./tickets/04-research-remaining-provider-transcript-stores.md) — all five are assigned to ticket 05; none lacks both a usable native title and a safe one-shot recipe, so the "no adapter" branch goes unused. Four are append-only JSONL (Codex, Pi, Kimi, Grok — the last two with a rewritten JSON sidecar holding the title) and **OpenCode alone is database-backed** (SQLite under WAL). OpenCode and Grok have real native titles, each behind a load-bearing filter (OpenCode's `New session - <ISO>` placeholder, Kimi's `titleKind: replaceable` prompt copy); Codex has none usable and Pi's is user-set only. One-shot recipes exist for all five. Two premises change: `stateroot.go` needs a per-variable suffix (OpenCode's `XDG_DATA_HOME`, Pi's `PI_CODING_AGENT_DIR` name a parent), and Codex's `history_mode` must be sniffed like a version. No provider has a process-to-session registry — Claude's stays unique. Measurements and per-provider record shapes are in [assets/provider-transcript-stores.md](./assets/provider-transcript-stores.md).
+
 ## Not yet specified
 
-- **Storage family of the five remaining providers.** Which of Codex, OpenCode,
-  Pi, Kimi and Grok persist sessions as append-only JSONL and which use a
-  database decides which reader shape each adapter in ticket 05 needs.
-  <clears-with: 04>
-- **Native-title and one-shot generation coverage per provider.** Whether each
-  remaining provider exposes a usable native session title, a safe headless
-  one-shot generation recipe, or neither. A provider with neither leaves its tabs
-  permanently untitled, which is an accepted outcome that must be recorded rather
-  than worked around. <clears-with: 04>
+- **Whether a store that did not exist at bind time may seat its cursor at
+  zero.** Pi materializes its session file only once the first assistant message
+  lands, writing the opening prompt with it, so under the seat-at-end rule a Pi
+  tab can never title its first turn and a single-prompt session stays untitled.
+  Ticket 04 records the option — treat an observed *absent* store as the
+  analogue of Claude's registry-known-but-unwritten session — but it is a
+  reading of the specification, not an implementation detail, and only a human
+  may settle it. OpenCode may have the same shape.
 
 ## Out of scope
 
