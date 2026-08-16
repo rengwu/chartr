@@ -13,8 +13,8 @@ chrome, ANSI-derived reconstruction, status lines, tool output, and whatever els
 happens to remain visible.
 
 The cockpit supports more than sessions launched for tickets. An operator may use
-a free session or open an empty shell and manually start Claude, Codex, OpenCode,
-Pi, Kimi, or Grok. Multiple copies of the same adapter may use different state
+a free session or open an empty shell and manually start Claude, Codex, Pi, Kimi,
+or Grok. Multiple copies of the same adapter may use different state
 roots or accounts in parallel. A solution tied only to chartr's launch path, to a
 browser Enter key, or to one provider would therefore miss ordinary tabs and
 could associate a tab with the wrong persisted conversation.
@@ -26,8 +26,8 @@ title, chartr should display it rather than pay to duplicate it.
 ## Solution
 
 chartr will make the matched persisted agent session the source of truth for
-automatic titles. Six transcript adapters—Claude, Codex, OpenCode, Pi, Kimi, and
-Grok—will discover the persisted session belonging to a live agent-bearing tab,
+automatic titles. Five transcript adapters—Claude, Codex, Pi, Kimi, and Grok—will
+discover the persisted session belonging to a live agent-bearing tab,
 tail only new structured records, and normalize them into native-title changes and
 completed top-level human turns.
 
@@ -104,7 +104,7 @@ for titling.
 15. As an operator, I want ticket-bound sessions, free sessions, and manually
     launched agents inside empty shells to follow the same title rules, so that the
     feature does not depend on how the tab was opened.
-16. As an operator, I want Claude, Codex, OpenCode, Pi, Kimi, and Grok supported
+16. As an operator, I want Claude, Codex, Pi, Kimi, and Grok supported
     through one behavioral contract, so that provider differences do not leak into
     the cockpit.
 17. As an operator, I want two same-provider agents in the same space each matched
@@ -146,10 +146,9 @@ for titling.
 - The normalized event model distinguishes native-title changes, top-level human
   turns, final visible assistant text, and completion. It carries only what
   one-shot title scheduling needs.
-- Claude, Codex, OpenCode, Pi, Kimi, and Grok each implement the same transcript
+- Claude, Codex, Pi, Kimi, and Grok each implement the same transcript
   adapter contract. JSONL-backed providers maintain byte offsets and tolerate an
-  incomplete trailing record. Database-backed providers use read-only, incremental,
-  indexed queries compatible with a live writer.
+  incomplete trailing record.
 - Adapter formats are treated as versioned external formats even when a provider
   does not publish a stable schema. Each adapter sniffs the fields it requires and
   becomes unavailable on an unknown shape instead of guessing.
@@ -234,7 +233,7 @@ for titling.
   transcript source and injected title generator. This is the highest existing seam
   that can prove both what the cockpit displays and whether it spent a generation.
 - One shared transcript-adapter contract is exercised against sanitized fixtures
-  for all six providers. The contract covers discovery metadata, native titles,
+  for all five providers. The contract covers discovery metadata, native titles,
   top-level user text, final visible assistant text, completion, incremental
   cursors, and unknown-schema failure.
 - Fixture contents are synthetic and contain no copied personal transcript bodies,
@@ -281,7 +280,9 @@ for titling.
 
 - Windows foreground-process and process-environment discovery for transcript
   binding.
-- Supporting agent CLIs other than Claude, Codex, OpenCode, Pi, Kimi, and Grok.
+- Supporting transcript-backed titles for OpenCode or agent CLIs other than
+  Claude, Codex, Pi, Kimi, and Grok. OpenCode remains supported everywhere else;
+  its SQLite store is intentionally too much infrastructure for this feature.
 - Guessing from PTY bytes, browser key events, reconstructed screen changes, OSC
   titles, clocks, spinners, or status counters when no transcript event exists.
 - Paid generation from historical turns merely because an agent session was

@@ -35,9 +35,8 @@ import (
 // stateRootVar is one environment variable that selects a root, plus the fixed
 // segment the provider appends to it.
 //
-// Most variables name the root outright and carry no suffix. Two do not:
-// OpenCode reads XDG_DATA_HOME and works in `<value>/opencode`, and Pi reads
-// PI_CODING_AGENT_DIR and keeps sessions in `<value>/sessions`. Those are the
+// Most variables name the root outright and carry no suffix. Pi does not:
+// PI_CODING_AGENT_DIR names the parent of its `sessions` directory. That is the
 // provider's own path arithmetic, so it belongs beside the variable rather than
 // in a caller that would have to know which providers are special.
 type stateRootVar struct {
@@ -75,14 +74,6 @@ var stateRoots = map[string]stateRootSpec{
 	// defaulting to ~/.codex — the root its own --config help names. Observed
 	// against codex-cli 0.147.0.
 	"codex": {vars: []stateRootVar{{name: "CODEX_HOME"}}, fallback: ".codex"},
-	// OpenCode's data directory is the XDG one with its own name appended:
-	// `xdgData = XDG_DATA_HOME || ~/.local/share`, then `data = xdgData +
-	// "/opencode"`. OPENCODE_CONFIG_DIR selects configuration rather than data
-	// and is deliberately not here. Observed against OpenCode 1.2.27.
-	"opencode": {
-		vars:     []stateRootVar{{name: "XDG_DATA_HOME", suffix: "opencode"}},
-		fallback: ".local/share/opencode",
-	},
 	// Pi resolves its session directory in a documented order:
 	// PI_CODING_AGENT_SESSION_DIR names it outright, PI_CODING_AGENT_DIR names
 	// the agent directory it sits under, and the default is

@@ -1,5 +1,10 @@
 # Transcript stores: Codex, OpenCode, Pi, Kimi, Grok
 
+> **Implementation note:** the OpenCode measurements below are retained as
+> research, but OpenCode transcript-backed titles were deliberately removed.
+> Its SQLite/WAL store required disproportionate infrastructure for a minor,
+> best-effort feature; OpenCode remains supported everywhere else in chartr.
+
 Findings for ticket 04 of the [transcript-backed-auto-titles](../map.md) map.
 Measured first-hand on this host on 2026-08-16 against the installed versions
 listed below. These are operational dependencies with no stable published

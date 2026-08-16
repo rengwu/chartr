@@ -68,6 +68,14 @@ no adapter at all; its tabs stay untitled until the provider gains one.
 
 ## Answer
 
+**Current outcome after simplification.** Codex, Pi, Kimi and Grok remain under
+the shared JSONL contract. OpenCode's adapter and `internal/sqlite` were removed:
+a private SQLite/WAL reader was too much owned infrastructure for a minor,
+best-effort title feature. OpenCode remains fully supported as a terminal agent;
+its tabs simply receive no transcript-backed automatic title. The implementation
+account below is retained as history of what was built and then deliberately
+removed.
+
 All five providers have adapters. Codex, OpenCode, Pi, Kimi and Grok join Claude
 under the one `Adapter`/`Session` contract and the one harness, so every agent
 chartr ships a detection manifest for now takes its title from its own persisted

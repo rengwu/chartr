@@ -57,7 +57,7 @@ var genModels = map[string][]genModel{
 		{"gpt-5-nano", 10},
 		{"gpt-5-mini", 40},
 	},
-	// The four providers below have a measured headless recipe but no model id
+	// The three providers below have a measured headless recipe but no model id
 	// chartr has driven first-hand, so each contributes only the default rung
 	// GenLadder appends: the flag-free invocation that runs whatever the
 	// operator's own CLI is configured for. An empty list is the honest entry —
@@ -65,9 +65,7 @@ var genModels = map[string][]genModel{
 	// exists to avoid, and a provider gains named rungs when someone measures
 	// them.
 	//
-	// OpenCode: `opencode run <message>`.
-	"opencode": {},
-	// Pi: `pi --no-session -p <prompt>`, the only one of the five whose
+	// Pi: `pi --no-session -p <prompt>`, the only one of these whose
 	// generation persists nothing at all.
 	"pi": {},
 	// Kimi Code: `kimi -p <prompt>`.
@@ -156,22 +154,10 @@ func GenCommand(adapterName, model, prompt string) ([]string, bool) {
 			argv = append(argv, "--model", model)
 		}
 		return append(argv, prompt), true
-	case "opencode":
-		// `opencode run <message>` is the documented non-interactive path; -m
-		// takes a provider-qualified id. The run persists a session of its own
-		// in the same directory, which is bounded: generation only happens for
-		// a tab whose binding already stands, so it can add ambiguity for
-		// another unbound tab — and "unique or nothing" turns that into a
-		// missing title rather than a wrong one.
-		argv := []string{"run"}
-		if model != "" {
-			argv = append(argv, "-m", model)
-		}
-		return append(argv, prompt), true
 	case "pi":
 		// `pi -p <prompt>` is print mode. --no-session makes the run ephemeral,
 		// so a Pi generation writes no session file and can never become a
-		// binding candidate — the cleanest of the five.
+		// binding candidate — the cleanest of the file-backed adapters.
 		argv := []string{"--no-session", "-p", prompt}
 		if model != "" {
 			argv = append(argv, "--model", model)

@@ -122,6 +122,19 @@ func TestAnAgentWithNoProcessIsNotWatchable(t *testing.T) {
 	}
 }
 
+// OpenCode remains a supported terminal agent, but its database-backed session
+// store is deliberately outside this small best-effort feature. Not watching it
+// is the cheap failure and keeps SQLite infrastructure out of chartr.
+func TestOpenCodeIsNotTranscriptWatchable(t *testing.T) {
+	agent := proc.Agent{Adapter: "opencode", PID: 99}
+	if Supported(agent.Adapter) {
+		t.Fatal("opencode unexpectedly reports transcript support")
+	}
+	if w, ok := Watch(agent); ok {
+		t.Fatalf("watching opencode returned %+v, want no watcher", w)
+	}
+}
+
 // The seam's own bound is rune-safe: a multibyte glyph is never cut in half, and
 // the provider's padding is not spent against the budget.
 func TestTextIsBoundedWithoutSplittingAGlyph(t *testing.T) {

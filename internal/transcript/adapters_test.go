@@ -136,55 +136,6 @@ func TestKimiPublishesOnlyARealTitle(t *testing.T) {
 	}
 }
 
-// OpenCode names a new session with a placeholder, and a native title blocks paid
-// generation for as long as it stands — so publishing the placeholder would pin
-// the tab to a timestamp forever.
-func TestOpenCodeRefusesThePlaceholderTitle(t *testing.T) {
-	s := newOpencodeFixture(t)
-	s.Start() // inserts the session with its placeholder title
-	w := watch(s.Agent(), opencode{})
-	if got := titlesOf(w.Poll()); len(got) != 0 {
-		t.Fatalf("the placeholder title was published: %q", got)
-	}
-	// The same shape, on a child session, is a placeholder too.
-	s.Title("Child session - 2026-08-16T10:36:14.000Z")
-	if got := titlesOf(w.Poll()); len(got) != 0 {
-		t.Fatalf("a child placeholder was published: %q", got)
-	}
-	s.Title("The title OpenCode generated")
-	if got := titlesOf(w.Poll()); len(got) != 1 || got[0] != "The title OpenCode generated" {
-		t.Fatalf("a real title published %q", got)
-	}
-}
-
-// The one thing a database store does that an append-only log cannot: a row is
-// rewritten in place while the answer streams. A reader that trusted what it first
-// saw would title the tab from half a sentence.
-func TestOpenCodeReadsAStreamedAnswerAtItsFinalValue(t *testing.T) {
-	s := newOpencodeFixture(t)
-	s.Start()
-	w := watch(s.Agent(), opencode{})
-	w.Poll()
-
-	s.beginTurn("the question", "the ans")
-	if got := turnsOf(w.Poll()); len(got) != 0 {
-		t.Fatalf("a turn still streaming produced %+v", got)
-	}
-	s.growPart("the answer, once it had finished streaming")
-	if got := turnsOf(w.Poll()); len(got) != 0 {
-		t.Fatalf("a turn with no closing step produced %+v", got)
-	}
-	s.finishTurn()
-
-	got := turnsOf(w.Poll())
-	if len(got) != 1 {
-		t.Fatalf("the finished turn produced %+v", got)
-	}
-	if got[0].Response != "the answer, once it had finished streaming" {
-		t.Fatalf("the answer came out as %q, want its final value", got[0].Response)
-	}
-}
-
 // Codex's two record families are selected by a field that is not a version, and
 // one build writes both. A rollout that names neither is not a store to guess at.
 func TestCodexRefusesAnUnknownHistoryMode(t *testing.T) {

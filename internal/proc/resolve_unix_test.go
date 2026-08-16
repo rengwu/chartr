@@ -159,8 +159,7 @@ func TestLookupKeepsOnlyTheAllowlistedVariables(t *testing.T) {
 }
 
 // An adapter with no state-root row asks for no variables, and a reader asked
-// for none must return none — the state four of the six providers are in until
-// their stores are measured.
+// for none must return none.
 func TestLookupWithAnEmptyAllowlistReturnsNoEnvironment(t *testing.T) {
 	pid := spawnAgent(t, "claude", t.TempDir(), "CLAUDE_CONFIG_DIR="+t.TempDir())
 	info, err := Lookup(pid, nil)

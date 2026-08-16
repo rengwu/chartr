@@ -17,8 +17,6 @@ func TestGenCommand(t *testing.T) {
 		{"claude default model", "claude", "", []string{"-p", "hi"}, true},
 		{"codex with model", "codex", "gpt-5-nano", []string{"exec", "--model", "gpt-5-nano", "hi"}, true},
 		{"codex default model", "codex", "", []string{"exec", "hi"}, true},
-		{"opencode with model", "opencode", "openai/gpt-5-nano", []string{"run", "-m", "openai/gpt-5-nano", "hi"}, true},
-		{"opencode default model", "opencode", "", []string{"run", "hi"}, true},
 		{"pi is ephemeral", "pi", "", []string{"--no-session", "-p", "hi"}, true},
 		{"kimi default model", "kimi", "", []string{"-p", "hi"}, true},
 		{"grok default model", "grok", "", []string{"-p", "hi"}, true},
@@ -101,13 +99,16 @@ func TestGenLadderTieBreaksByCallerOrder(t *testing.T) {
 func TestCanGenerate(t *testing.T) {
 	// Every provider with a transcript adapter must also be able to spend, or a
 	// tab with no native title would have no way to a title at all.
-	for _, name := range []string{"claude", "codex", "opencode", "pi", "kimi", "grok"} {
+	for _, name := range []string{"claude", "codex", "pi", "kimi", "grok"} {
 		if !CanGenerate(name) {
 			t.Errorf("%s has a transcript adapter but no headless recipe", name)
 		}
 	}
 	if CanGenerate("nothing-chartr-knows") {
 		t.Fatal("an unmeasured harness has no recipe")
+	}
+	if CanGenerate("opencode") {
+		t.Fatal("opencode has no auto-title recipe without transcript support")
 	}
 }
 

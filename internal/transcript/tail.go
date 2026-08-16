@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// This file is the reader four of the six providers share, and the reason the
+// This file is the reader all supported providers share, and the reason the
 // storage family a provider chose is invisible above the Adapter contract.
 //
 // Claude, Codex, Pi, Kimi and Grok all keep their conversation as append-only

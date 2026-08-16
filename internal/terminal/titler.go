@@ -1,7 +1,6 @@
 package terminal
 
 import (
-	"io"
 	"strings"
 
 	"github.com/rengwu/chartr/internal/transcript"
@@ -61,19 +60,8 @@ const MaxTitleRunes = 60
 // persisted session produced since the last poll, provider-neutral by the time
 // they arrive here. In production it is an internal/transcript Watcher; a test
 // hands the manager its own.
-//
-// A source that holds something open while it is bound — a database handle, for
-// a provider whose store is one — also implements io.Closer, and is released the
-// moment the tab stops being observed.
 type TitleSource interface {
 	Poll() []transcript.Event
-}
-
-// dropSource releases a source the tab is no longer observing through.
-func dropSource(src TitleSource) {
-	if c, ok := src.(io.Closer); ok {
-		c.Close()
-	}
 }
 
 // TitleBinding is a live agent tab matched to the persisted session behind it:
@@ -155,11 +143,9 @@ func (t *Terminal) titleBeat(on bool, bind func(*Terminal) (TitleBinding, bool))
 	if !on || !alive || agent == "" {
 		// Nothing to observe: a tab with no agent in front, one whose process is
 		// over, or the whole feature switched off. The displayed title stays,
-		// and whatever the binding held open is released.
-		src := t.titles.src
+		// and the old binding is discarded.
 		t.titles.src = nil
 		t.mu.Unlock()
-		dropSource(src)
 		return titleAttempt{}, false, changed
 	}
 	src := t.titles.src
@@ -250,7 +236,6 @@ func (t *Terminal) titleGenerated(at titleAttempt, title string) bool {
 // that just ended, and reports whether the tab's displayed title went with it.
 // The caller holds t.mu.
 func (t *Terminal) resetTitlesLocked(agent string, pid int) bool {
-	dropSource(t.titles.src)
 	t.titles = titleState{agent: agent, pid: pid}
 	if t.autoTitle == "" {
 		return false

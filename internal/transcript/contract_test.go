@@ -92,8 +92,7 @@ type contractCase struct {
 	store   func(t *testing.T) contractStore
 }
 
-// contractCases is every adapter under contract. Codex, OpenCode, Pi, Kimi and
-// Grok land here as their adapters do.
+// contractCases is every adapter under contract.
 var contractCases = []contractCase{
 	{name: "claude", adapter: claude{}, store: newClaudeStore},
 	// Codex writes two incompatible record families and one build writes both,
@@ -103,7 +102,6 @@ var contractCases = []contractCase{
 	{name: "pi", adapter: pi{}, store: newPiStore},
 	{name: "kimi", adapter: kimi{}, store: newKimiStore},
 	{name: "grok", adapter: grok{}, store: newGrokStore},
-	{name: "opencode", adapter: opencode{}, store: newOpencodeStore},
 }
 
 func TestAdapterContract(t *testing.T) {
