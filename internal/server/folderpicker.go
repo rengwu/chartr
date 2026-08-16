@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // The folder picker is the native half of "add a space": the operator names a
@@ -138,7 +140,12 @@ func pickFolder(ctx context.Context, prompt string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, pickTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, cmd.name, cmd.args...).Output()
+	c := exec.CommandContext(ctx, cmd.name, cmd.args...)
+	// The chooser is a host binary: under the AppImage it must get the
+	// operator's environment back, not the bundle's loader paths, or it dies
+	// in the loader before a window ever opens.
+	c.Env = env.HostEnviron()
+	out, err := c.Output()
 	if err != nil {
 		// Every supported chooser exits non-zero on dismissal and prints nothing
 		// useful, so a non-zero exit with no path is a cancellation rather than a

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,6 +115,9 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 		Prompt:  adapter.Opener(payloadPath),
 		Deliver: spec.Prompt,
 	})
+	if err := adapter.Preflight(launch.Name, e.Path, spec.Env); err != nil {
+		log.Printf("chartr: agent preflight in %s: %v", e.Path, err)
+	}
 	if _, err := s.terms.OpenSession(e.ID, e.Path, info.ID, launch.Name, launch.Args,
 		spec.Env, launch.TypeIn, terminal.Session{
 			MapSlug:   sess.MapSlug,

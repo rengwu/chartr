@@ -15,6 +15,12 @@ import (
 // existed, or it has already ended.
 var ErrNoTerminal = errors.New("terminal: no such terminal")
 
+// ErrBadReorder marks a terminals reorder whose ids are not exactly the space's
+// live terminals — a stale view, a foreign id, or a repeated one. Like the
+// sidebar's own reorder, it is all-or-nothing: the order is left untouched, so a
+// partial list is a client bug refused rather than a partial rearrangement.
+var ErrBadReorder = errors.New("terminal: a reorder must name every terminal in the space exactly once")
+
 // ErrSessionExists is returned when a space already has a live session and one
 // more is asked for without the operator's override. One session per space is the
 // default (spec, State model): parallelism is meant to be many spaces, never many
@@ -42,6 +48,27 @@ type Manager struct {
 	// onFinished is the one event seam tickets 03 and 04 consume. This ticket
 	// seats and drives the clock; a nil callback deliberately consumes nothing.
 	onFinished func(RunFinished)
+	// genTitle turns one completed transcript turn into a short label by spending a
+	// cheap model on the tab's *own* adapter and profile — same-vendor and same
+	// account, so a session's conversation never crosses to a harness or a login the
+	// operator didn't run it on (server side, titlegen.go). Nil is the feature-off
+	// state. It runs off the sampler on its own goroutine and must not block the
+	// sampler; ok=false means "no title this time", swallowed silently.
+	genTitle func(TitleRequest) (title string, ok bool)
+	// bindTitles matches a live agent tab to the persisted session behind it. It is
+	// seated with the production binder (titlebind.go) and replaced by tests, which
+	// is what lets the whole title behaviour be driven through the manager with no
+	// provider store, no PTY and no clock.
+	bindTitles func(*Terminal) (TitleBinding, bool)
+	// autoTitleEnabled gates the whole feature from the operator's per-machine
+	// toggle (autotitle.toml). Default true; ConfigureAutoTitle updates it on every
+	// rebuild. Guarded by mu, read once per sample.
+	autoTitleEnabled bool
+	// titleSem caps how many title generations run at once process-wide, so a burst
+	// of tabs going idle together cannot fan out into a crowd of CLI processes. A
+	// buffered channel used as a counting semaphore; nil until the first generator
+	// is wired.
+	titleSem chan struct{}
 
 	notifyEnabled bool
 	notifyAfter   time.Duration
@@ -64,6 +91,10 @@ type Manager struct {
 const (
 	sampleInterval   = 300 * time.Millisecond
 	shellSampleEvery = 3 // 300ms × 3 ≈ the 900ms cadence shells have always had
+	// titleGenConcurrency caps how many auto-title generations run at once across
+	// the whole process. Two keeps a burst of idling tabs from spawning a crowd of
+	// CLI processes while still letting a couple of titles land promptly.
+	titleGenConcurrency = 2
 )
 
 // agentEngine is the parsed set of shipped agent manifests, built once for the
@@ -78,12 +109,14 @@ var agentEngine = detect.Builtin()
 // unit test) and, with no one to notify, the background sampler is not started.
 func NewManager(onChange func(), onFinished func(RunFinished)) *Manager {
 	m := &Manager{
-		terms:         make(map[string]*Terminal),
-		onChange:      onChange,
-		onFinished:    onFinished,
-		notifyEnabled: true,
-		notifyAfter:   DefaultNotifyAfter,
-		notifySettle:  DefaultNotifySettle,
+		terms:            make(map[string]*Terminal),
+		onChange:         onChange,
+		onFinished:       onFinished,
+		notifyEnabled:    true,
+		notifyAfter:      DefaultNotifyAfter,
+		notifySettle:     DefaultNotifySettle,
+		autoTitleEnabled: true,
+		bindTitles:       bindTranscript,
 	}
 	if onChange != nil {
 		m.stop = make(chan struct{})
@@ -131,11 +164,95 @@ func (m *Manager) sampleOnce(slowTick bool) {
 		if t.sample(agentEngine) {
 			changed = true
 		}
-		if ev := t.updateRunClock(time.Now()); ev != nil && m.onFinished != nil {
+		now := time.Now()
+		if ev := t.updateRunClock(now); ev != nil && m.onFinished != nil {
 			m.onFinished(*ev)
 		}
 	}
+	// The transcript beat rides the slow tick. A title tracks what the agent
+	// persisted, not what the screen is doing this frame, so there is nothing to
+	// gain from asking three times a second — and the beat is deliberately outside
+	// the sampling loop, because activity no longer has anything to say about it.
+	if slowTick {
+		if moved, _ := m.titleTick(terms); moved {
+			changed = true
+		}
+	}
 	if changed {
+		m.notify()
+	}
+}
+
+// titleTick advances every tab's transcript by one beat, publishes whatever
+// native titles appeared, and launches the paid generations the completed turns
+// authorized. It reports whether any tab's displayed title changed and how many
+// generations it launched.
+//
+// The toggle is read once per beat, not once per tab, and gates the whole
+// feature: off means no transcript body is read and nothing is spent. A tab with
+// no generator wired is in the same state — there is nobody to spend with.
+//
+// Generations run off this goroutine behind the process-wide concurrency cap, so
+// a burst of tabs completing turns together can neither stall the sampler nor
+// fan out into a crowd of CLI processes.
+func (m *Manager) titleTick(terms []*Terminal) (changed bool, launched int) {
+	on := m.genTitle != nil && m.autoTitleOn()
+	for _, t := range terms {
+		attempt, spend, moved := t.titleBeat(on, m.bindTitles)
+		if moved {
+			changed = true
+		}
+		if spend {
+			launched++
+			go m.runTitleGen(t, attempt)
+		}
+	}
+	return changed, launched
+}
+
+// SetTitleGenerator wires the cheap-model title generator the sampler spends on
+// and seats the concurrency semaphore. The server sets it once after construction;
+// passing nil turns auto-titling off. It is set before the first sample matters, so
+// no lock guards it — the sampler reads it, the server writes it once at startup.
+func (m *Manager) SetTitleGenerator(gen func(TitleRequest) (string, bool)) {
+	m.genTitle = gen
+	m.titleSem = make(chan struct{}, titleGenConcurrency)
+}
+
+// ConfigureAutoTitle applies the operator's per-machine auto-title toggle. Safe to
+// call on every rebuild; it flips a single guarded flag the transcript beat reads,
+// so turning the feature off stops both transcript observation and generation at
+// once (a title already on screen simply stays, and stops updating).
+func (m *Manager) ConfigureAutoTitle(enabled bool) {
+	m.mu.Lock()
+	m.autoTitleEnabled = enabled
+	m.mu.Unlock()
+}
+
+// autoTitleOn reports the toggle under the lock — the sampler's one read per tick.
+func (m *Manager) autoTitleOn() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.autoTitleEnabled
+}
+
+// runTitleGen spends the session's one attempt off the beat's goroutine and, on a
+// usable title, stores it and pushes a fresh model. The process-wide semaphore
+// bounds how many run at once.
+//
+// A failure — the adapter declined, its models were exhausted, the run was
+// cancelled, nothing usable came back — changes nothing on screen and is not
+// retried: the attempt was consumed when it was scheduled. Auto-titling never
+// surfaces an error.
+func (m *Manager) runTitleGen(t *Terminal, at titleAttempt) {
+	m.titleSem <- struct{}{}
+	defer func() { <-m.titleSem }()
+
+	title, ok := m.genTitle(at.req)
+	if !ok {
+		return
+	}
+	if t.titleGenerated(at, title) {
 		m.notify()
 	}
 }
@@ -390,12 +507,17 @@ type Info struct {
 	// FinishedUnseen is the dot: this tab finished a qualifying run and the
 	// operator has not focused it since.
 	FinishedUnseen bool
+	// AutoTitle is the tab's automatic title — the agent's own native title for its
+	// session, or the one label chartr generated from its first completed turn.
+	// Empty until one of those lands, and on tabs with no agent in front, which are
+	// never titled.
+	AutoTitle string
 }
 
 // info snapshots one terminal's public shape under its own lock.
 func (t *Terminal) info() Info {
 	t.mu.Lock()
-	alive, proc, state, unseen := t.alive, t.proc, t.state, t.finishedUnseen
+	alive, proc, state, unseen, title := t.alive, t.proc, t.state, t.finishedUnseen, t.autoTitle
 	t.mu.Unlock()
 	if proc == "" {
 		proc = t.Title
@@ -405,7 +527,7 @@ func (t *Terminal) info() Info {
 	}
 	return Info{
 		ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state,
-		Alive: alive, Session: t.session, FinishedUnseen: unseen,
+		Alive: alive, Session: t.session, FinishedUnseen: unseen, AutoTitle: title,
 	}
 }
 
@@ -461,6 +583,63 @@ func (m *Manager) ForSpace(spaceID string) []Info {
 		out = append(out, t.info())
 	}
 	return out
+}
+
+// Reorder rearranges spaceID's terminals into the sequence `ids` — the whole
+// ordered list of that space's terminal ids, never a per-row move — and leaves
+// every other space's terminals exactly where they sit in the global order. A tab
+// never crosses into another space: the drag is scoped to one card, so `ids` is
+// only ever a permutation of this space's own terminals, and one that omits a
+// terminal, names an unknown id, or repeats one is refused with ErrBadReorder and
+// changes nothing (the same all-or-nothing contract the sidebar reorder keeps).
+//
+// It writes only the space's slots in the global order, in the new sequence, so a
+// foreign id between two of this space's tabs keeps its position. A reorder that
+// lands the same sequence still pushes, harmlessly — the client posts the whole
+// list on every drop, and the server does not special-case a no-op it cannot
+// cheaply tell apart from a real move.
+func (m *Manager) Reorder(spaceID string, ids []string) error {
+	m.mu.Lock()
+	// The space's terminal ids in their current global order — the set `ids` must
+	// be a permutation of.
+	current := make([]string, 0)
+	for _, id := range m.order {
+		if t := m.terms[id]; t != nil && t.SpaceID == spaceID {
+			current = append(current, id)
+		}
+	}
+	if len(ids) != len(current) {
+		m.mu.Unlock()
+		return fmt.Errorf("%w: %d ids for %d terminals", ErrBadReorder, len(ids), len(current))
+	}
+	inSpace := make(map[string]bool, len(current))
+	for _, id := range current {
+		inSpace[id] = true
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !inSpace[id] {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: no terminal %q in the space", ErrBadReorder, id)
+		}
+		if seen[id] {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: %q appears twice", ErrBadReorder, id)
+		}
+		seen[id] = true
+	}
+	// Refill the space's slots in place, in the new order; every foreign slot is
+	// left untouched.
+	next := 0
+	for i, id := range m.order {
+		if t := m.terms[id]; t != nil && t.SpaceID == spaceID {
+			m.order[i] = ids[next]
+			next++
+		}
+	}
+	m.mu.Unlock()
+	m.notify()
+	return nil
 }
 
 // isLiveSession reports whether this tab is a session (bound to a ticket) whose

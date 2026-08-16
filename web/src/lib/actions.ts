@@ -161,6 +161,19 @@ export function markTerminalSeen(spaceId: string, termId: string): Promise<void>
   ) as Promise<void>
 }
 
+// reorderSessions sets a space's session-tab arrangement: the *complete* ordered
+// list of that space's terminal ids, never a per-row move — the same whole-list
+// shape reorderSpaces takes for the sidebar. The rearrangement is scoped to one
+// space: a tab never crosses into another, so the list is only ever a permutation
+// of this card's own tabs, and the server refuses anything that is not with a 400
+// that changes nothing. The new order arrives back as a fresh snapshot over the
+// control socket like every other action's result.
+export function reorderSessions(spaceId: string, ids: string[]): Promise<void> {
+  return send('POST', `/api/spaces/${encodeURIComponent(spaceId)}/terminals/reorder`, {
+    ids,
+  }) as Promise<void>
+}
+
 // launchFree starts a **free session** in a space on a chosen agent (skill-sources
 // ticket 08): a live, ticketless tab told the free payload — what chartr is and
 // what skills exist, and nothing about how to behave. It shares only the adapter's

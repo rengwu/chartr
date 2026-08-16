@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { Space, Terminal, Agent } from "./model";
+  import { dndzone, type DndEvent } from "svelte-dnd-action";
+  import { flip } from "svelte/animate";
   import { Button } from "./components/ui/button";
+  import Marquee from "./Marquee.svelte";
   import NewShellButton from "./NewShellButton.svelte";
   import * as ContextMenu from "./components/ui/context-menu";
   import { spaceAttention, spaceLiveness } from "./attention";
@@ -8,6 +11,7 @@
   import {
     X,
     XCircle,
+    Circle,
     CircleNotch,
     Play,
     Plus,
@@ -40,6 +44,7 @@
     onopenshell,
     onfree,
     onregister,
+    onreorder,
     agents,
   }: {
     space: Space;
@@ -71,6 +76,13 @@
     onfree: (agent: string) => void;
     // Where an empty agent library routes the operator: settings.
     onregister: () => void;
+    // A drop (or a keyboard move) reordered this space's session tabs: the whole
+    // ordered list of the card's terminal ids, scoped to this card — the chrome
+    // posts it, exactly as it posts a sidebar reorder. The card holds the new order
+    // on screen until the confirming snapshot lands (below); a rejected promise
+    // means the write failed, and the card drops the held order back to the
+    // server's truth.
+    onreorder: (ids: string[]) => void | Promise<void>;
     // The registered agent library, for the shell control's caret list.
     agents: Agent[];
   } = $props();
@@ -84,10 +96,102 @@
   const attention = $derived(spaceAttention(space));
   const liveness = $derived(spaceLiveness(space));
 
-  // The reorder gesture lives entirely in the sidebar's svelte-dnd-action zone
-  // (App.svelte): the card is a plain plate now, both the drag item and the click
-  // target for selecting the space. A press-and-drag is the library's; a click
-  // that never moved is the select below.
+  // Two reorder gestures nest here, both svelte-dnd-action, both the same method.
+  // The *outer* zone lives in the sidebar (App.svelte): the whole card is one drag
+  // item and the click target for selecting the space. The *inner* zone is the
+  // session list below — the card owns it, so a space's tabs are the operator's to
+  // arrange within the one card. The library keeps the two apart: a press-and-drag
+  // that starts on a session row moves the row, not the card. A click that never
+  // moved is still the select.
+  //
+  // The inner reorder mirrors the sidebar's exactly (App.svelte's dndItems dance):
+  // the library owns the list live during a drag, the drop writes the whole list
+  // and holds it on screen until the confirming snapshot arrives, and an incoming
+  // snapshot never yanks the rows out from under the pointer. Scoped to this card,
+  // so `space.terminals` is both the source of truth and the id set the drag can
+  // only ever permute — a tab never leaves for another space.
+  let dndItems = $state<Terminal[]>([]);
+  // True between the first `consider` and the `finalize`: the window in which the
+  // library, not an incoming snapshot, owns `dndItems`.
+  let dragging = $state(false);
+  // The order a just-dropped move committed, held until the confirming snapshot
+  // shows it — without it the rows would snap back to the pre-drop order the instant
+  // the drag ends, then forward again when it lands.
+  let pendingOrder = $state<string[] | null>(null);
+
+  // Reorder a list by a list of ids, dropping ids that have since left and
+  // appending any that arrived — so a snapshot landing mid-hold can neither drop
+  // nor duplicate a row.
+  function orderBy(list: Terminal[], ids: string[]): Terminal[] {
+    const byId = new Map(list.map((t) => [t.id, t]));
+    const held = ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
+    const extra = list.filter((t) => !ids.includes(t.id));
+    return [...held, ...extra];
+  }
+
+  // Keep `dndItems` in step with the space's terminals — except while the library
+  // holds it (a snapshot must not yank the rows out from under the pointer), and
+  // except across the drop-to-snapshot gap, where the committed order stands over
+  // the freshest data until the snapshot catches up (an exact id match) or a failed
+  // write releases it.
+  $effect(() => {
+    const current = space.terminals;
+    if (dragging) return;
+    if (pendingOrder !== null) {
+      const ids = current.map((t) => t.id);
+      const landed =
+        ids.length === pendingOrder.length &&
+        ids.every((id, i) => id === pendingOrder![i]);
+      if (landed) {
+        pendingOrder = null;
+      } else {
+        dndItems = orderBy(current, pendingOrder);
+        return;
+      }
+    }
+    dndItems = current;
+  });
+
+  // The flip duration for the reflow, dropped to nothing when the operator has
+  // asked for less motion — shared by the dndzone and the rows' `animate:flip`.
+  const reduceMotion =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const flipDurationMs = reduceMotion ? 0 : 120;
+
+  // Nothing to arrange with fewer than two tabs, so the drag stays off — a lone
+  // row gains no grab affordance it could do nothing with.
+  const reorderable = $derived(space.terminals.length > 1);
+
+  // The library reorders `dndItems` and hands it back: live during the drag
+  // (consider) and once on the drop (finalize). Only the drop commits.
+  function handleSessionConsider(e: CustomEvent<DndEvent<Terminal>>) {
+    dragging = true;
+    dndItems = e.detail.items;
+  }
+  function handleSessionFinalize(e: CustomEvent<DndEvent<Terminal>>) {
+    dndItems = e.detail.items;
+    dragging = false;
+    const ids = e.detail.items.map((t) => t.id);
+    const current = space.terminals.map((t) => t.id);
+    // A drop back where it started (or a keyboard move that clamped): the honest
+    // response is to write nothing, and to hold nothing.
+    if (
+      ids.length === current.length &&
+      ids.every((id, i) => id === current[i])
+    )
+      return;
+    // Hold the committed order on screen until the snapshot confirms it (the effect
+    // above), so the drop does not bounce.
+    pendingOrder = ids;
+    void Promise.resolve(onreorder(ids)).catch(() => {
+      // The write failed, so the held order is a fiction. A refusal pushes no
+      // snapshot to fall back on, so snap the rows back to the space's own
+      // terminals here rather than waiting for one that isn't coming.
+      pendingOrder = null;
+      dndItems = space.terminals;
+    });
+  }
 </script>
 
 <!-- The card plate is a snippet so it can render either bare (Scratch, which
@@ -120,7 +224,7 @@
     title={space.path}
     data-space-id={space.id}
     class={[
-      "relative flex flex-col gap-2 rounded-lg border p-2 transition-colors select-none",
+      "relative flex flex-col rounded-lg border p-1 transition-colors select-none",
       // The whole card is both the drag item (svelte-dnd-action, in the sidebar)
       // and the click target that selects the space — a click that never moves.
       "cursor-pointer",
@@ -150,7 +254,7 @@
        own arrangement is the only thing that sets it. -->
     <div class="flex items-start gap-1">
       <span
-        class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
+        class="flex p-1 min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold"
       >
         {#if attention === "halt"}
           <!-- The flag is also the jump: one click selects the space
@@ -197,7 +301,7 @@
          session on — icon-only here, where the card header has no room for a
          label. -->
       {#if !space.scratch}
-        <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center">
+        <span class="-mt-0.5 -mr-0.5 flex shrink-0 items-center p-1">
           <NewShellButton
             {agents}
             variant="ghost"
@@ -225,8 +329,38 @@
        same emphasis the card takes, one step stronger — is what says
        which row is showing. -->
     {#if space.terminals.length}
-      <ul class="flex flex-col gap-0.5">
-        {#each space.terminals as t (t.id)}
+      <!-- The session tabs are a svelte-dnd-action zone of their own — the same
+         method the sidebar reorders spaces with, nested one level down and scoped
+         to this card. Each row is an item keyed by its terminal id; `consider`
+         drives the live reflow, `finalize` commits, and `animate:flip` (same
+         duration) does the slide. The default drop outline is cleared — the chrome
+         is monochrome — and cursor detection tracks the hand rather than a row's
+         midpoint, matching the sidebar. The whole zone is a nested drag surface, so
+         `onpointerdown` stops the press from reaching the card's own select.
+
+         A session belongs to exactly one space and never moves between them, so
+         each card's list gets its *own* zone type keyed by the space id. Zones of
+         different types do not interconnect: a dragged row cannot leave for another
+         card (or vanish into the gap between them, which is what a shared type let
+         it do) — it only ever reorders within the card it started in. -->
+      <ul
+        class="flex flex-col gap-0.5"
+        onpointerdown={(e) => {
+          if (reorderable) e.stopPropagation();
+        }}
+        use:dndzone={{
+          items: dndItems,
+          type: `sessions-${space.id}`,
+          flipDurationMs,
+          dragDisabled: !reorderable,
+          dropFromOthersDisabled: true,
+          dropTargetStyle: {},
+          useCursorForDetection: true,
+        }}
+        onconsider={handleSessionConsider}
+        onfinalize={handleSessionFinalize}
+      >
+        {#each dndItems as t (t.id)}
           {@const isActive = selected && activeTermId === t.id}
           {@const unseen = showsFinishedDot(t, isActive)}
           <!-- The finished-while-you-were-away signal (session-notifications) is
@@ -246,7 +380,7 @@
               : t.status === "exited"
                 ? "text-destructive"
                 : "text-muted-foreground"}
-          <li>
+          <li animate:flip={{ duration: flipDurationMs }}>
             <div
               role="button"
               tabindex="0"
@@ -256,7 +390,7 @@
                 ? `${t.session.agent} · ${t.status}`
                 : `${t.proc} · ${t.status}`}
               class={[
-                "flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors",
+                "group flex items-center gap-1 rounded-md px-0.5 py-1 transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent/60",
@@ -273,18 +407,89 @@
                 }
               }}
             >
-              {#if t.session}
-                <!-- A session: its identity is the ticket it is bound to
-                   (role · #num) — told apart from an ad-hoc shell, which
-                   shows its foreground process. -->
-                <span class="min-w-0 flex-1 truncate text-xs font-medium"
-                  >{t.session.role} #{pad(t.session.ticketNum)}</span
-                >
-              {:else}
-                <span class="min-w-0 flex-1 truncate font-mono text-xs"
-                  >{t.proc}</span
-                >
-              {/if}
+              <!-- Status indicator, pinned to the row's leading edge so every tab's
+                 state reads down a single column regardless of how its name or title
+                 wraps. It is always present — idle shows a filled neutral dot, so no
+                 row is ever missing its mark and the column never gaps. A tab with no
+                 known agent in front: that neutral dot when idle, a muted static
+                 pulse mark while a plain process holds the foreground (a dev server,
+                 a build — running, not an agent working), an error mark once it
+                 exits. A tab with a known agent reads the agent's own broadcast
+                 state — the primary spinner racing while it works, plus a held pause
+                 mark when it is blocked waiting on its human. The fast primary
+                 spinner and the slowly turning muted asterisk are what tell an agent
+                 churning a task apart from a process that merely runs. A dead session
+                 freezes under a grey mark. Working is the one state that cannot also
+                 be unseen — nothing has finished yet — so it alone keeps a fixed
+                 weight. -->
+              <!-- Fixed-size slot so the glyph occupies the same box in every
+                 state: the mark swaps but the column before the name never
+                 reflows. -->
+              <span class="flex size-3.5 shrink-0 items-center justify-center">
+                {#if t.status === "working"}
+                  <Spinner
+                    class="size-3.5 animate-spin [animation-duration:2s] text-primary"
+                    aria-label="working"
+                  />
+                {:else if t.status === "running"}
+                  <CircleNotch
+                    class="size-3.5 animate-spin [animation-duration:5s] text-muted-foreground"
+                    aria-label="running"
+                  />
+                {:else if t.status === "blocked"}
+                  <PauseCircle
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="blocked{away}"
+                  />
+                {:else if t.status === "dead"}
+                  <Skull
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="dead{away}"
+                  />
+                {:else if t.status === "exited"}
+                  <XCircle
+                    class="size-3.5 {tone}"
+                    {weight}
+                    aria-label="exited{away}"
+                  />
+                {:else}
+                  <Circle
+                    class="size-2.5 text-muted-foreground/10"
+                    weight="fill"
+                    aria-label="idle"
+                  />
+                {/if}
+              </span>
+
+              <!-- The tab's identity, and after it the generated conversation
+                 title: the label keeps the width it needs to read, the title takes
+                 what's left and scrolls only when it overflows. The title rides
+                 after whatever label the row already shows — the ticket for a
+                 session, the foreground agent (claude/codex) for an ad-hoc shell —
+                 and is present only on a tab whose agent produced one. -->
+              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                {#if t.session}
+                  <!-- A session: its identity is the ticket it is bound to
+                     (role · #num) — told apart from an ad-hoc shell, which
+                     shows its foreground process. -->
+                  <span
+                    class="max-w-[60%] shrink-0 truncate text-xs font-medium"
+                    >{t.session.role} #{pad(t.session.ticketNum)}</span
+                  >
+                {:else}
+                  <span class="max-w-[60%] shrink-0 truncate font-mono text-xs"
+                    >{t.proc}</span
+                  >
+                {/if}
+                {#if t.autoTitle}
+                  <Marquee
+                    text={t.autoTitle}
+                    class="min-w-0 flex-1 text-[10px] leading-none text-muted-foreground"
+                  />
+                {/if}
+              </span>
 
               {#if t.session && !t.alive}
                 <!-- The death halt: a dead session is pinned to its ticket and
@@ -338,62 +543,40 @@
                 </span>
               {/if}
 
-              <!-- Status indicator. A tab with no known agent in front: a muted
-                 static pulse mark while a plain process holds the foreground
-                 (a dev server, a build — running, not an agent working), an
-                 error mark once it exits — idle shows nothing, the same quiet
-                 default the card header uses. A tab with a known agent reads
-                 the agent's own broadcast state — the primary spinner racing
-                 while it works, plus a held pause mark when it is blocked
-                 waiting on its human. The fast primary spinner and the slowly
-                 turning muted asterisk are what tell an agent churning a task
-                 apart from a process that merely runs. A dead session freezes under a
-                 grey mark. Working is the one state that cannot also be
-                 unseen — nothing has finished yet — so it alone keeps a fixed
-                 weight. -->
-              {#if t.status === "working"}
-                <Spinner
-                  class="size-3.5 shrink-0 animate-spin [animation-duration:2s] text-primary"
-                  aria-label="working"
-                />
-              {:else if t.status === "running"}
-                <CircleNotch
-                  class="size-3.5 shrink-0 animate-spin [animation-duration:5s] text-muted-foreground"
-                  aria-label="running"
-                />
-              {:else if t.status === "blocked"}
-                <PauseCircle
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="blocked{away}"
-                />
-              {:else if t.status === "dead"}
-                <Skull
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="dead{away}"
-                />
-              {:else if t.status === "exited"}
-                <XCircle
-                  class="size-3.5 shrink-0 {tone}"
-                  {weight}
-                  aria-label="exited{away}"
-                />
-              {/if}
+              <!-- The close button stays out of the way on a background tab and
+                 surfaces only where ending one is a deliberate act: the row the
+                 pointer is over, or the tab that is selected and in view. A row of
+                 always-present ✕es across every background tab read as clutter and
+                 invited a mis-click, so it is shown on the active row and fades in
+                 on hover / keyboard focus everywhere else.
 
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                class="-my-0.5 -mr-0.5 shrink-0 hover:text-destructive"
-                aria-label="End {t.proc}"
-                title={t.session ? "End this session" : "End this shell"}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  onendshell(t);
-                }}
+                 The wrapper always reserves the button's width, so nothing shifts
+                 when the ✕ appears — only its opacity animates (motion-reduce drops
+                 the transition). It stays in the DOM the whole time; while hidden it
+                 is opacity-0 and pointer-events-none so an invisible ✕ can't be
+                 mis-clicked. -->
+              <span
+                class={[
+                  "-my-0.5 flex w-5 shrink-0 overflow-hidden transition-opacity duration-100 ease-out motion-reduce:transition-none",
+                  isActive
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
+                ]}
               >
-                <X />
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  class="shrink-0 hover:text-destructive"
+                  aria-label="End {t.proc}"
+                  title={t.session ? "End this session" : "End this shell"}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    onendshell(t);
+                  }}
+                >
+                  <X />
+                </Button>
+              </span>
             </div>
           </li>
         {/each}

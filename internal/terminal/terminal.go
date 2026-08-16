@@ -22,6 +22,7 @@ import (
 
 	"github.com/aymanbagabas/go-pty"
 
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/terminal/detect"
 )
@@ -142,6 +143,15 @@ type Terminal struct {
 	// the operator focuses the tab — and it dies with the tab, so a dot can never
 	// outlive the run it records.
 	finishedUnseen bool
+
+	// autoTitle is this tab's automatic one-line title, surfaced as a muted marquee
+	// after the tab's agent label: the provider's own title for the session where
+	// there is one, and otherwise the single label chartr generated from the first
+	// completed turn it saw. titles is the transcript-driven state behind it
+	// (titler.go) — the binding, the native title in force, and whether the
+	// session's one paid attempt has been spent.
+	autoTitle string
+	titles    titleState
 
 	// grid reconstructs the terminal's visible screen server-side from the same
 	// PTY bytes the browser renders, read by the sampler for detection only (never
@@ -428,7 +438,7 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 	// that is resolved out of this process's PATH before the child environment is
 	// ever consulted (the env package), which is what keeps the registration probe
 	// and the spawn agreeing.
-	c.Env = append(os.Environ(), "TERM=xterm-256color")
+	c.Env = append(env.HostEnviron(), "TERM=xterm-256color")
 	c.Env = append(c.Env, spec.env...)
 	if err := c.Start(); err != nil {
 		_ = p.Close()

@@ -1,0 +1,25 @@
+# Auto-generated tab titles are machine-wide server behaviour, so they live here
+# rather than in terminal.toml (terminal customization) or user.toml (execution
+# choices). This file is local to this machine, never committed and never scoped
+# to a space.
+#
+# When on, chartr titles an agent tab from the agent's OWN persisted session,
+# matched to the process running in that tab.
+#
+#   - If the agent already has a title for the session, chartr displays that one.
+#     It costs nothing and no model is spent.
+#   - Otherwise chartr reads the first completed turn of the session — the prompt
+#     you submitted and the final visible response to it — and sends those two
+#     texts, and nothing else, to the tab's own agent for one short title. A
+#     claude session is titled by claude, a codex session by codex, under the same
+#     account that session is running under.
+#
+# That is the only paid attempt a session ever makes: if it fails, the tab simply
+# stays untitled, and no later turn generates another. It never reads system or
+# developer instructions, hidden reasoning, tool calls, tool results, earlier
+# turns, or your terminal screen, and it never generates a title for a session
+# that has not completed a turn since chartr started watching it.
+#
+# Turn this off to stop all of it — no transcript is read and no model is spent.
+# A title already on screen stays there; tabs keep just their plain label.
+# enabled = true

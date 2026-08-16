@@ -29,6 +29,11 @@ const terminalConfigName = "terminal.toml"
 // or execution.
 const notifyConfigName = "notify.toml"
 
+// autotitleConfigName is the operator's machine-wide auto-title toggle. A separate
+// file for the same reason notify.toml is: it controls background server behaviour
+// (spending a cheap model on tab labels), not terminal look or execution choices.
+const autotitleConfigName = "autotitle.toml"
+
 // repoSpace resolves the space an action names in its path, and is the one
 // doorstep for every action that needs a repository behind it. It answers
 // not-found for an id the registry does not hold, and refuses the Scratch
@@ -321,8 +326,16 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	s.terms.ConfigureNotifications(
 		notifyPrefs.Enabled, notifyPrefs.After, notifyPrefs.Settle)
 
+	// Auto-title is one more per-machine toggle, read and applied on every rebuild
+	// exactly like the notification rule. It gates all title generation at the
+	// source; a wrong value warns on the same surface, everything else stands.
+	autoTitleTOML, _ := os.ReadFile(filepath.Join(s.opts.ConfigDir, autotitleConfigName))
+	autoTitlePrefs, autoTitleWarnings := config.ResolveAutoTitlePrefs(autoTitleTOML)
+	s.terms.ConfigureAutoTitle(autoTitlePrefs.Enabled)
+
 	configWarnings := append([]string{}, termWarnings...)
 	configWarnings = append(configWarnings, notifyWarnings...)
+	configWarnings = append(configWarnings, autoTitleWarnings...)
 	spaces := make([]model.Space, 0, len(entries))
 	for _, e := range entries {
 		spaces = append(spaces, s.deriveSpace(e, userTOML, configWarnings))
@@ -360,6 +373,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 			Settle:  notifyPrefs.Settle.String(),
 			Enabled: notifyPrefs.Enabled,
 		},
+		AutoTitle:    model.AutoTitlePrefs{Enabled: autoTitlePrefs.Enabled},
 		NativePicker: nativePicker,
 	}
 }
@@ -496,6 +510,7 @@ func (s *Server) modelTerminals(spaceID string) []model.Terminal {
 			// survive a browser reload: the run it records may have ended with no browser
 			// attached at all.
 			FinishedUnseen: info.FinishedUnseen,
+			AutoTitle:      info.AutoTitle,
 		}
 		if info.Session != nil {
 			term.Session = &model.Session{

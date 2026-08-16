@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // RegisterGit clones a repository of skills and appends it to the list. The
@@ -182,6 +184,10 @@ func requireGit() error {
 func git(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	// git and whatever it shells out to (ssh, pagers, hooks) are host
+	// binaries; they need the operator's environment, not the AppImage
+	// bundle's loader paths.
+	cmd.Env = env.HostEnviron()
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }

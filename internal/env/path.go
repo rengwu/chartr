@@ -117,6 +117,11 @@ func loginPATH(shell string) (string, bool) {
 	script := "printf '%s' " + beginMarker + "; env; printf '%s' " + endMarker
 
 	cmd := exec.CommandContext(ctx, shell, "-l", "-i", "-c", script)
+	// The probe stands in for the operator's own terminal, so it runs under
+	// the restored host environment: under the AppImage an interactive
+	// startup file may itself spawn tools the bundle's loader paths would
+	// break.
+	cmd.Env = HostEnviron()
 	// Never inherit the terminal: a shell that decides to prompt must not
 	// block on a read nobody will answer. The timeout would catch it, but
 	// an immediate EOF beats five seconds of a stalled boot.

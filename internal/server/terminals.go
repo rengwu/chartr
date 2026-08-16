@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -83,6 +84,9 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		Args:    spec.Args,
 		Deliver: spec.Prompt,
 	})
+	if err := adapter.Preflight(launch.Name, e.Path, spec.Env); err != nil {
+		log.Printf("chartr: agent preflight in %s: %v", e.Path, err)
+	}
 	// Titled by the agent's registered name — the tab is titled by the thing the
 	// operator clicked, which is the only labelling rule that never needs
 	// explaining. Three free sessions on one agent get three identical titles, as
@@ -101,6 +105,38 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"id": t.ID})
+}
+
+// handleReorderTerminals applies the operator's arrangement of one space's
+// session tabs: one endpoint taking the *whole* ordered list of that space's
+// terminal ids, never a per-row move, so the pointer drag and the keyboard share
+// a single write path (the same shape POST /api/spaces/reorder takes for the
+// sidebar). The rearrangement is scoped to one space — a tab never crosses into
+// another — and the manager refuses anything that is not a permutation of the
+// space's live terminals with a 400 that changes nothing. The new order rides
+// back on the pushed model like every other terminal change.
+func (s *Server) handleReorderTerminals(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.reg.Get(r.PathValue("id"))
+	if !ok {
+		httpError(w, http.StatusNotFound, "no such space")
+		return
+	}
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.terms.Reorder(e.ID, body.IDs); err != nil {
+		if errors.Is(err, terminal.ErrBadReorder) {
+			httpError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleCloseTerminal ends an ad-hoc shell on the human's command — ad-hoc

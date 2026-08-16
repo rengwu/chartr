@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/sources"
@@ -29,6 +30,7 @@ const (
 	layerUserConfig     = "user-config"
 	layerTerminalConfig = "terminal-config"
 	layerNotifyConfig   = "notify-config"
+	layerAutoTitle      = "autotitle-config"
 	layerSources        = "sources-config"
 	layerPreferences    = "preferences"
 	// The two cores chartr ships embedded and now lets an operator shadow with a
@@ -62,6 +64,8 @@ func (s *Server) globalLayers() []model.ConfigLayer {
 			filepath.Join(s.opts.ConfigDir, terminalConfigName)),
 		layerAt(layerNotifyConfig, "notifications",
 			filepath.Join(s.opts.ConfigDir, notifyConfigName)),
+		layerAt(layerAutoTitle, "autotitle",
+			filepath.Join(s.opts.ConfigDir, autotitleConfigName)),
 		// The two files the sources section owns. `sources.toml` is edited through
 		// that section's controls and openable here for everything it deliberately
 		// does not edit; `preferences.md` is the operator's own and is the one of
@@ -140,6 +144,7 @@ func (s *Server) handleOpenGlobalLayer(w http.ResponseWriter, r *http.Request) {
 var layerTemplates = map[string][]byte{
 	layerTerminalConfig: config.ScaffoldTerminalTOML,
 	layerNotifyConfig:   config.ScaffoldNotifyTOML,
+	layerAutoTitle:      config.ScaffoldAutoTitleTOML,
 	// The core overrides scaffold from chartr's own shipped bytes: Create stamps
 	// the exact embedded default so the operator edits a complete, valid document
 	// rather than a blank file. chartr writes it only on this explicit action and
@@ -261,6 +266,9 @@ func osOpener() string {
 
 func start(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
+	// Editors and xdg-open are host binaries; they need the operator's
+	// environment, not the AppImage bundle's loader paths.
+	cmd.Env = env.HostEnviron()
 	if err := cmd.Start(); err != nil {
 		return err
 	}

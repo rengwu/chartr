@@ -116,6 +116,12 @@ export interface Terminal {
   // browser attached at all. Cleared by focusing the tab, which is the only
   // acknowledgement there is (`unseen.ts`).
   finishedUnseen?: boolean
+  // The tab's automatic one-line title, shown as a muted scrolling marquee after
+  // the tab's label: the agent's own title for the session it is running, or the
+  // single label chartr generated from that session's first completed turn.
+  // Absent until one of those lands, and always absent on a tab with no agent in
+  // front or when the operator turned auto-titling off before a title arrived.
+  autoTitle?: string
 }
 
 export interface Space {
@@ -151,6 +157,7 @@ export interface ConfigLayer {
     | 'preferences'
     | 'ticket core'
     | 'space core'
+    | 'autotitle'
   path: string
   exists: boolean
 }
@@ -241,11 +248,21 @@ export interface Model {
   // Durations use the same strings the file accepts, and are always present
   // because absent or invalid keys have already fallen back server-side.
   notify?: NotifyPrefs
+  // The operator's resolved machine-wide auto-title toggle from autotitle.toml —
+  // whether agent tabs are titled from the sessions their agents persist. The
+  // server always sends it;
+  // optional here only so partial test fixtures need not spell it out.
+  autoTitle?: AutoTitlePrefs
 }
 
 export interface NotifyPrefs {
   after: string
   settle: string
+  enabled: boolean
+}
+
+// The resolved autotitle.toml value: the machine's one auto-title setting.
+export interface AutoTitlePrefs {
   enabled: boolean
 }
 

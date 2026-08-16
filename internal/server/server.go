@@ -163,6 +163,11 @@ func New(opts Options) (*Server, error) {
 	// pushes a fresh model whenever a terminal opens or ends, so a tab appears
 	// and disappears on its own; the model is built before the first rebuild.
 	s.terms = terminal.NewManager(s.rebuild, s.onRunFinished)
+	// The auto-title generator: the sampler asks it to summarise an idle agent
+	// tab's recent screen, and it spends the operator's cheapest registered model
+	// on the answer (titlegen.go). Failing silently is the whole contract, so it is
+	// wired unconditionally — with no adapters registered it simply returns nothing.
+	s.terms.SetTitleGenerator(s.generateCheapTitle)
 
 	// The control socket: JSON, server-authoritative, whole-snapshot push.
 	s.mux.HandleFunc("/ws/control", s.handleControl)
@@ -262,6 +267,10 @@ func New(opts Options) (*Server, error) {
 	// command. Opening is a plain HTTP action so a spawn failure surfaces as a
 	// response (ADR 0010); the shell itself lives on the terminal socket.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals", s.handleOpenTerminal)
+	// The operator's own arrangement of a space's session tabs (scoped to the one
+	// card): the whole ordered list of that space's terminal ids, the same
+	// whole-list shape the sidebar reorder takes.
+	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/reorder", s.handleReorderTerminals)
 	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}", s.handleCloseTerminal)
 	// The acknowledgement of a run that finished while the operator was elsewhere
 	// (session-notifications, the dot): focusing a tab clears its dot in the

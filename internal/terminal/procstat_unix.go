@@ -9,6 +9,8 @@ import (
 
 	"github.com/aymanbagabas/go-pty"
 	"golang.org/x/sys/unix"
+
+	"github.com/rengwu/chartr/internal/proc"
 )
 
 // foreground returns the process-group id currently in the foreground of the
@@ -51,30 +53,14 @@ func procName(pid int) string {
 }
 
 // procGroupNames returns every argv token of every process in process group pgid —
-// the raw material agent identification scores. It reads the whole group rather
-// than its leader alone, and the *arguments* rather than the executable name,
-// because that is the only place the agent's own name survives: a `node`-launched
-// `claude` reports comm `node`, and a shell-script agent reports comm `/bin/sh`,
-// with `claude` visible only in the command line.
-//
-// One `ps` covers Linux and the BSDs/macOS (as procName does), and the sampler
-// only pays for it when the foreground group actually changes.
+// the raw material agent identification scores. The group listing itself lives in
+// internal/proc, which reads it per-process for transcript binding; identification
+// wants only the flat token soup, so it flattens what that returns rather than
+// running a second `ps` with a second parser to drift from.
 func procGroupNames(pgid int) []string {
-	if pgid <= 0 {
-		return nil
-	}
-	out, err := exec.Command("ps", "-A", "-o", "pgid=,args=").Output()
-	if err != nil {
-		return nil
-	}
-	want := strconv.Itoa(pgid)
 	var names []string
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != want {
-			continue
-		}
-		names = append(names, fields[1:]...)
+	for _, m := range proc.Group(pgid) {
+		names = append(names, m.Argv...)
 	}
 	return names
 }
