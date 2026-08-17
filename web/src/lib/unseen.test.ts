@@ -26,6 +26,7 @@ function space(id: string, terminals: Terminal[]): Space {
     path: `/${id}`,
     maps: [],
     terminals,
+    prompts: [],
   }
 }
 

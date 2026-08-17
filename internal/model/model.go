@@ -50,6 +50,13 @@ type Model struct {
 	// `autotitle.toml` — whether chartr titles agent tabs from the sessions their
 	// agents persist.
 	AutoTitle AutoTitlePrefs `json:"autoTitle"`
+	// Prompts is the operator's prompt catalog: short named behavioural
+	// instructions chartr owns and hands to the agents it launches, in creation
+	// order — the only order there is, and the order a launch composes a space's
+	// selection in. Global for the same reason the agent library is: the catalog
+	// lives in the operator's own config and is the same in every space, while
+	// *which* of them apply is each space's own Prompts. Never nil on the wire.
+	Prompts []Prompt `json:"prompts"`
 	// Sources is the operator's ordered skill-source list, each row with what a
 	// walk of it just found. List position *is* resolution order, so the settings
 	// section renders it in the order it arrives and never sorts it. Never nil.
@@ -205,9 +212,26 @@ type Space struct {
 	// (no ticket, no lifecycle, ended by the human), so a mapless space is still
 	// usable as a plain multiplexer. Never nil on the wire.
 	Terminals []Terminal `json:"terminals"`
+	// Prompts are the catalog ids this space applies at launch, given in catalog
+	// order — the order a spawn composes them in, so the pane and the payload read
+	// the same sequence. An id the catalog no longer holds is absent here and
+	// named in Warnings instead: a selection is never silently substituted. Always
+	// empty for Scratch, which has no launch selection in this first version.
+	// Never nil on the wire.
+	Prompts []string `json:"prompts"`
 	// Warnings are non-fatal notices surfaced against the space — an unknown
 	// role in config, a malformed config file. Surface, never enforce.
 	Warnings []string `json:"warnings,omitempty"`
+}
+
+// Prompt is one preset of the operator's catalog on the wire: chartr's stable id
+// for it, the operator's name, and the text an agent is actually told. The body
+// rides the snapshot because the pane shows and edits it, and because it is
+// small — these are short standing instructions, not documents.
+type Prompt struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Body string `json:"body"`
 }
 
 // Map is one discovered wayfinder map beneath a space: its body material and its
@@ -487,5 +511,6 @@ func Empty() Model {
 	return Model{
 		Spaces: []Space{}, Config: []ConfigLayer{}, Agents: []Agent{},
 		Detected: []string{}, Sources: []Source{}, Roles: []RoleBinding{},
+		Prompts: []Prompt{},
 	}
 }

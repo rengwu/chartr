@@ -650,3 +650,108 @@ func TestRenameScratchIsANoOp(t *testing.T) {
 		}
 	}
 }
+
+// The per-space `At launch` selection: a whole-list write that persists, leaves
+// every other space alone, and survives a reload — it lives in the file beside
+// the space's other local state, keyed by the path-derived id.
+func TestPromptsPersistPerSpace(t *testing.T) {
+	dir := writeRegistry(t, `
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+`)
+	r := load(t, dir)
+	alpha, beta := r.List()[0].ID, r.List()[1].ID
+
+	if err := r.SetPrompts(alpha, []string{"brief", "commit-convention", "brief"}); err != nil {
+		t.Fatalf("selecting: %v", err)
+	}
+	// The list is stored as given, minus the repeat: a selection is a set.
+	if got := r.List()[0].Prompts; !equal(got, []string{"brief", "commit-convention"}) {
+		t.Errorf("selection = %v, want the two ids once each", got)
+	}
+	// The other space is untouched, and the sidebar has not moved.
+	if got := r.List()[1].Prompts; len(got) != 0 {
+		t.Errorf("selecting in one space wrote %v into another", got)
+	}
+	if got := paths(r.List()); !equal(got, []string{"/repos/alpha", "/repos/beta"}) {
+		t.Errorf("selecting reordered the sidebar: %v", got)
+	}
+
+	reloaded := load(t, dir)
+	if got := reloaded.List()[0].Prompts; !equal(got, []string{"brief", "commit-convention"}) {
+		t.Errorf("selection after reload = %v, want it preserved", got)
+	}
+	if got := reloaded.List()[1].Prompts; len(got) != 0 {
+		t.Errorf("the untouched space reloaded with %v", got)
+	}
+
+	// The empty list is a legitimate selection: it clears back to nothing.
+	if err := r.SetPrompts(alpha, nil); err != nil {
+		t.Fatalf("clearing the selection: %v", err)
+	}
+	if got := load(t, dir).List()[0].Prompts; len(got) != 0 {
+		t.Errorf("cleared selection reloaded as %v", got)
+	}
+
+	if _, ok := r.Get(beta); !ok {
+		t.Error("the second space vanished")
+	}
+}
+
+// Deleting a preset from the catalog cleans it out of every space that selected
+// it, as part of the same action — a dangling id is not left behind for a later
+// launch to puzzle over.
+func TestRemovePromptCleansEverySpace(t *testing.T) {
+	dir := writeRegistry(t, `
+[[space]]
+  path = "/repos/alpha"
+  order = 0
+
+[[space]]
+  path = "/repos/beta"
+  order = 1
+`)
+	r := load(t, dir)
+	alpha, beta := r.List()[0].ID, r.List()[1].ID
+	if err := r.SetPrompts(alpha, []string{"brief", "doomed"}); err != nil {
+		t.Fatalf("selecting in alpha: %v", err)
+	}
+	if err := r.SetPrompts(beta, []string{"doomed"}); err != nil {
+		t.Fatalf("selecting in beta: %v", err)
+	}
+
+	if err := r.RemovePrompt("doomed"); err != nil {
+		t.Fatalf("removing the preset: %v", err)
+	}
+
+	reloaded := load(t, dir)
+	if got := reloaded.List()[0].Prompts; !equal(got, []string{"brief"}) {
+		t.Errorf("alpha = %v, want the surviving id alone", got)
+	}
+	if got := reloaded.List()[1].Prompts; len(got) != 0 {
+		t.Errorf("beta = %v, want nothing selected", got)
+	}
+	// Removing an id nothing selected changes nothing and is not an error.
+	if err := r.RemovePrompt("never-existed"); err != nil {
+		t.Fatalf("removing an unselected preset: %v", err)
+	}
+}
+
+// Scratch has no launch selection to remember: it carries no persisted row, and
+// the first version leaves it exactly as it was.
+func TestSetPromptsOnScratchIsANoOp(t *testing.T) {
+	r := load(t, t.TempDir())
+	if err := r.SetPrompts(registry.ScratchID, []string{"brief"}); err != nil {
+		t.Fatalf("selecting in Scratch: %v", err)
+	}
+	for _, e := range r.List() {
+		if e.Scratch && len(e.Prompts) != 0 {
+			t.Errorf("Scratch took a selection %v; it should carry none", e.Prompts)
+		}
+	}
+}

@@ -124,6 +124,15 @@ export interface Terminal {
   autoTitle?: string
 }
 
+// Prompt is one preset of the operator's catalog: chartr's stable id for it, the
+// operator's name, and the text an agent is actually told. Editing a preset keeps
+// its id, so every space that selected it keeps pointing at the same row.
+export interface Prompt {
+  id: string
+  name: string
+  body: string
+}
+
 export interface Space {
   id: string
   name: string
@@ -138,6 +147,11 @@ export interface Space {
   lastAgent?: string
   maps: Map[]
   terminals: Terminal[]
+  // The prompt presets this space applies at launch, by catalog id and in catalog
+  // order — the order a spawn composes them in, so the pane and the payload read
+  // the same sequence. An id the catalog no longer holds is absent here and named
+  // in `warnings` instead; Scratch has no launch selection at all.
+  prompts: string[]
   warnings?: string[]
 }
 
@@ -229,6 +243,11 @@ export interface Model {
   // The four role bindings as they stand in `user.toml`, each beside whether it
   // resolves. An unbound role rides with an empty ref.
   roles: RoleBinding[]
+  // The operator's prompt catalog in creation order — the only order there is,
+  // and the order a space's selection composes in. Global like the agent library:
+  // the same list in every space, with each space carrying only which of them it
+  // selects.
+  prompts: Prompt[]
   // Whether `git` is on this machine's PATH. A git source cannot be registered
   // without it, and the refusal is at the gate — before a row is written.
   gitAvailable: boolean

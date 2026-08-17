@@ -20,6 +20,7 @@ function space(id: string, scratch: boolean, terminals: Terminal[]): Space {
     scratch: scratch || undefined,
     maps: [],
     terminals,
+    prompts: [],
   }
 }
 

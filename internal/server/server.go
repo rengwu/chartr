@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rengwu/chartr/internal/notify"
+	"github.com/rengwu/chartr/internal/prompts"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/sources"
 	"github.com/rengwu/chartr/internal/terminal"
@@ -75,8 +76,13 @@ type Server struct {
 	// srcs is the operator's skill-source list. It is loaded once here and walked
 	// fresh on every resolve, so a skill folder created a second ago is usable in
 	// the very next spawn without a restart.
-	srcs  *sources.Registry
-	watch *watcher
+	srcs *sources.Registry
+	// prompts is the operator's prompt catalog — the short standing instructions
+	// a space applies to the agents chartr launches there. It is loaded once here
+	// beside the source list and mutated only through its own actions, which
+	// persist the file atomically.
+	prompts *prompts.Catalog
+	watch   *watcher
 	terms *terminal.Manager
 	// origins is the browser-origin allowlist both websocket handshakes are
 	// checked against (originPatterns). It is set once, in Serve, from the address
@@ -142,6 +148,7 @@ func New(opts Options) (*Server, error) {
 		mux:      http.NewServeMux(),
 		reg:      reg,
 		srcs:     srcs,
+		prompts:  prompts.Load(opts.ConfigDir),
 		notifier: opts.Notifier,
 	}
 	// Discovery is by notice, not refresh (story 11): the watch fires a rebuild
@@ -239,6 +246,17 @@ func New(opts Options) (*Server, error) {
 	s.mux.HandleFunc("POST /api/config/sources/open", s.handleOpenSkill)
 	// The role picker's one write: bind a role to a chosen skill or to `auto`.
 	s.mux.HandleFunc("PUT /api/config/roles/{role}", s.handleSetRoleBinding)
+	// The prompt catalog: the operator's short standing instructions, global like
+	// the agent library and for the same reason — the catalog is theirs, the same
+	// in every space, and never committed. Which of them a space applies is the
+	// per-space action below.
+	s.mux.HandleFunc("POST /api/config/prompts", s.handleCreatePrompt)
+	s.mux.HandleFunc("PUT /api/config/prompts/{id}", s.handleUpdatePrompt)
+	s.mux.HandleFunc("DELETE /api/config/prompts/{id}", s.handleDeletePrompt)
+	// A space's `At launch` selection, as one write of the whole list — the same
+	// whole-list shape the two reorders take, for the same reason: it is
+	// idempotent and cannot leave a half-applied selection behind.
+	s.mux.HandleFunc("PUT /api/spaces/{id}/prompts", s.handleSetSpacePrompts)
 	// Payload preview (ticket 08): for a chosen ticket and role, exactly what a
 	// session would be told, with per-part origin provenance. Read-only, so a GET;
 	// the composition reads the sources and the map fresh off disk each time.

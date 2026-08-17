@@ -70,6 +70,15 @@ type Entry struct {
 	// the path-derived id so a re-register of the same folder lines back up with
 	// it. Empty means no override: the folder basename stands.
 	Name string `toml:"name,omitempty"`
+	// Prompts are the catalog ids this space selects at launch — the operator's
+	// `At launch` choice, remembered per space. It is a set, not an order: the
+	// catalog's own creation order is the only order there is, and composition
+	// follows it however these ids happen to sit here. The ids are held exactly as
+	// written: one the catalog no longer holds is surfaced rather than rewritten
+	// away, because a selection that quietly repaired itself would hide a preset
+	// the operator lost. It lives here for the same reasons LastAgent does —
+	// per-space, per-machine, chartr-owned, rebuildable.
+	Prompts []string `toml:"prompts,omitempty"`
 }
 
 // Registry is the in-memory registry backed by <dataDir>/spaces.toml. It is
@@ -433,6 +442,78 @@ func (r *Registry) Rename(id, name string) error {
 	e.Name = name
 	r.entries[id] = e
 	return r.saveLocked()
+}
+
+// SetPrompts records the prompt presets a space launches agents with: the whole
+// selected list in one write, never a per-row toggle, so two clicks in quick
+// succession cannot leave a half-applied selection. A repeat is dropped — the
+// selection is a set — and an empty list is a legitimate value meaning nothing is
+// selected. Scratch carries no persisted row, so setting one there is a no-op the
+// way a rename of it is; the repo-scoped action guard refuses it above.
+func (r *Registry) SetPrompts(id string, ids []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if id == ScratchID {
+		return nil
+	}
+	e, ok := r.entries[id]
+	if !ok {
+		return nil
+	}
+	next := make([]string, 0, len(ids))
+	seen := map[string]bool{}
+	for _, p := range ids {
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		next = append(next, p)
+	}
+	if equalIDs(e.Prompts, next) {
+		return nil
+	}
+	e.Prompts = next
+	r.entries[id] = e
+	return r.saveLocked()
+}
+
+// RemovePrompt drops a deleted preset's id from every space that selected it, so
+// deleting one from the catalog leaves no dangling reference behind. It is one
+// write of the whole registry: an id nothing selected changes nothing at all.
+func (r *Registry) RemovePrompt(promptID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for id, e := range r.entries {
+		next := make([]string, 0, len(e.Prompts))
+		for _, p := range e.Prompts {
+			if p != promptID {
+				next = append(next, p)
+			}
+		}
+		if len(next) == len(e.Prompts) {
+			continue
+		}
+		e.Prompts = next
+		r.entries[id] = e
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return r.saveLocked()
+}
+
+func equalIDs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // List returns the entries ordered as the sidebar shows them: the operator's

@@ -337,6 +337,11 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 	configWarnings := append([]string{}, termWarnings...)
 	configWarnings = append(configWarnings, notifyWarnings...)
 	configWarnings = append(configWarnings, autoTitleWarnings...)
+	// A catalog chartr could not read is global in exactly the same way, and
+	// surfaces on the same per-space warnings the operator is already looking at.
+	if s.prompts != nil {
+		configWarnings = append(configWarnings, s.prompts.Warnings()...)
+	}
 	spaces := make([]model.Space, 0, len(entries))
 	for _, e := range entries {
 		spaces = append(spaces, s.deriveSpace(e, userTOML, configWarnings))
@@ -365,6 +370,9 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 		// would show a stale skill count the moment a source changed underneath.
 		Sources: s.sourceStates(),
 		Roles:   s.roleBindingRows(),
+		// The prompt catalog is global like the agent library: one list, the same in
+		// every space, with each space carrying only which of them it selects.
+		Prompts: s.promptCatalog(),
 		// Whether a git source can be registered at all. Same shape as the two
 		// probes above — a PATH check, resolved per rebuild, never cached.
 		GitAvailable: config.LookPath("git"),
@@ -464,6 +472,9 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 			Path:      e.Path,
 			Maps:      []model.Map{},
 			Terminals: terminals,
+			// Scratch has no launch selection in this first version: it is the home for
+			// ad-hoc shells, and nothing here selects presets for it.
+			Prompts: []string{},
 		}
 	}
 
@@ -474,10 +485,16 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 
 	maps := mapscan.Discover(e.Path)
 
+	// The space's `At launch` selection, resolved against the catalog into the
+	// order a launch will compose it in, with anything it names and the catalog no
+	// longer holds surfaced beside the other warnings.
+	selected, promptWarnings := s.spacePrompts(e.Prompts)
+
 	warnings := append([]string{}, agentWarnings...)
 	// The per-machine config parse warnings are global, but they surface where the
 	// operator is, the way the agent-library warnings do.
 	warnings = append(warnings, configWarnings...)
+	warnings = append(warnings, promptWarnings...)
 
 	// The folder basename is the default label; the operator's own rename, when
 	// they have set one, stands in for it. Purely presentation — the path and id
@@ -494,6 +511,7 @@ func (s *Server) deriveSpace(e registry.Entry, userTOML []byte, configWarnings [
 		LastAgent: e.LastAgent,
 		Maps:      maps,
 		Terminals: terminals,
+		Prompts:   selected,
 		Warnings:  warnings,
 	}
 }
