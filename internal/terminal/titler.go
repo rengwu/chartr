@@ -132,9 +132,9 @@ type titleState struct {
 // tab's title state; a landed generation (titleGenerated) is the one thing that
 // touches it from elsewhere.
 //
-// on is the machine-wide toggle. Off means the tab is not observed at all: the
-// binding is dropped, no transcript body is read, and nothing is spent — while a
-// title already on screen stays there, which is what the toggle has always done.
+// observe is the shared transcript switch: it remains on while either titles or
+// notifications need the session. titlesOn independently gates display and
+// spending, so disabling auto-title cannot blind the notification consumer.
 //
 // nativeOnly is the other machine-wide flag, and it cuts the ladder in half rather
 // than switching it off: the transcript is still read and native titles are still
@@ -142,7 +142,7 @@ type titleState struct {
 // generation. It leaves the session's one attempt unspent, so an operator who turns
 // the flag back off gets a title from the next completed turn rather than a tab
 // permanently barred from one.
-func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBinding, bool)) (attempt titleAttempt, spend, changed bool) {
+func (t *Terminal) titleBeat(observe, titlesOn, nativeOnly bool, bind func(*Terminal) (TitleBinding, bool)) (attempt titleAttempt, spend, changed bool, events []transcript.Event) {
 	t.mu.Lock()
 	agent, alive, pid := t.titleAgentLocked(), t.alive, t.titlePIDLocked()
 	if agent != t.titles.agent || pid != t.titles.pid {
@@ -151,13 +151,13 @@ func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBin
 		// belong to the session that ended.
 		changed = t.resetTitlesLocked(agent, pid)
 	}
-	if !on || !alive || agent == "" {
+	if !observe || !alive || agent == "" {
 		// Nothing to observe: a tab with no agent in front, one whose process is
 		// over, or the whole feature switched off. The displayed title stays,
 		// and the old binding is discarded.
 		t.titles.src = nil
 		t.mu.Unlock()
-		return titleAttempt{}, false, changed
+		return titleAttempt{}, false, changed, nil
 	}
 	src := t.titles.src
 	t.mu.Unlock()
@@ -169,7 +169,7 @@ func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBin
 		// now may be unique once the candidates are written to again.
 		b, ok := bind(t)
 		if !ok {
-			return titleAttempt{}, false, changed
+			return titleAttempt{}, false, changed, nil
 		}
 		src = b.Source
 		t.mu.Lock()
@@ -177,7 +177,7 @@ func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBin
 		t.mu.Unlock()
 	}
 
-	events := src.Poll()
+	events = src.Poll()
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -189,21 +189,26 @@ func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBin
 			// batch, and there is no debounce to wait out.
 			if title := normalizeTitle(ev.Title); title != "" {
 				t.titles.native = title
-				if t.autoTitle != title {
+				if titlesOn && t.autoTitle != title {
 					t.autoTitle, changed = title, true
 				}
 			}
-		case transcript.HumanTurn:
+		case transcript.TurnFinished:
 			// The *first* completed turn is the one candidate. Later ones in the
 			// same batch are later turns like any other, and a session gets one
 			// attempt however fast its turns arrive.
-			if turn == nil {
+			if titlesOn && ev.Completed() && ev.Prompt != "" && ev.Response != "" && turn == nil {
 				turn = &events[i]
 			}
 		}
 	}
+	// A native title may have arrived while title display was disabled for this
+	// consumer but the shared observer remained alive for notifications.
+	if titlesOn && t.titles.native != "" && t.autoTitle != t.titles.native {
+		t.autoTitle, changed = t.titles.native, true
+	}
 	if turn == nil || nativeOnly || t.titles.native != "" || t.titles.spent {
-		return titleAttempt{}, false, changed
+		return titleAttempt{}, false, changed, events
 	}
 	// The attempt is spent at the moment it is scheduled, not when it succeeds:
 	// failure, invalid output and cancellation all consume it, and no later turn
@@ -217,7 +222,7 @@ func (t *Terminal) titleBeat(on, nativeOnly bool, bind func(*Terminal) (TitleBin
 		},
 		agent: agent,
 		pid:   pid,
-	}, true, changed
+	}, true, changed, events
 }
 
 // titleGenerated stores the title the one paid attempt produced and reports

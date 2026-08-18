@@ -63,7 +63,12 @@ func nativeTitle(title string) transcript.Event {
 }
 
 func humanTurn(prompt, response string) transcript.Event {
-	return transcript.Event{Kind: transcript.HumanTurn, Prompt: prompt, Response: response}
+	return transcript.Event{Kind: transcript.TurnFinished, Outcome: transcript.OutcomeCompleted,
+		Prompt: prompt, Response: response}
+}
+
+func turnStarted(prompt string) transcript.Event {
+	return transcript.Event{Kind: transcript.TurnStarted, Prompt: prompt}
 }
 
 // fakeGen stands in for the paid generator. It records every request it was
@@ -129,6 +134,9 @@ func newTitleRig(t *testing.T) *titleRig {
 	// A nil onChange keeps the background sampler out of it: this test drives
 	// every beat itself.
 	m := NewManager(nil, nil)
+	// These tests isolate the title consumer. Production keeps observing while
+	// notifications are enabled, even when title display is disabled.
+	m.ConfigureNotifications(false, DefaultNotifyAfter, DefaultNotifySettle)
 	gen := newFakeGen("Generated title", true)
 	m.SetTitleGenerator(gen.generate)
 
@@ -193,7 +201,7 @@ func (r *titleRig) beat() int {
 	r.mu.Lock()
 	terms := append([]*Terminal(nil), r.terms...)
 	r.mu.Unlock()
-	_, launched := r.m.titleTick(terms)
+	_, launched := r.m.transcriptTick(terms)
 	return launched
 }
 
@@ -597,6 +605,35 @@ func TestToggleOffStopsObservationAndGeneration(t *testing.T) {
 	r.beat()
 	if src.polled() == before {
 		t.Fatal("the transcript was not observed again after the toggle came back on")
+	}
+}
+
+// Auto-title is only one consumer of the transcript. Turning it off must not
+// blind notifications: the same source remains observed and a provider finish,
+// rather than terminal idle, reports the turn.
+func TestNotificationsKeepObservingWhenAutoTitleIsOff(t *testing.T) {
+	r := newTitleRig(t)
+	_, src := r.tab("t1", "claude")
+	var finished []RunFinished
+	r.m.onFinished = func(ev RunFinished) { finished = append(finished, ev) }
+	r.m.ConfigureNotifications(true, time.Nanosecond, time.Second)
+	r.m.ConfigureAutoTitle(false, false)
+
+	src.emit(turnStarted("do the work"))
+	r.beat()
+	time.Sleep(time.Millisecond)
+	src.emit(transcript.Event{Kind: transcript.TurnFinished, Outcome: transcript.OutcomeCompleted,
+		Prompt: "do the work", Response: "done"})
+	r.beat()
+
+	if len(finished) != 1 || finished[0].Reason != model.TerminalIdle {
+		t.Fatalf("provider completion produced %+v, want one finished event", finished)
+	}
+	if r.gen.count() != 0 || r.title("t1") != "" {
+		t.Fatal("disabled auto-title generated or displayed a title")
+	}
+	if src.polled() < 2 {
+		t.Fatal("notifications did not keep the shared transcript observer alive")
 	}
 }
 

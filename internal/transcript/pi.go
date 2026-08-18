@@ -82,12 +82,13 @@ type piSession struct {
 
 	title   string
 	pending string
+	active  bool
 	out     []Event
 }
 
 func (s *piSession) ID() string { return s.id }
 
-func (s *piSession) forget() { s.pending = "" }
+func (s *piSession) forget() { s.pending, s.active = "", false }
 
 func (s *piSession) Poll() ([]Event, bool) {
 	reseated, ok := s.store.advance(s.fold)
@@ -183,8 +184,12 @@ func (s *piSession) message(m *piMessage, history bool) bool {
 		// whatever was pending is not going to be answered. A message carrying
 		// an image is not text-only and opens nothing.
 		s.forget()
+		s.active = true
 		if only {
 			s.pending = head(text, textCap)
+		}
+		if !history {
+			s.out = append(s.out, Event{Kind: TurnStarted, Prompt: s.pending})
 		}
 		return true
 
@@ -201,15 +206,23 @@ func (s *piSession) message(m *piMessage, history bool) bool {
 			// answer is still to come.
 			return true
 		}
-		prompt, answer := s.pending, head(text, textCap)
+		prompt, active, answer := s.pending, s.active, head(text, textCap)
 		s.forget()
-		// length, error and aborted all end the turn with nothing an operator
-		// would recognise as an answer, and a stop with no visible text is the
-		// same.
-		if history || m.StopReason != "stop" || prompt == "" || answer == "" {
+		if history || !active {
 			return true
 		}
-		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: answer})
+		outcome := OutcomeCompleted
+		switch m.StopReason {
+		case "aborted":
+			outcome = OutcomeInterrupted
+		case "error", "length":
+			outcome = OutcomeFailed
+		}
+		if outcome != OutcomeCompleted {
+			prompt, answer = "", ""
+		}
+		s.out = append(s.out, Event{Kind: TurnFinished, Outcome: outcome,
+			Prompt: prompt, Response: answer})
 		return true
 	}
 	// A tool result, shell output, extension state or a summary. None of them is

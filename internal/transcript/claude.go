@@ -121,6 +121,7 @@ type claudeSession struct {
 
 	title   string
 	pending string
+	active  bool
 
 	// staged holds what binding already read, until the first Poll asks for it;
 	// out is what the fold has produced during the poll in progress.
@@ -157,7 +158,7 @@ func (s *claudeSession) open() bool {
 // binding, so the answer that lands next is not chartr's to charge for. This is
 // the rule that keeps a manually started agent's launch-command prompt untitled
 // rather than rescued by comparing timestamps.
-func (s *claudeSession) forget() { s.pending = "" }
+func (s *claudeSession) forget() { s.pending, s.active = "", false }
 
 // drain takes the events the fold produced.
 func (s *claudeSession) drain() []Event {
@@ -237,9 +238,15 @@ func (s *claudeSession) fold(line []byte, history bool) bool {
 		// Any other user-role record is a new act by whoever is at the keyboard:
 		// the next prompt, a slash command, an interruption notice. Whatever was
 		// pending is not going to be answered.
-		s.pending = ""
-		if claudeTyped(rec) && kinds.only("text") {
-			s.pending = head(text, textCap)
+		s.forget()
+		if claudeTyped(rec) {
+			s.active = true
+			if kinds.only("text") {
+				s.pending = head(text, textCap)
+			}
+			if !history {
+				s.out = append(s.out, Event{Kind: TurnStarted, Prompt: s.pending})
+			}
 		}
 		return true
 
@@ -255,12 +262,17 @@ func (s *claudeSession) fold(line []byte, history bool) bool {
 			// these ends the pending turn; only something visible does.
 			return true
 		}
-		prompt, answer := s.pending, head(text, textCap)
-		s.pending = ""
-		if history || prompt == "" || answer == "" {
+		prompt, active := s.pending, s.active
+		s.forget()
+		if history || !active {
 			return true
 		}
-		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: answer})
+		answer := ""
+		if kinds.has("text") {
+			answer = head(text, textCap)
+		}
+		s.out = append(s.out, Event{Kind: TurnFinished, Outcome: OutcomeCompleted,
+			Prompt: prompt, Response: answer})
 		return true
 	}
 	// Every other kind is machinery — modes, permission choices, attachments,

@@ -116,7 +116,8 @@ type grokSession struct {
 	answer []string
 	// text is false once a chunk arrives that is not text: an image or an
 	// attachment, which disqualifies the turn.
-	text bool
+	text   bool
+	active bool
 
 	out []Event
 }
@@ -124,7 +125,7 @@ type grokSession struct {
 func (s *grokSession) ID() string { return s.id }
 
 func (s *grokSession) forget() {
-	s.phase, s.index, s.seen, s.prompt, s.answer, s.text = grokIdle, 0, false, nil, nil, true
+	s.phase, s.index, s.seen, s.prompt, s.answer, s.text, s.active = grokIdle, 0, false, nil, nil, true, false
 }
 
 func (s *grokSession) Poll() ([]Event, bool) {
@@ -225,6 +226,10 @@ func (s *grokSession) fold(line []byte, history bool) bool {
 		if s.phase != grokPrompting || (seen && s.seen && index != s.index) {
 			s.forget()
 			s.phase, s.index, s.seen = grokPrompting, index, seen
+			s.active = true
+			if !history {
+				s.out = append(s.out, Event{Kind: TurnStarted})
+			}
 		}
 		text, ok := grokChunk(u.Content)
 		if !ok {
@@ -253,16 +258,22 @@ func (s *grokSession) fold(line []byte, history bool) bool {
 
 	case "turn_completed":
 		prompt, answer, textOnly := strings.Join(s.prompt, ""), strings.Join(s.answer, ""), s.text
-		phase := s.phase
+		phase, active := s.phase, s.active
 		s.forget()
-		if history || phase != grokAnswering || u.StopReason != "end_turn" || !textOnly {
+		if history || !active {
 			return true
 		}
-		prompt, answer = head(prompt, textCap), head(answer, textCap)
-		if prompt == "" || answer == "" {
-			return true
+		outcome := OutcomeCompleted
+		if u.StopReason != "end_turn" || phase != grokAnswering {
+			outcome = OutcomeFailed
 		}
-		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: answer})
+		if outcome == OutcomeCompleted && textOnly {
+			prompt, answer = head(prompt, textCap), head(answer, textCap)
+		} else {
+			prompt, answer = "", ""
+		}
+		s.out = append(s.out, Event{Kind: TurnFinished, Outcome: outcome,
+			Prompt: prompt, Response: answer})
 		return true
 	}
 	// agent_thought_chunk is reasoning, tool_call and tool_call_update are tool

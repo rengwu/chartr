@@ -20,8 +20,10 @@
 # turns, or your terminal screen, and it never generates a title for a session
 # that has not completed a turn since chartr started watching it.
 #
-# Turn this off to stop all of it — no transcript is read and no model is spent.
-# A title already on screen stays there; tabs keep just their plain label.
+# Turn this off to stop title observation and spending. A title already on screen
+# stays there; tabs keep just their plain label. If session notifications are on,
+# their shared conversation watcher still reads lifecycle records, but it never
+# sends conversation text to a model.
 # enabled = true
 #
 # Keep only the free half of that. With this on, chartr still watches each agent's
@@ -31,5 +33,5 @@
 # tab keeps just its plain label. Use it when you want titles where they come for
 # free and no background spending at all.
 #
-# It has no effect while `enabled = false`, which already stops both halves.
+# It has no effect while `enabled = false`, which already stops both title halves.
 # native_only = false

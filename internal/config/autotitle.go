@@ -40,7 +40,7 @@ type AutoTitlePrefs struct {
 	// NativeOnly keeps titling to what the agent's own session already carries: a
 	// tab is titled where its harness wrote a title and left plain where it did
 	// not, and no model is ever spent. It says nothing when Enabled is false —
-	// nothing is read or spent either way.
+	// the title consumer reads and spends nothing either way.
 	NativeOnly bool
 }
 

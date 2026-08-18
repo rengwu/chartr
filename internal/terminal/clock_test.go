@@ -255,6 +255,62 @@ func TestRunClockDefaultsNonPositiveConstants(t *testing.T) {
 	}
 }
 
+// Once a provider session is bound, terminal idle is no longer completion
+// evidence. The transcript's finish closes the run immediately, with no settle
+// delay, even if the UI spent most of the turn reading idle.
+func TestTranscriptFinishIgnoresIdleAndFiresImmediately(t *testing.T) {
+	origin := time.Time{}
+	c := newRunClock("t1", "space", &Session{MapSlug: "widget", TicketNum: 3}, time.Minute, 10*time.Second)
+	c.turnStarted(origin)
+
+	if ev := c.updateSource(model.TerminalIdle, origin.Add(70*time.Second), true); ev != nil {
+		t.Fatalf("semantic run fired from terminal idle: %+v", ev)
+	}
+	got := c.turnFinished(origin.Add(75*time.Second), model.TerminalIdle)
+	if got == nil {
+		t.Fatal("provider completion did not finish the qualifying turn")
+	}
+	if got.Duration != 75*time.Second || got.Reason != model.TerminalIdle {
+		t.Fatalf("event = %+v, want an immediate 75s completion", got)
+	}
+}
+
+func TestTranscriptFinishDoesNotOpenADuplicateFromStaleWorking(t *testing.T) {
+	origin := time.Time{}
+	c := newRunClock("t1", "space", nil, time.Second, time.Second)
+	c.turnStarted(origin)
+	if ev := c.turnFinished(origin.Add(2*time.Second), model.TerminalIdle); ev == nil {
+		t.Fatal("semantic completion did not fire")
+	}
+	if ev := c.updateSource(model.TerminalWorking, origin.Add(3*time.Second), c.semantic); ev != nil || c.running {
+		t.Fatalf("stale working reopened the completed run: event=%+v running=%t", ev, c.running)
+	}
+	// Once the UI catches up, ordinary fallback eligibility is available again.
+	c.updateSource(model.TerminalIdle, origin.Add(4*time.Second), c.semantic)
+	c.updateSource(model.TerminalWorking, origin.Add(5*time.Second), c.semantic)
+	if !c.running {
+		t.Fatal("a later real working transition did not re-arm the fallback")
+	}
+}
+
+// A positive blocked signal remains useful beside transcript completion, but it
+// is reported once per semantic turn even if the screen keeps repainting it.
+func TestTranscriptRunReportsBlockedOncePerTurn(t *testing.T) {
+	origin := time.Time{}
+	c := newRunClock("t1", "space", nil, time.Second, 2*time.Second)
+	c.turnStarted(origin)
+	c.updateSource(model.TerminalWorking, origin.Add(time.Second), true)
+	if ev := c.updateSource(model.TerminalBlocked, origin.Add(2*time.Second), true); ev != nil {
+		t.Fatalf("blocked fired before settle: %+v", ev)
+	}
+	if ev := c.updateSource(model.TerminalBlocked, origin.Add(4*time.Second), true); ev == nil || ev.Reason != model.TerminalBlocked {
+		t.Fatalf("settled blocked event = %+v", ev)
+	}
+	if ev := c.updateSource(model.TerminalBlocked, origin.Add(10*time.Second), true); ev != nil {
+		t.Fatalf("same blocked turn fired twice: %+v", ev)
+	}
+}
+
 // The clock over real bytes: the recorded Claude session, replayed through the
 // scanner, the grid, the rule engine and the publishing hysteresis, then folded by
 // the clock exactly as the sampler would fold it. The capture is one working turn

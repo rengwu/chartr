@@ -3,12 +3,14 @@
 # choices). This file is local to this machine, never committed and never scoped
 # to a space.
 #
-# A session or shell must publish `working` for at least this long to report when
-# that run ends.
+# A provider-backed session turn must remain open for at least this long to report
+# its semantic completion. A harness whose transcript cannot be bound falls back
+# to the older `working` duration rule.
 # after = "60s"
 #
-# A run must stay out of `working` this long before its ending is settled. This
-# collapses short pauses between tool calls into one run.
+# A positive blocked state must last this long before reporting that the session
+# needs you. The same delay settles working/idle completion only for fallback
+# harnesses; a provider-recorded turn completion fires without this delay.
 # settle = "10s"
 #
 # Turning this off removes the clock at its source: no finished event is produced.

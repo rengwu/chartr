@@ -74,9 +74,10 @@ func TestAnUnboundWatcherKeepsAsking(t *testing.T) {
 // a live tab is picked up without the consumer knowing anything happened.
 func TestAWatcherRebindsWhenABindingEnds(t *testing.T) {
 	ad := &fakeAdapter{session: &fakeSession{
-		id:     "session-1",
-		script: [][]Event{{{Kind: HumanTurn, Prompt: "a question", Response: "an answer"}}},
-		alive:  2,
+		id: "session-1",
+		script: [][]Event{{{Kind: TurnFinished, Outcome: OutcomeCompleted,
+			Prompt: "a question", Response: "an answer"}}},
+		alive: 2,
 	}}
 	w := watch(agentFor(t), ad)
 
@@ -97,7 +98,7 @@ func TestAWatcherRebindsWhenABindingEnds(t *testing.T) {
 func TestEventsPassThroughUnchanged(t *testing.T) {
 	want := []Event{
 		{Kind: NativeTitle, Title: "A persisted title"},
-		{Kind: HumanTurn, Prompt: "a question", Response: "an answer"},
+		{Kind: TurnFinished, Outcome: OutcomeCompleted, Prompt: "a question", Response: "an answer"},
 	}
 	ad := &fakeAdapter{session: &fakeSession{id: "session-1", script: [][]Event{want}}}
 	w := watch(agentFor(t), ad)

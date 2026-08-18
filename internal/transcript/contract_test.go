@@ -189,9 +189,13 @@ func (c contractCase) run(t *testing.T) {
 		w.Poll()
 		s.Turn("the new question", "the new answer")
 
-		got := turnsOf(w.Poll())
+		events := w.Poll()
+		got := turnsOf(events)
 		if len(got) != 1 {
 			t.Fatalf("appended one turn, got %d events: %+v", len(got), got)
+		}
+		if starts := startsOf(events); len(starts) != 1 {
+			t.Fatalf("appended one turn, got %d starts: %+v", len(starts), events)
 		}
 		if got[0].Prompt != "the new question" || got[0].Response != "the new answer" {
 			t.Fatalf("turn carried %q / %q", got[0].Prompt, got[0].Response)
@@ -390,7 +394,17 @@ func (c contractCase) run(t *testing.T) {
 func turnsOf(events []Event) []Event {
 	var out []Event
 	for _, e := range events {
-		if e.Kind == HumanTurn {
+		if e.Kind == TurnFinished && e.Completed() && e.Prompt != "" && e.Response != "" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func startsOf(events []Event) []Event {
+	var out []Event
+	for _, e := range events {
+		if e.Kind == TurnStarted {
 			out = append(out, e)
 		}
 	}

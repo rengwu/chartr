@@ -43,6 +43,18 @@ func TestComposeSaysTheSpaceTheTicketTheReasonAndTheDuration(t *testing.T) {
 		wantTitle: "harness",
 		wantBody:  "A terminal exited · ran 1h 3m",
 	}, {
+		name: "a provider-recorded failure",
+		run: Run{Space: "chartr", MapSlug: "widget", TicketNum: 4,
+			Reason: "failed", Duration: 2 * time.Minute},
+		wantTitle: "chartr",
+		wantBody:  "widget #04 failed · ran 2m",
+	}, {
+		name: "a provider-recorded interruption",
+		run: Run{Space: "chartr", MapSlug: "widget", TicketNum: 5,
+			Reason: "interrupted", Duration: 70 * time.Second},
+		wantTitle: "chartr",
+		wantBody:  "widget #05 was interrupted · ran 1m 10s",
+	}, {
 		name:      "a space chartr can no longer name still reports",
 		run:       Run{Reason: model.TerminalIdle, Duration: 2 * time.Minute},
 		wantTitle: "chartr",

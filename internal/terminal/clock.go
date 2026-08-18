@@ -5,14 +5,13 @@ import (
 
 	"github.com/rengwu/chartr/internal/config"
 	"github.com/rengwu/chartr/internal/model"
+	"github.com/rengwu/chartr/internal/transcript"
 )
 
-// The notification clock's shipped defaults. n is the threshold — a run shorter
-// than this is not worth interrupting anyone over — and D is the settle delay an
-// exit has to survive before it counts, which is what collapses an agent's flicker
-// between tool calls into one notification at the real end of the run. Ticket 02
-// gives an operator these two through `notify.toml`; these are what stands until
-// they do, and what stands when the file is absent or a value is dropped.
+// The notification clock's shipped defaults. n is the threshold — a turn shorter
+// than this is not worth interrupting anyone over — and D debounces blocked
+// signals and settles the state-only fallback. Provider-recorded completion does
+// not wait for D.
 const (
 	DefaultNotifyAfter  = config.DefaultNotifyAfter  // n
 	DefaultNotifySettle = config.DefaultNotifySettle // D
@@ -31,8 +30,8 @@ type RunFinished struct {
 	SpaceID    string
 	MapSlug    string
 	TicketNum  int
-	// Reason is the state the terminal settled into: model.TerminalIdle,
-	// TerminalBlocked, TerminalDead or TerminalExited.
+	// Reason is the semantic outcome or attention state: idle/completed, blocked,
+	// dead, exited, failed or interrupted.
 	Reason string
 	// Duration is the span from the run's beginning to its end. The settle wait is
 	// not counted — the operator is told how long the session worked, not how long
@@ -40,24 +39,18 @@ type RunFinished struct {
 	Duration time.Duration
 }
 
-// runClock is the whole of the notification rule for one tab: a fold over the
-// (state, timestamp) pairs the publisher emits that produces at most one
-// RunFinished per run. It is pure — time arrives as a parameter and it reads no
-// clock of its own — so ten minutes of history replay in microseconds and no test
-// of it sleeps.
+const (
+	RunFailed      = "failed"
+	RunInterrupted = "interrupted"
+)
+
+// runClock is the notification fold for one tab. Before a provider transcript is
+// bound it preserves the old working/idle rule as a compatibility fallback. Once
+// bound, TurnStarted and TurnFinished are authoritative, terminal idle is ignored,
+// and only positive blocked or process-lifecycle states remain meaningful.
 //
-// It sits downstream of publisher and consumes *published* states, never raw
-// evidence. The publisher already smooths a positive signal differently from a
-// bare absence and holds a startup grace; a second notion of "working" derived
-// here would disagree with the one the sidebar shows, and the operator would be
-// told about a run they never saw.
-//
-// The rule: a run begins the first time the tab publishes working. It ends at the
-// last moment the tab was working before staying out of working continuously for
-// settle. Re-entering working before then cancels the pending end and the run
-// continues; any other state merely updates the reason that will be reported. On
-// end the run's duration is its beginning to its end, and an event is emitted only
-// if that duration is at least after.
+// Time always arrives as a parameter, so both paths remain deterministic and
+// fast to test.
 type runClock struct {
 	// The tab's identity, fixed for the clock's life — a tab's id, space and
 	// ticket binding never change after it starts.
@@ -76,6 +69,16 @@ type runClock struct {
 	start       time.Time
 	lastWorking time.Time
 	reason      string
+	// semantic is true only after this clock consumed a provider TurnStarted.
+	// Binding alone is insufficient: a watcher seated mid-turn deliberately keeps
+	// that historical start behind its cursor and must retain the state fallback.
+	semantic bool
+	// awaitNonWorking prevents a stale working frame immediately after semantic
+	// completion from opening a duplicate fallback run.
+	awaitNonWorking bool
+	// blockedReported deduplicates a permission/question notification within one
+	// semantic turn. It resets only when the transcript opens or closes a turn.
+	blockedReported bool
 }
 
 // newRunClock seats a clock for one tab. after and settle must be positive; a
@@ -114,7 +117,38 @@ func (t *Terminal) configureRunClock(enabled bool, after, settle time.Duration) 
 func (t *Terminal) updateRunClock(now time.Time) *RunFinished {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.clock.update(t.state, now)
+	if t.clock == nil {
+		return nil
+	}
+	return t.clock.updateSource(t.state, now, t.clock.semantic)
+}
+
+// notificationTurnStarted arms the clock from the provider's authoritative turn
+// boundary, replacing any provisional working run observed during boot.
+func (t *Terminal) notificationTurnStarted(now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.clock != nil {
+		t.clock.turnStarted(now)
+	}
+}
+
+// notificationTurnFinished closes a semantic turn immediately, without an idle
+// confirmation or settle delay.
+func (t *Terminal) notificationTurnFinished(now time.Time, outcome transcript.Outcome) *RunFinished {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.clock == nil {
+		return nil
+	}
+	reason := model.TerminalIdle
+	switch outcome {
+	case transcript.OutcomeFailed:
+		reason = RunFailed
+	case transcript.OutcomeInterrupted:
+		reason = RunInterrupted
+	}
+	return t.clock.turnFinished(now, reason)
 }
 
 // update folds one published state in at now and returns the run that ended on
@@ -122,6 +156,13 @@ func (t *Terminal) updateRunClock(now time.Time) *RunFinished {
 // what turning notifications off looks like from here: the clock does not run at
 // all rather than each consumer checking a flag (ticket 02).
 func (c *runClock) update(state string, now time.Time) *RunFinished {
+	return c.updateSource(state, now, false)
+}
+
+// updateSource preserves the old state fold until a provider TurnStarted has
+// actually arrived. During a semantic turn, idle is presentation only; positive
+// blocked state and process death remain useful signals.
+func (c *runClock) updateSource(state string, now time.Time, semantic bool) *RunFinished {
 	if c == nil || state == "" {
 		// No state published yet — nothing to fold. An empty state is the tab before
 		// its first sample, not an exit from working.
@@ -129,6 +170,9 @@ func (c *runClock) update(state string, now time.Time) *RunFinished {
 	}
 
 	if state == model.TerminalWorking {
+		if c.awaitNonWorking {
+			return nil
+		}
 		if !c.running {
 			c.running, c.start = true, now
 		}
@@ -136,6 +180,28 @@ func (c *runClock) update(state string, now time.Time) *RunFinished {
 		// would have carried.
 		c.lastWorking, c.reason = now, ""
 		return nil
+	}
+	c.awaitNonWorking = false
+
+	if semantic {
+		switch state {
+		case model.TerminalIdle:
+			return nil
+		case model.TerminalBlocked:
+			if !c.running || c.blockedReported || now.Sub(c.lastWorking) < c.settle {
+				return nil
+			}
+			dur := now.Sub(c.start)
+			if dur < c.after {
+				return nil
+			}
+			c.blockedReported = true
+			return c.event(model.TerminalBlocked, dur)
+		case model.TerminalDead, model.TerminalExited:
+			return c.turnFinished(now, state)
+		default:
+			return nil
+		}
 	}
 
 	// Out of working. Before the first working sample there is no run to end — a
@@ -159,6 +225,32 @@ func (c *runClock) update(state string, now time.Time) *RunFinished {
 		return nil
 	}
 
+	return c.event(reason, dur)
+}
+
+func (c *runClock) turnStarted(now time.Time) {
+	if c == nil {
+		return
+	}
+	// The provider's own submission is the authoritative beginning. Re-seat even
+	// if a working status started a provisional run during boot.
+	c.running, c.start, c.lastWorking = true, now, now
+	c.reason, c.blockedReported, c.semantic, c.awaitNonWorking = "", false, true, false
+}
+
+func (c *runClock) turnFinished(now time.Time, reason string) *RunFinished {
+	if c == nil || !c.running {
+		return nil
+	}
+	dur := now.Sub(c.start)
+	c.running, c.reason, c.blockedReported, c.semantic, c.awaitNonWorking = false, "", false, false, true
+	if dur < c.after {
+		return nil
+	}
+	return c.event(reason, dur)
+}
+
+func (c *runClock) event(reason string, dur time.Duration) *RunFinished {
 	ev := &RunFinished{TerminalID: c.id, SpaceID: c.spaceID, Reason: reason, Duration: dur}
 	if c.session != nil {
 		ev.MapSlug, ev.TicketNum = c.session.MapSlug, c.session.TicketNum

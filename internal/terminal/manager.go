@@ -8,6 +8,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/terminal/detect"
+	"github.com/rengwu/chartr/internal/transcript"
 )
 
 // ErrNoTerminal is returned when an id names no live terminal — it never
@@ -161,10 +162,12 @@ func (m *Manager) sampleOnce(slowTick bool) {
 	m.mu.Unlock()
 
 	changed := false
+	sampled := make([]*Terminal, 0, len(terms))
 	for _, t := range terms {
 		if !slowTick && !t.hasAgent() {
 			continue
 		}
+		sampled = append(sampled, t)
 		if t.sample(agentEngine) {
 			changed = true
 		}
@@ -173,18 +176,20 @@ func (m *Manager) sampleOnce(slowTick bool) {
 		if t.submitDuePrompt() {
 			changed = true
 		}
-		now := time.Now()
-		if ev := t.updateRunClock(now); ev != nil && m.onFinished != nil {
-			m.onFinished(*ev)
+	}
+	// The transcript beat rides the slow tick. Conversation completion and titles
+	// track what the agent persisted, not what the screen is doing this frame.
+	if slowTick {
+		if moved, _ := m.transcriptTick(terms); moved {
+			changed = true
 		}
 	}
-	// The transcript beat rides the slow tick. A title tracks what the agent
-	// persisted, not what the screen is doing this frame, so there is nothing to
-	// gain from asking three times a second — and the beat is deliberately outside
-	// the sampling loop, because activity no longer has anything to say about it.
-	if slowTick {
-		if moved, _ := m.titleTick(terms); moved {
-			changed = true
+	// Fold presentation state after the transcript on a shared beat. That ordering
+	// lets a provider start/finish win over an idle frame observed in the same
+	// sample; fast beats still advance blocked and fallback state normally.
+	for _, t := range sampled {
+		if ev := t.updateRunClock(time.Now()); ev != nil && m.onFinished != nil {
+			m.onFinished(*ev)
 		}
 	}
 	if changed {
@@ -192,30 +197,42 @@ func (m *Manager) sampleOnce(slowTick bool) {
 	}
 }
 
-// titleTick advances every tab's transcript by one beat, publishes whatever
-// native titles appeared, and launches the paid generations the completed turns
-// authorized. It reports whether any tab's displayed title changed and how many
-// generations it launched.
+// transcriptTick advances every tab's provider session by one beat. One poll is
+// shared by the notification clock and auto-title: lifecycle events drive the
+// former, while native titles and eligible completed text turns drive the latter.
 //
-// The two flags are read once per beat, not once per tab. The toggle gates the
-// whole feature: off means no transcript body is read and nothing is spent. A tab
-// with no generator wired is in the same state — there is nobody to spend with.
-// Native-only gates the paid half alone, so the beat still runs and still
-// publishes whatever titles the agents wrote themselves.
+// The title flags and notification switch are read once per beat, not once per
+// tab. Observation continues while either consumer needs it. Turning titles off
+// therefore stops display and spending without blinding notifications; turning
+// both consumers off drops the binding and reads nothing.
 //
 // Generations run off this goroutine behind the process-wide concurrency cap, so
 // a burst of tabs completing turns together can neither stall the sampler nor
 // fan out into a crowd of CLI processes.
-func (m *Manager) titleTick(terms []*Terminal) (changed bool, launched int) {
+func (m *Manager) transcriptTick(terms []*Terminal) (changed bool, launched int) {
 	enabled, nativeOnly := m.autoTitleRule()
-	// Observation needs a generator only because generation does: with native-only
-	// set there is nothing to spend with and nothing to spend, so the beat runs on a
-	// manager that has no generator wired at all.
-	on := enabled && (nativeOnly || m.genTitle != nil)
+	notifyOn := m.notificationsOn()
+	// The title consumer needs a generator unless it is explicitly native-only.
+	titlesOn := enabled && (nativeOnly || m.genTitle != nil)
+	observe := titlesOn || notifyOn
 	for _, t := range terms {
-		attempt, spend, moved := t.titleBeat(on, nativeOnly, m.bindTitles)
+		attempt, spend, moved, events := t.titleBeat(observe, titlesOn, nativeOnly, m.bindTitles)
 		if moved {
 			changed = true
+		}
+		if notifyOn {
+			for _, ev := range events {
+				var finished *RunFinished
+				switch ev.Kind {
+				case transcript.TurnStarted:
+					t.notificationTurnStarted(time.Now())
+				case transcript.TurnFinished:
+					finished = t.notificationTurnFinished(time.Now(), ev.Outcome)
+				}
+				if finished != nil && m.onFinished != nil {
+					m.onFinished(*finished)
+				}
+			}
 		}
 		if spend {
 			launched++
@@ -236,9 +253,9 @@ func (m *Manager) SetTitleGenerator(gen func(TitleRequest) (string, bool)) {
 
 // ConfigureAutoTitle applies the operator's per-machine auto-title settings. Safe
 // to call on every rebuild; it flips two guarded flags the transcript beat reads.
-// Turning the feature off stops both transcript observation and generation at once
-// (a title already on screen simply stays, and stops updating); turning native-only
-// on stops the generation alone, leaving the agents' own titles arriving as before.
+// Turning the feature off stops title display and generation (a title already on
+// screen simply stays); notification observation continues independently. Turning
+// native-only on stops generation alone, leaving agents' own titles arriving.
 func (m *Manager) ConfigureAutoTitle(enabled, nativeOnly bool) {
 	m.mu.Lock()
 	m.autoTitleEnabled, m.autoTitleNativeOnly = enabled, nativeOnly
@@ -250,6 +267,12 @@ func (m *Manager) autoTitleRule() (enabled, nativeOnly bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.autoTitleEnabled, m.autoTitleNativeOnly
+}
+
+func (m *Manager) notificationsOn() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.notifyEnabled
 }
 
 // runTitleGen spends the session's one attempt off the beat's goroutine and, on a

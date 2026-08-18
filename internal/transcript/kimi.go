@@ -112,6 +112,7 @@ type kimiSession struct {
 
 	native  string
 	pending string
+	active  bool
 	// turn is the identity the pending turn's steps carry, and step the visible
 	// text of the step now running — replaced at every step, so only the step
 	// that finishes the turn contributes an answer.
@@ -126,7 +127,7 @@ type kimiSession struct {
 func (s *kimiSession) ID() string { return s.id }
 
 func (s *kimiSession) forget() {
-	s.pending, s.turn, s.step, s.final = "", "", nil, ""
+	s.pending, s.turn, s.step, s.final, s.active = "", "", nil, "", false
 }
 
 func (s *kimiSession) Poll() ([]Event, bool) {
@@ -234,19 +235,27 @@ func (s *kimiSession) fold(line []byte, history bool) bool {
 		if rec.Origin.Kind != "user" || len(rec.Input) == 0 {
 			return true
 		}
+		s.active = true
 		var text []string
+		textOnly := true
 		for _, part := range rec.Input {
 			if part.Type == "" {
 				return false
 			}
 			if part.Type != "text" {
-				return true // an image: not text-only, so nothing opens
+				textOnly = false
+				continue
 			}
 			if strings.TrimSpace(part.Text) != "" {
 				text = append(text, part.Text)
 			}
 		}
-		s.pending = head(strings.Join(text, "\n\n"), textCap)
+		if textOnly {
+			s.pending = head(strings.Join(text, "\n\n"), textCap)
+		}
+		if !history {
+			s.out = append(s.out, Event{Kind: TurnStarted, Prompt: s.pending})
+		}
 		return true
 
 	case "context.append_loop_event":
@@ -260,19 +269,29 @@ func (s *kimiSession) fold(line []byte, history bool) bool {
 		if !kimiReasons[rec.Reason] {
 			return false // an ending outside the known set
 		}
-		prompt, turn, final := s.pending, s.turn, s.final
+		prompt, turn, final, active := s.pending, s.turn, s.final, s.active
 		s.forget()
 		ended, ok := kimiTurnID(rec.TurnID)
 		if !ok {
 			return false
 		}
-		// A turn that failed or was cancelled, one this adapter is not holding
-		// the prompt of, one whose identity does not match the steps that ran,
-		// and one that produced no visible text: all four end quietly.
-		if history || rec.Reason != "completed" || prompt == "" || final == "" || turn != ended {
+		// A turn this adapter did not see open, or whose identity does not match
+		// the steps that ran, ends quietly. Failed, cancelled and textless turns
+		// still carry lifecycle finishes without title text.
+		if history || !active || (turn != "" && turn != ended) {
 			return true
 		}
-		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: final})
+		outcome := OutcomeCompleted
+		if rec.Reason == "cancelled" {
+			outcome = OutcomeInterrupted
+		} else if rec.Reason != "completed" {
+			outcome = OutcomeFailed
+		}
+		if outcome != OutcomeCompleted {
+			prompt, final = "", ""
+		}
+		s.out = append(s.out, Event{Kind: TurnFinished, Outcome: outcome,
+			Prompt: prompt, Response: final})
 		return true
 	}
 	// Everything else in the census is machinery: the model requests, the usage

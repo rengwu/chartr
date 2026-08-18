@@ -16,7 +16,7 @@
 
   const rows = $derived([
     { label: "Notify after", value: prefs?.after ?? "1m0s" },
-    { label: "Settle delay", value: prefs?.settle ?? "10s" },
+    { label: "Block/fallback settle", value: prefs?.settle ?? "10s" },
     { label: "Enabled", value: (prefs?.enabled ?? true) ? "true" : "false" },
   ]);
 </script>
@@ -26,7 +26,8 @@
     <Bell class="size-3.5 shrink-0" aria-hidden="true" /> Notifications
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
-    Controls when to notify a user when a long-running session stops working.
+    Controls when to notify after a provider-recorded turn finishes, blocks, or
+    falls back to terminal activity detection.
     <a
       href="https://github.com/rengwu/chartr/blob/main/internal/config/notify.scaffold.toml"
       class="text-primary underline-offset-4 hover:underline"

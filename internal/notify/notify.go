@@ -57,8 +57,8 @@ type Run struct {
 	// other; Compose says what it can rather than inventing a ticket.
 	MapSlug   string
 	TicketNum int
-	// Reason is the state the tab settled into (model.TerminalIdle and
-	// friends), translated into the operator's words by Compose.
+	// Reason is the provider outcome or attention state, translated into the
+	// operator's words by Compose.
 	Reason string
 	// Duration is how long the run worked, with the settle wait already excluded.
 	Duration time.Duration
@@ -88,10 +88,8 @@ func Compose(r Run) Notification {
 	}
 }
 
-// phrase says a published state in the operator's words. The four are the
-// states a run can settle into; anything else is reported without a claim
-// about what it means — an unknown state is the state grammar's news to
-// break, not this package's to guess.
+// phrase says a provider outcome or published attention state in the operator's
+// words. Anything unknown is reported without a claim about what it means.
 func phrase(reason string) string {
 	switch reason {
 	case model.TerminalIdle:
@@ -102,6 +100,10 @@ func phrase(reason string) string {
 		return "crashed"
 	case model.TerminalExited:
 		return "exited"
+	case "failed":
+		return "failed"
+	case "interrupted":
+		return "was interrupted"
 	default:
 		return "stopped"
 	}

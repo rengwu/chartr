@@ -10,20 +10,22 @@
 // free.
 //
 // So this package makes the agent's own persisted session the source of truth,
-// and gives the rest of chartr two facts and nothing else:
+// and gives the rest of chartr three facts and nothing else:
 //
 //   - NativeTitle — the provider already titled this conversation. Displaying it
 //     costs nothing, and a title chartr did not pay for is the best kind.
-//   - HumanTurn — a top-level human turn completed: the operator's own text, and
-//     the assistant's final visible answer to it. This is the only thing in
-//     chartr that may authorize spending on a title.
+//   - TurnStarted — a top-level human turn began. Conversation notifications use
+//     it to measure the run without consulting a spinner or terminal title.
+//   - TurnFinished — that turn reached a provider-recorded ending. A successful,
+//     text-bearing finish is the only thing that may authorize spending on a
+//     title; notifications also care about non-text and unsuccessful endings.
 //
 // Nothing else becomes an event. Hidden reasoning, system and developer
 // instructions, tool calls and their results, intermediate assistant messages,
 // subagent traffic, sidechains, summaries, slash commands, permission choices
 // and the provider's own synthetic user-shaped records are all read past. A
-// record that is not a top-level human text turn with a final visible response
-// cannot be promoted into one by any code in this package.
+// lifecycle event may omit conversation text, but only a successful top-level
+// human text turn with a final visible response may carry both text fields.
 //
 // # The shape of the subsystem
 //
@@ -56,10 +58,7 @@ import (
 	"github.com/rengwu/chartr/internal/proc"
 )
 
-// Kind is what one normalized event says happened. Two kinds is the whole model,
-// because one-shot titling asks a transcript only two questions: does this
-// session already have a title, and has the operator completed a turn since
-// chartr started watching?
+// Kind is what one normalized event says happened.
 type Kind int
 
 const (
@@ -68,19 +67,29 @@ const (
 	// whenever the value changes — a free metadata update, with no debounce and
 	// no generation behind it.
 	NativeTitle Kind = iota + 1
-	// HumanTurn is one *completed* top-level human turn: the operator's own
-	// text and the final visible assistant text answering it. Completion is
-	// carried by the event's existence — a turn that is still running, was
-	// interrupted, ended in an error, or produced no visible answer never
-	// arrives at all, so a consumer never has to ask whether a turn is over.
-	HumanTurn
+	// TurnStarted is one top-level submission by the operator. Prompt is present
+	// when it was text-only, and empty for an attachment-bearing turn.
+	TurnStarted
+	// TurnFinished closes the preceding TurnStarted. Outcome says how; Prompt and
+	// Response are present only when the successful turn is suitable for titling.
+	TurnFinished
 )
 
-// Event is one normalized fact from a bound session. The fields a kind does not
-// use are empty: a NativeTitle carries only Title, a HumanTurn only Prompt and
-// Response.
+// Outcome is the provider-neutral way a top-level turn ended.
+type Outcome string
+
+const (
+	OutcomeCompleted   Outcome = "completed"
+	OutcomeFailed      Outcome = "failed"
+	OutcomeInterrupted Outcome = "interrupted"
+)
+
+// Event is one normalized fact from a bound session. Fields unused by its Kind
+// are empty.
 type Event struct {
 	Kind Kind
+	// Outcome is set on TurnFinished.
+	Outcome Outcome
 
 	// Title is the provider's session title, on a NativeTitle event. Non-empty:
 	// a title cleared back to nothing is not published, since blanking a tab's
@@ -88,13 +97,17 @@ type Event struct {
 	Title string
 
 	// Prompt is the operator's own text for this turn, and Response the final
-	// visible assistant text answering it. Both are non-empty on a HumanTurn —
-	// an empty side means the turn was not an eligible one and no event was
-	// emitted for it.
+	// visible assistant text answering it. Either may be empty on lifecycle-only
+	// events; auto-title requires both while notifications do not.
 	//
 	// Both are bounded (see textCap). They are the only conversation content
 	// this package ever hands out.
 	Prompt, Response string
+}
+
+// Completed reports whether a finish is a normal provider completion.
+func (e Event) Completed() bool {
+	return e.Kind == TurnFinished && e.Outcome == OutcomeCompleted
 }
 
 // textCap bounds each side of a turn as it crosses the seam, in runes.
@@ -228,6 +241,7 @@ func (w *Watcher) Poll() []Event {
 		// at the end of the transcript, so nothing behind that cursor can be
 		// charged for twice.
 		w.session = nil
+		return nil
 	}
 	return events
 }

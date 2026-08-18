@@ -56,9 +56,9 @@ import (
 // A turn opens on a text-only user message and closes on `task_complete`, which
 // carries both the turn's identity and `last_agent_message` — the final visible
 // answer, byte-identical to the last AgentMessage of that turn in every turn
-// measured. An interrupted turn writes `turn_aborted` and never a
-// `task_complete`, so it simply never completes. Intermediate AgentMessage items
-// (`phase: "commentary"`) are progress, not the answer, and are never read.
+// measured. An interrupted turn writes `turn_aborted`, which closes its lifecycle
+// without title text. Intermediate AgentMessage items (`phase: "commentary"`)
+// are progress, not the answer, and are never read.
 //
 // # No native title
 //
@@ -114,6 +114,7 @@ type codexSession struct {
 	// record carries none and the closing record's identity is all there is.
 	pending string
 	turn    string
+	active  bool
 
 	out []Event
 }
@@ -122,7 +123,7 @@ func (s *codexSession) ID() string { return s.id }
 
 // forget drops the turn the fold was holding open: a turn already under way when
 // the cursor was seated stays behind it whole.
-func (s *codexSession) forget() { s.pending, s.turn = "", "" }
+func (s *codexSession) forget() { s.pending, s.turn, s.active = "", "", false }
 
 // Poll reads whatever has been appended since the last call.
 func (s *codexSession) Poll() ([]Event, bool) {
@@ -210,7 +211,7 @@ func (s *codexSession) fold(line []byte, history bool) bool {
 		if !ok {
 			return false // the shape a human turn is read out of has drifted
 		}
-		s.open(text, p.TurnID, only)
+		s.open(text, p.TurnID, only, history)
 		return true
 
 	case "user_message":
@@ -222,29 +223,32 @@ func (s *codexSession) fold(line []byte, history bool) bool {
 		// only by the task_complete that closes it.
 		textOnly := len(p.Images) == 0 && len(p.LocalImages) == 0 &&
 			len(p.Audio) == 0 && len(p.LocalAudio) == 0
-		s.open(p.Message, "", textOnly)
+		s.open(p.Message, "", textOnly, history)
 		return true
 
 	case "task_complete":
-		prompt, turn := s.pending, s.turn
+		prompt, turn, active := s.pending, s.turn, s.active
 		s.forget()
-		// An answer to a turn this adapter is not holding the prompt of, a turn
-		// whose identity does not match the one that opened, and a turn that
-		// produced no visible text at all: all three end quietly.
-		if history || prompt == "" || (turn != "" && turn != p.TurnID) {
+		// An answer to a turn this adapter did not see open, or whose identity does
+		// not match the opening, ends quietly. A textless answer still carries a
+		// lifecycle finish for notifications.
+		if history || !active || (turn != "" && turn != p.TurnID) {
 			return true
 		}
 		answer := head(p.LastAgentMessage, textCap)
-		if answer == "" {
-			return true
-		}
-		s.out = append(s.out, Event{Kind: HumanTurn, Prompt: prompt, Response: answer})
+		s.out = append(s.out, Event{Kind: TurnFinished, Outcome: OutcomeCompleted,
+			Prompt: prompt, Response: answer})
 		return true
 
 	case "turn_aborted":
 		// Interrupted: no task_complete will follow, and the prompt it was
-		// holding is not a completed turn.
+		// holding is not a completed turn, but it is still a semantic ending for
+		// notification consumers.
+		active := s.active
 		s.forget()
+		if !history && active {
+			s.out = append(s.out, Event{Kind: TurnFinished, Outcome: OutcomeInterrupted})
+		}
 		return true
 	}
 	// New event types are ordinary — Codex adds them often, and this corpus
@@ -255,15 +259,15 @@ func (s *codexSession) fold(line []byte, history bool) bool {
 // open starts a turn on the operator's own text. Whatever was pending is not
 // going to be answered: a new user message is a new act by whoever is at the
 // keyboard, however the previous one ended.
-func (s *codexSession) open(text, turn string, textOnly bool) {
+func (s *codexSession) open(text, turn string, textOnly, history bool) {
 	s.forget()
-	if !textOnly {
-		return // an image or an audio clip: nothing this adapter may summarise from
+	s.active, s.turn = true, turn
+	if textOnly {
+		s.pending = head(text, textCap)
 	}
-	if text = head(text, textCap); text == "" {
-		return
+	if !history {
+		s.out = append(s.out, Event{Kind: TurnStarted, Prompt: s.pending})
 	}
-	s.pending, s.turn = text, turn
 }
 
 // codexItemText reads a paginated user message's visible text and reports
