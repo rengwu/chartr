@@ -526,9 +526,10 @@ type Info struct {
 	// Empty until one of those lands, and on tabs with no agent in front, which are
 	// never titled.
 	AutoTitle string
-	// PromptTarget reports that this tab is a live agent chartr launched — the only
-	// tab a prompt preset may be delivered into. False for an ordinary shell, an
-	// agent the operator started themselves, and any tab whose process is gone.
+	// PromptTarget reports that a live agent holds this tab's foreground — the only
+	// tab a prompt preset may be delivered into, whether chartr launched the agent
+	// or the operator started it themselves. False for a shell sitting at its own
+	// prompt and for any tab whose process is gone.
 	PromptTarget bool
 	// PendingPrompt is the catalog id of the preset this tab is holding for its
 	// next observed idle, empty when it holds none.
@@ -539,6 +540,7 @@ type Info struct {
 func (t *Terminal) info() Info {
 	t.mu.Lock()
 	alive, proc, state, unseen, title := t.alive, t.proc, t.state, t.finishedUnseen, t.autoTitle
+	_, _, target := t.promptSeatLocked()
 	queued := ""
 	if t.pending != nil {
 		queued = t.pending.id
@@ -553,7 +555,7 @@ func (t *Terminal) info() Info {
 	return Info{
 		ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state,
 		Alive: alive, Session: t.session, FinishedUnseen: unseen, AutoTitle: title,
-		PromptTarget: t.launchedAgent != "" && alive, PendingPrompt: queued,
+		PromptTarget: target, PendingPrompt: queued,
 	}
 }
 

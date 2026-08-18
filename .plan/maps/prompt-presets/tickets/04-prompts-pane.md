@@ -69,11 +69,13 @@ are one inline draft form at a time with a two-step delete — a short list of
 short texts does not need a modal.
 
 **The action vocabulary is derived once.** `prompttarget.ts` is a pure function
-over the active tab: `send` when a Chartr-launched live agent reads idle,
+over the active tab: `send` when a live agent in front of the tab reads idle,
 `queue` when it is working, running, or blocked, and `ineligible` with one plain
-sentence otherwise — no tab, an exited process, or a tab Chartr did not launch
-(a hand-started `claude` reads the agent grammar and can show idle; it is still
-refused, which is the case the rule exists for). The pending row reads "Queued
+sentence otherwise — no tab, an exited process, or a shell sitting at its own
+prompt, where the preset would be run as a command rather than read. (Until the
+2026-08-18 amendment to ticket 03 a hand-started `claude` was refused here too;
+the pane reads the server's `promptTarget` flag either way and needed only its
+sentence changed.) The pending row reads "Queued
 for next idle" with Cancel, and every other row's action stands down while one
 is pending rather than offering a button the server would refuse. The target is
 always the active tab, named in one line at the top of the pane; selecting

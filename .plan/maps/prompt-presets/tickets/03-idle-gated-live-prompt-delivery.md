@@ -112,3 +112,22 @@ pane would have to explain, and the honest reading is that the tab genuinely
 never goes idle.
 
 `make test`, `make vet`, and `make check` all pass, as do the web unit tests.
+
+**Amended 2026-08-18: eligibility is what is in front of the tab, not who
+launched it.** The operator asked for their own `claude` to be a target too, and
+the rule above was the only thing refusing it — the sampler already identifies
+that agent, reads its status from the agent grammar, and titles the tab from its
+transcript, so chartr knows a TUI is listening there exactly as well as in a tab
+it launched. `PromptTarget` is now `alive && titleAgentLocked() != ""`, which is
+the same identification the title and status already run on: a launched tab
+answers from its launch, an ad-hoc shell from whatever holds the PTY's
+foreground. A shell at its own prompt is still refused, and that is the case the
+rule exists for — there the preset would be run as a command.
+
+Eligibility stopped being immutable in the process, so a pending item now
+records the agent and pid it was aimed at, and `submitDuePrompt` re-checks that
+seat before typing. Quitting an ad-hoc agent leaves a shell that reads *idle*,
+which is precisely the state the queue was waiting for; a seat that is gone or
+replaced drops the item instead, the same way an exit does. The spec's target
+paragraph, user-visible item 9, and the failure-behavior bullet were updated to
+match, along with `map.md`'s out-of-scope line.

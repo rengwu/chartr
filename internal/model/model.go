@@ -342,11 +342,12 @@ type Terminal struct {
 	// agent in front (those are never titled) or when the operator has turned
 	// auto-titling off before a title arrived.
 	AutoTitle string `json:"autoTitle,omitempty"`
-	// PromptTarget reports that this tab is a live agent chartr launched, which is
-	// the only tab a prompt preset can be sent or queued to (prompt-presets, live
-	// delivery). False for an ordinary shell, an agent the operator started
-	// themselves, and any tab whose process is gone — the pane offers no action
-	// there and says why.
+	// PromptTarget reports that a live agent holds this tab's foreground, which is
+	// what a prompt preset can be sent or queued to (prompt-presets, live
+	// delivery) — chartr's own launch and an agent the operator started themselves
+	// alike, because what a delivery needs is a TUI listening. False for a shell
+	// sitting at its own prompt and any tab whose process is gone; the pane offers
+	// no action there and says why.
 	PromptTarget bool `json:"promptTarget,omitempty"`
 	// PendingPrompt is the catalog id of the one preset this tab is holding for its
 	// next observed idle, empty when it holds none. It is runtime state that dies

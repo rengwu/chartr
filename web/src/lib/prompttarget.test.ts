@@ -15,7 +15,7 @@ function term(over: Partial<Terminal> = {}): Terminal {
 }
 
 describe('prompt target', () => {
-  it('offers Send to an idle agent chartr launched', () => {
+  it('offers Send to an idle agent', () => {
     expect(promptTarget(term())).toEqual({ kind: 'send' })
   })
 
@@ -46,19 +46,19 @@ describe('prompt target', () => {
     })
   })
 
-  it('refuses an ordinary shell', () => {
+  it('refuses a shell sitting at its own prompt', () => {
     expect(promptTarget(term({ title: 'zsh', proc: 'zsh', promptTarget: undefined }))).toEqual({
       kind: 'ineligible',
-      reason: 'Only a live agent chartr launched can be sent a preset.',
+      reason: 'This tab has no agent in front of it — start one to send it a preset.',
     })
   })
 
-  it('refuses an agent the operator started themselves, whatever it reads as', () => {
-    // The shell is running `claude`, so the tab reads the agent grammar and can
-    // even show idle — eligibility is who launched the binary, not what is in it.
-    expect(promptTarget(term({ proc: 'claude', promptTarget: undefined }))).toEqual({
-      kind: 'ineligible',
-      reason: 'Only a live agent chartr launched can be sent a preset.',
+  it('offers an agent the operator started themselves the same actions', () => {
+    // The server flags the tab because an agent holds its foreground, not because
+    // chartr launched it; from here the two are one case and read the same status.
+    expect(promptTarget(term({ title: 'zsh', proc: 'claude' }))).toEqual({ kind: 'send' })
+    expect(promptTarget(term({ title: 'zsh', proc: 'claude', status: 'working' }))).toEqual({
+      kind: 'queue',
     })
   })
 })

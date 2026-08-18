@@ -4,7 +4,7 @@
 
 An operator keeps short behavioral prompts in one Chartr-owned catalog, chooses
 which ones apply when a registered space launches an agent, and can send or queue
-one catalog prompt to that space's active Chartr-launched agent tab. The feature
+one catalog prompt to that space's active agent tab. The feature
 uses Chartr's existing payload, terminal-state, and pane machinery and introduces
 no provider-specific registration or speculative extension system.
 
@@ -65,7 +65,7 @@ no provider-specific registration or speculative extension system.
 - A generalized pane or plugin framework; Prompts is only a second concrete tool
   beside Map.
 - Provider RPC, SDK, transcript, hook, or MCP delivery paths.
-- Delivery to manually launched agents, ordinary shells, dead tabs, or Scratch.
+- Delivery to a shell with no agent in front of it, dead tabs, or Scratch.
 - Persistent delivery queues, delivery history, audit logs, retries, or an
   attempt to retract instructions an agent already saw.
 - Detecting or preserving an unsent draft already present in an agent's composer.

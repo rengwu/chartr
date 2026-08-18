@@ -209,11 +209,11 @@ func TestCancelledPresetNeverReachesTheAgent(t *testing.T) {
 	}
 }
 
-// The narrow target. Everything that is not a live agent chartr launched is
-// refused, and the snapshot says so before the operator can even try: an
-// ordinary shell and a foreign tab carry no eligibility, and an unknown preset
-// is refused before any tab is touched.
-func TestLiveDeliveryRefusesEverythingButALaunchedAgent(t *testing.T) {
+// The narrow target. Everything with no live agent in front of it is refused,
+// and the snapshot says so before the operator can even try: a shell at its own
+// prompt and a foreign tab carry no eligibility, and an unknown preset is refused
+// before any tab is touched.
+func TestLiveDeliveryRefusesATabWithNoAgentInFront(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo, otherRepo := chartrtest.NewSpaceRepo(t), chartrtest.NewSpaceRepo(t)
 	cue, _ := livePromptAgent(t, h)
@@ -239,8 +239,9 @@ func TestLiveDeliveryRefusesEverythingButALaunchedAgent(t *testing.T) {
 		t.Errorf("another space's terminal = %d, want 404", code)
 	}
 
-	// An ordinary shell is not an agent chartr launched: no eligibility on the
-	// snapshot, and the action refused.
+	// A shell sitting at its own prompt has no agent listening: no eligibility on
+	// the snapshot, and the action refused. It is the case the rule exists for —
+	// the preset would be run as a command rather than read.
 	shell := h.OpenTerminal(resp.ID)
 	tab := findTerminal(t, findSpace(t, h.Snapshot(ctx(t)), resp.ID), shell)
 	if tab.PromptTarget {
@@ -251,17 +252,18 @@ func TestLiveDeliveryRefusesEverythingButALaunchedAgent(t *testing.T) {
 	}
 }
 
-// A manually launched agent is the case the eligibility rule exists for: chartr
-// *sees* an agent in this tab — it reads the agent grammar and its status comes
-// from claude's own title — but chartr did not launch it, so it is refused. The
-// difference is who started the binary, not what is running.
-func TestManuallyLaunchedAgentIsRefused(t *testing.T) {
+// An agent the operator started themselves is a delivery target on the same
+// terms as one chartr launched. chartr identifies it in the shell's foreground,
+// reads its status from claude's own title, and types into it — because what a
+// delivery needs is a TUI listening, which is exactly what identification means.
+func TestManuallyLaunchedAgentReceivesThePreset(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
-	cue, _ := livePromptAgent(t, h)
+	cue, log := livePromptAgent(t, h)
 	goIdle(t, cue)
 
-	id := createPrompt(t, h, "Keep answers brief", "One sentence.")
+	const body = "Answer in as few words as the question allows."
+	id := createPrompt(t, h, "Keep answers brief", body)
 	resp := register(t, h, repo)
 
 	shell := h.OpenTerminal(resp.ID)
@@ -269,17 +271,17 @@ func TestManuallyLaunchedAgentIsRefused(t *testing.T) {
 	defer tc.Close()
 	tc.Send(ctx(t), "claude\n")
 
-	// chartr identifies the agent the operator started: the tab reads the agent
-	// grammar's idle under claude's own name.
-	tab := waitTerminal(t, h, resp.ID, shell, "identified the operator's own claude", func(x model.Terminal) bool {
-		return x.Proc == "claude" && x.Status == model.TerminalIdle
+	// The tab was opened as an ordinary shell, so eligibility here can only have
+	// come from the identification: the operator's own claude holds the foreground.
+	waitTerminal(t, h, resp.ID, shell, "identified the operator's own claude", func(x model.Terminal) bool {
+		return x.Proc == "claude" && x.Status == model.TerminalIdle && x.PromptTarget
 	})
-	if tab.PromptTarget {
-		t.Error("an agent the operator started themselves reads as a live delivery target")
+
+	code, queued := sendPrompt(t, h, resp.ID, shell, id)
+	if code != 200 || queued {
+		t.Fatalf("sending to the operator's own idle agent = %d queued=%v, want 200 queued=false", code, queued)
 	}
-	if code, _ := sendPrompt(t, h, resp.ID, shell, id); code != 409 {
-		t.Errorf("a manually launched agent = %d, want 409", code)
-	}
+	chartrtest.WaitForFileContains(t, log, "stdin: "+body, 10*time.Second)
 }
 
 // A tab whose process is gone is no target: the dead session stays pinned to its

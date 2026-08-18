@@ -37,8 +37,12 @@ retract instructions in an existing session.
 
 The Prompts pane always targets the currently active tab; choosing another target
 means selecting that tab through Chartr's existing session navigation. Live
-delivery is offered only when the tab is a live agent Chartr launched, whether it
-is ticket-bound or free. An idle target receives the preset immediately. A
+delivery is offered whenever a live agent holds the tab's foreground: a session,
+a free launch, and an agent the operator started themselves in an ordinary shell
+alike, since what a delivery requires is an agent listening rather than a shell
+that would run the preset as a command. A pending preset is aimed at that agent,
+not at the tab: if the identified agent goes away or is replaced before delivery,
+the pending item is dropped exactly as it is when the tab exits. An idle target receives the preset immediately. A
 working, running, or blocked target stores one visible, cancellable pending preset
 and submits it automatically on the next observed idle transition. A second
 activation is refused while one is pending. The queue is runtime state and dies
@@ -67,13 +71,14 @@ behind provider-specific machinery.
 5. A ticket or free agent launched afterward receives the selected presets in its
    opening payload; a free launch with no selection behaves exactly as it does
    today.
-6. The pane sends a preset immediately to an idle active Chartr-launched agent.
+6. The pane sends a preset immediately to an idle active agent, whether Chartr
+   launched it or the operator started it themselves.
 7. The pane queues one preset for a busy or blocked active agent, shows which one
    is pending, and lets the operator cancel it before delivery.
 8. The queued preset is submitted once when the agent next reads idle. It is never
    typed into a permission prompt or while work is visibly in progress.
-9. An ordinary shell, manually launched agent, dead tab, Scratch, or missing
-   active tab offers no Send or Queue action and explains the narrow target.
+9. A shell sitting at its own prompt, a dead tab, Scratch, or a missing active
+   tab offers no Send or Queue action and explains the narrow target.
 10. Disabling `At launch` does not claim to make an existing agent forget the
     preset; applying it to that agent requires an explicit Send or Queue action.
 
@@ -90,8 +95,9 @@ behind provider-specific machinery.
   preset. Ordinary deletion removes known references as part of the same action.
 - A pending live delivery snapshots the selected preset when it is queued. A
   later edit or deletion does not rewrite an action the operator already took.
-- If the target exits before delivery, the pending item disappears with it. There
-  is no persistence, retry, or delivery notification subsystem.
+- If the target exits before delivery — or the agent it was queued for leaves the
+  tab's foreground, or another agent takes its place — the pending item disappears
+  with it. There is no persistence, retry, or delivery notification subsystem.
 
 ## Testing boundary
 

@@ -202,8 +202,8 @@ func (s *Server) launchPrompts(e registry.Entry) []prompts.Prompt {
 // The body is snapshotted here, out of the catalog, and handed to the terminal
 // manager — so a later edit or deletion cannot rewrite an instruction the
 // operator has already sent. Every refusal is a state the pane can explain: an id
-// the catalog does not hold, a tab that is not this space's, a tab that is not a
-// live agent chartr launched, or a tab already holding a preset.
+// the catalog does not hold, a tab that is not this space's, a tab with no live
+// agent in front of it, or a tab already holding a preset.
 func (s *Server) handleSendPrompt(w http.ResponseWriter, r *http.Request) {
 	e, ok := s.repoSpace(w, r)
 	if !ok {
