@@ -50,10 +50,15 @@ func main() {
 		return
 	}
 
-	// A bundled launch is handed `/` as its working directory, so it anchors to
-	// the home root the config already resolves to rather than dying on the lock
-	// before a window exists. An explicit --data-dir wins either way.
-	dataDir := runtimeRoot(flags.dataDir, exe, server.ConfigRoot(""))
+	// A packaged launch does not get to use its working directory: a macOS bundle
+	// is handed `/` and would die on the lock before a window exists, and an
+	// AppImage is handed wherever the operator happened to be, which would give
+	// one operator a different runtime root per launch directory. Both anchor to
+	// the home root the config already resolves to. An explicit --data-dir wins
+	// either way. Flag parsing still keys on isBundled alone: the injected
+	// arguments it forgives are the window server's, and a Linux operator running
+	// the AppImage from a terminal should still hear about a typo.
+	dataDir := runtimeRoot(flags.dataDir, exe, server.ConfigRoot(""), os.LookupEnv)
 
 	if err := run(dataDir); err != nil {
 		fmt.Fprintf(os.Stderr, "chartr shell: %v\n", err)

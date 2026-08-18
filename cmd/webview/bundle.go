@@ -34,15 +34,39 @@ func isBundled(exePath string) bool {
 	return filepath.Ext(filepath.Dir(contents)) == ".app"
 }
 
+// isAppImage reports whether this launch came out of a Linux AppImage.
+//
+// It is the same question isBundled asks, but it cannot be asked the same way.
+// A macOS bundle is a path shape the assembly step produces, so the executable's
+// own path is proof. An AppImage's executable path is `/tmp/.mount_XXXXXX/usr/
+// bin/chartr` — a mount point with a random suffix that the runtime chooses
+// afresh every launch and that self-extraction (`APPIMAGE_EXTRACT_AND_RUN`, what
+// a machine without FUSE gets) does not even use. Matching that shape would be
+// matching a temp directory.
+//
+// So the runtime's own statement is what is trusted instead: it exports APPIMAGE
+// as the path of the .AppImage file it is running, verified on both the FUSE
+// mount and the self-extracting path. It is taken as a lookup rather than read
+// from the process so this stays as testable as the predicate above.
+func isAppImage(lookup func(string) (string, bool)) bool {
+	path, ok := lookup("APPIMAGE")
+	return ok && path != ""
+}
+
 // runtimeRoot picks the chartr-owned runtime root — sessions, payload archives
 // and the single-instance lock — for this launch.
 //
 // A terminal launch is unchanged: an empty answer means "the working directory",
 // which is where the shell has always written and what the operator `cd`'d to.
-// A bundled launch cannot use that, because Finder hands it `/`, which it cannot
+// A packaged launch cannot use that, because the working directory is no longer
+// something the operator chose. Finder hands a macOS bundle `/`, which it cannot
 // write to: the single-instance lock is the first thing to touch the root, so
 // the app would exit before drawing a window, writing the reason to a stream
-// nobody reads.
+// nobody reads. An AppImage is the same problem wearing the opposite failure —
+// the working directory is wherever the operator happened to be, so it succeeds,
+// and quietly writes a different runtime root per launch directory. Two windows
+// then both open holding two locks, neither seeing the other, and the spaces
+// registered from one are missing from the next (#3).
 //
 // So a bundled launch anchors to configRoot — the same home-anchored path the
 // config root already resolves to (server.ConfigRoot), not an Apple-conventional
@@ -50,14 +74,14 @@ func isBundled(exePath string) bool {
 // would give one operator two session archives and two locks, and the split
 // would be invisible until it confused them.
 //
-// An explicitly passed root always wins, bundled or not; and if there is no home
-// to anchor to, configRoot is empty and a bundled launch degrades to the working
-// directory exactly as the config root itself does.
-func runtimeRoot(explicit, exePath, configRoot string) string {
+// An explicitly passed root always wins, packaged or not; and if there is no
+// home to anchor to, configRoot is empty and a packaged launch degrades to the
+// working directory exactly as the config root itself does.
+func runtimeRoot(explicit, exePath, configRoot string, lookup func(string) (string, bool)) string {
 	if explicit != "" {
 		return explicit
 	}
-	if !isBundled(exePath) {
+	if !isBundled(exePath) && !isAppImage(lookup) {
 		return ""
 	}
 	return configRoot
@@ -86,7 +110,7 @@ func parseFlags(args []string, bundled bool) (shellFlags, error) {
 		// complained about is not one an operator typed.
 		fs.SetOutput(io.Discard)
 	}
-	dataDir := fs.String("data-dir", "", "chartr session/runtime root (defaults to the current directory, or to ~/.config/chartr when launched from an app bundle); user config lives under ~/.config/chartr")
+	dataDir := fs.String("data-dir", "", "chartr session/runtime root (defaults to the current directory, or to ~/.config/chartr when launched from an app bundle or an AppImage); user config lives under ~/.config/chartr")
 	showVersion := fs.Bool("version", false, "print version and exit")
 
 	err := fs.Parse(args)
