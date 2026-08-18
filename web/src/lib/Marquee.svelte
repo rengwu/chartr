@@ -50,6 +50,16 @@
   // How long the slide back to the start takes. Short and eased: it is an undo of
   // the scroll, not a scroll of its own.
   const RETURN_MS = 240;
+  // How far the box sits pulled left under whatever label precedes it in the row,
+  // at all times — not just while scrolling. A matching left padding (below)
+  // cancels it out for layout, so a title at rest lands exactly where it always
+  // did; only the box's true left edge — where scrolled text gets clipped — moves.
+  // Static rather than a hover-triggered transform, so there is nothing left to
+  // transition in when a hover starts the scroll: see the CSS for why that
+  // mattered. Kept in px, and applied inline, so this one number is what both the
+  // layout and the overflow math below agree on — no separate rem figure to drift
+  // out of sync with it.
+  const LEAD_PULL = 8;
 
   let root = $state<HTMLDivElement | null>(null);
   let track = $state<HTMLDivElement | null>(null);
@@ -64,9 +74,11 @@
 
   // Scroll only when the text genuinely overflows its container and motion is
   // allowed. A one-pixel slack avoids a jittery scroll on a title that only just
-  // fits.
+  // fits. `containerWidth` is the root's own clientWidth, which now includes the
+  // left padding that cancels the pull above — that padding is reserved space
+  // the text itself never sits in, so it comes back out here.
   const scrolling = $derived(
-    !reduceMotion && textWidth > 0 && textWidth > containerWidth + 1,
+    !reduceMotion && textWidth > 0 && textWidth > containerWidth - LEAD_PULL + 1,
   );
   const shift = $derived(textWidth + GAP);
   const durationMs = $derived((shift / SPEED) * 1000);
@@ -175,6 +187,7 @@
 <div
   bind:this={root}
   class={["marquee", fading && "is-fading", klass]}
+  style="margin-left: -{LEAD_PULL}px; padding-left: {LEAD_PULL}px; --marquee-lead-pull: {LEAD_PULL}px;"
   bind:clientWidth={containerWidth}
   title={text}
   aria-label={text}
@@ -183,11 +196,7 @@
     <!-- The moving track: two copies a gap apart, sliding by one copy-plus-gap so
        the second copy seamlessly takes the first's place. The transform is driven
        from the script above, not from CSS. -->
-    <div
-      bind:this={track}
-      class="marquee-track"
-      style="gap: {GAP}px;"
-    >
+    <div bind:this={track} class="marquee-track" style="gap: {GAP}px;">
       <span class="marquee-copy">{text}</span>
       <span class="marquee-copy" aria-hidden="true">{text}</span>
     </div>
@@ -196,8 +205,10 @@
        measuring copy keeps textWidth up to date so a later resize can start it
        scrolling without a mount. -->
     <span class="marquee-static">{text}</span>
-    <span class="marquee-measure" aria-hidden="true" bind:clientWidth={textWidth}
-      >{text}</span
+    <span
+      class="marquee-measure"
+      aria-hidden="true"
+      bind:clientWidth={textWidth}>{text}</span
     >
   {/if}
 </div>
@@ -213,6 +224,11 @@
 
   .marquee {
     position: relative;
+    /* Sits under whatever label precedes it in the row (the negative margin
+       above pulls it there) — a positioned/flex-item z-index is honoured even at
+       the default stacking order, so without this the marquee, being later in
+       the DOM, would paint over the label instead of the other way around. */
+    z-index: 0;
     overflow: hidden;
     white-space: nowrap;
     min-width: 0;
@@ -223,20 +239,41 @@
        having to name which fill is underneath. At 0 length every stop collapses to
        the right edge and the mask is a no-op, so a row with nothing to hide behind
        pays nothing. The middle stop keeps the text nearly clear across the control
-       itself, then ramps back to solid over the rest of the reach. */
+       itself, then ramps back to solid over the rest of the reach.
+
+       The leading edge gets a fixed fade too — the same reach at all times, not
+       something that turns on with a hover — because the overlap it's covering
+       is now a permanent fact of the layout rather than a state. Its reach is
+       exactly --marquee-lead-pull (set inline from LEAD_PULL in the script, the
+       same number driving the margin/padding above) rather than an independent
+       figure: the static text's first glyph sits exactly at that inset, so a
+       reach any wider would fade the resting title's leading edge along with
+       nothing; any narrower would clip a sliver of scrolled text before it had
+       fully dissolved. At rest nothing has scrolled inside that reach, so the
+       fade is a no-op there for free; once the track scrolls, text dissolves
+       into it exactly the way the trailing fade dissolves into the row's own
+       controls. Nothing here ever transitions, so a hover has nothing to ease in
+       before the WAAPI scroll's constant velocity takes over — which is the
+       whole point. */
     --marquee-fade: 0px;
     transition: --marquee-fade 120ms ease-out;
     -webkit-mask-image: linear-gradient(
       to left,
       transparent 0px,
       rgb(0 0 0 / 0.15) calc(var(--marquee-fade) * 0.45),
-      #000 var(--marquee-fade)
+      #000 var(--marquee-fade),
+      #000 calc(100% - var(--marquee-lead-pull)),
+      rgb(0 0 0 / 0.15) calc(100% - var(--marquee-lead-pull) * 0.45),
+      transparent 100%
     );
     mask-image: linear-gradient(
       to left,
       transparent 0px,
       rgb(0 0 0 / 0.15) calc(var(--marquee-fade) * 0.45),
-      #000 var(--marquee-fade)
+      #000 var(--marquee-fade),
+      #000 calc(100% - var(--marquee-lead-pull)),
+      rgb(0 0 0 / 0.15) calc(100% - var(--marquee-lead-pull) * 0.45),
+      transparent 100%
     );
   }
 

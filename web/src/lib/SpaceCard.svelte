@@ -476,17 +476,21 @@
                  wanted, so the reading width is the one that gets the room. The
                  marquee fades its own tail out whenever the ✕ is showing, so the
                  two never collide. -->
-              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+              <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
                 {#if t.session}
                   <!-- A session: its identity is the ticket it is bound to
                      (role · #num) — told apart from an ad-hoc shell, which
-                     shows its foreground process. -->
+                     shows its foreground process. Given a z-index (flex items
+                     honour it without needing `position` set) so it stays
+                     above the marquee beside it, which sits permanently
+                     pulled left underneath it by a few px. -->
                   <span
-                    class="max-w-[60%] shrink-0 truncate text-xs font-medium"
+                    class="z-10 max-w-[60%] shrink-0 truncate text-xs font-medium"
                     >{t.session.role} #{pad(t.session.ticketNum)}</span
                   >
                 {:else}
-                  <span class="max-w-[60%] shrink-0 truncate font-mono text-xs"
+                  <span
+                    class="z-10 max-w-[60%] shrink-0 truncate font-mono text-xs"
                     >{t.proc}</span
                   >
                 {/if}
@@ -494,7 +498,7 @@
                   <Marquee
                     text={t.autoTitle}
                     fadeTail={isActive}
-                    class="min-w-0 flex-1 text-[10px] leading-none text-muted-foreground"
+                    class="min-w-0 flex-1 text-[10px] leading-tight text-muted-foreground"
                   />
                 {/if}
               </span>
