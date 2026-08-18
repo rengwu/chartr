@@ -413,3 +413,73 @@ export function deleteAgent(name: string): Promise<{ name: string; path: string 
     path: string
   }>
 }
+
+// The prompt catalog's five actions (prompt-presets ticket 04). The catalog is
+// global like the agent library, so the three CRUD calls take no space id; the
+// launch selection and live delivery are the space's, so those do. Nothing here
+// is applied optimistically — the pane renders the snapshot that comes back over
+// the control socket, which is what keeps it from holding a second copy of the
+// catalog.
+
+export function createPrompt(name: string, body: string): Promise<{ id: string; name: string }> {
+  return send('POST', '/api/config/prompts', { name, body }) as Promise<{
+    id: string
+    name: string
+  }>
+}
+
+// updatePrompt rewrites a preset's name and text in place. The id is untouched,
+// so every space that selected it keeps its selection and simply gets the new
+// text at the next launch.
+export function updatePrompt(
+  id: string,
+  name: string,
+  body: string,
+): Promise<{ id: string; name: string }> {
+  return send('PUT', `/api/config/prompts/${encodeURIComponent(id)}`, { name, body }) as Promise<{
+    id: string
+    name: string
+  }>
+}
+
+// deletePrompt drops a preset and, in the same action, clears it from every
+// space that had it selected.
+export function deletePrompt(id: string): Promise<unknown> {
+  return send('DELETE', `/api/config/prompts/${encodeURIComponent(id)}`)
+}
+
+// setSpacePrompts records which presets a space applies at launch: the *whole*
+// selected list in catalog order, never a per-row toggle, so one write is one
+// selection and two quick clicks cannot interleave into a half-set list.
+export function setSpacePrompts(spaceId: string, ids: string[]): Promise<void> {
+  return send('PUT', `/api/spaces/${encodeURIComponent(spaceId)}/prompts`, {
+    ids,
+  }) as Promise<void>
+}
+
+// sendPrompt delivers one preset to one of the space's live agent tabs. The one
+// action covers both outcomes: an idle agent is typed at once, a working,
+// running, or blocked one holds it for its next observed idle. `queued` says
+// which happened, so the pane can say "Queued for next idle" without guessing.
+export function sendPrompt(
+  spaceId: string,
+  termId: string,
+  id: string,
+): Promise<{ queued: boolean }> {
+  return send(
+    'POST',
+    `/api/spaces/${encodeURIComponent(spaceId)}/terminals/${encodeURIComponent(termId)}/prompt`,
+    { id },
+  ) as Promise<{ queued: boolean }>
+}
+
+// cancelPrompt drops the preset a tab is holding before it is delivered.
+// Cancelling a tab that holds nothing is an ordinary no-op server-side — the
+// sampler can deliver between the row rendering and the click, and that race is
+// not a failure.
+export function cancelPrompt(spaceId: string, termId: string): Promise<void> {
+  return send(
+    'DELETE',
+    `/api/spaces/${encodeURIComponent(spaceId)}/terminals/${encodeURIComponent(termId)}/prompt`,
+  ) as Promise<void>
+}

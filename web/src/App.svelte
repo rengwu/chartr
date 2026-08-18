@@ -816,6 +816,7 @@
           <SpacePane
             space={selected}
             agents={agentLibrary}
+            prompts={control.model?.prompts ?? []}
             {activeTerm}
             {canSyncSkills}
             terminalPrefs={control.model?.terminal}

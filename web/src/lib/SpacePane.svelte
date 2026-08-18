@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import type {
     Agent,
+    Prompt,
     Space,
     Terminal as Term,
     TerminalPrefs,
@@ -9,6 +10,7 @@
   } from "./model";
   import Terminal from "./Terminal.svelte";
   import MapCard from "./MapCard.svelte";
+  import PromptsCard from "./PromptsCard.svelte";
   import NewShellButton from "./NewShellButton.svelte";
   import { openSpaceFolder, syncSkills } from "./actions";
   import { Button } from "./components/ui/button";
@@ -17,11 +19,14 @@
   import { openingFor, paneState, rememberPane } from "./mapstate";
   import {
     Warning,
-    Sparkle,
+    Columns,
+    CornersOut,
+    SidebarSimple,
     FolderOpen,
     Copy,
     ArrowsClockwise,
     CircleNotch,
+    X,
   } from "phosphor-svelte";
 
   // The folder button's label names the operator's own file browser rather than
@@ -48,6 +53,7 @@
   let {
     space,
     agents,
+    prompts,
     activeTerm,
     canSyncSkills = false,
     terminalPrefs,
@@ -62,6 +68,10 @@
     // passed down to the star-map's detail pane so each spawn button can name and
     // pick the agent it will run.
     agents: Agent[];
+    // The operator's prompt catalog, global in exactly the same way (prompt-presets
+    // ticket 04): the Prompts tab renders it, and this space carries only which of
+    // it applies at launch (`space.prompts`).
+    prompts: Prompt[];
     activeTerm: Term | null;
     // Whether a manual skill sync would write anything — at least one enabled
     // source yields a skill (App reads the sources list once and hands it down).
@@ -188,7 +198,12 @@
   // one that names only the space (or none at all) leaves it to the store.
   const linked =
     bootApplies && (!!boot.m || !!boot.t || !!boot.mat || !!boot.maps);
-  let mapShown = $state(bootApplies && (!!boot.t || !!boot.mat || !!boot.maps));
+  let paneShown = $state(bootApplies && (!!boot.t || !!boot.mat || !!boot.maps));
+  // Which tool the one auxiliary pane is showing. Map and Prompts share the
+  // frame rather than competing for it, so this is a switch and not a second
+  // visibility flag. A standing choice for the whole stage, like the frame's own
+  // visibility and docking: switching spaces does not reset it.
+  let paneTab = $state<"map" | "prompts">("map");
   let dock = $state(true);
   let openSlug = $state<string | null>(linked ? boot.m : remembered.slug);
   let selectedTicket = $state<number | null>(
@@ -203,7 +218,7 @@
   const maps = $derived<WMap[]>(space.maps ?? []);
 
   // The Scratch space has no repository, so it has nothing to chart: no star-map
-  // toggle, no map card, and inert M/Esc. `mapShown` is
+  // toggle, no map card, and inert M/Esc. `paneShown` is
   // a standing preference for the whole stage rather than per space, so this is
   // enforced *here*, where the card renders — an operator who leaves the map open
   // on a registered space and switches to Scratch must not carry it across, and
@@ -212,10 +227,10 @@
 
   // Whether the star-map is actually on the stage — the standing preference, minus
   // the spaces that cannot hold a map. Everything that follows from a *rendered*
-  // card reads this rather than `mapShown`: the docked split's frozen terminal
+  // card reads this rather than `paneShown`: the docked split's frozen terminal
   // width included, or a Scratch shell would sit in 60% of the stage with nothing
   // beside it.
-  const mapOpen = $derived(mapShown && !mapless);
+  const paneOpen = $derived(paneShown && !mapless);
 
   // A stable identity for the current terminal prefs: the retained pool keys its
   // remount on this string, so editing `terminal.toml` (a new snapshot with
@@ -308,19 +323,22 @@
     if (h.t) {
       selectedTicket = Number(h.t);
       showMaterial = false;
-      mapShown = true;
+      paneShown = true;
+      paneTab = "map";
       lastOpen = openSlug;
     } else if (h.mat) {
       showMaterial = true;
       selectedTicket = null;
-      mapShown = true;
+      paneShown = true;
+      paneTab = "map";
       lastOpen = openSlug;
     } else if (h.maps) {
       // The picker: the space's maps, each one a door in.
       openSlug = null;
       selectedTicket = null;
       showMaterial = false;
-      mapShown = true;
+      paneShown = true;
+      paneTab = "map";
     }
   }
 
@@ -352,7 +370,7 @@
     if (selectedTicket !== null) p.set("t", String(selectedTicket));
     else if (showMaterial) p.set("mat", "1");
     const want =
-      mapOpen && (selectedTicket !== null || showMaterial)
+      paneOpen && (selectedTicket !== null || showMaterial)
         ? "#" + p.toString()
         : "";
     if (location.hash !== want) {
@@ -378,21 +396,21 @@
   // collapses out of view. Both floors are enforced in CSS (the docked term-col
   // is shrinkable to 240; the map card holds 300), so window resizes need no JS.
   function summon() {
-    mapShown = true;
+    paneShown = true;
     // A single-map space has nothing to pick — open straight into its one map.
     // With several, land on the picker (openSlug stays null). Never overrides a
     // slug a deep link or an earlier session already opened.
     if (openSlug === null && maps.length === 1) openSlug = maps[0].slug;
   }
   function dismiss() {
-    mapShown = false;
+    paneShown = false;
   }
-  function toggleMap() {
-    if (mapShown) dismiss();
+  function togglePane() {
+    if (paneShown) dismiss();
     else summon();
   }
   $effect(() => {
-    if (mapOpen && dock && bodyEl && !dockTermWidth) {
+    if (paneOpen && dock && bodyEl && !dockTermWidth) {
       const w = bodyEl.clientWidth;
       // First dock: terminal keeps ~60%, always leaving room for the map; clamped
       // so neither pane collapses on a narrow window. A resize below overrides it.
@@ -465,17 +483,20 @@
     const editing = isEditingTarget();
     if (e.key === "Escape" && !editing) {
       // Esc peels back one layer: the open detail pane first, then the open map
-      // (back to the picker), then the panel.
-      if (selectedTicket !== null || showMaterial) {
-        selectedTicket = null;
-        showMaterial = false;
-        return;
+      // (back to the picker), then the pane itself. The two inner layers belong
+      // to the map, so they are skipped when Prompts is the tab on show.
+      if (paneShown && paneTab === "map") {
+        if (selectedTicket !== null || showMaterial) {
+          selectedTicket = null;
+          showMaterial = false;
+          return;
+        }
+        if (openSlug !== null) {
+          openSlug = null;
+          return;
+        }
       }
-      if (openSlug !== null) {
-        openSlug = null;
-        return;
-      }
-      if (mapShown) {
+      if (paneShown) {
         dismiss();
         return;
       }
@@ -487,7 +508,7 @@
       !e.ctrlKey
     ) {
       e.preventDefault();
-      toggleMap();
+      togglePane();
     }
   }
 </script>
@@ -624,19 +645,21 @@
           {warnings.length}
         </span>
       {/if}
-      <!-- The one star-map show/hide control for the whole stage, beside the
-           bindings; reflects mapShown via aria-pressed. Available even with
-           zero maps: the picker itself explains there's nothing yet — but not
-           over Scratch, which has no repository to hold a `.plan/` at all. -->
+      <!-- The one show/hide control for the stage's auxiliary pane, beside the
+           bindings; reflects paneShown via aria-pressed. Which tool the pane
+           shows — Map or Prompts — is the pane's own tab switcher, so this stays
+           one button. Available even with zero maps (the picker explains there is
+           nothing yet, and the catalog is global) — but not over Scratch, which
+           has no repository to hold a `.plan/` and takes no launch selection. -->
       {#if !mapless}
         <Button
-          variant={mapShown ? "secondary" : "ghost"}
+          variant={paneShown ? "secondary" : "ghost"}
           size="sm"
-          aria-pressed={mapShown}
-          title={mapShown ? "Hide the star-map (M)" : "Show the star-map (M)"}
-          onclick={toggleMap}
+          aria-pressed={paneShown}
+          title={paneShown ? "Hide the pane (M)" : "Show the pane (M)"}
+          onclick={togglePane}
         >
-          <Sparkle weight={mapShown ? "fill" : "regular"} /> Map
+          <SidebarSimple weight={paneShown ? "fill" : "regular"} /> Show Pane
         </Button>
       {/if}
     </div>
@@ -651,7 +674,7 @@
          session selection now, so this simply renders the active shell. -->
     <div
       class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      style={mapOpen && dock
+      style={paneOpen && dock
         ? `flex: 0 1 ${dockTermWidth}px; min-width: 240px`
         : ""}
     >
@@ -697,34 +720,118 @@
             <Button
               variant="outline"
               size="sm"
-              aria-pressed={mapShown}
-              onclick={toggleMap}
+              aria-pressed={paneShown}
+              onclick={togglePane}
             >
-              <Sparkle weight={mapShown ? "fill" : "regular"} />
-              {mapShown ? "Hide Maps" : "View Maps"}
+              <SidebarSimple weight={paneShown ? "fill" : "regular"} />
+              Show Pane
             </Button>
           </div>
         </div>
       {/if}
     </div>
 
-    {#if mapOpen}
-      <MapCard
-        {maps}
-        spaceId={space.id}
-        lastAgent={space.lastAgent}
-        {agents}
-        terminals={space.terminals ?? []}
-        bind:slug={openSlug}
-        bind:dock
-        bind:selected={selectedTicket}
-        bind:showMaterial
-        {floatWidth}
-        onclose={dismiss}
-        onresizestart={startResize}
-        {onRegisterAgent}
-        {onspawned}
-      />
+    {#if paneOpen}
+      <!-- The auxiliary pane. Docked, it is a flex item in the panes row, taking
+           the slack the terminal's frozen basis leaves (min 300). Floating, it is
+           absolute over the row with its right edge pinned (inset 10px), grown
+           leftward by the resize grip; a CSS max-width keeps it within the row on
+           a window resize.
+
+           The frame lives here rather than in either tool, which is what makes
+           Map and Prompts one auxiliary space with a switch in it instead of two
+           cards racing for the same corner. -->
+      <section
+        class={[
+          "flex min-h-0 flex-col overflow-hidden bg-card",
+          dock
+            ? // Docked, this is a flush column next to the terminal — a plain
+              // square edge like the terminal's own outer edges, with a border
+              // only on the seam it shares with the terminal (the split divider).
+              "relative min-w-[300px] flex-1 border-l border-border"
+            : "absolute inset-y-2 right-2.5 z-20 w-[min(560px,64%)] max-w-[calc(100%-40px)] rounded-lg border border-border shadow-lg",
+        ]}
+        aria-label="Space pane"
+        style={!dock && floatWidth ? `width:${floatWidth}px` : ""}
+      >
+        <!-- Resize from the left border: the split divider when docked, the
+             card's leading edge when floating (the right edge stays pinned). -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="absolute inset-y-0 left-0 z-40 w-1.5 -translate-x-1/2 cursor-ew-resize transition-colors hover:bg-ring/60"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the pane"
+          onmousedown={startResize}
+        ></div>
+
+        <!-- The pane's own bar: which tool is on show, then the dock and close
+             chrome that belong to the frame around both of them. -->
+        <header class="cockpit-bar">
+          <Button
+            variant={paneTab === "map" ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={paneTab === "map"}
+            onclick={() => (paneTab = "map")}
+          >
+            Map
+          </Button>
+          <Button
+            variant={paneTab === "prompts" ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={paneTab === "prompts"}
+            onclick={() => (paneTab = "prompts")}
+          >
+            Prompts
+          </Button>
+          <div class="ml-auto flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-pressed={dock}
+              title={dock
+                ? "Float over the terminal"
+                : "Dock as a split (terminal keeps its width)"}
+              onclick={() => (dock = !dock)}
+            >
+              {#if dock}<CornersOut />{:else}<Columns />{/if}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dismiss the pane (Esc)"
+              title="Dismiss (M / Esc)"
+              onclick={dismiss}
+            >
+              <X />
+            </Button>
+          </div>
+        </header>
+
+        <div class="relative flex min-h-0 flex-1 flex-col">
+          {#if paneTab === "map"}
+            <MapCard
+              {maps}
+              spaceId={space.id}
+              lastAgent={space.lastAgent}
+              {agents}
+              terminals={space.terminals ?? []}
+              bind:slug={openSlug}
+              bind:selected={selectedTicket}
+              bind:showMaterial
+              {onRegisterAgent}
+              {onspawned}
+            />
+          {:else}
+            <PromptsCard
+              {prompts}
+              spaceId={space.id}
+              selected={space.prompts ?? []}
+              {activeTerm}
+            />
+          {/if}
+        </div>
+      </section>
     {/if}
   </div>
 </div>

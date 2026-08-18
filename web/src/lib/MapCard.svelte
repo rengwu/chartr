@@ -13,27 +13,22 @@
   import { cameraKey } from "./mapstate";
   import { Button } from "./components/ui/button";
   import * as ScrollArea from "./components/ui/scroll-area";
-  import {
-    CaretLeft,
-    Columns,
-    CornersOut,
-    GpsFix,
-    X,
-  } from "phosphor-svelte";
+  import { CaretLeft, GpsFix } from "phosphor-svelte";
 
   // The star-map panel presented as a card over the terminal (spec, The
   // interface): summoned, never toggled by switching spaces or maps. It carries
-  // two screens in the one floating/docked frame:
+  // two screens in the auxiliary pane's frame (SpacePane owns the frame, its
+  // Map/Prompts tabs, and the dock/close chrome; this is only what the Map tab
+  // shows):
   //
   //   • the picker — a grid of the space's maps (name, resolution), and the
   //     door in;
-  //   • the map — the island, with the back / map-name / dock / close chrome
-  //     floating directly over it (no header bar), and the responsive detail pane
+  //   • the map — the island, with the back / map-name chrome floating directly
+  //     over it (no header bar of its own), and the responsive detail pane
   //     (ticket 07) docked right, re-docking to the bottom when the card is narrow.
   //
   // `slug === null` is the picker; a slug names the open map. The parent owns
-  // which screen we land on (auto-open for a single-map space, deep links) and
-  // whether the frame floats or docks as the terminal-priority split.
+  // which screen we land on (auto-open for a single-map space, deep links).
   let {
     maps,
     spaceId,
@@ -41,12 +36,8 @@
     agents,
     terminals = [],
     slug = $bindable(),
-    dock = $bindable(false),
     selected = $bindable(null),
     showMaterial = $bindable(false),
-    floatWidth = 0,
-    onclose,
-    onresizestart,
     onRegisterAgent,
     onspawned,
   }: {
@@ -63,12 +54,8 @@
     lastAgent?: string;
     agents: Agent[];
     slug: string | null;
-    dock?: boolean;
     selected?: number | null;
     showMaterial?: boolean;
-    floatWidth?: number;
-    onclose: () => void;
-    onresizestart: (e: MouseEvent) => void;
     // Where the detail pane's spawn control sends the operator when the library is
     // empty: agent registration (ticket 04), owned by App and carried through.
     onRegisterAgent: () => void;
@@ -239,223 +226,160 @@
   }
 </script>
 
-<!-- The panel frame. Docked, it is a flex item in the panes row, taking the slack
-     the terminal's frozen basis leaves (min 300). Floating, it is absolute over
-     the panes row with its right edge pinned (inset 10px), grown leftward by the
-     resize grip; a CSS max-width keeps it within the row on a window resize. -->
-<section
-  class={[
-    "flex min-h-0 flex-col overflow-hidden bg-card",
-    dock
-      ? // Docked, this is a flush column next to the terminal — a plain square
-        // edge like the terminal's own outer edges, with a border only on the
-        // seam it shares with the terminal (the split divider).
-        "relative min-w-[300px] flex-1 border-l border-border"
-      : "absolute inset-y-2 right-2.5 z-20 w-[min(560px,64%)] max-w-[calc(100%-40px)] rounded-lg border border-border shadow-lg",
-  ]}
-  aria-label="Star-map"
-  style={!dock && floatWidth ? `width:${floatWidth}px` : ""}
->
-  <!-- Resize from the left border: the split divider when docked, the card's
-       leading edge when floating (the right edge stays pinned). -->
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <div
-    class="absolute inset-y-0 left-0 z-40 w-1.5 -translate-x-1/2 cursor-ew-resize transition-colors hover:bg-ring/60"
-    role="separator"
-    aria-orientation="vertical"
-    aria-label="Resize star-map"
-    onmousedown={onresizestart}
-  ></div>
+<!-- What the pane's Map tab shows: the picker, or the open map. The frame
+     around it — the docked/floating card, its resize grip, and the Map/Prompts
+     tabs with the dock and close chrome — belongs to SpacePane, which is what
+     keeps Map and Prompts from ever competing for the same auxiliary space. -->
+{#if map}
+  <!-- The map screen: the island fills the frame, its chrome floating directly
+       over the top (no header bar). The detail pane overlays one edge below the
+       chrome; the camera (insets) eases the selected star into the space it
+       leaves free. -->
+  <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
+    <!-- Keyed on space *and* map: the island is rebuilt when either changes,
+         and the same string is the key its camera pose is remembered under
+         while it is gone. Two spaces can hold maps of one name, so the space
+         has to be in it — on the key alone, switching between them would show
+         one map's stars under the other's camera. -->
+    {#key camera}
+      <StarMap
+        {map}
+        {terminals}
+        {insets}
+        cameraKey={camera}
+        bind:selected
+        bind:this={island}
+      />
+    {/key}
 
-  <!-- The dock/close chrome is shared by both screens: dock toggles the whole
-       panel between the terminal-priority split and floating over the terminal;
-       close dismisses it. `extra` is how the map screen puts its over-the-canvas
-       blur on the dock chip without the picker's copy taking it. -->
-  {#snippet chrome(extra: string = "")}
-    <Button
-      variant="outline"
-      size="icon-sm"
-      class={extra}
-      aria-pressed={dock}
-      title={dock
-        ? "Float over the terminal"
-        : "Dock as a split (terminal keeps its width)"}
-      onclick={() => (dock = !dock)}
+    <div
+      class="absolute inset-x-0 top-0 z-30 flex h-[var(--bar-h)] items-center gap-1.5 px-2"
     >
-      {#if dock}<CornersOut />{:else}<Columns />{/if}
-    </Button>
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label="Dismiss star-map (Esc)"
-      title="Dismiss (M / Esc)"
-      onclick={onclose}
-    >
-      <X />
-    </Button>
-  {/snippet}
-
-  {#if map}
-    <!-- The map screen: the island fills the frame, its chrome floating directly
-         over the top (no header bar). The detail pane overlays one edge below the
-         chrome; the camera (insets) eases the selected star into the space it
-         leaves free. -->
-    <div class="relative min-h-0 flex-1" bind:this={bodyEl}>
-      <!-- Keyed on space *and* map: the island is rebuilt when either changes,
-           and the same string is the key its camera pose is remembered under
-           while it is gone. Two spaces can hold maps of one name, so the space
-           has to be in it — on the key alone, switching between them would show
-           one map's stars under the other's camera. -->
-      {#key camera}
-        <StarMap
-          {map}
-          {terminals}
-          {insets}
-          cameraKey={camera}
-          bind:selected
-          bind:this={island}
-        />
-      {/key}
-
-      <div
-        class="absolute inset-x-0 top-0 z-30 flex h-[var(--bar-h)] items-center gap-1.5 px-2"
+      <Button
+        variant="outline"
+        size="sm"
+        class={OVER_MAP}
+        title="Back to all maps"
+        onclick={back}
       >
+        <CaretLeft /> Back
+      </Button>
+      <Button
+        variant={showMaterial ? "secondary" : "ghost"}
+        size="sm"
+        class="min-w-0 shrink flex-1"
+        aria-pressed={showMaterial}
+        title="Open map material — destination, notes, decisions, fog"
+        onclick={openMaterial}
+      >
+        <!-- The button itself is a flex container (justify-center), so
+             `truncate` on it clips the centred text from both ends with no
+             ellipsis. Truncating this inner, left-aligned span instead lets
+             the name end in a normal ellipsis. -->
+        <span class="min-w-0 flex-1 truncate text-left">{map.name}</span>
+      </Button>
+    </div>
+
+    <!-- Recentre. Closing the pane leaves the camera where the operator put it,
+         so this is the way back to the whole constellation. Only offered with
+         the pane closed: with one open the camera belongs to the selected star,
+         and a bottom-docked pane would sit on top of this corner anyway. -->
+    {#if !paneOpen}
+      <div class="absolute bottom-2 left-2 z-30">
         <Button
           variant="outline"
-          size="sm"
+          size="icon-sm"
           class={OVER_MAP}
-          title="Back to all maps"
-          onclick={back}
+          aria-label="Recenter map"
+          title="Recenter map"
+          onclick={() => island?.fit()}
         >
-          <CaretLeft /> Back
+          <GpsFix />
         </Button>
-        <Button
-          variant={showMaterial ? "secondary" : "ghost"}
-          size="sm"
-          class="min-w-0 shrink flex-1"
-          aria-pressed={showMaterial}
-          title="Open map material — destination, notes, decisions, fog"
-          onclick={openMaterial}
-        >
-          <!-- The button itself is a flex container (justify-center), so
-               `truncate` on it clips the centred text from both ends with no
-               ellipsis. Truncating this inner, left-aligned span instead lets
-               the name end in a normal ellipsis. -->
-          <span class="min-w-0 flex-1 truncate text-left">{map.name}</span>
-        </Button>
-        <div class="ml-auto flex items-center gap-1">
-          {@render chrome(OVER_MAP)}
-        </div>
       </div>
+    {/if}
 
-      <!-- Recentre. Closing the pane leaves the camera where the operator put it,
-           so this is the way back to the whole constellation. Only offered with
-           the pane closed: with one open the camera belongs to the selected star,
-           and a bottom-docked pane would sit on top of this corner anyway. -->
-      {#if !paneOpen}
-        <div class="absolute bottom-2 left-2 z-30">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            class={OVER_MAP}
-            aria-label="Recenter map"
-            title="Recenter map"
-            onclick={() => island?.fit()}
-          >
-            <GpsFix />
-          </Button>
-        </div>
-      {/if}
-
-      {#if paneOpen}
-        <!-- Full-height on the right (below the floating chrome) by default,
-             half-height along the bottom when the card is narrow or tall. It sits
-             flush to the card's edges — a panel sharing a draggable seam with the
-             map, not a card floating over it. Its surface is translucent (see
-             DetailPane), so the stars behind it stay faintly visible; the camera
-             still keeps them clear of the footprint. -->
+    {#if paneOpen}
+      <!-- Full-height on the right (below the floating chrome) by default,
+           half-height along the bottom when the card is narrow or tall. It sits
+           flush to the card's edges — a panel sharing a draggable seam with the
+           map, not a card floating over it. Its surface is translucent (see
+           DetailPane), so the stars behind it stay faintly visible; the camera
+           still keeps them clear of the footprint. -->
+      <div
+        class={[
+          "absolute z-10",
+          paneDock === "bottom"
+            ? "inset-x-0 bottom-0 h-1/2"
+            : "top-[var(--bar-h)] right-0 bottom-0 w-[min(400px,58%)]",
+        ]}
+        style={paneDock === "bottom"
+          ? paneH
+            ? `height:${paneH}px`
+            : ""
+          : paneW
+            ? `width:${paneW}px`
+            : ""}
+        bind:this={paneEl}
+      >
+        <!-- The seam, straddling the shared edge: drag to resize the pane. -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
           class={[
-            "absolute z-10",
+            "absolute z-20 transition-colors hover:bg-ring/60",
             paneDock === "bottom"
-              ? "inset-x-0 bottom-0 h-1/2"
-              : "top-[var(--bar-h)] right-0 bottom-0 w-[min(400px,58%)]",
+              ? "inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-ns-resize"
+              : "inset-y-0 left-0 w-1.5 -translate-x-1/2 cursor-ew-resize",
           ]}
-          style={paneDock === "bottom"
-            ? paneH
-              ? `height:${paneH}px`
-              : ""
-            : paneW
-              ? `width:${paneW}px`
-              : ""}
-          bind:this={paneEl}
-        >
-          <!-- The seam, straddling the shared edge: drag to resize the pane. -->
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div
-            class={[
-              "absolute z-20 transition-colors hover:bg-ring/60",
-              paneDock === "bottom"
-                ? "inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-ns-resize"
-                : "inset-y-0 left-0 w-1.5 -translate-x-1/2 cursor-ew-resize",
-            ]}
-            role="separator"
-            aria-orientation={paneDock === "bottom" ? "horizontal" : "vertical"}
-            aria-label="Resize the detail pane"
-            onmousedown={startPaneResize}
-          ></div>
+          role="separator"
+          aria-orientation={paneDock === "bottom" ? "horizontal" : "vertical"}
+          aria-label="Resize the detail pane"
+          onmousedown={startPaneResize}
+        ></div>
 
-          <DetailPane
-            {map}
-            ticket={paneTicket}
-            dock={paneDock}
-            {spaceId}
-            {lastAgent}
-            {agents}
-            {terminals}
-            onclose={closePane}
-            {onRegisterAgent}
-            {onspawned}
-          />
-        </div>
-      {/if}
-
-    </div>
-  {:else}
-    <!-- The picker screen: a header bar over one flat auto-fill grid of the
-         space's maps, every one of them a live open target. Tiles share the
-         width evenly and reach both edges at any pane width. -->
-    <header class="cockpit-bar">
-      <span class="min-w-0 flex-1 truncate text-sm font-semibold">Maps</span>
-      <div class="flex items-center gap-1">
-        {@render chrome()}
+        <DetailPane
+          {map}
+          ticket={paneTicket}
+          dock={paneDock}
+          {spaceId}
+          {lastAgent}
+          {agents}
+          {terminals}
+          onclose={closePane}
+          {onRegisterAgent}
+          {onspawned}
+        />
       </div>
-    </header>
+    {/if}
 
-    <!-- `auto`, not the default `hover`: a space with more maps than fit is the
-         normal case here, and the grid gives no other hint that it runs on past
-         the fold — so the bar stands while the content overflows rather than
-         appearing only once the pointer is already inside. -->
-    <ScrollArea.Root type="auto" class="min-h-0 flex-1">
-      {#if maps.length}
-        <div class="flex min-h-full flex-col gap-3 p-3">
-          <div
-            class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
-          >
-            {#each maps as m (m.slug)}
-              <MapPickerCard map={m} onopen={() => (slug = m.slug)} />
-            {/each}
-          </div>
+  </div>
+{:else}
+  <!-- The picker screen: one flat auto-fill grid of the space's maps, every
+       one of them a live open target. Tiles share the width evenly and reach
+       both edges at any pane width. -->
+  <!-- `auto`, not the default `hover`: a space with more maps than fit is the
+       normal case here, and the grid gives no other hint that it runs on past
+       the fold — so the bar stands while the content overflows rather than
+       appearing only once the pointer is already inside. -->
+  <ScrollArea.Root type="auto" class="min-h-0 flex-1">
+    {#if maps.length}
+      <div class="flex min-h-full flex-col gap-3 p-3">
+        <div
+          class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-3"
+        >
+          {#each maps as m (m.slug)}
+            <MapPickerCard map={m} onopen={() => (slug = m.slug)} />
+          {/each}
         </div>
-      {:else}
-        <div class="grid h-full place-items-center p-6">
-          <p class="max-w-xs text-center text-xs text-muted-foreground">
-            No maps in this space yet — chart one with <code class="font-mono"
-              >/wayfinder</code
-            > in a shell.
-          </p>
-        </div>
-      {/if}
-    </ScrollArea.Root>
-  {/if}
-</section>
+      </div>
+    {:else}
+      <div class="grid h-full place-items-center p-6">
+        <p class="max-w-xs text-center text-xs text-muted-foreground">
+          No maps in this space yet — chart one with <code class="font-mono"
+            >/wayfinder</code
+          > in a shell.
+        </p>
+      </div>
+    {/if}
+  </ScrollArea.Root>
+{/if}

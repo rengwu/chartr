@@ -94,6 +94,10 @@ _Avoid_: pty stream, data channel
 The operator's registered agents — the only execution config there is. Global and local: one set in the operator's own uncommitted file, shared by every space. An empty library is the starting state and refuses every spawn — a free session included — until one is registered.
 _Avoid_: agent registry, profiles, presets
 
+**Prompt preset**:
+One short named behavioural instruction in the operator's own catalog — an id chartr derives once, a name, and the text an agent is told. Global and local, like the agent library: the same catalog in every space, with each registered space carrying only which of them it applies at launch, and each preset composing as its own operator prompt part after preferences. Editing one changes every space that selected it; deleting one removes it everywhere. It is not a skill and not a payload region: nothing looks it up by role, and nothing installs it into a harness. The **Prompts pane** is where it is written, selected, and — for the space's active Chartr-launched agent tab — sent or queued for that tab's next idle.
+_Avoid_: system prompt, instruction set, profile, template, snippet
+
 **Conventions**:
 chartr's file-format contract: one generated `conventions.md` under the config root stating the fixed `.plan/maps/` layout, the permanent ticket numbering, `map.md`'s five sections, the recognized frontmatter, the structural headings, the derived-status table and the frontier. **Format only** — it never says how to interview, decide, decompose or behave; that is a skill's job. chartr owns the bytes: they are rewritten at startup and reconciled again before every composition, so it is the one thing in the config root an operator cannot shadow, disable or reorder away, and an edit lasts until the next compose. Discovery enforces the one rule it can — the fixed root — and the lint stays advisory.
 _Avoid_: tracker convention, ruleset, format skill, template
