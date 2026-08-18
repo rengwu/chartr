@@ -128,6 +128,73 @@ func pickStartDir() string {
 	return string(os.PathSeparator)
 }
 
+// dismissCode is the exit status every supported chooser uses for "the operator
+// closed me without choosing" — zenity, kdialog and osascript's `choose folder`
+// alike. It is the only non-zero exit that means the operator answered.
+const dismissCode = 1
+
+// stderrExcerpt bounds how much of a failing chooser's own words reach the
+// operator. One line is what a loader error or a bad-argv complaint is; the cap
+// is there so a chooser that decides to narrate cannot push a wall of text
+// through an error surface sized for a sentence.
+const stderrExcerpt = 300
+
+// classifyPickError decides whether a chooser that exited non-zero was declined
+// or broken, and is the whole reason this is a named function: the two are
+// indistinguishable from the handler's side and were conflated for a release.
+//
+// Reporting a fault as a cancellation is not a cosmetic loss. When the AppImage
+// pointed LD_LIBRARY_PATH at its own libraries, the operator's zenity died in
+// the loader with exit 127 and a plain sentence on stderr saying exactly that —
+// and the cockpit answered {"cancelled":true}, so the dialog that never opened
+// looked like a dialog the operator had closed (#1, fixed in internal/env, and
+// #2, this). Anything that is not the dismissal code or a timeout is therefore a
+// fault now, and it carries the chooser's own stderr, which is where the
+// actionable half of these failures has always been.
+//
+// timedOut is the caller's context deadline, passed rather than read so this
+// stays a pure function a test can drive without raising a dialog.
+func classifyPickError(err error, timedOut bool) error {
+	// A deadline reads as a cancellation whatever the child's exit looked like:
+	// nobody answered the dialog, and the kill that ends it is ours.
+	if timedOut {
+		return errPickCancelled
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		// Not an exit at all — the chooser could not be started. nativePicker
+		// resolved it on PATH moments ago, so this is a real fault.
+		return fmt.Errorf("raising the folder chooser: %w", err)
+	}
+	if exitErr.ExitCode() == dismissCode {
+		return errPickCancelled
+	}
+	// ExitCode is -1 when a signal ended it, which with no deadline of ours
+	// means something else killed the chooser. That is worth saying plainly
+	// rather than dressing up as an exit status.
+	if exitErr.ExitCode() < 0 {
+		return fmt.Errorf("the folder chooser was killed (%s)%s", exitErr.ProcessState, pickerStderr(exitErr))
+	}
+	return fmt.Errorf("the folder chooser exited %d%s", exitErr.ExitCode(), pickerStderr(exitErr))
+}
+
+// pickerStderr renders what the chooser printed as a suffix, or nothing when it
+// printed nothing. cmd.Output captures stderr into the ExitError for exactly
+// this; it was already being collected and only ever thrown away.
+func pickerStderr(exitErr *exec.ExitError) string {
+	msg := strings.TrimSpace(string(exitErr.Stderr))
+	if msg == "" {
+		return ""
+	}
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = msg[:i]
+	}
+	if len(msg) > stderrExcerpt {
+		msg = msg[:stderrExcerpt] + "…"
+	}
+	return ": " + msg
+}
+
 // pickFolder raises the native chooser and returns the absolute folder the
 // operator named. It returns errPickCancelled when they dismiss it, and
 // errNoPicker when this machine has no chooser at all.
@@ -147,14 +214,7 @@ func pickFolder(ctx context.Context, prompt string) (string, error) {
 	c.Env = env.HostEnviron()
 	out, err := c.Output()
 	if err != nil {
-		// Every supported chooser exits non-zero on dismissal and prints nothing
-		// useful, so a non-zero exit with no path is a cancellation rather than a
-		// fault. A context deadline reads the same way: nobody answered the dialog.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) || ctx.Err() != nil {
-			return "", errPickCancelled
-		}
-		return "", fmt.Errorf("raising the folder chooser: %w", err)
+		return "", classifyPickError(err, ctx.Err() != nil)
 	}
 
 	path := strings.TrimSpace(string(out))
