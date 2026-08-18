@@ -296,6 +296,13 @@ func New(opts Options) (*Server, error) {
 	// dot clears — there is no manual dismiss and no clear-all, which is what keeps
 	// a stale dot unrepresentable.
 	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/{termID}/seen", s.handleTerminalSeen)
+	// Live delivery of one prompt preset into an agent chartr launched: send it to
+	// an idle tab, queue it for a busy one, and cancel the queued one. The delivery
+	// is runtime-only and best-effort by contract — idle is inferred from the
+	// terminal, never acknowledged by the agent — so there is no third action to
+	// ask how it went.
+	s.mux.HandleFunc("POST /api/spaces/{id}/terminals/{termID}/prompt", s.handleSendPrompt)
+	s.mux.HandleFunc("DELETE /api/spaces/{id}/terminals/{termID}/prompt", s.handleCancelPrompt)
 	// The new-shell control's agent rows: start a free session on a chosen agent —
 	// a live, ticketless tab told the free payload, with no map or ticket lookup, no
 	// claim, no lifecycle, ended only by the human, exactly like an ad-hoc shell.

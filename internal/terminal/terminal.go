@@ -153,11 +153,24 @@ type Terminal struct {
 	autoTitle string
 	titles    titleState
 
+	// pending is the one prompt preset this tab is holding for its next observed
+	// idle (liveprompt.go), nil when there is none. Runtime state exactly as the
+	// dot is: it dies with the tab, and nothing outside this process knows it
+	// existed.
+	pending *pendingPrompt
+
 	// grid reconstructs the terminal's visible screen server-side from the same
 	// PTY bytes the browser renders, read by the sampler for detection only (never
 	// replayed back — ADR 0010). It has its own lock, so it is reached directly
 	// rather than under mu.
 	grid *grid
+
+	// writeMu serializes writes *into* the PTY. It exists so a prompt submission's
+	// text and its separate carriage return arrive as one unit, with no operator
+	// keystroke able to land between them (liveprompt.go). It is never held with
+	// mu — a submission sleeps under it, and nothing that reads tab state may wait
+	// on that.
+	writeMu sync.Mutex
 }
 
 // subscriber is one attached terminal socket. Down-frames are delivered through
@@ -216,8 +229,13 @@ func (t *Terminal) Attach() *Attachment {
 }
 
 // Write sends keystrokes up into the shell. It is the operator's intervention
-// channel — raw bytes straight to the PTY.
-func (t *Terminal) Write(p []byte) (int, error) { return t.pty.Write(p) }
+// channel — raw bytes straight to the PTY, serialized against the two-write
+// prompt submission so a keystroke can never land inside one.
+func (t *Terminal) Write(p []byte) (int, error) {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+	return t.pty.Write(p)
+}
 
 // awaitReady blocks until this tab's process looks ready to be typed at: it has
 // drawn something and then held still for settle. A TUI paints its frame as it
@@ -312,6 +330,9 @@ func (t *Terminal) pump(done func()) {
 
 	t.mu.Lock()
 	t.alive = false
+	// A preset queued for an idle that will never come dies with the tab; there is
+	// no persistence and no retry (spec, "Persistence and failure behavior").
+	t.pending = nil
 	close(t.done)
 	for s := range t.subs {
 		s.kill()

@@ -533,6 +533,10 @@ func (s *Server) modelTerminals(spaceID string) []model.Terminal {
 			// attached at all.
 			FinishedUnseen: info.FinishedUnseen,
 			AutoTitle:      info.AutoTitle,
+			// The two the Prompts pane reads: whether this tab can be sent a preset at
+			// all, and which one it is already holding.
+			PromptTarget:  info.PromptTarget,
+			PendingPrompt: info.PendingPrompt,
 		}
 		if info.Session != nil {
 			term.Session = &model.Session{

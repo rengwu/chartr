@@ -9,13 +9,15 @@ import (
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompts"
 	"github.com/rengwu/chartr/internal/registry"
+	"github.com/rengwu/chartr/internal/terminal"
 )
 
-// The prompt catalog's write half: create, edit, delete a preset, and set which
-// presets a space applies at launch. Everything the pane reads rides the model
-// push, so these four actions are the whole HTTP surface — there is never a
-// second client-side store, and each one ends in a rebuild so the row the
-// operator just changed comes back over the control socket.
+// The prompt catalog's write half: create, edit, delete a preset, set which
+// presets a space applies at launch, and send one to a live agent tab.
+// Everything the pane reads rides the model push, so these actions are the whole
+// HTTP surface — there is never a second client-side store, and each one ends in
+// a rebuild so the row the operator just changed comes back over the control
+// socket.
 //
 // The catalog is the authority on what is legal; this file maps its errors onto
 // status codes and validates only what it alone knows: that a space's selection
@@ -189,4 +191,74 @@ func (s *Server) launchPrompts(e registry.Entry) []prompts.Prompt {
 	}
 	chosen, _ := s.prompts.Selected(e.Prompts)
 	return chosen
+}
+
+// handleSendPrompt delivers one catalog preset to one of this space's live agent
+// tabs. It is a single action for both outcomes the operator sees: an idle agent
+// is typed at once, a busy, running, or blocked one holds the preset for its next
+// observed idle, and the response says which happened so the pane can say
+// "Queued for next idle" without guessing.
+//
+// The body is snapshotted here, out of the catalog, and handed to the terminal
+// manager — so a later edit or deletion cannot rewrite an instruction the
+// operator has already sent. Every refusal is a state the pane can explain: an id
+// the catalog does not hold, a tab that is not this space's, a tab that is not a
+// live agent chartr launched, or a tab already holding a preset.
+func (s *Server) handleSendPrompt(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	p, held := s.prompt(body.ID)
+	if !held {
+		httpError(w, http.StatusNotFound, fmt.Sprintf("no preset called %q is in the catalog", body.ID))
+		return
+	}
+
+	queued, err := s.terms.SendPrompt(e.ID, r.PathValue("termID"), p.ID, p.Body)
+	switch {
+	case errors.Is(err, terminal.ErrNoTerminal):
+		httpError(w, http.StatusNotFound, "no such terminal in this space")
+		return
+	case err != nil:
+		// The ineligible target and the one already holding a preset are both
+		// conflicts: nothing is wrong with the request, the tab is simply not in a
+		// state that accepts it.
+		httpError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"queued": queued})
+}
+
+// handleCancelPrompt drops the preset a tab is holding before it is delivered.
+// Cancelling a tab that holds nothing is an ordinary no-op rather than an error —
+// the sampler can submit a pending item between the pane rendering the row and
+// the operator clicking Cancel, and that race is not a failure — so only an id
+// that names no tab of this space is refused.
+func (s *Server) handleCancelPrompt(w http.ResponseWriter, r *http.Request) {
+	e, ok := s.repoSpace(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.terms.CancelPrompt(e.ID, r.PathValue("termID")); err != nil {
+		httpError(w, http.StatusNotFound, "no such terminal in this space")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// prompt reads one preset out of the catalog, tolerating a server built without
+// one (as promptCatalog does).
+func (s *Server) prompt(id string) (prompts.Prompt, bool) {
+	if s.prompts == nil {
+		return prompts.Prompt{}, false
+	}
+	return s.prompts.Get(id)
 }

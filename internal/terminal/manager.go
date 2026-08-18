@@ -3,7 +3,6 @@ package terminal
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -167,6 +166,11 @@ func (m *Manager) sampleOnce(slowTick bool) {
 			continue
 		}
 		if t.sample(agentEngine) {
+			changed = true
+		}
+		// After the state for this sample is published, and only then: a tab that now
+		// reads idle submits whatever preset it was holding (liveprompt.go).
+		if t.submitDuePrompt() {
 			changed = true
 		}
 		now := time.Now()
@@ -452,11 +456,7 @@ func typeOpener(t *Terminal, opener string) {
 		if !t.awaitReady(openerSettle, openerGrace) {
 			return // the agent died before it could be told anything
 		}
-		if _, err := t.Write([]byte(strings.TrimRight(opener, "\r\n"))); err != nil {
-			return
-		}
-		time.Sleep(openerSubmit)
-		_, _ = t.Write([]byte("\r"))
+		t.submitPrompt(opener)
 	}()
 }
 
@@ -526,12 +526,23 @@ type Info struct {
 	// Empty until one of those lands, and on tabs with no agent in front, which are
 	// never titled.
 	AutoTitle string
+	// PromptTarget reports that this tab is a live agent chartr launched — the only
+	// tab a prompt preset may be delivered into. False for an ordinary shell, an
+	// agent the operator started themselves, and any tab whose process is gone.
+	PromptTarget bool
+	// PendingPrompt is the catalog id of the preset this tab is holding for its
+	// next observed idle, empty when it holds none.
+	PendingPrompt string
 }
 
 // info snapshots one terminal's public shape under its own lock.
 func (t *Terminal) info() Info {
 	t.mu.Lock()
 	alive, proc, state, unseen, title := t.alive, t.proc, t.state, t.finishedUnseen, t.autoTitle
+	queued := ""
+	if t.pending != nil {
+		queued = t.pending.id
+	}
 	t.mu.Unlock()
 	if proc == "" {
 		proc = t.Title
@@ -542,6 +553,7 @@ func (t *Terminal) info() Info {
 	return Info{
 		ID: t.ID, SpaceID: t.SpaceID, Title: t.Title, Proc: proc, Status: state,
 		Alive: alive, Session: t.session, FinishedUnseen: unseen, AutoTitle: title,
+		PromptTarget: t.launchedAgent != "" && alive, PendingPrompt: queued,
 	}
 }
 

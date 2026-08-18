@@ -122,6 +122,15 @@ export interface Terminal {
   // Absent until one of those lands, and always absent on a tab with no agent in
   // front or when the operator turned auto-titling off before a title arrived.
   autoTitle?: string
+  // This tab is a live agent chartr launched — the only tab a prompt preset can
+  // be sent or queued to. Absent on an ordinary shell, on an agent the operator
+  // started themselves, and on any tab whose process is gone; the Prompts pane
+  // offers no Send or Queue there and says why.
+  promptTarget?: boolean
+  // The catalog id of the one preset this tab is holding for its next observed
+  // idle. Runtime state that dies with the tab or the chartr process — there is
+  // no delivery queue on disk, and no history of one.
+  pendingPrompt?: string
 }
 
 // Prompt is one preset of the operator's catalog: chartr's stable id for it, the
