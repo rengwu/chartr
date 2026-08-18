@@ -150,7 +150,10 @@ export function terminalSettingsSummary(
         // The renderer is a decision, not a pref: it follows from ligatures, which is
         // why it is never marked as set. The island drops to the DOM renderer only on
         // a live WebGL context loss, which no read of the file can predict.
-        row('renderer', [renderer === 'canvas' ? 'canvas' : 'GPU (WebGL)', false]),
+        row('renderer', [
+          renderer === 'webgl' ? 'GPU (WebGL)' : renderer,
+          Boolean(p.renderer && p.renderer !== 'auto'),
+        ]),
         row('ligatures', [
           ligatures ? 'on' : p.ligatures === true ? 'off — needs a bundled font' : 'off',
           typeof p.ligatures === 'boolean',

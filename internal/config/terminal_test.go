@@ -373,6 +373,21 @@ ligatures = true
 	}
 }
 
+func TestTerminalPrefsReadsRenderer(t *testing.T) {
+	prefs, warnings := config.ResolveTerminalPrefs([]byte("[rendering]\nrenderer = \"canvas\"\n"))
+	if len(warnings) != 0 {
+		t.Fatalf("a valid renderer warned: %v", warnings)
+	}
+	if prefs.Renderer != "canvas" {
+		t.Errorf("renderer = %q, want canvas", prefs.Renderer)
+	}
+
+	prefs, warnings = config.ResolveTerminalPrefs([]byte("[rendering]\nrenderer = \"metal\"\n"))
+	if prefs.Renderer != "" || len(warnings) != 1 {
+		t.Errorf("invalid renderer = (%q, %v), want empty and one warning", prefs.Renderer, warnings)
+	}
+}
+
 func TestTerminalPrefsMalformedFileWarnsAndDefaults(t *testing.T) {
 	prefs, warnings := config.ResolveTerminalPrefs([]byte("this is not = = toml"))
 	if prefs != (config.TerminalPrefs{}) {

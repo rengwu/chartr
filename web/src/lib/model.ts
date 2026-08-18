@@ -310,6 +310,7 @@ export interface AutoTitlePrefs {
 // maps every other option onto the xterm options object. `preset` is a validated
 // bundled name (server-side); `selection` drives xterm's `selectionBackground`.
 export interface TerminalPrefs {
+  renderer?: string
   fontFamily?: string
   fontSize?: number
   // A normalised weight: 'normal', 'bold', or a numeric string like '600'. The

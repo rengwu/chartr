@@ -17,6 +17,7 @@ import {
 
 afterEach(() => {
   document.documentElement.removeAttribute('style')
+  delete window.__chartrNativePlatform
 })
 
 describe('readToken', () => {
@@ -354,6 +355,17 @@ describe('resolveRenderer', () => {
   it('defaults to WebGL with no ligatures', () => {
     expect(resolveRenderer(undefined)).toEqual({ renderer: 'webgl', ligatures: false })
     expect(resolveRenderer({})).toEqual({ renderer: 'webgl', ligatures: false })
+  })
+
+  it('defaults to canvas in the native Linux shell', () => {
+    window.__chartrNativePlatform = 'linux'
+    expect(resolveRenderer(undefined)).toEqual({ renderer: 'canvas', ligatures: false })
+  })
+
+  it('honours an explicit renderer over the platform default', () => {
+    window.__chartrNativePlatform = 'linux'
+    expect(resolveRenderer({ renderer: 'webgl' })).toEqual({ renderer: 'webgl', ligatures: false })
+    expect(resolveRenderer({ renderer: 'dom' })).toEqual({ renderer: 'dom', ligatures: false })
   })
 
   it('forces canvas and enables ligatures when the pref is on and the font is bundled', () => {

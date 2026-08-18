@@ -11,6 +11,9 @@
 # does not layer over these values. Colours are `#rgb` / `#rrggbb` / `#rrggbbaa`
 # hex; a bad value is dropped with a warning and its default stands.
 
+[rendering]
+renderer = "auto"
+
 [font]
 family = "Menlo"  # a custom family stacks ahead of the system fallback
 weight = 400      # normal-glyph weight: "normal", "bold", or 1..1000

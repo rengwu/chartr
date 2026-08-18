@@ -396,6 +396,7 @@ func (s *Server) buildModelFor(entries []registry.Entry) model.Model {
 // copied, so a widened prefs set touches only here.
 func modelTerminalPrefs(p config.TerminalPrefs) model.TerminalPrefs {
 	return model.TerminalPrefs{
+		Renderer:       p.Renderer,
 		FontFamily:     p.FontFamily,
 		FontSize:       p.FontSize,
 		FontWeight:     p.FontWeight,

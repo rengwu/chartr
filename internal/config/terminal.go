@@ -54,6 +54,9 @@ var ScaffoldTerminalTOML []byte
 // Palettes are client data (tokens.ts PRESETS); Preset here is only a name
 // the parse checks against the bundled set.
 type TerminalPrefs struct {
+	// Renderer optionally forces xterm's renderer. Empty/"auto" lets the client
+	// choose the platform default; Linux's native WebKit shell prefers canvas.
+	Renderer string `json:"renderer,omitempty"`
 	// FontFamily is the CSS font-family string. Empty falls through to the
 	// bundled default; a non-bundled family is the operator's own risk.
 	// The client resolve seam knows which families are bundled
@@ -185,6 +188,7 @@ type TerminalPrefs struct {
 }
 
 type rawTerminal struct {
+	Rendering     rawTermRendering     `toml:"rendering"`
 	Font          rawTermFont          `toml:"font"`
 	Theme         rawTermTheme         `toml:"theme"`
 	Cursor        rawTermCursor        `toml:"cursor"`
@@ -194,6 +198,10 @@ type rawTerminal struct {
 	Keys          rawTermKeys          `toml:"keys"`
 	Accessibility rawTermAccessibility `toml:"accessibility"`
 	Glyph         rawTermGlyph         `toml:"glyph"`
+}
+
+type rawTermRendering struct {
+	Renderer string `toml:"renderer"`
 }
 
 type rawTermFont struct {
@@ -303,6 +311,7 @@ var (
 	cursorStyles         = []string{"block", "bar", "underline"}
 	cursorInactiveStyles = []string{"outline", "block", "bar", "underline", "none"}
 	fastScrollModifiers  = []string{"alt", "ctrl", "shift", "none"}
+	terminalRenderers    = []string{"auto", "webgl", "canvas", "dom"}
 )
 
 // reColor matches the colour strings theme slots accept — `#rgb`,
@@ -330,6 +339,7 @@ func ResolveTerminalPrefs(tomlBytes []byte) (TerminalPrefs, []string) {
 
 	var prefs TerminalPrefs
 	var warnings []string
+	prefs.Renderer = validEnum("rendering renderer", raw.Rendering.Renderer, terminalRenderers, &warnings)
 
 	prefs.FontFamily = strings.TrimSpace(raw.Font.Family)
 

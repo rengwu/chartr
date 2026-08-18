@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -137,6 +138,10 @@ func run(dataDir string) error {
 	}()
 
 	w.SetTitle(appName)
+	// The page otherwise cannot distinguish the small native WebKit shell from a
+	// browser tab. Terminal renderer selection uses this marker to avoid WebGL's
+	// delayed frame presentation in the Linux WebKitGTK/X11 path.
+	w.Init(fmt.Sprintf("window.__chartrNativePlatform=%q;", runtime.GOOS))
 	w.SetSize(1280, 840, webview.HintNone)
 	// Below this the cockpit's own panes (sidebar, terminal, docked star-map)
 	// can no longer all keep their individual min-widths — the layout starts
