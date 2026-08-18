@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/rengwu/chartr/internal/env"
 )
 
 // Group returns every process in process group pgid, each with the argv tokens
@@ -23,7 +25,14 @@ func Group(pgid int) []Member {
 	if pgid <= 0 {
 		return nil
 	}
-	out, err := exec.Command("ps", "-A", "-o", "pgid=,pid=,args=").Output()
+	cmd := exec.Command("ps", "-A", "-o", "pgid=,pid=,args=")
+	// `ps` is the host's binary, and under the AppImage it must not inherit the
+	// bundle's loader paths or it dies before it lists anything — and the failure
+	// is silent here, because a `ps` that will not start is indistinguishable
+	// from a group with nothing in it. The tab would simply stop noticing what
+	// is running in it (#1).
+	cmd.Env = env.HostEnviron()
+	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
