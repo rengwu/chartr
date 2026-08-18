@@ -350,12 +350,31 @@
     }
 
     ws.onopen = () => sendResize()
+    let pendingInputAt: number | undefined
     ws.onmessage = (ev: MessageEvent) => {
-      xterm.write(new Uint8Array(ev.data as ArrayBuffer))
+      const inputAt = pendingInputAt
+      pendingInputAt = undefined
+      xterm.write(new Uint8Array(ev.data as ArrayBuffer), () => {
+        if (inputAt === undefined) return
+        requestAnimationFrame(() => {
+          const latency = performance.now() - inputAt
+          host.dataset.terminalInputLatencyMs = latency.toFixed(1)
+          window.dispatchEvent(
+            new CustomEvent('chartr:terminal-latency', {
+              detail: { terminalId: term.id, milliseconds: latency },
+            }),
+          )
+          if (latency >= 50)
+            console.warn(`chartr: terminal input-to-paint latency ${latency.toFixed(1)} ms`)
+        })
+      })
     }
 
     const dataSub = xterm.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d))
+      if (ws.readyState === WebSocket.OPEN) {
+        if (pendingInputAt === undefined) pendingInputAt = performance.now()
+        ws.send(enc.encode(d))
+      }
     })
     const resizeSub = xterm.onResize(() => sendResize())
 
