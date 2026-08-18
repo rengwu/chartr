@@ -10,11 +10,12 @@
   } from "./actions";
   import { promptTarget } from "./prompttarget";
   import { Button } from "./components/ui/button";
-  import { Checkbox } from "./components/ui/checkbox";
+  import { Switch } from "./components/ui/switch";
   import { Input } from "./components/ui/input";
   import { Textarea } from "./components/ui/textarea";
   import { toast } from "./components/ui/sonner";
   import * as ScrollArea from "./components/ui/scroll-area";
+  import * as Tooltip from "./components/ui/tooltip";
   import { PencilSimple, Plus, Trash } from "phosphor-svelte";
 
   // The Prompts pane (prompt-presets ticket 04): the operator's global catalog of
@@ -23,7 +24,7 @@
   //
   // It holds no catalog of its own. Every control posts an action and the result
   // arrives as a fresh snapshot over the control socket, so what is rendered is
-  // always what the server holds — including the `At launch` checkboxes, which is
+  // always what the server holds — including the `At launch` toggles, which is
   // why a refused write leaves the row exactly as it was rather than half-toggled.
   //
   // The target is always the space's active tab; picking another means selecting
@@ -177,101 +178,100 @@
             {#if draft && draft.id === p.id}
               {@render form()}
             {:else}
-              <div class="flex flex-col gap-1.5 p-3">
-                <div class="flex items-start gap-1">
-                  <span class="min-w-0 flex-1 text-xs font-medium"
-                    >{p.name}</span
+              <!-- One row, one line: the launch toggle, the name (its prompt
+                   body lives in the hover tooltip rather than on the row), then
+                   the delivery and edit controls. -->
+              <div class="flex items-center gap-2 py-1.5 pr-2 pl-3">
+                <Tooltip.Root>
+                  <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                      <Switch
+                        {...props}
+                        checked={selected.includes(p.id)}
+                        disabled={busy !== null}
+                        aria-label="Apply {p.name} at launch in this space"
+                        onCheckedChange={(v: boolean) => toggleLaunch(p.id, v)}
+                      />
+                    {/snippet}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content>Apply at launch in this space</Tooltip.Content>
+                </Tooltip.Root>
+
+                <Tooltip.Root>
+                  <Tooltip.Trigger
+                    class="min-w-0 flex-1 truncate text-left text-xs font-medium outline-none focus-visible:underline"
                   >
+                    {p.name}
+                  </Tooltip.Trigger>
+                  <Tooltip.Content class="max-w-xs">
+                    <span class="whitespace-pre-wrap">{p.body}</span>
+                  </Tooltip.Content>
+                </Tooltip.Root>
+
+                {#if pending === p.id}
+                  <span class="shrink-0 text-[0.7rem] text-muted-foreground">
+                    Queued
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null}
+                    onclick={cancel}
+                  >
+                    Cancel
+                  </Button>
+                {:else if target.kind !== "ineligible"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null || pending !== null}
+                    title={pending
+                      ? "Another preset is already queued for this tab"
+                      : target.kind === "send"
+                        ? "Send this preset to the active agent now"
+                        : "Hold this preset for the agent's next idle"}
+                    onclick={() => deliver(p.id)}
+                  >
+                    {target.kind === "send" ? "Send" : "Queue"}
+                  </Button>
+                {/if}
+
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Edit {p.name}"
+                  disabled={busy !== null}
+                  onclick={() => (draft = { id: p.id, name: p.name, body: p.body })}
+                >
+                  <PencilSimple />
+                </Button>
+                {#if confirmingDelete === p.id}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={busy !== null}
+                    onclick={() => remove(p.id)}
+                  >
+                    Delete
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => (confirmingDelete = null)}
+                  >
+                    Keep
+                  </Button>
+                {:else}
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Edit {p.name}"
+                    aria-label="Delete {p.name}"
                     disabled={busy !== null}
-                    onclick={() =>
-                      (draft = { id: p.id, name: p.name, body: p.body })}
+                    onclick={() => (confirmingDelete = p.id)}
                   >
-                    <PencilSimple />
+                    <Trash />
                   </Button>
-                  {#if confirmingDelete === p.id}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={busy !== null}
-                      onclick={() => remove(p.id)}
-                    >
-                      Delete
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onclick={() => (confirmingDelete = null)}
-                    >
-                      Keep
-                    </Button>
-                  {:else}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Delete {p.name}"
-                      disabled={busy !== null}
-                      onclick={() => (confirmingDelete = p.id)}
-                    >
-                      <Trash />
-                    </Button>
-                  {/if}
-                </div>
-
-                <p
-                  class="text-[0.7rem] whitespace-pre-wrap text-muted-foreground"
-                >
-                  {p.body}
-                </p>
-
-                <div class="flex items-center gap-2">
-                  <label
-                    for="at-launch-{p.id}"
-                    class="flex items-center gap-1.5 text-[0.7rem] text-muted-foreground"
-                  >
-                    <Checkbox
-                      id="at-launch-{p.id}"
-                      checked={selected.includes(p.id)}
-                      disabled={busy !== null}
-                      aria-label="Apply {p.name} at launch in this space"
-                      onCheckedChange={(v: boolean) => toggleLaunch(p.id, v)}
-                    />
-                    At launch
-                  </label>
-
-                  <div class="ml-auto flex items-center gap-2">
-                    {#if pending === p.id}
-                      <span class="text-[0.7rem] text-muted-foreground">
-                        Queued for next idle
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy !== null}
-                        onclick={cancel}
-                      >
-                        Cancel
-                      </Button>
-                    {:else if target.kind !== "ineligible"}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy !== null || pending !== null}
-                        title={pending
-                          ? "Another preset is already queued for this tab"
-                          : target.kind === "send"
-                            ? "Send this preset to the active agent now"
-                            : "Hold this preset for the agent's next idle"}
-                        onclick={() => deliver(p.id)}
-                      >
-                        {target.kind === "send" ? "Send" : "Queue"}
-                      </Button>
-                    {/if}
-                  </div>
-                </div>
+                {/if}
               </div>
             {/if}
           </li>

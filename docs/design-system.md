@@ -83,7 +83,7 @@ shadcn-svelte components are vendored into `web/src/lib/components/ui/` — real
 source in the repo, ours to edit, not an opaque dependency. Currently vendored:
 
 `accordion` · `button` · `badge` · `card` · `checkbox` · `dialog` · `input` ·
-`label` · `scroll-area` · `sheet` · `tabs`
+`label` · `scroll-area` · `sheet` · `switch` · `tabs`
 
 Config lives in `web/components.json` (style *Mira*, base colour *Olive*,
 `$lib` aliases). The class-merge helper is `cn()` in `web/src/lib/utils.ts`
