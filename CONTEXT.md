@@ -35,7 +35,7 @@ A PTY running an agent CLI against exactly one ticket, wired by a pre-injected p
 _Avoid_: run, job, task, terminal
 
 **Free session**:
-An agent chartr launched into a space with no ticket and no role, started by picking a registered agent from the space card's `new shell` menu. It is told the free payload — what chartr is, the conventions pointer, the operator's preferences, and the sources inventory — and nothing about how to behave. It shares only the adapter's spawn primitive with a session: no map or ticket is looked up, no claim is written, no lifecycle derives for it, and it never counts toward the one-session-per-space gate. The tab is titled by the agent's registered name. The same control's body opens an **empty shell**, which is a plain shell with nothing injected at all.
+An agent chartr launched into a space with no ticket and no role, started by picking a registered agent from the space card's `new shell` menu. It launches bare — nothing is injected and the operator types their first message themselves — except that a space with **prompt presets** selected at launch hands it those, and only those, through the ordinary read-this-file opener. It shares only the adapter's spawn primitive with a session: no map or ticket is looked up, no claim is written, no lifecycle derives for it, and it never counts toward the one-session-per-space gate. The tab is titled by the agent's registered name. The same control's body opens an **empty shell**, which is a plain shell with nothing injected at all.
 _Avoid_: on-ramp, ideate, skill launch, ticketless session
 
 **Role**:

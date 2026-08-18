@@ -12,6 +12,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/adapter"
 	"github.com/rengwu/chartr/internal/notify"
+	"github.com/rengwu/chartr/internal/prompt"
 	"github.com/rengwu/chartr/internal/registry"
 	"github.com/rengwu/chartr/internal/terminal"
 )
@@ -60,11 +61,19 @@ func (s *Server) handleFree(w http.ResponseWriter, r *http.Request) {
 	s.launchFree(w, e, body.Agent)
 }
 
-// launchFree is the free-session spine: settle the chosen agent, launch its TUI
-// bare, and remember the agent. A free session injects nothing — no payload is
-// composed, written, or typed in; the operator gets a live agent tab and types
-// their first message themselves. Every refusal is the same one a spawn gives, in
-// the same order (agent-selection ticket 04), and a refusal opens nothing.
+// launchFree is the free-session spine: settle the chosen agent, launch its TUI,
+// and remember the agent. Every refusal is the same one a spawn gives, in the
+// same order (agent-selection ticket 04), and a refusal opens nothing.
+//
+// A free session is still told no brief — no map, no ticket, no role, no core.
+// The one thing it can carry is the space's selected presets (prompt-presets
+// ticket 02): the operator's own standing instructions, which they chose for
+// every agent this space launches, so leaving them out of half the launches
+// would make the selection mean two different things. They ride the same
+// gitignored run payload and the same read-this-file opener a spawn uses, so
+// argv, flag, and typed delivery all work with no second mechanism. With nothing
+// selected — the ordinary case — the launch is bare exactly as it always was:
+// nothing composed, nothing written, nothing typed in.
 func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent string) {
 	// The same doorstep, the same refusals, in the same order a spawn gives them.
 	spec, status, err := agentSpec(s.resolve(e), agent)
@@ -75,13 +84,23 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 
 	id := newSessionID()
 
-	// A bare launch: no opener, so `Command` returns the plain interactive argv
-	// and nothing to type in. The skill mirror and write contract are the
-	// business of a real spawn's payload (spawn.go) — a free session reads
-	// neither, so it syncs neither.
+	// The skill mirror and write contract are the business of a real spawn's
+	// payload (spawn.go) — a free session reads neither, so it syncs neither. With
+	// no presets selected the opener stays empty and `Command` returns the plain
+	// interactive argv with nothing to type in.
+	opener := ""
+	if md := prompt.ComposePresets(s.launchPrompts(e)); md != "" {
+		path, err := s.writeSessionPayload(e.Path, id, md)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, "writing the launch payload: "+err.Error())
+			return
+		}
+		opener = adapter.Opener(path)
+	}
 	launch := adapter.Command(adapter.Spawn{
 		Adapter: spec.Adapter,
 		Args:    spec.Args,
+		Prompt:  opener,
 		Deliver: spec.Prompt,
 	})
 	if err := adapter.Preflight(launch.Name, e.Path, spec.Env); err != nil {
@@ -91,7 +110,7 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 	// operator clicked, which is the only labelling rule that never needs
 	// explaining. Three free sessions on one agent get three identical titles, as
 	// every ad-hoc shell in a space is titled `zsh` today.
-	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, spec.Name, spec.Adapter)
+	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, spec.Name, spec.Adapter)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "opening the free tab: "+err.Error())
 		return

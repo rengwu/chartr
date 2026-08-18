@@ -39,6 +39,18 @@ no provider-specific registration or speculative extension system.
   `PUT /api/spaces/{id}/prompts`. Deleting a preset clears it from every space;
   Scratch is unchanged and refused.
 
+- [Compose selected prompts into ticket and free launches](./tickets/02-selected-prompts-in-launch-payloads.md)
+  — `prompt.ComposeInput.Prompts` carries the space's selection (catalog order,
+  resolved once in `Server.launchPrompts`); each preset composes as its own
+  operator prompt part between `preferences` and the context region, so preview,
+  spawn, and the existing `Payload-SHA256` see one composition. A free launch in a
+  space with a selection writes those presets with the spawn path's own
+  `writeSessionPayload` and opens with `adapter.Opener`, so argv, flag, and typed
+  delivery need no new mechanism (`OpenFree` gained the `opener` parameter
+  `OpenSession` already had); an empty selection composes the empty string and
+  leaves the launch bare. Scratch is unreachable through `repoSpace` and
+  `CHARTR.md` is untouched.
+
 ## Not yet specified
 
 <!-- Nothing. The settled specification and four implementation tickets cover the destination. -->

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rengwu/chartr/internal/config"
+	"github.com/rengwu/chartr/internal/prompts"
 	"github.com/rengwu/chartr/internal/sources"
 )
 
@@ -65,6 +66,11 @@ type ComposeInput struct {
 	// free session.
 	Sources  *sources.Registry
 	Bindings config.RoleBindings
+	// Prompts are the space's selected presets, already in catalog order. Each
+	// composes as its own operator prompt part between the preferences and the
+	// context region, so the preview, the spawn, and the payload hash all see one
+	// composition. Empty — the ordinary case — adds nothing at all.
+	Prompts []prompts.Prompt
 }
 
 // Compose assembles the payload a session for this ticket and role would
@@ -112,6 +118,7 @@ func Compose(in ComposeInput) (Payload, error) {
 		{Name: in.Role, Kind: "prompt", Origin: role.Source, Label: "skill", Text: role.Body},
 	}
 	parts = append(parts, contractParts(contract)...)
+	parts = append(parts, presetParts(in.Prompts)...)
 
 	srcPart, warnings := sourcesPart(in.Sources)
 	parts = append(parts, srcPart,
@@ -269,6 +276,42 @@ func contractParts(c Contract) []Part {
 			Text: c.Preferences,
 		},
 	}
+}
+
+// presetParts renders the space's selected presets, one part each, in the order
+// they were handed over — which is catalog order, settled upstream.
+//
+// They sit after `preferences` because they are the same kind of thing: the
+// operator's own standing instructions, in their own voice, allowed to
+// contradict what chartr said above. They sit before the context region because
+// they are instruction, not data — the one ordering rule this payload has.
+//
+// One part each rather than one merged block, so the preview can show which
+// preset contributed which sentence and the operator can read the payload back
+// against the pane. The part is named for the preset's stable id (unique, and
+// what a space's selection actually stores) and labelled with the operator's own
+// name for it.
+func presetParts(ps []prompts.Prompt) []Part {
+	out := make([]Part, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, Part{
+			Name: "preset " + p.ID, Kind: "prompt", Origin: OriginOperator, Label: p.Name,
+			Text: p.Body,
+		})
+	}
+	return out
+}
+
+// ComposePresets is the whole document a free session with a selection is
+// handed: its presets, through the same parts and the same renderer a ticket
+// payload uses, and nothing else. A free session is told no brief, so nothing
+// else belongs here — and with no presets selected it composes the empty string,
+// which is what keeps that launch bare.
+func ComposePresets(ps []prompts.Prompt) string {
+	if len(ps) == 0 {
+		return ""
+	}
+	return renderMarkdown(presetParts(ps))
 }
 
 // sourcesPart renders the inventory both payloads carry identically: every

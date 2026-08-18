@@ -8,6 +8,7 @@ import (
 
 	"github.com/rengwu/chartr/internal/model"
 	"github.com/rengwu/chartr/internal/prompts"
+	"github.com/rengwu/chartr/internal/registry"
 )
 
 // The prompt catalog's write half: create, edit, delete a preset, and set which
@@ -172,4 +173,20 @@ func (s *Server) spacePrompts(selected []string) (ids []string, warnings []strin
 			"the preset %q is selected here at launch but is no longer in the catalog; it is skipped", id))
 	}
 	return ids, warnings
+}
+
+// launchPrompts is what a launch in this space composes: the space's selected
+// presets, in catalog order. It is the one resolution both launch paths use —
+// the ticket payload (preview and spawn alike) and a free session's small run
+// payload — so a preset applies the same way whichever way an agent starts.
+//
+// A selected id the catalog no longer holds is skipped here without a word: the
+// snapshot already surfaces it on the space (spacePrompts), and a launch is the
+// wrong moment to discover it.
+func (s *Server) launchPrompts(e registry.Entry) []prompts.Prompt {
+	if s.prompts == nil {
+		return nil
+	}
+	chosen, _ := s.prompts.Selected(e.Prompts)
+	return chosen
 }

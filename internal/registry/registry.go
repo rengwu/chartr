@@ -611,4 +611,3 @@ func spaceID(absPath string) string {
 	sum := sha256.Sum256([]byte(absPath))
 	return hex.EncodeToString(sum[:])[:12]
 }
-

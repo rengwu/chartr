@@ -83,7 +83,7 @@ type Server struct {
 	// persist the file atomically.
 	prompts *prompts.Catalog
 	watch   *watcher
-	terms *terminal.Manager
+	terms   *terminal.Manager
 	// origins is the browser-origin allowlist both websocket handshakes are
 	// checked against (originPatterns). It is set once, in Serve, from the address
 	// the listener actually bound: that is the last moment before a handler can
