@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { flip } from "svelte/animate";
+  import { reorderFlip } from "./lib/reorder-animation";
   import { ControlSocket } from "./lib/control.svelte";
   import type { Space, Terminal } from "./lib/model";
   import {
@@ -289,8 +289,10 @@
     dndItems = current;
   });
 
-  // The flip duration for the reflow, dropped to nothing when the operator has
-  // asked for less motion. Shared by the dndzone and the `animate:flip` on each row.
+  // The reorder duration for the reflow, dropped to nothing when the operator has
+  // asked for less motion. Shared by the dndzone and the position-only FLIP on
+  // each row. Unlike Svelte's built-in `flip`, `reorderFlip` never scales a card
+  // when its session list changes height, so the space name stays anchored.
   const reduceMotion =
     typeof matchMedia !== "undefined" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -716,8 +718,9 @@
           </p>
         {:else}
           <!-- The reorder is svelte-dnd-action: the section is the drop zone, each
-             row is an item keyed by space id, and `animate:flip` (same duration)
-             does the slide. `consider` drives the live reflow, `finalize` commits.
+             row is an item keyed by space id, and the position-only FLIP (same
+             duration) does the slide. `consider` drives the live reflow,
+             `finalize` commits.
              Disabled while filtering — a position within a subset does not describe
              one in the whole list. The default drop-zone outline is cleared; the
              chrome is monochrome and marks nothing with a raw colour. -->
@@ -741,7 +744,7 @@
             {#each dndItems as space (space.id)}
               <div
                 class="space-dnd-item"
-                animate:flip={{ duration: flipDurationMs }}
+                animate:reorderFlip={{ duration: flipDurationMs }}
               >
                 <SpaceCard
                   {space}
