@@ -216,7 +216,8 @@
         s.terminals.some(
           (t) =>
             t.proc.toLowerCase().includes(q) ||
-            t.title.toLowerCase().includes(q),
+            t.title.toLowerCase().includes(q) ||
+            t.autoTitle?.toLowerCase().includes(q),
         ),
     );
   });
