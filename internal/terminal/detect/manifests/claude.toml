@@ -1,19 +1,27 @@
 # Claude Code. Measured on this machine (see .plan/agent-state-detection/assets):
-# Claude sets OSC 0 to "<glyph> <task summary>". A braille frame (U+2800–U+28FF)
-# updates about once a second while it is generating; the ✳ glyph (U+2733) means
-# it is present but not generating. An empty title is idle at the prompt — no rule
-# matches it, so the sampler confirms idle by absence.
+# Claude sets OSC 0 to "<glyph> <task summary>". A spinner frame in the leading
+# glyph updates about once a second while it is generating; the ✳ glyph (U+2733)
+# means it is present but not generating. An empty title is idle at the prompt —
+# no rule matches it, so the sampler confirms idle by absence.
+#
+# The spinner glyph is versioned. Claude ≤ the rec-claude capture cycled a braille
+# frame (U+2800–U+28FF); Claude 2.1.234 (re-measured on this machine) cycles the
+# half-circle set ◐◑ (U+25D0–U+25D3) instead. The working rule matches either, in
+# one character class — line_regex entries are AND-ed, so two ranges are one class,
+# not two rules — so a build on the old glyph and a build on the new both read as
+# generating without the manifest having to know which it is looking at.
 agent = "claude"
 match = ["claude"]
 aliases = ["claude-code"]
 
-# A braille spinner frame in the title → actively generating.
+# A spinner frame in the title's leading glyph → actively generating: a braille
+# frame (older Claude) or a half-circle frame (2.1.234).
 [[rule]]
 id = "working"
 state = "working"
 priority = 100
 region = "osc_title"
-line_regex = ['[\x{2800}-\x{28FF}]']
+line_regex = ['[\x{2800}-\x{28FF}\x{25D0}-\x{25D3}]']
 
 # The ✳ marker (U+2733) → present but not generating: a positive idle signal, so
 # it publishes at once rather than waiting on the absence confirmation.
