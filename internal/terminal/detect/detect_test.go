@@ -93,10 +93,14 @@ func TestShippedManifestRules(t *testing.T) {
 		want     string
 		wantVeto bool
 	}{
-		// Claude: measured on this machine. A braille frame means generating, the ✳
-		// marker means present-but-not-generating, and an empty title matches nothing.
+		// Claude: measured on this machine. A spinner frame in the leading glyph means
+		// generating, the ✳ marker means present-but-not-generating, and an empty title
+		// matches nothing. The spinner glyph is versioned — older Claude cycled braille,
+		// 2.1.234 cycles the half-circle set ◐◑ — and the working rule reads either.
 		{"claude braille frame is working", "claude", Evidence{Title: "⠂ Count to 10 slowly"}, "working", false},
 		{"claude other braille frame is working", "claude", Evidence{Title: "⠐ Claude Code"}, "working", false},
+		{"claude half-circle ◐ is working (2.1.234)", "claude", Evidence{Title: "◐ Piano tuners estimation"}, "working", false},
+		{"claude half-circle ◑ is working (2.1.234)", "claude", Evidence{Title: "◑ Claude Code"}, "working", false},
 		{"claude ✳ is a positive idle", "claude", Evidence{Title: "✳ Count to 10 slowly"}, "idle", false},
 		{"claude ✳ at the prompt is idle", "claude", Evidence{Title: "✳ Claude Code"}, "idle", false},
 		{"claude empty title matches nothing", "claude", Evidence{Title: ""}, "", false},
