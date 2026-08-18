@@ -80,9 +80,24 @@ type Terminal struct {
 
 	// launchedAgent is the adapter chartr itself started in this PTY, empty when the
 	// tab is an ad-hoc shell the operator drives. It answers a different question
-	// from session: *chartr knows which binary runs here*, which is true of a
-	// session and of a ticketless launch alike. Immutable after start.
+	// from session: *chartr knows which binary runs here*, which is true whenever
+	// the tab's own process is the agent. A free session is not one of those: it is
+	// a shell with a command preloaded (preload.go), so its agent is identified out
+	// of the foreground like any other shell's. Immutable after start.
 	launchedAgent string
+
+	// preload is the command line chartr types into this tab's shell once it is at
+	// its prompt — a free session's agent, and empty on every other tab. It is
+	// launch input, not state: what the tab *is* after it runs is whatever the
+	// shell's foreground says. Immutable after start.
+	preload string
+
+	// shellName is the name of the shell this tab runs, which is what its
+	// foreground reads as while it sits at its prompt. It is the tab's Title for an
+	// ad-hoc shell, and deliberately not for a free session — that tab is titled by
+	// the agent the operator picked, and would otherwise read as idling under the
+	// agent's name with no agent there at all. Immutable after start.
+	shellName string
 
 	// shellPID is the shell process's pid, which (being a session leader on a new
 	// PTY) is also its process-group id. The foreground group equals it exactly
@@ -431,11 +446,15 @@ type launchSpec struct {
 	// registered agent asked for.
 	env   []string
 	title string
-	// agent is the adapter chartr is launching here, set by every launch chartr
-	// chose the binary for — a session and a ticketless launch both — and empty for
-	// an ad-hoc shell. It is what the sampler identifies the tab from, so it does
-	// not have to read the PTY's foreground for an answer chartr already knows.
-	agent   string
+	// agent is the adapter chartr is launching here, set when the launched process
+	// *is* the agent — a session — and empty for a shell, ad-hoc or preloaded. It
+	// is what the sampler identifies such a tab from, so it does not have to read
+	// the PTY's foreground for an answer chartr already knows.
+	agent string
+	// preload is the command line to type into the shell this spec launches once it
+	// is at its prompt (preload.go). It is what makes a tab a free session, and it
+	// is empty for every other launch.
+	preload string
 	session *Session
 }
 
@@ -472,11 +491,12 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		title = shellTitle(spec.name)
 	}
 	state := model.TerminalIdle
-	if spec.agent != "" {
+	if spec.agent != "" || spec.preload != "" {
 		// Seat a chartr-launched agent as working until the first sample decides
 		// otherwise, so a just-spawned tab orbits rather than flashing a spurious idle
 		// tick while its agent boots. The agent grammar's startup grace holds the same
-		// line once the agent is identified.
+		// line once the agent is identified, and a preloaded shell holds it over the
+		// beat between the prompt drawing and the agent taking the terminal.
 		state = model.TerminalWorking
 	}
 	return &Terminal{
@@ -485,6 +505,8 @@ func newProc(id, spaceID, cwd string, spec launchSpec) (*Terminal, error) {
 		Title:         title,
 		session:       spec.session,
 		launchedAgent: spec.agent,
+		preload:       spec.preload,
+		shellName:     shellTitle(spec.name),
 
 		shellPID: c.Process.Pid,
 		pty:      p,
@@ -712,7 +734,10 @@ func (t *Terminal) sampleShell(pgrp, prevPgrp int) bool {
 	prevProc := t.proc
 	t.mu.Unlock()
 
-	state, proc := model.TerminalIdle, t.Title
+	state, proc := model.TerminalIdle, t.shellName
+	if proc == "" {
+		proc = t.Title
+	}
 	if pgrp > 0 && pgrp != t.shellPID {
 		state = model.TerminalRunning
 		switch {

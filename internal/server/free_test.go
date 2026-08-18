@@ -190,11 +190,17 @@ func TestFreeSessionWritesNoClaim(t *testing.T) {
 	}
 }
 
-// A free-session agent that dies on its own drops from the model exactly like an
-// ad-hoc shell — no pinning, no death halt, no lifecycle state ever derives for
-// it (unlike a real session, which stays pinned to its ticket for
-// resume/respawn/release).
-func TestFreeSessionHasNoDeathHalt(t *testing.T) {
+// A free-session agent that ends — the operator's Ctrl+C, an `/exit`, a crash —
+// takes nothing with it. The tab it ran in is an ad-hoc shell with that agent
+// preloaded (terminal/preload.go), so what is left when the agent goes is the
+// shell it was started from: the tab stays listed and live, at its own prompt,
+// with the whole conversation still in scrollback to read and the command still
+// there to run again.
+//
+// It stays as an ad-hoc shell and nothing more. No pinning, no death halt, and no
+// lifecycle state derives for it — that is a real session's, which is *its* agent's
+// process and stays pinned to its ticket for resume/respawn/release.
+func TestFreeSessionOutlivesItsAgent(t *testing.T) {
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	marker := chartrtest.StubDyingAgent(t, "some-harness")
@@ -203,12 +209,31 @@ func TestFreeSessionHasNoDeathHalt(t *testing.T) {
 	registerAgent(t, h, "thinker", map[string]any{"adapter": "some-harness"})
 	id := h.Launch(resp.ID, "thinker")
 
+	// Idle is the shell back at its prompt: the tab launches working, reads
+	// running while the agent holds the terminal, and settles to its own prompt
+	// once the agent is gone.
 	c, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	m := h.SnapshotUntil(c, func(m model.Model) bool {
-		return !hasTerminal(findSpace(t, m, resp.ID), id)
+		s := findSpace(t, m, resp.ID)
+		return hasTerminal(s, id) && findTerminal(t, s, id).Status == model.TerminalIdle
 	})
-	if hasTerminal(findSpace(t, m, resp.ID), id) {
-		t.Errorf("dead free tab %s (marker %s) is still listed — it should drop, not pin", id, marker)
+
+	space := findSpace(t, m, resp.ID)
+	if !hasTerminal(space, id) {
+		t.Fatalf("free tab %s (marker %s) dropped when its agent quit — the shell behind it should still hold the tab", id, marker)
+	}
+	tab := findTerminal(t, space, id)
+	if !tab.Alive {
+		t.Errorf("free tab %s reads dead after its agent quit; its shell is what the tab runs", id)
+	}
+	if tab.Status != model.TerminalIdle {
+		t.Errorf("free tab status = %q after its agent quit, want %q — a shell at its own prompt", tab.Status, model.TerminalIdle)
+	}
+	if tab.Session != nil {
+		t.Errorf("free tab grew a session binding %+v — it is not a session and has no death to halt on", tab.Session)
+	}
+	if tab.PromptTarget {
+		t.Error("free tab still offers to deliver a preset with only a shell in front of it")
 	}
 }

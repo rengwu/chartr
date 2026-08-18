@@ -177,8 +177,11 @@ func TestCancelledPresetNeverReachesTheAgent(t *testing.T) {
 	resp := register(t, h, repo)
 	term := h.Launch(resp.ID, "claude")
 
+	// Working *and* a target: a free tab is a shell with the agent preloaded, so it
+	// is a place to deliver a preset from the moment the agent holds its terminal,
+	// not from the moment the tab opens.
 	waitTerminal(t, h, resp.ID, term, "read working", func(x model.Terminal) bool {
-		return x.Status == model.TerminalWorking
+		return x.Status == model.TerminalWorking && x.PromptTarget
 	})
 	if code, queued := sendPrompt(t, h, resp.ID, term, id); code != 200 || !queued {
 		t.Fatalf("queueing = %d queued=%v, want 200 queued=true", code, queued)

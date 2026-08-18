@@ -25,14 +25,18 @@ import (
 // where it lives; what this file is about is what the queue does with each state
 // once it reads it.
 
-// promptTab launches a stub agent tab and returns it with the log of everything
-// that reached the agent's stdin. `stub` is not a known adapter, so nothing in
-// the sampler will move the tab's state underneath a test that sets it.
+// promptTab launches a free tab — a shell with the stub preloaded — and returns
+// it with the log of everything that reached the agent's stdin. The seat is then
+// made by hand, as it is for an operator's own agent below: a free tab is an
+// ad-hoc shell, so its agent is the sampler's to identify, and `stub` is not a
+// known adapter, so nothing in the sampler will move the tab's state or its seat
+// underneath a test that sets them.
 func promptTab(t *testing.T) (*Manager, *Terminal, string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("the raw-mode stub requires POSIX stty")
 	}
+	useTestShell(t)
 	shrinkOpenerTiming(t)
 
 	log := filepath.Join(t.TempDir(), "keystrokes.log")
@@ -41,15 +45,21 @@ func promptTab(t *testing.T) (*Manager, *Terminal, string) {
 	m := NewManager(nil, nil) // nil onChange: no background sampler, the test drives delivery
 	t.Cleanup(m.Shutdown)
 
-	term, err := m.OpenFree("s1", t.TempDir(), "f1", agent, args, env, "", "stub", "stub")
+	term, err := m.OpenFree("s1", t.TempDir(), "f1", agent, args, env, "", "stub")
 	if err != nil {
 		t.Fatalf("opening the free tab: %v", err)
 	}
-	// The stub types nothing until it is in raw mode; every assertion below is
-	// about bytes chartr sent, so wait for the tab to be ready to receive them.
+	// The stub types nothing until it is in raw mode, and until it holds the
+	// terminal the shell that started it would run a delivery as a command; every
+	// assertion below is about bytes chartr sent to the agent, so wait for the
+	// agent to be the one reading them.
+	if !term.awaitForeground(5 * time.Second) {
+		t.Fatal("the preloaded stub never took the terminal")
+	}
 	if !term.awaitReady(openerSettle, 5*time.Second) {
 		t.Fatal("the stub agent never came up")
 	}
+	seatAdHocAgent(t, term, "stub", 4242)
 	return m, term, log
 }
 

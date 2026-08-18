@@ -110,7 +110,13 @@ func (s *Server) launchFree(w http.ResponseWriter, e registry.Entry, agent strin
 	// operator clicked, which is the only labelling rule that never needs
 	// explaining. Three free sessions on one agent get three identical titles, as
 	// every ad-hoc shell in a space is titled `zsh` today.
-	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, spec.Name, spec.Adapter)
+	//
+	// The launch itself is an ad-hoc shell with that command preloaded, so a free
+	// tab outlives the agent in it: quitting the agent hands the tab back to its
+	// shell rather than closing it (terminal/preload.go). A command that will not
+	// start is reported by that shell, in the tab, the way any mistyped command is
+	// — the doorstep above has already refused the agent this server can settle.
+	t, err := s.terms.OpenFree(e.ID, e.Path, id, launch.Name, launch.Args, spec.Env, launch.TypeIn, spec.Name)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, "opening the free tab: "+err.Error())
 		return

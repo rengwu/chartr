@@ -72,12 +72,18 @@ func TestEmptyOpenerTypesNothing(t *testing.T) {
 }
 
 // shrinkOpenerTiming collapses the readiness waits so the stub tests do not sit
-// out production-sized settle, grace, and submit intervals.
+// out production-sized settle, grace, and submit intervals — the preload's own
+// settle among them, since a free tab waits on its shell's prompt before it waits
+// on anything else. The graces that cap a wait on something that may never come
+// are left alone: shrinking those turns a slow machine into a flake.
 func shrinkOpenerTiming(t *testing.T) {
 	t.Helper()
-	settle, grace, submit := openerSettle, openerGrace, openerSubmit
+	settle, grace, submit, preload := openerSettle, openerGrace, openerSubmit, preloadSettle
 	openerSettle, openerGrace, openerSubmit = 30*time.Millisecond, 150*time.Millisecond, 20*time.Millisecond
-	t.Cleanup(func() { openerSettle, openerGrace, openerSubmit = settle, grace, submit })
+	preloadSettle = 30 * time.Millisecond
+	t.Cleanup(func() {
+		openerSettle, openerGrace, openerSubmit, preloadSettle = settle, grace, submit, preload
+	})
 }
 
 const rawAgentLogEnv = "CHARTR_TEST_RAW_AGENT_LOG"

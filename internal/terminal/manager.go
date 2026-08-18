@@ -380,30 +380,41 @@ func (m *Manager) OpenSession(spaceID, cwd, id, name string, args, env []string,
 	return t, nil
 }
 
-// OpenFree launches an agent bare in a PTY in cwd, seated as a plain tab under
-// spaceID titled by the agent the operator picked — the new-shell control's
-// spine. It shares OpenSession's launch mechanics, including its opener (empty
-// unless the space selected prompt presets — a free session is otherwise told no
-// brief and the operator types their first message themselves), and carries no
-// Session: a free session is deliberately not a session (spec,
-// State model — "ticketless, live, sharing only the adapter's spawn primitive"),
+// OpenFree opens an ad-hoc shell in cwd with one command preloaded — name and
+// args, the agent the operator picked off the new-shell control — and seats it as
+// a plain tab under spaceID titled by that agent. It is Open's launch with a line
+// typed into it, not OpenSession's: the tab's process is the operator's shell and
+// the agent is its child, which is the whole of what a free session is
+// (preload.go). Quitting the agent therefore leaves the shell it was started
+// from, and the tab stays, an ad-hoc shell again.
+//
+// It carries no Session — a free session is deliberately not a session (spec,
+// State model — "ticketless, live, sharing only the adapter's spawn primitive") —
 // so it never counts toward the one-live-session-per-space limit OpenSession
 // enforces and never freezes dead the way a session does. Its activity reads like
-// any other tab's: the agent grammar if a known agent holds the foreground (it
-// usually does), the shell grammar otherwise. id is chosen by the caller, matching
-// OpenSession's style.
+// any other shell's: the agent grammar while a known agent holds the foreground
+// (it usually does), the shell grammar at the prompt. id is chosen by the caller,
+// matching OpenSession's style.
 //
-// agent is the adapter being launched — carried for the same reason a session
-// carries it: chartr chose this binary, so the sampler is told rather than made to
-// rediscover it off the PTY, and a tab on an agent with no shipped manifest reads
-// working-while-alive instead of a permanent, wrong idle.
-func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, opener, title, agent string) (*Terminal, error) {
-	t, err := newProc(id, spaceID, cwd, launchSpec{name: name, args: args, env: env, title: title, agent: agent})
+// env is set on the shell rather than on the agent alone, so it is still in force
+// when the operator runs the agent again by hand — the same account, the same
+// state root, the same tab. opener is empty unless the space selected prompt
+// presets; a free session is otherwise told no brief and the operator types their
+// first message themselves.
+func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, opener, title string) (*Terminal, error) {
+	shell, shellArgs := shellCommand()
+	t, err := newProc(id, spaceID, cwd, launchSpec{
+		name:    shell,
+		args:    shellArgs,
+		env:     env,
+		title:   title,
+		preload: preloadCommand(name, args),
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Record the tab before the read loop starts, so an agent that exits instantly
+	// Record the tab before the read loop starts, so a shell that exits instantly
 	// cannot remove itself before it has been listed (as Open and OpenSession do).
 	m.mu.Lock()
 	t.configureRunClock(m.notifyEnabled, m.notifyAfter, m.notifySettle)
@@ -412,7 +423,7 @@ func (m *Manager) OpenFree(spaceID, cwd, id, name string, args, env []string, op
 	m.mu.Unlock()
 
 	t.start(func() { m.onExit(id) })
-	typeOpener(t, opener)
+	startPreload(t, opener)
 
 	m.notify()
 	return t, nil
@@ -731,10 +742,13 @@ func (m *Manager) Shutdown() {
 // that every drop is a tab the operator is already standing at. A session that died
 // on its own — the ending the whole feature exists for — *pins* rather than drops,
 // keeps being sampled, and reports through the ordinary path as `dead`; what drops
-// is an ad-hoc shell the operator exited, a session they killed, or a free tab
-// whose agent quit. Flushing those would notify an operator about the thing they
-// just did. The accepted cost is that a free tab whose agent exits on its own
-// after a long run reports nothing.
+// is an ad-hoc shell the operator exited or a session they killed. Flushing those
+// would notify an operator about the thing they just did.
+//
+// A free tab is not on this path at all: its process is a shell the agent ran
+// under, so the agent quitting ends nothing here — the tab stays and reverts to
+// the ad-hoc shell it was launched as (preload.go), and it drops only when that
+// shell exits, like any other.
 func (m *Manager) onExit(id string) {
 	m.mu.Lock()
 	t := m.terms[id]
