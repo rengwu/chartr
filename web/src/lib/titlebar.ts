@@ -90,3 +90,19 @@ export function trackTitleBarButtons(height: number): () => void {
     void Promise.resolve(report([])).catch(() => {});
   };
 }
+
+// Whether the window draws its own native title bar above the page — the shell
+// on Linux and Windows, where the OS keeps the top strip and we never got one to
+// draw in. The two halves of the test are both needed: the platform marker is
+// what separates the shell from a plain browser tab (whose chrome is the
+// browser's, not the window's), and a zero strip height is what separates those
+// shells from macOS, where the shell hands us the strip instead.
+//
+// The chrome uses this to drop its wordmark: under a native title bar the window
+// is already named by the OS, so repeating the brand inside the sidebar only
+// pushes the search field a tier down for nothing.
+export function hasNativeTitleBar(): boolean {
+  if (typeof window === "undefined") return false;
+  const platform = window.__chartrNativePlatform;
+  return typeof platform === "string" && platform !== "" && nativeTitleBarHeight() === 0;
+}

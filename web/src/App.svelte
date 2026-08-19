@@ -35,7 +35,11 @@
   import { acknowledgesFinishedRun } from "./lib/unseen";
   import { isEditingTarget } from "./lib/keys";
   import { forgetSpace } from "./lib/mapstate";
-  import { nativeTitleBarHeight, trackTitleBarButtons } from "./lib/titlebar";
+  import {
+    hasNativeTitleBar,
+    nativeTitleBarHeight,
+    trackTitleBarButtons,
+  } from "./lib/titlebar";
   import { visibleSpaces } from "./lib/spacevisibility";
   import { parseRoute, settingsHash } from "./lib/route";
   import {
@@ -56,6 +60,12 @@
   // not state — and zero everywhere else, which is what keeps this out of a
   // browser tab entirely.
   const titleBarH = nativeTitleBarHeight();
+
+  // The other half of that same question: a window whose title bar stayed the
+  // OS's (the Linux and Windows shells). There the window already carries the
+  // application's name above the page, so the sidebar drops its wordmark and
+  // lets Search have the top tier. Read once at startup for the same reason.
+  const nativeTitleBar = hasNativeTitleBar();
 
   // The cockpit's one route besides itself: the effective config surface, on a
   // `#/settings` hash prefix (ticket 05). The star deep link (`#s=…`, never a
@@ -630,19 +640,28 @@
         <!-- The brand and the active space now share the one top tier, matching
            the sketch's split header. In the native macOS shell this tier also
            fills the title-bar strip; the left inset leaves the real traffic-light
-           buttons clear and seats the wordmark immediately beside them. -->
-        <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
-          <img
-            src="/brandmark.svg"
-            alt=""
-            width="20"
-            height="20"
-            class="size-5 shrink-0 grayscale"
-          />
-          <span class="truncate text-sm font-semibold tracking-tight"
-            >chartr</span
-          >
-        </div>
+           buttons clear and seats the wordmark immediately beside them.
+
+           Under a native title bar (Linux, Windows) the tier is dropped whole:
+           the window's own bar already names the application right above it, so
+           the wordmark would only be the name twice with Search pushed a tier
+           down for it. The search row that takes its place is exactly one tier
+           tall (pt-2 + h-8 = --bar-h), so the sidebar's top edge still lands on
+           the space header's. -->
+        {#if !nativeTitleBar}
+          <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
+            <img
+              src="/brandmark.svg"
+              alt=""
+              width="20"
+              height="20"
+              class="size-5 shrink-0 grayscale"
+            />
+            <span class="truncate text-sm font-semibold tracking-tight"
+              >chartr</span
+            >
+          </div>
+        {/if}
 
         <!-- Search is its own compact row below the brand, followed by the
            section label and the two global creation actions. This keeps adding

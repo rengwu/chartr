@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { trackTitleBarButtons, type TitleBarButtonRect } from './titlebar'
+import { hasNativeTitleBar, trackTitleBarButtons, type TitleBarButtonRect } from './titlebar'
 
 class TestResizeObserver {
   observe() {}
@@ -57,5 +57,33 @@ describe('native title-bar button tracking', () => {
       { x: 388, y: 8, width: 24, height: 24 },
     ]])
     stop()
+  })
+})
+
+// Which host the cockpit booted in, from the two globals the shell injects. The
+// wordmark hangs off this: it stays wherever the window is not already naming
+// the application above the page.
+describe('detecting a window whose title bar is the OS\'s', () => {
+  afterEach(() => {
+    delete window.__chartrNativePlatform
+    delete window.__chartrTitleBar
+  })
+
+  it('is true in the shells that never took the top strip', () => {
+    window.__chartrNativePlatform = 'linux'
+    expect(hasNativeTitleBar()).toBe(true)
+
+    window.__chartrNativePlatform = 'windows'
+    expect(hasNativeTitleBar()).toBe(true)
+  })
+
+  it('is false on macOS, where the strip is ours to draw', () => {
+    window.__chartrNativePlatform = 'darwin'
+    window.__chartrTitleBar = 52
+    expect(hasNativeTitleBar()).toBe(false)
+  })
+
+  it('is false in a plain browser tab, whose chrome is not the window\'s', () => {
+    expect(hasNativeTitleBar()).toBe(false)
   })
 })
