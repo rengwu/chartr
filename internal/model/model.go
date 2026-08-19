@@ -370,6 +370,7 @@ type Terminal struct {
 // the keybinding/selection behaviours; ticket 05 adds the ligatures toggle, which
 // the client resolves into the renderer choice (WebGL default vs. canvas).
 type TerminalPrefs struct {
+	Renderer       string  `json:"renderer,omitempty"`
 	FontFamily     string  `json:"fontFamily,omitempty"`
 	FontSize       float64 `json:"fontSize,omitempty"`
 	FontWeight     string  `json:"fontWeight,omitempty"`

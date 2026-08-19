@@ -47,32 +47,56 @@ func TestRuntimeRoot(t *testing.T) {
 		configRoot = "/Users/op/.config/chartr"
 	)
 
+	// appImageExe is what the AppImage runtime actually hands the shell: a mount
+	// point with a suffix chosen afresh every launch, which is exactly why the
+	// path cannot be the signal and the runtime's APPIMAGE variable is.
+	const appImageExe = "/tmp/.mount_chartrAbC123/usr/bin/chartr"
+	inAppImage := map[string]string{"APPIMAGE": "/home/op/Downloads/chartr.AppImage"}
+
 	tests := []struct {
 		name       string
 		explicit   string
 		exe        string
 		configRoot string
+		env        map[string]string
 		want       string
 	}{
 		// The terminal launch is unchanged: empty means the working directory,
 		// which is what the operator cd'd to.
-		{"loose launch keeps the working directory", "", looseExe, configRoot, ""},
+		{"loose launch keeps the working directory", "", looseExe, configRoot, nil, ""},
 		// The whole reason this ticket exists: Finder hands a bundle `/`, and the
 		// lock would die on it before a window existed.
-		{"bundled launch anchors to the config root", "", bundledExe, configRoot, configRoot},
+		{"bundled launch anchors to the config root", "", bundledExe, configRoot, nil, configRoot},
 		// One root, however the operator started the app.
-		{"explicit root wins when bundled", "/Users/op/work", bundledExe, configRoot, "/Users/op/work"},
-		{"explicit root wins when loose", "/Users/op/work", looseExe, configRoot, "/Users/op/work"},
+		{"explicit root wins when bundled", "/Users/op/work", bundledExe, configRoot, nil, "/Users/op/work"},
+		{"explicit root wins when loose", "/Users/op/work", looseExe, configRoot, nil, "/Users/op/work"},
 		// No home to anchor to: the config root itself degrades to the runtime
 		// root here, and so does this.
-		{"bundled with no home degrades to the working directory", "", bundledExe, "", ""},
+		{"bundled with no home degrades to the working directory", "", bundledExe, "", nil, ""},
+
+		// The AppImage half (#3). The failure it replaces is quiet rather than
+		// fatal — a lock and a session archive per directory the operator
+		// happened to launch from — so the anchor matters just as much.
+		{"appimage launch anchors to the config root", "", appImageExe, configRoot, inAppImage, configRoot},
+		{"explicit root wins in an appimage", "/home/op/work", appImageExe, configRoot, inAppImage, "/home/op/work"},
+		{"appimage with no home degrades to the working directory", "", appImageExe, "", inAppImage, ""},
+		// The mount-point path on its own proves nothing: without the runtime
+		// saying so this is just a binary someone ran out of /tmp, and it keeps
+		// the working directory it was started in.
+		{"a mount-point path alone is not an appimage", "", appImageExe, configRoot, nil, ""},
+		// An empty APPIMAGE is not a statement that we are in one.
+		{"an empty APPIMAGE is not an appimage", "", appImageExe, configRoot, map[string]string{"APPIMAGE": ""}, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := runtimeRoot(tt.explicit, tt.exe, tt.configRoot); got != tt.want {
-				t.Errorf("runtimeRoot(%q, %q, %q) = %q, want %q",
-					tt.explicit, tt.exe, tt.configRoot, got, tt.want)
+			lookup := func(name string) (string, bool) {
+				v, ok := tt.env[name]
+				return v, ok
+			}
+			if got := runtimeRoot(tt.explicit, tt.exe, tt.configRoot, lookup); got != tt.want {
+				t.Errorf("runtimeRoot(%q, %q, %q, %v) = %q, want %q",
+					tt.explicit, tt.exe, tt.configRoot, tt.env, got, tt.want)
 			}
 		})
 	}

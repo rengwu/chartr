@@ -10,6 +10,7 @@ import (
 	"github.com/aymanbagabas/go-pty"
 	"golang.org/x/sys/unix"
 
+	"github.com/rengwu/chartr/internal/env"
 	"github.com/rengwu/chartr/internal/proc"
 )
 
@@ -41,7 +42,12 @@ func foreground(p pty.Pty) int {
 // foreground group changes rarely, so the sampler only pays for this exec when a
 // new command takes the foreground.
 func procName(pid int) string {
-	out, err := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+	cmd := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid))
+	// The host's `ps`, so the host's environment: under the AppImage the bundle's
+	// loader paths would kill it before it printed a name, and an empty name is
+	// what this returns for a process that simply has none (#1).
+	cmd.Env = env.HostEnviron()
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

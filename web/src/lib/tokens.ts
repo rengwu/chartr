@@ -124,7 +124,7 @@ function isBundledFont(family: string | undefined): boolean {
 // coupled: the WebGL renderer is the default, but the ligatures addon and WebGL
 // cannot coexist, so switching ligatures on is exactly what forces the terminal onto
 // the canvas renderer.
-export type TerminalRenderer = 'webgl' | 'canvas'
+export type TerminalRenderer = 'webgl' | 'canvas' | 'dom'
 
 export interface RendererChoice {
   // 'webgl' is the GPU default; 'canvas' is what ligatures force. The DOM renderer
@@ -154,7 +154,19 @@ export interface RendererChoice {
 export function resolveRenderer(prefs: TerminalPrefs | undefined): RendererChoice {
   const p = prefs ?? {}
   const ligatures = p.ligatures === true && isBundledFont(p.fontFamily)
-  return { renderer: ligatures ? 'canvas' : 'webgl', ligatures }
+  if (ligatures) return { renderer: 'canvas', ligatures: true }
+
+  const forced = p.renderer?.trim().toLowerCase()
+  if (forced === 'webgl' || forced === 'canvas' || forced === 'dom') {
+    return { renderer: forced, ligatures: false }
+  }
+
+  // WebKitGTK's WebGL canvas can present one frame behind under X11/NVIDIA.
+  // The native shell marks its platform before navigation; ordinary browser
+  // builds have no marker and retain xterm's faster WebGL default.
+  const nativePlatform =
+    typeof window === 'undefined' ? undefined : window.__chartrNativePlatform
+  return { renderer: nativePlatform === 'linux' ? 'canvas' : 'webgl', ligatures: false }
 }
 
 // A font weight as xterm types it — a keyword or a number. `terminal.toml` carries

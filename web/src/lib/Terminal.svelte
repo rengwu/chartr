@@ -158,6 +158,20 @@
     // ligatures conflict) and read here before the terminal is constructed.
     const { renderer, ligatures } = resolveRenderer(prefs)
 
+    // Keep the renderer and latest input-to-paint sample inspectable without
+    // opening xterm internals. This is intentionally DOM state rather than app
+    // model state: it describes this live renderer instance, including fallback.
+    function reportRenderer(activeRenderer: 'dom' | 'canvas' | 'webgl', reason?: string) {
+      host.dataset.terminalRenderer = activeRenderer
+      if (reason) host.dataset.terminalRendererReason = reason
+      else delete host.dataset.terminalRendererReason
+      window.dispatchEvent(
+        new CustomEvent('chartr:terminal-renderer', {
+          detail: { terminalId: term.id, renderer: activeRenderer, reason },
+        }),
+      )
+    }
+
     const xterm = new Xterm({
       ...options,
       // A retained background terminal still consumes output, but cannot consume
@@ -250,6 +264,23 @@
 
     xterm.open(grid)
     fit.fit()
+    reportRenderer('dom', 'renderer addon loading')
+
+    // A terminal can mount before the bundled web font finishes loading. Canvas
+    // and WebGL cache glyphs and cell metrics, so leaving that first atlas alive
+    // makes the fallback face look soft or misaligned even after IBM Plex arrives.
+    // Rebuild the atlas and geometry once the document's fonts have settled.
+    void document.fonts.ready.then(() => {
+      if (xtermRef !== xterm) return
+      xterm.clearTextureAtlas()
+      try {
+        fit.fit()
+      } catch {
+        // A terminal removed while the font promise resolved needs no refresh.
+        return
+      }
+      xterm.refresh(0, xterm.rows - 1)
+    })
 
     // Renderer selection, decided once at the seam (spec, Renderer & the ligatures
     // conflict). The WebGL (GPU) renderer is the default; enabling ligatures forces
@@ -261,7 +292,16 @@
     // it is made fresh at each mount with no hot-swap.
     if (renderer === 'canvas') {
       void import('@xterm/addon-canvas').then(({ CanvasAddon }) => {
-        xterm.loadAddon(new CanvasAddon())
+        try {
+          xterm.loadAddon(new CanvasAddon())
+          reportRenderer('canvas')
+        } catch (error) {
+          reportRenderer('dom', 'canvas initialization failed')
+          console.warn('chartr: canvas terminal renderer failed; using DOM', error)
+        }
+      }).catch((error) => {
+        reportRenderer('dom', 'canvas addon failed to load')
+        console.warn('chartr: canvas terminal addon failed to load; using DOM', error)
       })
       // Ligatures ride the canvas renderer. The addon reads its ligature data from the
       // local (bundled) font — it never fetches a font over the network — and the seam
@@ -271,15 +311,28 @@
           xterm.loadAddon(new LigaturesAddon())
         })
       }
-    } else {
+    } else if (renderer === 'webgl') {
       // WebGL by default. Wire the GPU context-loss event to dispose the addon, which
       // drops xterm back to its built-in DOM renderer — so a backgrounded tab or a
       // driver reset never leaves the terminal blank. Disposing the terminal disposes
       // the addon with it, so cleanup needs no separate handle.
       void import('@xterm/addon-webgl').then(({ WebglAddon }) => {
-        const webgl = new WebglAddon()
-        webgl.onContextLoss(() => webgl.dispose())
-        xterm.loadAddon(webgl)
+        try {
+          const webgl = new WebglAddon()
+          webgl.onContextLoss(() => {
+            webgl.dispose()
+            reportRenderer('dom', 'WebGL context lost')
+            console.warn('chartr: WebGL terminal context lost; using DOM')
+          })
+          xterm.loadAddon(webgl)
+          reportRenderer('webgl')
+        } catch (error) {
+          reportRenderer('dom', 'WebGL initialization failed')
+          console.warn('chartr: WebGL terminal renderer failed; using DOM', error)
+        }
+      }).catch((error) => {
+        reportRenderer('dom', 'WebGL addon failed to load')
+        console.warn('chartr: WebGL terminal addon failed to load; using DOM', error)
       })
     }
 
@@ -297,12 +350,31 @@
     }
 
     ws.onopen = () => sendResize()
+    let pendingInputAt: number | undefined
     ws.onmessage = (ev: MessageEvent) => {
-      xterm.write(new Uint8Array(ev.data as ArrayBuffer))
+      const inputAt = pendingInputAt
+      pendingInputAt = undefined
+      xterm.write(new Uint8Array(ev.data as ArrayBuffer), () => {
+        if (inputAt === undefined) return
+        requestAnimationFrame(() => {
+          const latency = performance.now() - inputAt
+          host.dataset.terminalInputLatencyMs = latency.toFixed(1)
+          window.dispatchEvent(
+            new CustomEvent('chartr:terminal-latency', {
+              detail: { terminalId: term.id, milliseconds: latency },
+            }),
+          )
+          if (latency >= 50)
+            console.warn(`chartr: terminal input-to-paint latency ${latency.toFixed(1)} ms`)
+        })
+      })
     }
 
     const dataSub = xterm.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d))
+      if (ws.readyState === WebSocket.OPEN) {
+        if (pendingInputAt === undefined) pendingInputAt = performance.now()
+        ws.send(enc.encode(d))
+      }
     })
     const resizeSub = xterm.onResize(() => sendResize())
 

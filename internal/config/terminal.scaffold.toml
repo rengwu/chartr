@@ -15,6 +15,11 @@
 # `#rrggbbaa` hex (named colours and oklch are not accepted). Booleans are
 # tri-state: leaving a key out is distinct from `false`.
 
+[rendering]
+# Linux's native WebKit shell defaults to canvas to avoid delayed WebGL frame
+# presentation. Browser builds and other native platforms default to WebGL.
+renderer = "auto"               # "auto", "webgl", "canvas", or "dom".
+
 [font]
 family = "Menlo"               # a custom family stacks ahead of the system
                                # fallback and is your own OS's risk. The one

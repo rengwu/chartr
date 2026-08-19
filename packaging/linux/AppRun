@@ -93,13 +93,39 @@ export WEBKIT_INJECTED_BUNDLE_PATH="$WK_TARGET/injected-bundle"
 # build time is wrong by the time it is read. It is regenerated here, against
 # this run's mount point, into a private temp dir — a few milliseconds at
 # startup in exchange for a path that is right by construction.
+# the cache has to outlive this script -- the library reads it lazily, long
+# after `exec` has replaced us -- so there is nobody left to delete it and a
+# fresh mktemp would leave one file behind per launch, forever. It goes to a
+# stable name under XDG_RUNTIME_DIR instead: per-user, 0700, and cleared when
+# the operator logs out, so repeated launches reuse the one file rather than
+# accumulating. Written aside and moved into place because a concurrent chartr
+# may be reading that exact path -- a rename swaps the inode whole, where a
+# redirect would truncate the file under it.
 if [ -x "$HERE/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" ]; then
-	_cache="$(mktemp -t chartr-pixbuf-XXXXXX)"
-	if GDK_PIXBUF_MODULEDIR="$HERE/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders" \
-		"$HERE/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$_cache" 2>/dev/null; then
-		export GDK_PIXBUF_MODULE_FILE="$_cache"
+	# XDG_RUNTIME_DIR is per-user, 0700, and emptied when the operator logs out,
+	# so a stable name there is reused launch after launch. /tmp is the fallback
+	# and is shared with every other user on the box, so there the name stays
+	# mktemp's unguessable one and the file stays behind -- a leak, but not a
+	# fixed path someone else could have created first.
+	if [ -w "${XDG_RUNTIME_DIR:-}" ]; then
+		_final="$XDG_RUNTIME_DIR/chartr-pixbuf.cache"
+		_staged="$(mktemp "$XDG_RUNTIME_DIR/chartr-pixbuf-XXXXXX")"
 	else
-		rm -f "$_cache"
+		_final=""
+		_staged="$(mktemp -t chartr-pixbuf-XXXXXX)"
+	fi
+	if GDK_PIXBUF_MODULEDIR="$HERE/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders" \
+		"$HERE/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$_staged" 2>/dev/null; then
+		# Renamed into place from the same directory, which is atomic: a chartr
+		# already running may be reading that exact path, and a rename swaps the
+		# inode whole where writing in place would truncate the file under it.
+		if [ -n "$_final" ] && mv -f "$_staged" "$_final"; then
+			export GDK_PIXBUF_MODULE_FILE="$_final"
+		else
+			export GDK_PIXBUF_MODULE_FILE="$_staged"
+		fi
+	else
+		rm -f "$_staged"
 	fi
 fi
 
