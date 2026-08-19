@@ -293,7 +293,7 @@
                 <div class="flex items-center justify-center gap-1">
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     aria-label="Edit {a.name}"
                     onclick={() => (draft = toDraft(a))}
                   >
@@ -301,7 +301,7 @@
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     aria-label="Delete {a.name}"
                     disabled={busy !== null}
                     onclick={() =>

@@ -514,7 +514,7 @@
                 {#if s.kind === "git"}
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     aria-label="Refresh {s.name}"
                     title="Refetch the skill repository. Discards local changes, if any."
                     disabled={busy !== null}
@@ -530,7 +530,7 @@
                 {/if}
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   class="hover:text-destructive"
                   aria-label="Remove {s.name}"
                   title="Remove this source from the list"
@@ -617,7 +617,7 @@
                     >
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon-sm"
                       class="shrink-0 text-muted-foreground hover:text-foreground"
                       title="Reveal this skill on disk, or open its source repository"
                       aria-label="Reveal the skill {b.resolved} used by the {b.role} role"

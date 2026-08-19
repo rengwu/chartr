@@ -34,8 +34,27 @@ contents:
     dst: /usr/share/metainfo/io.github.rengwu.chartr.metainfo.xml
     file_info:
       mode: 0644
-  - src: web/public/icon-512.png
-    dst: /usr/share/icons/hicolor/512x512/apps/chartr.png
+  # The icon theme spec allows SVG inside the fixed-size directories, so each
+  # band ships as the master it was drawn for and the desktop rasterises at
+  # whatever size it actually wants. A single 512 PNG used to cover every band,
+  # which left every taskbar box-filtering 512 down to 22, 24 or 32 -- the sizes
+  # a desktop actually draws -- and the strokes never landed on the pixel grid.
+  #
+  # These are the v4 masters the macOS iconset already feeds from
+  # (docs/assets/v4), so both platforms draw the same artwork and cannot drift.
+  # They render square and full-bleed, which is what a Linux desktop wants: it
+  # masks, rounds and themes the icon itself (ADR 0016). Apple's pre-inset,
+  # pre-shadowed squircle set is deliberately NOT what ships here.
+  - src: docs/assets/v4/logo-app-16.svg
+    dst: /usr/share/icons/hicolor/16x16/apps/chartr.svg
+    file_info:
+      mode: 0644
+  - src: docs/assets/v4/logo-app-32.svg
+    dst: /usr/share/icons/hicolor/32x32/apps/chartr.svg
+    file_info:
+      mode: 0644
+  - src: docs/assets/v4/logo-app.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/chartr.svg
     file_info:
       mode: 0644
   - src: LICENSE

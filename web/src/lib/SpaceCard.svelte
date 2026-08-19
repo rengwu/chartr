@@ -263,7 +263,7 @@
              the way the forget action does. -->
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             class="-my-0.5 shrink-0 text-destructive hover:text-destructive"
             aria-label="a session halted — go to the halted ticket"
             title="A session halted, needs a decision — go to it"
@@ -282,12 +282,12 @@
         {/if}
         {#if liveness === "working"}
           <CircleNotch
-            class="size-3 shrink-0 animate-spin text-primary"
+            class="size-4 shrink-0 animate-spin text-primary"
             aria-label="a session is working"
           />
         {:else if liveness === "blocked"}
           <PauseCircle
-            class="size-3 shrink-0 text-primary"
+            class="size-4 shrink-0 text-primary"
             aria-label="a session is blocked"
           />
         {/if}
@@ -305,7 +305,7 @@
           <NewShellButton
             {agents}
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             disabled={opening}
             ariaLabel="Open a shell in {space.name}"
             title="Open a plain shell in {space.name} — nothing is injected."
@@ -517,7 +517,7 @@
                 <span class="-my-0.5 mr-5 flex shrink-0 items-center">
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     class="hover:text-primary"
                     aria-label="Resume this session"
                     title="Attempt to resume session."
@@ -530,7 +530,7 @@
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     class="hover:text-primary"
                     aria-label="Respawn a fresh session"
                     title="Respawn a fresh session on the same ticket."
@@ -543,7 +543,7 @@
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon-sm"
                     class="hover:text-destructive"
                     aria-label="Release the claim"
                     title="Release the ticket claim back to the frontier."
@@ -583,7 +583,7 @@
               >
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   class="shrink-0 hover:text-destructive"
                   aria-label="End {t.proc}"
                   title={t.session ? "End this session" : "End this shell"}

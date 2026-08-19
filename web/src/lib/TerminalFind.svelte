@@ -93,7 +93,7 @@
   role="search"
   onkeydown={onwidgetkeydown}
 >
-  <MagnifyingGlass class="size-3.5 shrink-0 text-muted-foreground" />
+  <MagnifyingGlass class="size-4 shrink-0 text-muted-foreground" />
   <Input
     bind:ref={inputRef}
     {value}

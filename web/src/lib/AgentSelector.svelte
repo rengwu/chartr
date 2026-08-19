@@ -63,7 +63,7 @@
     >
       <Robot class="size-4 shrink-0" />
       <span class="max-w-40 truncate">{label}</span>
-      <CaretDown class="size-3 shrink-0 opacity-70" />
+      <CaretDown class="size-4 shrink-0 opacity-70" />
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="start" class="min-w-52 w-auto">
       {#each agents as a (a.name)}
@@ -74,7 +74,7 @@
         >
           <Check
             class={cn(
-              "mt-0.5 size-3.5 shrink-0",
+              "mt-0.5 size-4 shrink-0",
               choice.kind === "ready" && choice.agent.name === a.name
                 ? "opacity-100"
                 : "opacity-0",

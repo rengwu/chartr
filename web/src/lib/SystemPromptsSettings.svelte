@@ -25,7 +25,7 @@
 
 <section class="flex flex-col gap-2">
   <h2 class="flex items-center gap-1.5 text-xs font-semibold">
-    <Brain class="size-3.5 shrink-0" aria-hidden="true" /> System Prompts
+    <Brain class="size-4 shrink-0" aria-hidden="true" /> System Prompts
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
     The prompts chartr injects into spawned sessions. Delete the file to reset

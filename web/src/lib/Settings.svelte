@@ -201,7 +201,7 @@
            row flips to openable on the next snapshot. -->
       <Button
         variant="outline"
-        size="xs"
+        size="sm"
         class="shrink-0"
         title="Create {l.path} from its default values"
         disabled={busy !== null}
@@ -213,7 +213,7 @@
     {:else}
       <Button
         variant="ghost"
-        size="icon-xs"
+        size="icon-sm"
         aria-label="Open {l.path}"
         title="Open in your editor ($VISUAL / $EDITOR)"
         disabled={busy !== null}

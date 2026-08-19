@@ -23,7 +23,7 @@
 
 <section class="flex flex-col gap-2">
   <h2 class="flex items-center gap-1.5 text-xs font-semibold">
-    <Bell class="size-3.5 shrink-0" aria-hidden="true" /> Notifications
+    <Bell class="size-4 shrink-0" aria-hidden="true" /> Notifications
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
     Controls when to notify after a provider-recorded turn finishes, blocks, or

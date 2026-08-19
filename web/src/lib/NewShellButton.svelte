@@ -23,7 +23,7 @@
   let {
     agents,
     disabled = false,
-    size = "xs",
+    size = "sm",
     // Both halves take this variant. `outline` (the default) gives the joined,
     // outlined split button the space pane carries; `ghost` drops the border for
     // two plain buttons grouped together, as the space card's compact `+` wants.
