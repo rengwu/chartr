@@ -558,10 +558,10 @@
             >
             <span class="flex items-center justify-end gap-1">
               {#if pathFeedback === "copy-error"}
-                <Warning class="size-4 shrink-0 text-destructive" /> Couldn’t copy
+                <Warning class="icon-size-md shrink-0 text-destructive" /> Couldn’t copy
                 — clipboard unavailable
               {:else}
-                <Copy class="size-4 shrink-0" />
+                <Copy class="icon-size-md shrink-0" />
                 {pathFeedback === "copied" ? "Copied" : "Click to copy"}
               {/if}
             </span>
@@ -641,7 +641,7 @@
           title={warnings.join("\n")}
           aria-label="{warnings.length} warning(s)"
         >
-          <Warning class="size-4" />
+          <Warning class="icon-size-md" />
           {warnings.length}
         </span>
       {/if}

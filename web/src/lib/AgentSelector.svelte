@@ -49,7 +49,7 @@
     title="No agent registered — register one to start"
     onclick={() => onregister?.()}
   >
-    <Robot class="size-4" /> Register an agent…
+    <Robot class="icon-size-md" /> Register an agent…
   </Button>
 {:else}
   <DropdownMenu.Root>
@@ -61,9 +61,9 @@
       title="Agent every action spawns with"
       aria-label="Choose agent"
     >
-      <Robot class="size-4 shrink-0" />
+      <Robot class="icon-size-md shrink-0" />
       <span class="max-w-40 truncate">{label}</span>
-      <CaretDown class="size-4 shrink-0 opacity-70" />
+      <CaretDown class="icon-size-md shrink-0 opacity-70" />
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="start" class="min-w-52 w-auto">
       {#each agents as a (a.name)}
@@ -74,7 +74,7 @@
         >
           <Check
             class={cn(
-              "mt-0.5 size-4 shrink-0",
+              "mt-0.5 icon-size-md shrink-0",
               choice.kind === "ready" && choice.agent.name === a.name
                 ? "opacity-100"
                 : "opacity-0",

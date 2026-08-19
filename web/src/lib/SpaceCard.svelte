@@ -282,12 +282,12 @@
         {/if}
         {#if liveness === "working"}
           <CircleNotch
-            class="size-4 shrink-0 animate-spin text-primary"
+            class="icon-size-md shrink-0 animate-spin text-primary"
             aria-label="a session is working"
           />
         {:else if liveness === "blocked"}
           <PauseCircle
-            class="size-4 shrink-0 text-primary"
+            class="icon-size-md shrink-0 text-primary"
             aria-label="a session is blocked"
           />
         {/if}
@@ -305,7 +305,7 @@
           <NewShellButton
             {agents}
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             disabled={opening}
             ariaLabel="Open a shell in {space.name}"
             title="Open a plain shell in {space.name} — nothing is injected."
@@ -425,38 +425,38 @@
               <!-- Fixed-size slot so the glyph occupies the same box in every
                  state: the mark swaps but the column before the name never
                  reflows. -->
-              <span class="flex size-3.5 shrink-0 items-center justify-center">
+              <span class="flex icon-size-sm shrink-0 items-center justify-center">
                 {#if t.status === "working"}
                   <Spinner
-                    class="size-3.5 animate-spin [animation-duration:2s] text-primary"
+                    class="icon-size-sm animate-spin [animation-duration:2s] text-primary"
                     aria-label="working"
                   />
                 {:else if t.status === "running"}
                   <CircleNotch
-                    class="size-3.5 animate-spin [animation-duration:5s] text-muted-foreground"
+                    class="icon-size-sm animate-spin [animation-duration:5s] text-muted-foreground"
                     aria-label="running"
                   />
                 {:else if t.status === "blocked"}
                   <PauseCircle
-                    class="size-3.5 {tone}"
+                    class="icon-size-sm {tone}"
                     {weight}
                     aria-label="blocked{away}"
                   />
                 {:else if t.status === "dead"}
                   <Skull
-                    class="size-3.5 {tone}"
+                    class="icon-size-sm {tone}"
                     {weight}
                     aria-label="dead{away}"
                   />
                 {:else if t.status === "exited"}
                   <XCircle
-                    class="size-3.5 {tone}"
+                    class="icon-size-sm {tone}"
                     {weight}
                     aria-label="exited{away}"
                   />
                 {:else}
                   <Circle
-                    class="size-2.5 text-muted-foreground/10"
+                    class="icon-size-2xs text-muted-foreground/10"
                     weight="fill"
                     aria-label="idle"
                   />
@@ -583,7 +583,7 @@
               >
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-xs"
                   class="shrink-0 hover:text-destructive"
                   aria-label="End {t.proc}"
                   title={t.session ? "End this session" : "End this shell"}

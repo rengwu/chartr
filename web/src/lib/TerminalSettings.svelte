@@ -25,7 +25,7 @@
 
 <section class="flex flex-col gap-2">
   <h2 class="flex items-center gap-1.5 text-xs font-semibold">
-    <TerminalIcon class="size-4 shrink-0" aria-hidden="true" /> Terminal
+    <TerminalIcon class="icon-size-md shrink-0" aria-hidden="true" /> Terminal
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
     Customize the look and behavior of the <code>xterm</code> terminal sessions.

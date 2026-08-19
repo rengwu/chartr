@@ -125,6 +125,64 @@
   }
 }
 
+/* ============================================================================
+   The icon scale — one ladder, five rungs, spent everywhere.
+   ----------------------------------------------------------------------------
+   button.svelte is the standard: its four size tiers (xs / sm / default / lg,
+   and the square icon-* twins) already declared what a glyph measures at each
+   tier, and those numbers are lifted here verbatim. Everything that draws an
+   icon now reads off these tokens — the button, the menu and select and tab
+   primitives, and every bare <Icon /> out in the surfaces — so the scale has
+   exactly one definition instead of thirty hand-tuned `size-N` guesses.
+
+   To resize every icon at a tier, change the value HERE. Nothing else. The
+   primitives spend the tokens through `size-(--icon-*)`, and loose glyphs wear
+   the `icon-size-*` utilities below; neither hard-codes a measurement.
+
+   The `2xs` rung sits below button's ladder on purpose: it is the badge glyph
+   and the idle status dot, marks that must read as *smaller than* an icon, and
+   both already shared 0.625rem before this existed. Keeping it in the scale is
+   what stops those two from drifting back into one-off sizes.
+
+   `static` so the custom properties are emitted whether or not Tailwind spots
+   a use — the @utility bodies below reference them through raw var(), which
+   its usage scan does not follow. */
+@theme static {
+  --icon-2xs: 0.625rem; /* 10px — badge glyphs, status dots (below the ladder) */
+  --icon-xs: 0.8125rem; /* 13px — button size xs   / icon-xs  (was size-3.25) */
+  --icon-sm: 0.9375rem; /* 15px — button size sm   / icon-sm  (was size-3.75) */
+  --icon-md: 1.0625rem; /* 17px — button size default / icon  (was size-4.25) */
+  --icon-lg: 1.25rem; /* 20px — button size lg   / icon-lg  (was size-5)    */
+}
+
+/* The class form of the scale, for glyphs that stand on their own — a status
+   mark in a list row, the magnifier inside the search field, the icon in a
+   settings header. `icon-size-*` rather than `icon-*` is deliberate: the
+   primitives let a caller override their built-in glyph size with
+   `[&_svg:not([class*='size-'])]`, so a name carrying `size-` is the one that
+   actually wins inside a button or a menu item. It also means an icon class is
+   greppable as a single token across the cockpit. */
+@utility icon-size-2xs {
+  width: var(--icon-2xs);
+  height: var(--icon-2xs);
+}
+@utility icon-size-xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+@utility icon-size-sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+@utility icon-size-md {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+@utility icon-size-lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
 /* Olive / warm-neutral token values (assets/theme.css). Light in :root, dark in
    .dark; the document boots dark. */
 :root {

@@ -25,7 +25,7 @@
 
 <section class="flex flex-col gap-2">
   <h2 class="flex items-center gap-1.5 text-xs font-semibold">
-    <TextAa class="size-4 shrink-0" aria-hidden="true" /> Auto titles
+    <TextAa class="icon-size-md shrink-0" aria-hidden="true" /> Auto titles
   </h2>
   <p class="text-xs leading-relaxed text-muted-foreground">
     Gives each agent tab a short title from the session running in it, so you

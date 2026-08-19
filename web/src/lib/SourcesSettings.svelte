@@ -462,7 +462,7 @@
                 class="flex justify-center text-muted-foreground"
                 aria-hidden="true"
               >
-                <DotsSixVertical class="size-4" />
+                <DotsSixVertical class="icon-size-md" />
               </span>
 
               <Checkbox

@@ -371,7 +371,7 @@
         class="grid size-6 shrink-0 place-items-center rounded-full border border-border font-mono text-[0.65rem] text-muted-foreground"
         aria-hidden={isMap ? "true" : undefined}
       >
-        {#if isMap}<Compass class="size-4" />{:else if ticket}{pad(
+        {#if isMap}<Compass class="icon-size-md" />{:else if ticket}{pad(
             ticket.num,
           )}{/if}
       </span>
@@ -553,7 +553,7 @@
           class="flex min-w-0 items-start gap-1.5 text-[0.7rem] text-destructive"
           title={actionError}
         >
-          <Warning class="mt-0.5 size-4 shrink-0" />
+          <Warning class="mt-0.5 icon-size-md shrink-0" />
           <span class="truncate">{actionError}</span>
         </p>
       {/if}
@@ -598,7 +598,7 @@
             disabled={!canAct || spawningRole !== null}
             title="Other sessions this ticket can start"
           >
-            More <CaretDown class="size-4" />
+            More <CaretDown class="icon-size-md" />
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="end" class="min-w-40">
             {#each otherRoles as r (r)}
