@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildTerminalOptions,
   DEFAULT_TERMINAL_SCROLLBACK,
+  isTerminalFindChord,
   readColor,
   readToken,
   readTokens,
@@ -298,6 +299,53 @@ describe('buildTerminalOptions', () => {
     expect('cursorWidth' in options).toBe(false)
     expect('minimumContrastRatio' in options).toBe(false)
     expect('cursorStyle' in options).toBe(false)
+  })
+})
+
+// The find chord, decided at the same seam: which keystroke opens the widget is
+// a question of what a keystroke *means*, not something the island should hold.
+describe('isTerminalFindChord', () => {
+  function key(over: Partial<KeyboardEvent> = {}) {
+    return {
+      type: 'keydown',
+      key: 'f',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      ...over,
+    }
+  }
+
+  it('accepts Cmd+F and Ctrl+Shift+F, the mac and Linux spellings', () => {
+    expect(isTerminalFindChord(key({ metaKey: true }))).toBe(true)
+    expect(isTerminalFindChord(key({ ctrlKey: true, shiftKey: true }))).toBe(true)
+  })
+
+  // The regression this seam exists for: the chord is the widget's only entry
+  // point, and off the mac `metaKey` is Super — grabbed by the desktop before the
+  // page sees it. A meta-only gate therefore made find unreachable on Linux.
+  it('leaves a non-mac operator a chord that reaches the page at all', () => {
+    expect(isTerminalFindChord(key({ ctrlKey: true, shiftKey: true }))).toBe(true)
+  })
+
+  // Ctrl+F is readline's forward-char and stays the shell's. Shift is also what
+  // keeps the chord clear of xterm's control-character mapping, which only fires
+  // when Ctrl is held without Shift.
+  it('never takes plain Ctrl+F from the shell', () => {
+    expect(isTerminalFindChord(key({ ctrlKey: true }))).toBe(false)
+  })
+
+  it('ignores another key, a stray Alt, and mixed Cmd+Ctrl', () => {
+    expect(isTerminalFindChord(key({ metaKey: true, key: 'g' }))).toBe(false)
+    expect(isTerminalFindChord(key({ metaKey: true, altKey: true }))).toBe(false)
+    expect(isTerminalFindChord(key({ ctrlKey: true, shiftKey: true, altKey: true }))).toBe(false)
+    expect(isTerminalFindChord(key({ metaKey: true, ctrlKey: true }))).toBe(false)
+  })
+
+  it('matches a capital F, which is what Shift produces', () => {
+    expect(isTerminalFindChord(key({ ctrlKey: true, shiftKey: true, key: 'F' }))).toBe(true)
+    expect(isTerminalFindChord(key({ metaKey: true, key: 'F' }))).toBe(true)
   })
 })
 

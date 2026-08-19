@@ -602,6 +602,31 @@ export function terminalKeyAction(
   return 'default'
 }
 
+/**
+ * Whether a key event is the "open the find widget" chord.
+ *
+ * Two spellings, because no single one reaches every operator. Cmd+F is the mac
+ * binding and the one the widget's own re-select handler already answers to.
+ * Ctrl+Shift+F is what every Linux terminal uses, and off the mac it is the only
+ * one that arrives at all: there `metaKey` is Super, which the desktop grabs
+ * before the page ever sees the keystroke — so a meta-only gate left the widget
+ * with no way in, this chord being its single entry point.
+ *
+ * Plain Ctrl+F is deliberately not accepted: it is readline's forward-char and
+ * belongs to the shell. Shift is also what makes the chord ours to take at all —
+ * xterm maps a control character only when Ctrl is held *without* Shift, so
+ * Ctrl+Shift+F sends nothing to the PTY and nothing is stolen from the process.
+ *
+ * `type` is not read: the caller gates on keydown, and the matching keypress and
+ * keyup carry no chord of their own to confuse.
+ */
+export function isTerminalFindChord(ev: TerminalKeyEvent): boolean {
+  if (ev.key !== 'f' && ev.key !== 'F') return false
+  const cmdF = ev.metaKey && !ev.ctrlKey && !ev.altKey
+  const ctrlShiftF = ev.ctrlKey && ev.shiftKey && !ev.altKey && !ev.metaKey
+  return cmdF || ctrlShiftF
+}
+
 // setOpt assigns an xterm option only when the resolved value is defined, so an
 // unset pref never overwrites xterm's own default with `undefined`. Typed to the
 // option key so a wrong value type is a compile error.

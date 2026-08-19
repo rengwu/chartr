@@ -9,6 +9,7 @@
   import TerminalFind from './TerminalFind.svelte'
   import {
     buildTerminalOptions,
+    isTerminalFindChord,
     resolveRenderer,
     terminalKeyAction,
     TERMINAL_NEWLINE,
@@ -201,16 +202,11 @@
     // — the newline lands and the line submits anyway. The seam maps that trailing
     // keypress to `swallow` so it dies here too.
     xterm.attachCustomKeyEventHandler((ev) => {
-      // Cmd+F opens the find widget (ticket 07). Meta only — Ctrl+F is readline's
-      // forward-char in the shell, never ours to take — and returning false keeps
-      // the browser's own find bar from opening over the chrome.
-      if (
-        ev.type === 'keydown' &&
-        ev.metaKey &&
-        !ev.ctrlKey &&
-        !ev.altKey &&
-        (ev.key === 'f' || ev.key === 'F')
-      ) {
+      // Opening the find widget (ticket 07). Which chord that is belongs to the
+      // resolve seam with every other question of what a keystroke *means*, so the
+      // island only asks — returning false is the island's own half, keeping the
+      // browser's find bar from opening over the chrome.
+      if (ev.type === 'keydown' && isTerminalFindChord(ev)) {
         findOpen = true
         return false
       }
