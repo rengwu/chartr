@@ -31,11 +31,6 @@ package main
 static void wfSetAppIcon(void *window, const void *bytes, int len) {
   GtkWindow *gtk_window = GTK_WINDOW(window);
 
-  // X11 shells associate the window with chartr.desktop through WM_CLASS.
-  // The explicit value also avoids inheriting an AppImage filename as the
-  // class on runtimes which derive it from argv[0].
-  gtk_window_set_wmclass(gtk_window, "chartr", "chartr");
-
   // A GdkWindow exists after realization. On Wayland its application ID is
   // the only supported way for the compositor to associate this surface with
   // chartr.desktop and therefore with the icon bundled in the AppImage.
