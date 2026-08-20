@@ -230,10 +230,22 @@ jobs:
         shell: bash
         run: |
           set -e
+          # upload-artifact roots the artifact at the common ancestor of its
+          # path globs, so the download arrives split across appimage/ and
+          # packages/ rather than flat. v0.2.3 shipped with no Linux assets at
+          # all because of that: every `ls` below missed, every arch was
+          # skipped without complaint, and the upload then choked on a
+          # directory in its glob. Flatten first, and fail loudly on a miss.
+          find linux-desktop -mindepth 2 -type f -exec mv -t linux-desktop {} +
+          find linux-desktop -mindepth 1 -type d -empty -delete
           for arch in amd64 arm64; do
             for extension in AppImage deb rpm; do
               versioned=$(ls linux-desktop/chartr_*_linux_${arch}.${extension} 2>/dev/null | head -1) || true
-              [ -n "$versioned" ] || continue
+              if [ -z "$versioned" ]; then
+                echo "no chartr_*_linux_${arch}.${extension} among the built artifacts:" >&2
+                ls -R linux-desktop >&2
+                exit 1
+              fi
               alias="linux-desktop/chartr_linux_${arch}.${extension}"
               cp "$versioned" "$alias"
               ( cd linux-desktop && sha256sum "chartr_linux_${arch}.${extension}" > "chartr_linux_${arch}.${extension}.sha256" )

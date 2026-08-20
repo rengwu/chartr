@@ -67,7 +67,10 @@ docker run --rm \
 	test -x /usr/bin/chartr
 	test -f /usr/share/applications/io.github.rengwu.chartr.desktop
 	test -f /usr/share/metainfo/io.github.rengwu.chartr.metainfo.xml
-	test -f /usr/share/icons/hicolor/512x512/apps/chartr.png
+	# The icon bands ship as SVG masters (ADR 0016), not a single 512 PNG.
+	test -f /usr/share/icons/hicolor/16x16/apps/chartr.svg
+	test -f /usr/share/icons/hicolor/32x32/apps/chartr.svg
+	test -f /usr/share/icons/hicolor/scalable/apps/chartr.svg
 	chartr --version | grep -F "chartr shell ${EXPECTED_VERSION} "
 
 	export XDG_RUNTIME_DIR=/tmp/xdg

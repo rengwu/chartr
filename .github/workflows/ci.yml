@@ -45,6 +45,9 @@ jobs:
       - name: Static checks (go vet + svelte-check)
         run: make check
 
+      - name: Shell script syntax
+        run: bash -n scripts/*.sh
+
       - name: Go tests
         run: make test
 
