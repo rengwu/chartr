@@ -3,9 +3,10 @@
 package main
 
 /*
-#cgo pkg-config: glib-2.0
+#cgo pkg-config: gtk+-3.0
 
 #include <glib.h>
+#include <gdk/gdk.h>
 #include <stdlib.h>
 
 static void wfSetAppName(const char *name) {
@@ -14,6 +15,7 @@ static void wfSetAppName(const char *name) {
   // they match chartr.desktop regardless of the AppImage's filename.
   g_set_prgname(name);
   g_set_application_name(name);
+  gdk_set_program_class(name);
 }
 */
 import "C"

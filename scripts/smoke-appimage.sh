@@ -91,6 +91,7 @@ docker run --rm -v "$(realpath "$APPIMAGE")":/chartr.AppImage:ro "$IMAGE" bash -
 	WINDOW_ID=$(xdotool search --onlyvisible --name "chartr" 2>/dev/null | head -n 1)
 	[ -n "$WINDOW_ID" ] || fail "could not find the chartr window"
 	PROPS=$(xprop -id "$WINDOW_ID" WM_CLASS _NET_WM_ICON)
+	echo "$PROPS"
 	echo "$PROPS" | grep -q "WM_CLASS(STRING) = \"chartr\", \"chartr\"" || \
 		fail "the window WM_CLASS does not match chartr.desktop"
 	echo "$PROPS" | grep -q "_NET_WM_ICON(CARDINAL) =" || \
