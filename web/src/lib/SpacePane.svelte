@@ -38,6 +38,10 @@
     typeof navigator !== "undefined" &&
     /Mac/.test(navigator.platform ?? navigator.userAgent ?? "");
 
+  // Hidden ahead of release, not removed: flip back on once Prompts is ready
+  // to ship. Map is the pane's only tab while this is false.
+  const PROMPTS_TAB_ENABLED = false;
+
   // The stage for the selected space: a full-width title bar carrying the space's
   // identity (name plus folder/path actions) and the stage-level controls —
   // warnings and the star-map toggle, pinned to the far right — over the
@@ -776,14 +780,16 @@
           >
             Map
           </Button>
-          <Button
-            variant={paneTab === "prompts" ? "secondary" : "ghost"}
-            size="sm"
-            aria-pressed={paneTab === "prompts"}
-            onclick={() => (paneTab = "prompts")}
-          >
-            Prompts
-          </Button>
+          {#if PROMPTS_TAB_ENABLED}
+            <Button
+              variant={paneTab === "prompts" ? "secondary" : "ghost"}
+              size="sm"
+              aria-pressed={paneTab === "prompts"}
+              onclick={() => (paneTab = "prompts")}
+            >
+              Prompts
+            </Button>
+          {/if}
           <div class="ml-auto flex items-center gap-1">
             <Button
               variant="outline"
@@ -809,7 +815,14 @@
         </header>
 
         <div class="relative flex min-h-0 flex-1 flex-col">
-          {#if paneTab === "map"}
+          {#if PROMPTS_TAB_ENABLED && paneTab === "prompts"}
+            <PromptsCard
+              {prompts}
+              spaceId={space.id}
+              selected={space.prompts ?? []}
+              {activeTerm}
+            />
+          {:else}
             <MapCard
               {maps}
               spaceId={space.id}
@@ -821,13 +834,6 @@
               bind:showMaterial
               {onRegisterAgent}
               {onspawned}
-            />
-          {:else}
-            <PromptsCard
-              {prompts}
-              spaceId={space.id}
-              selected={space.prompts ?? []}
-              {activeTerm}
             />
           {/if}
         </div>
