@@ -28,9 +28,10 @@ Plan with an agent, then chart a map of your work. Drive the map to completion, 
 - **Live star-map** - Visualize your plan and track live progress on an interactive map.
 - **Ticket-ready sessions** - Spawn an agent from a ticket with the relevant context already loaded.
 - **At-a-glance status** - See which sessions are working, idle or waiting for input.
+- **Self-titling tabs** - Agent tabs name themselves from the agent's own session, so a row of tabs reads as your work.
 - **Folders as spaces** - Terminal sessions are grouped into spaces you can filter and reorder.
 - **Get notified** - Receive system notifications when a session needs you.
-- **Make it yours** - Configure terminal appearance and prompts, or hack the config to suit your workflow.
+- **Make it yours** - Configure terminal appearance, titles and notifications, or hack the config to suit your workflow.
 
 ## Installation
 
@@ -92,34 +93,46 @@ See
 
 ## Project status
 
-The current release is **`v0.2.3`**. Download it from the
+The current release is **`v0.2.4`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
-Highlights in `v0.2.3`:
+Highlights in `v0.2.4`:
 
-- **Bring your own skills** - Register local folders or Git repositories as
-  skill sources, then reorder, refresh or remove them from Settings.
-- **Skills in every space** - Enabled skills are mirrored into each space,
-  where sandboxed agents can read them. Fresh installs pre-register the
-  `chartr-skills` repository.
-- **Configurable Role bindings** - Let grill, prototype, research and implement resolve by
-  source order, or pin any role to a specific skill.
-- **Simpler agent launches** - Start a bare agent session from the new-shell
-  menu, while ticket sessions still receive their complete assembled context.
-- **VCS-neutral spaces** - Claims and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no longer runs git commands, including `git init` on new spaces.
-- **CHARTR.md** - Each space gets a `CHARTR.md` file that helps agents quickly understand
-  how to work with chartr.
-- **Native Linux packages** - Install the desktop app through apt on Ubuntu and
-  Debian, or dnf on Fedora; WebKitGTK stays under the system package manager.
-- **Refreshed cockpit** - Rename and delete spaces moved into a context menu. Reorderable spaces
-  with smoother drag-and-drop. Cleaner, sleeker look.
-- **Terminal continuity** - Switching sessions now preserves each terminal's
-  scroll position. Used to be super annoying here.
+- **Self-titling tabs** - An agent tab titles itself from the agent's own
+  session record: chartr shows the title the harness already wrote, and
+  otherwise asks that tab's own agent for one short title from the session's
+  first completed turn. Auto titles are searchable, and a long one scrolls in
+  place while you hover its row. Turn it off, or keep only the free half with
+  `native_only`, under Settings.
+- **Notifications from the session, not the screen** - A finished run is now
+  read from the agent's own transcript rather than its terminal screen, so
+  completion reports when the turn actually ended. Supported for claude, codex,
+  grok, kimi and pi; other harnesses keep the older screen-derived timing.
+- **A faster terminal** - `terminal.toml` picks the renderer and Linux defaults
+  to canvas. A renderer addon that fails now falls back to the DOM instead of
+  leaving a blank pane, and the glyph atlas rebuilds once fonts load.
+  Input-to-paint latency is sampled, so a regression shows up as a number.
+- **Find in the terminal** - `Ctrl+Shift+F` opens search in the active session.
+- **Sortable sessions** - Drag session rows to reorder them inside a space. The
+  status glyph moved into its own leading column and is present on every row.
+- **Free shells that outlive the agent** - A free session preloads the agent
+  inside the space's own shell, so `Ctrl+C` or `/exit` leaves you in a shell
+  with its scrollback intact instead of closing the tab.
+- **Linux desktop fixes** - The AppImage anchors its runtime root, restores the
+  host environment for the processes it spawns, stops leaking a pixbuf cache,
+  and ships the correct icon. A folder chooser that fails to start now says why
+  instead of reporting a dialog you never saw as cancelled.
+- **Better agent status** - Claude 2.1.234's half-circle spinner reads as
+  working again, and a kimi launch trusts its workspace up front.
+- **Sharper chrome** - Every icon sits on one token-driven scale, landed on the
+  16px pixel grid, and the sidebar wordmark steps aside under a native title
+  bar.
 
 Still to come:
 
 - **Windows desktop app** - Package and test the existing WebView2 shell.
 - **AUR release** - Distribute chartr through the Arch User Repository.
+- **Prompt presets** - A catalog of reusable prompts a space launches with.
 - **GitHub Issues integration** - Bring GitHub issues into the chartr workflow.
 - **Inbox mode** - Add an alternate view for tasks that need your attention.
 - **Built-in updater** - Detect new releases and provide a way to install them.
@@ -134,12 +147,16 @@ Still to come:
 
 Known bugs:
 
-- **Folder picker** - The folder picker does not currently work in the browser.
 - **Ticket details** - Markdown does not render cleanly, and clicking a ticket
   reference does not open that ticket.
-- **Notifications** - System notifications are sometimes unreliable. Most likely state-detection related.
-- **Claude status** - Claude reports as idle while waiting for input in a
-  multiple-choice selector.
+- **Folder picker** - The chooser is raised by the server, so it needs `zenity`
+  or `kdialog` on Linux and is unavailable on Windows. Where none is found,
+  register a space by typing its absolute path instead.
+- **Notification coverage** - Completion is only as good as the transcript
+  behind it. An agent chartr cannot read a transcript for still falls back to
+  screen-derived timing, which can fire late or not at all.
+- **Claude status** - Claude reads as blocked on its permission prompt, but
+  still reports idle while it waits on its other selectors.
 
 See the
 [GitHub releases](https://github.com/rengwu/chartr/releases) for published release
