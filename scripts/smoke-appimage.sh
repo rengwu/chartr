@@ -85,7 +85,7 @@ docker run --rm -v "$(realpath "$APPIMAGE")":/chartr.AppImage:ro "$IMAGE" bash -
 		fail "WebKit reported an internal error"
 	fi
 
-	# The X11 identity is the runtime half of desktop integration. GTK's resource
+	# The X11 identity is the runtime half of desktop integration. The GTK resource
 	# name is lowercase and its resource class is conventionally title-cased;
 	# StartupWMClass uses the latter so a real desktop resolves the bundled icon.
 	# Bare Xvfb has no window manager, so _NET_WM_ICON is diagnostic only here.
