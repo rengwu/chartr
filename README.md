@@ -28,9 +28,10 @@ Plan with an agent, then chart a map of your work. Drive the map to completion, 
 - **Live star-map** - Visualize your plan and track live progress on an interactive map.
 - **Ticket-ready sessions** - Spawn an agent from a ticket with the relevant context already loaded.
 - **At-a-glance status** - See which sessions are working, idle or waiting for input.
+- **Self-titling tabs** - Agent tabs name themselves from the agent's own session, so a row of tabs reads as your work.
 - **Folders as spaces** - Terminal sessions are grouped into spaces you can filter and reorder.
 - **Get notified** - Receive system notifications when a session needs you.
-- **Make it yours** - Configure terminal appearance and prompts, or hack the config to suit your workflow.
+- **Make it yours** - Configure terminal appearance, or hack the prompts to suit your workflow.
 
 ## Installation
 
@@ -92,34 +93,32 @@ See
 
 ## Project status
 
-The current release is **`v0.2.3`**. Download it from the
+The current release is **`v0.2.4`**. Download it from the
 [releases page](https://github.com/rengwu/chartr/releases).
 
-Highlights in `v0.2.3`:
+Highlights in `v0.2.4`:
 
-- **Bring your own skills** - Register local folders or Git repositories as
-  skill sources, then reorder, refresh or remove them from Settings.
-- **Skills in every space** - Enabled skills are mirrored into each space,
-  where sandboxed agents can read them. Fresh installs pre-register the
-  `chartr-skills` repository.
-- **Configurable Role bindings** - Let grill, prototype, research and implement resolve by
-  source order, or pin any role to a specific skill.
-- **Simpler agent launches** - Start a bare agent session from the new-shell
-  menu, while ticket sessions still receive their complete assembled context.
-- **VCS-neutral spaces** - Claims and releases are plain file edits recorded in `.plan/audit.jsonl`; chartr no longer runs git commands, including `git init` on new spaces.
-- **CHARTR.md** - Each space gets a `CHARTR.md` file that helps agents quickly understand
-  how to work with chartr.
-- **Native Linux packages** - Install the desktop app through apt on Ubuntu and
-  Debian, or dnf on Fedora; WebKitGTK stays under the system package manager.
-- **Refreshed cockpit** - Rename and delete spaces moved into a context menu. Reorderable spaces
-  with smoother drag-and-drop. Cleaner, sleeker look.
-- **Terminal continuity** - Switching sessions now preserves each terminal's
-  scroll position. Used to be super annoying here.
+- **Self-titling tabs** - Tabs use harness titles or generate one from the first
+  completed turn. Titles are searchable; configure them in Settings.
+- **Accurate notifications** - Completion is read from agent transcripts for
+  claude, codex, grok, kimi and pi.
+- **Faster terminal** - Select the renderer in `terminal.toml`; Linux defaults
+  to canvas, with DOM fallback and latency tracking.
+- **Find in the terminal** - `Ctrl+Shift+F` opens search in the active session.
+- **Sortable sessions** - Drag session rows to reorder them within a space.
+- **Persistent free shells** - `Ctrl+C` or `/exit` leaves the shell and
+  scrollback open.
+- **Linux desktop fixes** - Improved AppImage paths, environment handling,
+  resource cleanup, icons and folder chooser errors.
+- **Better agent status** - Fixed Claude's spinner and pre-trusted kimi
+  workspaces.
+- **Sharper chrome** - Standardized icon sizing and native title-bar layout.
 
 Still to come:
 
 - **Windows desktop app** - Package and test the existing WebView2 shell.
 - **AUR release** - Distribute chartr through the Arch User Repository.
+- **Prompt presets** - A catalog of reusable prompts a space launches with.
 - **GitHub Issues integration** - Bring GitHub issues into the chartr workflow.
 - **Inbox mode** - Add an alternate view for tasks that need your attention.
 - **Built-in updater** - Detect new releases and provide a way to install them.
@@ -134,12 +133,16 @@ Still to come:
 
 Known bugs:
 
-- **Folder picker** - The folder picker does not currently work in the browser.
 - **Ticket details** - Markdown does not render cleanly, and clicking a ticket
   reference does not open that ticket.
-- **Notifications** - System notifications are sometimes unreliable. Most likely state-detection related.
-- **Claude status** - Claude reports as idle while waiting for input in a
-  multiple-choice selector.
+- **Folder picker** - The chooser is raised by the server, so it needs `zenity`
+  or `kdialog` on Linux and is unavailable on Windows. Where none is found,
+  register a space by typing its absolute path instead.
+- **Notification coverage** - Completion is only as good as the transcript
+  behind it. An agent chartr cannot read a transcript for still falls back to
+  screen-derived timing, which can fire late or not at all.
+- **Claude status** - Claude reads as blocked on its permission prompt, but
+  still reports idle while it waits on its other selectors.
 
 See the
 [GitHub releases](https://github.com/rengwu/chartr/releases) for published release

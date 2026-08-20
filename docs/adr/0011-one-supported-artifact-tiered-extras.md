@@ -3,9 +3,9 @@
 **Amended again by [0019](0019-native-deb-and-rpm-packages.md): native deb and
 rpm Linux desktop packages now join the AppImage on the supported tier.** Both
 architectures and both formats build, install and render before a tag may
-publish. The best-effort tier now means the macOS and Windows loose shells (plus
-the unsigned macOS disk image); the pure-Go browser binary remains the portable
-baseline.
+publish. **Amended again for v0.2.4: the Apple Silicon disk image is also
+required and verified before publication.** The best-effort tier now means the
+Windows loose shell; the pure-Go browser binary remains the portable baseline.
 
 chartr ships as **one supported artifact**: the pure-Go binary that serves the browser frontend from its embedded Vite `dist/` (ADR 0010) — cross-compiled for macOS, Linux and Windows from a single CI job, because nothing in it requires cgo. Everything beyond it is a **best-effort tier** that may fail to build without blocking a release: the native webview shell per platform (cgo on macOS, cgo-free `go-webview2` on Windows), and native Windows itself (built and smoke-tested in CI, not driven daily; WSL2 is the documented sure path).
 
@@ -24,7 +24,7 @@ There is **no doctor command**. The environment diagnosis is the registry badge 
 
 ## Consequences
 
-- The release pipeline must treat *macOS and Windows* shell build failures as warnings, not errors. The Linux AppImage is a gate and its failure is an error.
+- The release pipeline gates on the Linux desktop packages and Apple Silicon disk image. The Windows shell remains best-effort.
 - Bundling WebKitGTK costs a ~78 MB artifact and one binary edit: WebKitGTK 2.52 removed the `WEBKIT_EXEC_PATH` override, so the helper-process directory compiled into the library is rewritten at package time (`scripts/relocate-webkit.py`) and pointed at the AppDir by `packaging/linux/AppRun`. That is a moving part which a WebKit upgrade can break, which is why the rewrite fails loudly when the expected path is absent rather than shipping a broken renderer.
 - The AppImage borrows libEGL, libGLESv2, libfontconfig and libwayland-client from the host — they are bound to the GPU driver, the operator's fonts and their compositor, so bundling them would substitute our build machine's idea of their hardware.
 - "Supported" claims in the README follow the tiers exactly; native Windows is labelled best-effort explicitly rather than implied.

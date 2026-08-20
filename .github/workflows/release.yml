@@ -5,11 +5,9 @@
 #     Linux and Windows from a single cgo-free job (the `release` job below); and
 #   * Linux desktop packages — AppImage, deb and rpm — built and smoke-tested on
 #     both published architectures before the release is created; and
-#   * best-effort native webview shells — and, on macOS, the `chartr.app` disk
-#     image packaged from that shell (ADR 0016) — built in a separate matrix job
-#     that is `continue-on-error` and depends on the release already being
-#     published, so a shell or packaging failure attaches nothing and CANNOT fail
-#     the supported release (the `shells` job below).
+#   * the Apple Silicon `chartr.app` disk image, built and verified on an arm64
+#     macOS runner before the draft release is created; and
+#   * a best-effort Windows native webview shell.
 #
 # Distribution is GitHub releases only: no `go install`, no Homebrew, no plugin
 # marketplace (ADR 0011).
@@ -121,9 +119,56 @@ jobs:
             build/packages/*.rpm.sha256
           if-no-files-found: error
 
+  # The Apple Silicon app is required. `macos-15` is an explicit arm64 runner;
+  # keep the runtime assertion too so a label change fails closed.
+  macos-dmg:
+    name: macOS Apple Silicon DMG
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Require an Apple Silicon runner
+        shell: bash
+        run: test "$(go env GOOS)/$(go env GOARCH)" = "darwin/arm64"
+
+      - name: Build embedded frontend
+        run: make web
+
+      - name: Build and verify the disk image
+        shell: bash
+        run: |
+          set -e
+          version=${GITHUB_REF_NAME#v}
+          make dmg WEBVIEW_VERSION="$version"
+          dmg="build/macapp/chartr_${version}_darwin_arm64.dmg"
+          app="build/macapp/chartr_${version}_darwin_arm64/chartr.app"
+          test -s "$dmg"
+          test "$(lipo -archs "$app/Contents/MacOS/chartr")" = "arm64"
+          codesign --verify --strict "$app"
+          hdiutil verify "$dmg"
+          cp "$dmg" build/macapp/chartr_darwin_arm64.dmg
+          ( cd build/macapp && shasum -a 256 chartr_darwin_arm64.dmg > chartr_darwin_arm64.dmg.sha256 )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-arm64
+          path: |
+            build/macapp/*.dmg
+            build/macapp/*.dmg.sha256
+          if-no-files-found: error
+
   release:
     name: supported binaries (cgo-free)
-    needs: [windows-smoke, linux-desktop]
+    needs: [windows-smoke, linux-desktop, macos-dmg]
     runs-on: ubuntu-latest
     env:
       CGO_ENABLED: "0"
@@ -203,13 +248,25 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" linux-desktop/* --clobber --repo "${{ github.repository }}"
         shell: bash
 
-  # Best-effort tier (ADR 0011): the native webview shells. This whole job is
-  # `continue-on-error`, and it `needs: release` — so the supported release is
-  # already published and checksummed before a single shell is attempted. A
-  # failing webview toolchain on any platform attaches nothing for that platform
-  # and leaves the release untouched; where a shell builds, it is uploaded as an
-  # extra asset. This is the structural guarantee that "a shell failure does not
-  # fail the release."
+  attach-macos-dmg:
+    name: attach required Apple Silicon DMG
+    needs: [release, macos-dmg]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg-arm64
+          path: macos-dmg
+
+      - name: Upload to the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" macos-dmg/* --clobber --repo "${{ github.repository }}"
+        shell: bash
+
+  # Best-effort tier (ADR 0011): the Windows native webview shell. This job is
+  # `continue-on-error`, and it starts once the draft exists. A failing Windows
+  # webview toolchain leaves the required release artifacts untouched.
   shells:
     name: best-effort webview shell (${{ matrix.os }})
     needs: release
@@ -218,8 +275,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            goos: darwin
           - os: windows-latest
             goos: windows
     runs-on: ${{ matrix.os }}
@@ -231,8 +286,8 @@ jobs:
           go-version: "1.26"
           cache: true
 
-      # macOS links the system WebKit; Windows uses cgo-free go-webview2 (the
-      # WebView2 runtime ships with the OS), so neither needs a toolchain step.
+      # Windows uses cgo-free go-webview2 (the WebView2 runtime ships with the
+      # OS), so it needs no native toolchain step.
       # Linux is deliberately absent from this matrix: its desktop app is the
       # AppImage, which is built and smoke-tested as a *gate* above rather than
       # attached best-effort here.
@@ -247,38 +302,9 @@ jobs:
         run: make webview GOOS=${{ matrix.goos }} WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
         shell: bash
 
-      # macOS only: the same shell, packaged as `chartr.app` inside a `.dmg`
-      # (ADR 0016). `make dmg` re-runs `make bundle` → `make webview` with the same
-      # stamp, so the app carries exactly the executable the step above built. This
-      # runs INSIDE this continue-on-error job, which already `needs` the published
-      # release — so packaging cannot fail or alter the supported release, and a
-      # packaging failure attaches nothing at all. That is the tiering guarantee;
-      # do not lift this into its own job or make it gating.
-      # The versioned image is the archival asset; the unversioned copy beside it
-      # is the one a link can name in advance. `/releases/latest/download/<asset>`
-      # needs an exact filename, so the README's download link is only a download
-      # link if some asset carries a name that does not move release to release.
-      # The architecture stays in that name — a second slice gets its own alias
-      # rather than overwriting this one — and the sidecar is regenerated so the
-      # checksum it lists matches the file the operator actually pulled.
-      - name: Package the macOS app bundle and disk image
-        if: matrix.goos == 'darwin' && steps.build_shell.outcome == 'success'
-        shell: bash
-        run: |
-          set -e
-          make dmg WEBVIEW_VERSION=${GITHUB_REF_NAME#v}
-          goarch=$(go env GOARCH)
-          versioned="build/macapp/chartr_${GITHUB_REF_NAME#v}_darwin_${goarch}.dmg"
-          alias="chartr_darwin_${goarch}.dmg"
-          cp "$versioned" "build/macapp/$alias"
-          ( cd build/macapp && shasum -a 256 "$alias" > "$alias.sha256" )
-          echo "aliased $versioned as $alias"
-
       # Upload only if the target actually produced a shell binary. `make webview`
       # exits 0 with no output when the host cannot build the shell (the tier is
-      # genuinely optional), so a missing artifact is not an error here. The macOS
-      # disk image and its per-asset sidecar ride along the same way; the supported
-      # `checksums.txt` is never touched.
+      # genuinely optional), so a missing artifact is not an error here.
       - name: Attach shell to the release
         if: steps.build_shell.outcome == 'success'
         env:
@@ -286,9 +312,22 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          assets=(build/shell/* build/macapp/*.dmg build/macapp/*.dmg.sha256)
+          assets=(build/shell/*)
           if [ ${#assets[@]} -eq 0 ]; then
             echo "no webview shell built for ${{ matrix.goos }} — best-effort tier, nothing to attach"
             exit 0
           fi
           gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
+
+  # The release remains private until both required desktop artifact uploads
+  # succeed. A failed upload cannot leave a public, incomplete release.
+  publish:
+    name: publish complete release
+    needs: [release, attach-linux-desktop, attach-macos-dmg]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false --repo "${{ github.repository }}"
+        shell: bash
