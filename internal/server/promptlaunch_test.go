@@ -29,6 +29,7 @@ func setSpacePrompts(t *testing.T, h *chartrtest.Chartr, spaceID string, ids ...
 // then writes, byte for byte, and the payload hash the claim records covers them
 // — no second audit path for the preset bytes.
 func TestSelectedPresetsRideTicketPreviewAndSpawn(t *testing.T) {
+	chartrtest.StubAgent(t, "claude")
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
@@ -72,6 +73,7 @@ func TestSelectedPresetsRideTicketPreviewAndSpawn(t *testing.T) {
 // written payload keeps the bytes its session was told, and the standing
 // `CHARTR.md` — which is not a launch payload — never moves either way.
 func TestChangingTheSelectionAffectsOnlyLaterCompositions(t *testing.T) {
+	chartrtest.StubAgent(t, "claude")
 	h := chartrtest.Start(t)
 	repo := chartrtest.NewSpaceRepo(t)
 	chartrtest.WriteMap(t, repo, "widget", mapBody)
