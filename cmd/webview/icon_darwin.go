@@ -42,9 +42,24 @@ static void wfSetAppIcon(const void *bytes, int len) {
 */
 import "C"
 
-import "unsafe"
+import (
+	"unsafe"
 
-func setAppIcon(png []byte) {
+	webview "github.com/webview/webview_go"
+)
+
+// appIconPath is the mac-specific master rather than the square icon-512.png
+// the PWA manifest points at, because setApplicationIconImage: does not mask
+// either: what the PNG says, the Dock draws. Apple's shape has to be in the
+// pixels, and it is only in this one. It is the same bytes `make bundle`
+// downscales into the bundle's .icns (ADR 0016), so the loose shell's Dock tile
+// and the bundle's Finder icon can never drift apart.
+const appIconPath = "icon-mac-1024.png"
+
+// setAppIcon dresses the Dock tile through NSApplication, which is process-wide
+// rather than per-window, so the webview handle goes unused here — Linux is the
+// platform that needs it (icon_linux.go).
+func setAppIcon(_ webview.WebView, png []byte) {
 	if len(png) == 0 {
 		return
 	}

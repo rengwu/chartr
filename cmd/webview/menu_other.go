@@ -1,4 +1,4 @@
-//go:build webview && !darwin
+//go:build webview && !darwin && !linux
 
 package main
 

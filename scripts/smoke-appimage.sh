@@ -32,7 +32,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       xvfb dbus dbus-x11 ca-certificates curl \
       libegl1 libgles2 libfontconfig1 libwayland-client0 \
-      imagemagick \
+      imagemagick xdotool x11-utils \
   && rm -rf /var/lib/apt/lists/* \
   && ! dpkg -l | grep -qiE "webkit|libgtk-3"
 DOCKERFILE
@@ -85,5 +85,16 @@ docker run --rm -v "$(realpath "$APPIMAGE")":/chartr.AppImage:ro "$IMAGE" bash -
 		fail "WebKit reported an internal error"
 	fi
 
-	echo "SMOKE PASSED: the cockpit rendered with no webkit or gtk installed on the host"
+	# The X11 identity and icon are the runtime half of desktop integration.
+	# Merely finding chartr.png inside the AppImage would not prove either was
+	# attached to the actual GTK window (the original regression).
+	WINDOW_ID=$(xdotool search --onlyvisible --name "chartr" 2>/dev/null | head -n 1)
+	[ -n "$WINDOW_ID" ] || fail "could not find the chartr window"
+	PROPS=$(xprop -id "$WINDOW_ID" WM_CLASS _NET_WM_ICON)
+	echo "$PROPS" | grep -q "WM_CLASS(STRING) = \"chartr\", \"chartr\"" || \
+		fail "the window WM_CLASS does not match chartr.desktop"
+	echo "$PROPS" | grep -q "_NET_WM_ICON(CARDINAL) =" || \
+		fail "the GTK window has no application icon"
+
+	echo "SMOKE PASSED: the cockpit rendered and its window carries the chartr icon"
 '
