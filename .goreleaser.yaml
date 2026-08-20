@@ -6,7 +6,8 @@
 # What is deliberately NOT here: the per-platform native webview shells. They
 # need cgo and native system libraries, so the release workflow builds them on
 # platform runners outside goreleaser. Linux turns its shell into gated
-# AppImage, deb and rpm artifacts; macOS and Windows keep the best-effort lane.
+# AppImage, deb and rpm artifacts; macOS produces a gated Apple Silicon DMG;
+# Windows keeps the best-effort lane.
 # This file stays cgo-free and remains the portable baseline's single builder.
 #
 # Distribution is GitHub releases only (ADR 0011): no `go install`, no Homebrew
@@ -101,7 +102,9 @@ release:
   github:
     owner: rengwu
     name: chartr
-  draft: false
+  # Required native artifacts are attached by separate platform jobs. Keep the
+  # release private until both the Linux packages and Apple Silicon DMG upload.
+  draft: true
   prerelease: auto
   name_template: "chartr {{ .Tag }}"
   footer: |
@@ -116,13 +119,12 @@ release:
     WebKitGTK; deb and rpm packages use the distribution's security-maintained
     WebKitGTK 4.1 runtime.
 
-    **Best-effort** — macOS and Windows native webview shells, attached above
-    only where the platform's cgo/webview toolchain built in CI. A missing shell
-    asset means its toolchain did not build this release; supported artifacts
-    are unaffected. See the README's support tiers.
+    **Required, macOS** — `chartr_<version>_darwin_arm64.dmg`: the native Apple
+    Silicon shell as a `chartr.app` to drag into `/Applications`, built and
+    verified before this release was published. It is ad-hoc signed and **not
+    notarized**, so macOS blocks the first launch; the disk image and README
+    carry the steps that unblock it.
 
-    **Best-effort, macOS** — `chartr_<version>_darwin_<arch>.dmg`: that same
-    shell as a `chartr.app` to drag into `/Applications`, for the one
-    architecture named in its filename (Apple Silicon), unsigned and **not
-    notarized** — so macOS blocks the first launch, and the disk image and the
-    README both carry the steps that unblock it.
+    **Best-effort, Windows** — the native webview shell, attached where its
+    toolchain builds in CI. The supported browser binary is unaffected if this
+    optional shell is missing.

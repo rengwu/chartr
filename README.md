@@ -31,7 +31,7 @@ Plan with an agent, then chart a map of your work. Drive the map to completion, 
 - **Self-titling tabs** - Agent tabs name themselves from the agent's own session, so a row of tabs reads as your work.
 - **Folders as spaces** - Terminal sessions are grouped into spaces you can filter and reorder.
 - **Get notified** - Receive system notifications when a session needs you.
-- **Make it yours** - Configure terminal appearance, titles and notifications, or hack the config to suit your workflow.
+- **Make it yours** - Configure terminal appearance, or hack the prompts to suit your workflow.
 
 ## Installation
 
@@ -98,35 +98,21 @@ The current release is **`v0.2.4`**. Download it from the
 
 Highlights in `v0.2.4`:
 
-- **Self-titling tabs** - An agent tab titles itself from the agent's own
-  session record: chartr shows the title the harness already wrote, and
-  otherwise asks that tab's own agent for one short title from the session's
-  first completed turn. Auto titles are searchable, and a long one scrolls in
-  place while you hover its row. Turn it off, or keep only the free half with
-  `native_only`, under Settings.
-- **Notifications from the session, not the screen** - A finished run is now
-  read from the agent's own transcript rather than its terminal screen, so
-  completion reports when the turn actually ended. Supported for claude, codex,
-  grok, kimi and pi; other harnesses keep the older screen-derived timing.
-- **A faster terminal** - `terminal.toml` picks the renderer and Linux defaults
-  to canvas. A renderer addon that fails now falls back to the DOM instead of
-  leaving a blank pane, and the glyph atlas rebuilds once fonts load.
-  Input-to-paint latency is sampled, so a regression shows up as a number.
+- **Self-titling tabs** - Tabs use harness titles or generate one from the first
+  completed turn. Titles are searchable; configure them in Settings.
+- **Accurate notifications** - Completion is read from agent transcripts for
+  claude, codex, grok, kimi and pi.
+- **Faster terminal** - Select the renderer in `terminal.toml`; Linux defaults
+  to canvas, with DOM fallback and latency tracking.
 - **Find in the terminal** - `Ctrl+Shift+F` opens search in the active session.
-- **Sortable sessions** - Drag session rows to reorder them inside a space. The
-  status glyph moved into its own leading column and is present on every row.
-- **Free shells that outlive the agent** - A free session preloads the agent
-  inside the space's own shell, so `Ctrl+C` or `/exit` leaves you in a shell
-  with its scrollback intact instead of closing the tab.
-- **Linux desktop fixes** - The AppImage anchors its runtime root, restores the
-  host environment for the processes it spawns, stops leaking a pixbuf cache,
-  and ships the correct icon. A folder chooser that fails to start now says why
-  instead of reporting a dialog you never saw as cancelled.
-- **Better agent status** - Claude 2.1.234's half-circle spinner reads as
-  working again, and a kimi launch trusts its workspace up front.
-- **Sharper chrome** - Every icon sits on one token-driven scale, landed on the
-  16px pixel grid, and the sidebar wordmark steps aside under a native title
-  bar.
+- **Sortable sessions** - Drag session rows to reorder them within a space.
+- **Persistent free shells** - `Ctrl+C` or `/exit` leaves the shell and
+  scrollback open.
+- **Linux desktop fixes** - Improved AppImage paths, environment handling,
+  resource cleanup, icons and folder chooser errors.
+- **Better agent status** - Fixed Claude's spinner and pre-trusted kimi
+  workspaces.
+- **Sharper chrome** - Standardized icon sizing and native title-bar layout.
 
 Still to come:
 

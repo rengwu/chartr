@@ -2,6 +2,11 @@
 
 Supersedes, in part, [0011](0011-one-supported-artifact-tiered-extras.md) and [0013](0013-webview-shell-architecture.md). Both records stand unedited; what each one said that is no longer true is named below.
 
+**Amended for v0.2.4:** the Apple Silicon disk image is now required. It builds
+on an explicit arm64 macOS runner, its architecture, signature and image are
+verified, and the GitHub release remains a draft until the DMG is attached.
+Statements below that call the DMG best-effort describe the earlier policy.
+
 - **0011** enumerated the best-effort tier as "the native webview shell per platform" and distribution as "best-effort shells attached as extra assets where they built". macOS now has a **second** best-effort artifact on that tier: a `chartr.app` bundle, delivered in a `.dmg` with a per-asset `.sha256` sidecar. Everything 0011 decided about the *tier* holds unchanged — one supported artifact, `continue-on-error`, GitHub releases only, `checksums.txt` never mutated by a best-effort asset. Only its enumeration was too narrow.
 - **0013** reasoned *from* the shell being a bare binary. Its "Because a bare binary is not a `.app` bundle, the shell seeds `CFBundleName` before `NSApplication` exists" and the runtime Dock-icon rationale beside it are now true of the **loose** shell only. Inside the bundle the property list carries the name and the icon, and both runtime calls become no-ops writing the same values. They are **kept**: the loose shell is still a shipped artifact and still has nothing else.
 
@@ -35,5 +40,7 @@ Supersedes, in part, [0011](0011-one-supported-artifact-tiered-extras.md) and [0
 - **The runtime app-name seeding and the runtime Dock icon are now dead weight inside the bundle** and load-bearing outside it. Both stay, both are commented as loose-shell-only, and deleting either would silently undress the loose shell.
 - **The mac icon masters are committed, and their generator is not part of the build.** `scripts/mac-app-icon.py` needs `rsvg-convert`, Pillow and numpy; the release runner needs none of them, because `make bundle` only ever downscales the committed PNGs with `sips`. The cost is that the PNGs and the SVG masters can be committed out of step — re-run the script whenever anything in `docs/assets/v4` changes.
 - **The loose shell still gets one drawing.** `setApplicationIconImage:` is handed the 1024 alone, so the loose shell's Dock tile at small sizes is AppKit's downscale rather than the 16 and 32 masters. Only the bundle gets true per-band art. The fix is a multi-representation `NSImage` built from all three PNGs; the bundle is what operators install, so it has not been worth the cgo.
-- **Nothing about the supported artifact changes.** The bundle is built by the existing `continue-on-error` shells job that already `needs` the published release, carries its own `.sha256`, and cannot fail or alter the supported release or its manifest. That structure is the tiering guarantee and it is not weakened for the new artifact.
+- **The Apple Silicon DMG is release-gating.** It carries its own `.sha256`, and
+  the release stays a draft until the verified image is attached. A missing or
+  invalid DMG therefore cannot become a public release.
 - **The bundle is not unit-tested, by design.** A property list, a signature and a disk image are properties of an artifact produced by platform tooling; a Go test asserting the list contains keys the same code just wrote would test nothing. They are verified by reading the built artifact back — the stance 0013 already took for the window and the menu. The bundled-launch *logic* is tested, in the shell's tag-free half, at `CGO_ENABLED=0`.
