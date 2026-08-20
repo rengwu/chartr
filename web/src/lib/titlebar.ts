@@ -1,16 +1,17 @@
 // The native shell's custom title bar (macOS only).
 //
 // The shell strips the window's native title bar and injects the height of the
-// strip it freed, in CSS pixels, before the document loads. That injection is
-// the whole contract: its presence means "you are in a window whose top strip is
-// yours to draw", and its value is the height that keeps the three native window
-// buttons — still AppKit's, drawn above the page — centred in our bar.
+// strip it freed, in native view points, before the document loads. Its presence
+// means "you are in a window whose top strip is yours to draw", and its value is
+// the height that keeps the three native window buttons — still AppKit's, drawn
+// above the page — centred in our bar once page zoom is accounted for.
 //
 // A plain browser tab and the non-macOS shells never see the global, so they get
 // zero and render no bar at all.
 declare global {
   interface Window {
     __chartrTitleBar?: number;
+    __chartrPageZoom?: number;
     __chartrSetTitleBarButtonRects?: (rects: TitleBarButtonRect[]) => unknown;
   }
 }
@@ -20,6 +21,60 @@ export interface TitleBarButtonRect {
   y: number;
   width: number;
   height: number;
+}
+
+export interface TitleBarLayout {
+  height: number;
+  trafficLightClearance: number;
+}
+
+const DEFAULT_PAGE_ZOOM = 1;
+const MIN_PAGE_ZOOM = 0.5;
+const MAX_PAGE_ZOOM = 3;
+const MIN_TITLE_BAR_HEIGHT = 40;
+const TRAFFIC_LIGHT_CLEARANCE = 80;
+const PAGE_ZOOM_EVENT = "chartr:page-zoom";
+
+// WebKit owns page zoom. The shell seeds this value before the application
+// starts and refreshes it before dispatching `chartr:page-zoom`; event detail is
+// deliberately not an authority so a stale or synthetic event cannot put the
+// DOM and WKWebView on different scales.
+export function nativePageZoom(): number {
+  const zoom = typeof window === "undefined" ? undefined : window.__chartrPageZoom;
+  return typeof zoom === "number" &&
+    Number.isFinite(zoom) &&
+    zoom >= MIN_PAGE_ZOOM &&
+    zoom <= MAX_PAGE_ZOOM
+    ? zoom
+    : DEFAULT_PAGE_ZOOM;
+}
+
+export function nativeTitleBarLayout(
+  nativeHeight: number,
+  zoom = nativePageZoom(),
+): TitleBarLayout {
+  const safeZoom =
+    Number.isFinite(zoom) && zoom >= MIN_PAGE_ZOOM && zoom <= MAX_PAGE_ZOOM
+      ? zoom
+      : DEFAULT_PAGE_ZOOM;
+  return {
+    height:
+      nativeHeight > 0
+        ? Math.max(MIN_TITLE_BAR_HEIGHT, nativeHeight / safeZoom)
+        : 0,
+    trafficLightClearance: TRAFFIC_LIGHT_CLEARANCE / safeZoom,
+  };
+}
+
+export function trackPageZoom(onZoom: (zoom: number) => void): () => void {
+  if (typeof window === "undefined") {
+    onZoom(DEFAULT_PAGE_ZOOM);
+    return () => {};
+  }
+  const update = () => onZoom(nativePageZoom());
+  update();
+  window.addEventListener(PAGE_ZOOM_EVENT, update);
+  return () => window.removeEventListener(PAGE_ZOOM_EVENT, update);
 }
 
 export function nativeTitleBarHeight(): number {
@@ -40,6 +95,11 @@ export function trackTitleBarButtons(height: number): () => void {
     if (frame !== 0) cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       frame = 0;
+      const zoom = nativePageZoom();
+      // DOM rectangles are expressed in pre-page-zoom CSS pixels while the
+      // native overlay hit-tests in AppKit points. Only the CSS-height slice
+      // that physically overlaps AppKit's strip is a passthrough region.
+      const cssHeight = height / zoom;
       const rects = Array.from(
         document.querySelectorAll<HTMLElement>(
           "button, a[href], input, select, textarea, [role='button']",
@@ -51,17 +111,17 @@ export function trackTitleBarButtons(height: number): () => void {
             return false;
           }
           const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && rect.top < height && rect.bottom > 0;
+          return rect.width > 0 && rect.height > 0 && rect.top < cssHeight && rect.bottom > 0;
         })
         .map((element): TitleBarButtonRect => {
           const rect = element.getBoundingClientRect();
           const top = Math.max(0, rect.top);
-          const bottom = Math.min(height, rect.bottom);
+          const bottom = Math.min(cssHeight, rect.bottom);
           return {
-            x: rect.left,
-            y: top,
-            width: rect.width,
-            height: bottom - top,
+            x: rect.left * zoom,
+            y: top * zoom,
+            width: rect.width * zoom,
+            height: (bottom - top) * zoom,
           };
         });
       void Promise.resolve(report(rects)).catch(() => {});
@@ -81,12 +141,14 @@ export function trackTitleBarButtons(height: number): () => void {
   const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
   resize?.observe(document.documentElement);
   window.addEventListener("resize", update);
+  window.addEventListener(PAGE_ZOOM_EVENT, update);
 
   return () => {
     if (frame !== 0) cancelAnimationFrame(frame);
     mutations.disconnect();
     resize?.disconnect();
     window.removeEventListener("resize", update);
+    window.removeEventListener(PAGE_ZOOM_EVENT, update);
     void Promise.resolve(report([])).catch(() => {});
   };
 }

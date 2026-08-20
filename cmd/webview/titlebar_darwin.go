@@ -86,9 +86,11 @@ static WFDragView *gWFDragView = nil;
 
 @end
 
-// Replace the drag view's passthrough list from CSS-pixel rectangles measured
-// from the viewport's top-left. NSView coordinates start at the bottom-left, so
-// each y value is flipped inside the title strip as it is copied.
+// Replace the drag view's passthrough list from AppKit-point rectangles measured
+// from the viewport's top-left. The page has already applied WKWebView.pageZoom
+// to its DOM rectangles before crossing the binding, so scaling them again here
+// would double the offset. NSView coordinates start at the bottom-left, so each
+// y value is flipped inside the title strip as it is copied.
 static void wfSetTitleBarButtonRects(double *values, int count) {
   WFDragView *drag = gWFDragView;
   if (drag == nil) {
@@ -202,16 +204,17 @@ import (
 	webview "github.com/webview/webview_go"
 )
 
-// installTitleBar removes the native title bar and reports the height, in CSS
-// pixels, of the strip the cockpit must fill in its place. Zero means the window
-// keeps its native title bar and the cockpit renders no bar of its own.
+// installTitleBar removes the native title bar and reports the height, in AppKit
+// points, of the strip the cockpit must fill in its place. The page converts that
+// fixed native height through the live page zoom. Zero means the window keeps its
+// native title bar and the cockpit renders no bar of its own.
 func installTitleBar(w webview.WebView) int {
 	h := float64(C.wfInstallTitleBar(unsafe.Pointer(w.Window())))
 	if h <= 0 {
 		return 0
 	}
-	// Points are CSS pixels on macOS whatever the backing scale, so this rounds
-	// rather than converts.
+	// The JS seam takes an integral native height and owns page-zoom conversion,
+	// so this rounds rather than changing coordinate systems here.
 	return int(math.Round(h))
 }
 

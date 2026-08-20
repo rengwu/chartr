@@ -4,14 +4,143 @@ package main
 
 /*
 #cgo CFLAGS: -x objective-c -Wno-deprecated-declarations
-#cgo LDFLAGS: -framework Cocoa
+#cgo LDFLAGS: -framework Cocoa -framework WebKit
 
 #import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
+#include <math.h>
 
-// wfItem appends one menu item. Every action here is a standard responder-chain
-// selector with a target of nil, which is why the menu needs no callback into
-// Go: NSApplication handles the app items, and WKWebView — the first responder
-// inside the window — handles reload: and the edit items itself.
+static NSString *const WFPageZoomDefaultsKey = @"chartr.pageZoom.v1";
+static const CGFloat WFPageZoomDefault = 1.0;
+static const CGFloat WFPageZoomMinimum = 0.5;
+static const CGFloat WFPageZoomMaximum = 3.0;
+static const CGFloat WFPageZoomStep = 1.2;
+
+// WFPageZoomController owns the native View-menu actions and is also the
+// WKWebView's navigation delegate. Keeping those roles together makes one zoom
+// value authoritative across menu validation, reloads and page notifications.
+// WKWebView keeps its navigation delegate weakly, so the process-global pointer
+// below deliberately retains this controller for the window's lifetime.
+@interface WFPageZoomController : NSObject <NSMenuItemValidation, WKNavigationDelegate>
+@property(nonatomic, assign) WKWebView *webView;
+@property(nonatomic) CGFloat desiredZoom;
+- (instancetype)initWithWebView:(WKWebView *)webView;
+- (void)zoomIn:(id)sender;
+- (void)zoomOut:(id)sender;
+- (void)actualSize:(id)sender;
+@end
+
+static WFPageZoomController *gWFPageZoomController = nil;
+
+static BOOL wfReadPageZoom(id value, CGFloat *result) {
+  if (![value isKindOfClass:[NSNumber class]]) {
+    return NO;
+  }
+  double zoom = [(NSNumber *)value doubleValue];
+  if (!isfinite(zoom) || zoom < WFPageZoomMinimum ||
+      zoom > WFPageZoomMaximum) {
+    return NO;
+  }
+  *result = (CGFloat)zoom;
+  return YES;
+}
+
+@implementation WFPageZoomController
+
+- (instancetype)initWithWebView:(WKWebView *)webView {
+  self = [super init];
+  if (self == nil) {
+    return nil;
+  }
+
+  self.webView = webView;
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  id stored = [defaults objectForKey:WFPageZoomDefaultsKey];
+  CGFloat zoom = WFPageZoomDefault;
+  if (stored != nil && !wfReadPageZoom(stored, &zoom)) {
+    // A corrupt or obsolete preference must not make the cockpit unreadable.
+    // Removing it also prevents every subsequent launch repeating the repair.
+    [defaults removeObjectForKey:WFPageZoomDefaultsKey];
+    zoom = WFPageZoomDefault;
+  }
+  self.desiredZoom = zoom;
+  [self.webView setPageZoom:zoom];
+  return self;
+}
+
+- (void)publishPageZoom {
+  if (self.webView == nil) {
+    return;
+  }
+  NSString *script = [NSString stringWithFormat:
+      @"window.__chartrPageZoom=%.17g;window.dispatchEvent(new CustomEvent('chartr:page-zoom',{detail:%.17g}));",
+      (double)self.desiredZoom, (double)self.desiredZoom];
+  [self.webView evaluateJavaScript:script completionHandler:nil];
+}
+
+- (void)applyPageZoom:(CGFloat)zoom persist:(BOOL)persist publish:(BOOL)publish {
+  if (!isfinite((double)zoom)) {
+    zoom = WFPageZoomDefault;
+  }
+  zoom = MIN(WFPageZoomMaximum, MAX(WFPageZoomMinimum, zoom));
+  self.desiredZoom = zoom;
+  [self.webView setPageZoom:zoom];
+  if (persist) {
+    [[NSUserDefaults standardUserDefaults] setDouble:zoom
+                                             forKey:WFPageZoomDefaultsKey];
+  }
+  if (publish) {
+    [self publishPageZoom];
+  }
+}
+
+- (void)zoomIn:(id)sender {
+  [self applyPageZoom:self.desiredZoom * WFPageZoomStep
+              persist:YES
+              publish:YES];
+}
+
+- (void)zoomOut:(id)sender {
+  [self applyPageZoom:self.desiredZoom / WFPageZoomStep
+              persist:YES
+              publish:YES];
+}
+
+- (void)actualSize:(id)sender {
+  [self applyPageZoom:WFPageZoomDefault persist:YES publish:YES];
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+  if (self.webView == nil) {
+    return NO;
+  }
+  SEL action = [item action];
+  if (action == @selector(zoomIn:)) {
+    return self.desiredZoom < WFPageZoomMaximum;
+  }
+  if (action == @selector(zoomOut:)) {
+    return self.desiredZoom > WFPageZoomMinimum;
+  }
+  if (action == @selector(actualSize:)) {
+    return self.desiredZoom != WFPageZoomDefault;
+  }
+  return YES;
+}
+
+- (void)webView:(WKWebView *)webView
+    didFinishNavigation:(WKNavigation *)navigation {
+  // WebKit normally carries pageZoom through a reload. Re-applying it here also
+  // covers a future navigation that replaces the page, then tells that document
+  // the authoritative native value after its own listeners have been installed.
+  self.webView = webView;
+  [self applyPageZoom:self.desiredZoom persist:NO publish:YES];
+}
+
+@end
+
+// wfItem appends one menu item. Most callers leave the target nil so AppKit or
+// WKWebView handles its standard responder-chain selector; the zoom items set
+// their retained native controller as an explicit target after creation.
 static NSMenuItem *wfItem(NSMenu *menu, NSString *title, SEL action, NSString *key, NSUInteger mask) {
   NSMenuItem *item = [menu addItemWithTitle:title action:action keyEquivalent:key];
   [item setKeyEquivalentModifierMask:mask];
@@ -26,11 +155,25 @@ static NSMenu *wfSubmenu(NSMenu *bar, NSString *title) {
 }
 
 // wfInstallMenu gives the bare webview window back the OS affordances a browser
-// tab had for free: Quit, Reload, and the edit items. Deliberately minimal —
-// ADR 0013 declines a dock badge and a URL scheme, and this menu is the whole
-// of the shell's native integration beyond the window itself.
-static void wfInstallMenu(const char *cname) {
+// tab had for free: Quit, whole-page zoom, Reload, and the edit items. The return
+// value is the restored zoom factor so Go can seed the same value into the page
+// at document start, before the navigation delegate publishes its ready event.
+static double wfInstallMenu(const char *cname, void *ptr) {
   NSString *name = [NSString stringWithUTF8String:cname];
+  NSWindow *win = (NSWindow *)ptr;
+  WKWebView *webView = nil;
+  if ([[win contentView] isKindOfClass:[WKWebView class]]) {
+    webView = (WKWebView *)[win contentView];
+  }
+
+  if (gWFPageZoomController != nil) {
+    [[gWFPageZoomController webView] setNavigationDelegate:nil];
+    [gWFPageZoomController release];
+  }
+  gWFPageZoomController =
+      [[WFPageZoomController alloc] initWithWebView:webView];
+  [webView setNavigationDelegate:gWFPageZoomController];
+
   NSApplication *app = [NSApplication sharedApplication];
   NSMenu *bar = [[NSMenu alloc] init];
 
@@ -58,9 +201,21 @@ static void wfInstallMenu(const char *cname) {
   wfItem(editMenu, @"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand);
 
   NSMenu *viewMenu = wfSubmenu(bar, @"View");
+  NSMenuItem *zoomIn = wfItem(viewMenu, @"Zoom In", @selector(zoomIn:), @"+",
+                              NSEventModifierFlagCommand);
+  [zoomIn setTarget:gWFPageZoomController];
+  NSMenuItem *zoomOut = wfItem(viewMenu, @"Zoom Out", @selector(zoomOut:), @"-",
+                               NSEventModifierFlagCommand);
+  [zoomOut setTarget:gWFPageZoomController];
+  NSMenuItem *actualSize = wfItem(viewMenu, @"Actual Size",
+                                  @selector(actualSize:), @"0",
+                                  NSEventModifierFlagCommand);
+  [actualSize setTarget:gWFPageZoomController];
+  [viewMenu addItem:[NSMenuItem separatorItem]];
   wfItem(viewMenu, @"Reload", @selector(reload:), @"r", NSEventModifierFlagCommand);
 
   [app setMainMenu:bar];
+  return (double)[gWFPageZoomController desiredZoom];
 }
 
 // wfSetAppName names the process. Launched loose the shell is a bare binary with
@@ -110,10 +265,10 @@ func setAppName(name string) {
 	C.wfSetAppName(cname)
 }
 
-func installNativeMenu(name string) {
+func installNativeMenu(name string, window unsafe.Pointer) float64 {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
-	C.wfInstallMenu(cname)
+	return float64(C.wfInstallMenu(cname, window))
 }
 
 // raiseInstance brings the already-running shell forward. Reporting false is
