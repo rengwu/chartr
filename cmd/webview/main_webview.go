@@ -138,17 +138,23 @@ func run(dataDir string) error {
 	}()
 
 	w.SetTitle(appName)
-	// The page otherwise cannot distinguish the small native WebKit shell from a
-	// browser tab. Terminal renderer selection uses this marker to avoid WebGL's
-	// delayed frame presentation in the Linux WebKitGTK/X11 path.
-	w.Init(fmt.Sprintf("window.__chartrNativePlatform=%q;", runtime.GOOS))
 	w.SetSize(1280, 840, webview.HintNone)
 	// Below this the cockpit's own panes (sidebar, terminal, docked star-map)
 	// can no longer all keep their individual min-widths — the layout starts
 	// squeezing rather than the window scrolling, so the platform enforces the
 	// floor instead of the CSS.
 	w.SetSize(800, 500, webview.HintMin)
-	installNativeMenu(appName)
+	initialPageZoom := installNativeMenu(appName, w.Window())
+	// The page otherwise cannot distinguish the small native shell from a
+	// browser tab. Terminal renderer selection uses the platform marker to avoid
+	// WebGL's delayed frame presentation in the Linux WebKitGTK/X11 path. macOS
+	// also receives the restored native page zoom at document start, before any
+	// title-bar geometry is measured; the navigation delegate publishes the same
+	// value again after the page finishes loading.
+	w.Init(fmt.Sprintf(
+		"window.__chartrNativePlatform=%q;window.__chartrPageZoom=%.17g;",
+		runtime.GOOS, initialPageZoom,
+	))
 	// After the window, because the NSApplication it dresses is created with it,
 	// and because the Linux path needs the GtkWindow that newWindow() just made.
 	applyAppIcon(w)

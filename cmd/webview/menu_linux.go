@@ -30,6 +30,6 @@ func setAppName(name string) {
 	C.wfSetAppName(cname)
 }
 
-func installNativeMenu(string) {}
+func installNativeMenu(string, unsafe.Pointer) float64 { return 1 }
 
 func raiseInstance(int) bool { return false }

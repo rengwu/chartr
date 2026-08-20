@@ -37,7 +37,10 @@
   import { forgetSpace } from "./lib/mapstate";
   import {
     hasNativeTitleBar,
+    nativePageZoom,
     nativeTitleBarHeight,
+    nativeTitleBarLayout,
+    trackPageZoom,
     trackTitleBarButtons,
   } from "./lib/titlebar";
   import { visibleSpaces } from "./lib/spacevisibility";
@@ -60,6 +63,13 @@
   // not state — and zero everywhere else, which is what keeps this out of a
   // browser tab entirely.
   const titleBarH = nativeTitleBarHeight();
+
+  // WKWebView page zoom is native state, mirrored into the page before boot and
+  // after every menu command. Keeping this one reactive copy compensates the
+  // custom top strip for that scaling (subject to the cockpit's 40px tier
+  // minimum) and keeps the real traffic-light buttons' clearance constant.
+  let pageZoom = $state(nativePageZoom());
+  const titleBarLayout = $derived(nativeTitleBarLayout(titleBarH, pageZoom));
 
   // The other half of that same question: a window whose title bar stayed the
   // OS's (the Linux and Windows shells). There the window already carries the
@@ -99,6 +109,7 @@
 
   onMount(() => {
     control.connect();
+    const stopTrackingPageZoom = trackPageZoom((zoom) => (pageZoom = zoom));
     const stopTrackingTitleBarButtons = trackTitleBarButtons(titleBarH);
     // A deep link names its space (#s=<id>&…); select it up front so the linked
     // star seats as soon as the space arrives over the socket (ticket 07). The
@@ -110,6 +121,7 @@
     return () => {
       window.removeEventListener("hashchange", onHash);
       stopTrackingTitleBarButtons();
+      stopTrackingPageZoom();
       control.close();
     };
   });
@@ -632,7 +644,7 @@
   <div class="flex h-full min-h-0 flex-col">
     <div
       class="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)]"
-      style={titleBarH ? `--bar-h: ${Math.max(titleBarH, 40)}px` : undefined}
+      style={titleBarH ? `--bar-h: ${titleBarLayout.height}px` : undefined}
     >
       <aside
         class="col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
@@ -649,7 +661,12 @@
            tall (pt-2 + h-8 = --bar-h), so the sidebar's top edge still lands on
            the space header's. -->
         {#if !nativeTitleBar}
-          <div class="brand-bar justify-start gap-2" class:pl-20={titleBarH > 0}>
+          <div
+            class="brand-bar justify-start gap-2"
+            style={titleBarH
+              ? `padding-left: ${titleBarLayout.trafficLightClearance}px`
+              : undefined}
+          >
             <img
               src="/brandmark.svg"
               alt=""

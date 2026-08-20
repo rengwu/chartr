@@ -2,7 +2,10 @@
 
 package main
 
-import "runtime"
+import (
+	"runtime"
+	"unsafe"
+)
 
 // missingRuntime names what a failed window creation means on this platform.
 // The whole point of naming it is that a missing dependency is never papered
@@ -20,7 +23,7 @@ func setAppName(string) {}
 // bare window losing the browser's menu bar; GTK and Win32 windows keep their
 // own window controls, and inventing a menu bar for them is not this ticket's
 // work (ADR 0013).
-func installNativeMenu(string) {}
+func installNativeMenu(string, unsafe.Pointer) float64 { return 1 }
 
 // raiseInstance always reports false here: raising another process's window is
 // exactly the "flaky" case the spec names, so these platforms take the
