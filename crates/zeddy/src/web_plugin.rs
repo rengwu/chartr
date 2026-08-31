@@ -13,8 +13,9 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use futures::{StreamExt as _, channel::mpsc};
 use gpui::{
-    AnyView, App, AppContext as _, Bounds, Context, Element, ElementId, GlobalElementId,
+    AnyView, App, AppContext as _, Bounds, Context, Element, ElementId, EntityId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, ParentElement as _, Pixels, Render, Size, Style,
     Styled as _, Window, div,
 };
@@ -23,6 +24,8 @@ use zeddy_plugin::manifest::Permissions;
 use zeddy_plugin_host::FileBroker;
 
 use crate::session::SessionAccess;
+
+pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use wry::{
@@ -36,10 +39,12 @@ pub fn view(
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
+    on_focus: Option<FocusHandler>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    cx.new(|cx| WebPluginView::new(entry, broker, permissions, session, window, cx)).into()
+    cx.new(|cx| WebPluginView::new(entry, broker, permissions, session, on_focus, window, cx))
+        .into()
 }
 
 struct WebPluginView {
@@ -47,6 +52,8 @@ struct WebPluginView {
     webview: Option<Rc<wry::WebView>>,
     #[cfg(target_os = "linux")]
     _gtk_pump: gpui::Task<()>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    _focus_task: gpui::Task<()>,
     error: Option<String>,
 }
 
@@ -56,17 +63,27 @@ impl WebPluginView {
         broker: FileBroker,
         permissions: Permissions,
         session: Option<SessionAccess>,
+        on_focus: Option<FocusHandler>,
         window: &Window,
         _cx: &mut Context<Self>,
     ) -> Self {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (entry, broker, permissions, session, window, _cx);
+            let _ = (entry, broker, permissions, session, on_focus, window, _cx);
             return Self { error: Some("Web plugins are supported on macOS and Linux.".into()) };
         }
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
+            let (focus_tx, mut focus_rx) = mpsc::unbounded();
+            let entity_id = _cx.entity_id();
+            let focus_task = _cx.spawn(async move |_, cx| {
+                while focus_rx.next().await.is_some() {
+                    if let Some(on_focus) = &on_focus {
+                        let _ = cx.update(|cx| on_focus(entity_id, cx));
+                    }
+                }
+            });
             #[cfg(target_os = "linux")]
             let gtk_pump = Self::pump_gtk(_cx);
             #[cfg(target_os = "linux")]
@@ -74,6 +91,7 @@ impl WebPluginView {
                 return Self {
                     webview: None,
                     _gtk_pump: gtk_pump,
+                    _focus_task: focus_task,
                     error: Some(format!("Could not initialize GTK: {error}")),
                 };
             }
@@ -83,6 +101,7 @@ impl WebPluginView {
                     webview: None,
                     #[cfg(target_os = "linux")]
                     _gtk_pump: gtk_pump,
+                    _focus_task: focus_task,
                     error: Some(format!("Plugin entry is unavailable: {}", entry.display())),
                 };
             };
@@ -97,6 +116,10 @@ impl WebPluginView {
                 })
                 .with_initialization_script(BRIDGE)
                 .with_ipc_handler(move |request| {
+                    if is_focus_request(request.body()) {
+                        let _ = focus_tx.unbounded_send(());
+                        return;
+                    }
                     let response =
                         handle_request(&broker, &permissions, session.as_ref(), request.body());
                     if let Some(webview) = responder.borrow().as_ref().and_then(Weak::upgrade)
@@ -123,6 +146,7 @@ impl WebPluginView {
                         webview: None,
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
+                        _focus_task: focus_task,
                         error: Some(format!("Could not create the plugin webview: {error}")),
                     };
                 }
@@ -132,6 +156,7 @@ impl WebPluginView {
                 webview: Some(webview),
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
+                _focus_task: focus_task,
                 error: None,
             }
         }
@@ -236,9 +261,19 @@ const BRIDGE: &str = r#"
     pending.set(id, [resolve, reject]);
     window.ipc.postMessage(JSON.stringify({ id, action, ...options }));
   });
+  window.addEventListener("pointerdown", () => {
+    window.ipc.postMessage(JSON.stringify({ id: 0, action: "chartr.focus" }));
+  }, true);
   Object.defineProperty(window, "chartr", { value: Object.freeze({ invoke }) });
 })();
 "#;
+
+fn is_focus_request(encoded: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(encoded)
+        .ok()
+        .and_then(|request| request.get("action")?.as_str().map(str::to_owned))
+        .is_some_and(|action| action == "chartr.focus")
+}
 
 #[derive(Deserialize)]
 struct HostRequest {
@@ -404,6 +439,7 @@ impl IntoElement for NativeWebViewElement {
 struct VisibleWebView {
     webview: Weak<wry::WebView>,
     frame: Option<NativeFrame>,
+    visible: bool,
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -473,7 +509,7 @@ impl Element for NativeWebViewElement {
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> Self::PrepaintState {
         let id = id.expect("native webview elements always have an id");
         let frame = NativeFrame::snapped(bounds);
@@ -482,13 +518,18 @@ impl Element for NativeWebViewElement {
             let mut lease = lease.unwrap_or_else(|| VisibleWebView {
                 webview: Rc::downgrade(&self.webview),
                 frame: None,
+                visible: false,
             });
             if lease.frame != Some(frame) {
                 let _ = self.webview.set_bounds(frame.wry());
                 lease.frame = Some(frame);
             }
-            if is_new {
-                let _ = self.webview.set_visible(true);
+            let visible = !cx.has_active_drag();
+            if lease.visible != visible {
+                let _ = self.webview.set_visible(visible);
+                lease.visible = visible;
+            }
+            if is_new && visible {
                 let _ = self.webview.focus_parent();
             }
             ((), lease)
@@ -517,6 +558,13 @@ mod tests {
         let mut value = serde_json::json!({ "id": id, "action": action });
         value.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
         value.to_string()
+    }
+
+    #[test]
+    fn internal_focus_messages_do_not_enter_the_plugin_host_action_api() {
+        assert!(is_focus_request(r#"{"id":0,"action":"chartr.focus"}"#));
+        assert!(!is_focus_request(r#"{"id":1,"action":"project.read"}"#));
+        assert!(!is_focus_request("not json"));
     }
 
     #[test]

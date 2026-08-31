@@ -221,6 +221,7 @@ impl Space {
         for item in invalid {
             let _ = self.layout.remove_item(item);
         }
+        let _ = self.layout.prune_empty_panes();
     }
 
     pub fn persisted(&self) -> PersistedSpace {
@@ -279,8 +280,17 @@ impl Space {
         &mut self,
         pane: crate::workspace::PaneId,
         direction: Option<SplitDirection>,
-    ) {
-        self.drag_target = Some((pane, direction));
+    ) -> bool {
+        let target = Some((pane, direction));
+        if self.drag_target == target {
+            return false;
+        }
+        self.drag_target = target;
+        true
+    }
+
+    pub fn clear_drag_target(&mut self) -> bool {
+        self.drag_target.take().is_some()
     }
 
     pub fn resize_divider(&mut self, axis_path: &[usize], divider: usize, fraction: f32) {
@@ -345,16 +355,22 @@ impl Space {
     /// active item into it. Items remain unique; terminals are never cloned.
     pub fn split_and_move(&mut self, direction: SplitDirection) {
         let source = self.layout.active_pane();
-        let active = self.layout.pane(source).and_then(|pane| pane.active());
-        match self.layout.split_pane(source, direction) {
-            Ok(destination) => {
-                if let Some(active) = active
-                    && let Err(error) = self.layout.move_item(active, destination, None)
-                {
-                    self.problem = Some(error.to_string());
-                }
-            }
-            Err(error) => self.problem = Some(error.to_string()),
+        self.split_and_move_in(source, direction);
+    }
+
+    pub fn split_and_move_in(
+        &mut self,
+        source: crate::workspace::PaneId,
+        direction: SplitDirection,
+    ) {
+        if let Err(error) = self.layout.split_and_move(source, direction) {
+            self.problem = Some(error.to_string());
+        }
+    }
+
+    pub fn remove_empty_pane(&mut self, pane: crate::workspace::PaneId) {
+        if let Err(error) = self.layout.remove_empty_pane(pane) {
+            self.problem = Some(error.to_string());
         }
     }
 
@@ -393,13 +409,14 @@ impl Space {
         self.layout
             .panes()
             .flat_map(|pane| {
-                pane.items().iter().filter_map(move |id| {
+                pane.items().iter().enumerate().filter_map(move |(index, id)| {
                     let item = self.items.get(id)?;
                     Some(Entry {
                         space,
                         space_key: self.key(),
                         key: *id,
                         pane: pane.id,
+                        index,
                         title: item.title(),
                         agent: item.agent(),
                         ended: item.ended(),
@@ -420,13 +437,15 @@ impl Space {
                 entries: pane
                     .items()
                     .iter()
-                    .filter_map(|id| {
+                    .enumerate()
+                    .filter_map(|(index, id)| {
                         let item = self.items.get(id)?;
                         Some(Entry {
                             space,
                             space_key: self.key(),
                             key: *id,
                             pane: pane.id,
+                            index,
                             title: item.title(),
                             agent: item.agent(),
                             ended: item.ended(),
@@ -482,12 +501,10 @@ impl Space {
                 self.fit_items();
             }
             Action::Close { item, .. } => self.close_item(item, cx),
-            Action::MoveToPane { item, source, target, .. } => {
-                self.drop_item(item, source, target, None)
-            }
             Action::New
             | Action::NewInSpace { .. }
-            | Action::ClosePane { .. }
+            | Action::MoveItem { .. }
+            | Action::CloseGroup { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }
@@ -549,6 +566,15 @@ impl Space {
 
     pub fn activate_plugin(&mut self, contribution: &zeddy_plugin::PaneKey) -> bool {
         let Some(item) = self.plugin_item(contribution) else {
+            return false;
+        };
+        self.layout.activate_item(item).is_ok()
+    }
+
+    pub fn activate_plugin_view(&mut self, view: gpui::EntityId) -> bool {
+        let Some(item) = self.items.iter().find_map(|(item, candidate)| {
+            candidate.as_plugin().filter(|plugin| plugin.view.entity_id() == view).map(|_| *item)
+        }) else {
             return false;
         };
         self.layout.activate_item(item).is_ok()

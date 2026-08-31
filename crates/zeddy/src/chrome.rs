@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::workspace::{ItemId, PaneId};
 use gpui::EntityId;
-use ui::prelude::*;
+use ui::{Tab, prelude::*};
 
 /// One row in the sidebar, or one tab in the strip.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +21,7 @@ pub struct Entry {
     pub space_key: String,
     pub key: ItemId,
     pub pane: PaneId,
+    pub index: usize,
     pub title: String,
     /// The agent herdr believes is running, when it knows one. In sidebar mode
     /// this is a second line; in tabs mode there is no room and it is dropped.
@@ -36,6 +37,7 @@ pub struct Entry {
 pub struct SpaceEntries {
     pub id: EntityId,
     pub name: String,
+    pub active: bool,
     pub removable: bool,
     pub available: bool,
     pub panes: Vec<PaneEntries>,
@@ -51,14 +53,37 @@ pub struct PaneEntries {
 /// What the user did to the chrome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    Select { space: Option<EntityId>, item: ItemId },
-    Close { space: Option<EntityId>, item: ItemId },
-    ClosePane { space: EntityId, pane: PaneId },
-    CloseSpace { space: EntityId },
-    RenameSpace { space: EntityId },
-    LocateSpace { space: EntityId },
-    NewInSpace { space: EntityId },
-    MoveToPane { space: EntityId, item: ItemId, source: PaneId, target: PaneId },
+    Select {
+        space: Option<EntityId>,
+        item: ItemId,
+    },
+    Close {
+        space: Option<EntityId>,
+        item: ItemId,
+    },
+    MoveItem {
+        space: EntityId,
+        item: ItemId,
+        source: PaneId,
+        source_index: usize,
+        target: PaneId,
+        target_index: usize,
+    },
+    CloseGroup {
+        space: EntityId,
+    },
+    CloseSpace {
+        space: EntityId,
+    },
+    RenameSpace {
+        space: EntityId,
+    },
+    LocateSpace {
+        space: EntityId,
+    },
+    NewInSpace {
+        space: EntityId,
+    },
     New,
     ToggleMode,
     ToggleSidebarScope,
@@ -82,21 +107,17 @@ impl Render for DraggedSidebar {
 #[derive(Clone)]
 pub struct DraggedItem {
     pub space: String,
-    pub space_entity: Option<EntityId>,
     pub pane: PaneId,
+    pub index: usize,
     pub item: ItemId,
     pub title: String,
+    pub selected: bool,
 }
 
 impl Render for DraggedItem {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_3()
-            .py_1()
-            .rounded_sm()
-            .border_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().elevated_surface_background)
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        Tab::new(("dragged-item", self.item.get() as usize))
+            .toggle_state(self.selected)
             .child(Label::new(self.title.clone()).size(LabelSize::Small))
     }
 }

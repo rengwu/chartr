@@ -29,15 +29,23 @@ its Herdr session. A plugin may opt into multiple instances, modifier cloning,
 restoration, and explicit binding to one terminal session.
 
 Panes support nested horizontal and vertical splits, divider resizing,
-directional focus, joining, zooming, tab reordering, movement, and edge-drop
-splitting. The command palette provides keyboard alternatives for pane
-operations. `Cmd+W` on macOS and `Ctrl+W` on Linux closes the active item;
-operations that terminate multiple live sessions confirm with an exact count.
+directional focus, joining, zooming, and Zed-style tab dragging. Tab and
+trailing-strip drops reorder or move items; pane-body center drops move into a
+pane; the four edge targets split it, with Zed's transient full/half-pane
+highlight. Escape cancels a drag. The command palette provides keyboard
+alternatives for pane operations. `Cmd+W` on macOS and `Ctrl+W` on Linux closes
+the active item; operations that terminate multiple live sessions confirm with
+an exact count. As in Zed, a non-root pane disappears when its last item leaves;
+one empty root remains so a space always has an open and drop target. Splitting
+a lone-tab pane uses Zed's opposite-empty-pane rule, keeping the tab focused and
+leaving the requested side available as a drop target.
 
 Sidebar and tabbed modes are projections over that same model. Sidebar mode can
-show all spaces or only the active space and groups each pane's items. Tabbed
-mode shows one space and uses Zed tabs, including close controls for plugin
-items. Switching presentation never reparents or recreates an item.
+show all spaces or only the active space. A multi-pane group collapses to one
+sidebar tab labelled by its last-active item, while every pane in the workspace
+keeps its Zed-style draggable tab bar. Tabbed mode shows one space and uses the
+same pane tabs, including close controls for plugin items. Switching presentation
+never reparents or recreates an item.
 
 ## Settings and persistence
 

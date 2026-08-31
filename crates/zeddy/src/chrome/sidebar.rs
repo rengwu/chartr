@@ -98,106 +98,25 @@ pub fn render(
                 )
                 .into_any_element(),
         );
-        if space.panes.is_empty() {
-            groups.push(
-                div()
-                    .px_2()
-                    .py_1()
-                    .child(Label::new("No open tabs").size(LabelSize::XSmall).color(Color::Muted))
-                    .into_any_element(),
-            );
-            continue;
-        }
-        for pane in &space.panes {
-            let count = pane.entries.len();
-            let close = on.clone();
-            let move_item = on.clone();
-            let close_space = space.id;
-            let move_space = space.id;
-            let pane_id = pane.id;
-            groups.push(
-                h_flex()
-                    .id(format!("sidebar-pane-drop-{}-{}", index, pane.id.get()))
-                    .group("sidebar-pane-heading")
-                    .px_2()
-                    .py_1()
-                    .justify_between()
-                    .border_1()
-                    .border_color(colors.border_variant)
-                    .rounded_sm()
-                    .on_drop(move |dragged: &DraggedItem, window, cx| {
-                        if dragged.space_entity != Some(move_space) || dragged.pane == pane_id {
-                            return;
-                        }
-                        move_item(
-                            Action::MoveToPane {
-                                space: move_space,
-                                item: dragged.item,
-                                source: dragged.pane,
-                                target: pane_id,
-                            },
-                            window,
-                            cx,
-                        )
-                    })
-                    .child(
-                        Label::new(format!("Pane {}", pane.id.get()))
-                            .size(LabelSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Label::new(format!(
-                                    "{count} tab{}",
-                                    if count == 1 { "" } else { "s" }
-                                ))
-                                .size(LabelSize::XSmall)
-                                .color(Color::Muted),
-                            )
-                            .child(
-                                div().visible_on_hover("sidebar-pane-heading").child(
-                                    IconButton::new(
-                                        ("close-sidebar-pane", pane.id.get()),
-                                        IconName::Close,
-                                    )
-                                    .icon_size(IconSize::XSmall)
-                                    .tooltip(Tooltip::text("Close All in Pane"))
-                                    .on_click(
-                                        move |_, window, cx| {
-                                            close(
-                                                Action::ClosePane {
-                                                    space: close_space,
-                                                    pane: pane_id,
-                                                },
-                                                window,
-                                                cx,
-                                            )
-                                        },
-                                    ),
-                                ),
-                            ),
-                    )
-                    .into_any_element(),
-            );
-            if pane.entries.is_empty() {
+        let panes: Vec<_> = space.panes.iter().filter(|pane| !pane.entries.is_empty()).collect();
+        if panes.len() <= 1 {
+            for entry in panes.into_iter().flat_map(|pane| &pane.entries) {
                 groups.push(
-                    div()
-                        .px_3()
-                        .py_1()
-                        .child(
-                            Label::new("Empty pane — drop a tab here")
-                                .size(LabelSize::XSmall)
-                                .color(Color::Muted),
-                        )
+                    row(index, entry, space.active && entry.selected, false, on.clone(), cx)
                         .into_any_element(),
                 );
-            }
-            for entry in &pane.entries {
-                groups.push(row(index, entry, on.clone(), cx).into_any_element());
                 index += 1;
             }
+            continue;
+        }
+        let representative = panes
+            .iter()
+            .flat_map(|pane| &pane.entries)
+            .find(|entry| entry.selected)
+            .or_else(|| panes.iter().flat_map(|pane| &pane.entries).next());
+        if let Some(entry) = representative {
+            groups.push(row(index, entry, space.active, true, on.clone(), cx).into_any_element());
+            index += 1;
         }
     }
 
@@ -259,7 +178,14 @@ fn header(space_switcher: AnyElement, new_item: AnyElement, on: Emit) -> impl In
         )
 }
 
-fn row(index: usize, entry: &Entry, on: Emit, cx: &App) -> impl IntoElement {
+fn row(
+    index: usize,
+    entry: &Entry,
+    selected: bool,
+    grouped: bool,
+    on: Emit,
+    cx: &App,
+) -> impl IntoElement {
     let colors = cx.theme().colors();
     let close = on.clone();
 
@@ -269,27 +195,32 @@ fn row(index: usize, entry: &Entry, on: Emit, cx: &App) -> impl IntoElement {
     let close_space = entry.space;
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
-        space_entity: Some(entry.space),
         pane: entry.pane,
+        index: entry.index,
         item: entry.key,
         title: entry.title.clone(),
+        selected,
     };
     h_flex()
         .id(("session", index))
         .role(Role::Tab)
-        .aria_label(entry.title.clone())
-        .aria_selected(entry.selected)
+        .aria_label(if grouped {
+            format!("Pane group: {}", entry.title)
+        } else {
+            entry.title.clone()
+        })
+        .aria_selected(selected)
         .group("session")
         .h(px(38.))
         .px_2()
         .gap_2()
         .rounded_sm()
-        .when(entry.selected, |row| row.bg(colors.element_selected))
-        .when(!entry.selected, |row| row.hover(|row| row.bg(colors.element_hover)))
+        .when(selected, |row| row.bg(colors.element_selected))
+        .when(!selected, |row| row.hover(|row| row.bg(colors.element_hover)))
         .on_click(move |_, window, cx| {
             on(Action::Select { space: Some(space), item: select }, window, cx)
         })
-        .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+        .when(!grouped, |row| row.on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone())))
         .child(status_dot(entry, cx))
         .child(
             v_flex()
@@ -312,7 +243,11 @@ fn row(index: usize, entry: &Entry, on: Emit, cx: &App) -> impl IntoElement {
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             close(
-                                Action::Close { space: Some(close_space), item: close_key },
+                                if grouped {
+                                    Action::CloseGroup { space: close_space }
+                                } else {
+                                    Action::Close { space: Some(close_space), item: close_key }
+                                },
                                 window,
                                 cx,
                             )

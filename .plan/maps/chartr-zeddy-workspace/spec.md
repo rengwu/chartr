@@ -34,9 +34,10 @@ clone support. Cross-space movement is not supported.
 
 Offer tabbed and sidebar projections over the same model. Tabbed mode shows one
 active space and local tab bars for each pane. Sidebar mode can show all spaces or
-only the active space, visually groups tabs by their pane tree, and uses compact
-pane headers and drop targets instead of duplicate local tab labels. Presentation
-never changes item ownership.
+only the active space and collapses a multi-pane group to one tab labelled by its
+last-active item. Every non-empty workspace pane keeps a visible, draggable tab
+bar; only the active pane exposes compact split/zoom controls. Presentation never
+changes item ownership.
 
 Use Zed's existing GPUI, UI, and theme crates and their components, semantic
 colors, spacing, typography, focus, accessibility, menu, modal, notification,
@@ -80,7 +81,7 @@ configuration automatically.
 17. As a Chartr user, I want to drag a tab between panes, so that I can reorganize the current space without recreating its item.
 18. As a Chartr user, I want to drop a tab on a pane edge to create a split, so that advanced layouts are direct and discoverable.
 19. As a Chartr user, I want joining a pane to move its items into an adjacent pane, so that changing layout never kills work.
-20. As a Chartr user, I want empty panes retained until I explicitly join them, so that deliberate drop targets do not disappear.
+20. As a Chartr user, I want a split pane removed when its last item leaves, following Zed's default pane lifecycle, so that empty implementation structure does not accumulate in the UI.
 21. As a Chartr user, I want at least one root pane to remain, so that an empty space is still usable.
 22. As a Chartr user, I want to zoom or maximize a pane, so that I can temporarily concentrate on one item.
 23. As a Chartr user, I want terminals never to be cloned or mirrored, so that one session is never represented by multiple terminal tabs.
@@ -88,11 +89,11 @@ configuration automatically.
 25. As a Chartr user, I want pane layouts and split ratios restored after switching spaces, so that every space behaves like an independent editor window.
 26. As a Chartr user, I want pane layouts and active items restored after relaunch, so that restarting Chartr does not destroy organization.
 27. As a Chartr user, I want tabbed mode to show only the active space, so that its compact chrome remains focused.
-28. As a Chartr user, I want each pane in tabbed mode to have its own tab bar, so that tab ownership is visible.
+28. As a Chartr user, I want every non-empty workspace pane in either presentation mode to retain its own draggable tab bar, so that tab ownership and movement remain visible like Zed.
 29. As a Chartr user, I want sidebar mode to show either all spaces or only the active space, so that I can choose overview or focus.
 30. As a Chartr user, I want All Spaces to be the initial sidebar mode, so that a fresh installation exposes the whole cockpit.
-31. As a Chartr user, I want pane-owned tabs visually grouped in the sidebar, so that split membership remains clear without duplicate pane tab bars.
-32. As a Chartr user, I want compact pane headers and drop targets in sidebar mode, so that advanced pane operations remain available.
+31. As a Chartr user, I want a multi-pane group collapsed to one sidebar tab labelled by its last-active item, so that the sidebar represents the grouped workspace rather than every pane implementation detail.
+32. As a Chartr user, I want only the active non-empty pane to expose compact Zed-style split and zoom controls while all pane tab bars remain visible, so that advanced operations remain available without hiding the pane structure.
 33. As a Chartr user, I want selecting an item in an inactive space to activate its space, pane, and item together, so that selection is one coherent action.
 34. As a Chartr user, I want the sidebar width and presentation modes persisted, so that the application retains my preferred chrome.
 35. As a Chartr user, I want the top-level visual pane group to be closable, so that I can end everything beneath it deliberately.
@@ -171,11 +172,28 @@ configuration automatically.
   removes it from its source pane before insertion. Cross-space moves are absent.
 - Pane mutations use typed actions and pane events. Product chrome does not reach
   into pane internals to mutate vectors directly.
-- Dragged tabs carry their source pane and item identity. Drops reorder within a
-  pane, move between panes, or split at pane edges. Modifier cloning is available
-  only to plugin items that declare it.
-- Joining a pane moves items and collapses the axis. Closing the last item retains
-  an empty pane; at least the root pane always remains.
+- Dragged tabs carry their source pane, source index, and item identity, and use
+  the same tab component for their drag preview. Drops on tabs use Zed's
+  source-aware before/after insertion rule; the trailing tab-strip target
+  appends; pane-body center drops move into the target pane; and pane-body edge
+  drops split it. Modifier cloning is available only to plugin items that
+  declare it, with non-cloneable items falling back to an ordinary move.
+- Pane split hit-testing exists only over pane content, never over its tab bar.
+  Its edge band is 20% of the shorter pane dimension, corners resolve to the
+  nearest edge, and the remainder is the center target. The transient highlight
+  fills the content for center drops and the relevant half for edge drops. Tab
+  and trailing-strip targets clear split intent; `Escape` cancels the drag and
+  clears any transient target.
+- A web-plugin child view reports pointer focus through the private host bridge
+  so its owning item and pane become active just like native GPUI content.
+  Native child webviews are hidden only for the duration of a GPUI drag so the
+  dragged tab and pane drop highlight remain visible above their pixels.
+- Joining a pane moves items and collapses the axis. Moving or closing the last
+  item collapses a non-root pane; the sole root pane remains as the empty
+  workspace's open/drop target. As in Zed, invoking split-and-move on a pane
+  with only one item instead inserts an empty pane on the opposite side and
+  keeps the item focused, so the requested split is visible rather than being
+  immediately collapsed by the ordinary empty-source rule.
 - The visual sidebar group is not an item. Its close control is a bulk lifecycle
   action over all descendant items. Only top-level space groups expose that bulk
   control; panes expose their own Close All action.
@@ -189,6 +207,9 @@ configuration automatically.
   do not participate in identity.
 - Tabbed and sidebar modes are alternate renderings of the same space/pane/item
   state. Changing chrome never creates, moves, or closes an item.
+- A multi-pane group projects to one sidebar tab labelled by its last-active
+  item. Closing that tab closes every item in the group through the normal bulk
+  lifecycle confirmation.
 - Sidebar mode persists an All Spaces or Active Space submode. Selecting an item
   from another space activates its space, pane, and item as one operation.
 - The sidebar is resizable with bounded width. Tabbed mode is active-space-only.
@@ -252,8 +273,8 @@ configuration automatically.
 - A small window-owned health state machine checks the private daemon, performs one
   clean replacement, and detects a second failure within 60 seconds as a crash
   loop. It exposes Retry and no backend administration UI.
-- Backend loss removes terminal items and their session-bound plugins but retains
-  spaces, pane geometry, deliberately empty panes, and space-bound plugin items.
+- Backend loss removes terminal items and their session-bound plugins, collapses
+  newly empty splits, and retains spaces plus space-bound plugin items.
 - Herdr is authoritative for live session existence. Orphaned sessions enter the
   owning space's last-active pane; stale saved terminal items are dropped.
 - Versioned SQLite persistence stores space identities, pane trees, item records,

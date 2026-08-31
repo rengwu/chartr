@@ -10,7 +10,7 @@ use ui::{Tab, TabPosition, Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{Action, Entry, status_dot};
+use super::{Action, DraggedItem, Entry, status_dot};
 
 pub fn render(
     entries: &[Entry],
@@ -71,9 +71,22 @@ fn tab(
         TabPosition::Middle(index.cmp(&active_index.unwrap_or(index)))
     };
     let select = entry.key;
+    let select_item = on.clone();
+    let move_item = on;
     let close_key = entry.key;
     let space = entry.space;
     let close_space = entry.space;
+    let target_pane = entry.pane;
+    let target_index = entry.index;
+    let target_space_key = entry.space_key.clone();
+    let dragged = DraggedItem {
+        space: entry.space_key.clone(),
+        pane: entry.pane,
+        index: entry.index,
+        item: entry.key,
+        title: entry.title.clone(),
+        selected: entry.selected,
+    };
     let close_slot: Option<AnyElement> = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close)
             .icon_size(IconSize::XSmall)
@@ -91,7 +104,39 @@ fn tab(
         .position(position)
         .toggle_state(entry.selected)
         .on_click(move |_, window, cx| {
-            on(Action::Select { space: Some(space), item: select }, window, cx)
+            select_item(Action::Select { space: Some(space), item: select }, window, cx)
+        })
+        .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+        .can_drop(move |value, _, _| {
+            value
+                .downcast_ref::<DraggedItem>()
+                .is_some_and(|dragged| dragged.space == target_space_key)
+        })
+        .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
+            let mut tab = tab
+                .bg(cx.theme().colors().drop_target_background)
+                .border_color(cx.theme().colors().drop_target_border)
+                .border_0();
+            if target_index < dragged.index {
+                tab = tab.border_l_2();
+            } else if target_index > dragged.index {
+                tab = tab.border_r_2();
+            }
+            tab
+        })
+        .on_drop(move |dragged: &DraggedItem, window, cx| {
+            move_item(
+                Action::MoveItem {
+                    space,
+                    item: dragged.item,
+                    source: dragged.pane,
+                    source_index: dragged.index,
+                    target: target_pane,
+                    target_index,
+                },
+                window,
+                cx,
+            );
         })
         .start_slot(status_dot(entry, cx))
         .end_slot::<AnyElement>(close_slot)

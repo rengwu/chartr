@@ -6,7 +6,10 @@
 //! invariant observable at one seam: an item belongs to exactly one pane in
 //! exactly one workspace.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
+
+#[cfg(test)]
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -175,6 +178,7 @@ impl PaneAxis {
         Self { axis, members, flexes }
     }
 
+    #[cfg(test)]
     fn valid_flexes(&self) -> bool {
         self.flexes.len() == self.members.len()
             && self.flexes.iter().all(|flex| flex.is_finite() && *flex > 0.)
@@ -337,6 +341,7 @@ impl PaneGroup {
         }
     }
 
+    #[cfg(test)]
     pub fn set_flexes(&mut self, axis_path: &[usize], flexes: Vec<f32>) -> Result<(), ModelError> {
         let mut member = &mut self.root;
         for &index in axis_path {
@@ -571,6 +576,7 @@ impl Workspace {
     pub fn remove_item(&mut self, item: ItemId) -> Result<(), ModelError> {
         let pane = self.panes_by_item.remove(&item).ok_or(ModelError::ItemNotFound(item))?;
         self.panes.get_mut(&pane).ok_or(ModelError::PaneNotFound(pane))?.remove(item)?;
+        self.remove_pane_if_empty(pane)?;
         Ok(())
     }
 
@@ -594,9 +600,70 @@ impl Workspace {
                 .expect("checked pane")
                 .insert(item, destination_index);
             self.panes_by_item.insert(item, destination_pane);
+            self.remove_pane_if_empty(source)?;
         }
         self.active_pane = destination_pane;
         Ok(())
+    }
+
+    /// Zed removes a split pane when its last item leaves. The sole root pane
+    /// is retained so an empty workspace still has a drop/open target.
+    pub fn remove_empty_pane(&mut self, pane: PaneId) -> Result<bool, ModelError> {
+        let empty = self.panes.get(&pane).ok_or(ModelError::PaneNotFound(pane))?.items.is_empty();
+        if !empty {
+            return Ok(false);
+        }
+        self.remove_pane_if_empty(pane)
+    }
+
+    /// Normalize restored layouts from older builds that retained every empty
+    /// split. Keep all panes containing items, or one active root when the
+    /// whole workspace is empty.
+    pub fn prune_empty_panes(&mut self) -> Result<(), ModelError> {
+        let ordered = self.center.panes();
+        let keep = ordered
+            .iter()
+            .copied()
+            .find(|pane| self.panes.get(pane).is_some_and(|pane| !pane.items.is_empty()))
+            .or_else(|| ordered.contains(&self.active_pane).then_some(self.active_pane))
+            .or_else(|| ordered.first().copied());
+        let empty: Vec<_> = ordered
+            .into_iter()
+            .filter(|pane| {
+                Some(*pane) != keep
+                    && self.panes.get(pane).is_some_and(|pane| pane.items.is_empty())
+            })
+            .collect();
+        for pane in empty {
+            self.remove_pane_if_empty(pane)?;
+        }
+        Ok(())
+    }
+
+    fn remove_pane_if_empty(&mut self, pane: PaneId) -> Result<bool, ModelError> {
+        if !self.panes.get(&pane).ok_or(ModelError::PaneNotFound(pane))?.items.is_empty() {
+            return Ok(false);
+        }
+        let ordered = self.center.panes();
+        if ordered.len() == 1 {
+            return Ok(false);
+        }
+        let index = ordered
+            .iter()
+            .position(|candidate| *candidate == pane)
+            .ok_or(ModelError::PaneNotFound(pane))?;
+        let focus = ordered
+            .get(index + 1)
+            .or_else(|| index.checked_sub(1).and_then(|i| ordered.get(i)))
+            .copied();
+        if self.center.remove(pane)? {
+            self.panes.remove(&pane);
+            if self.active_pane == pane {
+                self.active_pane = focus.expect("a split pane always has a neighbor");
+            }
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     pub fn split_pane(
@@ -613,6 +680,28 @@ impl Workspace {
         self.center.split(pane, new, direction);
         self.active_pane = new;
         Ok(new)
+    }
+
+    /// Zed's `SplitMode::MovePane` behavior. Moving the sole tab would leave
+    /// its source empty and make ordinary empty-pane cleanup collapse the split
+    /// immediately. Zed instead inserts an empty pane on the opposite side and
+    /// keeps the sole tab focused, producing the same requested visual result.
+    pub fn split_and_move(
+        &mut self,
+        source: PaneId,
+        direction: SplitDirection,
+    ) -> Result<PaneId, ModelError> {
+        let pane = self.panes.get(&source).ok_or(ModelError::PaneNotFound(source))?;
+        if pane.items.len() <= 1 {
+            let empty = self.split_pane(source, direction.opposite())?;
+            self.active_pane = source;
+            return Ok(empty);
+        }
+
+        let active = pane.active.expect("a pane with multiple items always has an active item");
+        let destination = self.split_pane(source, direction)?;
+        self.move_item(active, destination, None)?;
+        Ok(destination)
     }
 
     /// Join `source` into `destination`, moving every item in order and then
@@ -632,13 +721,14 @@ impl Workspace {
         for item in items {
             self.move_item(item, destination, None)?;
         }
-        if self.center.remove(source)? {
+        if self.center.contains(source) && self.center.remove(source)? {
             self.panes.remove(&source);
         }
         self.active_pane = destination;
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn validate(&self) -> Result<(), ModelError> {
         let tree_panes = self.center.panes();
         let tree_set: HashSet<_> = tree_panes.iter().copied().collect();
@@ -684,9 +774,13 @@ impl Workspace {
 pub enum ModelError {
     PaneNotFound(PaneId),
     ItemNotFound(ItemId),
+    #[cfg(test)]
     DuplicateItem(ItemId),
+    #[cfg(test)]
     ItemIndexMismatch(ItemId),
+    #[cfg(test)]
     InvalidActiveItem(PaneId),
+    #[cfg(test)]
     InvalidPaneTree,
     BadAxisPath,
     InvalidFlexes,
@@ -705,7 +799,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_item_has_one_owner_even_when_moved_and_readded() {
+    fn splitting_a_lone_tab_with_two_existing_panes_matches_zeds_empty_pane_rule() {
+        for direction in
+            [SplitDirection::Up, SplitDirection::Down, SplitDirection::Left, SplitDirection::Right]
+        {
+            let mut workspace = Workspace::new();
+            let first = workspace.active_pane();
+            let second = workspace.split_pane(first, SplitDirection::Right).unwrap();
+            let first_item = workspace.alloc_item();
+            let second_item = workspace.alloc_item();
+            workspace.add_item(first_item, Some(first), None).unwrap();
+            workspace.add_item(second_item, Some(second), None).unwrap();
+
+            let empty = workspace.split_and_move(first, direction).unwrap();
+
+            let expected_order = if direction.increasing() {
+                vec![empty, first, second]
+            } else {
+                vec![first, empty, second]
+            };
+            assert_eq!(workspace.center.panes(), expected_order, "{direction:?}");
+            assert_eq!(workspace.pane(first).unwrap().items(), &[first_item]);
+            assert_eq!(workspace.pane(second).unwrap().items(), &[second_item]);
+            assert!(workspace.pane(empty).unwrap().items().is_empty());
+            assert_eq!(workspace.active_pane(), first);
+            workspace.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn split_and_move_uses_the_explicit_source_when_another_pane_is_active() {
+        let mut workspace = Workspace::new();
+        let first = workspace.active_pane();
+        let second = workspace.split_pane(first, SplitDirection::Right).unwrap();
+        let first_a = workspace.alloc_item();
+        let first_b = workspace.alloc_item();
+        let second_item = workspace.alloc_item();
+        workspace.add_item(first_a, Some(first), None).unwrap();
+        workspace.add_item(first_b, Some(first), None).unwrap();
+        workspace.add_item(second_item, Some(second), None).unwrap();
+        assert_eq!(workspace.active_pane(), second);
+
+        let split = workspace.split_and_move(first, SplitDirection::Right).unwrap();
+
+        assert_eq!(workspace.center.panes(), vec![first, split, second]);
+        assert_eq!(workspace.pane(first).unwrap().items(), &[first_a]);
+        assert_eq!(workspace.pane(split).unwrap().items(), &[first_b]);
+        assert_eq!(workspace.pane(second).unwrap().items(), &[second_item]);
+        assert_eq!(workspace.active_pane(), split);
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn moving_the_last_item_removes_its_empty_source_pane_like_zed() {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
         let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
@@ -716,8 +862,48 @@ mod tests {
         workspace.add_item(item, Some(right), Some(0)).unwrap();
 
         assert_eq!(workspace.pane_for_item(item), Some(right));
-        assert!(!workspace.pane(left).unwrap().items().contains(&item));
+        assert!(workspace.pane(left).is_none());
+        assert_eq!(workspace.center.panes(), vec![right]);
         assert_eq!(workspace.pane(right).unwrap().items(), &[item]);
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn closing_the_last_item_removes_a_split_but_retains_the_root() {
+        let mut workspace = Workspace::new();
+        let root = workspace.active_pane();
+        let split = workspace.split_pane(root, SplitDirection::Right).unwrap();
+        let root_item = workspace.alloc_item();
+        let split_item = workspace.alloc_item();
+        workspace.add_item(root_item, Some(root), None).unwrap();
+        workspace.add_item(split_item, Some(split), None).unwrap();
+
+        workspace.remove_item(split_item).unwrap();
+
+        assert_eq!(workspace.center.panes(), vec![root]);
+        assert!(workspace.pane(split).is_none());
+        assert_eq!(workspace.active_pane(), root);
+        workspace.remove_item(root_item).unwrap();
+        assert_eq!(workspace.center.panes(), vec![root]);
+        assert!(workspace.pane(root).unwrap().items().is_empty());
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn restored_empty_splits_are_pruned_to_the_only_useful_pane() {
+        let mut workspace = Workspace::new();
+        let root = workspace.active_pane();
+        let useful = workspace.split_pane(root, SplitDirection::Right).unwrap();
+        let empty = workspace.split_pane(useful, SplitDirection::Down).unwrap();
+        let item = workspace.alloc_item();
+        workspace.add_item(item, Some(useful), None).unwrap();
+        workspace.activate_pane(empty).unwrap();
+
+        workspace.prune_empty_panes().unwrap();
+
+        assert_eq!(workspace.center.panes(), vec![useful]);
+        assert_eq!(workspace.active_pane(), useful);
+        assert_eq!(workspace.pane(useful).unwrap().items(), &[item]);
         workspace.validate().unwrap();
     }
 
@@ -856,6 +1042,70 @@ mod tests {
 
         assert_eq!(workspace.pane_in_direction(SplitDirection::Left), None);
         assert_eq!(workspace.pane_in_direction(SplitDirection::Up), None);
+    }
+
+    #[test]
+    fn tab_drop_indices_match_zeds_before_and_after_target_semantics() {
+        let mut workspace = Workspace::new();
+        let pane = workspace.active_pane();
+        let a = workspace.alloc_item();
+        let b = workspace.alloc_item();
+        let c = workspace.alloc_item();
+        let d = workspace.alloc_item();
+        for item in [a, b, c, d] {
+            workspace.add_item(item, Some(pane), None).unwrap();
+        }
+
+        // A dragged onto C lands after C because it approached from the left.
+        workspace.move_item(a, pane, Some(2)).unwrap();
+        assert_eq!(workspace.pane(pane).unwrap().items(), &[b, c, a, d]);
+
+        // D dragged onto C lands before C because it approached from the right.
+        workspace.move_item(d, pane, Some(1)).unwrap();
+        assert_eq!(workspace.pane(pane).unwrap().items(), &[b, d, c, a]);
+        assert_eq!(workspace.pane(pane).unwrap().active(), Some(d));
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn edge_drop_split_inserts_beside_the_target_and_preserves_other_panes() {
+        let mut workspace = Workspace::new();
+        let left = workspace.active_pane();
+        let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
+        let left_a = workspace.alloc_item();
+        let left_b = workspace.alloc_item();
+        let right_a = workspace.alloc_item();
+        workspace.add_item(left_a, Some(left), None).unwrap();
+        workspace.add_item(left_b, Some(left), None).unwrap();
+        workspace.add_item(right_a, Some(right), None).unwrap();
+
+        let dropped = workspace.split_pane(right, SplitDirection::Left).unwrap();
+        workspace.move_item(left_a, dropped, Some(0)).unwrap();
+
+        assert_eq!(workspace.center.panes(), vec![left, dropped, right]);
+        assert_eq!(workspace.pane(left).unwrap().items(), &[left_b]);
+        assert_eq!(workspace.pane(dropped).unwrap().items(), &[left_a]);
+        assert_eq!(workspace.pane(right).unwrap().items(), &[right_a]);
+        assert_eq!(workspace.active_pane(), dropped);
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn center_drop_of_a_last_tab_collapses_only_its_empty_source() {
+        let mut workspace = Workspace::new();
+        let left = workspace.active_pane();
+        let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
+        let left_item = workspace.alloc_item();
+        let right_item = workspace.alloc_item();
+        workspace.add_item(left_item, Some(left), None).unwrap();
+        workspace.add_item(right_item, Some(right), None).unwrap();
+
+        workspace.move_item(left_item, right, Some(0)).unwrap();
+
+        assert_eq!(workspace.center.panes(), vec![right]);
+        assert!(workspace.pane(left).is_none());
+        assert_eq!(workspace.pane(right).unwrap().items(), &[left_item, right_item]);
+        workspace.validate().unwrap();
     }
 
     #[test]

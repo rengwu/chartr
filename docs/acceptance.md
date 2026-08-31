@@ -25,10 +25,14 @@ Chartr Light. Capture and compare:
 
 - empty Ad-hoc startup, one folder, and several spaces;
 - Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
-- one pane, nested horizontal/vertical panes, resized dividers, zoom, and an
-  intentionally empty pane;
-- terminal and plugin close buttons, active/hover/focus states, edge drop target,
-  grouped sidebar tabs, and the bulk-termination confirmation;
+- empty root, one pane, nested horizontal/vertical panes, resized dividers,
+  zoom, and automatic split collapse after its last item moves or closes;
+- terminal and plugin close buttons, active/hover/focus states, one collapsed
+  sidebar tab per multi-pane group, visible draggable tab bars in every
+  non-empty workspace pane, and the bulk-termination confirmation;
+- Zed-style transient pane-body drop highlights: full-content center and
+  half-content left, right, top, and bottom targets, including nearest-edge
+  corner resolution and no split target over a pane's tab bar;
 - General, Appearance, Terminal, Hotkeys, Plugins, and a contributed plugin
   Settings view;
 - command palette, unavailable-folder recovery, broken-stream recovery, backend
@@ -45,7 +49,20 @@ tier.
 Run the matrix with pointer and keyboard. Confirm `Cmd/Ctrl+W`, command palette,
 directional focus, split-and-move, move-to-existing-pane, join, zoom, Settings
 close/focus restoration, and `Ctrl+Tab` Settings-page cycling. Every drag outcome
-must have a semantic action alternative.
+must have a semantic action alternative. With two panes already open, invoke all
+four split directions from the first lone-tab pane and confirm each creates the
+expected adjacent empty drop target without moving, losing focus, or collapsing.
+
+For tab dragging, exercise each pane-body center and edge target, both corner
+choices, before and after insertion on existing tabs, trailing-strip append,
+movement between panes, and movement of the last source tab. Confirm the source
+pane collapses only when it becomes empty, pane focus follows pointer selection,
+`Escape` cancels without moving or cloning, and the platform clone modifier
+(Option on macOS, Control elsewhere) clones only opt-in plugin items while all
+other items move normally. Repeat with terminal, native-plugin, and web-plugin
+items; tab headers must remain visible and draggable throughout. Clicking inside
+a web plugin must activate its pane, and its native child view must yield during
+a drag so neither the tab preview nor drop highlight is obscured.
 
 Inspect the GPUI accessibility tree on macOS and Linux. Tabs and Settings
 navigation must expose roles, labels, and selection; Zed buttons and menus must

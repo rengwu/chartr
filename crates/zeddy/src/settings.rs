@@ -276,10 +276,6 @@ impl SettingsStore {
         &self.resolved
     }
 
-    pub fn content(&self) -> &SettingsContent {
-        &self.content
-    }
-
     pub fn unreadable(&self) -> Option<&str> {
         self.unreadable.as_deref()
     }

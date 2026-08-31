@@ -751,6 +751,7 @@ impl Zeddy {
                 SpaceEntries {
                     id: space.entity_id(),
                     name: read.name().to_owned(),
+                    active: self.active.as_ref() == Some(space),
                     removable: read.kind() == SpaceKind::Registered,
                     available: read.available(),
                     panes: read.pane_entries(space.entity_id()),
@@ -785,7 +786,15 @@ impl Zeddy {
                     target.update(cx, |space, cx| space.start_session(cx));
                 }
             }
-            Action::ClosePane { space, pane } => self.request_close_pane(space, pane, window, cx),
+            Action::CloseGroup { space } => {
+                let Some(space) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                else {
+                    return;
+                };
+                let ids = space.read(cx).all_item_ids();
+                self.request_bulk_close(space, ids, false, window, cx);
+            }
             Action::CloseSpace { space } => self.request_close_space(space, window, cx),
             Action::RenameSpace { space } => {
                 if let Some(target) =
@@ -797,27 +806,24 @@ impl Zeddy {
                 }
             }
             Action::LocateSpace { space } => self.locate_space(space, cx),
-            action @ Action::MoveToPane { space, item, target: target_pane, .. } => {
-                if let Some(target_space) =
+            Action::MoveItem { space, item, source, source_index, target, target_index } => {
+                let Some(target_space) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
-                {
-                    let clone = cfg!(target_os = "macos") && window.modifiers().alt
-                        || cfg!(not(target_os = "macos")) && window.modifiers().control;
-                    if clone
-                        && self.clone_plugin_drop(
-                            target_space.clone(),
-                            item,
-                            target_pane,
-                            None,
-                            window,
-                            cx,
-                        )
-                    {
-                        cx.notify();
-                        return;
-                    }
-                    target_space.update(cx, |space, cx| space.act(action, cx));
+                else {
+                    return;
+                };
+                if self.active.as_ref() != Some(&target_space) {
+                    self.activate(target_space.clone(), window, cx);
                 }
+                let dragged = DraggedItem {
+                    space: target_space.read(cx).key(),
+                    pane: source,
+                    index: source_index,
+                    item,
+                    title: String::new(),
+                    selected: false,
+                };
+                self.handle_item_drop(&dragged, target, target_index, false, window, cx);
             }
             action @ (Action::Select { .. } | Action::Close { .. }) => {
                 let target = match &action {
@@ -861,27 +867,17 @@ impl Zeddy {
         }
     }
 
-    fn request_close_pane(
-        &mut self,
-        space_id: EntityId,
-        pane: LayoutPaneId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
-        else {
-            return;
-        };
-        let ids = space.read(cx).pane_item_ids(pane);
-        self.request_bulk_close(space, ids, false, window, cx);
-    }
-
     fn request_close_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(space) = self.active.clone() else {
             return;
         };
         let pane = space.read(cx).layout().active_pane();
         let ids = space.read(cx).pane_item_ids(pane);
+        if ids.is_empty() {
+            space.update(cx, |space, _| space.remove_empty_pane(pane));
+            cx.notify();
+            return;
+        }
         self.request_bulk_close(space, ids, false, window, cx);
     }
 
@@ -1228,6 +1224,7 @@ impl Zeddy {
                 ),
                 permissions,
                 None,
+                None,
                 window,
                 cx,
             ),
@@ -1338,6 +1335,18 @@ impl Zeddy {
     fn split_and_move(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.split_and_move(direction));
+            cx.notify();
+        }
+    }
+
+    fn split_and_move_in(
+        &mut self,
+        pane: LayoutPaneId,
+        direction: SplitDirection,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.split_and_move_in(pane, direction));
             cx.notify();
         }
     }
@@ -1525,6 +1534,16 @@ impl Zeddy {
             cx.notify();
             return;
         }
+        if event.keystroke.key == "escape" && cx.stop_active_drag(window) {
+            if let Some(space) = self.active.clone() {
+                space.update(cx, |space, _| {
+                    space.clear_drag_target();
+                });
+            }
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         if self.settings_open {
             if event.keystroke.modifiers.control && event.keystroke.key == "tab" {
                 cx.stop_propagation();
@@ -1644,6 +1663,22 @@ impl Zeddy {
             .into_any_element()
     }
 
+    fn web_plugin_focus_handler(
+        space: Entity<Space>,
+        cx: &Context<Self>,
+    ) -> crate::web_plugin::FocusHandler {
+        let weak = cx.weak_entity();
+        Rc::new(move |view, cx| {
+            let space = space.clone();
+            let _ = weak.update(cx, |this, cx| {
+                if space.update(cx, |space, _| space.activate_plugin_view(view)) {
+                    this.active = Some(space);
+                    cx.notify();
+                }
+            });
+        })
+    }
+
     fn open_plugin(
         &mut self,
         key: zeddy_plugin::PaneKey,
@@ -1695,6 +1730,7 @@ impl Zeddy {
         };
         let session_access =
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
+        let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
         let Some(plugin) = self.catalog.get_mut(&key.plugin) else {
             self.problem = Some("That plugin is no longer loaded.".to_owned());
@@ -1715,6 +1751,7 @@ impl Zeddy {
                     broker,
                     permissions.clone(),
                     session_access,
+                    on_focus,
                     window,
                     cx,
                 )
@@ -1784,6 +1821,7 @@ impl Zeddy {
                 let bound = bound_session.clone().map(zeddy_herdr::PaneId);
                 let session_access =
                     bound.as_ref().and_then(|session| space.read(cx).session_access(session));
+                let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
                 if bound.is_some() && session_access.is_none() {
                     failures.push(format!("{plugin}:{pane} lost its bound session"));
                     continue;
@@ -1811,6 +1849,7 @@ impl Zeddy {
                             broker,
                             permissions.clone(),
                             session_access,
+                            on_focus,
                             window,
                             cx,
                         )
@@ -1866,6 +1905,7 @@ impl Zeddy {
         };
         let session_access =
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
+        let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
         let Some(destination) = space.update(cx, |space, _| space.prepare_drop_destination(target))
         else {
@@ -1886,6 +1926,7 @@ impl Zeddy {
                 ),
                 permissions,
                 session_access,
+                on_focus,
                 window,
                 cx,
             ),
@@ -1907,6 +1948,45 @@ impl Zeddy {
             );
         });
         true
+    }
+
+    /// Zed has one pane drop path shared by tab targets and the pane body.
+    /// Body drops may consume the current edge split direction; tab-bar drops
+    /// explicitly clear it and only reorder or move into the target pane.
+    fn handle_item_drop(
+        &mut self,
+        dragged: &DraggedItem,
+        target: LayoutPaneId,
+        index: usize,
+        allow_split: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(space) = self.active.clone() else {
+            return;
+        };
+        if space.read(cx).persisted().key != dragged.space {
+            space.update(cx, |space, _| {
+                space.clear_drag_target();
+            });
+            cx.notify();
+            return;
+        }
+        if !allow_split {
+            space.update(cx, |space, _| space.set_drag_target(target, None));
+        }
+        let clone = cfg!(target_os = "macos") && window.modifiers().alt
+            || cfg!(not(target_os = "macos")) && window.modifiers().control;
+        if clone
+            && self.clone_plugin_drop(space.clone(), dragged.item, target, Some(index), window, cx)
+        {
+            cx.notify();
+            return;
+        }
+        space.update(cx, |space, _| {
+            space.drop_item(dragged.item, dragged.pane, target, Some(index));
+        });
+        cx.notify();
     }
 
     fn workspace_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -2067,6 +2147,7 @@ impl Zeddy {
                     PaneAxisDirection::Horizontal => h_flex()
                         .id(format!("pane-axis-h-{current_path:?}"))
                         .size_full()
+                        .items_stretch()
                         .min_w_0()
                         .min_h_0()
                         .gap_px()
@@ -2147,8 +2228,8 @@ impl Zeddy {
             return message("Pane layout is unavailable.", cx).into_any_element();
         };
         let active_pane = space.layout().active_pane() == pane_id;
-        let header =
-            if show_header { Some(self.pane_header(space, pane_id, on, weak, cx)) } else { None };
+        let header = (show_header && pane.active().is_some())
+            .then(|| self.pane_header(space, pane_id, on, weak, cx));
         let content = pane
             .active()
             .and_then(|id| space.item(id).map(|item| (id, item)))
@@ -2222,7 +2303,18 @@ impl Zeddy {
 
         let drag_move = weak.clone();
         let drop_item = weak.clone();
-        let drop_overlay = space.drag_target().filter(|(pane, _)| *pane == pane_id);
+        let focus_pane = weak.clone();
+        let drop_group = format!("pane-drop-{}", pane_id.get());
+        let drop_space = space.persisted().key;
+        let drag_space = drop_space.clone();
+        let pane_drop_index = pane
+            .active()
+            .and_then(|active| pane.items().iter().position(|item| *item == active))
+            .unwrap_or(pane.items().len());
+        let drop_direction = space
+            .drag_target()
+            .filter(|(pane, _)| *pane == pane_id)
+            .and_then(|(_, direction)| direction);
         v_flex()
             .id(("pane", pane_id.get() as usize))
             .relative()
@@ -2233,48 +2325,58 @@ impl Zeddy {
             .when(active_pane, |pane| {
                 pane.border_1().border_color(cx.theme().colors().pane_focused_border)
             })
-            .on_drag_move::<DraggedItem>(move |event, _, cx| {
-                let direction = split_direction_for_drag(event);
-                let _ = drag_move.update(cx, |this, cx| {
+            .capture_any_mouse_down(move |_, window, cx| {
+                let _ = focus_pane.update(cx, |this, cx| {
                     if let Some(space) = this.active.clone() {
-                        space.update(cx, |space, _| space.set_drag_target(pane_id, direction));
+                        space.update(cx, |space, _| space.activate_pane(pane_id));
                     }
-                    cx.notify();
-                });
-            })
-            .on_drop(move |dragged: &DraggedItem, window, cx| {
-                let dragged = dragged.clone();
-                let _ = drop_item.update(cx, |this, cx| {
-                    let Some(space) = this.active.clone() else {
-                        return;
-                    };
-                    if space.read(cx).persisted().key != dragged.space {
-                        return;
-                    }
-                    let clone = cfg!(target_os = "macos") && window.modifiers().alt
-                        || cfg!(not(target_os = "macos")) && window.modifiers().control;
-                    if clone
-                        && this.clone_plugin_drop(
-                            space.clone(),
-                            dragged.item,
-                            pane_id,
-                            None,
-                            window,
-                            cx,
-                        )
-                    {
-                        cx.notify();
-                        return;
-                    }
-                    space.update(cx, |space, _| {
-                        space.drop_item(dragged.item, dragged.pane, pane_id, None)
-                    });
+                    window.focus(&this.focus, cx);
                     cx.notify();
                 });
             })
             .children(header)
-            .child(div().flex_1().min_h_0().min_w_0().child(content))
-            .when_some(drop_overlay, |pane, (_, direction)| pane.child(drop_target(direction, cx)))
+            .child(
+                div()
+                    .flex_1()
+                    .relative()
+                    .min_h_0()
+                    .min_w_0()
+                    .group(drop_group.clone())
+                    .on_drag_move::<DraggedItem>(move |event, _, cx| {
+                        let accepted = event.drag(cx).space == drag_space;
+                        let direction = accepted.then(|| split_direction_for_drag(event)).flatten();
+                        let _ = drag_move.update(cx, |this, cx| {
+                            let changed = this.active.clone().is_some_and(|space| {
+                                space.update(cx, |space, _| {
+                                    if accepted {
+                                        space.set_drag_target(pane_id, direction)
+                                    } else {
+                                        space.clear_drag_target()
+                                    }
+                                })
+                            });
+                            if changed {
+                                cx.notify();
+                            }
+                        });
+                    })
+                    .child(content)
+                    .child(drop_target(drop_direction, drop_group, drop_space, cx).on_drop(
+                        move |dragged: &DraggedItem, window, cx| {
+                            let dragged = dragged.clone();
+                            let _ = drop_item.update(cx, |this, cx| {
+                                this.handle_item_drop(
+                                    &dragged,
+                                    pane_id,
+                                    pane_drop_index,
+                                    true,
+                                    window,
+                                    cx,
+                                );
+                            });
+                        },
+                    )),
+            )
             .into_any_element()
     }
 
@@ -2289,52 +2391,6 @@ impl Zeddy {
         let Some(pane) = space.layout().pane(pane_id) else {
             return div().into_any_element();
         };
-        let focus_pane = weak.clone();
-        if self.mode == Mode::Sidebar {
-            return h_flex()
-                .id(("sidebar-pane-header", pane_id.get()))
-                .role(Role::Group)
-                .aria_label(format!("Pane {}", pane_id.get()))
-                .group("pane-header")
-                .h(Tab::container_height(cx))
-                .px_2()
-                .justify_between()
-                .bg(cx.theme().colors().tab_bar_background)
-                .border_b_1()
-                .border_color(cx.theme().colors().border)
-                .on_click(move |_, _, cx| {
-                    let _ = focus_pane.update(cx, |this, cx| {
-                        if let Some(space) = this.active.clone() {
-                            space.update(cx, |space, _| space.activate_pane(pane_id));
-                        }
-                        cx.notify();
-                    });
-                })
-                .child(
-                    Label::new(format!("Pane {}", pane_id.get()))
-                        .size(LabelSize::XSmall)
-                        .color(Color::Muted),
-                )
-                .child(
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            Label::new(format!(
-                                "{} tab{}",
-                                pane.items().len(),
-                                if pane.items().len() == 1 { "" } else { "s" }
-                            ))
-                            .size(LabelSize::XSmall)
-                            .color(Color::Muted),
-                        )
-                        .child(
-                            div()
-                                .visible_on_hover("pane-header")
-                                .child(pane_controls(weak, pane_id)),
-                        ),
-                )
-                .into_any_element();
-        }
 
         let active_index =
             pane.active().and_then(|active| pane.items().iter().position(|item| *item == active));
@@ -2354,12 +2410,14 @@ impl Zeddy {
             let select_item = on.clone();
             let close_item = on.clone();
             let drop_item = weak.clone();
+            let drop_space = space_key.clone();
             let dragged = DraggedItem {
                 space: space_key.clone(),
-                space_entity: None,
                 pane: pane_id,
+                index,
                 item: *id,
                 title: item.title(),
+                selected,
             };
             Some(
                 Tab::new(format!("pane-{}-item-{}", pane_id.get(), id.get()))
@@ -2372,35 +2430,27 @@ impl Zeddy {
                         select_item(Action::Select { space: None, item: select }, window, cx)
                     })
                     .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                    .can_drop(move |value, _, _| {
+                        value
+                            .downcast_ref::<DraggedItem>()
+                            .is_some_and(|dragged| dragged.space == drop_space)
+                    })
+                    .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
+                        let mut tab = tab
+                            .bg(cx.theme().colors().drop_target_background)
+                            .border_color(cx.theme().colors().drop_target_border)
+                            .border_0();
+                        if index < dragged.index {
+                            tab = tab.border_l_2();
+                        } else if index > dragged.index {
+                            tab = tab.border_r_2();
+                        }
+                        tab
+                    })
                     .on_drop(move |dragged: &DraggedItem, window, cx| {
                         let dragged = dragged.clone();
                         let _ = drop_item.update(cx, |this, cx| {
-                            let Some(space) = this.active.clone() else {
-                                return;
-                            };
-                            if space.read(cx).persisted().key != dragged.space {
-                                return;
-                            }
-                            let clone = cfg!(target_os = "macos") && window.modifiers().alt
-                                || cfg!(not(target_os = "macos")) && window.modifiers().control;
-                            if clone
-                                && this.clone_plugin_drop(
-                                    space.clone(),
-                                    dragged.item,
-                                    pane_id,
-                                    Some(index),
-                                    window,
-                                    cx,
-                                )
-                            {
-                                cx.notify();
-                                return;
-                            }
-                            space.update(cx, |space, _| {
-                                space.set_drag_target(pane_id, None);
-                                space.drop_item(dragged.item, dragged.pane, pane_id, Some(index));
-                            });
-                            cx.notify();
+                            this.handle_item_drop(&dragged, pane_id, index, false, window, cx);
                         });
                     })
                     .end_slot(
@@ -2419,8 +2469,32 @@ impl Zeddy {
                     .into_any_element(),
             )
         });
+        let append_drop = weak.clone();
+        let append_index = pane.items().len();
+        let append_space = space_key.clone();
+        let tab_bar_drop_target = div()
+            .id(format!("pane-{}-tab-bar-drop-target", pane_id.get()))
+            .min_w_6()
+            .h(Tab::container_height(cx))
+            .flex_grow_1()
+            .child("")
+            .can_drop(move |value, _, _| {
+                value
+                    .downcast_ref::<DraggedItem>()
+                    .is_some_and(|dragged| dragged.space == append_space)
+            })
+            .drag_over::<DraggedItem>(|bar, _, _, cx| {
+                bar.bg(cx.theme().colors().drop_target_background)
+            })
+            .on_drop(move |dragged: &DraggedItem, window, cx| {
+                let dragged = dragged.clone();
+                let _ = append_drop.update(cx, |this, cx| {
+                    this.handle_item_drop(&dragged, pane_id, append_index, false, window, cx);
+                });
+            });
         TabBar::new(format!("pane-{}-tabs", pane_id.get()))
             .children(tabs)
+            .child(tab_bar_drop_target)
             .end_child(pane_controls(weak, pane_id))
             .into_any_element()
     }
@@ -3379,16 +3453,27 @@ fn setting_label(label: &'static str) -> AnyElement {
 
 fn split_direction_for_drag(event: &DragMoveEvent<DraggedItem>) -> Option<SplitDirection> {
     let bounds = event.bounds;
-    let size = bounds.size.width.min(bounds.size.height) * 0.25;
     let x = event.event.position.x - bounds.left();
     let y = event.event.position.y - bounds.top();
-    if x >= size && x <= bounds.size.width - size && y >= size && y <= bounds.size.height - size {
+    split_direction_for_position(
+        bounds.size.width.into(),
+        bounds.size.height.into(),
+        x.into(),
+        y.into(),
+    )
+}
+
+/// Zed's pane-body hit test. The edge band is 20% of the pane's shorter side;
+/// corners resolve to the nearest edge in Up, Right, Down, Left tie order.
+fn split_direction_for_position(width: f32, height: f32, x: f32, y: f32) -> Option<SplitDirection> {
+    let size = width.min(height) * 0.2;
+    if x >= size && x <= width - size && y >= size && y <= height - size {
         return None;
     }
     [
         (SplitDirection::Up, y),
-        (SplitDirection::Right, bounds.size.width - x),
-        (SplitDirection::Down, bounds.size.height - y),
+        (SplitDirection::Right, width - x),
+        (SplitDirection::Down, height - y),
         (SplitDirection::Left, x),
     ]
     .into_iter()
@@ -3396,12 +3481,15 @@ fn split_direction_for_drag(event: &DragMoveEvent<DraggedItem>) -> Option<SplitD
     .map(|(direction, _)| direction)
 }
 
-fn drop_target(direction: Option<SplitDirection>, cx: &App) -> Div {
+fn drop_target(direction: Option<SplitDirection>, group: String, space: String, cx: &App) -> Div {
     div()
+        .invisible()
         .absolute()
-        .border_2()
-        .border_color(cx.theme().colors().drop_target_border)
         .bg(cx.theme().colors().drop_target_background)
+        .can_drop(move |value, _, _| {
+            value.downcast_ref::<DraggedItem>().is_some_and(|dragged| dragged.space == space)
+        })
+        .group_drag_over::<DraggedItem>(group, |style| style.visible())
         .map(|target| match direction {
             None => target.top_0().right_0().bottom_0().left_0(),
             Some(SplitDirection::Up) => target.top_0().left_0().right_0().h(relative(0.5)),
@@ -3432,9 +3520,7 @@ fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> i
 fn pane_controls(weak: &gpui::WeakEntity<Zeddy>, pane_id: LayoutPaneId) -> AnyElement {
     let focus = weak.clone();
     let split = weak.clone();
-    let join = weak.clone();
     let zoom = weak.clone();
-    let close_all = weak.clone();
 
     h_flex()
         .id(("pane-controls", pane_id.get()))
@@ -3464,32 +3550,25 @@ fn pane_controls(weak: &gpui::WeakEntity<Zeddy>, pane_id: LayoutPaneId) -> AnyEl
                         let down = split.clone();
                         menu.entry("Split Left", None, move |_, cx| {
                             let _ = left.update(cx, |this, cx| {
-                                this.split_and_move(SplitDirection::Left, cx)
+                                this.split_and_move_in(pane_id, SplitDirection::Left, cx)
                             });
                         })
                         .entry("Split Right", None, move |_, cx| {
                             let _ = right.update(cx, |this, cx| {
-                                this.split_and_move(SplitDirection::Right, cx)
+                                this.split_and_move_in(pane_id, SplitDirection::Right, cx)
                             });
                         })
                         .entry("Split Up", None, move |_, cx| {
-                            let _ = up
-                                .update(cx, |this, cx| this.split_and_move(SplitDirection::Up, cx));
+                            let _ = up.update(cx, |this, cx| {
+                                this.split_and_move_in(pane_id, SplitDirection::Up, cx)
+                            });
                         })
                         .entry("Split Down", None, move |_, cx| {
                             let _ = down.update(cx, |this, cx| {
-                                this.split_and_move(SplitDirection::Down, cx)
+                                this.split_and_move_in(pane_id, SplitDirection::Down, cx)
                             });
                         })
                     }))
-                }),
-        )
-        .child(
-            IconButton::new(("pane-join", pane_id.get()), IconName::ListCollapse)
-                .icon_size(IconSize::XSmall)
-                .tooltip(Tooltip::text("Join Pane Into Next"))
-                .on_click(move |_, _, cx| {
-                    let _ = join.update(cx, |this, cx| this.join_active_into_next(cx));
                 }),
         )
         .child(
@@ -3498,15 +3577,6 @@ fn pane_controls(weak: &gpui::WeakEntity<Zeddy>, pane_id: LayoutPaneId) -> AnyEl
                 .tooltip(Tooltip::text("Toggle Pane Zoom"))
                 .on_click(move |_, _, cx| {
                     let _ = zoom.update(cx, |this, cx| this.toggle_zoom(cx));
-                }),
-        )
-        .child(
-            IconButton::new(("pane-close-all", pane_id.get()), IconName::Close)
-                .icon_size(IconSize::XSmall)
-                .tooltip(Tooltip::text("Close All in Pane"))
-                .on_click(move |_, window, cx| {
-                    let _ =
-                        close_all.update(cx, |this, cx| this.request_close_active_pane(window, cx));
                 }),
         )
         .into_any_element()
@@ -3590,4 +3660,37 @@ fn plugin_paths() -> Paths {
             PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
         });
     Paths::under(root.join("chartr-zeddy"))
+}
+
+#[cfg(test)]
+mod pane_drop_tests {
+    use super::{SplitDirection, split_direction_for_position};
+
+    #[test]
+    fn zed_drop_zone_has_a_center_and_four_edge_bands() {
+        assert_eq!(split_direction_for_position(100., 100., 50., 50.), None);
+        assert_eq!(split_direction_for_position(100., 100., 19.9, 50.), Some(SplitDirection::Left));
+        assert_eq!(
+            split_direction_for_position(100., 100., 80.1, 50.),
+            Some(SplitDirection::Right)
+        );
+        assert_eq!(split_direction_for_position(100., 100., 50., 19.9), Some(SplitDirection::Up));
+        assert_eq!(split_direction_for_position(100., 100., 50., 80.1), Some(SplitDirection::Down));
+    }
+
+    #[test]
+    fn zed_drop_zone_uses_the_shorter_side_and_excludes_the_boundary() {
+        assert_eq!(split_direction_for_position(400., 100., 20., 50.), None);
+        assert_eq!(split_direction_for_position(400., 100., 19.9, 50.), Some(SplitDirection::Left));
+        assert_eq!(split_direction_for_position(400., 100., 200., 20.), None);
+        assert_eq!(split_direction_for_position(400., 100., 200., 19.9), Some(SplitDirection::Up));
+    }
+
+    #[test]
+    fn zed_drop_zone_resolves_corners_to_the_nearest_edge() {
+        assert_eq!(split_direction_for_position(100., 100., 5., 5.), Some(SplitDirection::Up));
+        assert_eq!(split_direction_for_position(100., 100., 96., 8.), Some(SplitDirection::Right));
+        assert_eq!(split_direction_for_position(100., 100., 92., 97.), Some(SplitDirection::Down));
+        assert_eq!(split_direction_for_position(100., 100., 3., 90.), Some(SplitDirection::Left));
+    }
 }
