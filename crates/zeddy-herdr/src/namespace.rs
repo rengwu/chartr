@@ -12,23 +12,24 @@ use std::{ffi::OsString, path::PathBuf};
 /// The private locations and environment of zeddy's own herdr.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Namespace {
+    /// Herdr's own directory (`<config home>/herdr`).
     root: PathBuf,
-    session: String,
 }
 
 impl Namespace {
-    /// The namespace zeddy uses in production: `<state>/zeddy/herdr`.
+    /// The namespace Chartr-zeddy uses in production:
+    /// `<config>/chartr-zeddy/herdr`.
     ///
-    /// State rather than config or cache, because what lives here is neither
-    /// something an operator edits nor something safe to evict mid-session.
+    /// Herdr itself resolves all private runtime paths relative to its config
+    /// home, so this follows the proven Chartr-rs namespace shape exactly.
     pub fn private() -> Self {
-        Self::rooted(state_home().join("zeddy").join("herdr"))
+        Self::rooted(config_home().join("chartr-zeddy").join("herdr"))
     }
 
     /// A namespace under an arbitrary root. Tests use this to get a whole
     /// private backend in a scratch directory; nothing else should need it.
     pub fn rooted(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), session: "zeddy".to_owned() }
+        Self { root: root.into() }
     }
 
     /// The Unix socket the control plane connects to.
@@ -41,22 +42,18 @@ impl Namespace {
         self.root.join("daemon.log")
     }
 
-    /// herdr's named session inside this namespace.
-    pub fn session(&self) -> &str {
-        &self.session
+    /// Herdr's persisted workspace/tab/pane shape.
+    ///
+    /// A replacement after a crash must start without this file. The PTYs that
+    /// were represented by the saved shape died with the daemon; letting herdr
+    /// recreate it would present fresh shells as if they were the old work.
+    pub fn saved_shape(&self) -> PathBuf {
+        self.root.join("session.json")
     }
 
     /// Create every directory herdr will expect to write into.
     pub fn prepare(&self) -> std::io::Result<()> {
-        for dir in [
-            &self.root,
-            &self.xdg("config"),
-            &self.xdg("state"),
-            &self.xdg("data"),
-            &self.xdg("cache"),
-        ] {
-            std::fs::create_dir_all(dir)?;
-        }
+        std::fs::create_dir_all(&self.root)?;
         Ok(())
     }
 
@@ -71,12 +68,9 @@ impl Namespace {
         let set = |k: &str, v: OsString| (OsString::from(k), Some(v));
         let clear = |k: &str| (OsString::from(k), None);
         vec![
-            set("XDG_CONFIG_HOME", self.xdg("config").into()),
-            set("XDG_STATE_HOME", self.xdg("state").into()),
-            set("XDG_DATA_HOME", self.xdg("data").into()),
-            set("XDG_CACHE_HOME", self.xdg("cache").into()),
+            set("XDG_CONFIG_HOME", self.root.parent().unwrap_or(&self.root).as_os_str().to_owned()),
             set("HERDR_SOCKET_PATH", self.socket().into()),
-            set("HERDR_SESSION", self.session.clone().into()),
+            clear("HERDR_SESSION"),
             clear("HERDR_CLIENT_SOCKET_PATH"),
             clear("HERDR_CONFIG_PATH"),
             clear("HERDR_ENV"),
@@ -85,21 +79,17 @@ impl Namespace {
             clear("HERDR_PANE_ID"),
         ]
     }
-
-    fn xdg(&self, which: &str) -> PathBuf {
-        self.root.join("xdg").join(which)
-    }
 }
 
-/// `$XDG_STATE_HOME`, or the platform default when it is unset or relative.
-fn state_home() -> PathBuf {
-    if let Some(dir) = std::env::var_os("XDG_STATE_HOME") {
+/// `$XDG_CONFIG_HOME`, or the platform default when it is unset or relative.
+fn config_home() -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
         let dir = PathBuf::from(dir);
         if dir.is_absolute() {
             return dir;
         }
     }
-    home().join(".local").join("state")
+    home().join(".config")
 }
 
 fn home() -> PathBuf {
@@ -113,7 +103,7 @@ mod tests {
     #[test]
     fn every_private_path_stays_under_the_root() {
         let ns = Namespace::rooted("/scratch/root");
-        for path in [ns.socket(), ns.log(), ns.xdg("config"), ns.xdg("state")] {
+        for path in [ns.socket(), ns.log(), ns.saved_shape()] {
             assert!(path.starts_with("/scratch/root"), "{path:?} escaped the private root");
         }
     }
@@ -122,7 +112,13 @@ mod tests {
     fn inherited_herdr_context_is_cleared_not_merely_overridden() {
         let ns = Namespace::rooted("/scratch/root");
         let env = ns.env();
-        for key in ["HERDR_PANE_ID", "HERDR_TAB_ID", "HERDR_WORKSPACE_ID", "HERDR_CONFIG_PATH"] {
+        for key in [
+            "HERDR_SESSION",
+            "HERDR_PANE_ID",
+            "HERDR_TAB_ID",
+            "HERDR_WORKSPACE_ID",
+            "HERDR_CONFIG_PATH",
+        ] {
             let entry = env.iter().find(|(k, _)| k == key).expect("key is in the namespace env");
             assert!(entry.1.is_none(), "{key} must be removed, not set");
         }
@@ -143,6 +139,12 @@ mod tests {
         let ns = Namespace::rooted(tmp.path().join("ns"));
         ns.prepare().expect("prepare");
         assert!(ns.socket().parent().expect("root").is_dir());
-        assert!(ns.xdg("config").is_dir());
+        let config = ns
+            .env()
+            .into_iter()
+            .find(|(key, _)| key == "XDG_CONFIG_HOME")
+            .and_then(|(_, value)| value)
+            .expect("config home");
+        assert_eq!(PathBuf::from(config), ns.root.parent().expect("config home"));
     }
 }

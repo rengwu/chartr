@@ -5,8 +5,11 @@
 //! layouts: nothing below the chrome knows which one is showing, and toggling
 //! never touches a session.
 
+use serde::{Deserialize, Serialize};
+
 /// Where the session list is drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Mode {
     /// A vertical list down the left. Wide enough for a directory, an agent
     /// name, and a status — the mode for many long-lived sessions.

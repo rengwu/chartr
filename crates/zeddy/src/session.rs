@@ -44,7 +44,7 @@ pub struct Session {
     pub info: control::Session,
     terminal: Arc<Mutex<Terminal>>,
     ended: Arc<Mutex<Option<Ended>>>,
-    input: Input,
+    input: Arc<Mutex<Input>>,
     size: Size,
 }
 
@@ -101,11 +101,15 @@ impl Session {
             })
             .expect("spawn a session reader thread");
 
-        Ok(Self { info, terminal, ended, input, size })
+        Ok(Self { info, terminal, ended, input: Arc::new(Mutex::new(input)), size })
     }
 
     pub fn id(&self) -> &PaneId {
         &self.info.id
+    }
+
+    pub fn size(&self) -> Size {
+        self.size
     }
 
     /// The screen as it stands. Cheap enough to call once per paint.
@@ -131,7 +135,7 @@ impl Session {
 
     /// Send typed bytes to the session.
     pub fn send(&mut self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
-        self.input.send(bytes)
+        self.input.lock().expect("session input mutex").send(bytes)
     }
 
     /// Tell the session how many cells it now has.
@@ -143,12 +147,28 @@ impl Session {
             return Ok(());
         }
         self.size = size;
-        self.input.resize(geometry(size))
+        self.input.lock().expect("session input mutex").resize(geometry(size))
     }
 
     /// Detach cleanly, leaving the session running for the next launch.
     pub fn release(&mut self) {
-        let _ = self.input.release();
+        let _ = self.input.lock().expect("session input mutex").release();
+    }
+
+    pub fn access(&self) -> SessionAccess {
+        SessionAccess { info: self.info.clone(), input: self.input.clone() }
+    }
+}
+
+#[derive(Clone)]
+pub struct SessionAccess {
+    pub info: control::Session,
+    input: Arc<Mutex<Input>>,
+}
+
+impl SessionAccess {
+    pub fn send(&self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
+        self.input.lock().expect("session input mutex").send(bytes)
     }
 }
 

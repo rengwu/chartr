@@ -6,52 +6,66 @@
 //! the five questions itself — and this is then also the one place the terminal
 //! font is chosen, rather than a constant in the renderer.
 
+use std::borrow::Cow;
+
 use gpui::{App, Font, Pixels, px};
 use theme::{ThemeSettingsProvider, UiDensity};
+
+use crate::settings::ResolvedSettings;
 
 /// The families zeddy asks for, and the sizes it draws them at.
 pub struct Fonts {
     ui: Font,
     buffer: Font,
+    ui_size: Pixels,
+    buffer_size: Pixels,
 }
 
-/// The UI face. GPUI resolves this to the platform's own system font.
-const UI_FAMILY: &str = ".SystemUIFont";
+/// Chartr's typography defaults. IBM Plex Sans comes from Zed's asset bundle;
+/// Mono is bundled below because Zed does not ship that face.
+const UI_FAMILY: &str = "IBM Plex Sans";
+const MONOSPACE_FAMILY: &str = "IBM Plex Mono";
 
-/// The monospace face the terminal is drawn in: the one every one of these
-/// platforms ships, so it is there without zeddy bundling a font file.
-const MONOSPACE_FAMILY: &str = if cfg!(target_os = "macos") {
-    "Menlo"
-} else if cfg!(target_os = "windows") {
-    "Consolas"
-} else {
-    "DejaVu Sans Mono"
-};
+const IBM_PLEX_MONO: &[u8] =
+    include_bytes!("../assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf");
+
+pub fn load_bundled(cx: &App) -> anyhow::Result<()> {
+    cx.text_system().add_fonts(vec![Cow::Borrowed(IBM_PLEX_MONO)])
+}
 
 impl Default for Fonts {
     fn default() -> Self {
-        Self { ui: gpui::font(UI_FAMILY), buffer: gpui::font(MONOSPACE_FAMILY) }
+        Self {
+            ui: gpui::font(UI_FAMILY),
+            buffer: gpui::font(MONOSPACE_FAMILY),
+            ui_size: px(14.),
+            buffer_size: px(13.),
+        }
     }
 }
 
 impl Fonts {
+    pub fn from_settings(settings: &ResolvedSettings) -> Self {
+        Self {
+            ui: gpui::font(settings.ui_font_family.clone()),
+            buffer: gpui::font(settings.terminal_font_family.clone()),
+            ui_size: px(settings.ui_font_size),
+            buffer_size: px(settings.terminal_font_size),
+        }
+    }
+
     /// The terminal's font and the line height to draw it at.
     ///
     /// The ratio is the one every terminal uses and nobody writes down: a line
     /// box about 1.4× the point size, which leaves box-drawing characters
     /// touching and leaves text legible.
     pub fn terminal(&self) -> (Font, Pixels, Pixels) {
-        let size = px(13.);
+        let size = self.buffer_size;
         (self.buffer.clone(), size, (size * 1.4).round())
     }
 }
 
-/// Whether the platform can actually rasterise text.
-///
-/// GPUI answers `all_font_names` with its own hardcoded fallback list even when
-/// the platform text system is the one that draws nothing, so "is the list
-/// empty" is not the question. The question is whether a family the operating
-/// system really ships is in it.
+/// Whether the platform can actually rasterise the bundled terminal face.
 pub fn text_renders(cx: &App) -> bool {
     cx.text_system().all_font_names().iter().any(|name| name == MONOSPACE_FAMILY)
 }
@@ -66,7 +80,7 @@ impl ThemeSettingsProvider for Fonts {
     }
 
     fn ui_font_size(&self, _: &App) -> Pixels {
-        px(14.)
+        self.ui_size
     }
 
     fn buffer_font_size(&self, _: &App) -> Pixels {
@@ -92,5 +106,11 @@ mod tests {
     #[test]
     fn zeddy_names_a_family_on_every_platform() {
         assert!(!MONOSPACE_FAMILY.is_empty() && !UI_FAMILY.is_empty());
+    }
+
+    #[test]
+    fn the_default_monospace_is_a_real_bundled_font() {
+        assert!(IBM_PLEX_MONO.starts_with(&[0, 1, 0, 0]));
+        assert!(IBM_PLEX_MONO.len() > 100_000);
     }
 }

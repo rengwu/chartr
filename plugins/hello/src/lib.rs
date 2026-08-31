@@ -28,7 +28,13 @@ impl Plugin for Hello {
         registrar.add_pane("main", "Hello");
     }
 
-    fn view(&mut self, _: &PaneKey, _: &mut Window, cx: &mut gpui::App) -> gpui::AnyView {
+    fn view(
+        &mut self,
+        _: &PaneKey,
+        _: &zeddy_plugin::InstanceContext,
+        _: &mut Window,
+        cx: &mut gpui::App,
+    ) -> gpui::AnyView {
         let data_dir = self.host.data_dir.display().to_string();
         cx.new(|_| HelloView { data_dir }).into()
     }

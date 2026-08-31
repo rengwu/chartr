@@ -9,3 +9,4 @@ have to change for it to be worth revisiting.
 - [0002 — The Zed layer, and what it costs](0002-the-zed-layer.md)
 - [0003 — Two plugin tiers](0003-two-plugin-tiers.md)
 - [0004 — alacritty's VT core, not libghostty](0004-the-vt-core.md)
+- [0005 — Spaces follow Zed's multi-workspace ownership](0005-spaces-follow-zed-multi-workspace.md)

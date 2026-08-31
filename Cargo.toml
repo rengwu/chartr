@@ -23,7 +23,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.95"
 # Zed's `ui` and `theme` are GPL-3.0-or-later and zeddy links them directly, so
 # zeddy is too. See docs/adr/0002.
 license = "GPL-3.0-or-later"
@@ -38,15 +38,19 @@ repository = "https://github.com/rengwu/chartr-zeddy"
 # rather than looks like a rewrite of native. Only `zeddy` may name
 # `gpui_platform`: a plugin that linked a second window-server backend would
 # register a second application with the OS.
-gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false }
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false, features = ["x11"] }
 # `font-kit` is NOT in gpui_platform's default features, and without it macOS
 # falls back to a text system that rasterises nothing: a window that paints
 # every quad and icon correctly and shows not one glyph, with the explanation
 # behind a `log::warn!` that an app with no logger never sees. It is enabled
-# here on purpose, and `fonts::available` checks the result at startup.
-gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", features = ["font-kit"] }
+# here on purpose, and `fonts::text_renders` checks the result at startup.
+# Wry's in-window Linux child webview is an X11 surface. Selecting the same
+# GPUI backend makes both native and web panes work on X11 and XWayland instead
+# of allowing GPUI to pick Wayland and rejecting web panes at runtime.
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", features = ["font-kit", "x11"] }
 ui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+zed_assets = { package = "assets", git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 # --- the terminal --------------------------------------------------------
 #
 # Zed's fork of alacritty's VT core. Taking the same parser Zed's own terminal
@@ -64,12 +68,16 @@ futures = "0.3"
 # the entire wire format, so this is the entire wire dependency.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 base64 = "0.22"
 toml = "0.9"
 # The whole of the native plugin loader. There is no renderer, RPC transport,
 # or display-list replay between a plugin's view and zeddy's element tree.
 libloading = "0.8"
 tempfile = "3"
+url = "2"
+wry = "0.56.1"
+ureq = "3"
 
 # The dev profile is the build whose window you actually drag. GPUI and the VT
 # core are both unusably slow at opt-level 0, and neither is code we are

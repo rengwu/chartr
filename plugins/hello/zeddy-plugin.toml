@@ -1,4 +1,4 @@
-manifest_version = 1
+manifest_version = 2
 id = "com.example.hello"
 name = "Hello"
 version = "0.1.0"
@@ -8,4 +8,8 @@ kind = "native"
 library = "hello"
 # Must equal zeddy's own. Rust and GPUI objects cross the library boundary, so
 # there is no compatibility range and a mismatch is refused at load.
-native_abi = 1
+native_abi = 2
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

@@ -29,8 +29,13 @@
 <output id="now">--:--:--</output>
 <script>
   const now = document.getElementById("now");
-  const tick = () => {
-    now.textContent = new Date().toLocaleTimeString([], { hour12: false });
+  const tick = async () => {
+    let hour12 = false;
+    try {
+      const saved = await window.chartr.invoke("data.read", { path: "settings.json" });
+      hour12 = JSON.parse(saved).format === "12";
+    } catch (_) {}
+    now.textContent = new Date().toLocaleTimeString([], { hour12 });
   };
   tick();
   setInterval(tick, 1000);

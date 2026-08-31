@@ -9,7 +9,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 /// The manifest version this build reads. Bumped when a field changes meaning.
-pub const MANIFEST_VERSION: u32 = 1;
+pub const MANIFEST_VERSION: u32 = 2;
 
 /// The native ABI this build links.
 ///
@@ -18,7 +18,50 @@ pub const MANIFEST_VERSION: u32 = 1;
 /// compatibility range and there is not going to be one: a mismatch is a
 /// vtable from a different compilation, and the failure mode is a crash rather
 /// than a wrong answer.
-pub const NATIVE_ABI: u32 = 1;
+pub const NATIVE_ABI: u32 = 2;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Multiplicity {
+    /// Reopening focuses the existing item in that owning space.
+    #[default]
+    PerSpace,
+    /// Each open request creates an independent instance.
+    Multiple,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectAccess {
+    #[default]
+    None,
+    Read,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Permissions {
+    #[serde(default)]
+    pub project_files: ProjectAccess,
+    #[serde(default)]
+    pub network: Vec<String>,
+    #[serde(default)]
+    pub process: bool,
+    #[serde(default)]
+    pub session: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Capabilities {
+    #[serde(default)]
+    pub multiplicity: Multiplicity,
+    #[serde(default)]
+    pub cloneable: bool,
+    #[serde(default)]
+    pub restorable: bool,
+    #[serde(default)]
+    pub session_binding: bool,
+}
 
 /// Which tier a plugin belongs to.
 ///
@@ -50,6 +93,10 @@ pub struct Manifest {
     pub name: String,
     pub version: String,
     pub kind: Kind,
+    #[serde(default)]
+    pub capabilities: Capabilities,
+    #[serde(default)]
+    pub permissions: Permissions,
     /// Native only: the Cargo library stem. zeddy appends the platform's
     /// extension, so one manifest covers `.dylib`, `.so`, and `.dll`.
     #[serde(default)]
@@ -60,6 +107,9 @@ pub struct Manifest {
     /// Web only: the entry document, relative to the plugin directory.
     #[serde(default)]
     pub entry: Option<String>,
+    /// Web only: an optional document constructed lazily inside Settings.
+    #[serde(default)]
+    pub settings_entry: Option<String>,
 }
 
 /// Why a manifest was refused.
@@ -177,17 +227,17 @@ mod tests {
     }
 
     const NATIVE: &str = r#"
-        manifest_version = 1
+        manifest_version = 2
         id = "com.example.starmap"
         name = "Star map"
         version = "0.1.0"
         kind = "native"
         library = "starmap"
-        native_abi = 1
+        native_abi = 2
     "#;
 
     const WEB: &str = r#"
-        manifest_version = 1
+        manifest_version = 2
         id = "com.example.notes"
         name = "Notes"
         version = "0.1.0"
@@ -202,14 +252,33 @@ mod tests {
     }
 
     #[test]
+    fn capabilities_and_permissions_are_explicit_and_default_safe() {
+        let defaults = parse(WEB).expect("web defaults");
+        assert_eq!(defaults.capabilities.multiplicity, Multiplicity::PerSpace);
+        assert!(!defaults.capabilities.cloneable);
+        assert_eq!(defaults.permissions.project_files, ProjectAccess::None);
+        assert!(defaults.permissions.network.is_empty());
+
+        let declared = parse(&format!(
+            "{WEB}\n[capabilities]\nmultiplicity = 'multiple'\ncloneable = true\nrestorable = true\nsession_binding = true\n\
+             [permissions]\nproject_files = 'read_write'\nnetwork = ['https://api.example.com']\nprocess = true\nsession = true\n"
+        ))
+        .expect("declared contract");
+        assert_eq!(declared.capabilities.multiplicity, Multiplicity::Multiple);
+        assert!(declared.capabilities.cloneable && declared.capabilities.restorable);
+        assert_eq!(declared.permissions.project_files, ProjectAccess::ReadWrite);
+        assert!(declared.permissions.process && declared.permissions.session);
+    }
+
+    #[test]
     fn a_native_plugin_from_another_abi_is_refused() {
-        let wrong = NATIVE.replace("native_abi = 1", "native_abi = 2");
-        assert_eq!(parse(&wrong), Err(Invalid::NativeAbi { found: Some(2) }));
+        let wrong = NATIVE.replace("native_abi = 2", "native_abi = 99");
+        assert_eq!(parse(&wrong), Err(Invalid::NativeAbi { found: Some(99) }));
     }
 
     #[test]
     fn a_native_plugin_without_an_abi_is_refused_rather_than_assumed() {
-        let missing = NATIVE.replace("native_abi = 1", "");
+        let missing = NATIVE.replace("native_abi = 2", "");
         assert_eq!(parse(&missing), Err(Invalid::NativeAbi { found: None }));
     }
 

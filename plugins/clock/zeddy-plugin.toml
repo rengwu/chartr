@@ -1,6 +1,14 @@
-manifest_version = 1
+manifest_version = 2
 id = "com.example.clock"
 name = "Clock"
 version = "0.1.0"
 kind = "web"
 entry = "index.html"
+settings_entry = "settings.html"
+
+[capabilities]
+multiplicity = "multiple"
+restorable = true
+
+[permissions]
+project_files = "none"

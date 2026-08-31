@@ -1,364 +1,3200 @@
-//! The root view: the sessions, the mode, the plugins, and nothing else.
+//! The window-level workspace.
 //!
-//! Everything that can live below this file does. What is left here is only
-//! what genuinely needs to see more than one of them at once — which pane the
-//! workspace is showing, and what a chrome action means.
+//! This follows Zed's `MultiWorkspace` ownership boundary: the window owns an
+//! ordered collection of independently stateful space entities, keeps one
+//! active, observes each child, and renders only the active one. A space owns
+//! its sessions and selection; switching spaces therefore never moves or
+//! recreates a session.
 
-use std::{path::PathBuf, rc::Rc, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
-use futures::{StreamExt as _, channel::mpsc};
-use gpui::{FocusHandle, Focusable, Task};
-use ui::prelude::*;
+use gpui::{
+    Anchor, AnyView, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, PathPromptOptions,
+    Role,
+};
+use ui::{
+    Banner, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, ListItem, ListItemSpacing,
+    PopoverMenu, Severity, Tab, TabBar, TabPosition, Tooltip, prelude::*,
+};
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
-use zeddy_plugin::PaneKey;
-use zeddy_plugin_host::{Catalog, PaneSource, Paths};
-use zeddy_vt::Size;
+use zeddy_plugin::{InstanceContext, manifest::Multiplicity};
+use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 
 use crate::{
-    chrome::{self, Action, Entry},
+    actions,
+    chrome::{self, Action, DraggedItem, Entry, SpaceEntries},
     fonts::Fonts,
+    item::PluginItem,
+    keymap::{KeymapAction, KeymapStore},
     keys,
     mode::Mode,
     palette,
-    session::Session,
-    terminal::{Appearance, Fit, TerminalElement},
+    persistence::{
+        SidebarScope, Snapshot, SpaceKind as PersistedSpaceKind, StateStore, WindowState,
+    },
+    settings::{
+        AppearanceContent, CHARTR_DARK, CHARTR_LIGHT, GeneralContent, PluginSettingsContent,
+        ResolvedSettings, SettingsPage, SettingsStore, TerminalContent, ThemeMode,
+    },
+    space::{Kind as SpaceKind, Space, name_for},
+    spaces::{self, Registry},
+    terminal::{Appearance, TerminalElement},
+    workspace::{Axis as PaneAxisDirection, Member, PaneId as LayoutPaneId, SplitDirection},
 };
 
-/// How long to wait for the private backend before saying it did not come up.
 const BACKEND_TIMEOUT: Duration = Duration::from_secs(10);
+const BACKEND_SUPERVISION: Duration = Duration::from_secs(2);
+const BACKEND_STEADY: Duration = Duration::from_secs(60);
 
-/// What the workspace is showing.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Showing {
-    Session(usize),
-    Plugin(PaneKey),
-    /// Before the first session exists, or after the last one is closed.
-    Empty,
+enum Backend {
+    Starting,
+    Ready,
+    Recovering(String),
+    Failed(String),
 }
 
+#[derive(Clone)]
+struct DraggedPaneDivider {
+    axis_path: Vec<usize>,
+    divider: usize,
+    axis: PaneAxisDirection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaletteCommand {
+    NewTerminal,
+    CloseItem,
+    CloseAllItems,
+    SplitLeft,
+    SplitRight,
+    SplitUp,
+    SplitDown,
+    MoveLeft,
+    MoveRight,
+    MoveUp,
+    MoveDown,
+    JoinPane,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
+    ToggleZoom,
+    OpenSettings,
+}
+
+impl PaletteCommand {
+    const ALL: [(Self, &'static str, &'static str); 18] = [
+        (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
+        (Self::CloseItem, "Pane: Close Active Item", "Cmd/Ctrl+W"),
+        (Self::CloseAllItems, "Pane: Close All Items", ""),
+        (Self::SplitLeft, "Pane: Split and Move Left", ""),
+        (Self::SplitRight, "Pane: Split and Move Right", ""),
+        (Self::SplitUp, "Pane: Split and Move Up", ""),
+        (Self::SplitDown, "Pane: Split and Move Down", ""),
+        (Self::MoveLeft, "Pane: Move Active Item Left", ""),
+        (Self::MoveRight, "Pane: Move Active Item Right", ""),
+        (Self::MoveUp, "Pane: Move Active Item Up", ""),
+        (Self::MoveDown, "Pane: Move Active Item Down", ""),
+        (Self::JoinPane, "Pane: Join Into Next Pane", ""),
+        (Self::FocusLeft, "Pane: Focus Left", "Cmd/Ctrl+K ←"),
+        (Self::FocusRight, "Pane: Focus Right", "Cmd/Ctrl+K →"),
+        (Self::FocusUp, "Pane: Focus Up", "Cmd/Ctrl+K ↑"),
+        (Self::FocusDown, "Pane: Focus Down", "Cmd/Ctrl+K ↓"),
+        (Self::ToggleZoom, "Pane: Toggle Zoom", "Shift+Esc"),
+        (Self::OpenSettings, "Chartr: Open Settings", "Cmd/Ctrl+,"),
+    ];
+}
+
+impl Render for DraggedPaneDivider {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+}
+
+/// The root view, analogous to Zed's `MultiWorkspace`.
 pub struct Zeddy {
-    client: Client,
-    workspace: Option<WorkspaceId>,
-    sessions: Vec<Session>,
-    showing: Showing,
+    client: Option<Client>,
+    backend: Backend,
+    backend_ready_since: Option<Instant>,
+    backend_restart_spent: bool,
+    supervision_started: bool,
+    registry: Option<Registry>,
+    spaces: Vec<Entity<Space>>,
+    active: Option<Entity<Space>>,
     mode: Mode,
     catalog: Catalog,
-    fit: Fit,
+    plugins_restored: bool,
+    plugin_settings: Option<(String, AnyView)>,
+    settings: SettingsStore,
+    keymap: KeymapStore,
+    settings_open: bool,
+    settings_page: SettingsPage,
+    recording_keymap: Option<KeymapAction>,
+    keymap_restart_required: bool,
+    command_palette_open: bool,
+    command_palette_query: String,
+    command_palette_selected: usize,
+    rename_space: Option<EntityId>,
+    rename_query: String,
+    sidebar_scope: SidebarScope,
+    sidebar_width: f32,
+    window_bounds: Option<crate::persistence::WindowBounds>,
+    state: Option<StateStore>,
+    last_persisted: Option<String>,
     focus: FocusHandle,
-    /// The last thing that went wrong, shown in place of the workspace. One
-    /// slot, not a log: what the user needs is the reason the thing they just
-    /// tried did not happen.
     problem: Option<String>,
-    _wakeups: Task<()>,
-    wakeup_tx: mpsc::UnboundedSender<()>,
 }
 
 impl Zeddy {
-    pub fn new(cwd: PathBuf, cx: &mut Context<Self>) -> Self {
-        let namespace = Namespace::private();
-        let client = match Sidecar::beside_current_exe() {
-            Ok(sidecar) => Client::new(sidecar, namespace),
-            Err(err) => {
-                // Without a backend there is nothing to show, but the window
-                // still opens: a window that says why is more useful than one
-                // that never appears.
-                return Self::broken(err.to_string(), cx);
+    pub fn new(
+        cwd: PathBuf,
+        settings: SettingsStore,
+        keymap: KeymapStore,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let (state, saved, state_problem) =
+            match crate::persistence::state_file().and_then(StateStore::open) {
+                Ok(store) => match store.load() {
+                    Ok(saved) => (Some(store), saved, None),
+                    Err(error) => (Some(store), Snapshot::default(), Some(error.to_string())),
+                },
+                Err(error) => (None, Snapshot::default(), Some(error.to_string())),
+            };
+        let saved_json = serde_json::to_string(&saved).ok();
+        let client =
+            Sidecar::beside_current_exe().map(|sidecar| Client::new(sidecar, Namespace::private()));
+        let client = match client {
+            Ok(client) => client,
+            Err(error) => {
+                return Self {
+                    client: None,
+                    backend: Backend::Failed(error.to_string()),
+                    backend_ready_since: None,
+                    backend_restart_spent: false,
+                    supervision_started: false,
+                    registry: None,
+                    spaces: Vec::new(),
+                    active: None,
+                    mode: Mode::default(),
+                    catalog: Catalog::default(),
+                    plugins_restored: true,
+                    plugin_settings: None,
+                    settings,
+                    keymap,
+                    settings_open: false,
+                    settings_page: SettingsPage::default(),
+                    recording_keymap: None,
+                    keymap_restart_required: false,
+                    command_palette_open: false,
+                    command_palette_query: String::new(),
+                    command_palette_selected: 0,
+                    rename_space: None,
+                    rename_query: String::new(),
+                    sidebar_scope: saved.window.sidebar_scope,
+                    sidebar_width: saved.window.sidebar_width,
+                    window_bounds: saved.window.bounds,
+                    state,
+                    last_persisted: saved_json,
+                    focus: cx.focus_handle(),
+                    problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
+                };
             }
         };
 
-        let (wakeup_tx, wakeup_rx) = mpsc::unbounded();
-        let mut this = Self {
-            client,
-            workspace: None,
-            sessions: Vec::new(),
-            showing: Showing::Empty,
-            mode: Mode::default(),
-            catalog: Catalog::default(),
-            fit: Fit::default(),
-            focus: cx.focus_handle(),
-            problem: None,
-            _wakeups: Self::watch(wakeup_rx, cx),
-            wakeup_tx,
-        };
+        let (registry, registry_problem) = load_registry(&cwd);
+        let mut descriptors = Vec::new();
+        let home = settings
+            .resolved()
+            .ad_hoc_directory
+            .clone()
+            .or_else(std::env::home_dir)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| cwd.clone());
+        descriptors.push(("Ad-hoc sessions".to_owned(), home.clone(), SpaceKind::AdHoc));
+        if let Some(registry) = registry.as_ref() {
+            descriptors.extend(
+                registry
+                    .spaces()
+                    .iter()
+                    // The synthetic ad-hoc space already owns the home
+                    // workspace. herdr has one workspace per directory, so a
+                    // second row for the same path could not own independent
+                    // sessions and would be a false distinction.
+                    .filter(|space| !spaces::same_path(space.path(), &home))
+                    .map(|space| {
+                        (space.name().to_owned(), space.path().to_path_buf(), SpaceKind::Registered)
+                    }),
+            );
+        }
+        for saved_space in &saved.spaces {
+            if saved_space.kind != PersistedSpaceKind::Folder {
+                continue;
+            }
+            let Some(path) = saved_space.path.clone() else {
+                continue;
+            };
+            if descriptors.iter().all(|(_, existing, _)| !spaces::same_path(existing, &path)) {
+                descriptors.push((saved_space.name.clone(), path, SpaceKind::Registered));
+            }
+        }
+        if descriptors.is_empty() {
+            descriptors.push((
+                name_for(SpaceKind::Registered, &cwd),
+                cwd.clone(),
+                SpaceKind::Registered,
+            ));
+        }
 
-        this.catalog = zeddy_plugin_host::load_all(&plugin_paths(), cx);
-        this.connect(cwd, cx);
+        let spaces: Vec<_> = descriptors
+            .into_iter()
+            .map(|(name, path, kind)| {
+                let space = cx.new(|cx| Space::new(name, path, kind, client.clone(), cx));
+                cx.observe(&space, |_, _, cx| cx.notify()).detach();
+                space
+            })
+            .collect();
+        for space in &spaces {
+            let key = space.read(cx).persisted().key;
+            if let Some(saved_space) = saved.spaces.iter().find(|saved| saved.key == key) {
+                space.update(cx, |space, _| space.restore_saved(saved_space));
+            }
+        }
+        let active = saved
+            .window
+            .active_space
+            .as_ref()
+            .and_then(|key| {
+                spaces.iter().find(|space| space.read(cx).persisted().key == *key).cloned()
+            })
+            .or_else(|| {
+                spaces
+                    .iter()
+                    .find(|space| {
+                        let space = space.read(cx);
+                        space.kind() == SpaceKind::Registered
+                            && spaces::same_path(space.path(), &cwd)
+                    })
+                    .cloned()
+            })
+            .or_else(|| spaces.first().cloned());
+
+        let catalog = zeddy_plugin_host::load_all_where(
+            &plugin_paths(),
+            |id| settings.resolved().plugin(id).enabled,
+            cx,
+        );
+        let mut this = Self {
+            client: Some(client),
+            backend: Backend::Starting,
+            backend_ready_since: None,
+            backend_restart_spent: false,
+            supervision_started: false,
+            registry,
+            spaces,
+            active,
+            mode: saved.window.chrome,
+            catalog,
+            plugins_restored: false,
+            plugin_settings: None,
+            settings,
+            keymap,
+            settings_open: false,
+            settings_page: SettingsPage::default(),
+            recording_keymap: None,
+            keymap_restart_required: false,
+            command_palette_open: false,
+            command_palette_query: String::new(),
+            command_palette_selected: 0,
+            rename_space: None,
+            rename_query: String::new(),
+            sidebar_scope: saved.window.sidebar_scope,
+            sidebar_width: saved.window.sidebar_width,
+            window_bounds: saved.window.bounds,
+            state,
+            last_persisted: saved_json,
+            focus: cx.focus_handle(),
+            problem: state_problem.or(registry_problem),
+        };
+        this.connect(cx);
         this
     }
 
-    /// A window with no backend behind it. Everything is empty and the problem
-    /// is on screen.
-    fn broken(problem: String, cx: &mut Context<Self>) -> Self {
-        let (wakeup_tx, wakeup_rx) = mpsc::unbounded();
-        Self {
-            client: Client::new(
-                Sidecar::at(PathBuf::from("/nonexistent")).unwrap_or_else(|_| unreachable!()),
-                Namespace::private(),
-            ),
-            workspace: None,
-            sessions: Vec::new(),
-            showing: Showing::Empty,
-            mode: Mode::default(),
-            catalog: Catalog::default(),
-            fit: Fit::default(),
-            focus: cx.focus_handle(),
-            problem: Some(problem),
-            _wakeups: Self::watch(wakeup_rx, cx),
-            wakeup_tx,
+    /// Apply the explicit exit policy while the window and its entities are
+    /// still reachable. The default does nothing; `Space::drop` then sends a
+    /// clean release to every attachment so Herdr can be adopted next launch.
+    pub fn apply_exit_policy(&mut self, cx: &mut Context<Self>) {
+        if !self.settings.resolved().terminate_sessions_on_exit {
+            return;
+        }
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        for space in &self.spaces {
+            let ids = space.read(cx).all_item_ids();
+            let targets = space.read(cx).close_targets(&ids);
+            let closed: Vec<_> = targets
+                .into_iter()
+                .filter_map(|(item, backend)| match backend {
+                    None => Some(item),
+                    Some(backend) if client.close_session(&backend).is_ok() => Some(item),
+                    Some(_) => None,
+                })
+                .collect();
+            space.update(cx, |space, _| space.finish_bulk_close(&closed));
         }
     }
 
-    /// Redraw whenever any session's reader says something changed.
-    ///
-    /// Every wakeup already waiting is drained before the redraw, so a burst of
-    /// frames costs one paint rather than one paint each.
-    fn watch(mut wakeups: mpsc::UnboundedReceiver<()>, cx: &mut Context<Self>) -> Task<()> {
+    /// Bring the private backend up and take one snapshot of every running
+    /// session. Like Zed's project I/O, the blocking transport stays on the
+    /// background executor and only owned answers return to GPUI.
+    fn connect(&mut self, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
-            while wakeups.next().await.is_some() {
-                while wakeups.try_recv().is_ok() {}
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    return;
+            let result = executor
+                .spawn(async move {
+                    client.connect(BACKEND_TIMEOUT)?;
+                    client.sessions(None)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(infos) => {
+                    this.backend_became_ready();
+                    this.distribute(infos, cx);
+                    this.start_supervision(cx);
+                    cx.notify();
                 }
-            }
+                Err(error) => {
+                    let problem = error.to_string();
+                    this.backend = Backend::Failed(problem.clone());
+                    this.backend_ready_since = None;
+                    cx.notify();
+                }
+            });
         })
+        .detach();
     }
 
-    /// Bring the private backend up and adopt whatever is already running in
-    /// this directory.
-    fn connect(&mut self, cwd: PathBuf, cx: &mut Context<Self>) {
-        if let Err(err) = self.client.connect(BACKEND_TIMEOUT) {
-            self.problem = Some(err.to_string());
+    fn backend_became_ready(&mut self) {
+        self.backend = Backend::Ready;
+        self.backend_ready_since = Some(Instant::now());
+    }
+
+    /// Supervise the private daemon on the same discipline as Chartr-rs: the
+    /// socket is checked every two seconds, the first failure in an episode is
+    /// given one clean replacement, and a replacement that cannot hold for a
+    /// minute is exposed as a crash loop rather than restarted again.
+    fn start_supervision(&mut self, cx: &mut Context<Self>) {
+        if self.supervision_started {
+            return;
+        }
+        self.supervision_started = true;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                executor.timer(BACKEND_SUPERVISION).await;
+                let check = this.update(cx, |this, _| {
+                    matches!(this.backend, Backend::Ready).then(|| this.client.clone()).flatten()
+                });
+                let Ok(Some(client)) = check else {
+                    continue;
+                };
+                let probe = client.clone();
+                if executor.spawn(async move { probe.answers() }).await {
+                    let _ = this.update(cx, |this, _| {
+                        if this.backend_restart_spent
+                            && this
+                                .backend_ready_since
+                                .is_some_and(|since| since.elapsed() >= BACKEND_STEADY)
+                        {
+                            this.backend_restart_spent = false;
+                        }
+                    });
+                    continue;
+                }
+                let _ = this.update(cx, |this, cx| this.backend_died(client, cx));
+            }
+        })
+        .detach();
+    }
+
+    fn backend_died(&mut self, client: Client, cx: &mut Context<Self>) {
+        if !matches!(self.backend, Backend::Ready) {
+            return;
+        }
+        if self.backend_ready_since.is_some_and(|since| since.elapsed() >= BACKEND_STEADY) {
+            self.backend_restart_spent = false;
+        }
+        self.drop_dead_terminals(cx);
+        self.backend_ready_since = None;
+
+        if self.backend_restart_spent {
+            let problem = "The terminal backend failed again before it held for 60 seconds. Chartr stopped automatic recovery to expose the crash loop.".to_owned();
+            self.backend = Backend::Failed(problem);
+            let executor = cx.background_executor().clone();
+            executor.spawn(async move { client.clear_saved_shape() }).detach();
+            cx.notify();
             return;
         }
 
-        let label = cwd.file_name().map(|name| name.to_string_lossy().into_owned());
-        match self.client.open_workspace(&cwd, label.as_deref()) {
-            Ok(workspace) => {
-                self.workspace = Some(workspace);
-                self.refresh(cx);
-            }
-            Err(err) => self.problem = Some(err.to_string()),
+        self.backend_restart_spent = true;
+        self.backend = Backend::Recovering(
+            "The terminal backend stopped answering. Starting one clean replacement…".to_owned(),
+        );
+        cx.notify();
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let result = executor
+                .spawn(async move {
+                    client.restart()?;
+                    client.reconnect(BACKEND_TIMEOUT)?;
+                    client.sessions(None)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(infos) => {
+                    this.backend_became_ready();
+                    this.distribute(infos, cx);
+                    cx.notify();
+                }
+                Err(error) => {
+                    this.backend = Backend::Failed(format!(
+                        "Chartr could not recover the terminal backend: {error}"
+                    ));
+                    this.backend_ready_since = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn drop_dead_terminals(&mut self, cx: &mut Context<Self>) {
+        for space in &self.spaces {
+            space.update(cx, |space, _| space.drop_dead_sessions());
         }
     }
 
-    /// Attach to every session the backend is running that zeddy is not showing
-    /// yet.
-    ///
-    /// Adopting rather than creating is the point of a durable backend: a
-    /// session that outlived the last launch is picked up here, not restarted.
-    fn refresh(&mut self, cx: &mut Context<Self>) {
-        let known = self.client.sessions(self.workspace.as_ref());
-        let listed = match known {
-            Ok(listed) => listed,
-            Err(err) => {
-                self.problem = Some(err.to_string());
+    fn retry_backend(&mut self, clean_restart: bool, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        if clean_restart {
+            self.drop_dead_terminals(cx);
+        }
+        self.backend = if clean_restart {
+            Backend::Recovering("Restarting the terminal backend…".to_owned())
+        } else {
+            Backend::Starting
+        };
+        self.backend_ready_since = None;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let result = executor
+                .spawn(async move {
+                    if clean_restart {
+                        client.restart()?;
+                        client.reconnect(BACKEND_TIMEOUT)?;
+                    } else {
+                        client.connect(BACKEND_TIMEOUT)?;
+                    }
+                    client.sessions(None)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(infos) => {
+                    this.backend_restart_spent = false;
+                    this.backend_became_ready();
+                    this.distribute(infos, cx);
+                    this.start_supervision(cx);
+                    cx.notify();
+                }
+                Err(error) => {
+                    this.backend = Backend::Failed(error.to_string());
+                    this.backend_ready_since = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn request_backend_restart(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let terminal_count: usize = self
+            .spaces
+            .iter()
+            .map(|space| {
+                let ids = space.read(cx).all_item_ids();
+                space
+                    .read(cx)
+                    .close_targets(&ids)
+                    .iter()
+                    .filter(|(_, backend)| backend.is_some())
+                    .count()
+            })
+            .sum();
+        if terminal_count <= 1 {
+            self.retry_backend(true, cx);
+            return;
+        }
+        let prompt = window.prompt(
+            gpui::PromptLevel::Critical,
+            "Restart the terminal backend?",
+            Some(&format!(
+                "Restarting is destructive: all {terminal_count} underlying sessions will be terminated."
+            )),
+            &["Restart and Terminate", "Cancel"],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if prompt.await == Ok(0) {
+                let _ = this.update(cx, |this, cx| this.retry_backend(true, cx));
+            }
+        })
+        .detach();
+    }
+
+    /// Partition a single backend snapshot by workspace path, then let each
+    /// space attach its own sessions.
+    fn distribute(&mut self, infos: Vec<zeddy_herdr::control::Session>, cx: &mut Context<Self>) {
+        let paths_by_workspace: HashMap<WorkspaceId, PathBuf> = infos
+            .iter()
+            .filter_map(|info| info.cwd.clone().map(|cwd| (info.workspace.clone(), cwd)))
+            .collect();
+        let mut by_space: HashMap<EntityId, Vec<zeddy_herdr::control::Session>> = HashMap::new();
+
+        for info in infos {
+            let path =
+                info.cwd.clone().or_else(|| paths_by_workspace.get(&info.workspace).cloned());
+            let Some(path) = path else {
+                continue;
+            };
+            let target = self.spaces.iter().find(|space| {
+                let space = space.read(cx);
+                spaces::same_path(space.path(), &path)
+            });
+            if let Some(target) = target {
+                by_space.entry(target.entity_id()).or_default().push(info);
+            }
+        }
+
+        for space in &self.spaces {
+            if let Some(infos) = by_space.remove(&space.entity_id()) {
+                space.update(cx, |space, cx| space.adopt(infos, cx));
+            }
+        }
+    }
+
+    fn active_space(&self) -> Option<&Entity<Space>> {
+        self.active.as_ref()
+    }
+
+    fn snapshot(&self, cx: &App) -> Snapshot {
+        Snapshot {
+            window: WindowState {
+                chrome: self.mode,
+                sidebar_scope: self.sidebar_scope,
+                sidebar_width: self.sidebar_width,
+                active_space: self.active.as_ref().map(|space| space.read(cx).persisted().key),
+                bounds: self.window_bounds,
+                ..WindowState::default()
+            },
+            spaces: self.spaces.iter().map(|space| space.read(cx).persisted()).collect(),
+        }
+    }
+
+    fn persist_if_changed(&mut self, cx: &mut Context<Self>) {
+        let snapshot = self.snapshot(cx);
+        let Ok(encoded) = serde_json::to_string(&snapshot) else {
+            return;
+        };
+        if self.last_persisted.as_deref() == Some(encoded.as_str()) {
+            return;
+        }
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
+        match state.save(&snapshot) {
+            Ok(()) => self.last_persisted = Some(encoded),
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+    }
+
+    fn activate(&mut self, space: Entity<Space>, window: &mut Window, cx: &mut Context<Self>) {
+        if self.active.as_ref() == Some(&space) {
+            window.focus(&self.focus, cx);
+            return;
+        }
+        self.active = Some(space.clone());
+        space.update(cx, |space, _| space.fit_items());
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
+    fn pick_a_folder(&mut self, cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Add".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let outcome = chosen.await;
+            let _ = this.update(cx, |this, cx| match outcome {
+                Ok(Ok(Some(paths))) => {
+                    for path in paths {
+                        this.register(path, cx);
+                    }
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(error)) => {
+                    this.problem = Some(format!("choosing a folder: {error}"));
+                    cx.notify();
+                }
+                Err(_) => {
+                    this.problem = Some("the folder picker closed unexpectedly".into());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn register(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let Some(registry) = self.registry.as_mut() else {
+            self.problem = Some("the space registry is unavailable".into());
+            cx.notify();
+            return;
+        };
+        let path = match registry.register(&path) {
+            Ok(path) => path,
+            Err(error) => {
+                self.problem = Some(error.to_string());
+                cx.notify();
                 return;
             }
         };
-
-        for info in listed {
-            if self.sessions.iter().any(|session| session.id() == &info.id) {
-                continue;
-            }
-            match Session::attach(&self.client, info, self.grid(), self.wakeup_tx.clone()) {
-                Ok(session) => self.sessions.push(session),
-                Err(err) => self.problem = Some(err.to_string()),
-            }
+        if let Some(existing) = self
+            .spaces
+            .iter()
+            .find(|space| spaces::same_path(space.read(cx).path(), &path))
+            .cloned()
+        {
+            self.active = Some(existing);
+            self.problem = None;
+            cx.notify();
+            return;
         }
 
-        if matches!(self.showing, Showing::Empty) && !self.sessions.is_empty() {
-            self.showing = Showing::Session(0);
-        }
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let name = name_for(SpaceKind::Registered, &path);
+        let space = cx.new(|cx| Space::new(name, path, SpaceKind::Registered, client, cx));
+        cx.observe(&space, |_, _, cx| cx.notify()).detach();
+        self.spaces.push(space.clone());
+        self.active = Some(space);
+        self.problem = None;
+        self.refresh(cx);
         cx.notify();
     }
 
-    /// The grid the last paint found room for, or a sane default before the
-    /// first one.
-    fn grid(&self) -> Size {
-        self.fit.get().unwrap_or_default()
-    }
-
-    /// Tell the shown session how many cells the last paint found room for.
-    ///
-    /// Only the shown one: a background session has no bounds of its own, and
-    /// resizing it to the visible pane's grid would reflow a screen nobody is
-    /// looking at. It is resized when it is next shown.
-    fn fit_shown(&mut self) {
-        let Some(size) = self.fit.get() else {
+    fn refresh(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.backend, Backend::Ready) {
             return;
-        };
-        let Showing::Session(index) = self.showing else {
-            return;
-        };
-        if let Some(session) = self.sessions.get_mut(index)
-            && let Err(err) = session.resize(size)
-        {
-            self.problem = Some(err.to_string());
         }
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let request = client.clone();
+            let (result, answers) = executor
+                .spawn(async move {
+                    let result = request.sessions(None);
+                    let answers = request.answers();
+                    (result, answers)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(infos) => this.distribute(infos, cx),
+                Err(_) if !answers => this.backend_died(client, cx),
+                Err(error) => this.problem = Some(error.to_string()),
+            });
+        })
+        .detach();
     }
 
-    fn act(&mut self, action: Action, cx: &mut Context<Self>) {
+    fn entries(&self, cx: &App) -> Vec<Entry> {
+        self.active_space()
+            .map(|space| space.read(cx).entries(space.entity_id()))
+            .unwrap_or_default()
+    }
+
+    fn sidebar_spaces(&self, cx: &App) -> Vec<SpaceEntries> {
+        let spaces: Vec<_> = match self.sidebar_scope {
+            SidebarScope::AllSpaces => self.spaces.iter().collect(),
+            SidebarScope::ActiveSpace => self.active.iter().collect(),
+        };
+        spaces
+            .into_iter()
+            .map(|space| {
+                let read = space.read(cx);
+                SpaceEntries {
+                    id: space.entity_id(),
+                    name: read.name().to_owned(),
+                    removable: read.kind() == SpaceKind::Registered,
+                    available: read.available(),
+                    panes: read.pane_entries(space.entity_id()),
+                    entries: read.entries(space.entity_id()),
+                }
+            })
+            .collect()
+    }
+
+    fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
             Action::ToggleMode => self.mode = self.mode.toggled(),
-            Action::Select(index) => self.showing = Showing::Session(index),
-            Action::New => self.start_session(cx),
-            Action::Close(index) => self.close_session(index, cx),
-        }
-        cx.notify();
-    }
-
-    fn start_session(&mut self, cx: &mut Context<Self>) {
-        let Some(workspace) = self.workspace.clone() else {
-            return;
-        };
-        match self.client.start_session(&workspace, None) {
-            Ok(info) => {
-                match Session::attach(&self.client, info, self.grid(), self.wakeup_tx.clone()) {
-                    Ok(session) => {
-                        self.sessions.push(session);
-                        self.showing = Showing::Session(self.sessions.len() - 1);
-                        self.problem = None;
-                    }
-                    Err(err) => self.problem = Some(err.to_string()),
+            Action::ToggleSidebarScope => {
+                self.sidebar_scope = match self.sidebar_scope {
+                    SidebarScope::AllSpaces => SidebarScope::ActiveSpace,
+                    SidebarScope::ActiveSpace => SidebarScope::AllSpaces,
                 }
             }
-            Err(err) => self.problem = Some(err.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn close_session(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.sessions.len() {
-            return;
-        }
-        let mut session = self.sessions.remove(index);
-        if let Err(err) = self.client.close_session(session.id()) {
-            self.problem = Some(err.to_string());
-        }
-        session.release();
-
-        // Selection follows the list rather than the index: closing the tab you
-        // are on should land you on its neighbour, not on nothing.
-        self.showing = match self.showing.clone() {
-            Showing::Session(_) if self.sessions.is_empty() => Showing::Empty,
-            Showing::Session(selected) if selected > index => Showing::Session(selected - 1),
-            Showing::Session(selected) if selected == index => {
-                Showing::Session(index.min(self.sessions.len() - 1))
+            Action::New => {
+                if matches!(self.backend, Backend::Ready)
+                    && let Some(space) = self.active.clone()
+                {
+                    space.update(cx, |space, cx| space.start_session(cx));
+                }
             }
-            other => other,
-        };
+            Action::NewInSpace { space } => {
+                if matches!(self.backend, Backend::Ready)
+                    && let Some(target) =
+                        self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    self.activate(target.clone(), window, cx);
+                    target.update(cx, |space, cx| space.start_session(cx));
+                }
+            }
+            Action::ClosePane { space, pane } => self.request_close_pane(space, pane, window, cx),
+            Action::CloseSpace { space } => self.request_close_space(space, window, cx),
+            Action::RenameSpace { space } => {
+                if let Some(target) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space)
+                {
+                    self.rename_space = Some(space);
+                    self.rename_query = target.read(cx).name().to_owned();
+                    window.focus(&self.focus, cx);
+                }
+            }
+            Action::LocateSpace { space } => self.locate_space(space, cx),
+            action @ Action::MoveToPane { space, item, target: target_pane, .. } => {
+                if let Some(target_space) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    let clone = cfg!(target_os = "macos") && window.modifiers().alt
+                        || cfg!(not(target_os = "macos")) && window.modifiers().control;
+                    if clone
+                        && self.clone_plugin_drop(
+                            target_space.clone(),
+                            item,
+                            target_pane,
+                            None,
+                            window,
+                            cx,
+                        )
+                    {
+                        cx.notify();
+                        return;
+                    }
+                    target_space.update(cx, |space, cx| space.act(action, cx));
+                }
+            }
+            action @ (Action::Select { .. } | Action::Close { .. }) => {
+                let target = match &action {
+                    Action::Select { space, .. } | Action::Close { space, .. } => space
+                        .and_then(|id| self.spaces.iter().find(|space| space.entity_id() == id))
+                        .cloned()
+                        .or_else(|| self.active.clone()),
+                    _ => None,
+                };
+                if let Some(space) = target {
+                    if matches!(action, Action::Select { .. }) {
+                        self.activate(space.clone(), window, cx);
+                    }
+                    space.update(cx, |space, cx| space.act(action, cx));
+                }
+            }
+        }
         cx.notify();
     }
 
-    /// The chrome's view of the sessions, plus the plugin panes that share the
-    /// same list.
-    fn entries(&self) -> Vec<Entry> {
-        let selected_session = match self.showing {
-            Showing::Session(index) => Some(index),
-            _ => None,
+    fn close_active_item(&mut self, cx: &mut Context<Self>) {
+        if self.command_palette_open {
+            self.command_palette_open = false;
+            self.command_palette_query.clear();
+            cx.notify();
+            return;
+        }
+        if self.settings_open {
+            self.settings_open = false;
+            self.plugin_settings = None;
+            cx.notify();
+            return;
+        }
+        let Some(space) = self.active.clone() else {
+            return;
         };
+        let active = space.read(cx).active();
+        if let Some(active) = active {
+            space
+                .update(cx, |space, cx| space.act(Action::Close { space: None, item: active }, cx));
+        }
+    }
 
-        let mut entries: Vec<Entry> = self
-            .sessions
+    fn request_close_pane(
+        &mut self,
+        space_id: EntityId,
+        pane: LayoutPaneId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
+        else {
+            return;
+        };
+        let ids = space.read(cx).pane_item_ids(pane);
+        self.request_bulk_close(space, ids, false, window, cx);
+    }
+
+    fn request_close_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(space) = self.active.clone() else {
+            return;
+        };
+        let pane = space.read(cx).layout().active_pane();
+        let ids = space.read(cx).pane_item_ids(pane);
+        self.request_bulk_close(space, ids, false, window, cx);
+    }
+
+    fn request_close_space(
+        &mut self,
+        space_id: EntityId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
+        else {
+            return;
+        };
+        if space.read(cx).kind() == SpaceKind::AdHoc {
+            return;
+        }
+        let ids = space.read(cx).all_item_ids();
+        self.request_bulk_close(space, ids, true, window, cx);
+    }
+
+    fn request_bulk_close(
+        &mut self,
+        space: Entity<Space>,
+        ids: Vec<crate::workspace::ItemId>,
+        remove_space: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let terminal_count = space
+            .read(cx)
+            .close_targets(&ids)
             .iter()
-            .enumerate()
-            .map(|(index, session)| Entry {
-                title: session.title(),
-                agent: session.info.agent.clone(),
-                ended: session.ended().is_some(),
-                selected: selected_session == Some(index),
-            })
-            .collect();
+            .filter(|(_, backend)| backend.is_some())
+            .count();
+        if terminal_count <= 1 {
+            self.start_bulk_close(space, ids, remove_space, cx);
+            return;
+        }
 
-        // Plugin panes sit after the sessions, in the catalog's stable order,
-        // so a plugin cannot change where a session's tab is.
-        for pane in self.catalog.panes() {
-            entries.push(Entry {
-                title: pane.title.clone(),
-                agent: None,
-                ended: false,
-                selected: self.showing == Showing::Plugin(pane.key.clone()),
+        let noun = if remove_space { "space" } else { "pane" };
+        let message = format!("Close this {noun} and terminate {terminal_count} sessions?");
+        let detail =
+            "Closing is destructive: every underlying shell or agent process is terminated.";
+        let prompt = window.prompt(
+            gpui::PromptLevel::Critical,
+            &message,
+            Some(detail),
+            &["Close and Terminate", "Cancel"],
+            cx,
+        );
+        cx.spawn(async move |this, cx| {
+            if prompt.await == Ok(0) {
+                let _ =
+                    this.update(cx, |this, cx| this.start_bulk_close(space, ids, remove_space, cx));
+            }
+        })
+        .detach();
+    }
+
+    fn start_bulk_close(
+        &mut self,
+        space: Entity<Space>,
+        ids: Vec<crate::workspace::ItemId>,
+        remove_space: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let targets = space.read(cx).close_targets(&ids);
+        let client = self.client.clone();
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let results = executor
+                .spawn(async move {
+                    targets
+                        .into_iter()
+                        .map(|(item, backend)| {
+                            let result = match (&client, backend) {
+                                (_, None) => Ok(()),
+                                (Some(client), Some(backend)) => client.close_session(&backend),
+                                (None, Some(_)) => Err(zeddy_herdr::Error::Protocol(
+                                    "the terminal backend is unavailable".to_owned(),
+                                )),
+                            };
+                            (item, result)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                let successful: Vec<_> = results
+                    .iter()
+                    .filter_map(|(item, result)| result.is_ok().then_some(*item))
+                    .collect();
+                let failures: Vec<_> = results
+                    .iter()
+                    .filter_map(|(_, result)| result.as_ref().err().map(ToString::to_string))
+                    .collect();
+                space.update(cx, |space, _| space.finish_bulk_close(&successful));
+                if !failures.is_empty() {
+                    this.problem = Some(failures.join("\n"));
+                } else if remove_space {
+                    this.remove_space_after_close(&space, cx);
+                }
+                cx.notify();
             });
-        }
-        entries
+        })
+        .detach();
     }
 
-    /// Map a chrome index back onto what it selects. The chrome counts one
-    /// list; this is where it becomes two.
-    fn showing_for(&self, index: usize) -> Showing {
-        if index < self.sessions.len() {
-            Showing::Session(index)
-        } else {
-            self.catalog
-                .panes()
-                .get(index - self.sessions.len())
-                .map(|pane| Showing::Plugin(pane.key.clone()))
-                .unwrap_or(Showing::Empty)
-        }
-    }
-
-    fn on_key(&mut self, event: &gpui::KeyDownEvent, cx: &mut Context<Self>) {
-        let Showing::Session(index) = self.showing else {
-            return;
-        };
-        let Some(bytes) = keys::bytes_for(&event.keystroke) else {
-            return;
-        };
-        if let Some(session) = self.sessions.get_mut(index)
-            && let Err(err) = session.send(&bytes)
+    fn remove_space_after_close(&mut self, space: &Entity<Space>, cx: &mut Context<Self>) {
+        let path = space.read(cx).path().clone();
+        if let Some(registry) = self.registry.as_mut()
+            && let Err(error) = registry.remove(&path)
         {
-            self.problem = Some(err.to_string());
+            self.problem = Some(error.to_string());
+            return;
+        }
+        let Some(index) = self.spaces.iter().position(|candidate| candidate == space) else {
+            return;
+        };
+        let was_active = self.active.as_ref() == Some(space);
+        self.spaces.remove(index);
+        if was_active {
+            self.active = self.spaces.get(index.min(self.spaces.len().saturating_sub(1))).cloned();
+        }
+    }
+
+    fn commit_space_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.rename_space.take() else {
+            return;
+        };
+        let name = self.rename_query.trim().to_owned();
+        self.rename_query.clear();
+        let Some(space) = self.spaces.iter().find(|space| space.entity_id() == id).cloned() else {
+            return;
+        };
+        let path = space.read(cx).path().clone();
+        let result = self
+            .registry
+            .as_mut()
+            .map(|registry| registry.rename(&path, name.clone()))
+            .unwrap_or(Ok(()));
+        match result {
+            Ok(()) => {
+                space.update(cx, |space, _| space.set_name(name));
+                self.problem = None;
+            }
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn locate_space(&mut self, id: EntityId, cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Locate Space".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let outcome = chosen.await;
+            let _ = this.update(cx, |this, cx| match outcome {
+                Ok(Ok(Some(paths))) if !paths.is_empty() => {
+                    let Some(space) =
+                        this.spaces.iter().find(|space| space.entity_id() == id).cloned()
+                    else {
+                        return;
+                    };
+                    let old = space.read(cx).path().clone();
+                    let new = paths[0].clone();
+                    let result = this
+                        .registry
+                        .as_mut()
+                        .map(|registry| registry.relocate(&old, &new))
+                        .unwrap_or(Ok(new));
+                    match result {
+                        Ok(path) => {
+                            space.update(cx, |space, _| space.set_path(path));
+                            this.problem = None;
+                            this.refresh(cx);
+                        }
+                        Err(error) => this.problem = Some(error.to_string()),
+                    }
+                    cx.notify();
+                }
+                Ok(Ok(_)) | Err(_) => {}
+                Ok(Err(error)) => {
+                    this.problem = Some(error.to_string());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn open_settings(&mut self, cx: &mut Context<Self>) {
+        self.command_palette_open = false;
+        self.settings_open = true;
+        self.settings_page = SettingsPage::default();
+        self.plugin_settings = None;
+        cx.notify();
+    }
+
+    fn cycle_settings_page(&mut self, backwards: bool, cx: &mut Context<Self>) {
+        let current =
+            SettingsPage::ALL.iter().position(|page| *page == self.settings_page).unwrap_or(0);
+        let next = if backwards {
+            current.checked_sub(1).unwrap_or(SettingsPage::ALL.len() - 1)
+        } else {
+            (current + 1) % SettingsPage::ALL.len()
+        };
+        self.settings_page = SettingsPage::ALL[next];
+        self.plugin_settings = None;
+        cx.notify();
+    }
+
+    fn set_theme_preference(
+        &mut self,
+        mode: ThemeMode,
+        fixed_theme: Option<&str>,
+        cx: &mut Context<Self>,
+    ) {
+        let result = self.settings.update(|content| {
+            let appearance = content.appearance.get_or_insert_with(AppearanceContent::default);
+            appearance.theme_mode = Some(mode);
+            if let Some(theme) = fixed_theme {
+                appearance.fixed_theme = Some(theme.to_owned());
+            }
+        });
+        match result {
+            Ok(settings) => {
+                crate::settings::apply_theme(settings, cx);
+                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
+                self.problem = None;
+            }
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn set_terminate_on_exit(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let result = self.settings.update(|content| {
+            content
+                .general
+                .get_or_insert_with(GeneralContent::default)
+                .terminate_sessions_on_exit = Some(enabled);
+        });
+        match result {
+            Ok(_) => self.problem = None,
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn close_plugin_instances(&mut self, plugin: &str, cx: &mut Context<Self>) {
+        for space in &self.spaces {
+            let ids = space.read(cx).plugin_item_ids(plugin);
+            space.update(cx, |space, _| space.finish_bulk_close(&ids));
+        }
+    }
+
+    fn set_plugin_enabled(&mut self, plugin: String, enabled: bool, cx: &mut Context<Self>) {
+        if enabled {
+            match self.catalog.enable(&plugin_paths(), &plugin, cx) {
+                Ok(()) => {}
+                Err(error) => {
+                    self.problem = Some(error.to_string());
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+        let result = self.settings.update(|content| {
+            content
+                .plugins
+                .entry(plugin.clone())
+                .or_insert_with(PluginSettingsContent::default)
+                .enabled = Some(enabled);
+        });
+        match result {
+            Ok(_) => {
+                if !enabled {
+                    self.close_plugin_instances(&plugin, cx);
+                    if self.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
+                        self.plugin_settings = None;
+                    }
+                    self.catalog.disable(&plugin);
+                }
+                self.problem = None;
+            }
+            Err(error) => {
+                if enabled {
+                    self.catalog.disable(&plugin);
+                }
+                self.problem = Some(error.to_string());
+            }
+        }
+        cx.notify();
+    }
+
+    fn set_plugin_unsafe(&mut self, plugin: String, enabled: bool, cx: &mut Context<Self>) {
+        let result = self.settings.update(|content| {
+            content
+                .plugins
+                .entry(plugin.clone())
+                .or_insert_with(PluginSettingsContent::default)
+                .unsafe_filesystem = Some(enabled);
+        });
+        match result {
+            Ok(_) => {
+                // Brokers are instance-owned. Destroying the view is the
+                // revocation boundary; reopening constructs one with the new grant.
+                self.close_plugin_instances(&plugin, cx);
+                if self.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
+                    self.plugin_settings = None;
+                }
+                self.problem = None;
+            }
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn open_plugin_settings(
+        &mut self,
+        plugin: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(loaded) = self.catalog.get(&plugin) else {
+            return;
+        };
+        let permissions = loaded.permissions().clone();
+        let unsafe_filesystem = self.settings.resolved().plugin(&plugin).unsafe_filesystem;
+        let source = self.catalog.get_mut(&plugin).and_then(|loaded| loaded.settings(window, cx));
+        let view = match source {
+            Some(SettingsSource::Native(view)) => view,
+            Some(SettingsSource::Web(entry)) => crate::web_plugin::view(
+                entry,
+                FileBroker::new(
+                    None,
+                    plugin_paths().data.join(&plugin),
+                    permissions.project_files,
+                    unsafe_filesystem,
+                ),
+                permissions,
+                None,
+                window,
+                cx,
+            ),
+            None => return,
+        };
+        self.plugin_settings = Some((plugin, view));
+        cx.notify();
+    }
+
+    fn set_ui_font(&mut self, family: String, cx: &mut Context<Self>) {
+        let result = self.settings.update(|content| {
+            content.appearance.get_or_insert_with(AppearanceContent::default).ui_font_family =
+                Some(family);
+        });
+        match result {
+            Ok(settings) => {
+                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
+                self.problem = None;
+            }
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn adjust_ui_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
+        let current = self.settings.resolved().ui_font_size;
+        let result = self.settings.update(|content| {
+            content.appearance.get_or_insert_with(AppearanceContent::default).ui_font_size =
+                Some((current + delta).clamp(8., 32.));
+        });
+        match result {
+            Ok(settings) => {
+                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
+                self.problem = None;
+            }
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn set_terminal_font(&mut self, family: String, cx: &mut Context<Self>) {
+        let result = self.settings.update(|content| {
+            content.terminal.get_or_insert_with(TerminalContent::default).font_family =
+                Some(family);
+        });
+        match result {
+            Ok(_) => self.problem = None,
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn adjust_terminal_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
+        let current = self.settings.resolved().terminal_font_size;
+        let result = self.settings.update(|content| {
+            content.terminal.get_or_insert_with(TerminalContent::default).font_size =
+                Some((current + delta).clamp(8., 72.));
+        });
+        match result {
+            Ok(_) => self.problem = None,
+            Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn pick_ad_hoc_directory(&mut self, cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Use for Ad-hoc sessions".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let outcome = chosen.await;
+            let _ = this.update(cx, |this, cx| match outcome {
+                Ok(Ok(Some(paths))) if !paths.is_empty() => {
+                    let path = paths[0].clone();
+                    match this.settings.update(|content| {
+                        content
+                            .terminal
+                            .get_or_insert_with(TerminalContent::default)
+                            .ad_hoc_directory = Some(path.clone());
+                    }) {
+                        Ok(_) => {
+                            if let Some(space) = this
+                                .spaces
+                                .iter()
+                                .find(|space| space.read(cx).kind() == SpaceKind::AdHoc)
+                            {
+                                space.update(cx, |space, _| space.set_path(path));
+                            }
+                            this.problem = None;
+                        }
+                        Err(error) => this.problem = Some(error.to_string()),
+                    }
+                    cx.notify();
+                }
+                Ok(Ok(_)) | Err(_) => {}
+                Ok(Err(error)) => {
+                    this.problem = Some(error.to_string());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn split_and_move(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.split_and_move(direction));
             cx.notify();
         }
     }
 
-    fn workspace_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        // The grid the previous frame measured reaches the backend here, one
-        // frame late by construction: nothing knows how many cells fit until
-        // something has been laid out in the space they have to fit in.
-        self.fit_shown();
-
-        if let Some(problem) = self.problem.clone() {
-            return message(&problem, cx).into_any_element();
-        }
-
-        match self.showing.clone() {
-            Showing::Empty => message("No session. Press + to start one.", cx).into_any_element(),
-            Showing::Session(index) => match self.sessions.get_mut(index) {
-                Some(session) => {
-                    terminal(session, self.fit.clone(), self.focus.is_focused(window), cx)
-                        .into_any_element()
-                }
-                None => message("That session is gone.", cx).into_any_element(),
-            },
-            Showing::Plugin(key) => self.plugin_pane(&key, window, cx),
+    fn move_active_to_pane(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.move_active_to_pane(direction));
+            cx.notify();
         }
     }
 
-    /// Mount a plugin's pane.
-    ///
-    /// A native plugin's view is an ordinary GPUI view dropped straight into
-    /// this element tree — the same frame path as the terminal beside it.
-    fn plugin_pane(
+    fn activate_pane_in_direction(
         &mut self,
-        key: &PaneKey,
+        direction: SplitDirection,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let Some(plugin) = self.catalog.get_mut(&key.plugin) else {
-            return message("That plugin is no longer loaded.", cx).into_any_element();
-        };
-        match plugin.pane(key) {
-            Some(PaneSource::Native(plugin)) => plugin.view(key, window, cx).into_any_element(),
-            Some(PaneSource::Web(entry)) => {
-                // The webview host is the one piece of the web tier that is not
-                // written yet; until it is, the pane says so rather than
-                // pretending to be empty.
-                message(&format!("Web plugin panes are not hosted yet ({}).", entry.display()), cx)
-                    .into_any_element()
-            }
-            None => message("That pane is no longer contributed.", cx).into_any_element(),
+    ) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.activate_pane_in_direction(direction));
+            window.focus(&self.focus, cx);
+            cx.notify();
         }
+    }
+
+    fn join_active_into_next(&mut self, cx: &mut Context<Self>) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.join_active_into_next());
+            cx.notify();
+        }
+    }
+
+    fn toggle_zoom(&mut self, cx: &mut Context<Self>) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.toggle_zoom());
+            cx.notify();
+        }
+    }
+
+    fn toggle_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.command_palette_open = !self.command_palette_open;
+        self.command_palette_query.clear();
+        self.command_palette_selected = 0;
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
+    fn filtered_palette_commands(&self) -> Vec<(PaletteCommand, &'static str, &'static str)> {
+        let query = self.command_palette_query.trim().to_lowercase();
+        PaletteCommand::ALL
+            .into_iter()
+            .filter(|(_, label, _)| query.is_empty() || label.to_lowercase().contains(&query))
+            .collect()
+    }
+
+    fn invoke_palette_command(
+        &mut self,
+        command: PaletteCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.command_palette_open = false;
+        self.command_palette_query.clear();
+        let action: Box<dyn gpui::Action> = match command {
+            PaletteCommand::NewTerminal => Box::new(actions::workspace::NewTerminal),
+            PaletteCommand::CloseItem => Box::new(actions::pane::CloseActiveItem),
+            PaletteCommand::CloseAllItems => Box::new(actions::pane::CloseAllItems),
+            PaletteCommand::SplitLeft => Box::new(actions::pane::SplitAndMoveLeft),
+            PaletteCommand::SplitRight => Box::new(actions::pane::SplitAndMoveRight),
+            PaletteCommand::SplitUp => Box::new(actions::pane::SplitAndMoveUp),
+            PaletteCommand::SplitDown => Box::new(actions::pane::SplitAndMoveDown),
+            PaletteCommand::MoveLeft => Box::new(actions::pane::MoveLeft),
+            PaletteCommand::MoveRight => Box::new(actions::pane::MoveRight),
+            PaletteCommand::MoveUp => Box::new(actions::pane::MoveUp),
+            PaletteCommand::MoveDown => Box::new(actions::pane::MoveDown),
+            PaletteCommand::JoinPane => Box::new(actions::pane::JoinIntoNext),
+            PaletteCommand::FocusLeft => Box::new(actions::workspace::ActivatePaneLeft),
+            PaletteCommand::FocusRight => Box::new(actions::workspace::ActivatePaneRight),
+            PaletteCommand::FocusUp => Box::new(actions::workspace::ActivatePaneUp),
+            PaletteCommand::FocusDown => Box::new(actions::workspace::ActivatePaneDown),
+            PaletteCommand::ToggleZoom => Box::new(actions::workspace::ToggleZoom),
+            PaletteCommand::OpenSettings => Box::new(actions::settings::Open),
+        };
+        window.dispatch_action(action, cx);
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
+    fn on_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.rename_space.is_some() {
+            cx.stop_propagation();
+            match event.keystroke.key.as_str() {
+                "escape" => {
+                    self.rename_space = None;
+                    self.rename_query.clear();
+                }
+                "enter" => {
+                    self.commit_space_rename(cx);
+                    return;
+                }
+                "backspace" => {
+                    self.rename_query.pop();
+                }
+                _ if !event.keystroke.modifiers.control
+                    && !event.keystroke.modifiers.platform
+                    && !event.keystroke.modifiers.alt =>
+                {
+                    if let Some(text) = event.keystroke.key_char.as_deref() {
+                        self.rename_query.push_str(text);
+                    }
+                }
+                _ => {}
+            }
+            cx.notify();
+            return;
+        }
+        if let Some(action) = self.recording_keymap {
+            cx.stop_propagation();
+            if event.keystroke.key == "escape" {
+                self.recording_keymap = None;
+                cx.notify();
+                return;
+            }
+            if matches!(
+                event.keystroke.key.as_str(),
+                "shift" | "control" | "alt" | "cmd" | "super" | "fn"
+            ) {
+                return;
+            }
+            let key = event.keystroke.unparse();
+            match self.keymap.set(action, key) {
+                Ok(()) => {
+                    self.recording_keymap = None;
+                    self.keymap_restart_required = true;
+                    self.problem = None;
+                }
+                Err(error) => self.problem = Some(error.to_string()),
+            }
+            cx.notify();
+            return;
+        }
+        if self.command_palette_open {
+            cx.stop_propagation();
+            let key = event.keystroke.key.as_str();
+            match key {
+                "escape" => {
+                    self.command_palette_open = false;
+                    self.command_palette_query.clear();
+                }
+                "backspace" => {
+                    self.command_palette_query.pop();
+                    self.command_palette_selected = 0;
+                }
+                "up" => {
+                    let count = self.filtered_palette_commands().len();
+                    if count > 0 {
+                        self.command_palette_selected =
+                            self.command_palette_selected.checked_sub(1).unwrap_or(count - 1);
+                    }
+                }
+                "down" => {
+                    let count = self.filtered_palette_commands().len();
+                    if count > 0 {
+                        self.command_palette_selected = (self.command_palette_selected + 1) % count;
+                    }
+                }
+                "enter" => {
+                    if let Some((command, _, _)) =
+                        self.filtered_palette_commands().get(self.command_palette_selected).copied()
+                    {
+                        self.invoke_palette_command(command, window, cx);
+                        return;
+                    }
+                }
+                _ if !event.keystroke.modifiers.control
+                    && !event.keystroke.modifiers.platform
+                    && !event.keystroke.modifiers.alt =>
+                {
+                    if let Some(text) = event.keystroke.key_char.as_deref() {
+                        self.command_palette_query.push_str(text);
+                        self.command_palette_selected = 0;
+                    }
+                }
+                _ => {}
+            }
+            cx.notify();
+            return;
+        }
+        if self.settings_open {
+            if event.keystroke.modifiers.control && event.keystroke.key == "tab" {
+                cx.stop_propagation();
+                self.cycle_settings_page(event.keystroke.modifiers.shift, cx);
+            }
+            return;
+        }
+        let Some(bytes) = keys::bytes_for(&event.keystroke) else {
+            return;
+        };
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, cx| space.send_active(&bytes, cx));
+        }
+    }
+
+    fn space_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let current = self
+            .active
+            .as_ref()
+            .map(|space| space.read(cx).name().to_owned())
+            .unwrap_or_else(|| "No space".to_owned());
+        let active_id = self.active.as_ref().map(Entity::entity_id);
+        let weak = cx.weak_entity();
+        let spaces: Vec<_> = self
+            .spaces
+            .iter()
+            .map(|space| {
+                let read = space.read(cx);
+                (space.clone(), read.name().to_owned(), read.kind())
+            })
+            .collect();
+
+        let menu = ContextMenu::build(window, cx, move |menu, _, _| {
+            let add = weak.clone();
+            let mut menu = menu.entry("New space…", None, move |_, cx| {
+                let _ = add.update(cx, |this, cx| this.pick_a_folder(cx));
+            });
+
+            for (space, name, _kind) in
+                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
+            {
+                let target = space.clone();
+                let select = weak.clone();
+                menu = menu.toggleable_entry(
+                    name.clone(),
+                    active_id == Some(space.entity_id()),
+                    IconPosition::Start,
+                    None,
+                    move |window, cx| {
+                        let _ =
+                            select.update(cx, |this, cx| this.activate(target.clone(), window, cx));
+                    },
+                );
+            }
+
+            let registered: Vec<_> =
+                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::Registered).collect();
+            if !registered.is_empty() {
+                menu = menu.separator();
+            }
+            for (space, name, _) in registered {
+                let target = space.clone();
+                let select = weak.clone();
+                menu = menu.toggleable_entry(
+                    name.clone(),
+                    active_id == Some(space.entity_id()),
+                    IconPosition::Start,
+                    None,
+                    move |window, cx| {
+                        let _ =
+                            select.update(cx, |this, cx| this.activate(target.clone(), window, cx));
+                    },
+                );
+            }
+            menu
+        });
+
+        DropdownMenu::new("space-switcher", current, menu)
+            .style(DropdownStyle::Ghost)
+            .full_width(true)
+            .attach(Anchor::BottomLeft)
+            .aria_label("Current space")
+            .into_any_element()
+    }
+
+    fn new_item_menu(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let weak = cx.weak_entity();
+        let panes: Vec<_> = self.catalog.panes().into_iter().cloned().collect();
+        PopoverMenu::new("new-item-menu")
+            .trigger_with_tooltip(
+                IconButton::new("new-item", IconName::Plus).icon_size(IconSize::Small),
+                Tooltip::text("New…"),
+            )
+            .anchor(Anchor::TopRight)
+            .menu(move |window, cx| {
+                let weak = weak.clone();
+                let panes = panes.clone();
+                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                    let start = weak.clone();
+                    let mut menu = menu.entry("New session", None, move |window, cx| {
+                        let _ = start.update(cx, |this, cx| this.act(Action::New, window, cx));
+                    });
+                    if !panes.is_empty() {
+                        menu = menu.separator();
+                    }
+                    for pane in &panes {
+                        let open = weak.clone();
+                        let key = pane.key.clone();
+                        menu = menu.entry(pane.title.clone(), None, move |window, cx| {
+                            let _ = open
+                                .update(cx, |this, cx| this.open_plugin(key.clone(), window, cx));
+                        });
+                    }
+                    menu
+                }))
+            })
+            .into_any_element()
+    }
+
+    fn open_plugin(
+        &mut self,
+        key: zeddy_plugin::PaneKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let title =
+            self.catalog.panes().iter().find(|pane| pane.key == key).map(|pane| pane.title.clone());
+        let Some(title) = title else {
+            self.problem = Some("That plugin contribution is no longer available.".to_owned());
+            cx.notify();
+            return;
+        };
+        let (capabilities, permissions) = match self.catalog.get(&key.plugin) {
+            Some(plugin) => (plugin.capabilities().clone(), plugin.permissions().clone()),
+            None => {
+                self.problem = Some("That plugin is no longer loaded.".to_owned());
+                cx.notify();
+                return;
+            }
+        };
+        let Some(space) = self.active.clone() else {
+            return;
+        };
+        let bound_session = if capabilities.session_binding {
+            let Some(session) = space.read(cx).active_session_id() else {
+                self.problem =
+                    Some("Select a terminal before opening this session-bound plugin.".to_owned());
+                cx.notify();
+                return;
+            };
+            Some(session)
+        } else {
+            None
+        };
+        if capabilities.multiplicity == Multiplicity::PerSpace
+            && space.update(cx, |space, _| space.activate_plugin(&key))
+        {
+            self.problem = None;
+            cx.notify();
+            return;
+        }
+        let project =
+            (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let instance = InstanceContext {
+            space: space.read(cx).key(),
+            project_dir: project.clone(),
+            bound_session: bound_session.as_ref().map(|session| session.0.clone()),
+        };
+        let session_access =
+            bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
+        let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
+        let Some(plugin) = self.catalog.get_mut(&key.plugin) else {
+            self.problem = Some("That plugin is no longer loaded.".to_owned());
+            cx.notify();
+            return;
+        };
+        let view = match plugin.pane(&key) {
+            Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Web(entry)) => {
+                let broker = FileBroker::new(
+                    project,
+                    plugin_paths().data.join(&key.plugin),
+                    permissions.project_files,
+                    unsafe_filesystem,
+                );
+                crate::web_plugin::view(
+                    entry.to_path_buf(),
+                    broker,
+                    permissions.clone(),
+                    session_access,
+                    window,
+                    cx,
+                )
+            }
+            None => {
+                self.problem = Some("That pane is no longer contributed.".to_owned());
+                cx.notify();
+                return;
+            }
+        };
+        space.update(cx, |space, cx| {
+            space.open_plugin(
+                PluginItem {
+                    contribution: key,
+                    title,
+                    view,
+                    bound_session,
+                    can_clone: capabilities.cloneable,
+                    restorable: capabilities.restorable,
+                },
+                cx,
+            );
+        });
+        self.problem = None;
+        cx.notify();
+    }
+
+    fn restore_plugins_once(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.plugins_restored {
+            return;
+        }
+        if matches!(self.backend, Backend::Starting | Backend::Recovering(_)) {
+            return;
+        }
+        self.plugins_restored = true;
+        let mut failures = Vec::new();
+        for space in self.spaces.clone() {
+            let records = space.update(cx, |space, _| space.take_restoring_plugins());
+            for record in &records {
+                let crate::persistence::PersistedItem::Plugin {
+                    plugin, pane, bound_session, ..
+                } = record
+                else {
+                    continue;
+                };
+                let key = zeddy_plugin::PaneKey { plugin: plugin.clone(), key: pane.clone() };
+                let descriptor = self.catalog.get(plugin).and_then(|loaded| {
+                    loaded.panes.iter().find(|candidate| candidate.key == key).map(|candidate| {
+                        (
+                            candidate.title.clone(),
+                            loaded.capabilities().clone(),
+                            loaded.permissions().clone(),
+                        )
+                    })
+                });
+                let Some((title, capabilities, permissions)) = descriptor else {
+                    failures.push(format!("{plugin}:{pane} is unavailable"));
+                    continue;
+                };
+                if !capabilities.restorable {
+                    failures.push(format!("{plugin}:{pane} does not support restoration"));
+                    continue;
+                }
+                let project = (space.read(cx).kind() == SpaceKind::Registered)
+                    .then(|| space.read(cx).path().clone());
+                let unsafe_filesystem = self.settings.resolved().plugin(plugin).unsafe_filesystem;
+                let bound = bound_session.clone().map(zeddy_herdr::PaneId);
+                let session_access =
+                    bound.as_ref().and_then(|session| space.read(cx).session_access(session));
+                if bound.is_some() && session_access.is_none() {
+                    failures.push(format!("{plugin}:{pane} lost its bound session"));
+                    continue;
+                }
+                let instance = InstanceContext {
+                    space: space.read(cx).key(),
+                    project_dir: project.clone(),
+                    bound_session: bound_session.clone(),
+                };
+                let Some(loaded) = self.catalog.get_mut(plugin) else {
+                    failures.push(format!("{plugin}:{pane} is disabled"));
+                    continue;
+                };
+                let view = match loaded.pane(&key) {
+                    Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+                    Some(PaneSource::Web(entry)) => {
+                        let broker = FileBroker::new(
+                            project,
+                            plugin_paths().data.join(plugin),
+                            permissions.project_files,
+                            unsafe_filesystem,
+                        );
+                        crate::web_plugin::view(
+                            entry.to_path_buf(),
+                            broker,
+                            permissions.clone(),
+                            session_access,
+                            window,
+                            cx,
+                        )
+                    }
+                    None => {
+                        failures.push(format!("{plugin}:{pane} is no longer contributed"));
+                        continue;
+                    }
+                };
+                let item = PluginItem {
+                    contribution: key,
+                    title,
+                    view,
+                    bound_session: bound,
+                    can_clone: capabilities.cloneable,
+                    restorable: true,
+                };
+                if !space.update(cx, |space, cx| space.restore_plugin(record, item, cx)) {
+                    failures.push(format!("{plugin}:{pane} had no saved layout item"));
+                }
+            }
+            space.update(cx, |space, _| space.remove_plugin_placeholders(&records));
+        }
+        if !failures.is_empty() {
+            self.problem =
+                Some(format!("Some plugin items could not be restored: {}.", failures.join(", ")));
+        }
+    }
+
+    fn clone_plugin_drop(
+        &mut self,
+        space: Entity<Space>,
+        source_item: crate::workspace::ItemId,
+        target: LayoutPaneId,
+        index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some((key, title, bound_session)) = space.read(cx).cloneable_plugin(source_item) else {
+            return false;
+        };
+        let Some(loaded) = self.catalog.get(&key.plugin) else {
+            return false;
+        };
+        let capabilities = loaded.capabilities().clone();
+        let permissions = loaded.permissions().clone();
+        let project =
+            (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let instance = InstanceContext {
+            space: space.read(cx).key(),
+            project_dir: project.clone(),
+            bound_session: bound_session.as_ref().map(|session| session.0.clone()),
+        };
+        let session_access =
+            bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
+        let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
+        let Some(destination) = space.update(cx, |space, _| space.prepare_drop_destination(target))
+        else {
+            return true;
+        };
+        let Some(loaded) = self.catalog.get_mut(&key.plugin) else {
+            return false;
+        };
+        let view = match loaded.pane(&key) {
+            Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Web(entry)) => crate::web_plugin::view(
+                entry.to_path_buf(),
+                FileBroker::new(
+                    project,
+                    plugin_paths().data.join(&key.plugin),
+                    permissions.project_files,
+                    unsafe_filesystem,
+                ),
+                permissions,
+                session_access,
+                window,
+                cx,
+            ),
+            None => return false,
+        };
+        space.update(cx, |space, cx| {
+            space.open_plugin_in(
+                PluginItem {
+                    contribution: key,
+                    title,
+                    view,
+                    bound_session,
+                    can_clone: capabilities.cloneable,
+                    restorable: capabilities.restorable,
+                },
+                destination,
+                index,
+                cx,
+            );
+        });
+        true
+    }
+
+    fn workspace_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(space) = self.active.clone() else {
+            return message("No space. Add a folder to begin.", cx).into_any_element();
+        };
+        let (problem, active) = space.update(cx, |space, _| {
+            space.fit_items();
+            (space.problem().map(str::to_owned), space.active())
+        });
+        let on_action =
+            cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
+        let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
+        let space = space.read(cx);
+        if active.is_some_and(|active| space.item(active).is_none()) {
+            return message("That item is gone.", cx).into_any_element();
+        }
+        let pane_count = space.layout().center.panes().len();
+        let weak = cx.weak_entity();
+        let workspace = if let Some(maximized) = space.layout().center.maximized {
+            self.render_pane(&space, maximized, pane_count > 1, &emit, &weak, window, cx)
+        } else {
+            self.render_member(
+                &space,
+                &space.layout().center.root,
+                pane_count > 1,
+                &emit,
+                &weak,
+                &[],
+                window,
+                cx,
+            )
+        };
+        let notices = self.workspace_notices(problem, cx);
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .children(notices)
+            .child(div().flex_1().min_h_0().child(workspace))
+            .into_any_element()
+    }
+
+    fn workspace_notices(
+        &mut self,
+        space_problem: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let mut notices = Vec::new();
+        match self.backend.clone() {
+            Backend::Ready => {}
+            Backend::Starting => notices.push(
+                Banner::new()
+                    .child(Label::new("Starting the terminal backend…").size(LabelSize::Small))
+                    .into_any_element(),
+            ),
+            Backend::Recovering(detail) => notices.push(
+                Banner::new()
+                    .severity(Severity::Warning)
+                    .child(Label::new(detail).size(LabelSize::Small))
+                    .into_any_element(),
+            ),
+            Backend::Failed(detail) => {
+                let retry = cx.listener(|this, _, _, cx| this.retry_backend(false, cx));
+                let restart =
+                    cx.listener(|this, _, window, cx| this.request_backend_restart(window, cx));
+                notices.push(
+                    Banner::new()
+                        .severity(Severity::Error)
+                        .wrap_content(true)
+                        .child(Label::new(detail).size(LabelSize::Small))
+                        .action_slot(
+                            h_flex()
+                                .gap_1()
+                                .child(Button::new("retry-backend", "Retry").on_click(retry))
+                                .child(
+                                    Button::new("restart-backend", "Restart Backend")
+                                        .on_click(restart),
+                                ),
+                        )
+                        .into_any_element(),
+                );
+            }
+        }
+        if let Some(problem) = self.problem.clone() {
+            notices.push(
+                Banner::new()
+                    .severity(Severity::Warning)
+                    .child(Label::new(problem).size(LabelSize::Small))
+                    .into_any_element(),
+            );
+        }
+        if let Some(problem) = space_problem {
+            notices.push(
+                Banner::new()
+                    .severity(Severity::Warning)
+                    .child(Label::new(problem).size(LabelSize::Small))
+                    .into_any_element(),
+            );
+        }
+        notices
+    }
+
+    fn render_member(
+        &self,
+        space: &Space,
+        member: &Member,
+        show_pane_headers: bool,
+        on: &chrome::Emit,
+        weak: &gpui::WeakEntity<Self>,
+        axis_path: &[usize],
+        window: &mut Window,
+        cx: &App,
+    ) -> AnyElement {
+        match member {
+            Member::Pane { pane } => {
+                self.render_pane(space, *pane, show_pane_headers, on, weak, window, cx)
+            }
+            Member::Axis(axis) => {
+                let member_count = axis.members.len();
+                let children: Vec<_> = axis
+                    .members
+                    .iter()
+                    .enumerate()
+                    .map(|(index, member)| {
+                        let flex = axis.flexes.get(index).copied().unwrap_or(1.).max(0.01);
+                        let mut child_path = axis_path.to_vec();
+                        child_path.push(index);
+                        let divider = DraggedPaneDivider {
+                            axis_path: axis_path.to_vec(),
+                            divider: index,
+                            axis: axis.axis,
+                        };
+                        div()
+                            .relative()
+                            .flex_grow(flex)
+                            .flex_basis(relative(0.))
+                            .min_w_0()
+                            .min_h_0()
+                            .child(self.render_member(
+                                space,
+                                member,
+                                show_pane_headers,
+                                on,
+                                weak,
+                                &child_path,
+                                window,
+                                cx,
+                            ))
+                            .when(index + 1 < member_count, |child| {
+                                child.child(pane_resize_handle(divider, axis.axis))
+                            })
+                    })
+                    .collect();
+                let resize = weak.clone();
+                let current_path = axis_path.to_vec();
+                let axis_direction = axis.axis;
+                match axis.axis {
+                    PaneAxisDirection::Horizontal => h_flex()
+                        .id(format!("pane-axis-h-{current_path:?}"))
+                        .size_full()
+                        .min_w_0()
+                        .min_h_0()
+                        .gap_px()
+                        .bg(cx.theme().colors().border)
+                        .on_drag_move::<DraggedPaneDivider>(move |event, _, cx| {
+                            let dragged = event.drag(cx).clone();
+                            if dragged.axis_path != current_path || dragged.axis != axis_direction {
+                                return;
+                            }
+                            let fraction = (event.event.position.x - event.bounds.left())
+                                / event.bounds.size.width;
+                            let _ = resize.update(cx, |this, cx| {
+                                if let Some(space) = this.active.clone() {
+                                    space.update(cx, |space, _| {
+                                        space.resize_divider(
+                                            &dragged.axis_path,
+                                            dragged.divider,
+                                            fraction,
+                                        )
+                                    });
+                                }
+                                cx.notify();
+                            });
+                        })
+                        .children(children)
+                        .into_any_element(),
+                    PaneAxisDirection::Vertical => {
+                        let resize = weak.clone();
+                        let current_path = axis_path.to_vec();
+                        v_flex()
+                            .id(format!("pane-axis-v-{current_path:?}"))
+                            .size_full()
+                            .min_w_0()
+                            .min_h_0()
+                            .gap_px()
+                            .bg(cx.theme().colors().border)
+                            .on_drag_move::<DraggedPaneDivider>(move |event, _, cx| {
+                                let dragged = event.drag(cx).clone();
+                                if dragged.axis_path != current_path
+                                    || dragged.axis != PaneAxisDirection::Vertical
+                                {
+                                    return;
+                                }
+                                let fraction = (event.event.position.y - event.bounds.top())
+                                    / event.bounds.size.height;
+                                let _ = resize.update(cx, |this, cx| {
+                                    if let Some(space) = this.active.clone() {
+                                        space.update(cx, |space, _| {
+                                            space.resize_divider(
+                                                &dragged.axis_path,
+                                                dragged.divider,
+                                                fraction,
+                                            )
+                                        });
+                                    }
+                                    cx.notify();
+                                });
+                            })
+                            .children(children)
+                            .into_any_element()
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_pane(
+        &self,
+        space: &Space,
+        pane_id: LayoutPaneId,
+        show_header: bool,
+        on: &chrome::Emit,
+        weak: &gpui::WeakEntity<Self>,
+        window: &mut Window,
+        cx: &App,
+    ) -> AnyElement {
+        let Some(pane) = space.layout().pane(pane_id) else {
+            return message("Pane layout is unavailable.", cx).into_any_element();
+        };
+        let active_pane = space.layout().active_pane() == pane_id;
+        let header =
+            if show_header { Some(self.pane_header(space, pane_id, on, weak, cx)) } else { None };
+        let content = pane
+            .active()
+            .and_then(|id| space.item(id).map(|item| (id, item)))
+            .map(|(id, item)| match item {
+                crate::item::Item::Session(item) => {
+                    let terminal = terminal(
+                        item,
+                        active_pane && self.focus.is_focused(window),
+                        self.settings.resolved(),
+                        cx,
+                    )
+                    .into_any_element();
+                    let ended = item.session.ended();
+                    let retrying = space.reattaching(id);
+                    let retry = weak.clone();
+                    v_flex()
+                        .relative()
+                        .size_full()
+                        .child(terminal)
+                        .when_some(ended, |view, ended| {
+                            let detail = match &ended {
+                                crate::session::Ended::Closed => {
+                                    "Session ended. Close this tab when you are done reviewing it."
+                                        .to_owned()
+                                }
+                                crate::session::Ended::Failed(error) => {
+                                    format!("Terminal connection failed: {error}")
+                                }
+                            };
+                            view.child(
+                                div().absolute().left_2().right_2().bottom_2().child(
+                                    Banner::new()
+                                        .severity(Severity::Error)
+                                        .child(Label::new(detail).size(LabelSize::Small))
+                                        .when(
+                                            matches!(ended, crate::session::Ended::Failed(_)),
+                                            |banner| {
+                                                banner.action_slot(
+                                                    Button::new(
+                                                        format!("reattach-session-{}", id.get()),
+                                                        if retrying {
+                                                            "Reattaching…"
+                                                        } else {
+                                                            "Reattach"
+                                                        },
+                                                    )
+                                                    .disabled(retrying)
+                                                    .on_click(move |_, _, cx| {
+                                                        let _ = retry.update(cx, |this, cx| {
+                                                            if let Some(space) = this.active.clone()
+                                                            {
+                                                                space.update(cx, |space, cx| {
+                                                                    space.reattach(id, cx)
+                                                                });
+                                                            }
+                                                        });
+                                                    }),
+                                                )
+                                            },
+                                        ),
+                                ),
+                            )
+                        })
+                        .into_any_element()
+                }
+                crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
+            })
+            .unwrap_or_else(|| {
+                message("Drop a tab here or create a new item.", cx).into_any_element()
+            });
+
+        let drag_move = weak.clone();
+        let drop_item = weak.clone();
+        let drop_overlay = space.drag_target().filter(|(pane, _)| *pane == pane_id);
+        v_flex()
+            .id(("pane", pane_id.get() as usize))
+            .relative()
+            .size_full()
+            .min_w_0()
+            .min_h_0()
+            .bg(cx.theme().colors().editor_background)
+            .when(active_pane, |pane| {
+                pane.border_1().border_color(cx.theme().colors().pane_focused_border)
+            })
+            .on_drag_move::<DraggedItem>(move |event, _, cx| {
+                let direction = split_direction_for_drag(event);
+                let _ = drag_move.update(cx, |this, cx| {
+                    if let Some(space) = this.active.clone() {
+                        space.update(cx, |space, _| space.set_drag_target(pane_id, direction));
+                    }
+                    cx.notify();
+                });
+            })
+            .on_drop(move |dragged: &DraggedItem, window, cx| {
+                let dragged = dragged.clone();
+                let _ = drop_item.update(cx, |this, cx| {
+                    let Some(space) = this.active.clone() else {
+                        return;
+                    };
+                    if space.read(cx).persisted().key != dragged.space {
+                        return;
+                    }
+                    let clone = cfg!(target_os = "macos") && window.modifiers().alt
+                        || cfg!(not(target_os = "macos")) && window.modifiers().control;
+                    if clone
+                        && this.clone_plugin_drop(
+                            space.clone(),
+                            dragged.item,
+                            pane_id,
+                            None,
+                            window,
+                            cx,
+                        )
+                    {
+                        cx.notify();
+                        return;
+                    }
+                    space.update(cx, |space, _| {
+                        space.drop_item(dragged.item, dragged.pane, pane_id, None)
+                    });
+                    cx.notify();
+                });
+            })
+            .children(header)
+            .child(div().flex_1().min_h_0().min_w_0().child(content))
+            .when_some(drop_overlay, |pane, (_, direction)| pane.child(drop_target(direction, cx)))
+            .into_any_element()
+    }
+
+    fn pane_header(
+        &self,
+        space: &Space,
+        pane_id: LayoutPaneId,
+        on: &chrome::Emit,
+        weak: &gpui::WeakEntity<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        let Some(pane) = space.layout().pane(pane_id) else {
+            return div().into_any_element();
+        };
+        let focus_pane = weak.clone();
+        if self.mode == Mode::Sidebar {
+            return h_flex()
+                .id(("sidebar-pane-header", pane_id.get()))
+                .role(Role::Group)
+                .aria_label(format!("Pane {}", pane_id.get()))
+                .group("pane-header")
+                .h(Tab::container_height(cx))
+                .px_2()
+                .justify_between()
+                .bg(cx.theme().colors().tab_bar_background)
+                .border_b_1()
+                .border_color(cx.theme().colors().border)
+                .on_click(move |_, _, cx| {
+                    let _ = focus_pane.update(cx, |this, cx| {
+                        if let Some(space) = this.active.clone() {
+                            space.update(cx, |space, _| space.activate_pane(pane_id));
+                        }
+                        cx.notify();
+                    });
+                })
+                .child(
+                    Label::new(format!("Pane {}", pane_id.get()))
+                        .size(LabelSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .child(
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Label::new(format!(
+                                "{} tab{}",
+                                pane.items().len(),
+                                if pane.items().len() == 1 { "" } else { "s" }
+                            ))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                        )
+                        .child(
+                            div()
+                                .visible_on_hover("pane-header")
+                                .child(pane_controls(weak, pane_id)),
+                        ),
+                )
+                .into_any_element();
+        }
+
+        let active_index =
+            pane.active().and_then(|active| pane.items().iter().position(|item| *item == active));
+        let space_key = space.persisted().key;
+        let tabs = pane.items().iter().enumerate().filter_map(|(index, id)| {
+            let item = space.item(*id)?;
+            let selected = pane.active() == Some(*id);
+            let position = if index == 0 {
+                TabPosition::First
+            } else if index + 1 == pane.items().len() {
+                TabPosition::Last
+            } else {
+                TabPosition::Middle(index.cmp(&active_index.unwrap_or(index)))
+            };
+            let select = *id;
+            let close = *id;
+            let select_item = on.clone();
+            let close_item = on.clone();
+            let drop_item = weak.clone();
+            let dragged = DraggedItem {
+                space: space_key.clone(),
+                space_entity: None,
+                pane: pane_id,
+                item: *id,
+                title: item.title(),
+            };
+            Some(
+                Tab::new(format!("pane-{}-item-{}", pane_id.get(), id.get()))
+                    .role(Role::Tab)
+                    .aria_label(item.title())
+                    .aria_selected(selected)
+                    .position(position)
+                    .toggle_state(selected)
+                    .on_click(move |_, window, cx| {
+                        select_item(Action::Select { space: None, item: select }, window, cx)
+                    })
+                    .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                    .on_drop(move |dragged: &DraggedItem, window, cx| {
+                        let dragged = dragged.clone();
+                        let _ = drop_item.update(cx, |this, cx| {
+                            let Some(space) = this.active.clone() else {
+                                return;
+                            };
+                            if space.read(cx).persisted().key != dragged.space {
+                                return;
+                            }
+                            let clone = cfg!(target_os = "macos") && window.modifiers().alt
+                                || cfg!(not(target_os = "macos")) && window.modifiers().control;
+                            if clone
+                                && this.clone_plugin_drop(
+                                    space.clone(),
+                                    dragged.item,
+                                    pane_id,
+                                    Some(index),
+                                    window,
+                                    cx,
+                                )
+                            {
+                                cx.notify();
+                                return;
+                            }
+                            space.update(cx, |space, _| {
+                                space.set_drag_target(pane_id, None);
+                                space.drop_item(dragged.item, dragged.pane, pane_id, Some(index));
+                            });
+                            cx.notify();
+                        });
+                    })
+                    .end_slot(
+                        IconButton::new(
+                            format!("close-pane-{}-item-{}", pane_id.get(), id.get()),
+                            IconName::Close,
+                        )
+                        .icon_size(IconSize::XSmall)
+                        .tooltip(Tooltip::text("Close"))
+                        .on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            close_item(Action::Close { space: None, item: close }, window, cx)
+                        }),
+                    )
+                    .child(Label::new(item.title()).size(LabelSize::Small).truncate())
+                    .into_any_element(),
+            )
+        });
+        TabBar::new(format!("pane-{}-tabs", pane_id.get()))
+            .children(tabs)
+            .end_child(pane_controls(weak, pane_id))
+            .into_any_element()
+    }
+
+    fn command_palette(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.command_palette_open {
+            return None;
+        }
+        let commands = self.filtered_palette_commands();
+        if self.command_palette_selected >= commands.len() {
+            self.command_palette_selected = 0;
+        }
+        let selected = self.command_palette_selected;
+        let weak = cx.weak_entity();
+        let rows: Vec<_> = commands
+            .into_iter()
+            .enumerate()
+            .map(|(index, (command, label, shortcut))| {
+                let choose = weak.clone();
+                ListItem::new(("command-palette-item", index))
+                    .spacing(ListItemSpacing::Dense)
+                    .toggle_state(index == selected)
+                    .aria_role(gpui::Role::ListBoxOption)
+                    .aria_label(label)
+                    .when(!shortcut.is_empty(), |item| item.aria_keyshortcuts(shortcut))
+                    .when(index == selected, ListItem::aria_active_descendant)
+                    .on_click(move |_, window, cx| {
+                        let _ = choose.update(cx, |this, cx| {
+                            this.invoke_palette_command(command, window, cx)
+                        });
+                    })
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .child(Label::new(label).size(LabelSize::Small))
+                            .when(!shortcut.is_empty(), |row| {
+                                row.child(
+                                    Label::new(shortcut)
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Muted),
+                                )
+                            }),
+                    )
+            })
+            .collect();
+        let dismiss = cx.listener(|this, _, _, cx| {
+            this.command_palette_open = false;
+            this.command_palette_query.clear();
+            cx.notify();
+        });
+        let query = if self.command_palette_query.is_empty() {
+            "Type a command…".to_owned()
+        } else {
+            self.command_palette_query.clone()
+        };
+        let query_color =
+            if self.command_palette_query.is_empty() { Color::Muted } else { Color::Default };
+
+        Some(
+            div()
+                .id("command-palette-scrim")
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .bg(gpui::black().opacity(0.35))
+                .on_mouse_down(gpui::MouseButton::Left, dismiss)
+                .child(
+                    v_flex()
+                        .id("command-palette")
+                        .absolute()
+                        .top(px(48.))
+                        .left(relative(0.5))
+                        .ml(px(-320.))
+                        .w(px(640.))
+                        .max_h(px(480.))
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .bg(cx.theme().colors().elevated_surface_background)
+                        .shadow_lg()
+                        .overflow_hidden()
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            h_flex()
+                                .h(px(42.))
+                                .px_3()
+                                .gap_2()
+                                .border_b_1()
+                                .border_color(cx.theme().colors().border)
+                                .child(
+                                    Icon::new(IconName::MagnifyingGlass)
+                                        .size(IconSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(Label::new(query).size(LabelSize::Small).color(query_color)),
+                        )
+                        .child(
+                            v_flex()
+                                .id("command-palette-results")
+                                .role(gpui::Role::ListBox)
+                                .aria_label("Commands")
+                                .p_1()
+                                .overflow_y_scroll()
+                                .when(rows.is_empty(), |list| {
+                                    list.child(div().p_3().child(
+                                        Label::new("No matching commands").color(Color::Muted),
+                                    ))
+                                })
+                                .children(rows),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn rename_space_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.rename_space?;
+        let cancel_scrim = cx.listener(|this, _, _, cx| {
+            this.rename_space = None;
+            this.rename_query.clear();
+            cx.notify();
+        });
+        let cancel_button = cx.listener(|this, _, _, cx| {
+            this.rename_space = None;
+            this.rename_query.clear();
+            cx.notify();
+        });
+        let save = cx.listener(|this, _, _, cx| this.commit_space_rename(cx));
+        Some(
+            div()
+                .id("rename-space-scrim")
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .bg(gpui::black().opacity(0.35))
+                .on_mouse_down(gpui::MouseButton::Left, cancel_scrim)
+                .child(
+                    v_flex()
+                        .id("rename-space-dialog")
+                        .absolute()
+                        .top(px(96.))
+                        .left(relative(0.5))
+                        .ml(px(-220.))
+                        .w(px(440.))
+                        .p_4()
+                        .gap_3()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .bg(cx.theme().colors().elevated_surface_background)
+                        .shadow_lg()
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(Label::new("Rename Space").size(LabelSize::Large))
+                        .child(
+                            h_flex()
+                                .h(px(36.))
+                                .px_2()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(cx.theme().colors().border_focused)
+                                .bg(cx.theme().colors().editor_background)
+                                .child(
+                                    Label::new(if self.rename_query.is_empty() {
+                                        "Type a space name…".to_owned()
+                                    } else {
+                                        self.rename_query.clone()
+                                    })
+                                    .size(LabelSize::Small)
+                                    .color(
+                                        if self.rename_query.is_empty() {
+                                            Color::Muted
+                                        } else {
+                                            Color::Default
+                                        },
+                                    ),
+                                ),
+                        )
+                        .child(
+                            h_flex()
+                                .justify_end()
+                                .gap_1()
+                                .child(
+                                    Button::new("cancel-space-rename", "Cancel")
+                                        .on_click(cancel_button),
+                                )
+                                .child(Button::new("save-space-rename", "Rename").on_click(save)),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    fn settings_workspace(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let close = cx.listener(|this, _, _, cx| {
+            this.settings_open = false;
+            this.plugin_settings = None;
+            cx.notify();
+        });
+        let selected = self.settings_page;
+        let navigation: Vec<_> = SettingsPage::ALL
+            .into_iter()
+            .map(|page| {
+                div()
+                    .id(format!("settings-page-{}", page.slug()))
+                    .role(Role::Tab)
+                    .aria_label(page.title())
+                    .aria_selected(page == selected)
+                    .mx_1()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .when(page == selected, |row| {
+                        row.bg(cx.theme().colors().element_selected)
+                            .text_color(cx.theme().colors().text)
+                    })
+                    .when(page != selected, |row| {
+                        row.text_color(cx.theme().colors().text_muted)
+                            .hover(|row| row.bg(cx.theme().colors().element_hover))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.settings_page = page;
+                        if page != SettingsPage::Plugins {
+                            this.plugin_settings = None;
+                        }
+                        cx.notify();
+                    }))
+                    .child(Label::new(page.title()).size(LabelSize::Small))
+            })
+            .collect();
+        let content = self.settings_content(cx);
+
+        v_flex()
+            .id("settings-workspace")
+            .size_full()
+            .min_h_0()
+            .bg(cx.theme().colors().background)
+            .child(
+                h_flex()
+                    .h(Tab::container_height(cx))
+                    .px_3()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(cx.theme().colors().border)
+                    .child(Label::new("Settings").size(LabelSize::Small))
+                    .child(
+                        IconButton::new("close-settings", IconName::Close)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text("Close Settings"))
+                            .on_click(close),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_flex()
+                            .w(px(176.))
+                            .h_full()
+                            .py_2()
+                            .border_r_1()
+                            .border_color(cx.theme().colors().border)
+                            .bg(cx.theme().colors().surface_background)
+                            .child(div().px_3().py_1().child(
+                                Label::new("Options").size(LabelSize::XSmall).color(Color::Muted),
+                            ))
+                            .children(navigation),
+                    )
+                    .child(content),
+            )
+            .into_any_element()
+    }
+
+    fn settings_content(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let page = self.settings_page;
+        let plugin_override = (page == SettingsPage::Plugins)
+            .then(|| self.plugin_settings.as_ref())
+            .flatten()
+            .map(|(plugin, view)| {
+                let back = cx.listener(|this, _, _, cx| {
+                    this.plugin_settings = None;
+                    cx.notify();
+                });
+                v_flex()
+                    .gap_3()
+                    .child(Button::new("plugin-settings-back", "Back to plugins").on_click(back))
+                    .child(Label::new(plugin.clone()).size(LabelSize::XSmall).color(Color::Muted))
+                    .child(div().min_h(px(320.)).child(view.clone()))
+                    .into_any_element()
+            });
+        let body = if let Some(plugin_override) = plugin_override {
+            plugin_override
+        } else {
+            match page {
+                SettingsPage::General => {
+                    let terminate = self.settings.resolved().terminate_sessions_on_exit;
+                    let toggle = cx
+                        .listener(move |this, _, _, cx| this.set_terminate_on_exit(!terminate, cx));
+                    v_flex()
+                    .gap_4()
+                    .child(Label::new("Chartr").size(LabelSize::Large))
+                    .child(
+                        Label::new(format!(
+                            "Version {} · configuration namespace chartr-zeddy",
+                            env!("CARGO_PKG_VERSION")
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .gap_4()
+                            .child(
+                                v_flex()
+                                    .child(
+                                        Label::new("Terminate sessions on exit")
+                                            .size(LabelSize::Small),
+                                    )
+                                    .child(
+                                        Label::new(
+                                            "Normal app exit detaches and leaves sessions running.",
+                                        )
+                                        .size(LabelSize::XSmall)
+                                        .color(Color::Muted),
+                                    ),
+                            )
+                            .child(
+                                Button::new(
+                                    "terminate-sessions-on-exit",
+                                    if terminate { "On" } else { "Off" },
+                                )
+                                .toggle_state(terminate)
+                                .on_click(toggle),
+                            ),
+                    )
+                    .into_any_element()
+                }
+                SettingsPage::Appearance => {
+                    let selected = self.settings.resolved().fixed_theme.clone();
+                    let mode = self.settings.resolved().theme_mode;
+                    let dark = cx.listener(|this, _, _, cx| {
+                        this.set_theme_preference(ThemeMode::Fixed, Some(CHARTR_DARK), cx)
+                    });
+                    let light = cx.listener(|this, _, _, cx| {
+                        this.set_theme_preference(ThemeMode::Fixed, Some(CHARTR_LIGHT), cx)
+                    });
+                    let system = cx.listener(|this, _, _, cx| {
+                        this.set_theme_preference(ThemeMode::System, None, cx)
+                    });
+                    let font = cx.weak_entity();
+                    let smaller = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(-1., cx));
+                    let larger = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(1., cx));
+                    v_flex()
+                        .gap_3()
+                        .child(setting_label("Theme"))
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("theme-chartr-dark", CHARTR_DARK)
+                                        .toggle_state(
+                                            mode == ThemeMode::Fixed && selected == CHARTR_DARK,
+                                        )
+                                        .on_click(dark),
+                                )
+                                .child(
+                                    Button::new("theme-chartr-light", CHARTR_LIGHT)
+                                        .toggle_state(
+                                            mode == ThemeMode::Fixed && selected == CHARTR_LIGHT,
+                                        )
+                                        .on_click(light),
+                                )
+                                .child(
+                                    Button::new("theme-system", "System")
+                                        .toggle_state(mode == ThemeMode::System)
+                                        .on_click(system),
+                                ),
+                        )
+                        .child(setting_label("Interface font"))
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    PopoverMenu::new("ui-font-menu")
+                                        .trigger(
+                                            Button::new(
+                                                "ui-font-family",
+                                                self.settings.resolved().ui_font_family.clone(),
+                                            )
+                                            .end_icon(Icon::new(IconName::ChevronDown)),
+                                        )
+                                        .anchor(Anchor::BottomLeft)
+                                        .menu(move |window, cx| {
+                                            let font = font.clone();
+                                            Some(ContextMenu::build(
+                                                window,
+                                                cx,
+                                                move |menu, _, _| {
+                                                    ["IBM Plex Sans", ".ZedSans", "System UI"]
+                                                        .into_iter()
+                                                        .fold(menu, |menu, family| {
+                                                            let set = font.clone();
+                                                            menu.entry(
+                                                                family,
+                                                                None,
+                                                                move |_, cx| {
+                                                                    let _ = set.update(
+                                                                        cx,
+                                                                        |this, cx| {
+                                                                            this.set_ui_font(
+                                                                                family.to_owned(),
+                                                                                cx,
+                                                                            )
+                                                                        },
+                                                                    );
+                                                                },
+                                                            )
+                                                        })
+                                                },
+                                            ))
+                                        }),
+                                )
+                                .child(
+                                    IconButton::new("ui-font-smaller", IconName::Dash)
+                                        .tooltip(Tooltip::text("Decrease interface font size"))
+                                        .on_click(smaller),
+                                )
+                                .child(
+                                    Label::new(format!(
+                                        "{} px",
+                                        self.settings.resolved().ui_font_size
+                                    ))
+                                    .size(LabelSize::Small),
+                                )
+                                .child(
+                                    IconButton::new("ui-font-larger", IconName::Plus)
+                                        .tooltip(Tooltip::text("Increase interface font size"))
+                                        .on_click(larger),
+                                ),
+                        )
+                        .into_any_element()
+                }
+                SettingsPage::Terminal => {
+                    let font = cx.weak_entity();
+                    let smaller =
+                        cx.listener(|this, _, _, cx| this.adjust_terminal_font_size(-1., cx));
+                    let larger =
+                        cx.listener(|this, _, _, cx| this.adjust_terminal_font_size(1., cx));
+                    let choose_directory =
+                        cx.listener(|this, _, _, cx| this.pick_ad_hoc_directory(cx));
+                    let retry = cx.listener(|this, _, _, cx| this.retry_backend(false, cx));
+                    let restart =
+                        cx.listener(|this, _, window, cx| this.request_backend_restart(window, cx));
+                    let backend = match &self.backend {
+                        Backend::Ready => "Connected".to_owned(),
+                        Backend::Starting => "Starting".to_owned(),
+                        Backend::Recovering(detail) | Backend::Failed(detail) => detail.clone(),
+                    };
+                    v_flex()
+                        .gap_3()
+                        .child(setting_label("Terminal font"))
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    PopoverMenu::new("terminal-font-menu")
+                                        .trigger(
+                                            Button::new(
+                                                "terminal-font-family",
+                                                self.settings
+                                                    .resolved()
+                                                    .terminal_font_family
+                                                    .clone(),
+                                            )
+                                            .end_icon(Icon::new(IconName::ChevronDown)),
+                                        )
+                                        .anchor(Anchor::BottomLeft)
+                                        .menu(move |window, cx| {
+                                            let font = font.clone();
+                                            Some(ContextMenu::build(
+                                                window,
+                                                cx,
+                                                move |menu, _, _| {
+                                                    ["IBM Plex Mono", "Lilex", ".ZedMono"]
+                                                        .into_iter()
+                                                        .fold(menu, |menu, family| {
+                                                            let set = font.clone();
+                                                            menu.entry(
+                                                                family,
+                                                                None,
+                                                                move |_, cx| {
+                                                                    let _ = set.update(
+                                                                        cx,
+                                                                        |this, cx| {
+                                                                            this.set_terminal_font(
+                                                                                family.to_owned(),
+                                                                                cx,
+                                                                            )
+                                                                        },
+                                                                    );
+                                                                },
+                                                            )
+                                                        })
+                                                },
+                                            ))
+                                        }),
+                                )
+                                .child(
+                                    IconButton::new("terminal-font-smaller", IconName::Dash)
+                                        .tooltip(Tooltip::text("Decrease terminal font size"))
+                                        .on_click(smaller),
+                                )
+                                .child(
+                                    Label::new(format!(
+                                        "{} px",
+                                        self.settings.resolved().terminal_font_size
+                                    ))
+                                    .size(LabelSize::Small),
+                                )
+                                .child(
+                                    IconButton::new("terminal-font-larger", IconName::Plus)
+                                        .tooltip(Tooltip::text("Increase terminal font size"))
+                                        .on_click(larger),
+                                ),
+                        )
+                        .child(setting_label("Ad-hoc directory"))
+                        .child(
+                            Button::new(
+                                "choose-ad-hoc-directory",
+                                self.settings.resolved().ad_hoc_directory.as_ref().map_or_else(
+                                    || "Home directory".to_owned(),
+                                    |path| path.display().to_string(),
+                                ),
+                            )
+                            .on_click(choose_directory),
+                        )
+                        .child(setting_value("Backend", backend))
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    Button::new("settings-retry-backend", "Retry").on_click(retry),
+                                )
+                                .child(
+                                    Button::new("settings-restart-backend", "Restart Backend")
+                                        .on_click(restart),
+                                ),
+                        )
+                        .into_any_element()
+                }
+                SettingsPage::Hotkeys => {
+                    let recording = self.recording_keymap;
+                    let rows: Vec<_> = KeymapAction::ALL
+                        .into_iter()
+                        .map(|action| {
+                            let capture = cx.listener(move |this, _, _, cx| {
+                                this.recording_keymap = Some(action);
+                                this.problem = None;
+                                cx.notify();
+                            });
+                            h_flex()
+                                .justify_between()
+                                .gap_4()
+                                .child(Label::new(action.title()).size(LabelSize::Small))
+                                .child(
+                                    Button::new(
+                                        format!("record-hotkey-{}", action.id()),
+                                        if recording == Some(action) {
+                                            "Press shortcut…".to_owned()
+                                        } else {
+                                            self.keymap.key(action).to_owned()
+                                        },
+                                    )
+                                    .toggle_state(recording == Some(action))
+                                    .on_click(capture),
+                                )
+                        })
+                        .collect();
+                    v_flex()
+                    .gap_2()
+                    .when_some(self.keymap.problem().map(str::to_owned), |view, problem| {
+                        view.child(
+                            Banner::new()
+                                .severity(Severity::Error)
+                                .child(Label::new(problem).size(LabelSize::Small)),
+                        )
+                    })
+                    .when(self.keymap_restart_required, |view| {
+                        view.child(Banner::new().child(
+                            Label::new(
+                                "Shortcut changes are saved. Restart Chartr to rebuild the application keymap.",
+                            )
+                            .size(LabelSize::Small),
+                        ))
+                    })
+                    .child(
+                        Label::new(
+                            "Click a shortcut, then press one key chord. Conflicts in the Chartr context are rejected.",
+                        )
+                        .size(LabelSize::XSmall)
+                        .color(Color::Muted),
+                    )
+                    .children(rows)
+                    .into_any_element()
+                }
+                SettingsPage::Plugins => {
+                    let mut descriptors: Vec<_> = self
+                        .catalog
+                        .loaded
+                        .values()
+                        .map(|loaded| (loaded.manifest.clone(), true, loaded.has_settings))
+                        .chain(
+                            self.catalog
+                                .disabled
+                                .values()
+                                .map(|disabled| (disabled.manifest.clone(), false, false)),
+                        )
+                        .collect();
+                    descriptors.sort_by(|(left, _, _), (right, _, _)| left.name.cmp(&right.name));
+                    let rows: Vec<_> = descriptors
+                        .into_iter()
+                        .map(|(manifest, enabled, has_settings)| {
+                            let id = manifest.id.clone();
+                            let control_id = id.clone();
+                            let configured = self.settings.resolved().plugin(&id);
+                            let toggle = cx.listener(move |this, _, _, cx| {
+                                this.set_plugin_enabled(id.clone(), !enabled, cx)
+                            });
+                            let trust = match manifest.kind {
+                                zeddy_plugin::manifest::Kind::Native => {
+                                    "Native — fully trusted code".to_owned()
+                                }
+                                zeddy_plugin::manifest::Kind::Web => {
+                                    let project = match manifest.permissions.project_files {
+                                        zeddy_plugin::manifest::ProjectAccess::None => {
+                                            "no project files"
+                                        }
+                                        zeddy_plugin::manifest::ProjectAccess::Read => {
+                                            "read project files"
+                                        }
+                                        zeddy_plugin::manifest::ProjectAccess::ReadWrite => {
+                                            "read/write project files"
+                                        }
+                                    };
+                                    let mut grants = vec![project.to_owned()];
+                                    if !manifest.permissions.network.is_empty() {
+                                        grants.push(format!(
+                                            "network: {}",
+                                            manifest.permissions.network.join(", ")
+                                        ));
+                                    }
+                                    if manifest.permissions.process {
+                                        grants.push("process actions".to_owned());
+                                    }
+                                    if manifest.permissions.session {
+                                        grants.push("bound-session actions".to_owned());
+                                    }
+                                    format!("Web — {}", grants.join(" · "))
+                                }
+                            };
+                            let unsafe_control =
+                                (manifest.kind == zeddy_plugin::manifest::Kind::Web).then(|| {
+                                    let id = manifest.id.clone();
+                                    let change = cx.listener(move |this, _, _, cx| {
+                                        this.set_plugin_unsafe(
+                                            id.clone(),
+                                            !configured.unsafe_filesystem,
+                                            cx,
+                                        )
+                                    });
+                                    Button::new(
+                                        format!("plugin-unsafe-{}", manifest.id),
+                                        if configured.unsafe_filesystem {
+                                            "Unsafe filesystem granted"
+                                        } else {
+                                            "Grant unsafe filesystem"
+                                        },
+                                    )
+                                    .toggle_state(configured.unsafe_filesystem)
+                                    .on_click(change)
+                                });
+                            let configure = has_settings.then(|| {
+                                let id = manifest.id.clone();
+                                Button::new(format!("plugin-settings-{}", manifest.id), "Configure")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_plugin_settings(id.clone(), window, cx)
+                                    }))
+                            });
+                            v_flex()
+                                .gap_2()
+                                .p_3()
+                                .border_1()
+                                .border_color(cx.theme().colors().border)
+                                .rounded_md()
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .child(
+                                            v_flex()
+                                                .child(
+                                                    Label::new(manifest.name)
+                                                        .size(LabelSize::Small),
+                                                )
+                                                .child(
+                                                    Label::new(manifest.id)
+                                                        .size(LabelSize::XSmall)
+                                                        .color(Color::Muted),
+                                                ),
+                                        )
+                                        .child(
+                                            Button::new(
+                                                format!("plugin-enabled-{control_id}"),
+                                                if enabled { "Enabled" } else { "Disabled" },
+                                            )
+                                            .toggle_state(enabled)
+                                            .on_click(toggle),
+                                        ),
+                                )
+                                .child(
+                                    Label::new(trust).size(LabelSize::XSmall).color(Color::Muted),
+                                )
+                                .when_some(configure, |row, control| row.child(control))
+                                .when_some(unsafe_control, |row, control| row.child(control))
+                        })
+                        .collect();
+                    let rejected: Vec<_> = self
+                        .catalog
+                        .rejected
+                        .iter()
+                        .map(|rejected| {
+                            Banner::new().severity(Severity::Error).child(
+                                Label::new(format!("{}: {}", rejected.dir.display(), rejected.why))
+                                    .size(LabelSize::XSmall),
+                            )
+                        })
+                        .collect();
+                    v_flex()
+                        .gap_2()
+                        .when(rows.is_empty() && rejected.is_empty(), |view| {
+                            view.child(Label::new("No plugins installed.").color(Color::Muted))
+                        })
+                        .children(rows)
+                        .children(rejected)
+                        .into_any_element()
+                }
+            }
+        };
+        v_flex()
+            .id(format!("settings-content-{}", page.slug()))
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .items_center()
+            .child(
+                v_flex()
+                    .w_full()
+                    .max_w(px(680.))
+                    .p_6()
+                    .gap_5()
+                    .child(Label::new(page.title()).size(LabelSize::Large))
+                    .when_some(self.settings.unreadable().map(str::to_owned), |view, error| {
+                        view.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
+                    })
+                    .child(body),
+            )
+            .into_any_element()
     }
 }
 
@@ -370,68 +3206,356 @@ impl Focusable for Zeddy {
 
 impl Render for Zeddy {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let entries = self.entries();
-        // Copied out rather than borrowed: `cx.theme()` borrows `cx`, and
-        // building the workspace pane below needs it back.
+        let bounds = match window.window_bounds() {
+            gpui::WindowBounds::Windowed(bounds)
+            | gpui::WindowBounds::Maximized(bounds)
+            | gpui::WindowBounds::Fullscreen(bounds) => bounds,
+        };
+        self.window_bounds = Some(crate::persistence::WindowBounds {
+            x: bounds.origin.x / px(1.),
+            y: bounds.origin.y / px(1.),
+            width: bounds.size.width / px(1.),
+            height: bounds.size.height / px(1.),
+        });
+        self.restore_plugins_once(window, cx);
+        self.persist_if_changed(cx);
+        let entries = self.entries(cx);
+        let sidebar_spaces = self.sidebar_spaces(cx);
+        let pane_count = self
+            .active_space()
+            .map(|space| space.read(cx).layout().center.panes().len())
+            .unwrap_or(0);
+        let chrome_entries: &[Entry] =
+            if self.mode == Mode::Tabs && pane_count > 1 { &[] } else { &entries };
+        let switcher = self.space_switcher(window, cx);
+        let new_item = self.new_item_menu(cx);
         let (background, text, workspace_background) = {
             let colors = cx.theme().colors();
             (colors.background, colors.text, colors.editor_background)
         };
 
-        let on_action = cx.listener(|this, action: &Action, _, cx| {
-            let action = *action;
-            if let Action::Select(index) = action {
-                this.showing = this.showing_for(index);
-                cx.notify();
-            } else {
-                this.act(action, cx);
-            }
-        });
+        let on_action =
+            cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
 
-        // `h_full` is not redundant with `flex_1`. In sidebar mode this sits in
-        // a row, where `flex_1` decides the *width* and the height would
-        // otherwise be the content's — which is a terminal that sizes itself to
-        // its parent, so the pair resolves to nothing at all.
-        let workspace = v_flex()
-            .flex_1()
-            .h_full()
-            .overflow_hidden()
-            .bg(workspace_background)
-            .child(self.workspace_pane(window, cx));
+        let workspace =
+            v_flex().flex_1().h_full().overflow_hidden().bg(workspace_background).child(
+                if self.settings_open {
+                    self.settings_workspace(cx)
+                } else {
+                    self.workspace_pane(window, cx)
+                },
+            );
 
-        let body = match self.mode {
-            Mode::Sidebar => h_flex()
+        let body = if self.settings_open {
+            h_flex()
                 .size_full()
-                .child(chrome::sidebar::render(&entries, emit.clone(), cx))
-                .child(workspace),
-            Mode::Tabs => v_flex()
-                .size_full()
-                .child(chrome::tabs::render(&entries, emit, cx))
-                .child(workspace),
+                .child(chrome::sidebar::render(
+                    &sidebar_spaces,
+                    switcher,
+                    new_item,
+                    emit.clone(),
+                    self.sidebar_width,
+                    cx,
+                ))
+                .child(workspace)
+                .into_any_element()
+        } else {
+            match self.mode {
+                Mode::Sidebar => h_flex()
+                    .size_full()
+                    .child(chrome::sidebar::render(
+                        &sidebar_spaces,
+                        switcher,
+                        new_item,
+                        emit.clone(),
+                        self.sidebar_width,
+                        cx,
+                    ))
+                    .child(workspace)
+                    .into_any_element(),
+                Mode::Tabs => v_flex()
+                    .size_full()
+                    .child(chrome::tabs::render(chrome_entries, switcher, new_item, emit, cx))
+                    .child(workspace)
+                    .into_any_element(),
+            }
         };
 
+        let command_palette = self.command_palette(cx);
+        let rename_space = self.rename_space_overlay(cx);
+
         div()
+            .relative()
             .track_focus(&self.focus)
-            .key_context("Zeddy")
+            .key_context(if self.rename_space.is_some() {
+                "RenameSpace"
+            } else if self.command_palette_open {
+                "CommandPalette"
+            } else if self.settings_open {
+                "Chartr Settings"
+            } else {
+                "Chartr"
+            })
             .size_full()
             .bg(background)
             .text_color(text)
-            .on_key_down(cx.listener(|this, event, _, cx| this.on_key(event, cx)))
+            .on_drag_move::<chrome::DraggedSidebar>(cx.listener(
+                |this, event: &DragMoveEvent<chrome::DraggedSidebar>, _, cx| {
+                    this.sidebar_width = (event.event.position.x / px(1.))
+                        .clamp(chrome::sidebar::MIN_WIDTH, chrome::sidebar::MAX_WIDTH);
+                    cx.notify();
+                },
+            ))
+            .on_action(cx.listener(|this, _: &actions::pane::CloseActiveItem, _, cx| {
+                this.close_active_item(cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::CloseAllItems, window, cx| {
+                this.request_close_active_pane(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveLeft, _, cx| {
+                this.split_and_move(SplitDirection::Left, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveRight, _, cx| {
+                this.split_and_move(SplitDirection::Right, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveUp, _, cx| {
+                this.split_and_move(SplitDirection::Up, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveDown, _, cx| {
+                this.split_and_move(SplitDirection::Down, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::MoveLeft, _, cx| {
+                this.move_active_to_pane(SplitDirection::Left, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::MoveRight, _, cx| {
+                this.move_active_to_pane(SplitDirection::Right, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::MoveUp, _, cx| {
+                this.move_active_to_pane(SplitDirection::Up, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::MoveDown, _, cx| {
+                this.move_active_to_pane(SplitDirection::Down, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::pane::JoinIntoNext, _, cx| {
+                this.join_active_into_next(cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ActivatePaneLeft, window, cx| {
+                this.activate_pane_in_direction(SplitDirection::Left, window, cx)
+            }))
+            .on_action(cx.listener(
+                |this, _: &actions::workspace::ActivatePaneRight, window, cx| {
+                    this.activate_pane_in_direction(SplitDirection::Right, window, cx)
+                },
+            ))
+            .on_action(cx.listener(|this, _: &actions::workspace::ActivatePaneUp, window, cx| {
+                this.activate_pane_in_direction(SplitDirection::Up, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ActivatePaneDown, window, cx| {
+                this.activate_pane_in_direction(SplitDirection::Down, window, cx)
+            }))
+            .on_action(
+                cx.listener(|this, _: &actions::workspace::ToggleZoom, _, cx| this.toggle_zoom(cx)),
+            )
+            .on_action(cx.listener(|this, _: &actions::workspace::NewTerminal, window, cx| {
+                this.act(Action::New, window, cx)
+            }))
+            .on_action(
+                cx.listener(|this, _: &actions::settings::Open, _, cx| this.open_settings(cx)),
+            )
+            .on_action(cx.listener(|this, _: &actions::command_palette::Toggle, window, cx| {
+                this.toggle_command_palette(window, cx)
+            }))
+            .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .child(body)
+            .children(command_palette)
+            .children(rename_space)
     }
 }
 
-fn terminal(session: &Session, fit: Fit, focused: bool, cx: &App) -> impl IntoElement {
+fn setting_label(label: &'static str) -> AnyElement {
+    Label::new(label).size(LabelSize::Small).color(Color::Muted).into_any_element()
+}
+
+fn split_direction_for_drag(event: &DragMoveEvent<DraggedItem>) -> Option<SplitDirection> {
+    let bounds = event.bounds;
+    let size = bounds.size.width.min(bounds.size.height) * 0.25;
+    let x = event.event.position.x - bounds.left();
+    let y = event.event.position.y - bounds.top();
+    if x >= size && x <= bounds.size.width - size && y >= size && y <= bounds.size.height - size {
+        return None;
+    }
+    [
+        (SplitDirection::Up, y),
+        (SplitDirection::Right, bounds.size.width - x),
+        (SplitDirection::Down, bounds.size.height - y),
+        (SplitDirection::Left, x),
+    ]
+    .into_iter()
+    .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+    .map(|(direction, _)| direction)
+}
+
+fn drop_target(direction: Option<SplitDirection>, cx: &App) -> Div {
+    div()
+        .absolute()
+        .border_2()
+        .border_color(cx.theme().colors().drop_target_border)
+        .bg(cx.theme().colors().drop_target_background)
+        .map(|target| match direction {
+            None => target.top_0().right_0().bottom_0().left_0(),
+            Some(SplitDirection::Up) => target.top_0().left_0().right_0().h(relative(0.5)),
+            Some(SplitDirection::Down) => target.bottom_0().left_0().right_0().h(relative(0.5)),
+            Some(SplitDirection::Left) => target.top_0().left_0().bottom_0().w(relative(0.5)),
+            Some(SplitDirection::Right) => target.top_0().right_0().bottom_0().w(relative(0.5)),
+        })
+}
+
+fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> impl IntoElement {
+    div()
+        .id(format!("pane-divider-{:?}-{}", dragged.axis_path, dragged.divider))
+        .absolute()
+        .when(axis == PaneAxisDirection::Horizontal, |handle| {
+            handle.right(px(-3.)).top_0().h_full().w(px(6.)).cursor_col_resize()
+        })
+        .when(axis == PaneAxisDirection::Vertical, |handle| {
+            handle.bottom(px(-3.)).left_0().w_full().h(px(6.)).cursor_row_resize()
+        })
+        .on_drag(dragged, |dragged, _, _, cx| {
+            cx.stop_propagation();
+            cx.new(|_| dragged.clone())
+        })
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .occlude()
+}
+
+fn pane_controls(weak: &gpui::WeakEntity<Zeddy>, pane_id: LayoutPaneId) -> AnyElement {
+    let focus = weak.clone();
+    let split = weak.clone();
+    let join = weak.clone();
+    let zoom = weak.clone();
+    let close_all = weak.clone();
+
+    h_flex()
+        .id(("pane-controls", pane_id.get()))
+        .gap_0p5()
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+            let _ = focus.update(cx, |this, cx| {
+                if let Some(space) = this.active.clone() {
+                    space.update(cx, |space, _| space.activate_pane(pane_id));
+                }
+                cx.notify();
+            });
+        })
+        .child(
+            PopoverMenu::new(("pane-split-menu", pane_id.get()))
+                .trigger_with_tooltip(
+                    IconButton::new(("pane-split", pane_id.get()), IconName::Split)
+                        .icon_size(IconSize::XSmall),
+                    Tooltip::text("Split Pane"),
+                )
+                .anchor(Anchor::TopRight)
+                .menu(move |window, cx| {
+                    let split = split.clone();
+                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                        let left = split.clone();
+                        let right = split.clone();
+                        let up = split.clone();
+                        let down = split.clone();
+                        menu.entry("Split Left", None, move |_, cx| {
+                            let _ = left.update(cx, |this, cx| {
+                                this.split_and_move(SplitDirection::Left, cx)
+                            });
+                        })
+                        .entry("Split Right", None, move |_, cx| {
+                            let _ = right.update(cx, |this, cx| {
+                                this.split_and_move(SplitDirection::Right, cx)
+                            });
+                        })
+                        .entry("Split Up", None, move |_, cx| {
+                            let _ = up
+                                .update(cx, |this, cx| this.split_and_move(SplitDirection::Up, cx));
+                        })
+                        .entry("Split Down", None, move |_, cx| {
+                            let _ = down.update(cx, |this, cx| {
+                                this.split_and_move(SplitDirection::Down, cx)
+                            });
+                        })
+                    }))
+                }),
+        )
+        .child(
+            IconButton::new(("pane-join", pane_id.get()), IconName::ListCollapse)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text("Join Pane Into Next"))
+                .on_click(move |_, _, cx| {
+                    let _ = join.update(cx, |this, cx| this.join_active_into_next(cx));
+                }),
+        )
+        .child(
+            IconButton::new(("pane-zoom", pane_id.get()), IconName::Maximize)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text("Toggle Pane Zoom"))
+                .on_click(move |_, _, cx| {
+                    let _ = zoom.update(cx, |this, cx| this.toggle_zoom(cx));
+                }),
+        )
+        .child(
+            IconButton::new(("pane-close-all", pane_id.get()), IconName::Close)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text("Close All in Pane"))
+                .on_click(move |_, window, cx| {
+                    let _ =
+                        close_all.update(cx, |this, cx| this.request_close_active_pane(window, cx));
+                }),
+        )
+        .into_any_element()
+}
+
+fn setting_value(label: &'static str, value: String) -> AnyElement {
+    v_flex()
+        .gap_1()
+        .child(setting_label(label))
+        .child(Label::new(value).size(LabelSize::Small))
+        .into_any_element()
+}
+
+fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {
+    let file = match spaces::spaces_file() {
+        Ok(file) => file,
+        Err(error) => return (None, Some(error.to_string())),
+    };
+    let mut registry = match Registry::load(file) {
+        Ok(registry) => registry,
+        Err(error) => return (None, Some(error.to_string())),
+    };
+    // Launching zeddy in a folder is the command-line equivalent of Zed's
+    // `zed <path>`: the opened project joins the persisted recent/space list.
+    let is_ad_hoc_home = std::env::home_dir().is_some_and(|home| spaces::same_path(&home, cwd));
+    if !is_ad_hoc_home
+        && !registry.spaces().iter().any(|space| spaces::same_path(space.path(), cwd))
+        && let Err(error) = registry.register(cwd)
+    {
+        return (Some(registry), Some(error.to_string()));
+    }
+    (Some(registry), None)
+}
+
+fn terminal(
+    item: &crate::item::SessionItem,
+    focused: bool,
+    settings: &ResolvedSettings,
+    cx: &App,
+) -> impl IntoElement {
     let theme = cx.theme();
-    let screen = session.screen();
+    let screen = item.session.screen();
     let colors = screen
         .rows
         .iter()
         .map(|row| row.iter().map(|cell| palette::cell_colors(cell, theme)).collect())
         .collect();
 
-    let (font, font_size, line_height) = Fonts::default().terminal();
+    let (font, font_size, line_height) = Fonts::from_settings(settings).terminal();
     let appearance = Appearance {
         font,
         font_size,
@@ -440,7 +3564,13 @@ fn terminal(session: &Session, fit: Fit, focused: bool, cx: &App) -> impl IntoEl
         cursor: theme.colors().terminal_foreground,
     };
 
-    v_flex().size_full().p_2().child(TerminalElement::new(screen, colors, appearance, focused, fit))
+    v_flex().size_full().p_2().child(TerminalElement::new(
+        screen,
+        colors,
+        appearance,
+        focused,
+        item.fit.clone(),
+    ))
 }
 
 fn message(text: &str, cx: &App) -> impl IntoElement {
@@ -459,30 +3589,5 @@ fn plugin_paths() -> Paths {
         .unwrap_or_else(|| {
             PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
         });
-    Paths::under(root.join("zeddy"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn closing_the_selected_session_lands_on_its_neighbour() {
-        // The selection rule is arithmetic on indices, so it is tested as such
-        // rather than through a live backend.
-        let after = |selected: usize, closed: usize, remaining: usize| -> Showing {
-            match Showing::Session(selected) {
-                Showing::Session(_) if remaining == 0 => Showing::Empty,
-                Showing::Session(s) if s > closed => Showing::Session(s - 1),
-                Showing::Session(s) if s == closed => Showing::Session(closed.min(remaining - 1)),
-                other => other,
-            }
-        };
-
-        assert_eq!(after(1, 1, 2), Showing::Session(1), "the next one takes the index");
-        assert_eq!(after(2, 2, 2), Showing::Session(1), "closing the last selects the new last");
-        assert_eq!(after(2, 0, 2), Showing::Session(1), "closing before shifts the selection down");
-        assert_eq!(after(0, 1, 2), Showing::Session(0), "closing after leaves it alone");
-        assert_eq!(after(0, 0, 0), Showing::Empty, "closing the only one shows nothing");
-    }
+    Paths::under(root.join("chartr-zeddy"))
 }

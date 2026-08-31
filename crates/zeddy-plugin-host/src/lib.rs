@@ -28,7 +28,7 @@ use std::{
 
 use zeddy_plugin::{
     Entry, Host, PaneKey, PaneSpec, PluginObject, Registrar,
-    manifest::{Invalid, Kind, Manifest},
+    manifest::{Capabilities, Invalid, Kind, Manifest, Permissions, ProjectAccess},
 };
 
 /// One plugin, loaded and activated.
@@ -36,6 +36,7 @@ pub struct Loaded {
     pub manifest: Manifest,
     pub dir: PathBuf,
     pub panes: Vec<PaneSpec>,
+    pub has_settings: bool,
     tier: Tier,
 }
 
@@ -43,7 +44,12 @@ pub struct Loaded {
 /// between "native" and "web" is still visible.
 enum Tier {
     Native(Native),
-    Web { entry: PathBuf },
+    Web { entry: PathBuf, settings_entry: Option<PathBuf> },
+}
+
+pub enum SettingsSource {
+    Native(gpui::AnyView),
+    Web(PathBuf),
 }
 
 /// A loaded native library and the object it produced.
@@ -70,6 +76,14 @@ impl Loaded {
         self.manifest.kind
     }
 
+    pub fn capabilities(&self) -> &Capabilities {
+        &self.manifest.capabilities
+    }
+
+    pub fn permissions(&self) -> &Permissions {
+        &self.manifest.permissions
+    }
+
     /// How to build one of this plugin's panes.
     ///
     /// `None` for a pane this plugin did not declare — which is what a stale
@@ -80,8 +94,22 @@ impl Loaded {
         }
         Some(match &mut self.tier {
             Tier::Native(native) => PaneSource::Native(native.plugin.as_mut()),
-            Tier::Web { entry } => PaneSource::Web(entry.as_path()),
+            Tier::Web { entry, .. } => PaneSource::Web(entry.as_path()),
         })
+    }
+
+    pub fn settings(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> Option<SettingsSource> {
+        if !self.has_settings {
+            return None;
+        }
+        match &mut self.tier {
+            Tier::Native(native) => native.plugin.settings(window, cx).map(SettingsSource::Native),
+            Tier::Web { settings_entry, .. } => settings_entry.clone().map(SettingsSource::Web),
+        }
     }
 }
 
@@ -93,12 +121,19 @@ pub struct Rejected {
     pub why: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct Disabled {
+    pub manifest: Manifest,
+    pub dir: PathBuf,
+}
+
 /// Everything found in one scan.
 #[derive(Default)]
 pub struct Catalog {
     /// Loaded plugins, by id. A `BTreeMap` so the sidebar's order is the same
     /// on every launch rather than the order the filesystem happened to answer.
     pub loaded: BTreeMap<String, Loaded>,
+    pub disabled: BTreeMap<String, Disabled>,
     pub rejected: Vec<Rejected>,
 }
 
@@ -111,7 +146,140 @@ impl Catalog {
     pub fn get_mut(&mut self, plugin: &str) -> Option<&mut Loaded> {
         self.loaded.get_mut(plugin)
     }
+
+    pub fn get(&self, plugin: &str) -> Option<&Loaded> {
+        self.loaded.get(plugin)
+    }
+
+    pub fn disable(&mut self, plugin: &str) -> bool {
+        let Some(loaded) = self.loaded.remove(plugin) else {
+            return false;
+        };
+        self.disabled
+            .insert(plugin.to_owned(), Disabled { manifest: loaded.manifest, dir: loaded.dir });
+        true
+    }
+
+    pub fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) {
+        self.loaded.retain(|id, _| keep(id));
+    }
+
+    pub fn enable(
+        &mut self,
+        paths: &Paths,
+        plugin: &str,
+        cx: &mut gpui::App,
+    ) -> Result<(), LoadError> {
+        let Some(disabled) = self.disabled.remove(plugin) else {
+            return Ok(());
+        };
+        match load_one(&disabled.dir, paths, cx) {
+            Ok(loaded) => {
+                self.loaded.insert(plugin.to_owned(), loaded);
+                Ok(())
+            }
+            Err(error) => {
+                self.disabled.insert(plugin.to_owned(), disabled);
+                Err(error)
+            }
+        }
+    }
 }
+
+/// Filesystem authority for one web-plugin instance.
+#[derive(Debug, Clone)]
+pub struct FileBroker {
+    project: Option<PathBuf>,
+    data: PathBuf,
+    access: ProjectAccess,
+    unsafe_filesystem: bool,
+}
+
+impl FileBroker {
+    pub fn new(
+        project: Option<PathBuf>,
+        data: PathBuf,
+        access: ProjectAccess,
+        unsafe_filesystem: bool,
+    ) -> Self {
+        Self { project, data, access, unsafe_filesystem }
+    }
+
+    pub fn project_path(&self, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
+        if self.unsafe_filesystem {
+            return Ok(if requested.is_absolute() {
+                requested.to_owned()
+            } else if let Some(project) = &self.project {
+                project.join(requested)
+            } else {
+                self.data.join(requested)
+            });
+        }
+        match (self.access, write) {
+            (ProjectAccess::None, _) | (ProjectAccess::Read, true) => {
+                return Err(BrokerError::Denied);
+            }
+            _ => {}
+        }
+        let root = self.project.as_ref().ok_or(BrokerError::Folderless)?;
+        contained(root, requested, write)
+    }
+
+    pub fn data_path(&self, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
+        contained(&self.data, requested, write)
+    }
+}
+
+fn contained(root: &Path, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
+    if requested.is_absolute()
+        || requested.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err(BrokerError::Escape);
+    }
+    let root = root.canonicalize().map_err(BrokerError::Io)?;
+    let candidate = root.join(requested);
+    let resolved = if write && !candidate.exists() {
+        let parent = candidate.parent().ok_or(BrokerError::Escape)?;
+        let parent = parent.canonicalize().map_err(BrokerError::Io)?;
+        parent.join(candidate.file_name().ok_or(BrokerError::Escape)?)
+    } else {
+        candidate.canonicalize().map_err(BrokerError::Io)?
+    };
+    if !resolved.starts_with(&root) {
+        return Err(BrokerError::Escape);
+    }
+    Ok(resolved)
+}
+
+#[derive(Debug)]
+pub enum BrokerError {
+    Denied,
+    Folderless,
+    Escape,
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for BrokerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Denied => write!(formatter, "the plugin did not declare this project access"),
+            Self::Folderless => {
+                write!(formatter, "safe mode exposes no project filesystem in the folderless space")
+            }
+            Self::Escape => write!(formatter, "the requested path escapes the allowed root"),
+            Self::Io(error) => write!(formatter, "resolving the requested path: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for BrokerError {}
 
 /// Where plugins and their data live.
 #[derive(Debug, Clone)]
@@ -134,6 +302,14 @@ impl Paths {
 /// One bad plugin is recorded and skipped, never fatal: a plugin that fails to
 /// load must not be able to stop zeddy from opening.
 pub fn load_all(paths: &Paths, cx: &mut gpui::App) -> Catalog {
+    load_all_where(paths, |_| true, cx)
+}
+
+pub fn load_all_where(
+    paths: &Paths,
+    mut enabled: impl FnMut(&str) -> bool,
+    cx: &mut gpui::App,
+) -> Catalog {
     let mut catalog = Catalog::default();
     let Ok(entries) = std::fs::read_dir(&paths.installed) else {
         return catalog;
@@ -144,6 +320,12 @@ pub fn load_all(paths: &Paths, cx: &mut gpui::App) -> Catalog {
     dirs.sort();
 
     for dir in dirs {
+        if let Ok(manifest) = Manifest::read(&dir)
+            && !enabled(&manifest.id)
+        {
+            catalog.disabled.insert(manifest.id.clone(), Disabled { manifest, dir });
+            continue;
+        }
         match load_one(&dir, paths, cx) {
             Ok(plugin) => {
                 catalog.loaded.insert(plugin.manifest.id.clone(), plugin);
@@ -200,7 +382,7 @@ fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, Loa
     std::fs::create_dir_all(&data_dir).ok();
     let host = Host { data_dir, plugin_dir: dir.to_owned() };
 
-    let (tier, panes) = match manifest.kind {
+    let (tier, panes, has_settings) = match manifest.kind {
         Kind::Native => {
             let filename = manifest
                 .library_filename()
@@ -209,8 +391,8 @@ fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, Loa
             if !library_path.is_file() {
                 return Err(LoadError::MissingFile(library_path));
             }
-            let (native, panes) = open_native(&library_path, &manifest.id, host, cx)?;
-            (Tier::Native(native), panes)
+            let (native, panes, has_settings) = open_native(&library_path, &manifest.id, host, cx)?;
+            (Tier::Native(native), panes, has_settings)
         }
         Kind::Web => {
             let entry = dir.join(manifest.entry.as_deref().unwrap_or("index.html"));
@@ -224,11 +406,18 @@ fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, Loa
                 key: PaneKey::new(manifest.id.clone(), "main"),
                 title: manifest.name.clone(),
             }];
-            (Tier::Web { entry }, panes)
+            let settings_entry = manifest.settings_entry.as_ref().map(|entry| dir.join(entry));
+            if let Some(settings_entry) = &settings_entry
+                && !settings_entry.is_file()
+            {
+                return Err(LoadError::MissingFile(settings_entry.clone()));
+            }
+            let has_settings = settings_entry.is_some();
+            (Tier::Web { entry, settings_entry }, panes, has_settings)
         }
     };
 
-    Ok(Loaded { manifest, dir: dir.to_owned(), panes, tier })
+    Ok(Loaded { manifest, dir: dir.to_owned(), panes, has_settings, tier })
 }
 
 fn open_native(
@@ -236,7 +425,7 @@ fn open_native(
     id: &str,
     host: Host,
     cx: &mut gpui::App,
-) -> Result<(Native, Vec<PaneSpec>), LoadError> {
+) -> Result<(Native, Vec<PaneSpec>, bool), LoadError> {
     // SAFETY: loading a library runs its initialisers, which is arbitrary
     // native code. That is the documented trust model of the native tier — the
     // manifest's `native_abi` has already been checked to match this build, and
@@ -262,8 +451,9 @@ fn open_native(
     let mut registrar = Registrar::new(id);
     plugin.activate(&mut registrar, cx);
     let panes = registrar.panes().to_vec();
+    let has_settings = registrar.has_settings();
 
-    Ok((Native { plugin, _library: library }, panes))
+    Ok((Native { plugin, _library: library }, panes, has_settings))
 }
 
 #[cfg(test)]
@@ -287,7 +477,7 @@ mod tests {
         std::fs::write(
             dir.join("zeddy-plugin.toml"),
             format!(
-                "manifest_version = 1\nid = \"{id}\"\nname = \"Notes\"\n\
+                "manifest_version = 2\nid = \"{id}\"\nname = \"Notes\"\n\
                  version = \"0.1.0\"\nkind = \"web\"\nentry = \"index.html\"\n"
             ),
         )
@@ -305,6 +495,40 @@ mod tests {
         assert_eq!(catalog.loaded.len(), 1);
         assert_eq!(catalog.panes().len(), 1);
         assert_eq!(catalog.panes()[0].title, "Notes");
+    }
+
+    #[gpui::test]
+    fn a_web_settings_document_is_validated_but_not_constructed_during_discovery(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_tmp, paths) = paths();
+        let dir = write_web(&paths, "com.example.notes", "com.example.notes");
+        let manifest = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
+        std::fs::write(
+            dir.join("zeddy-plugin.toml"),
+            format!("{manifest}settings_entry = \"settings.html\"\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("settings.html"), "<p>settings</p>").unwrap();
+
+        let catalog = cx.update(|cx| load_all(&paths, cx));
+        assert!(catalog.get("com.example.notes").unwrap().has_settings);
+    }
+
+    #[gpui::test]
+    fn a_declared_missing_web_settings_document_rejects_the_plugin(cx: &mut gpui::TestAppContext) {
+        let (_tmp, paths) = paths();
+        let dir = write_web(&paths, "com.example.notes", "com.example.notes");
+        let manifest = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
+        std::fs::write(
+            dir.join("zeddy-plugin.toml"),
+            format!("{manifest}settings_entry = \"missing.html\"\n"),
+        )
+        .unwrap();
+
+        let catalog = cx.update(|cx| load_all(&paths, cx));
+        assert!(catalog.loaded.is_empty());
+        assert!(catalog.rejected[0].why.contains("missing.html"));
     }
 
     #[gpui::test]
@@ -361,5 +585,62 @@ mod tests {
         let paths = Paths::under(tmp.path().join("nothing-here"));
         let catalog = cx.update(|cx| load_all(&paths, cx));
         assert!(catalog.loaded.is_empty() && catalog.rejected.is_empty());
+    }
+
+    #[test]
+    fn safe_project_access_stays_beneath_the_canonical_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let data = temp.path().join("data");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(project.join("readme.md"), "hello").unwrap();
+        let broker = FileBroker::new(Some(project.clone()), data, ProjectAccess::ReadWrite, false);
+
+        assert_eq!(
+            broker.project_path(Path::new("readme.md"), false).unwrap(),
+            project.canonicalize().unwrap().join("readme.md")
+        );
+        assert!(matches!(
+            broker.project_path(Path::new("../outside"), true),
+            Err(BrokerError::Escape)
+        ));
+    }
+
+    #[test]
+    fn folderless_safe_plugins_receive_only_their_data_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let broker = FileBroker::new(None, data.clone(), ProjectAccess::ReadWrite, false);
+
+        assert!(matches!(
+            broker.project_path(Path::new("anything"), false),
+            Err(BrokerError::Folderless)
+        ));
+        assert_eq!(
+            broker.data_path(Path::new("state.json"), true).unwrap(),
+            data.canonicalize().unwrap().join("state.json")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_cannot_escape_a_safe_project_root() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let outside = temp.path().join("outside");
+        let data = temp.path().join("data");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        symlink(&outside, project.join("escape")).unwrap();
+        let broker = FileBroker::new(Some(project), data, ProjectAccess::ReadWrite, false);
+
+        assert!(matches!(
+            broker.project_path(Path::new("escape/file.txt"), true),
+            Err(BrokerError::Escape)
+        ));
     }
 }

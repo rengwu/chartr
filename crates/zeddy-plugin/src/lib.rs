@@ -29,7 +29,7 @@
 //!         registrar.add_pane("map", "Star map");
 //!     }
 //!
-//!     fn view(&mut self, _: &PaneKey, _: &mut gpui::Window, cx: &mut gpui::App) -> gpui::AnyView {
+//!     fn view(&mut self, _: &PaneKey, _: &InstanceContext, _: &mut gpui::Window, cx: &mut gpui::App) -> gpui::AnyView {
 //!         cx.new(|_| MapView::default()).into()
 //!     }
 //! }
@@ -53,7 +53,7 @@
 pub mod manifest;
 
 pub use gpui;
-pub use manifest::{Kind, Manifest};
+pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, ProjectAccess};
 
 use std::path::PathBuf;
 
@@ -80,6 +80,14 @@ pub struct PaneSpec {
     pub title: String,
 }
 
+/// Stable ownership handed to one concrete pane instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstanceContext {
+    pub space: String,
+    pub project_dir: Option<PathBuf>,
+    pub bound_session: Option<String>,
+}
+
 /// What a plugin declares during [`Plugin::activate`].
 ///
 /// Declaring is separate from building. Activation runs once, and zeddy calls
@@ -89,11 +97,12 @@ pub struct PaneSpec {
 pub struct Registrar {
     plugin: String,
     panes: Vec<PaneSpec>,
+    settings: bool,
 }
 
 impl Registrar {
     pub fn new(plugin: impl Into<String>) -> Self {
-        Self { plugin: plugin.into(), panes: Vec::new() }
+        Self { plugin: plugin.into(), panes: Vec::new(), settings: false }
     }
 
     /// Contribute a pane. `key` is this plugin's own name for it.
@@ -105,6 +114,16 @@ impl Registrar {
 
     pub fn panes(&self) -> &[PaneSpec] {
         &self.panes
+    }
+
+    /// Advertise one user-global settings contribution. Its view remains lazy.
+    pub fn add_settings(&mut self) -> &mut Self {
+        self.settings = true;
+        self
+    }
+
+    pub fn has_settings(&self) -> bool {
+        self.settings
     }
 }
 
@@ -138,9 +157,19 @@ pub trait Plugin: Sized + 'static {
     fn view(
         &mut self,
         pane: &PaneKey,
+        context: &InstanceContext,
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> gpui::AnyView;
+
+    /// Build this plugin's user-global Settings contribution on first open.
+    fn settings(
+        &mut self,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::App,
+    ) -> Option<gpui::AnyView> {
+        None
+    }
 }
 
 /// The object-safe face of [`Plugin`], which is what crosses the library
@@ -151,9 +180,11 @@ pub trait PluginObject {
     fn view(
         &mut self,
         pane: &PaneKey,
+        context: &InstanceContext,
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> gpui::AnyView;
+    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyView>;
 }
 
 impl<P: Plugin> PluginObject for P {
@@ -168,10 +199,15 @@ impl<P: Plugin> PluginObject for P {
     fn view(
         &mut self,
         pane: &PaneKey,
+        context: &InstanceContext,
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> gpui::AnyView {
-        Plugin::view(self, pane, window, cx)
+        Plugin::view(self, pane, context, window, cx)
+    }
+
+    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyView> {
+        Plugin::settings(self, window, cx)
     }
 }
 
@@ -227,5 +263,13 @@ mod tests {
         let mut two = Registrar::new("b");
         two.add_pane("main", "Two");
         assert_ne!(one.panes()[0].key, two.panes()[0].key);
+    }
+
+    #[test]
+    fn settings_are_opt_in_and_remain_lazy() {
+        let mut registrar = Registrar::new("com.example.settings");
+        assert!(!registrar.has_settings());
+        registrar.add_settings();
+        assert!(registrar.has_settings());
     }
 }

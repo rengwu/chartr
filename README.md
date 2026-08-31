@@ -1,135 +1,132 @@
-# zeddy
+# Chartr
 
-A simple agent multiplexer. Sessions live in a backend that outlives the
-window; the window shows them in a sidebar or in a tab strip, and plugins add
-panes beside them.
+Chartr is a multi-space terminal and plugin workspace built on Zed's GPUI,
+component, theme, action, and pane conventions. This rewrite keeps its data
+isolated under the `chartr-zeddy` namespace.
 
 ```sh
-sh vendor/herdr/fetch.sh   # once per checkout, and whenever the pin moves
+sh vendor/herdr/fetch.sh
 cargo run -p zeddy
 ```
 
-## What it is
+The supported desktop targets are macOS and Linux under X11 or XWayland.
+Windows is deferred because Herdr currently uses Unix-domain sockets. Wry's
+in-window Linux child webviews require X11, so Chartr selects the same GPUI
+backend instead of exposing web panes that fail only on Wayland.
 
-Open zeddy in a directory and it shows the sessions already running there,
-adopting them rather than restarting them. `+` starts another. Quitting leaves
-them running; the next launch picks them up where they were.
+## Spaces, panes, and items
 
-Sessions are **agents**, not just shells — the backend already knows what a
-pane is running, so a session carries its agent's name and status without zeddy
-inspecting a process tree.
+One window owns ordered spaces and one active space, following Zed's
+`MultiWorkspace` responsibility. The permanent **Ad-hoc sessions** space is
+folderless and starts sessions in the home directory (or its configured
+replacement). Folder spaces are canonical-path identities with independent
+recursive pane trees.
 
-## Two modes
+Every terminal or plugin instance is one item owned by exactly one pane in one
+space. Tabs never appear in several spaces. New sessions enter the active pane
+of the selected space. A terminal item is non-cloneable; closing it terminates
+its Herdr session. A plugin may opt into multiple instances, modifier cloning,
+restoration, and explicit binding to one terminal session.
 
-The same list, in the two places a list of sessions wants to be:
+Panes support nested horizontal and vertical splits, divider resizing,
+directional focus, joining, zooming, tab reordering, movement, and edge-drop
+splitting. The command palette provides keyboard alternatives for pane
+operations. `Cmd+W` on macOS and `Ctrl+W` on Linux closes the active item;
+operations that terminate multiple live sessions confirm with an exact count.
 
-- **Sidebar** — a vertical list down the left. Room for a title, the agent
-  under it, and a close button that is not fighting the title for space. The
-  mode for many long-lived sessions.
-- **Tabs** — a horizontal strip across the top. Denser per session, familiar,
-  and no room for a second line. The mode for a handful you are switching
-  between quickly.
+Sidebar and tabbed modes are projections over that same model. Sidebar mode can
+show all spaces or only the active space and groups each pane's items. Tabbed
+mode shows one space and uses Zed tabs, including close controls for plugin
+items. Switching presentation never reparents or recreates an item.
 
-Both are one enum and one branch in `render`. Toggling never touches a session,
-because nothing below the chrome knows which mode is showing.
+## Settings and persistence
 
-## Layout
+Settings is presented inside the main window, retaining the spaces sidebar.
+The implemented pages are General, Appearance, Terminal, Hotkeys, and Plugins.
+Changes are written atomically; hotkeys are semantic GPUI actions with conflict
+detection. Chartr Dark is the fixed default, with Chartr Light and system theme
+pairs available. IBM Plex Sans and the bundled IBM Plex Mono are configurable
+defaults.
 
-```text
-crates/zeddy/              the window, and nothing a lower crate could own
-crates/zeddy-herdr/        the only code that knows herdr exists
-crates/zeddy-vt/           the only code that knows a VT parser exists
-crates/zeddy-plugin/       the contract a plugin is written against
-crates/zeddy-plugin-host/  the only code that loads foreign code
-plugins/                   one example per tier; never installed automatically
-vendor/herdr/              the pinned backend executable and its fetch script
-docs/adr/                  the decisions that would otherwise be re-litigated
-```
+User-editable data remains text:
 
-Each crate is a boundary rather than a bag of helpers. Swapping the VT parser
-is a change to one file; so is swapping the backend.
+- `$XDG_CONFIG_HOME/chartr-zeddy/settings.toml`
+- `$XDG_CONFIG_HOME/chartr-zeddy/keymap.toml`
+- `$XDG_CONFIG_HOME/chartr-zeddy/spaces.toml`
 
-## The backend is invisible
+Application-owned window, chrome, pane, selection, and restorable-item state is
+versioned SQLite under `$XDG_STATE_HOME/chartr-zeddy/state.sqlite`. No existing
+Go Chartr or Chartr-rs configuration is imported automatically.
 
-zeddy runs a **private** herdr: its own socket, its own XDG directories, its own
-session name, under `~/.local/state/zeddy/herdr`. It does not discover, attach
-to, stop, upgrade, or write the herdr you run yourself, and a `HERDR_SOCKET_PATH`
-inherited from your shell cannot reach it — every herdr process zeddy launches is
-placed in that namespace explicitly.
-
-There is no backend administration surface. Starting and adopting are one call,
-because the question zeddy acts on is not "is it running" but "can I talk to
-it", and that is a `ping`.
-
-The executable is resolved by path, beside zeddy's own, never through `PATH`: a
-herdr you installed for yourself is yours, and picking it up would make zeddy's
-backend version depend on the machine. `crates/zeddy/build.rs` copies the
-vendored one into place and fails the build if it is not there.
+Normal app exit detaches sessions. An optional setting terminates them instead.
+The private Herdr runtime uses an exact socket under
+`$XDG_CONFIG_HOME/chartr-zeddy/herdr`; inherited Herdr selectors are cleared so
+Chartr cannot attach to a user's standalone daemon. Broken streams become
+item-local recovery states, and unexpected daemon death receives one clean
+restart before entering a stable crash-loop state with Retry.
 
 ## Plugins
 
-Both tiers contribute the same thing — a pane zeddy can show in the sidebar or
-as a tab — and nothing above the plugin host asks which tier a pane came from.
-A plugin is a directory with a `zeddy-plugin.toml` in it under
-`~/.local/share/zeddy/plugins/<id>/`.
+Plugins are directories under
+`$XDG_DATA_HOME/chartr-zeddy/plugins/<reverse-dns-id>/` containing
+`zeddy-plugin.toml`.
 
-**Native** (`kind = "native"`) is a `cdylib`. Its view is an ordinary GPUI
-`AnyView` mounted directly in zeddy's element tree, so scrolling, resizing,
-focus, input, and painting use exactly the same frame path as a built-in.
-There is no webview, Wasm runtime, synthetic window, display-list replay, or UI
-RPC layer. The whole authoring contract is one trait, one macro, and a manifest:
+Native plugins are fully trusted Rust dynamic libraries. They receive a stable
+`InstanceContext` and return ordinary GPUI views:
 
 ```rust
-use zeddy_plugin::{Host, PaneKey, Plugin, Registrar, gpui, register};
-
-struct StarMap;
-
-impl Plugin for StarMap {
-    const ID: &'static str = "com.example.starmap";
-    fn new(_: Host, _: &mut gpui::App) -> Self { Self }
-    fn activate(&mut self, r: &mut Registrar, _: &mut gpui::App) { r.add_pane("map", "Star map"); }
-    fn view(&mut self, _: &PaneKey, _: &mut gpui::Window, cx: &mut gpui::App) -> gpui::AnyView {
-        cx.new(|_| MapView::default()).into()
-    }
-}
-
-register!(StarMap);
+fn view(
+    &mut self,
+    pane: &PaneKey,
+    context: &InstanceContext,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) -> gpui::AnyView;
 ```
 
-That openness is also the trust model. A native plugin may use raw GPUI, any
-compatible crate, the filesystem, processes, and the network; installing one is
-installing native code, and no sandbox is claimed.
+Native plugins may advertise one lazy Settings contribution through their
+registrar. Libraries remain mapped until process exit so disabling one cannot
+invalidate a live Rust vtable.
 
-**Web** (`kind = "web"`) is a manifest and an entry document. No Rust, no
-toolchain, no ABI to match — anyone who has written a web page can write one,
-and it is sandboxed. The trade is that its pane is composited rather than
-painted on zeddy's frame path, so it is a frame behind the terminal beside it.
+Web plugins are real Wry panes with local assets and a restrictive CSP. Their
+manifest declares project-file, domain-scoped network, process, and optional
+bound-session host actions. Safe filesystem paths are canonicalized beneath the
+owning project, while folderless plugins receive only plugin data. Unrestricted
+filesystem access is an explicit per-plugin grant; there is no global unsafe
+switch. Revoking a grant or disabling a plugin destroys its live brokers and
+views immediately. A web plugin may name a lazy `settings_entry` document.
 
-The two tiers exist because "anyone can author one" and "fast enough to paint a
-star map at 120fps" are different requirements, and one runtime cannot honestly
-be both. See [ADR 0003](docs/adr/0003-two-plugin-tiers.md).
+`plugins/hello` and `plugins/clock` are complete native and web examples. They
+are development references and are not installed automatically.
 
-`plugins/hello` is a complete native plugin; `plugins/clock` is a complete web
-one. Neither is seeded or installed automatically.
+## Repository boundaries
 
-## Testing
+```text
+crates/zeddy/              window, spaces, panes, settings, persistence, UI
+crates/zeddy-herdr/        private Herdr protocol and lifecycle
+crates/zeddy-vt/           terminal parser boundary
+crates/zeddy-plugin/       native and manifest authoring contract
+crates/zeddy-plugin-host/  discovery, loading, and web filesystem broker
+plugins/                   one complete example per plugin tier
+vendor/herdr/              pinned sidecar fetch and licence
+docs/adr/                  architectural decisions
+.plan/maps/                durable product specification
+```
+
+## Verification
 
 ```sh
-cargo test --workspace
+cargo fmt --all --check
+cargo test --workspace --locked --no-fail-fast
+cargo check --manifest-path plugins/hello/Cargo.toml --locked
+cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
-Hermetic: no test contacts a herdr daemon. The pieces that can only be checked
-against a real one are ignored by default and use the vendored executable:
-
-```sh
-cargo test -p zeddy --test live_session -- --ignored --nocapture
-```
-
-Run that one when the herdr pin moves. The frame stream rides herdr's command
-line, which carries no compatibility promise, and it is the one coupling no
-unit test can see break.
+The last command launches and hard-crashes the real pinned private Herdr. The
+macOS/Linux build matrix and release acceptance checklist live in
+`.github/workflows/ci.yml` and `docs/acceptance.md`.
 
 ## Licence
 
-GPL-3.0-or-later. zeddy links Zed's `ui` and `theme` crates directly, and those
-are GPL-3.0-or-later; see [ADR 0002](docs/adr/0002-the-zed-layer.md).
+GPL-3.0-or-later. Chartr links Zed's `ui` and `theme` crates directly; see
+[ADR 0002](docs/adr/0002-the-zed-layer.md).

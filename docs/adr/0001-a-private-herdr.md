@@ -2,10 +2,12 @@
 
 ## Decision
 
-zeddy runs its own herdr daemon in a namespace it owns: its own socket, XDG
-directories, session name, and log, all under `~/.local/state/zeddy/herdr`. The
-executable is the one vendored beside zeddy's binary, resolved by path. zeddy
-never discovers, attaches to, stops, upgrades, or writes the user's own herdr.
+Chartr runs its own Herdr daemon in a namespace it owns: its own socket, saved
+shape, and log under `$XDG_CONFIG_HOME/chartr-zeddy/herdr` (normally
+`~/.config/chartr-zeddy/herdr`). This matches the proven Chartr-rs namespace
+shape. The executable is the sidecar vendored beside Chartr's binary and is
+resolved by path. Chartr never discovers, attaches to, stops, upgrades, or
+writes the user's own Herdr.
 
 ## Why
 
@@ -20,10 +22,11 @@ version depend on the machine. The frame stream rides herdr's *command line*,
 which carries no compatibility promise, so the version is pinned exactly rather
 than as a floor.
 
-`Namespace::env` clears `HERDR_SESSION`, `HERDR_PANE_ID`, and their siblings
-rather than merely overriding what it sets. zeddy is frequently launched *from*
-a herdr pane, and an inherited selector would otherwise point a frame stream at
-a daemon the control plane is not talking to.
+`Namespace::env` sets only Herdr's config root and exact socket, then clears
+`HERDR_SESSION`, `HERDR_PANE_ID`, and their siblings rather than merely
+overriding what it sets. Chartr is frequently launched *from* a Herdr pane, and
+an inherited selector would otherwise point a frame stream at a daemon the
+control plane is not talking to.
 
 ## What this rules out
 

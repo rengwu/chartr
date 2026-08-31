@@ -100,6 +100,87 @@ impl Client {
         }
     }
 
+    /// Whether anything is accepting connections at this private socket.
+    ///
+    /// Supervision deliberately asks the operating system rather than pinging
+    /// the daemon: a crashed daemon cannot answer a health check, while both a
+    /// removed socket and a stale one refuse this connect.
+    pub fn answers(&self) -> bool {
+        UnixStream::connect(self.namespace.socket()).is_ok()
+    }
+
+    /// Start exactly one clean replacement for a daemon that has already died.
+    ///
+    /// This clears herdr's saved runtime shape before spawning. It does not
+    /// wait or retry; [`reconnect`](Self::reconnect) is intentionally the only
+    /// wait path so recovery cannot turn into a hidden spawn loop.
+    pub fn restart(&self) -> Result<()> {
+        self.namespace.prepare()?;
+        if self.answers() {
+            self.stop_daemon()?;
+        }
+        self.clear_saved_shape()?;
+        self.spawn_daemon()
+    }
+
+    /// Ask this exact private daemon to stop and wait for its socket to close.
+    pub fn stop_daemon(&self) -> Result<()> {
+        let mut command = Command::new(self.sidecar.path());
+        command
+            .args(["server", "stop"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        apply(&mut command, &self.namespace);
+        let status = command.status()?;
+        if !status.success() && self.answers() {
+            return Err(Error::Backend {
+                method: "server stop",
+                message: format!("herdr exited with {status}"),
+            });
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while self.answers() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if self.answers() {
+            return Err(Error::Backend {
+                method: "server stop",
+                message: "the private socket is still accepting connections".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Wait for an already-started daemon to answer, without starting another.
+    pub fn reconnect(&self, timeout: Duration) -> Result<()> {
+        let deadline = Instant::now() + timeout;
+        let mut backoff = Duration::from_millis(25);
+        loop {
+            match self.handshake() {
+                Ok(()) => return Ok(()),
+                Err(err) if Instant::now() + backoff >= deadline => return Err(err),
+                Err(_) => {
+                    std::thread::sleep(backoff);
+                    backoff = (backoff * 2).min(Duration::from_millis(200));
+                }
+            }
+        }
+    }
+
+    /// Remove only the private daemon's saved workspace shape.
+    pub fn clear_saved_shape(&self) -> Result<()> {
+        let shape = self.namespace.saved_shape();
+        match std::fs::remove_file(&shape) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(Error::Transport(std::io::Error::new(
+                error.kind(),
+                format!("cannot clear {}: {error}", shape.display()),
+            ))),
+        }
+    }
+
     /// `ping`, checked against the version this client was written for.
     ///
     /// A version mismatch is an error and not a warning. The frame stream rides
@@ -161,9 +242,18 @@ impl Client {
         if let Some(existing) = self.workspace_at(cwd)? {
             return Ok(existing);
         }
+        Ok(self.create_workspace(cwd, label)?.workspace)
+    }
+
+    /// Create a workspace and return its root session.
+    ///
+    /// herdr creates a workspace and its first pane as one operation. Callers
+    /// that are implementing "new session" need that pane rather than only its
+    /// workspace id, or they would create a second pane and lose the first.
+    pub fn create_workspace(&self, cwd: &Path, label: Option<&str>) -> Result<Session> {
         let params = WorkspaceCreateParams { cwd: &cwd.to_string_lossy(), label };
         let created: Created = self.call("workspace.create", &params)?;
-        Ok(Session::from(created.root_pane).workspace)
+        Ok(created.root_pane.into())
     }
 
     /// Start one more session in a workspace that is already open.
@@ -311,5 +401,26 @@ mod tests {
 
         let err = client.handshake().expect_err("nothing is listening");
         assert!(err.to_string().contains(&namespace.socket().display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn a_clean_restart_removes_only_the_saved_shape() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let namespace = Namespace::rooted(tmp.path().join("private"));
+        namespace.prepare().expect("prepare");
+        let shape = namespace.saved_shape();
+        std::fs::create_dir_all(shape.parent().expect("shape directory")).expect("directory");
+        std::fs::write(&shape, b"stale shape").expect("shape");
+        let neighbor = shape.parent().expect("shape directory").join("config.toml");
+        std::fs::write(&neighbor, b"managed config").expect("config");
+        let herdr = tmp.path().join("herdr");
+        std::fs::write(&herdr, b"#!/bin/sh\n").expect("sidecar");
+        let client = Client::new(Sidecar::at(&herdr).expect("sidecar"), namespace);
+
+        client.clear_saved_shape().expect("clear shape");
+
+        assert!(!shape.exists());
+        assert_eq!(std::fs::read(&neighbor).expect("config remains"), b"managed config");
+        client.clear_saved_shape().expect("already absent is harmless");
     }
 }

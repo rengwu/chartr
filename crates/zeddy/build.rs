@@ -28,6 +28,27 @@ fn main() {
     let beside = out_dir_binary_dir().join("herdr");
     if let Err(err) = std::fs::copy(&vendored, &beside) {
         println!("cargo::error=cannot place herdr at {}: {err}", beside.display());
+        return;
+    }
+
+    // A release archive's linker signature is not a valid signature after it
+    // has been copied into a development artifact directory. macOS otherwise
+    // kills the sidecar before `main` and Chartr sees only a missing socket.
+    // The final application bundle is signed as a whole by packaging; this
+    // ad-hoc signature makes the ordinary Cargo artifact executable meanwhile.
+    if target.contains("apple-darwin") {
+        let signed = std::process::Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&beside)
+            .status();
+        match signed {
+            Ok(status) if status.success() => {}
+            Ok(status) => println!(
+                "cargo::error=codesign exited with {status} while signing {}",
+                beside.display()
+            ),
+            Err(error) => println!("cargo::error=cannot ad-hoc sign {}: {error}", beside.display()),
+        }
     }
 }
 

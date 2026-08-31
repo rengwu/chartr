@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang cmake pkg-config \
+            libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev \
+            libva-dev libvulkan1 libwayland-dev libx11-xcb-dev \
+            libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Fetch the pinned Herdr sidecar
+        run: sh vendor/herdr/fetch.sh
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Build and test
+        run: cargo test --workspace --locked --no-fail-fast
+
+      - name: Build the native plugin contract example
+        run: cargo check --manifest-path plugins/hello/Cargo.toml --locked
