@@ -11,8 +11,10 @@
 //! How many cells fit is a question only the paint pass can answer — it depends
 //! on the font metrics and on the bounds the layout gave us. But the *answer*
 //! belongs to the session, which has to tell herdr about it. So the element
-//! writes the measured grid into a shared [`Fit`] and the view reads it, which
-//! is why a resize takes effect on the frame after the one that noticed it.
+//! writes the measured grid into a shared [`Fit`] and the view reads it. A
+//! changed fit explicitly schedules that follow-up frame: pane-tree edits such
+//! as splits and tab moves are one-shot events, so there may be no mouse event
+//! or terminal repaint to schedule it for us.
 
 use std::{cell::Cell as StdCell, rc::Rc};
 
@@ -39,8 +41,8 @@ impl Fit {
         self.0.get()
     }
 
-    fn set(&self, size: Size) {
-        self.0.set(Some(size));
+    fn set(&self, size: Size) -> bool {
+        self.0.replace(Some(size)) != Some(size)
     }
 }
 
@@ -130,7 +132,7 @@ impl Element for TerminalElement {
         bounds: Bounds<Pixels>,
         _: &mut (),
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> Metrics {
         // The font is monospace, so one glyph's advance is every glyph's.
         let em = window
@@ -152,10 +154,16 @@ impl Element for TerminalElement {
             .max(px(1.));
         let cell = size(em, self.appearance.line_height);
 
-        self.fit.set(Size::new(
+        let fit_changed = self.fit.set(Size::new(
             (bounds.size.width / cell.width).floor() as u16,
             (bounds.size.height / cell.height).floor() as u16,
         ));
+        if fit_changed {
+            // `Window::refresh` is intentionally ignored while GPUI is in a
+            // draw pass. Defer it until the pass completes so the next render
+            // can apply this fit before taking the terminal screen snapshot.
+            window.defer(cx, |window, _| window.refresh());
+        }
 
         Metrics { cell }
     }
@@ -272,5 +280,19 @@ impl Look {
             }),
             strikethrough: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fit_reports_only_real_grid_changes() {
+        let fit = Fit::default();
+        assert!(fit.set(Size::new(80, 24)));
+        assert!(!fit.set(Size::new(80, 24)));
+        assert!(fit.set(Size::new(120, 40)));
+        assert_eq!(fit.get(), Some(Size::new(120, 40)));
     }
 }

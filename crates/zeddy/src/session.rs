@@ -22,7 +22,7 @@ use futures::channel::mpsc;
 use zeddy_herdr::{
     Geometry, PaneId,
     control::{self, Client},
-    stream::Input,
+    stream::{Frame, Input},
 };
 use zeddy_vt::{Screen, Size, Terminal};
 
@@ -74,16 +74,8 @@ impl Session {
                     let outcome = loop {
                         match frames.next_frame() {
                             Ok(Some(frame)) => {
-                                // A full repaint after a resize is measured
-                                // against a grid of its own size, so the
-                                // emulator follows the frame rather than the
-                                // window: applying an 80-column repaint to a
-                                // 120-column grid would wrap it wrongly.
                                 let mut terminal = terminal.lock().expect("terminal mutex");
-                                if frame.full {
-                                    terminal.resize(size_of(frame.geometry));
-                                }
-                                terminal.feed(&frame.bytes);
+                                apply_frame(&mut terminal, &frame);
                             }
                             Ok(None) => break Ended::Closed,
                             Err(err) => break Ended::Failed(err.to_string()),
@@ -136,12 +128,15 @@ impl Session {
     /// Tell the session how many cells it now has.
     ///
     /// A no-op at the same size, because a resize costs a full repaint and the
-    /// window recomputes its cell count on every layout pass.
+    /// window recomputes its cell count on every layout pass. The local grid is
+    /// resized before the command crosses the process boundary, so a divider
+    /// drag reflows on the next paint instead of waiting for herdr's repaint.
     pub fn resize(&mut self, size: Size) -> zeddy_herdr::Result<()> {
         if size == self.size {
             return Ok(());
         }
         self.size = size;
+        self.terminal.lock().expect("terminal mutex").resize(size);
         self.input.lock().expect("session input mutex").resize(geometry(size))
     }
 
@@ -186,6 +181,23 @@ fn size_of(geometry: Geometry) -> Size {
     Size::new(geometry.cols, geometry.rows)
 }
 
+/// Paint a frame only when it was produced for the grid the window currently
+/// owns.
+///
+/// Resizing the local emulator immediately leaves a small interval in which
+/// herdr can still deliver frames queued for the previous geometry. Feeding
+/// one of those into the new grid would wrap and position its contents against
+/// the wrong width. The stream still consumes those frames to preserve its
+/// sequence contract; herdr's full repaint for the current geometry resumes
+/// painting.
+fn apply_frame(terminal: &mut Terminal, frame: &Frame) -> bool {
+    if terminal.size() != size_of(frame.geometry) {
+        return false;
+    }
+    terminal.feed(&frame.bytes);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +205,30 @@ mod tests {
     #[test]
     fn the_two_grid_types_round_trip() {
         assert_eq!(size_of(geometry(Size::new(120, 40))), Size::new(120, 40));
+    }
+
+    #[test]
+    fn a_frame_for_the_current_grid_is_applied() {
+        let mut terminal = Terminal::new(Size::new(120, 40));
+        let frame = Frame {
+            bytes: b"current".to_vec(),
+            full: true,
+            seq: 1,
+            geometry: Geometry::new(120, 40),
+        };
+
+        assert!(apply_frame(&mut terminal, &frame));
+        assert_eq!(terminal.screen().to_text().lines().next(), Some("current"));
+    }
+
+    #[test]
+    fn a_queued_full_repaint_for_the_previous_grid_is_ignored() {
+        let mut terminal = Terminal::new(Size::new(120, 40));
+        let frame =
+            Frame { bytes: b"stale".to_vec(), full: true, seq: 1, geometry: Geometry::new(80, 24) };
+
+        assert!(!apply_frame(&mut terminal, &frame));
+        assert_eq!(terminal.screen().to_text().lines().next(), Some(""));
+        assert_eq!(terminal.size(), Size::new(120, 40));
     }
 }
