@@ -10,7 +10,8 @@ use ui::{Tooltip, prelude::*};
 use super::Emit;
 
 use super::{
-    Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview, status_dot,
+    Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview,
+    status_indicator,
 };
 
 /// The sidebar's width. Fixed rather than draggable: a resizable sidebar is a
@@ -215,17 +216,19 @@ fn row(
         .when(!grouped, |row| {
             row.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
         })
-        .child(status_dot(entry, cx))
+        .child(status_indicator(
+            entry.status,
+            entry.process_running,
+            entry.ended,
+            &entry.space_key,
+            entry.key,
+            cx,
+        ))
         .child(
             v_flex()
                 .flex_1()
                 .overflow_hidden()
-                .child(Label::new(entry.title.clone()).size(LabelSize::Small).truncate())
-                .when_some(entry.agent.clone(), |column, agent| {
-                    column.child(
-                        Label::new(agent).size(LabelSize::XSmall).color(Color::Muted).truncate(),
-                    )
-                }),
+                .child(Label::new(entry.title.clone()).size(LabelSize::Small).truncate()),
         )
         .when(grouped, |row| {
             row.child(

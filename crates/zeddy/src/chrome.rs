@@ -12,7 +12,8 @@ use std::rc::Rc;
 
 use crate::workspace::{ItemId, PaneId, WorkspaceTabId};
 use gpui::EntityId;
-use ui::{Tab, prelude::*};
+use ui::{CommonAnimationExt, Tab, prelude::*};
+use zeddy_herdr::control::SessionStatus;
 
 /// One row in the sidebar, or one tab in the strip.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,9 +25,11 @@ pub struct Entry {
     pub pane: PaneId,
     pub index: usize,
     pub title: String,
-    /// The agent herdr believes is running, when it knows one. In sidebar mode
-    /// this is a second line; in tabs mode there is no room and it is dropped.
-    pub agent: Option<String>,
+    /// Herdr's agent state. Plugins and grouped outer tabs have no aggregate
+    /// session state of their own.
+    pub status: Option<SessionStatus>,
+    /// A non-agent process currently owns the foreground process group.
+    pub process_running: bool,
     /// A session whose reader has stopped is still listed — closing it is the
     /// user's decision, not something that happens to them.
     pub ended: bool,
@@ -129,15 +132,55 @@ impl Render for DraggedItemPreview {
     }
 }
 
-/// The dot that carries a session's state, in the one place both chromes agree
-/// on what it means.
-pub fn status_dot(entry: &Entry, cx: &App) -> impl IntoElement {
-    let color = if entry.ended {
-        cx.theme().status().error
-    } else if entry.agent.is_some() {
-        cx.theme().status().success
-    } else {
-        cx.theme().colors().text_muted
-    };
-    div().size(px(6.)).rounded_full().bg(color).flex_none()
+/// The fixed status mark used by sidebar rows, outer tabs, and pane-local tabs.
+///
+/// Herdr owns agent detection and state. Chartr only maps those states to the
+/// same visual language the earlier clients used, using Zed's own icons and
+/// animation primitive. A plain foreground process gets a slower neutral
+/// spinner so it cannot be mistaken for an agent actively working.
+pub fn status_indicator(
+    status: Option<SessionStatus>,
+    process_running: bool,
+    ended: bool,
+    space: &str,
+    key: ItemId,
+    cx: &App,
+) -> AnyElement {
+    let slot = || div().flex_none().size(px(12.)).flex().items_center().justify_center();
+    let icon = |name, color| Icon::new(name).size(IconSize::XSmall).color(color);
+
+    if ended {
+        return slot().child(icon(IconName::XCircle, Color::Error)).into_any_element();
+    }
+
+    match status {
+        Some(SessionStatus::Working) => {
+            slot()
+                .child(icon(IconName::LoadCircle, Color::Accent).with_keyed_rotate_animation(
+                    format!("working-status-{space}-{}", key.get()),
+                    2,
+                ))
+                .into_any_element()
+        }
+        Some(SessionStatus::Blocked) => {
+            slot().child(icon(IconName::DebugPause, Color::Warning)).into_any_element()
+        }
+        Some(SessionStatus::Done) => {
+            slot().child(icon(IconName::Check, Color::Success)).into_any_element()
+        }
+        Some(SessionStatus::Idle | SessionStatus::Unknown) if process_running => {
+            slot()
+                .child(icon(IconName::LoadCircle, Color::Muted).with_keyed_rotate_animation(
+                    format!("process-status-{space}-{}", key.get()),
+                    5,
+                ))
+                .into_any_element()
+        }
+        Some(SessionStatus::Idle | SessionStatus::Unknown) => slot()
+            .child(
+                div().size(px(5.)).rounded_full().bg(cx.theme().colors().text_muted.opacity(0.28)),
+            )
+            .into_any_element(),
+        None => slot().into_any_element(),
+    }
 }

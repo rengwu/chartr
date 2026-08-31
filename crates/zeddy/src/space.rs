@@ -490,7 +490,7 @@ impl Space {
             .tabs()
             .iter()
             .filter_map(|tab| {
-                let id = tab.active_item()?;
+                let id = tab.representative_item()?;
                 let pane = tab.layout.pane_for_item(id)?;
                 let index =
                     tab.layout.pane(pane)?.items().iter().position(|candidate| *candidate == id)?;
@@ -504,8 +504,9 @@ impl Space {
                     pane,
                     index,
                     title: if grouped { "Grouped Tabs".to_owned() } else { item.title() },
-                    agent: item.agent(),
-                    ended: item.ended(),
+                    status: (!grouped).then(|| item.status()).flatten(),
+                    process_running: !grouped && item.process_running(),
+                    ended: !grouped && item.ended(),
                     selected: self.layout.active_tab_id() == Some(tab.id),
                     closable: true,
                     grouped,

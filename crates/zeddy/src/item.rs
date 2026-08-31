@@ -23,11 +23,15 @@ impl Item {
         }
     }
 
-    pub fn agent(&self) -> Option<String> {
+    pub fn status(&self) -> Option<zeddy_herdr::control::SessionStatus> {
         match self {
-            Self::Session(item) => item.session.info.agent.clone(),
+            Self::Session(item) => Some(item.session.info.status),
             Self::Plugin(_) => None,
         }
+    }
+
+    pub fn process_running(&self) -> bool {
+        matches!(self, Self::Session(item) if item.session.info.process_running())
     }
 
     pub fn ended(&self) -> bool {

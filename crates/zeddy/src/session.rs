@@ -125,7 +125,7 @@ impl Session {
     /// The live title inferred by the control plane: detected agent, foreground
     /// process, then Herdr's persistent tab label.
     pub fn title(&self) -> String {
-        self.info.title.clone()
+        self.info.title().to_owned()
     }
 
     /// Send typed bytes to the session.

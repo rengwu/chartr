@@ -84,8 +84,29 @@ pub struct Pane {
     /// Herdr's internal agent name, used only when it has no display name.
     #[serde(default)]
     pub agent: Option<String>,
+    /// What Herdr believes the detected agent is doing. Chartr consumes this
+    /// instead of trying to infer agent state from terminal output itself.
+    #[serde(default)]
+    pub agent_status: AgentStatus,
     #[serde(default)]
     pub cwd: Option<String>,
+}
+
+/// What Herdr believes the agent in a pane is doing.
+///
+/// Unknown future values deliberately become [`Unknown`](Self::Unknown): a
+/// newer daemon gaining another state must not make an older Chartr unable to
+/// list or attach the pane.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentStatus {
+    Idle,
+    Working,
+    Blocked,
+    Done,
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// A Herdr tab: the persistent name and ordering container for one Chartr

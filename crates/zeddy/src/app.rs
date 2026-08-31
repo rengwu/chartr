@@ -18,8 +18,9 @@ use gpui::{
     Role,
 };
 use ui::{
-    Banner, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, ListItem, ListItemSpacing,
-    PopoverMenu, Severity, Tab, TabBar, TabPosition, Tooltip, prelude::*,
+    Banner, ButtonSize, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition,
+    ListItem, ListItemSpacing, PopoverMenu, Severity, Tab, TabBar, TabPosition, Tooltip,
+    prelude::*,
 };
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
 use zeddy_plugin::{InstanceContext, manifest::Multiplicity};
@@ -862,10 +863,25 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return;
         };
-        let active = space.read(cx).active();
+        let (active, empty_pane) = space.read_with(cx, |space, _| {
+            let active = space.active();
+            let empty_pane = if active.is_none() {
+                space.active_tab_id().and_then(|tab| {
+                    let layout = space.active_layout()?;
+                    let pane = layout.active_pane();
+                    layout.pane(pane)?.items().is_empty().then_some((tab, pane))
+                })
+            } else {
+                None
+            };
+            (active, empty_pane)
+        });
         if let Some(active) = active {
             space
                 .update(cx, |space, cx| space.act(Action::Close { space: None, item: active }, cx));
+        } else if let Some((tab, pane)) = empty_pane {
+            space.update(cx, |space, _| space.remove_empty_pane(tab, pane));
+            cx.notify();
         }
     }
 
@@ -2294,8 +2310,13 @@ impl Zeddy {
             return message("Pane layout is unavailable.", cx).into_any_element();
         };
         let active_pane = layout.active_pane() == pane_id;
-        let header = (show_header && pane.active().is_some())
-            .then(|| self.pane_header(space, tab_id, layout, pane_id, on, weak, cx));
+        let header = show_header.then(|| {
+            if pane.active().is_some() {
+                self.pane_header(space, tab_id, layout, pane_id, on, weak, cx)
+            } else {
+                self.empty_pane_header(tab_id, pane_id, weak)
+            }
+        });
         let content = pane
             .active()
             .and_then(|id| space.item(id).map(|item| (id, item)))
@@ -2364,7 +2385,7 @@ impl Zeddy {
                 crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
             })
             .unwrap_or_else(|| {
-                message("Drop a tab here or create a new item.", cx).into_any_element()
+                empty_pane_message("Drop a tab here or create a new item.", cx).into_any_element()
             });
 
         let drag_move = weak.clone();
@@ -2388,6 +2409,9 @@ impl Zeddy {
             .min_w_0()
             .min_h_0()
             .bg(cx.theme().colors().editor_background)
+            .when(pane.active().is_none() && active_pane, |pane| {
+                pane.role(Role::Group).aria_label("Empty pane").tab_group().tab_index(0)
+            })
             .capture_any_mouse_down(move |_, window, cx| {
                 let _ = focus_pane.update(cx, |this, cx| {
                     if let Some(space) = this.active.clone() {
@@ -2450,6 +2474,37 @@ impl Zeddy {
             .into_any_element()
     }
 
+    fn empty_pane_header(
+        &self,
+        tab_id: WorkspaceTabId,
+        pane_id: LayoutPaneId,
+        weak: &gpui::WeakEntity<Self>,
+    ) -> AnyElement {
+        let close = weak.clone();
+        TabBar::new(format!("workspace-tab-{}-pane-{}-empty", tab_id.get(), pane_id.get()))
+            .end_child(
+                IconButton::new(
+                    format!("close-empty-pane-{}-{}", tab_id.get(), pane_id.get()),
+                    IconName::Close,
+                )
+                .shape(IconButtonShape::Square)
+                .size(ButtonSize::None)
+                .icon_size(IconSize::XSmall)
+                .aria_label("Close Empty Pane")
+                .tooltip(Tooltip::text("Close Empty Pane"))
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    let _ = close.update(cx, |this, cx| {
+                        if let Some(space) = this.active.clone() {
+                            space.update(cx, |space, _| space.remove_empty_pane(tab_id, pane_id));
+                        }
+                        cx.notify();
+                    });
+                }),
+            )
+            .into_any_element()
+    }
+
     fn pane_header(
         &self,
         space: &Space,
@@ -2470,6 +2525,9 @@ impl Zeddy {
         let tabs = pane.items().iter().enumerate().filter_map(|(index, id)| {
             let item = space.item(*id)?;
             let selected = pane.active() == Some(*id);
+            let status = item.status();
+            let process_running = item.process_running();
+            let ended = item.ended();
             let position = if index == 0 {
                 TabPosition::First
             } else if index + 1 == pane.items().len() {
@@ -2531,11 +2589,21 @@ impl Zeddy {
                             );
                         });
                     })
+                    .start_slot(chrome::status_indicator(
+                        status,
+                        process_running,
+                        ended,
+                        &space_key,
+                        *id,
+                        cx,
+                    ))
                     .end_slot(
                         IconButton::new(
                             format!("close-pane-{}-item-{}", pane_id.get(), id.get()),
                             IconName::Close,
                         )
+                        .shape(IconButtonShape::Square)
+                        .size(ButtonSize::None)
                         .icon_size(IconSize::XSmall)
                         .tooltip(Tooltip::text("Close"))
                         .on_click(move |_, window, cx| {
@@ -3760,6 +3828,16 @@ fn message(text: &str, cx: &App) -> impl IntoElement {
         .items_center()
         .justify_center()
         .child(Label::new(text.to_owned()).color(Color::Muted))
+        .bg(cx.theme().colors().editor_background)
+}
+
+fn empty_pane_message(text: &str, cx: &App) -> impl IntoElement {
+    v_flex()
+        .size_full()
+        .p_2()
+        .items_center()
+        .justify_center()
+        .child(Label::new(text.to_owned()).size(LabelSize::Small).color(Color::Muted))
         .bg(cx.theme().colors().editor_background)
 }
 

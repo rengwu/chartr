@@ -6,11 +6,11 @@
 //! identity.
 
 use gpui::Role;
-use ui::{Tab, TabPosition, Tooltip, prelude::*};
+use ui::{ButtonSize, IconButtonShape, Tab, TabPosition, Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{Action, DraggedItem, Entry, dragged_item_preview, status_dot};
+use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
 
 pub fn render(
     entries: &[Entry],
@@ -92,6 +92,8 @@ fn tab(
     };
     let close_slot: Option<AnyElement> = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close)
+            .shape(IconButtonShape::Square)
+            .size(ButtonSize::None)
             .icon_size(IconSize::XSmall)
             .tooltip(Tooltip::text("Close"))
             .on_click(move |_, window, cx| {
@@ -148,7 +150,14 @@ fn tab(
                 cx,
             );
         })
-        .start_slot(status_dot(entry, cx))
+        .start_slot(status_indicator(
+            entry.status,
+            entry.process_running,
+            entry.ended,
+            &entry.space_key,
+            entry.key,
+            cx,
+        ))
         .end_slot::<AnyElement>(close_slot)
         .child(Label::new(entry.title.clone()).size(LabelSize::Small).truncate())
 }

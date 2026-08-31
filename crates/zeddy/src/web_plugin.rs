@@ -365,7 +365,7 @@ fn handle_request(
                 serde_json::json!({
                     "id": session.info.id.0,
                     "workspace": session.info.workspace.0,
-                    "title": session.info.title,
+                    "title": session.info.title(),
                     "agent": session.info.agent,
                     "cwd": session.info.cwd,
                 })

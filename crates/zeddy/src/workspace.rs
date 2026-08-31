@@ -803,6 +803,18 @@ impl WorkspaceTab {
     pub fn active_item(&self) -> Option<ItemId> {
         self.layout.pane(self.layout.active_pane()).and_then(Pane::active)
     }
+
+    /// The item outer chrome can use to identify this tab even when its active
+    /// pane is an empty Zed-style drop target.
+    pub fn representative_item(&self) -> Option<ItemId> {
+        self.active_item().or_else(|| {
+            self.layout
+                .center
+                .panes()
+                .into_iter()
+                .find_map(|pane| self.layout.pane(pane)?.items().first().copied())
+        })
+    }
 }
 
 /// The outer tab collection for one Chartr space.
@@ -1354,6 +1366,36 @@ mod tests {
         assert_eq!(workspace.center.panes(), vec![useful]);
         assert_eq!(workspace.active_pane(), useful);
         assert_eq!(workspace.pane(useful).unwrap().items(), &[item]);
+        workspace.validate().unwrap();
+    }
+
+    #[test]
+    fn an_empty_active_pane_does_not_hide_its_outer_group() {
+        let mut tabs = WorkspaceTabs::new();
+        let item = tabs.alloc_item();
+        let tab = tabs.push_standalone(item).unwrap();
+        let occupied = tabs.location(item).unwrap().1;
+        let empty =
+            tabs.workspace_mut(tab).unwrap().split_pane(occupied, SplitDirection::Right).unwrap();
+
+        let grouped = tabs.tab(tab).unwrap();
+        assert_eq!(grouped.layout.active_pane(), empty);
+        assert_eq!(grouped.active_item(), None);
+        assert_eq!(grouped.representative_item(), Some(item));
+        tabs.validate().unwrap();
+    }
+
+    #[test]
+    fn closing_an_empty_active_pane_focuses_its_neighbor() {
+        let mut workspace = Workspace::new();
+        let occupied = workspace.active_pane();
+        let item = workspace.alloc_item();
+        workspace.add_item(item, Some(occupied), None).unwrap();
+        let empty = workspace.split_pane(occupied, SplitDirection::Right).unwrap();
+
+        assert!(workspace.remove_empty_pane(empty).unwrap());
+        assert_eq!(workspace.active_pane(), occupied);
+        assert_eq!(workspace.center.panes(), vec![occupied]);
         workspace.validate().unwrap();
     }
 

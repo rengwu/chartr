@@ -29,14 +29,43 @@ use crate::{
     stream::Attachment,
 };
 
+/// What an agent in a session is doing, once Herdr's vocabulary has been left
+/// behind.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionStatus {
+    Idle,
+    Working,
+    Blocked,
+    Done,
+    /// No agent, or nothing known about one. The ordinary state of a shell.
+    #[default]
+    Unknown,
+}
+
+impl From<protocol::AgentStatus> for SessionStatus {
+    fn from(status: protocol::AgentStatus) -> Self {
+        match status {
+            protocol::AgentStatus::Idle => Self::Idle,
+            protocol::AgentStatus::Working => Self::Working,
+            protocol::AgentStatus::Blocked => Self::Blocked,
+            protocol::AgentStatus::Done => Self::Done,
+            protocol::AgentStatus::Unknown => Self::Unknown,
+        }
+    }
+}
+
 /// A pane as zeddy talks about it, once herdr's vocabulary has been left behind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
     pub id: PaneId,
     pub workspace: WorkspaceId,
-    /// What to put on the tab: detected agent, non-shell foreground process,
-    /// persistent Herdr tab label/number, then the pane id as the last resort.
-    pub title: String,
+    /// Herdr's persistent tab label/number, used when nothing is running.
+    pub label: String,
+    /// The detected agent or non-shell foreground process, if one is running.
+    pub running: Option<String>,
+    /// What the detected agent is doing. Ordinary processes remain Unknown;
+    /// their presence is carried separately by `running`.
+    pub status: SessionStatus,
     /// The agent herdr believes is running in the pane, if any.
     pub agent: Option<String>,
     pub cwd: Option<PathBuf>,
@@ -44,8 +73,7 @@ pub struct Session {
 
 impl Session {
     fn from_pane(pane: protocol::Pane, label: Option<String>, running: Option<String>) -> Self {
-        let title = running
-            .or(label)
+        let label = label
             .or_else(|| pane.title.as_deref().and_then(non_blank).map(str::to_owned))
             .unwrap_or_else(|| pane.pane_id.clone());
         let agent = pane
@@ -57,10 +85,23 @@ impl Session {
         Self {
             id: PaneId(pane.pane_id),
             workspace: WorkspaceId(pane.workspace_id),
-            title,
+            label,
+            running,
+            status: pane.agent_status.into(),
             agent,
             cwd: pane.cwd.map(PathBuf::from),
         }
+    }
+
+    /// What the tab says: the live agent/process name, or its persistent label.
+    pub fn title(&self) -> &str {
+        self.running.as_deref().unwrap_or(&self.label)
+    }
+
+    /// Whether an ordinary (non-agent) process currently owns the PTY's
+    /// foreground process group.
+    pub fn process_running(&self) -> bool {
+        self.agent.is_none() && self.running.is_some()
     }
 }
 
@@ -450,21 +491,39 @@ mod tests {
             title: title.map(str::to_owned),
             display_agent: agent.map(str::to_owned),
             agent: None,
+            agent_status: protocol::AgentStatus::Unknown,
             cwd: None,
         }
     }
 
     #[test]
     fn a_tab_prefers_an_agent_then_falls_back_to_title_and_id() {
-        assert_eq!(Session::from(pane("p1", Some("build"), Some("claude"))).title, "claude");
-        assert_eq!(Session::from(pane("p1", None, Some("claude"))).title, "claude");
-        assert_eq!(Session::from(pane("p1", Some("build"), None)).title, "build");
-        assert_eq!(Session::from(pane("p1", None, None)).title, "p1");
+        assert_eq!(Session::from(pane("p1", Some("build"), Some("claude"))).title(), "claude");
+        assert_eq!(Session::from(pane("p1", None, Some("claude"))).title(), "claude");
+        assert_eq!(Session::from(pane("p1", Some("build"), None)).title(), "build");
+        assert_eq!(Session::from(pane("p1", None, None)).title(), "p1");
     }
 
     #[test]
     fn a_blank_title_is_not_a_title() {
-        assert_eq!(Session::from(pane("p1", Some("   "), Some("codex"))).title, "codex");
+        assert_eq!(Session::from(pane("p1", Some("   "), Some("codex"))).title(), "codex");
+    }
+
+    #[test]
+    fn herdr_agent_status_is_translated_without_inference() {
+        let mut info = pane("p1", None, Some("claude"));
+        info.agent_status = protocol::AgentStatus::Blocked;
+        assert_eq!(Session::from(info).status, SessionStatus::Blocked);
+    }
+
+    #[test]
+    fn an_unknown_future_agent_status_degrades_to_unknown() {
+        let pane: protocol::Pane = serde_json::from_value(serde_json::json!({
+            "pane_id": "p1",
+            "agent_status": "meditating"
+        }))
+        .expect("pane");
+        assert_eq!(pane.agent_status, protocol::AgentStatus::Unknown);
     }
 
     #[test]
@@ -494,6 +553,18 @@ mod tests {
             process.foreground_program().and_then(|process| process.name.as_deref()),
             Some("htop")
         );
+    }
+
+    #[test]
+    fn an_ordinary_foreground_process_is_distinct_from_an_agent() {
+        let session = Session::from_pane(
+            pane("p1", None, None),
+            Some("1".to_owned()),
+            Some("htop".to_owned()),
+        );
+        assert_eq!(session.title(), "htop");
+        assert!(session.process_running());
+        assert_eq!(session.status, SessionStatus::Unknown);
     }
 
     #[test]
