@@ -20,13 +20,16 @@ One window owns ordered spaces and one active space, following Zed's
 `MultiWorkspace` responsibility. The permanent **Ad-hoc sessions** space is
 folderless and starts sessions in the home directory (or its configured
 replacement). Folder spaces are canonical-path identities with independent
-recursive pane trees.
+outer tab collections and recursive pane groups.
 
 Every terminal or plugin instance is one item owned by exactly one pane in one
-space. Tabs never appear in several spaces. New sessions enter the active pane
-of the selected space. A terminal item is non-cloneable; closing it terminates
-its Herdr session. A plugin may opt into multiple instances, modifier cloning,
-restoration, and explicit binding to one terminal session.
+outer tab and space. Tabs never appear in several places. New sessions and
+plugins start as standalone outer tabs in the selected space. Dragging a
+standalone onto a pane moves it into that group; dropping in the center joins
+the pane and dropping at an edge creates a split. A terminal item is
+non-cloneable; closing it terminates its Herdr session. A plugin may opt into
+multiple instances, modifier cloning, restoration, and explicit binding to one
+terminal session.
 
 Panes support nested horizontal and vertical splits, divider resizing,
 directional focus, joining, zooming, and Zed-style tab dragging. Tab and
@@ -36,16 +39,23 @@ highlight. Escape cancels a drag. The command palette provides keyboard
 alternatives for pane operations. `Cmd+W` on macOS and `Ctrl+W` on Linux closes
 the active item; operations that terminate multiple live sessions confirm with
 an exact count. As in Zed, a non-root pane disappears when its last item leaves;
-one empty root remains so a space always has an open and drop target. Splitting
-a lone-tab pane uses Zed's opposite-empty-pane rule, keeping the tab focused and
-leaving the requested side available as a drop target.
+an outer tab disappears when its final item closes. An empty space remains
+usable through its New action. Splitting a lone-tab pane uses Zed's
+opposite-empty-pane rule, keeping the tab focused and leaving the requested side
+available as a drop target.
 
-Sidebar and tabbed modes are projections over that same model. Sidebar mode can
-show all spaces or only the active space. A multi-pane group collapses to one
-sidebar tab labelled by its last-active item, while every pane in the workspace
-keeps its Zed-style draggable tab bar. Tabbed mode shows one space and uses the
-same pane tabs, including close controls for plugin items. Switching presentation
-never reparents or recreates an item.
+Sidebar and tabbed modes are projections over that same model. Both list every
+standalone item and every pane group as one outer entry. Sidebar mode can show
+all spaces or only the active space; tabbed mode keeps the active space's outer
+entries beside its name. Selecting a group reveals its Zed-style draggable
+pane-local tab bars, while a standalone has no duplicate inner bar. Switching
+presentation never reparents or recreates an item.
+
+Terminal titles follow Herdr's live view of the PTY, as in Chartr-rs: a detected
+agent wins, otherwise the non-shell foreground process is shown, and an idle
+shell falls back to Herdr's persistent tab label or number. The same two-second
+backend refresh that discovers sessions updates and clears these inferred
+titles. Collapsed pane groups use the neutral title **Grouped Tabs**.
 
 ## Settings and persistence
 

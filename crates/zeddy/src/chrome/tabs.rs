@@ -1,4 +1,4 @@
-//! Tabs mode: the session list across the top.
+//! Tabs mode: standalone tabs and pane groups beside the active space name.
 //!
 //! The mode for a handful of sessions you are switching between quickly. A tab
 //! has no second line, so the agent's name is dropped here rather than
@@ -10,7 +10,7 @@ use ui::{Tab, TabPosition, Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{Action, DraggedItem, Entry, status_dot};
+use super::{Action, DraggedItem, Entry, dragged_item_preview, status_dot};
 
 pub fn render(
     entries: &[Entry],
@@ -72,20 +72,23 @@ fn tab(
     };
     let select = entry.key;
     let select_item = on.clone();
-    let move_item = on;
+    let move_tab = on;
     let close_key = entry.key;
+    let close_tab = entry.tab;
+    let grouped = entry.grouped;
     let space = entry.space;
     let close_space = entry.space;
-    let target_pane = entry.pane;
-    let target_index = entry.index;
+    let target_index = index;
     let target_space_key = entry.space_key.clone();
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
+        tab: entry.tab,
         pane: entry.pane,
-        index: entry.index,
+        index,
         item: entry.key,
         title: entry.title.clone(),
         selected: entry.selected,
+        top_level: true,
     };
     let close_slot: Option<AnyElement> = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close)
@@ -93,24 +96,38 @@ fn tab(
             .tooltip(Tooltip::text("Close"))
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
-                close(Action::Close { space: Some(close_space), item: close_key }, window, cx)
+                close(
+                    if grouped {
+                        Action::CloseGroup { space: close_space, tab: close_tab }
+                    } else {
+                        Action::Close { space: Some(close_space), item: close_key }
+                    },
+                    window,
+                    cx,
+                )
             })
             .into_any_element()
     });
     Tab::new(("tab", index))
         .role(Role::Tab)
-        .aria_label(entry.title.clone())
+        .aria_label(if entry.grouped {
+            format!("Pane group: {}", entry.title)
+        } else {
+            entry.title.clone()
+        })
         .aria_selected(entry.selected)
         .position(position)
         .toggle_state(entry.selected)
         .on_click(move |_, window, cx| {
             select_item(Action::Select { space: Some(space), item: select }, window, cx)
         })
-        .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+        .when(!entry.grouped, |tab| {
+            tab.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
+        })
         .can_drop(move |value, _, _| {
             value
                 .downcast_ref::<DraggedItem>()
-                .is_some_and(|dragged| dragged.space == target_space_key)
+                .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
         })
         .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
             let mut tab = tab
@@ -125,15 +142,8 @@ fn tab(
             tab
         })
         .on_drop(move |dragged: &DraggedItem, window, cx| {
-            move_item(
-                Action::MoveItem {
-                    space,
-                    item: dragged.item,
-                    source: dragged.pane,
-                    source_index: dragged.index,
-                    target: target_pane,
-                    target_index,
-                },
+            move_tab(
+                Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index },
                 window,
                 cx,
             );

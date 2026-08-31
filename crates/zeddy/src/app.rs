@@ -27,7 +27,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 
 use crate::{
     actions,
-    chrome::{self, Action, DraggedItem, Entry, SpaceEntries},
+    chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
     fonts::Fonts,
     item::PluginItem,
     keymap::{KeymapAction, KeymapStore},
@@ -44,7 +44,10 @@ use crate::{
     space::{Kind as SpaceKind, Space, name_for},
     spaces::{self, Registry},
     terminal::{Appearance, TerminalElement},
-    workspace::{Axis as PaneAxisDirection, Member, PaneId as LayoutPaneId, SplitDirection},
+    workspace::{
+        Axis as PaneAxisDirection, Member, PaneId as LayoutPaneId, SplitDirection, Workspace,
+        WorkspaceTabId,
+    },
 };
 
 const BACKEND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -408,8 +411,15 @@ impl Zeddy {
                     continue;
                 };
                 let probe = client.clone();
-                if executor.spawn(async move { probe.answers() }).await {
-                    let _ = this.update(cx, |this, _| {
+                let snapshot = executor.spawn(async move { probe.sessions(None) }).await;
+                let answers = if snapshot.is_ok() {
+                    true
+                } else {
+                    let probe = client.clone();
+                    executor.spawn(async move { probe.answers() }).await
+                };
+                if answers {
+                    let _ = this.update(cx, |this, cx| {
                         if this.backend_restart_spent
                             && this
                                 .backend_ready_since
@@ -417,6 +427,11 @@ impl Zeddy {
                         {
                             this.backend_restart_spent = false;
                         }
+                        match snapshot {
+                            Ok(infos) => this.distribute(infos, cx),
+                            Err(error) => this.problem = Some(error.to_string()),
+                        }
+                        cx.notify();
                     });
                     continue;
                 }
@@ -754,7 +769,6 @@ impl Zeddy {
                     active: self.active.as_ref() == Some(space),
                     removable: read.kind() == SpaceKind::Registered,
                     available: read.available(),
-                    panes: read.pane_entries(space.entity_id()),
                     entries: read.entries(space.entity_id()),
                 }
             })
@@ -786,14 +800,21 @@ impl Zeddy {
                     target.update(cx, |space, cx| space.start_session(cx));
                 }
             }
-            Action::CloseGroup { space } => {
+            Action::CloseGroup { space, tab } => {
                 let Some(space) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
                 else {
                     return;
                 };
-                let ids = space.read(cx).all_item_ids();
-                self.request_bulk_close(space, ids, false, window, cx);
+                let ids = space.read(cx).tab_item_ids(tab);
+                self.request_bulk_close(space, ids, false, "group", window, cx);
+            }
+            Action::MoveWorkspaceTab { space, tab, target_index } => {
+                if let Some(space) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    space.update(cx, |space, _| space.move_workspace_tab(tab, target_index));
+                }
             }
             Action::CloseSpace { space } => self.request_close_space(space, window, cx),
             Action::RenameSpace { space } => {
@@ -806,25 +827,6 @@ impl Zeddy {
                 }
             }
             Action::LocateSpace { space } => self.locate_space(space, cx),
-            Action::MoveItem { space, item, source, source_index, target, target_index } => {
-                let Some(target_space) =
-                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
-                else {
-                    return;
-                };
-                if self.active.as_ref() != Some(&target_space) {
-                    self.activate(target_space.clone(), window, cx);
-                }
-                let dragged = DraggedItem {
-                    space: target_space.read(cx).key(),
-                    pane: source,
-                    index: source_index,
-                    item,
-                    title: String::new(),
-                    selected: false,
-                };
-                self.handle_item_drop(&dragged, target, target_index, false, window, cx);
-            }
             action @ (Action::Select { .. } | Action::Close { .. }) => {
                 let target = match &action {
                     Action::Select { space, .. } | Action::Close { space, .. } => space
@@ -871,14 +873,18 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return;
         };
-        let pane = space.read(cx).layout().active_pane();
-        let ids = space.read(cx).pane_item_ids(pane);
+        let (Some(tab), Some(pane)) = space.read_with(cx, |space, _| {
+            (space.active_tab_id(), space.active_layout().map(Workspace::active_pane))
+        }) else {
+            return;
+        };
+        let ids = space.read(cx).pane_item_ids(tab, pane);
         if ids.is_empty() {
-            space.update(cx, |space, _| space.remove_empty_pane(pane));
+            space.update(cx, |space, _| space.remove_empty_pane(tab, pane));
             cx.notify();
             return;
         }
-        self.request_bulk_close(space, ids, false, window, cx);
+        self.request_bulk_close(space, ids, false, "pane", window, cx);
     }
 
     fn request_close_space(
@@ -895,7 +901,7 @@ impl Zeddy {
             return;
         }
         let ids = space.read(cx).all_item_ids();
-        self.request_bulk_close(space, ids, true, window, cx);
+        self.request_bulk_close(space, ids, true, "space", window, cx);
     }
 
     fn request_bulk_close(
@@ -903,6 +909,7 @@ impl Zeddy {
         space: Entity<Space>,
         ids: Vec<crate::workspace::ItemId>,
         remove_space: bool,
+        noun: &'static str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -917,7 +924,6 @@ impl Zeddy {
             return;
         }
 
-        let noun = if remove_space { "space" } else { "pane" };
         let message = format!("Close this {noun} and terminate {terminal_count} sessions?");
         let detail =
             "Closing is destructive: every underlying shell or agent process is terminated.";
@@ -1341,12 +1347,13 @@ impl Zeddy {
 
     fn split_and_move_in(
         &mut self,
+        tab: WorkspaceTabId,
         pane: LayoutPaneId,
         direction: SplitDirection,
         cx: &mut Context<Self>,
     ) {
         if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.split_and_move_in(pane, direction));
+            space.update(cx, |space, _| space.split_and_move_in(tab, pane, direction));
             cx.notify();
         }
     }
@@ -1381,6 +1388,13 @@ impl Zeddy {
     fn toggle_zoom(&mut self, cx: &mut Context<Self>) {
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.toggle_zoom());
+            cx.notify();
+        }
+    }
+
+    fn toggle_zoom_in(&mut self, tab: WorkspaceTabId, pane: LayoutPaneId, cx: &mut Context<Self>) {
+        if let Some(space) = self.active.clone() {
+            space.update(cx, |space, _| space.toggle_zoom_in(tab, pane));
             cx.notify();
         }
     }
@@ -1883,6 +1897,7 @@ impl Zeddy {
         &mut self,
         space: Entity<Space>,
         source_item: crate::workspace::ItemId,
+        target_tab: WorkspaceTabId,
         target: LayoutPaneId,
         index: Option<usize>,
         window: &mut Window,
@@ -1907,7 +1922,8 @@ impl Zeddy {
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
-        let Some(destination) = space.update(cx, |space, _| space.prepare_drop_destination(target))
+        let Some(destination) =
+            space.update(cx, |space, _| space.prepare_drop_destination(target_tab, target))
         else {
             return true;
         };
@@ -1942,6 +1958,7 @@ impl Zeddy {
                     can_clone: capabilities.cloneable,
                     restorable: capabilities.restorable,
                 },
+                target_tab,
                 destination,
                 index,
                 cx,
@@ -1956,6 +1973,7 @@ impl Zeddy {
     fn handle_item_drop(
         &mut self,
         dragged: &DraggedItem,
+        target_tab: WorkspaceTabId,
         target: LayoutPaneId,
         index: usize,
         allow_split: bool,
@@ -1965,7 +1983,7 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return;
         };
-        if space.read(cx).persisted().key != dragged.space {
+        if space.read(cx).key() != dragged.space {
             space.update(cx, |space, _| {
                 space.clear_drag_target();
             });
@@ -1973,18 +1991,33 @@ impl Zeddy {
             return;
         }
         if !allow_split {
-            space.update(cx, |space, _| space.set_drag_target(target, None));
+            space.update(cx, |space, _| space.set_drag_target(target_tab, target, None));
         }
         let clone = cfg!(target_os = "macos") && window.modifiers().alt
             || cfg!(not(target_os = "macos")) && window.modifiers().control;
         if clone
-            && self.clone_plugin_drop(space.clone(), dragged.item, target, Some(index), window, cx)
+            && self.clone_plugin_drop(
+                space.clone(),
+                dragged.item,
+                target_tab,
+                target,
+                Some(index),
+                window,
+                cx,
+            )
         {
             cx.notify();
             return;
         }
         space.update(cx, |space, _| {
-            space.drop_item(dragged.item, dragged.pane, target, Some(index));
+            space.drop_item(
+                dragged.item,
+                dragged.tab,
+                dragged.pane,
+                target_tab,
+                target,
+                Some(index),
+            );
         });
         cx.notify();
     }
@@ -2004,21 +2037,38 @@ impl Zeddy {
         if active.is_some_and(|active| space.item(active).is_none()) {
             return message("That item is gone.", cx).into_any_element();
         }
-        let pane_count = space.layout().center.panes().len();
         let weak = cx.weak_entity();
-        let workspace = if let Some(maximized) = space.layout().center.maximized {
-            self.render_pane(&space, maximized, pane_count > 1, &emit, &weak, window, cx)
+        let workspace = if let Some(tab) = space.workspace_tabs().active_tab() {
+            let layout = &tab.layout;
+            let show_pane_headers = tab.is_grouped();
+            if let Some(maximized) = layout.center.maximized {
+                self.render_pane(
+                    &space,
+                    tab.id,
+                    layout,
+                    maximized,
+                    show_pane_headers,
+                    &emit,
+                    &weak,
+                    window,
+                    cx,
+                )
+            } else {
+                self.render_member(
+                    &space,
+                    tab.id,
+                    layout,
+                    &layout.center.root,
+                    show_pane_headers,
+                    &emit,
+                    &weak,
+                    &[],
+                    window,
+                    cx,
+                )
+            }
         } else {
-            self.render_member(
-                &space,
-                &space.layout().center.root,
-                pane_count > 1,
-                &emit,
-                &weak,
-                &[],
-                window,
-                cx,
-            )
+            message("No tabs. Create a new item to begin.", cx).into_any_element()
         };
         let notices = self.workspace_notices(problem, cx);
         v_flex()
@@ -2092,6 +2142,8 @@ impl Zeddy {
     fn render_member(
         &self,
         space: &Space,
+        tab_id: WorkspaceTabId,
+        layout: &Workspace,
         member: &Member,
         show_pane_headers: bool,
         on: &chrome::Emit,
@@ -2101,9 +2153,17 @@ impl Zeddy {
         cx: &App,
     ) -> AnyElement {
         match member {
-            Member::Pane { pane } => {
-                self.render_pane(space, *pane, show_pane_headers, on, weak, window, cx)
-            }
+            Member::Pane { pane } => self.render_pane(
+                space,
+                tab_id,
+                layout,
+                *pane,
+                show_pane_headers,
+                on,
+                weak,
+                window,
+                cx,
+            ),
             Member::Axis(axis) => {
                 let member_count = axis.members.len();
                 let children: Vec<_> = axis
@@ -2127,6 +2187,8 @@ impl Zeddy {
                             .min_h_0()
                             .child(self.render_member(
                                 space,
+                                tab_id,
+                                layout,
                                 member,
                                 show_pane_headers,
                                 on,
@@ -2163,6 +2225,7 @@ impl Zeddy {
                                 if let Some(space) = this.active.clone() {
                                     space.update(cx, |space, _| {
                                         space.resize_divider(
+                                            tab_id,
                                             &dragged.axis_path,
                                             dragged.divider,
                                             fraction,
@@ -2197,6 +2260,7 @@ impl Zeddy {
                                     if let Some(space) = this.active.clone() {
                                         space.update(cx, |space, _| {
                                             space.resize_divider(
+                                                tab_id,
                                                 &dragged.axis_path,
                                                 dragged.divider,
                                                 fraction,
@@ -2217,6 +2281,8 @@ impl Zeddy {
     fn render_pane(
         &self,
         space: &Space,
+        tab_id: WorkspaceTabId,
+        layout: &Workspace,
         pane_id: LayoutPaneId,
         show_header: bool,
         on: &chrome::Emit,
@@ -2224,12 +2290,12 @@ impl Zeddy {
         window: &mut Window,
         cx: &App,
     ) -> AnyElement {
-        let Some(pane) = space.layout().pane(pane_id) else {
+        let Some(pane) = layout.pane(pane_id) else {
             return message("Pane layout is unavailable.", cx).into_any_element();
         };
-        let active_pane = space.layout().active_pane() == pane_id;
+        let active_pane = layout.active_pane() == pane_id;
         let header = (show_header && pane.active().is_some())
-            .then(|| self.pane_header(space, pane_id, on, weak, cx));
+            .then(|| self.pane_header(space, tab_id, layout, pane_id, on, weak, cx));
         let content = pane
             .active()
             .and_then(|id| space.item(id).map(|item| (id, item)))
@@ -2304,8 +2370,8 @@ impl Zeddy {
         let drag_move = weak.clone();
         let drop_item = weak.clone();
         let focus_pane = weak.clone();
-        let drop_group = format!("pane-drop-{}", pane_id.get());
-        let drop_space = space.persisted().key;
+        let drop_group = format!("workspace-tab-{}-pane-drop-{}", tab_id.get(), pane_id.get());
+        let drop_space = space.key();
         let drag_space = drop_space.clone();
         let pane_drop_index = pane
             .active()
@@ -2313,22 +2379,19 @@ impl Zeddy {
             .unwrap_or(pane.items().len());
         let drop_direction = space
             .drag_target()
-            .filter(|(pane, _)| *pane == pane_id)
-            .and_then(|(_, direction)| direction);
+            .filter(|(tab, pane, _)| *tab == tab_id && *pane == pane_id)
+            .and_then(|(_, _, direction)| direction);
         v_flex()
-            .id(("pane", pane_id.get() as usize))
+            .id(format!("workspace-tab-{}-pane-{}", tab_id.get(), pane_id.get()))
             .relative()
             .size_full()
             .min_w_0()
             .min_h_0()
             .bg(cx.theme().colors().editor_background)
-            .when(active_pane, |pane| {
-                pane.border_1().border_color(cx.theme().colors().pane_focused_border)
-            })
             .capture_any_mouse_down(move |_, window, cx| {
                 let _ = focus_pane.update(cx, |this, cx| {
                     if let Some(space) = this.active.clone() {
-                        space.update(cx, |space, _| space.activate_pane(pane_id));
+                        space.update(cx, |space, _| space.activate_pane(tab_id, pane_id));
                     }
                     window.focus(&this.focus, cx);
                     cx.notify();
@@ -2355,7 +2418,7 @@ impl Zeddy {
                             let changed = this.active.clone().is_some_and(|space| {
                                 space.update(cx, |space, _| {
                                     if accepted {
-                                        space.set_drag_target(pane_id, direction)
+                                        space.set_drag_target(tab_id, pane_id, direction)
                                     } else {
                                         space.clear_drag_target()
                                     }
@@ -2373,6 +2436,7 @@ impl Zeddy {
                             let _ = drop_item.update(cx, |this, cx| {
                                 this.handle_item_drop(
                                     &dragged,
+                                    tab_id,
                                     pane_id,
                                     pane_drop_index,
                                     true,
@@ -2389,18 +2453,20 @@ impl Zeddy {
     fn pane_header(
         &self,
         space: &Space,
+        tab_id: WorkspaceTabId,
+        layout: &Workspace,
         pane_id: LayoutPaneId,
         on: &chrome::Emit,
         weak: &gpui::WeakEntity<Self>,
         cx: &App,
     ) -> AnyElement {
-        let Some(pane) = space.layout().pane(pane_id) else {
+        let Some(pane) = layout.pane(pane_id) else {
             return div().into_any_element();
         };
 
         let active_index =
             pane.active().and_then(|active| pane.items().iter().position(|item| *item == active));
-        let space_key = space.persisted().key;
+        let space_key = space.key();
         let tabs = pane.items().iter().enumerate().filter_map(|(index, id)| {
             let item = space.item(*id)?;
             let selected = pane.active() == Some(*id);
@@ -2419,11 +2485,13 @@ impl Zeddy {
             let drop_space = space_key.clone();
             let dragged = DraggedItem {
                 space: space_key.clone(),
+                tab: tab_id,
                 pane: pane_id,
                 index,
                 item: *id,
                 title: item.title(),
                 selected,
+                top_level: false,
             };
             Some(
                 Tab::new(format!("pane-{}-item-{}", pane_id.get(), id.get()))
@@ -2435,7 +2503,9 @@ impl Zeddy {
                     .on_click(move |_, window, cx| {
                         select_item(Action::Select { space: None, item: select }, window, cx)
                     })
-                    .on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone()))
+                    .on_drag(dragged, |dragged, offset, _, cx| {
+                        dragged_item_preview(dragged, offset, cx)
+                    })
                     .can_drop(move |value, _, _| {
                         value
                             .downcast_ref::<DraggedItem>()
@@ -2456,7 +2526,9 @@ impl Zeddy {
                     .on_drop(move |dragged: &DraggedItem, window, cx| {
                         let dragged = dragged.clone();
                         let _ = drop_item.update(cx, |this, cx| {
-                            this.handle_item_drop(&dragged, pane_id, index, false, window, cx);
+                            this.handle_item_drop(
+                                &dragged, tab_id, pane_id, index, false, window, cx,
+                            );
                         });
                     })
                     .end_slot(
@@ -2495,13 +2567,21 @@ impl Zeddy {
             .on_drop(move |dragged: &DraggedItem, window, cx| {
                 let dragged = dragged.clone();
                 let _ = append_drop.update(cx, |this, cx| {
-                    this.handle_item_drop(&dragged, pane_id, append_index, false, window, cx);
+                    this.handle_item_drop(
+                        &dragged,
+                        tab_id,
+                        pane_id,
+                        append_index,
+                        false,
+                        window,
+                        cx,
+                    );
                 });
             });
-        TabBar::new(format!("pane-{}-tabs", pane_id.get()))
+        TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
             .children(tabs)
             .child(tab_bar_drop_target)
-            .end_child(pane_controls(weak, pane_id))
+            .end_child(pane_controls(weak, tab_id, pane_id))
             .into_any_element()
     }
 
@@ -3301,12 +3381,7 @@ impl Render for Zeddy {
         self.persist_if_changed(cx);
         let entries = self.entries(cx);
         let sidebar_spaces = self.sidebar_spaces(cx);
-        let pane_count = self
-            .active_space()
-            .map(|space| space.read(cx).layout().center.panes().len())
-            .unwrap_or(0);
-        let chrome_entries: &[Entry] =
-            if self.mode == Mode::Tabs && pane_count > 1 { &[] } else { &entries };
+        let chrome_entries: &[Entry] = &entries;
         let switcher = self.space_switcher(window, cx);
         let new_item = self.new_item_menu(cx);
         let (background, text, workspace_background) = {
@@ -3539,67 +3614,81 @@ fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> i
         .occlude()
 }
 
-fn pane_controls(weak: &gpui::WeakEntity<Zeddy>, pane_id: LayoutPaneId) -> AnyElement {
+fn pane_controls(
+    weak: &gpui::WeakEntity<Zeddy>,
+    tab_id: WorkspaceTabId,
+    pane_id: LayoutPaneId,
+) -> AnyElement {
     let focus = weak.clone();
     let split = weak.clone();
     let zoom = weak.clone();
 
     h_flex()
-        .id(("pane-controls", pane_id.get()))
+        .id(format!("workspace-tab-{}-pane-{}-controls", tab_id.get(), pane_id.get()))
         .gap_0p5()
         .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
             let _ = focus.update(cx, |this, cx| {
                 if let Some(space) = this.active.clone() {
-                    space.update(cx, |space, _| space.activate_pane(pane_id));
+                    space.update(cx, |space, _| space.activate_pane(tab_id, pane_id));
                 }
                 cx.notify();
             });
         })
         .child(
-            PopoverMenu::new(("pane-split-menu", pane_id.get()))
-                .trigger_with_tooltip(
-                    IconButton::new(("pane-split", pane_id.get()), IconName::Split)
-                        .icon_size(IconSize::XSmall),
-                    Tooltip::text("Split Pane"),
+            PopoverMenu::new(format!(
+                "workspace-tab-{}-pane-{}-split-menu",
+                tab_id.get(),
+                pane_id.get()
+            ))
+            .trigger_with_tooltip(
+                IconButton::new(
+                    format!("workspace-tab-{}-pane-{}-split", tab_id.get(), pane_id.get()),
+                    IconName::Split,
                 )
-                .anchor(Anchor::TopRight)
-                .menu(move |window, cx| {
-                    let split = split.clone();
-                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                        let left = split.clone();
-                        let right = split.clone();
-                        let up = split.clone();
-                        let down = split.clone();
-                        menu.entry("Split Left", None, move |_, cx| {
-                            let _ = left.update(cx, |this, cx| {
-                                this.split_and_move_in(pane_id, SplitDirection::Left, cx)
-                            });
-                        })
-                        .entry("Split Right", None, move |_, cx| {
-                            let _ = right.update(cx, |this, cx| {
-                                this.split_and_move_in(pane_id, SplitDirection::Right, cx)
-                            });
-                        })
-                        .entry("Split Up", None, move |_, cx| {
-                            let _ = up.update(cx, |this, cx| {
-                                this.split_and_move_in(pane_id, SplitDirection::Up, cx)
-                            });
-                        })
-                        .entry("Split Down", None, move |_, cx| {
-                            let _ = down.update(cx, |this, cx| {
-                                this.split_and_move_in(pane_id, SplitDirection::Down, cx)
-                            });
-                        })
-                    }))
-                }),
+                .icon_size(IconSize::XSmall),
+                Tooltip::text("Split Pane"),
+            )
+            .anchor(Anchor::TopRight)
+            .menu(move |window, cx| {
+                let split = split.clone();
+                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                    let left = split.clone();
+                    let right = split.clone();
+                    let up = split.clone();
+                    let down = split.clone();
+                    menu.entry("Split Left", None, move |_, cx| {
+                        let _ = left.update(cx, |this, cx| {
+                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Left, cx)
+                        });
+                    })
+                    .entry("Split Right", None, move |_, cx| {
+                        let _ = right.update(cx, |this, cx| {
+                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Right, cx)
+                        });
+                    })
+                    .entry("Split Up", None, move |_, cx| {
+                        let _ = up.update(cx, |this, cx| {
+                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Up, cx)
+                        });
+                    })
+                    .entry("Split Down", None, move |_, cx| {
+                        let _ = down.update(cx, |this, cx| {
+                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Down, cx)
+                        });
+                    })
+                }))
+            }),
         )
         .child(
-            IconButton::new(("pane-zoom", pane_id.get()), IconName::Maximize)
-                .icon_size(IconSize::XSmall)
-                .tooltip(Tooltip::text("Toggle Pane Zoom"))
-                .on_click(move |_, _, cx| {
-                    let _ = zoom.update(cx, |this, cx| this.toggle_zoom(cx));
-                }),
+            IconButton::new(
+                format!("workspace-tab-{}-pane-{}-zoom", tab_id.get(), pane_id.get()),
+                IconName::Maximize,
+            )
+            .icon_size(IconSize::XSmall)
+            .tooltip(Tooltip::text("Toggle Pane Zoom"))
+            .on_click(move |_, _, cx| {
+                let _ = zoom.update(cx, |this, cx| this.toggle_zoom_in(tab_id, pane_id, cx));
+            }),
         )
         .into_any_element()
 }

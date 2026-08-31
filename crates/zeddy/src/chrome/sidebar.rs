@@ -1,4 +1,4 @@
-//! Sidebar mode: the session list down the left.
+//! Sidebar mode: standalone tabs and pane groups down the left.
 //!
 //! The mode for many long-lived sessions. There is room here for the things a
 //! tab cannot hold — the agent's name under the title, and a close button that
@@ -9,7 +9,9 @@ use ui::{Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, status_dot};
+use super::{
+    Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview, status_dot,
+};
 
 /// The sidebar's width. Fixed rather than draggable: a resizable sidebar is a
 /// preference to persist, a drag handle to hit-test, and a minimum to enforce,
@@ -98,24 +100,11 @@ pub fn render(
                 )
                 .into_any_element(),
         );
-        let panes: Vec<_> = space.panes.iter().filter(|pane| !pane.entries.is_empty()).collect();
-        if panes.len() <= 1 {
-            for entry in panes.into_iter().flat_map(|pane| &pane.entries) {
-                groups.push(
-                    row(index, entry, space.active && entry.selected, false, on.clone(), cx)
-                        .into_any_element(),
-                );
-                index += 1;
-            }
-            continue;
-        }
-        let representative = panes
-            .iter()
-            .flat_map(|pane| &pane.entries)
-            .find(|entry| entry.selected)
-            .or_else(|| panes.iter().flat_map(|pane| &pane.entries).next());
-        if let Some(entry) = representative {
-            groups.push(row(index, entry, space.active, true, on.clone(), cx).into_any_element());
+        for entry in &space.entries {
+            groups.push(
+                row(index, entry, space.active && entry.selected, entry.grouped, on.clone(), cx)
+                    .into_any_element(),
+            );
             index += 1;
         }
     }
@@ -191,15 +180,18 @@ fn row(
 
     let select = entry.key;
     let close_key = entry.key;
+    let close_tab = entry.tab;
     let space = entry.space;
     let close_space = entry.space;
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
+        tab: entry.tab,
         pane: entry.pane,
         index: entry.index,
         item: entry.key,
         title: entry.title.clone(),
         selected,
+        top_level: true,
     };
     h_flex()
         .id(("session", index))
@@ -220,7 +212,9 @@ fn row(
         .on_click(move |_, window, cx| {
             on(Action::Select { space: Some(space), item: select }, window, cx)
         })
-        .when(!grouped, |row| row.on_drag(dragged, |dragged, _, _, cx| cx.new(|_| dragged.clone())))
+        .when(!grouped, |row| {
+            row.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
+        })
         .child(status_dot(entry, cx))
         .child(
             v_flex()
@@ -233,6 +227,13 @@ fn row(
                     )
                 }),
         )
+        .when(grouped, |row| {
+            row.child(
+                Label::new(format!("{} tabs", entry.item_count))
+                    .size(LabelSize::XSmall)
+                    .color(Color::Muted),
+            )
+        })
         .when(entry.closable, |row| {
             row.child(
                 // Revealed on hover so a list of ten sessions is ten titles rather
@@ -244,7 +245,7 @@ fn row(
                             cx.stop_propagation();
                             close(
                                 if grouped {
-                                    Action::CloseGroup { space: close_space }
+                                    Action::CloseGroup { space: close_space, tab: close_tab }
                                 } else {
                                     Action::Close { space: Some(close_space), item: close_key }
                                 },

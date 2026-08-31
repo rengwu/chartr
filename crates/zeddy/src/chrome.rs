@@ -1,16 +1,16 @@
 //! The two chromes, and the one thing they have in common.
 //!
-//! A chrome is a list of sessions with one of them selected. Sidebar mode draws
-//! that list down the left; tabs mode draws it across the top. Neither knows
-//! anything else about the app, which is what keeps the two implementations to
-//! a screenful each: they take [`Entry`] values and emit stable item keys.
+//! A chrome is a list of outer workspace tabs with one selected. A one-item tab
+//! is standalone; a multi-item pane workspace is one grouped entry. Sidebar
+//! mode draws the list down the left and tabs mode draws it across the top.
+//! Neither owns workspace state: both take [`Entry`] values and emit stable ids.
 
 pub mod sidebar;
 pub mod tabs;
 
 use std::rc::Rc;
 
-use crate::workspace::{ItemId, PaneId};
+use crate::workspace::{ItemId, PaneId, WorkspaceTabId};
 use gpui::EntityId;
 use ui::{Tab, prelude::*};
 
@@ -20,6 +20,7 @@ pub struct Entry {
     pub space: EntityId,
     pub space_key: String,
     pub key: ItemId,
+    pub tab: WorkspaceTabId,
     pub pane: PaneId,
     pub index: usize,
     pub title: String,
@@ -31,6 +32,8 @@ pub struct Entry {
     pub ended: bool,
     pub selected: bool,
     pub closable: bool,
+    pub grouped: bool,
+    pub item_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,50 +43,20 @@ pub struct SpaceEntries {
     pub active: bool,
     pub removable: bool,
     pub available: bool,
-    pub panes: Vec<PaneEntries>,
-    pub entries: Vec<Entry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PaneEntries {
-    pub id: PaneId,
     pub entries: Vec<Entry>,
 }
 
 /// What the user did to the chrome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    Select {
-        space: Option<EntityId>,
-        item: ItemId,
-    },
-    Close {
-        space: Option<EntityId>,
-        item: ItemId,
-    },
-    MoveItem {
-        space: EntityId,
-        item: ItemId,
-        source: PaneId,
-        source_index: usize,
-        target: PaneId,
-        target_index: usize,
-    },
-    CloseGroup {
-        space: EntityId,
-    },
-    CloseSpace {
-        space: EntityId,
-    },
-    RenameSpace {
-        space: EntityId,
-    },
-    LocateSpace {
-        space: EntityId,
-    },
-    NewInSpace {
-        space: EntityId,
-    },
+    Select { space: Option<EntityId>, item: ItemId },
+    Close { space: Option<EntityId>, item: ItemId },
+    CloseGroup { space: EntityId, tab: WorkspaceTabId },
+    MoveWorkspaceTab { space: EntityId, tab: WorkspaceTabId, target_index: usize },
+    CloseSpace { space: EntityId },
+    RenameSpace { space: EntityId },
+    LocateSpace { space: EntityId },
+    NewInSpace { space: EntityId },
     New,
     ToggleMode,
     ToggleSidebarScope,
@@ -107,11 +80,13 @@ impl Render for DraggedSidebar {
 #[derive(Clone)]
 pub struct DraggedItem {
     pub space: String,
+    pub tab: WorkspaceTabId,
     pub pane: PaneId,
     pub index: usize,
     pub item: ItemId,
     pub title: String,
     pub selected: bool,
+    pub top_level: bool,
 }
 
 impl Render for DraggedItem {
@@ -119,6 +94,38 @@ impl Render for DraggedItem {
         Tab::new(("dragged-item", self.item.get() as usize))
             .toggle_state(self.selected)
             .child(Label::new(self.title.clone()).size(LabelSize::Small))
+    }
+}
+
+/// Builds the one drag preview used by every Chartr tab surface.
+///
+/// GPUI positions a drag view at `pointer - offset_within_source`, which is
+/// perfect when the preview has the source element's dimensions. Chartr's
+/// sidebar rows and outer tabs are often much wider than the compact preview,
+/// though, so using the source offset makes the visible ghost trail behind the
+/// pointer. Translating the compact preview by that same offset locks its
+/// visible origin to GPUI's current-frame pointer position.
+pub(crate) fn dragged_item_preview(
+    dragged: &DraggedItem,
+    source_offset: gpui::Point<gpui::Pixels>,
+    cx: &mut App,
+) -> gpui::Entity<DraggedItemPreview> {
+    let dragged = dragged.clone();
+    cx.new(|_| DraggedItemPreview { dragged, source_offset })
+}
+
+pub(crate) struct DraggedItemPreview {
+    dragged: DraggedItem,
+    source_offset: gpui::Point<gpui::Pixels>,
+}
+
+impl Render for DraggedItemPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().relative().left(self.source_offset.x).top(self.source_offset.y).child(
+            Tab::new(("dragged-item-preview", self.dragged.item.get() as usize))
+                .toggle_state(self.dragged.selected)
+                .child(Label::new(self.dragged.title.clone()).size(LabelSize::Small)),
+        )
     }
 }
 

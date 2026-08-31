@@ -6,12 +6,9 @@
 //! invariant observable at one seam: an item belongs to exactly one pane in
 //! exactly one workspace.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-#[cfg(test)]
-use std::collections::HashSet;
-
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PaneId(u64);
@@ -26,6 +23,18 @@ impl PaneId {
 pub struct ItemId(u64);
 
 impl ItemId {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// One entry in a space's outer tab strip. A workspace tab may be a standalone
+/// item or a pane group; that distinction is derived from its contents rather
+/// than stored as a second source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct WorkspaceTabId(u64);
+
+impl WorkspaceTabId {
     pub fn get(self) -> u64 {
         self.0
     }
@@ -504,16 +513,24 @@ impl Workspace {
         self.panes.get(&id)
     }
 
-    pub fn panes(&self) -> impl Iterator<Item = &Pane> {
-        self.center.panes().into_iter().filter_map(|id| self.panes.get(&id))
-    }
-
     pub fn pane_for_item(&self, item: ItemId) -> Option<PaneId> {
         self.panes_by_item.get(&item).copied()
     }
 
     pub fn item_ids(&self) -> impl Iterator<Item = ItemId> + '_ {
         self.panes_by_item.keys().copied()
+    }
+
+    pub fn item_count(&self) -> usize {
+        self.panes_by_item.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.panes_by_item.is_empty()
+    }
+
+    pub fn is_grouped(&self) -> bool {
+        self.item_count() > 1 || self.center.panes().len() > 1
     }
 
     pub fn activate_pane(&mut self, pane: PaneId) -> Result<(), ModelError> {
@@ -534,6 +551,7 @@ impl Workspace {
         self.center.pane_in_direction(self.active_pane, direction)
     }
 
+    #[cfg(test)]
     pub fn alloc_item(&mut self) -> ItemId {
         let id = ItemId(self.next_item_id);
         self.next_item_id += 1;
@@ -770,11 +788,347 @@ impl Workspace {
     }
 }
 
+/// One outer tab and the Zed-style pane workspace shown when it is active.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkspaceTab {
+    pub id: WorkspaceTabId,
+    pub layout: Workspace,
+}
+
+impl WorkspaceTab {
+    pub fn is_grouped(&self) -> bool {
+        self.layout.is_grouped()
+    }
+
+    pub fn active_item(&self) -> Option<ItemId> {
+        self.layout.pane(self.layout.active_pane()).and_then(Pane::active)
+    }
+}
+
+/// The outer tab collection for one Chartr space.
+///
+/// Zed's pane model remains intact inside each [`WorkspaceTab`]. This layer is
+/// Chartr's presentation model: a one-item tab is standalone, while a tab with
+/// multiple items or panes is presented as one grouped entry.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WorkspaceTabs {
+    tabs: Vec<WorkspaceTab>,
+    active: Option<WorkspaceTabId>,
+    activation_history: Vec<WorkspaceTabId>,
+    next_tab_id: u64,
+    next_item_id: u64,
+}
+
+#[derive(Deserialize)]
+struct WorkspaceTabsFields {
+    #[serde(default)]
+    tabs: Vec<WorkspaceTab>,
+    #[serde(default)]
+    active: Option<WorkspaceTabId>,
+    #[serde(default)]
+    activation_history: Vec<WorkspaceTabId>,
+    #[serde(default)]
+    next_tab_id: u64,
+    #[serde(default)]
+    next_item_id: u64,
+    #[serde(default)]
+    center: Option<PaneGroup>,
+    #[serde(default)]
+    panes: BTreeMap<PaneId, Pane>,
+    #[serde(default)]
+    panes_by_item: HashMap<ItemId, PaneId>,
+    #[serde(default)]
+    active_pane: Option<PaneId>,
+    #[serde(default)]
+    next_pane_id: u64,
+}
+
+impl<'de> Deserialize<'de> for WorkspaceTabs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fields = WorkspaceTabsFields::deserialize(deserializer)?;
+        let mut tabs = if let Some(center) = fields.center {
+            let layout = Workspace {
+                center,
+                panes: fields.panes,
+                panes_by_item: fields.panes_by_item,
+                active_pane: fields.active_pane.unwrap_or(PaneId(1)),
+                next_pane_id: fields.next_pane_id,
+                next_item_id: fields.next_item_id,
+            };
+            if layout.is_empty() {
+                Self::new()
+            } else {
+                let id = WorkspaceTabId(1);
+                Self {
+                    tabs: vec![WorkspaceTab { id, layout }],
+                    active: Some(id),
+                    activation_history: vec![id],
+                    next_tab_id: 2,
+                    next_item_id: 1,
+                }
+            }
+        } else {
+            Self {
+                tabs: fields.tabs,
+                active: fields.active,
+                activation_history: fields.activation_history,
+                next_tab_id: fields.next_tab_id,
+                next_item_id: fields.next_item_id,
+            }
+        };
+        tabs.normalize();
+        Ok(tabs)
+    }
+}
+
+impl Default for WorkspaceTabs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WorkspaceTabs {
+    pub fn new() -> Self {
+        Self {
+            tabs: Vec::new(),
+            active: None,
+            activation_history: Vec::new(),
+            next_tab_id: 1,
+            next_item_id: 1,
+        }
+    }
+
+    fn normalize(&mut self) {
+        let known: HashSet<_> = self.tabs.iter().map(|tab| tab.id).collect();
+        self.activation_history.retain(|tab| known.contains(tab));
+        if self.active.is_none_or(|active| !known.contains(&active)) {
+            self.active = self.tabs.last().map(|tab| tab.id);
+        }
+        if let Some(active) = self.active {
+            self.activation_history.retain(|tab| *tab != active);
+            self.activation_history.push(active);
+        }
+        self.next_tab_id =
+            self.next_tab_id.max(self.tabs.iter().map(|tab| tab.id.0 + 1).max().unwrap_or(1));
+        self.next_item_id =
+            self.next_item_id.max(self.item_ids().map(|item| item.0 + 1).max().unwrap_or(1));
+    }
+
+    pub fn tabs(&self) -> &[WorkspaceTab] {
+        &self.tabs
+    }
+
+    pub fn active_tab_id(&self) -> Option<WorkspaceTabId> {
+        self.active
+    }
+
+    pub fn active_tab(&self) -> Option<&WorkspaceTab> {
+        self.active.and_then(|active| self.tab(active))
+    }
+
+    pub fn active_workspace(&self) -> Option<&Workspace> {
+        self.active_tab().map(|tab| &tab.layout)
+    }
+
+    pub fn active_workspace_mut(&mut self) -> Option<&mut Workspace> {
+        let active = self.active?;
+        self.tab_mut(active).map(|tab| &mut tab.layout)
+    }
+
+    pub fn tab(&self, id: WorkspaceTabId) -> Option<&WorkspaceTab> {
+        self.tabs.iter().find(|tab| tab.id == id)
+    }
+
+    pub fn tab_mut(&mut self, id: WorkspaceTabId) -> Option<&mut WorkspaceTab> {
+        self.tabs.iter_mut().find(|tab| tab.id == id)
+    }
+
+    pub fn workspace(&self, id: WorkspaceTabId) -> Option<&Workspace> {
+        self.tab(id).map(|tab| &tab.layout)
+    }
+
+    pub fn workspace_mut(&mut self, id: WorkspaceTabId) -> Option<&mut Workspace> {
+        self.tab_mut(id).map(|tab| &mut tab.layout)
+    }
+
+    pub fn active_item(&self) -> Option<ItemId> {
+        self.active_tab().and_then(WorkspaceTab::active_item)
+    }
+
+    pub fn alloc_item(&mut self) -> ItemId {
+        let id = ItemId(self.next_item_id);
+        self.next_item_id += 1;
+        id
+    }
+
+    pub fn item_ids(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.tabs.iter().flat_map(|tab| tab.layout.item_ids())
+    }
+
+    pub fn location(&self, item: ItemId) -> Option<(WorkspaceTabId, PaneId)> {
+        self.tabs.iter().find_map(|tab| tab.layout.pane_for_item(item).map(|pane| (tab.id, pane)))
+    }
+
+    pub fn activate_tab(&mut self, id: WorkspaceTabId) -> Result<(), ModelError> {
+        if self.tab(id).is_none() {
+            return Err(ModelError::WorkspaceTabNotFound(id));
+        }
+        self.active = Some(id);
+        self.activation_history.retain(|tab| *tab != id);
+        self.activation_history.push(id);
+        Ok(())
+    }
+
+    pub fn activate_item(&mut self, item: ItemId) -> Result<(), ModelError> {
+        let (tab, _) = self.location(item).ok_or(ModelError::ItemNotFound(item))?;
+        self.workspace_mut(tab).expect("known workspace tab").activate_item(item)?;
+        self.activate_tab(tab)
+    }
+
+    pub fn push_standalone(&mut self, item: ItemId) -> Result<WorkspaceTabId, ModelError> {
+        self.push_standalone_at(item, self.tabs.len())
+    }
+
+    pub fn push_standalone_at(
+        &mut self,
+        item: ItemId,
+        index: usize,
+    ) -> Result<WorkspaceTabId, ModelError> {
+        if self.location(item).is_some() {
+            return Err(ModelError::DuplicateItem(item));
+        }
+        let id = WorkspaceTabId(self.next_tab_id);
+        self.next_tab_id += 1;
+        let mut layout = Workspace::new();
+        layout.add_item(item, None, None)?;
+        self.tabs.insert(index.min(self.tabs.len()), WorkspaceTab { id, layout });
+        self.activate_tab(id)?;
+        Ok(id)
+    }
+
+    pub fn move_tab(&mut self, tab: WorkspaceTabId, destination: usize) -> Result<(), ModelError> {
+        let source = self
+            .tabs
+            .iter()
+            .position(|candidate| candidate.id == tab)
+            .ok_or(ModelError::WorkspaceTabNotFound(tab))?;
+        let tab = self.tabs.remove(source);
+        self.tabs.insert(destination.min(self.tabs.len()), tab);
+        Ok(())
+    }
+
+    pub fn remove_item(&mut self, item: ItemId) -> Result<(), ModelError> {
+        let (tab, _) = self.location(item).ok_or(ModelError::ItemNotFound(item))?;
+        self.workspace_mut(tab).expect("known workspace tab").remove_item(item)?;
+        self.remove_tab_if_empty(tab);
+        Ok(())
+    }
+
+    pub fn move_item(
+        &mut self,
+        item: ItemId,
+        source_tab: WorkspaceTabId,
+        source_pane: PaneId,
+        target_tab: WorkspaceTabId,
+        target_pane: PaneId,
+        destination_index: Option<usize>,
+    ) -> Result<(), ModelError> {
+        if self.location(item) != Some((source_tab, source_pane)) {
+            return Err(ModelError::ItemNotFound(item));
+        }
+        if self.workspace(target_tab).and_then(|layout| layout.pane(target_pane)).is_none() {
+            return Err(ModelError::PaneNotFound(target_pane));
+        }
+        if source_tab == target_tab {
+            self.workspace_mut(target_tab).expect("known workspace tab").move_item(
+                item,
+                target_pane,
+                destination_index,
+            )?;
+        } else {
+            self.workspace_mut(source_tab)
+                .expect("known source workspace tab")
+                .remove_item(item)?;
+            self.workspace_mut(target_tab).expect("known target workspace tab").add_item(
+                item,
+                Some(target_pane),
+                destination_index,
+            )?;
+            self.remove_tab_if_empty(source_tab);
+        }
+        self.activate_tab(target_tab)?;
+        Ok(())
+    }
+
+    pub fn prune_empty(&mut self) -> Result<(), ModelError> {
+        for tab in &mut self.tabs {
+            tab.layout.prune_empty_panes()?;
+        }
+        let empty: Vec<_> =
+            self.tabs.iter().filter(|tab| tab.layout.is_empty()).map(|tab| tab.id).collect();
+        for tab in empty {
+            self.remove_tab_if_empty(tab);
+        }
+        Ok(())
+    }
+
+    fn remove_tab_if_empty(&mut self, id: WorkspaceTabId) {
+        let Some(index) = self.tabs.iter().position(|tab| tab.id == id && tab.layout.is_empty())
+        else {
+            return;
+        };
+        self.tabs.remove(index);
+        self.activation_history.retain(|tab| *tab != id);
+        if self.active == Some(id) {
+            self.active = self
+                .activation_history
+                .iter()
+                .rev()
+                .find(|candidate| self.tabs.iter().any(|tab| tab.id == **candidate))
+                .copied()
+                .or_else(|| {
+                    self.tabs.get(index.min(self.tabs.len().saturating_sub(1))).map(|tab| tab.id)
+                });
+            if let Some(active) = self.active {
+                self.activation_history.retain(|tab| *tab != active);
+                self.activation_history.push(active);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub fn validate(&self) -> Result<(), ModelError> {
+        let mut tabs = HashSet::new();
+        let mut items = HashSet::new();
+        for tab in &self.tabs {
+            if !tabs.insert(tab.id) || tab.layout.is_empty() {
+                return Err(ModelError::InvalidWorkspaceTabs);
+            }
+            tab.layout.validate()?;
+            for item in tab.layout.item_ids() {
+                if !items.insert(item) {
+                    return Err(ModelError::DuplicateItem(item));
+                }
+            }
+        }
+        if self.active.is_some_and(|active| !tabs.contains(&active)) {
+            return Err(ModelError::WorkspaceTabNotFound(self.active.expect("checked")));
+        }
+        if self.tabs.is_empty() != self.active.is_none() {
+            return Err(ModelError::InvalidWorkspaceTabs);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
     PaneNotFound(PaneId),
+    WorkspaceTabNotFound(WorkspaceTabId),
     ItemNotFound(ItemId),
-    #[cfg(test)]
     DuplicateItem(ItemId),
     #[cfg(test)]
     ItemIndexMismatch(ItemId),
@@ -782,6 +1136,8 @@ pub enum ModelError {
     InvalidActiveItem(PaneId),
     #[cfg(test)]
     InvalidPaneTree,
+    #[cfg(test)]
+    InvalidWorkspaceTabs,
     BadAxisPath,
     InvalidFlexes,
 }
@@ -797,6 +1153,100 @@ impl std::error::Error for ModelError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_tabs_mix_standalone_items_with_one_pane_group() {
+        let mut tabs = WorkspaceTabs::new();
+        let items: Vec<_> = (0..5).map(|_| tabs.alloc_item()).collect();
+        let outer: Vec<_> = items.iter().map(|item| tabs.push_standalone(*item).unwrap()).collect();
+        let target_pane = tabs.workspace(outer[2]).unwrap().active_pane();
+        let right = tabs
+            .workspace_mut(outer[2])
+            .unwrap()
+            .split_pane(target_pane, SplitDirection::Right)
+            .unwrap();
+
+        tabs.move_item(items[3], outer[3], PaneId(1), outer[2], right, None).unwrap();
+        tabs.move_item(items[4], outer[4], PaneId(1), outer[2], right, None).unwrap();
+
+        assert_eq!(tabs.tabs().iter().map(|tab| tab.id).collect::<Vec<_>>(), outer[..3]);
+        assert!(!tabs.tab(outer[0]).unwrap().is_grouped());
+        assert!(!tabs.tab(outer[1]).unwrap().is_grouped());
+        assert!(tabs.tab(outer[2]).unwrap().is_grouped());
+        assert_eq!(tabs.workspace(outer[2]).unwrap().pane(right).unwrap().items(), &items[3..]);
+        assert_eq!(tabs.active_tab_id(), Some(outer[2]));
+        tabs.validate().unwrap();
+        let restored: WorkspaceTabs =
+            serde_json::from_str(&serde_json::to_string(&tabs).unwrap()).unwrap();
+        assert_eq!(restored, tabs);
+        restored.validate().unwrap();
+    }
+
+    #[test]
+    fn standalone_outer_tabs_drop_into_a_group_center_or_any_edge() {
+        for direction in [
+            None,
+            Some(SplitDirection::Up),
+            Some(SplitDirection::Right),
+            Some(SplitDirection::Down),
+            Some(SplitDirection::Left),
+        ] {
+            let mut tabs = WorkspaceTabs::new();
+            let target_item = tabs.alloc_item();
+            let source_item = tabs.alloc_item();
+            let target_tab = tabs.push_standalone(target_item).unwrap();
+            let source_tab = tabs.push_standalone(source_item).unwrap();
+            let target_pane = tabs.location(target_item).unwrap().1;
+            let source_pane = tabs.location(source_item).unwrap().1;
+            let destination = direction.map_or(target_pane, |direction| {
+                tabs.workspace_mut(target_tab).unwrap().split_pane(target_pane, direction).unwrap()
+            });
+
+            tabs.move_item(source_item, source_tab, source_pane, target_tab, destination, None)
+                .unwrap();
+
+            assert_eq!(tabs.tabs().len(), 1, "{direction:?}");
+            assert_eq!(tabs.active_tab_id(), Some(target_tab), "{direction:?}");
+            assert!(tabs.tab(target_tab).unwrap().is_grouped(), "{direction:?}");
+            assert_eq!(tabs.workspace(target_tab).unwrap().item_count(), 2, "{direction:?}");
+            assert_eq!(
+                tabs.workspace(target_tab).unwrap().center.panes().len(),
+                direction.map_or(1, |_| 2),
+                "{direction:?}",
+            );
+            tabs.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn workspace_tabs_round_trip_and_continue_allocating_unique_ids() {
+        let mut tabs = WorkspaceTabs::new();
+        let first = tabs.alloc_item();
+        let second = tabs.alloc_item();
+        tabs.push_standalone(first).unwrap();
+        tabs.push_standalone(second).unwrap();
+        let json = serde_json::to_string(&tabs).unwrap();
+        let mut restored: WorkspaceTabs =
+            serde_json::from_str(&json).unwrap_or_else(|error| panic!("{error}: {json}"));
+
+        assert_eq!(restored, tabs);
+        assert_eq!(restored.alloc_item(), ItemId(3));
+        restored.validate().unwrap();
+    }
+
+    #[test]
+    fn legacy_single_workspace_state_becomes_one_outer_workspace_tab() {
+        let mut legacy = Workspace::new();
+        let item = legacy.alloc_item();
+        legacy.add_item(item, None, None).unwrap();
+        let json = serde_json::to_string(&legacy).unwrap();
+
+        let restored: WorkspaceTabs = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.tabs().len(), 1);
+        assert_eq!(restored.active_item(), Some(item));
+        restored.validate().unwrap();
+    }
 
     #[test]
     fn splitting_a_lone_tab_with_two_existing_panes_matches_zeds_empty_pane_rule() {

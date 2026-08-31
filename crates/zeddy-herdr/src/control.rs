@@ -9,6 +9,7 @@
 //! does not decide that for them.
 
 use std::{
+    collections::{HashMap, HashSet},
     io::{BufRead, BufReader, Write},
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
@@ -23,7 +24,7 @@ use crate::{
     Sidecar, WorkspaceId,
     protocol::{
         self, Created, Empty, PaneCloseParams, PaneList, PaneListParams, Pong, Request, Response,
-        TabCreateParams, WorkspaceCreateParams, WorkspaceList,
+        TabCreateParams, TabList, TabListParams, WorkspaceCreateParams, WorkspaceList,
     },
     stream::Attachment,
 };
@@ -33,28 +34,45 @@ use crate::{
 pub struct Session {
     pub id: PaneId,
     pub workspace: WorkspaceId,
-    /// What to put on the tab. herdr's title if it has one, the agent's name if
-    /// it knows one, and the id only as a last resort — a tab always has a name.
+    /// What to put on the tab: detected agent, non-shell foreground process,
+    /// persistent Herdr tab label/number, then the pane id as the last resort.
     pub title: String,
     /// The agent herdr believes is running in the pane, if any.
     pub agent: Option<String>,
     pub cwd: Option<PathBuf>,
 }
 
-impl From<protocol::Pane> for Session {
-    fn from(pane: protocol::Pane) -> Self {
-        let title = pane
-            .title
-            .filter(|t| !t.trim().is_empty())
-            .or_else(|| pane.display_agent.clone())
+impl Session {
+    fn from_pane(pane: protocol::Pane, label: Option<String>, running: Option<String>) -> Self {
+        let title = running
+            .or(label)
+            .or_else(|| pane.title.as_deref().and_then(non_blank).map(str::to_owned))
             .unwrap_or_else(|| pane.pane_id.clone());
+        let agent = pane
+            .display_agent
+            .as_deref()
+            .and_then(non_blank)
+            .or_else(|| pane.agent.as_deref().and_then(non_blank))
+            .map(str::to_owned);
         Self {
             id: PaneId(pane.pane_id),
             workspace: WorkspaceId(pane.workspace_id),
             title,
-            agent: pane.display_agent,
+            agent,
             cwd: pane.cwd.map(PathBuf::from),
         }
+    }
+}
+
+impl From<protocol::Pane> for Session {
+    fn from(pane: protocol::Pane) -> Self {
+        let running = pane
+            .display_agent
+            .as_deref()
+            .and_then(non_blank)
+            .or_else(|| pane.agent.as_deref().and_then(non_blank))
+            .map(str::to_owned);
+        Self::from_pane(pane, None, running)
     }
 }
 
@@ -205,7 +223,49 @@ impl Client {
     pub fn sessions(&self, workspace: Option<&WorkspaceId>) -> Result<Vec<Session>> {
         let params = PaneListParams { workspace_id: workspace.map(|w| w.0.as_str()) };
         let list: PaneList = self.call("pane.list", &params)?;
-        Ok(list.panes.into_iter().map(Session::from).collect())
+        Ok(self.describe(list.panes))
+    }
+
+    /// Decorate Herdr panes with the same live titles used by Chartr-rs:
+    /// detected agent, foreground process, then persistent tab label.
+    ///
+    /// These are presentation questions. A failed `tab.list` or
+    /// `pane.process_info` must not hide an otherwise attachable terminal, so
+    /// each lookup degrades to the pane metadata already in hand.
+    fn describe(&self, panes: Vec<protocol::Pane>) -> Vec<Session> {
+        let workspaces: HashSet<_> = panes.iter().map(|pane| pane.workspace_id.as_str()).collect();
+        let mut tabs = HashMap::new();
+        for workspace in workspaces {
+            let params = TabListParams { workspace_id: workspace };
+            if let Ok(list) = self.call::<_, TabList>("tab.list", &params) {
+                tabs.extend(list.tabs.into_iter().map(|tab| (tab.tab_id.clone(), tab)));
+            }
+        }
+
+        panes
+            .into_iter()
+            .map(|pane| {
+                let agent = pane
+                    .display_agent
+                    .as_deref()
+                    .and_then(non_blank)
+                    .or_else(|| pane.agent.as_deref().and_then(non_blank))
+                    .map(str::to_owned);
+                let running = agent.clone().or_else(|| {
+                    let params = protocol::PaneProcessParams { pane_id: &pane.pane_id };
+                    self.call::<_, protocol::PaneProcess>("pane.process_info", &params)
+                        .ok()?
+                        .process_info
+                        .foreground_program()?
+                        .name
+                        .as_deref()
+                        .and_then(non_blank)
+                        .map(str::to_owned)
+                });
+                let label = tabs.get(&pane.tab_id).map(tab_label);
+                Session::from_pane(pane, label, running)
+            })
+            .collect()
     }
 
     /// Every workspace, so the sidebar has something to list.
@@ -253,14 +313,14 @@ impl Client {
     pub fn create_workspace(&self, cwd: &Path, label: Option<&str>) -> Result<Session> {
         let params = WorkspaceCreateParams { cwd: &cwd.to_string_lossy(), label };
         let created: Created = self.call("workspace.create", &params)?;
-        Ok(created.root_pane.into())
+        Ok(self.describe(vec![created.root_pane]).remove(0))
     }
 
     /// Start one more session in a workspace that is already open.
     pub fn start_session(&self, workspace: &WorkspaceId, cwd: Option<&str>) -> Result<Session> {
         let params = TabCreateParams { workspace_id: &workspace.0, cwd };
         let created: Created = self.call("tab.create", &params)?;
-        Ok(created.root_pane.into())
+        Ok(self.describe(vec![created.root_pane]).remove(0))
     }
 
     /// End a session. The pane and whatever is running in it both go.
@@ -357,6 +417,19 @@ fn resolved(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_owned())
 }
 
+fn non_blank(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+fn tab_label(tab: &protocol::Tab) -> String {
+    match tab.label.as_deref().and_then(non_blank) {
+        Some(label) => label.to_owned(),
+        None if tab.number > 0 => tab.number.to_string(),
+        None => tab.tab_id.clone(),
+    }
+}
+
 /// Request ids only have to be unique within one connection, and there is one
 /// request per connection, so a counter is enough and a UUID would be theatre.
 fn next_id() -> String {
@@ -373,22 +446,54 @@ mod tests {
         protocol::Pane {
             pane_id: id.to_owned(),
             workspace_id: "w1".to_owned(),
+            tab_id: "w1:t1".to_owned(),
             title: title.map(str::to_owned),
             display_agent: agent.map(str::to_owned),
+            agent: None,
             cwd: None,
         }
     }
 
     #[test]
-    fn a_tab_falls_back_from_title_to_agent_to_id() {
-        assert_eq!(Session::from(pane("p1", Some("build"), Some("claude"))).title, "build");
+    fn a_tab_prefers_an_agent_then_falls_back_to_title_and_id() {
+        assert_eq!(Session::from(pane("p1", Some("build"), Some("claude"))).title, "claude");
         assert_eq!(Session::from(pane("p1", None, Some("claude"))).title, "claude");
+        assert_eq!(Session::from(pane("p1", Some("build"), None)).title, "build");
         assert_eq!(Session::from(pane("p1", None, None)).title, "p1");
     }
 
     #[test]
     fn a_blank_title_is_not_a_title() {
         assert_eq!(Session::from(pane("p1", Some("   "), Some("codex"))).title, "codex");
+    }
+
+    #[test]
+    fn a_tab_label_falls_back_to_its_number_then_id() {
+        let mut tab = protocol::Tab {
+            tab_id: "w1:t2".to_owned(),
+            number: 2,
+            label: Some("build".to_owned()),
+        };
+        assert_eq!(tab_label(&tab), "build");
+        tab.label = Some("  ".to_owned());
+        assert_eq!(tab_label(&tab), "2");
+        tab.number = 0;
+        assert_eq!(tab_label(&tab), "w1:t2");
+    }
+
+    #[test]
+    fn process_info_excludes_the_waiting_shell() {
+        let process = protocol::ProcessInfo {
+            shell_pid: 10,
+            foreground_processes: vec![
+                protocol::Process { pid: 10, name: Some("zsh".to_owned()) },
+                protocol::Process { pid: 11, name: Some("htop".to_owned()) },
+            ],
+        };
+        assert_eq!(
+            process.foreground_program().and_then(|process| process.name.as_deref()),
+            Some("htop")
+        );
     }
 
     #[test]

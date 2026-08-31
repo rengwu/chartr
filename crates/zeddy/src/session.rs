@@ -122,15 +122,10 @@ impl Session {
         self.ended.lock().expect("ended mutex").clone()
     }
 
-    /// The title to show: whatever the program set, else what herdr called it.
+    /// The live title inferred by the control plane: detected agent, foreground
+    /// process, then Herdr's persistent tab label.
     pub fn title(&self) -> String {
-        self.terminal
-            .lock()
-            .expect("terminal mutex")
-            .screen()
-            .title
-            .filter(|title| !title.trim().is_empty())
-            .unwrap_or_else(|| self.info.title.clone())
+        self.info.title.clone()
     }
 
     /// Send typed bytes to the session.

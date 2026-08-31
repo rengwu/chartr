@@ -21,10 +21,13 @@ pipe instead of the proven recovery behavior from Chartr-rs.
 ## Solution
 
 Build Chartr around a focused implementation of Zed's multi-workspace model. The
-application window owns multiple independent spaces. Each space owns a recursive
-pane group; each pane exclusively owns ordered item instances; each terminal or
-plugin tab is an item. A catalog may advertise plugin factories globally, but an
-opened plugin instance belongs to exactly one pane and space.
+application window owns multiple independent spaces. Each space owns an ordered
+outer tab collection, and each outer tab owns one recursive Zed-style pane
+workspace. A one-item workspace is presented as a standalone tab; a workspace
+with multiple items or panes is presented as one grouped tab whose panes
+exclusively own their ordered items. A catalog may advertise plugin factories
+globally, but an opened plugin instance belongs to exactly one outer tab, pane,
+and space.
 
 Provide complete Zed-style pane behavior: nested splits, divider resizing,
 directional focus, tab reordering and movement between panes, edge-drop splitting,
@@ -32,12 +35,15 @@ joining, zooming/maximizing, contextual commands, a command palette, and complet
 layout restoration. Terminals are non-cloneable; plugins may explicitly declare
 clone support. Cross-space movement is not supported.
 
-Offer tabbed and sidebar projections over the same model. Tabbed mode shows one
-active space and local tab bars for each pane. Sidebar mode can show all spaces or
-only the active space and collapses a multi-pane group to one tab labelled by its
-last-active item. Every non-empty workspace pane keeps a visible, draggable tab
-bar; only the active pane exposes compact split/zoom controls. Presentation never
-changes item ownership.
+Offer tabbed and sidebar projections over the same model. Both show every
+standalone item and every pane group as one outer entry. Standalone terminals
+use Herdr's live agent or foreground-process inference before falling back to
+the persistent Herdr tab label; pane groups use the neutral `Grouped Tabs`
+title. Tabbed mode places that collection beside the active space name;
+sidebar mode places it beneath each visible space. Selecting a group renders its
+local draggable pane tab bars, while selecting a standalone item renders no
+redundant inner bar. Only the active pane exposes compact split/zoom controls.
+Presentation never changes item ownership.
 
 Use Zed's existing GPUI, UI, and theme crates and their components, semantic
 colors, spacing, typography, focus, accessibility, menu, modal, notification,
@@ -72,7 +78,7 @@ configuration automatically.
 8. As a Chartr user, I want missing folders retained as unavailable spaces, so that transient mounts or moved folders do not destroy layout state.
 9. As a Chartr user, I want to locate a missing space folder, so that I can reconnect its saved workspace state.
 10. As a Chartr user, I want removing a space to leave its folder untouched, so that workspace cleanup cannot delete project data.
-11. As a Chartr user, I want new sessions to open in the active pane of the targeted space, so that placement is predictable.
+11. As a Chartr user, I want new sessions to open as standalone outer tabs in the targeted space, so that they do not silently join an unrelated pane group.
 12. As a Chartr user, I want an inactive space's add control to activate that space before creating its session, so that sessions never enter the wrong owner.
 13. As a Chartr user, I want nested horizontal and vertical splits, so that I can arrange several terminals and tools at once.
 14. As a Chartr user, I want to resize split dividers, so that each pane receives useful screen space.
@@ -82,7 +88,7 @@ configuration automatically.
 18. As a Chartr user, I want to drop a tab on a pane edge to create a split, so that advanced layouts are direct and discoverable.
 19. As a Chartr user, I want joining a pane to move its items into an adjacent pane, so that changing layout never kills work.
 20. As a Chartr user, I want a split pane removed when its last item leaves, following Zed's default pane lifecycle, so that empty implementation structure does not accumulate in the UI.
-21. As a Chartr user, I want at least one root pane to remain, so that an empty space is still usable.
+21. As a Chartr user, I want an emptied outer tab removed while the space remains usable through its New action, so that phantom groups do not accumulate.
 22. As a Chartr user, I want to zoom or maximize a pane, so that I can temporarily concentrate on one item.
 23. As a Chartr user, I want terminals never to be cloned or mirrored, so that one session is never represented by multiple terminal tabs.
 24. As a plugin author, I want to declare whether my item supports cloning, so that split cloning is safe and intentional.
@@ -92,11 +98,11 @@ configuration automatically.
 28. As a Chartr user, I want every non-empty workspace pane in either presentation mode to retain its own draggable tab bar, so that tab ownership and movement remain visible like Zed.
 29. As a Chartr user, I want sidebar mode to show either all spaces or only the active space, so that I can choose overview or focus.
 30. As a Chartr user, I want All Spaces to be the initial sidebar mode, so that a fresh installation exposes the whole cockpit.
-31. As a Chartr user, I want a multi-pane group collapsed to one sidebar tab labelled by its last-active item, so that the sidebar represents the grouped workspace rather than every pane implementation detail.
+31. As a Chartr user, I want standalone tabs and any number of pane groups mixed in one space, with each group collapsed to one outer entry titled `Grouped Tabs`, so that unrelated sessions remain independent without implying one child represents the group.
 32. As a Chartr user, I want only the active non-empty pane to expose compact Zed-style split and zoom controls while all pane tab bars remain visible, so that advanced operations remain available without hiding the pane structure.
 33. As a Chartr user, I want selecting an item in an inactive space to activate its space, pane, and item together, so that selection is one coherent action.
 34. As a Chartr user, I want the sidebar width and presentation modes persisted, so that the application retains my preferred chrome.
-35. As a Chartr user, I want the top-level visual pane group to be closable, so that I can end everything beneath it deliberately.
+35. As a Chartr user, I want each top-level pane group to be closable, so that I can end everything beneath that group deliberately without closing its sibling tabs or groups.
 36. As a Chartr user, I want confirmation before an operation kills multiple sessions, so that bulk actions are not accidentally destructive.
 37. As a Chartr user, I want closing one terminal tab to terminate its Herdr session immediately, so that abandoned processes do not accumulate.
 38. As a Chartr user, I want `Cmd+W` on macOS and `Ctrl+W` on Linux to close the active tab, so that closing follows familiar application behavior.
@@ -160,20 +166,29 @@ configuration automatically.
 - The application window follows Zed's `MultiWorkspace` responsibility and owns
   ordered space entities plus one active space.
 - A space is the lifecycle and persistence boundary analogous to a Zed
-  `Workspace`. It owns one recursive pane group, its panes, active pane, item-to-
-  pane index, folder identity, and workspace-local restoration state.
+  `Workspace`. It owns an ordered, activation-tracked collection of outer
+  workspace tabs plus its folder identity and restoration state. Each outer tab
+  owns one existing recursive pane workspace; it is standalone when it has one
+  item and one pane, and grouped when it has multiple items or panes.
 - A pane exclusively owns its ordered items, active item, activation history,
   focus state, and drag state. Chrome never owns or reconstructs item state.
 - A pane group is a recursive axis tree with horizontal/vertical members and
   persisted flex ratios. Workspace-level event handling coordinates mutations.
 - Items expose lifecycle, serialization, focus, close, and optional clone
   behavior. A terminal session item is non-cloneable and closes destructively.
-- An opened item entity may appear in only one pane and one space. Moving an item
-  removes it from its source pane before insertion. Cross-space moves are absent.
+- A standalone terminal title is recomputed from Herdr on the two-second backend
+  refresh: display agent, internal agent, non-shell foreground process, then
+  persistent tab label/number. Exiting a process restores the fallback rather
+  than leaving a stale locally remembered title.
+- An opened item entity may appear in only one outer workspace tab, pane, and
+  space. Moving an item removes it from its source before insertion; an emptied
+  outer tab disappears. Cross-space moves are absent.
 - Pane mutations use typed actions and pane events. Product chrome does not reach
   into pane internals to mutate vectors directly.
-- Dragged tabs carry their source pane, source index, and item identity, and use
-  the same tab component for their drag preview. Drops on tabs use Zed's
+- Dragged tabs carry their source outer tab, pane, source index, and item
+  identity, and use the same tab component for their drag preview. Standalone
+  outer entries may be dragged directly into any pane of the selected group.
+  Drops on pane tabs use Zed's
   source-aware before/after insertion rule; the trailing tab-strip target
   appends; pane-body center drops move into the target pane; and pane-body edge
   drops split it. Modifier cloning is available only to plugin items that
@@ -189,14 +204,14 @@ configuration automatically.
   Native child webviews are hidden only for the duration of a GPUI drag so the
   dragged tab and pane drop highlight remain visible above their pixels.
 - Joining a pane moves items and collapses the axis. Moving or closing the last
-  item collapses a non-root pane; the sole root pane remains as the empty
-  workspace's open/drop target. As in Zed, invoking split-and-move on a pane
-  with only one item instead inserts an empty pane on the opposite side and
-  keeps the item focused, so the requested split is visible rather than being
-  immediately collapsed by the ordinary empty-source rule.
-- The visual sidebar group is not an item. Its close control is a bulk lifecycle
-  action over all descendant items. Only top-level space groups expose that bulk
-  control; panes expose their own Close All action.
+  item collapses a non-root pane; an outer workspace tab disappears once no
+  items remain anywhere beneath it. As in Zed, invoking split-and-move on a
+  pane with only one item instead inserts an empty pane on the opposite side
+  and keeps the item focused, so the requested split is visible rather than
+  being immediately collapsed by the ordinary empty-source rule.
+- A visual outer group is not an item. Its close control is a bulk lifecycle
+  action over only that outer tab's descendant items; panes expose their own
+  Close All action, and closing the containing space remains the larger boundary.
 - Single destructive item closes do not confirm. Any action that would terminate
   multiple live sessions confirms with an exact count.
 - The active item after removal follows Zed's activation-history behavior with a
@@ -205,11 +220,11 @@ configuration automatically.
   defaults new sessions to the user's home directory or a configured replacement.
 - Folder spaces are deduplicated by canonical path. Display names are metadata and
   do not participate in identity.
-- Tabbed and sidebar modes are alternate renderings of the same space/pane/item
-  state. Changing chrome never creates, moves, or closes an item.
-- A multi-pane group projects to one sidebar tab labelled by its last-active
-  item. Closing that tab closes every item in the group through the normal bulk
-  lifecycle confirmation.
+- Tabbed and sidebar modes are alternate renderings of the same outer-tab/pane/
+  item state. Changing chrome never creates, moves, or closes an item.
+- Each standalone item and pane group projects to one entry in both chromes.
+  Tabbed mode keeps these entries on the space-name row. Closing a group entry
+  closes every item in only that group through the normal bulk confirmation.
 - Sidebar mode persists an All Spaces or Active Space submode. Selecting an item
   from another space activates its space, pane, and item as one operation.
 - The sidebar is resizable with bounded width. Tabbed mode is active-space-only.
@@ -274,12 +289,13 @@ configuration automatically.
   clean replacement, and detects a second failure within 60 seconds as a crash
   loop. It exposes Retry and no backend administration UI.
 - Backend loss removes terminal items and their session-bound plugins, collapses
-  newly empty splits, and retains spaces plus space-bound plugin items.
+  newly empty splits and outer tabs, and retains spaces plus space-bound plugins.
 - Herdr is authoritative for live session existence. Orphaned sessions enter the
-  owning space's last-active pane; stale saved terminal items are dropped.
-- Versioned SQLite persistence stores space identities, pane trees, item records,
-  active state, split ratios, window bounds, sidebar width/submode, chrome mode,
-  expansion state, and migrations.
+  owning space as standalone outer tabs; stale saved terminal items are dropped.
+- Versioned SQLite persistence stores space identities, ordered outer workspace
+  tabs, pane trees, item records, active state, split ratios, window bounds,
+  sidebar width/submode, chrome mode, expansion state, and migrations. A legacy
+  single pane tree migrates to one outer workspace tab.
 - User-editable settings, keymaps, and themes remain files. All persistent and
   runtime paths are namespaced to Chartr-zeddy; no automatic legacy import occurs.
 - The supported platforms are macOS and Linux. Windows remains deferred until the
@@ -292,9 +308,9 @@ configuration automatically.
   host contract for contributions and permissions, and a real private Herdr
   process for transport behavior. Lower-level unit tests supplement rather than
   replace those seams.
-- Ownership tests prove that an item entity is present in exactly one pane and one
-  space after add, reorder, cross-pane move, split-edge drop, join, close, restore,
-  and failed restore operations.
+- Ownership tests prove that an item entity is present in exactly one outer tab,
+  pane, and space after add, outer-to-pane movement, cross-pane movement,
+  split-edge drop, join, close, restore, and failed restore operations.
 - Pane-group tests cover recursive split construction, flex resizing, directional
   adjacency/focus, edge-drop placement, join/collapse, empty-root invariants,
   zoom/maximize state, and serialization round trips. Property tests exercise long
@@ -303,16 +319,18 @@ configuration automatically.
   pane join kills none; session-bound plugins cascade; bulk operations confirm;
   space removal kills all owned sessions; and normal application exit detaches.
 - Chrome tests assert that switching Tabbed, Sidebar/All Spaces, and Sidebar/Active
-  Space changes only presentation. Selecting and creating items from inactive
-  groups must activate the correct space and pane without duplication.
+  Space changes only presentation; both chromes show the same standalone and
+  grouped outer entries. Selecting and creating items from inactive groups must
+  activate the correct space, outer tab, and pane without duplication.
 - Action tests use semantic commands and contexts, including close, Settings close,
   split, join, focus, move, zoom, palette dispatch, and keybinding conflicts.
 - Settings tests cover default resolution, sparse user content, atomic updates,
   parse failure behavior, live observation, hotkey conflict reporting, theme
   selection, plugin page discovery, and restart-bound disclosures.
-- Persistence tests launch from saved state and observe restored spaces, recursive
-  layouts, active state, window/chrome geometry, unavailable folders, missing
-  sessions, orphan sessions, missing plugins, and schema migrations.
+- Persistence tests launch from saved state and observe restored spaces, ordered
+  outer tabs, multiple recursive layouts, active state, window/chrome geometry,
+  unavailable folders, missing sessions, orphan sessions, missing plugins, and
+  legacy single-layout migration.
 - Native plugin tests cover trust labeling, per-space singleton behavior,
   multi-instance opt-in, clone capability, close, disable, settings contribution,
   serialization, ABI mismatch, and restoration failure.

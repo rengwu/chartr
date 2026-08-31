@@ -1,6 +1,6 @@
 //! herdr's wire types — exactly the ones zeddy sends or reads, and no more.
 //!
-//! herdr's socket API has ninety methods. zeddy uses six of them. Modelling
+//! herdr's socket API has ninety methods. zeddy uses eight of them. Modelling
 //! only those keeps the pin in [`crate::SUPPORTED_HERDR_VERSION`] honest: a
 //! herdr release can change anything zeddy does not name here without zeddy
 //! having an opinion about it.
@@ -68,6 +68,11 @@ pub struct Pane {
     pub pane_id: String,
     #[serde(default)]
     pub workspace_id: String,
+    /// The Herdr tab containing this pane. Chartr keeps one session per Herdr
+    /// tab, so this is also where the session's persistent fallback label
+    /// lives.
+    #[serde(default)]
+    pub tab_id: String,
     /// herdr's own title for the pane, when it has worked one out.
     #[serde(default)]
     pub title: Option<String>,
@@ -76,8 +81,69 @@ pub struct Pane {
     /// terminal multiplexer: the backend already knows what a pane is running.
     #[serde(default)]
     pub display_agent: Option<String>,
+    /// Herdr's internal agent name, used only when it has no display name.
+    #[serde(default)]
+    pub agent: Option<String>,
     #[serde(default)]
     pub cwd: Option<String>,
+}
+
+/// A Herdr tab: the persistent name and ordering container for one Chartr
+/// terminal session.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Tab {
+    pub tab_id: String,
+    #[serde(default)]
+    pub number: u32,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TabListParams<'a> {
+    pub workspace_id: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TabList {
+    #[serde(default)]
+    pub tabs: Vec<Tab>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaneProcessParams<'a> {
+    pub pane_id: &'a str,
+}
+
+/// The envelope returned by `pane.process_info`.
+#[derive(Debug, Deserialize)]
+pub struct PaneProcess {
+    pub process_info: ProcessInfo,
+}
+
+/// The foreground process group of the PTY Herdr owns.
+#[derive(Debug, Deserialize)]
+pub struct ProcessInfo {
+    #[serde(default)]
+    pub shell_pid: u32,
+    #[serde(default)]
+    pub foreground_processes: Vec<Process>,
+}
+
+impl ProcessInfo {
+    /// The program running in the pane, excluding the shell waiting at its own
+    /// prompt.
+    pub fn foreground_program(&self) -> Option<&Process> {
+        self.foreground_processes.iter().find(|process| process.pid != self.shell_pid)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Process {
+    #[serde(default)]
+    pub pid: u32,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

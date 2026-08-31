@@ -13,7 +13,7 @@ use anyhow::{Context as _, Result};
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde::{Deserialize, Serialize};
 
-use crate::{mode::Mode, workspace::Workspace};
+use crate::{mode::Mode, workspace::WorkspaceTabs};
 
 pub const STATE_FILE: &str = "state.sqlite";
 const SCHEMA_VERSION: i64 = 1;
@@ -68,7 +68,7 @@ pub struct PersistedSpace {
     pub name: String,
     pub path: Option<PathBuf>,
     pub kind: SpaceKind,
-    pub layout: Workspace,
+    pub layout: WorkspaceTabs,
     pub items: Vec<PersistedItem>,
     pub expanded: bool,
 }
@@ -226,11 +226,17 @@ mod tests {
     use super::*;
 
     fn space(key: &str) -> PersistedSpace {
-        let mut layout = Workspace::new();
-        let root = layout.active_pane();
-        let right = layout.split_pane(root, crate::workspace::SplitDirection::Right).unwrap();
+        let mut layout = WorkspaceTabs::new();
         let item = layout.alloc_item();
-        layout.add_item(item, Some(right), None).unwrap();
+        layout.push_standalone(item).unwrap();
+        let tab = layout.active_tab_id().unwrap();
+        let root = layout.active_workspace().unwrap().active_pane();
+        let right = layout
+            .workspace_mut(tab)
+            .unwrap()
+            .split_pane(root, crate::workspace::SplitDirection::Right)
+            .unwrap();
+        layout.workspace_mut(tab).unwrap().move_item(item, right, None).unwrap();
         PersistedSpace {
             key: key.to_owned(),
             name: "Project".to_owned(),

@@ -1,8 +1,9 @@
 //! One space: a folder, its backend workspace, and its open items.
 //!
 //! A space is independently stateful in the same way a Zed `Workspace` held by
-//! `MultiWorkspace` is: it owns its sessions and active item, while the parent
-//! owns the ordered collection and decides which space the window presents.
+//! `MultiWorkspace` is: it owns its sessions, outer workspace tabs, and active
+//! item, while the parent owns the ordered spaces and decides which one the
+//! window presents.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -14,12 +15,12 @@ use gpui::{Context, Task};
 use zeddy_herdr::{PaneId, WorkspaceId, control::Client};
 
 use crate::{
-    chrome::{Action, Entry, PaneEntries},
+    chrome::{Action, Entry},
     item::{Item, PluginItem, SessionItem},
     persistence::{PersistedItem, PersistedSpace, SpaceKind as PersistedSpaceKind},
     session::Session,
     spaces,
-    workspace::{ItemId, SplitDirection, Workspace},
+    workspace::{ItemId, SplitDirection, Workspace, WorkspaceTabId, WorkspaceTabs},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +35,7 @@ pub struct Space {
     kind: Kind,
     client: Client,
     workspace: Option<WorkspaceId>,
-    layout: Workspace,
+    layout: WorkspaceTabs,
     items: HashMap<ItemId, Item>,
     sessions: HashMap<PaneId, ItemId>,
     starting: bool,
@@ -42,7 +43,7 @@ pub struct Space {
     reattaching: HashSet<ItemId>,
     restoring_sessions: HashMap<String, ItemId>,
     restoring_plugins: Vec<PersistedItem>,
-    drag_target: Option<(crate::workspace::PaneId, Option<SplitDirection>)>,
+    drag_target: Option<(WorkspaceTabId, crate::workspace::PaneId, Option<SplitDirection>)>,
     problem: Option<String>,
     wakeup_tx: mpsc::UnboundedSender<()>,
     _wakeups: Task<()>,
@@ -63,7 +64,7 @@ impl Space {
             kind,
             client,
             workspace: None,
-            layout: Workspace::new(),
+            layout: WorkspaceTabs::new(),
             items: HashMap::new(),
             sessions: HashMap::new(),
             starting: false,
@@ -118,12 +119,20 @@ impl Space {
         self.problem.as_deref()
     }
 
-    pub fn layout(&self) -> &Workspace {
+    pub fn workspace_tabs(&self) -> &WorkspaceTabs {
         &self.layout
     }
 
+    pub fn active_tab_id(&self) -> Option<WorkspaceTabId> {
+        self.layout.active_tab_id()
+    }
+
+    pub fn active_layout(&self) -> Option<&Workspace> {
+        self.layout.active_workspace()
+    }
+
     pub fn active(&self) -> Option<ItemId> {
-        self.layout.pane(self.layout.active_pane()).and_then(|pane| pane.active())
+        self.layout.active_item()
     }
 
     pub fn item(&self, id: ItemId) -> Option<&Item> {
@@ -221,7 +230,7 @@ impl Space {
         for item in invalid {
             let _ = self.layout.remove_item(item);
         }
-        let _ = self.layout.prune_empty_panes();
+        let _ = self.layout.prune_empty();
     }
 
     pub fn persisted(&self) -> PersistedSpace {
@@ -263,25 +272,34 @@ impl Space {
     }
 
     pub fn activate_pane_in_direction(&mut self, direction: SplitDirection) {
-        self.layout.activate_pane_in_direction(direction);
+        if let Some(layout) = self.layout.active_workspace_mut() {
+            layout.activate_pane_in_direction(direction);
+        }
     }
 
-    pub fn activate_pane(&mut self, pane: crate::workspace::PaneId) {
-        if let Err(error) = self.layout.activate_pane(pane) {
+    pub fn activate_pane(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
+        let result = self
+            .layout
+            .activate_tab(tab)
+            .and_then(|()| self.layout.workspace_mut(tab).expect("known tab").activate_pane(pane));
+        if let Err(error) = result {
             self.problem = Some(error.to_string());
         }
     }
 
-    pub fn drag_target(&self) -> Option<(crate::workspace::PaneId, Option<SplitDirection>)> {
+    pub fn drag_target(
+        &self,
+    ) -> Option<(WorkspaceTabId, crate::workspace::PaneId, Option<SplitDirection>)> {
         self.drag_target
     }
 
     pub fn set_drag_target(
         &mut self,
+        tab: WorkspaceTabId,
         pane: crate::workspace::PaneId,
         direction: Option<SplitDirection>,
     ) -> bool {
-        let target = Some((pane, direction));
+        let target = Some((tab, pane, direction));
         if self.drag_target == target {
             return false;
         }
@@ -293,8 +311,19 @@ impl Space {
         self.drag_target.take().is_some()
     }
 
-    pub fn resize_divider(&mut self, axis_path: &[usize], divider: usize, fraction: f32) {
-        if let Err(error) = self.layout.center.resize_divider(axis_path, divider, fraction) {
+    pub fn resize_divider(
+        &mut self,
+        tab: WorkspaceTabId,
+        axis_path: &[usize],
+        divider: usize,
+        fraction: f32,
+    ) {
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.center.resize_divider(axis_path, divider, fraction));
+        if let Err(error) = result {
             self.problem = Some(error.to_string());
         }
     }
@@ -302,45 +331,60 @@ impl Space {
     pub fn drop_item(
         &mut self,
         item: ItemId,
-        source: crate::workspace::PaneId,
-        target: crate::workspace::PaneId,
+        source_tab: WorkspaceTabId,
+        source_pane: crate::workspace::PaneId,
+        target_tab: WorkspaceTabId,
+        target_pane: crate::workspace::PaneId,
         index: Option<usize>,
     ) {
-        if self.layout.pane_for_item(item) != Some(source) {
+        if self.layout.location(item) != Some((source_tab, source_pane)) {
             self.drag_target = None;
             return;
         }
         let direction = self
             .drag_target
-            .filter(|(pane, _)| *pane == target)
-            .and_then(|(_, direction)| direction);
+            .filter(|(tab, pane, _)| *tab == target_tab && *pane == target_pane)
+            .and_then(|(_, _, direction)| direction);
         self.drag_target = None;
         let destination = match direction {
-            Some(direction) => match self.layout.split_pane(target, direction) {
+            Some(direction) => match self
+                .layout
+                .workspace_mut(target_tab)
+                .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(target_tab))
+                .and_then(|layout| layout.split_pane(target_pane, direction))
+            {
                 Ok(pane) => pane,
                 Err(error) => {
                     self.problem = Some(error.to_string());
                     return;
                 }
             },
-            None => target,
+            None => target_pane,
         };
-        if let Err(error) = self.layout.move_item(item, destination, index) {
+        if let Err(error) =
+            self.layout.move_item(item, source_tab, source_pane, target_tab, destination, index)
+        {
             self.problem = Some(error.to_string());
         }
     }
 
     pub fn prepare_drop_destination(
         &mut self,
+        tab: WorkspaceTabId,
         target: crate::workspace::PaneId,
     ) -> Option<crate::workspace::PaneId> {
         let direction = self
             .drag_target
             .take()
-            .filter(|(pane, _)| *pane == target)
-            .and_then(|(_, direction)| direction);
+            .filter(|(candidate, pane, _)| *candidate == tab && *pane == target)
+            .and_then(|(_, _, direction)| direction);
         match direction {
-            Some(direction) => match self.layout.split_pane(target, direction) {
+            Some(direction) => match self
+                .layout
+                .workspace_mut(tab)
+                .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+                .and_then(|layout| layout.split_pane(target, direction))
+            {
                 Ok(pane) => Some(pane),
                 Err(error) => {
                     self.problem = Some(error.to_string());
@@ -354,113 +398,143 @@ impl Space {
     /// Zed's split-and-move action creates the neighboring pane and moves the
     /// active item into it. Items remain unique; terminals are never cloned.
     pub fn split_and_move(&mut self, direction: SplitDirection) {
-        let source = self.layout.active_pane();
-        self.split_and_move_in(source, direction);
+        let Some(tab) = self.layout.active_tab_id() else {
+            return;
+        };
+        let source = self.layout.workspace(tab).expect("active tab").active_pane();
+        self.split_and_move_in(tab, source, direction);
     }
 
     pub fn split_and_move_in(
         &mut self,
+        tab: WorkspaceTabId,
         source: crate::workspace::PaneId,
         direction: SplitDirection,
     ) {
-        if let Err(error) = self.layout.split_and_move(source, direction) {
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.split_and_move(source, direction));
+        if let Err(error) = result {
             self.problem = Some(error.to_string());
+        } else {
+            let _ = self.layout.activate_tab(tab);
         }
     }
 
-    pub fn remove_empty_pane(&mut self, pane: crate::workspace::PaneId) {
-        if let Err(error) = self.layout.remove_empty_pane(pane) {
+    pub fn remove_empty_pane(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.remove_empty_pane(pane));
+        if let Err(error) = result {
             self.problem = Some(error.to_string());
         }
     }
 
     pub fn move_active_to_pane(&mut self, direction: SplitDirection) {
-        let source = self.layout.active_pane();
-        let active = self.layout.pane(source).and_then(|pane| pane.active());
-        let destination = self.layout.pane_in_direction(direction);
+        let Some(layout) = self.layout.active_workspace_mut() else {
+            return;
+        };
+        let source = layout.active_pane();
+        let active = layout.pane(source).and_then(|pane| pane.active());
+        let destination = layout.pane_in_direction(direction);
         if let (Some(active), Some(destination)) = (active, destination)
-            && let Err(error) = self.layout.move_item(active, destination, None)
+            && let Err(error) = layout.move_item(active, destination, None)
         {
             self.problem = Some(error.to_string());
         }
     }
 
     pub fn join_active_into_next(&mut self) {
-        let source = self.layout.active_pane();
+        let Some(layout) = self.layout.active_workspace_mut() else {
+            return;
+        };
+        let source = layout.active_pane();
         let destination =
             [SplitDirection::Right, SplitDirection::Down, SplitDirection::Left, SplitDirection::Up]
                 .into_iter()
-                .find_map(|direction| self.layout.pane_in_direction(direction));
+                .find_map(|direction| layout.pane_in_direction(direction));
         if let Some(destination) = destination
-            && let Err(error) = self.layout.join_pane(source, destination)
+            && let Err(error) = layout.join_pane(source, destination)
         {
             self.problem = Some(error.to_string());
         }
     }
 
     pub fn toggle_zoom(&mut self) {
-        let active = self.layout.active_pane();
-        if let Err(error) = self.layout.center.toggle_maximized(active) {
+        let Some(tab) = self.layout.active_tab_id() else {
+            return;
+        };
+        let active = self.layout.workspace(tab).expect("active tab").active_pane();
+        self.toggle_zoom_in(tab, active);
+    }
+
+    pub fn toggle_zoom_in(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.center.toggle_maximized(pane));
+        if let Err(error) = result {
             self.problem = Some(error.to_string());
+        } else {
+            let _ = self.layout.activate_tab(tab);
         }
     }
 
     pub fn entries(&self, space: gpui::EntityId) -> Vec<Entry> {
         self.layout
-            .panes()
-            .flat_map(|pane| {
-                pane.items().iter().enumerate().filter_map(move |(index, id)| {
-                    let item = self.items.get(id)?;
-                    Some(Entry {
-                        space,
-                        space_key: self.key(),
-                        key: *id,
-                        pane: pane.id,
-                        index,
-                        title: item.title(),
-                        agent: item.agent(),
-                        ended: item.ended(),
-                        selected: pane.active() == Some(*id)
-                            && self.layout.active_pane() == pane.id,
-                        closable: true,
-                    })
+            .tabs()
+            .iter()
+            .filter_map(|tab| {
+                let id = tab.active_item()?;
+                let pane = tab.layout.pane_for_item(id)?;
+                let index =
+                    tab.layout.pane(pane)?.items().iter().position(|candidate| *candidate == id)?;
+                let item = self.items.get(&id)?;
+                let grouped = tab.is_grouped();
+                Some(Entry {
+                    space,
+                    space_key: self.key(),
+                    key: id,
+                    tab: tab.id,
+                    pane,
+                    index,
+                    title: if grouped { "Grouped Tabs".to_owned() } else { item.title() },
+                    agent: item.agent(),
+                    ended: item.ended(),
+                    selected: self.layout.active_tab_id() == Some(tab.id),
+                    closable: true,
+                    grouped,
+                    item_count: tab.layout.item_count(),
                 })
             })
             .collect()
     }
 
-    pub fn pane_entries(&self, space: gpui::EntityId) -> Vec<PaneEntries> {
+    pub fn pane_item_ids(
+        &self,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+    ) -> Vec<ItemId> {
         self.layout
-            .panes()
-            .map(|pane| PaneEntries {
-                id: pane.id,
-                entries: pane
-                    .items()
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, id)| {
-                        let item = self.items.get(id)?;
-                        Some(Entry {
-                            space,
-                            space_key: self.key(),
-                            key: *id,
-                            pane: pane.id,
-                            index,
-                            title: item.title(),
-                            agent: item.agent(),
-                            ended: item.ended(),
-                            selected: pane.active() == Some(*id)
-                                && self.layout.active_pane() == pane.id,
-                            closable: true,
-                        })
-                    })
-                    .collect(),
-            })
-            .collect()
+            .workspace(tab)
+            .and_then(|layout| layout.pane(pane))
+            .map(|pane| pane.items().to_vec())
+            .unwrap_or_default()
     }
 
-    pub fn pane_item_ids(&self, pane: crate::workspace::PaneId) -> Vec<ItemId> {
-        self.layout.pane(pane).map(|pane| pane.items().to_vec()).unwrap_or_default()
+    pub fn tab_item_ids(&self, tab: WorkspaceTabId) -> Vec<ItemId> {
+        self.layout.workspace(tab).map(|layout| layout.item_ids().collect()).unwrap_or_default()
+    }
+
+    pub fn move_workspace_tab(&mut self, tab: WorkspaceTabId, target_index: usize) {
+        if let Err(error) = self.layout.move_tab(tab, target_index) {
+            self.problem = Some(error.to_string());
+        }
     }
 
     pub fn all_item_ids(&self) -> Vec<ItemId> {
@@ -503,7 +577,7 @@ impl Space {
             Action::Close { item, .. } => self.close_item(item, cx),
             Action::New
             | Action::NewInSpace { .. }
-            | Action::MoveItem { .. }
+            | Action::MoveWorkspaceTab { .. }
             | Action::CloseGroup { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
@@ -523,15 +597,23 @@ impl Space {
     pub fn open_plugin_in(
         &mut self,
         plugin: PluginItem,
+        tab: WorkspaceTabId,
         pane: crate::workspace::PaneId,
         index: Option<usize>,
         cx: &mut Context<Self>,
     ) -> ItemId {
         let id = self.layout.alloc_item();
         self.items.insert(id, Item::Plugin(plugin));
-        if let Err(error) = self.layout.add_item(id, Some(pane), index) {
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.add_item(id, Some(pane), index));
+        if let Err(error) = result {
             self.items.remove(&id);
             self.problem = Some(error.to_string());
+        } else {
+            let _ = self.layout.activate_tab(tab);
         }
         cx.notify();
         id
@@ -549,8 +631,8 @@ impl Space {
 
     pub fn open_plugin_at(&mut self, id: ItemId, plugin: PluginItem, cx: &mut Context<Self>) {
         self.items.insert(id, Item::Plugin(plugin));
-        if self.layout.pane_for_item(id).is_none()
-            && let Err(error) = self.layout.add_item(id, None, None)
+        if self.layout.location(id).is_none()
+            && let Err(error) = self.layout.push_standalone(id)
         {
             self.items.remove(&id);
             self.problem = Some(error.to_string());
@@ -641,8 +723,17 @@ impl Space {
     /// Attach sessions discovered by the parent's one backend snapshot.
     /// Process spawning and stream setup stay off the frame thread.
     pub fn adopt(&mut self, infos: Vec<zeddy_herdr::control::Session>, cx: &mut Context<Self>) {
-        let infos: Vec<_> =
-            infos.into_iter().filter(|info| !self.sessions.contains_key(&info.id)).collect();
+        let mut discovered = Vec::new();
+        for info in infos {
+            if let Some(item) = self.sessions.get(&info.id).copied() {
+                if let Some(session) = self.items.get_mut(&item).and_then(Item::as_session_mut) {
+                    session.session.info = info;
+                }
+            } else {
+                discovered.push(info);
+            }
+        }
+        let infos = discovered;
         if infos.is_empty() {
             return;
         }
@@ -751,8 +842,8 @@ impl Space {
         }
         let id = restored.unwrap_or_else(|| self.layout.alloc_item());
         self.items.insert(id, Item::Session(SessionItem::new(session)));
-        if self.layout.pane_for_item(id).is_none()
-            && let Err(error) = self.layout.add_item(id, None, None)
+        if self.layout.location(id).is_none()
+            && let Err(error) = self.layout.push_standalone(id)
         {
             self.items.remove(&id);
             self.problem = Some(error.to_string());

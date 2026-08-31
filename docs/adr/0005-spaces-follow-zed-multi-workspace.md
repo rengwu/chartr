@@ -7,10 +7,13 @@ sidebar chrome can present either the active space or every space at once. The
 ownership shape follows the pinned Zed revision's `workspace::MultiWorkspace`:
 
 - the root owns an ordered `Vec<Entity<Space>>` and the active entity;
-- each `Space` owns its pane tree, items, session collection, and active item;
+- each `Space` owns an ordered outer workspace-tab collection, items, session
+  collection, and active outer tab;
+- each outer workspace tab owns one Zed-style pane tree and is presented as a
+  standalone tab when it has one item or a grouped tab when it has several;
 - the root observes every child and partitions backend snapshots between them;
-- session actions carry stable pane ids, not positions in the currently drawn
-  list; and
+- session actions carry stable outer-tab and pane ids, not positions in the
+  currently drawn list; and
 - blocking backend calls run on GPUI's background executor and return owned
   answers to the entity context.
 
@@ -23,8 +26,9 @@ node-runtime systems that zeddy does not use.
 
 The folder registry lives at `$XDG_CONFIG_HOME/chartr-zeddy/spaces.toml`, with
 platform fallbacks, file order as display order, duplicate suppression, and
-unknown TOML keys preserved. Window bounds, chrome choice, pane trees, item
-ownership, and restorable plugin state live in Chartr's SQLite state store. The
+unknown TOML keys preserved. Window bounds, chrome choice, ordered outer tabs,
+pane trees, item ownership, and restorable plugin state live in Chartr's SQLite
+state store. A pre-outer-tab pane tree migrates to one grouped outer entry. The
 rewrite deliberately does not import or mutate older Chartr registries.
 
 Ad-hoc sessions are the one synthetic space. They use the operator's home
@@ -34,14 +38,25 @@ one backend workspace would pretend to be independent state when they are not.
 
 ## Chrome
 
-The sketches choose where items appear: grouped vertically in sidebar mode and
-horizontally for the active space in tabs mode. Both reuse Zed `ui` components
-for tabs, buttons, labels, icons, colors, focus tracking, and scroll containers.
-There is no custom popup, menu state machine, or parallel widget kit.
+Both chromes project the same outer collection: every standalone item and every
+pane group is one entry. Sidebar mode draws those entries beneath each visible
+space; tabbed mode draws the active space's entries beside its name. Selecting a
+group reveals the pane-local Zed tab bars, while a standalone item has no
+duplicate inner bar. Both reuse Zed `ui` components for tabs, buttons, labels,
+icons, colors, focus tracking, and scroll containers. There is no custom popup,
+menu state machine, or parallel widget kit.
+
+Standalone terminal labels are live backend presentation: detected agent,
+non-shell foreground process, then Herdr's persistent tab label or number. They
+are refreshed on the same two-second cadence as session discovery and are not
+persisted locally. A collapsed pane group is deliberately just `Grouped Tabs`;
+its children retain their individual live labels in the pane-local tab bars.
 
 ## Consequence
 
 Switching spaces is an entity-selection change. It cannot reparent a session,
-reuse another space's selected index, or recreate backend work. Adding a third
-chrome arrangement likewise cannot change the space model: it can only draw
-the active child's entries somewhere else.
+reuse another space's selected index, or recreate backend work. Moving a
+standalone outer tab into a selected pane changes ownership once and removes its
+emptied outer entry; changing chrome never does. Adding a third chrome
+arrangement likewise cannot change the space model: it can only draw the active
+child's entries somewhere else.

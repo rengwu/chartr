@@ -25,11 +25,15 @@ Chartr Light. Capture and compare:
 
 - empty Ad-hoc startup, one folder, and several spaces;
 - Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
-- empty root, one pane, nested horizontal/vertical panes, resized dividers,
+- empty space, one standalone tab, nested horizontal/vertical panes, resized dividers,
   zoom, and automatic split collapse after its last item moves or closes;
-- terminal and plugin close buttons, active/hover/focus states, one collapsed
-  sidebar tab per multi-pane group, visible draggable tab bars in every
-  non-empty workspace pane, and the bulk-termination confirmation;
+- terminal and plugin close buttons, active/hover/focus states, two standalone
+  outer tabs beside one collapsed three-item pane group in both chromes, visible
+  draggable tab bars in every selected group pane, and bulk confirmation scoped
+  to only the selected group;
+- live terminal titles changing from their Herdr tab number to `nano`, `htop`,
+  or a detected agent and back when that foreground process exits; every
+  collapsed pane group remains titled `Grouped Tabs`;
 - Zed-style transient pane-body drop highlights: full-content center and
   half-content left, right, top, and bottom targets, including nearest-edge
   corner resolution and no split target over a pane's tab bar;
@@ -64,6 +68,13 @@ items; tab headers must remain visible and draggable throughout. Clicking inside
 a web plugin must activate its pane, and its native child view must yield during
 a drag so neither the tab preview nor drop highlight is obscured.
 
+Create five standalone tabs in one space. Move tabs 4 and 5 into tab 3, split
+tab 4 to the right, and leave tabs 1 and 2 standalone. Both sidebar and tabbed
+chrome must show exactly three outer entries: tab 1, tab 2, and one three-item
+group. While that group is selected, drag either standalone outer entry into
+the center and each of the four edges of every pane. Confirm the source outer
+entry disappears, the target group remains selected, and no item is duplicated.
+
 Inspect the GPUI accessibility tree on macOS and Linux. Tabs and Settings
 navigation must expose roles, labels, and selection; Zed buttons and menus must
 retain their labels and focus rings; contrast must remain readable in both
@@ -73,7 +84,7 @@ alternate transition path.
 ## Persistence and lifecycle
 
 Relaunch after changing window bounds, sidebar width/scope, mode, space names,
-split ratios, active panes/items, plugin Settings, and a missing folder. Confirm
+outer-tab order, split ratios, active groups/panes/items, plugin Settings, and a missing folder. Confirm
 normal exit adopts detached terminals; item close kills exactly one session;
 closing a populated pane or folder space confirms and kills all descendants;
 session-bound plugins cascade; disabling or revoking a plugin closes every live
