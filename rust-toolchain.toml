@@ -1,0 +1,5 @@
+# Pinned so the GPUI revision below and this toolchain never drift apart.
+# GPUI needs a recent stable; nothing here needs nightly.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

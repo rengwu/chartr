@@ -1,0 +1,82 @@
+# zeddy — a simple agent multiplexer.
+#
+# Five crates, each one a boundary rather than a bag of helpers:
+#
+#   zeddy-herdr        the only code that knows herdr exists
+#   zeddy-vt           the only code that knows a VT parser exists
+#   zeddy-plugin       the contract a native plugin is written against
+#   zeddy-plugin-host  the only code that loads foreign code
+#   zeddy              the window, and nothing a lower crate could own
+#
+# Nothing above depends on anything below it out of order, and no crate but
+# `zeddy` links GPUI's platform backend.
+[workspace]
+resolver = "3"
+members = [
+    "crates/zeddy",
+    "crates/zeddy-herdr",
+    "crates/zeddy-plugin",
+    "crates/zeddy-plugin-host",
+    "crates/zeddy-vt",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+# Zed's `ui` and `theme` are GPL-3.0-or-later and zeddy links them directly, so
+# zeddy is too. See docs/adr/0002.
+license = "GPL-3.0-or-later"
+repository = "https://github.com/rengwu/chartr-zeddy"
+
+[workspace.dependencies]
+# --- the Zed layer -------------------------------------------------------
+#
+# One pinned Zed revision supplies three crates. `gpui` is the framework,
+# `gpui_platform` is the AppKit/Win32/Wayland backend, and `ui` + `theme` are
+# Zed's own component kit and color system — the reason zeddy looks native
+# rather than looks like a rewrite of native. Only `zeddy` may name
+# `gpui_platform`: a plugin that linked a second window-server backend would
+# register a second application with the OS.
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false }
+# `font-kit` is NOT in gpui_platform's default features, and without it macOS
+# falls back to a text system that rasterises nothing: a window that paints
+# every quad and icon correctly and shows not one glyph, with the explanation
+# behind a `log::warn!` that an app with no logger never sees. It is enabled
+# here on purpose, and `fonts::available` checks the result at startup.
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", features = ["font-kit"] }
+ui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+# --- the terminal --------------------------------------------------------
+#
+# Zed's fork of alacritty's VT core. Taking the same parser Zed's own terminal
+# uses is the whole point of picking it over libghostty-vt: no Zig in the
+# build, and grid semantics that already agree with the renderer above them.
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
+
+# --- everything else -----------------------------------------------------
+anyhow = "1"
+# Frames arrive on a thread of their own and must wake the window's thread
+# without it polling. Already in the tree as one of GPUI's own dependencies, so
+# it costs nothing new to build.
+futures = "0.3"
+# herdr's control plane is NDJSON and its frame payloads are base64. That is
+# the entire wire format, so this is the entire wire dependency.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+toml = "0.9"
+# The whole of the native plugin loader. There is no renderer, RPC transport,
+# or display-list replay between a plugin's view and zeddy's element tree.
+libloading = "0.8"
+tempfile = "3"
+
+# The dev profile is the build whose window you actually drag. GPUI and the VT
+# core are both unusably slow at opt-level 0, and neither is code we are
+# debugging, so they are optimised even in dev while zeddy's own crates stay
+# fast to rebuild.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 0

@@ -1,0 +1,27 @@
+[package]
+name = "zeddy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+default-run = "zeddy"
+
+[dependencies]
+zeddy-herdr = { path = "../zeddy-herdr" }
+zeddy-plugin = { path = "../zeddy-plugin" }
+zeddy-plugin-host = { path = "../zeddy-plugin-host" }
+zeddy-vt = { path = "../zeddy-vt" }
+
+gpui.workspace = true
+# The one crate that may name the platform backend.
+gpui_platform.workspace = true
+ui.workspace = true
+theme.workspace = true
+
+anyhow.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true

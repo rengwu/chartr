@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Clock</title>
+<!--
+  The smallest complete web zeddy plugin: this file and a manifest. No Rust, no
+  toolchain, no ABI to match — the whole of the web tier's authoring contract is
+  a directory anyone can write by hand.
+
+  The trade is real and is the reason both tiers exist: this pane is composited
+  by a webview rather than painted on zeddy's own frame path, so it is a frame
+  behind the terminal beside it. For a clock that is invisible. For a star map
+  it would not be, and that is what `kind = "native"` is for.
+-->
+<style>
+  :root { color-scheme: dark light; }
+  body {
+    margin: 0;
+    height: 100vh;
+    display: grid;
+    place-items: center;
+    font: 500 64px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #1e1e1e;
+    color: #d0d0d0;
+  }
+  @media (prefers-color-scheme: light) {
+    body { background: #fafafa; color: #303030; }
+  }
+</style>
+<output id="now">--:--:--</output>
+<script>
+  const now = document.getElementById("now");
+  const tick = () => {
+    now.textContent = new Date().toLocaleTimeString([], { hour12: false });
+  };
+  tick();
+  setInterval(tick, 1000);
+</script>

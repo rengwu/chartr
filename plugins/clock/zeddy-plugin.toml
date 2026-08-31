@@ -1,0 +1,6 @@
+manifest_version = 1
+id = "com.example.clock"
+name = "Clock"
+version = "0.1.0"
+kind = "web"
+entry = "index.html"

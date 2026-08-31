@@ -1,0 +1,22 @@
+# A native zeddy plugin: one trait, one macro, one manifest.
+#
+# Deliberately not a member of zeddy's workspace. A plugin is built by whoever
+# wrote it, against a released zeddy, and building it here would hide the fact
+# that the contract has to hold across two separate builds.
+# Its own workspace root, so it is built the way a plugin author builds it:
+# `cargo build` in this directory, against a released zeddy-plugin.
+[workspace]
+
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# A real plugin points this at a released revision:
+#   zeddy-plugin = { git = "https://github.com/rengwu/chartr-zeddy", rev = "<release>" }
+zeddy-plugin = { path = "../../crates/zeddy-plugin" }
