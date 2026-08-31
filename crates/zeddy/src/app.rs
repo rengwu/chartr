@@ -2343,8 +2343,14 @@ impl Zeddy {
                     .min_w_0()
                     .group(drop_group.clone())
                     .on_drag_move::<DraggedItem>(move |event, _, cx| {
+                        let Some(direction) = pane_drop_direction_for_drag(event) else {
+                            // GPUI dispatches drag-move callbacks during capture even when the
+                            // pointer is outside this element. Zed keeps split intent on each
+                            // Pane entity; Chartr's shared space state must therefore ignore
+                            // callbacks from every pane except the one under the pointer.
+                            return;
+                        };
                         let accepted = event.drag(cx).space == drag_space;
-                        let direction = accepted.then(|| split_direction_for_drag(event)).flatten();
                         let _ = drag_move.update(cx, |this, cx| {
                             let changed = this.active.clone().is_some_and(|space| {
                                 space.update(cx, |space, _| {
@@ -3451,16 +3457,32 @@ fn setting_label(label: &'static str) -> AnyElement {
     Label::new(label).size(LabelSize::Small).color(Color::Muted).into_any_element()
 }
 
-fn split_direction_for_drag(event: &DragMoveEvent<DraggedItem>) -> Option<SplitDirection> {
+fn pane_drop_direction_for_drag(
+    event: &DragMoveEvent<DraggedItem>,
+) -> Option<Option<SplitDirection>> {
     let bounds = event.bounds;
     let x = event.event.position.x - bounds.left();
     let y = event.event.position.y - bounds.top();
-    split_direction_for_position(
+    pane_drop_direction_for_position(
         bounds.size.width.into(),
         bounds.size.height.into(),
         x.into(),
         y.into(),
     )
+}
+
+/// `None` means this pane is not under the pointer and must not overwrite a
+/// sibling's drag state. `Some(None)` is the pane's center drop target.
+fn pane_drop_direction_for_position(
+    width: f32,
+    height: f32,
+    x: f32,
+    y: f32,
+) -> Option<Option<SplitDirection>> {
+    if x < 0. || x > width || y < 0. || y > height {
+        return None;
+    }
+    Some(split_direction_for_position(width, height, x, y))
 }
 
 /// Zed's pane-body hit test. The edge band is 20% of the pane's shorter side;
@@ -3664,7 +3686,20 @@ fn plugin_paths() -> Paths {
 
 #[cfg(test)]
 mod pane_drop_tests {
-    use super::{SplitDirection, split_direction_for_position};
+    use super::{SplitDirection, pane_drop_direction_for_position, split_direction_for_position};
+
+    #[test]
+    fn panes_outside_the_pointer_do_not_overwrite_the_hovered_panes_drop_target() {
+        assert_eq!(pane_drop_direction_for_position(100., 100., -0.1, 50.), None);
+        assert_eq!(pane_drop_direction_for_position(100., 100., 100.1, 50.), None);
+        assert_eq!(pane_drop_direction_for_position(100., 100., 50., -0.1), None);
+        assert_eq!(pane_drop_direction_for_position(100., 100., 50., 100.1), None);
+        assert_eq!(pane_drop_direction_for_position(100., 100., 50., 50.), Some(None));
+        assert_eq!(
+            pane_drop_direction_for_position(100., 100., 5., 50.),
+            Some(Some(SplitDirection::Left))
+        );
+    }
 
     #[test]
     fn zed_drop_zone_has_a_center_and_four_edge_bands() {
