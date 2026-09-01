@@ -13,6 +13,7 @@ use super::{
     Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview,
     status_indicator,
 };
+use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 
 /// The sidebar's width. Fixed rather than draggable: a resizable sidebar is a
 /// preference to persist, a drag handle to hit-test, and a minimum to enforce,
@@ -45,7 +46,7 @@ pub fn render(
                 .pt_2()
                 .pb_1()
                 .justify_between()
-                .child(Label::new(space.name.clone()).size(LabelSize::XSmall).color(Color::Muted))
+                .child(Label::new(space.name.clone()).size(UI_LABEL_SMALL).color(Color::Muted))
                 .child(
                     h_flex()
                         .gap_px()
@@ -243,12 +244,12 @@ fn row(
             v_flex()
                 .flex_1()
                 .overflow_hidden()
-                .child(Label::new(entry.title.clone()).size(LabelSize::Small).truncate()),
+                .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate()),
         )
         .when(grouped, |row| {
             row.child(
                 Label::new(format!("{} tabs", entry.item_count))
-                    .size(LabelSize::XSmall)
+                    .size(UI_LABEL_SMALL)
                     .color(Color::Muted),
             )
         })

@@ -10,7 +10,10 @@ pub mod tabs;
 
 use std::rc::Rc;
 
-use crate::workspace::{ItemId, PaneId, WorkspaceTabId};
+use crate::{
+    fonts::UI_LABEL_DEFAULT,
+    workspace::{ItemId, PaneId, WorkspaceTabId},
+};
 use gpui::EntityId;
 use ui::{CommonAnimationExt, Tab, prelude::*};
 use zeddy_herdr::control::SessionStatus;
@@ -95,7 +98,7 @@ impl Render for DraggedItem {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         Tab::new(("dragged-item", self.item.get() as usize))
             .toggle_state(self.selected)
-            .child(Label::new(self.title.clone()).size(LabelSize::Small))
+            .child(Label::new(self.title.clone()).size(UI_LABEL_DEFAULT))
     }
 }
 
@@ -126,7 +129,7 @@ impl Render for DraggedItemPreview {
         div().relative().left(self.source_offset.x).top(self.source_offset.y).child(
             Tab::new(("dragged-item-preview", self.dragged.item.get() as usize))
                 .toggle_state(self.dragged.selected)
-                .child(Label::new(self.dragged.title.clone()).size(LabelSize::Small)),
+                .child(Label::new(self.dragged.title.clone()).size(UI_LABEL_DEFAULT)),
         )
     }
 }

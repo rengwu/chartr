@@ -29,7 +29,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 use crate::{
     actions,
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
-    fonts::Fonts,
+    fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::PluginItem,
     keys,
     mode::Mode,
@@ -2015,13 +2015,13 @@ impl Zeddy {
             Backend::Ready => {}
             Backend::Starting => notices.push(
                 Banner::new()
-                    .child(Label::new("Starting the terminal backend…").size(LabelSize::Small))
+                    .child(Label::new("Starting the terminal backend…").size(UI_LABEL_DEFAULT))
                     .into_any_element(),
             ),
             Backend::Recovering(detail) => notices.push(
                 Banner::new()
                     .severity(Severity::Warning)
-                    .child(Label::new(detail).size(LabelSize::Small))
+                    .child(Label::new(detail).size(UI_LABEL_DEFAULT))
                     .into_any_element(),
             ),
             Backend::Failed(detail) => {
@@ -2032,7 +2032,7 @@ impl Zeddy {
                     Banner::new()
                         .severity(Severity::Error)
                         .wrap_content(true)
-                        .child(Label::new(detail).size(LabelSize::Small))
+                        .child(Label::new(detail).size(UI_LABEL_DEFAULT))
                         .action_slot(
                             h_flex()
                                 .gap_1()
@@ -2050,7 +2050,7 @@ impl Zeddy {
             notices.push(
                 Banner::new()
                     .severity(Severity::Warning)
-                    .child(Label::new(problem).size(LabelSize::Small))
+                    .child(Label::new(problem).size(UI_LABEL_DEFAULT))
                     .into_any_element(),
             );
         }
@@ -2058,7 +2058,7 @@ impl Zeddy {
             notices.push(
                 Banner::new()
                     .severity(Severity::Warning)
-                    .child(Label::new(problem).size(LabelSize::Small))
+                    .child(Label::new(problem).size(UI_LABEL_DEFAULT))
                     .into_any_element(),
             );
         }
@@ -2260,7 +2260,7 @@ impl Zeddy {
                                 div().absolute().left_2().right_2().bottom_2().child(
                                     Banner::new()
                                         .severity(Severity::Error)
-                                        .child(Label::new(detail).size(LabelSize::Small))
+                                        .child(Label::new(detail).size(UI_LABEL_DEFAULT))
                                         .when(
                                             matches!(ended, crate::session::Ended::Failed(_)),
                                             |banner| {
@@ -2522,7 +2522,7 @@ impl Zeddy {
                             close_item(Action::Close { space: None, item: close }, window, cx)
                         }),
                     )
-                    .child(Label::new(item.title()).size(LabelSize::Small).truncate())
+                    .child(Label::new(item.title()).size(UI_LABEL_DEFAULT).truncate())
                     .into_any_element(),
             )
         });
@@ -2595,12 +2595,10 @@ impl Zeddy {
                         h_flex()
                             .w_full()
                             .justify_between()
-                            .child(Label::new(label).size(LabelSize::Small))
+                            .child(Label::new(label).size(UI_LABEL_DEFAULT))
                             .when(!shortcut.is_empty(), |row| {
                                 row.child(
-                                    Label::new(shortcut)
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Muted),
+                                    Label::new(shortcut).size(UI_LABEL_SMALL).color(Color::Muted),
                                 )
                             }),
                     )
@@ -2716,7 +2714,7 @@ impl Zeddy {
                         .bg(cx.theme().colors().elevated_surface_background)
                         .shadow_lg()
                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(Label::new("Rename Space").size(LabelSize::Large))
+                        .child(Label::new("Rename Space").size(UI_LABEL_LARGE))
                         .child(
                             h_flex()
                                 .h(px(36.))
@@ -2751,6 +2749,7 @@ impl Focusable for Zeddy {
 
 impl Render for Zeddy {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ui_font = Fonts::setup_ui(window, cx);
         let bounds = match window.window_bounds() {
             gpui::WindowBounds::Windowed(bounds)
             | gpui::WindowBounds::Maximized(bounds)
@@ -2818,6 +2817,8 @@ impl Render for Zeddy {
                 "Chartr"
             })
             .size_full()
+            .font(ui_font)
+            .text_size(UI_TEXT_DEFAULT)
             .bg(background)
             .text_color(text)
             .on_drag_move::<chrome::DraggedSidebar>(cx.listener(
@@ -3122,7 +3123,7 @@ fn empty_pane_message(text: &str, cx: &App) -> impl IntoElement {
         .p_2()
         .items_center()
         .justify_center()
-        .child(Label::new(text.to_owned()).size(LabelSize::Small).color(Color::Muted))
+        .child(Label::new(text.to_owned()).size(UI_LABEL_DEFAULT).color(Color::Muted))
         .bg(cx.theme().colors().editor_background)
 }
 

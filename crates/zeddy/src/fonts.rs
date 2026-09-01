@@ -8,8 +8,9 @@
 
 use std::borrow::Cow;
 
-use gpui::{App, Font, Pixels, px};
+use gpui::{App, Font, Pixels, Rems, Window, px};
 use theme::{ThemeSettingsProvider, UiDensity};
+use ui::LabelSize;
 
 use crate::settings::ResolvedSettings;
 
@@ -21,10 +22,20 @@ pub struct Fonts {
     buffer_size: Pixels,
 }
 
-/// Chartr's typography defaults. IBM Plex Sans comes from Zed's asset bundle;
-/// Mono is bundled below because Zed does not ship that face.
-const UI_FAMILY: &str = "IBM Plex Sans";
+/// IBM Plex Sans comes from Zed's asset bundle; Mono is bundled below because
+/// Zed does not ship that face.
 const MONOSPACE_FAMILY: &str = "IBM Plex Mono";
+
+/// Chartr's semantic interface type scale. These values are relative to the
+/// configured `ui_font_size`, whose default is 14 px, so the default scale is
+/// exactly 14/12/10 px while still respecting the user's interface scale.
+pub const UI_TEXT_LARGE: Rems = Rems(1.);
+pub const UI_TEXT_DEFAULT: Rems = Rems(12. / 14.);
+pub const UI_TEXT_SMALL: Rems = Rems(10. / 14.);
+
+pub const UI_LABEL_LARGE: LabelSize = LabelSize::Custom(UI_TEXT_LARGE);
+pub const UI_LABEL_DEFAULT: LabelSize = LabelSize::Custom(UI_TEXT_DEFAULT);
+pub const UI_LABEL_SMALL: LabelSize = LabelSize::Custom(UI_TEXT_SMALL);
 
 const IBM_PLEX_MONO: &[u8] =
     include_bytes!("../assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf");
@@ -35,12 +46,7 @@ pub fn load_bundled(cx: &App) -> anyhow::Result<()> {
 
 impl Default for Fonts {
     fn default() -> Self {
-        Self {
-            ui: gpui::font(UI_FAMILY),
-            buffer: gpui::font(MONOSPACE_FAMILY),
-            ui_size: px(14.),
-            buffer_size: px(13.),
-        }
+        Self::from_settings(&ResolvedSettings::default())
     }
 }
 
@@ -62,6 +68,16 @@ impl Fonts {
     pub fn terminal(&self) -> (Font, Pixels, Pixels) {
         let size = self.buffer_size;
         (self.buffer.clone(), size, (size * 1.4).round())
+    }
+
+    /// Install the configured interface type scale on a window and return the
+    /// font its root should inherit. This is the same boundary as Zed's
+    /// `setup_ui_font`: `ui_font_size` is the root rem, so every UI component
+    /// and semantic `LabelSize` resolves from one user-controlled scale.
+    pub fn setup_ui(window: &mut Window, cx: &App) -> Font {
+        let settings = theme::theme_settings(cx);
+        window.set_rem_size(settings.ui_font_size(cx));
+        settings.ui_font(cx).clone()
     }
 }
 
@@ -105,7 +121,8 @@ mod tests {
 
     #[test]
     fn zeddy_names_a_family_on_every_platform() {
-        assert!(!MONOSPACE_FAMILY.is_empty() && !UI_FAMILY.is_empty());
+        let defaults = ResolvedSettings::default();
+        assert!(!MONOSPACE_FAMILY.is_empty() && !defaults.ui_font_family.is_empty());
     }
 
     #[test]

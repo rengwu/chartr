@@ -11,6 +11,7 @@ use ui::{ButtonSize, IconButtonShape, Tab, TabPosition, Tooltip, prelude::*};
 use super::Emit;
 
 use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
+use crate::fonts::UI_LABEL_DEFAULT;
 
 pub fn render(
     entries: &[Entry],
@@ -161,5 +162,5 @@ fn tab(
             cx,
         ))
         .end_slot::<AnyElement>(close_slot)
-        .child(Label::new(entry.title.clone()).size(LabelSize::Small).truncate())
+        .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate())
 }

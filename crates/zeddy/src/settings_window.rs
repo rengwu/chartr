@@ -18,7 +18,7 @@ use ui::{
 
 use crate::{
     app::Zeddy,
-    fonts::Fonts,
+    fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
     mode::Mode,
     persistence::SidebarScope,
@@ -502,7 +502,7 @@ impl SettingsWindow {
             return v_flex()
                 .gap_3()
                 .child(Button::new("plugin-settings-back", "Back to plugins").on_click(back))
-                .child(Label::new(plugin.clone()).size(LabelSize::XSmall).color(Color::Muted))
+                .child(Label::new(plugin.clone()).size(UI_LABEL_SMALL).color(Color::Muted))
                 .child(div().min_h(px(320.)).child(view.clone()))
                 .into_any_element();
         }
@@ -531,13 +531,13 @@ impl SettingsWindow {
             cx.listener(|this, _, _, cx| this.set_sidebar_scope(SidebarScope::ActiveSpace, cx));
         v_flex()
             .gap_4()
-            .child(Label::new("Chartr").size(LabelSize::Large))
+            .child(Label::new("Chartr").size(UI_LABEL_LARGE))
             .child(
                 Label::new(format!(
                     "Version {} · configuration namespace chartr-zeddy",
                     env!("CARGO_PKG_VERSION")
                 ))
-                .size(LabelSize::Small)
+                .size(UI_LABEL_SMALL)
                 .color(Color::Muted),
             )
             .child(
@@ -546,10 +546,10 @@ impl SettingsWindow {
                     .gap_4()
                     .child(
                         v_flex()
-                            .child(Label::new("Terminate sessions on exit").size(LabelSize::Small))
+                            .child(Label::new("Terminate sessions on exit").size(UI_LABEL_DEFAULT))
                             .child(
                                 Label::new("Normal app exit detaches and leaves sessions running.")
-                                    .size(LabelSize::XSmall)
+                                    .size(UI_LABEL_SMALL)
                                     .color(Color::Muted),
                             ),
                     )
@@ -568,9 +568,9 @@ impl SettingsWindow {
                     .justify_between()
                     .gap_4()
                     .child(
-                        v_flex().child(Label::new("Session list").size(LabelSize::Small)).child(
+                        v_flex().child(Label::new("Session list").size(UI_LABEL_DEFAULT)).child(
                             Label::new("Show sessions in a sidebar or a tab strip.")
-                                .size(LabelSize::XSmall)
+                                .size(UI_LABEL_SMALL)
                                 .color(Color::Muted),
                         ),
                     )
@@ -597,9 +597,9 @@ impl SettingsWindow {
                     .justify_between()
                     .gap_4()
                     .child(
-                        v_flex().child(Label::new("Spaces shown").size(LabelSize::Small)).child(
+                        v_flex().child(Label::new("Spaces shown").size(UI_LABEL_DEFAULT)).child(
                             Label::new("Show every space or only the currently active space.")
-                                .size(LabelSize::XSmall)
+                                .size(UI_LABEL_SMALL)
                                 .color(Color::Muted),
                         ),
                     )
@@ -799,7 +799,7 @@ impl SettingsWindow {
                             .on_click(smaller),
                     )
                     .child(
-                        Label::new(format!("{} px", settings.ui_font_size)).size(LabelSize::Small),
+                        Label::new(format!("{} px", settings.ui_font_size)).size(UI_LABEL_DEFAULT),
                     )
                     .child(
                         IconButton::new("ui-font-larger", IconName::Plus)
@@ -856,7 +856,7 @@ impl SettingsWindow {
                     )
                     .child(
                         Label::new(format!("{} px", settings.terminal_font_size))
-                            .size(LabelSize::Small),
+                            .size(UI_LABEL_DEFAULT),
                     )
                     .child(
                         IconButton::new("terminal-font-larger", IconName::Plus)
@@ -908,7 +908,7 @@ impl SettingsWindow {
                     cx.notify();
                 });
                 table.row(vec![
-                    Label::new(action.title()).size(LabelSize::Small).into_any_element(),
+                    Label::new(action.title()).size(UI_LABEL_DEFAULT).into_any_element(),
                     Button::new(
                         format!("record-hotkey-{}", action.id()),
                         if recording == Some(action) {
@@ -917,7 +917,6 @@ impl SettingsWindow {
                             keymap.key(action).to_owned()
                         },
                     )
-                    .label_size(LabelSize::Default)
                     .toggle_state(recording == Some(action))
                     .on_click(capture)
                     .into_any_element(),
@@ -931,7 +930,7 @@ impl SettingsWindow {
                 view.child(
                     Banner::new()
                         .severity(Severity::Error)
-                        .child(Label::new(problem).size(LabelSize::Small)),
+                        .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
                 )
             })
             .when(self.keymap_restart_required, |view| {
@@ -939,14 +938,14 @@ impl SettingsWindow {
                     Label::new(
                         "Shortcut changes are saved. Restart Chartr to rebuild the application keymap.",
                     )
-                    .size(LabelSize::Small),
+                    .size(UI_LABEL_DEFAULT),
                 ))
             })
             .child(
                 Label::new(
                     "Click a shortcut, then press one key chord. Conflicts in the Chartr context are rejected.",
                 )
-                .size(LabelSize::XSmall)
+                .size(UI_LABEL_SMALL)
                 .color(Color::Muted),
             )
             .child(table)
@@ -1038,10 +1037,10 @@ impl SettingsWindow {
                             .justify_between()
                             .child(
                                 v_flex()
-                                    .child(Label::new(manifest.name).size(LabelSize::Small))
+                                    .child(Label::new(manifest.name).size(UI_LABEL_DEFAULT))
                                     .child(
                                         Label::new(manifest.id)
-                                            .size(LabelSize::XSmall)
+                                            .size(UI_LABEL_SMALL)
                                             .color(Color::Muted),
                                     ),
                             )
@@ -1055,7 +1054,7 @@ impl SettingsWindow {
                                 .on_click(toggle),
                             ),
                     )
-                    .child(Label::new(trust).size(LabelSize::XSmall).color(Color::Muted))
+                    .child(Label::new(trust).size(UI_LABEL_SMALL).color(Color::Muted))
                     .when_some(configure, |row, control| row.child(control))
                     .when_some(unsafe_control, |row, control| row.child(control))
             })
@@ -1065,7 +1064,7 @@ impl SettingsWindow {
             .map(|rejected| {
                 Banner::new().severity(Severity::Error).child(
                     Label::new(format!("{}: {}", rejected.dir.display(), rejected.why))
-                        .size(LabelSize::XSmall),
+                        .size(UI_LABEL_SMALL),
                 )
             })
             .collect();
@@ -1078,7 +1077,7 @@ impl SettingsWindow {
                         Label::new(
                             "Open Settings from a Chartr workspace to manage runtime plugins.",
                         )
-                        .size(LabelSize::Small),
+                        .size(UI_LABEL_DEFAULT),
                     ),
                 )
             })
@@ -1099,6 +1098,7 @@ impl Focusable for SettingsWindow {
 
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ui_font = Fonts::setup_ui(window, cx);
         let selected = self.page;
         let navigation: Vec<_> = SettingsPage::ALL
             .into_iter()
@@ -1128,7 +1128,7 @@ impl Render for SettingsWindow {
                         }
                         cx.notify();
                     }))
-                    .child(Label::new(page.title()).size(LabelSize::Small))
+                    .child(Label::new(page.title()).size(UI_LABEL_DEFAULT))
             })
             .collect();
         let unreadable = cx.global::<SettingsStore>().unreadable().map(str::to_owned);
@@ -1140,6 +1140,8 @@ impl Render for SettingsWindow {
             .key_context("ChartrSettings")
             .track_focus(&self.focus)
             .size_full()
+            .font(ui_font)
+            .text_size(UI_TEXT_DEFAULT)
             .bg(cx.theme().colors().background)
             .text_color(cx.theme().colors().text)
             .on_action(cx.listener(|_, _: &Close, window, _| window.remove_window()))
@@ -1162,12 +1164,12 @@ impl Render for SettingsWindow {
                             .child(
                                 div().px_3().pb_2().child(
                                     Label::new("Settings")
-                                        .size(LabelSize::Large)
+                                        .size(UI_LABEL_LARGE)
                                         .weight(FontWeight::SEMIBOLD),
                                 ),
                             )
                             .child(div().px_3().py_1().child(
-                                Label::new("Options").size(LabelSize::XSmall).color(Color::Muted),
+                                Label::new("Options").size(UI_LABEL_SMALL).color(Color::Muted),
                             ))
                             .children(navigation),
                     )
@@ -1184,19 +1186,19 @@ impl Render for SettingsWindow {
                                     .max_w(px(720.))
                                     .p_6()
                                     .gap_4()
-                                    .child(Label::new(page_title).size(LabelSize::Large))
+                                    .child(Label::new(page_title).size(UI_LABEL_LARGE))
                                     .when_some(unreadable, |view, problem| {
                                         view.child(
                                             Banner::new()
                                                 .severity(Severity::Error)
-                                                .child(Label::new(problem).size(LabelSize::Small)),
+                                                .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
                                         )
                                     })
                                     .when_some(self.problem.clone(), |view, problem| {
                                         view.child(
                                             Banner::new()
                                                 .severity(Severity::Error)
-                                                .child(Label::new(problem).size(LabelSize::Small)),
+                                                .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
                                         )
                                     })
                                     .child(content),
@@ -1207,15 +1209,15 @@ impl Render for SettingsWindow {
 }
 
 fn setting_label(label: &'static str) -> AnyElement {
-    Label::new(label).size(LabelSize::Small).color(Color::Muted).into_any_element()
+    Label::new(label).size(UI_LABEL_DEFAULT).color(Color::Muted).into_any_element()
 }
 
 fn setting_value(label: &'static str, value: String) -> AnyElement {
     h_flex()
         .justify_between()
         .gap_4()
-        .child(Label::new(label).size(LabelSize::Small).color(Color::Muted))
-        .child(Label::new(value).size(LabelSize::Small))
+        .child(Label::new(label).size(UI_LABEL_DEFAULT).color(Color::Muted))
+        .child(Label::new(value).size(UI_LABEL_DEFAULT))
         .into_any_element()
 }
 
