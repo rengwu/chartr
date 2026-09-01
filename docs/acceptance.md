@@ -64,6 +64,12 @@ and `Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
 `Settings`. Switching presentation or sidebar scope updates immediately and
 survives relaunch.
 
+In tabbed mode, the `+` control follows the last outer tab while they fit. When
+the tabs overflow, only the tabs scroll: `+` pins beside their right edge, and
+the chevron view-menu control remains pinned at the far right. The padded `+`
+cell retains a left divider against the scrolling tabs. Every tab retains its
+minimum clickable width, including pane-local tabs within grouped workspaces.
+
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,
 movement between panes, and movement of the last source tab. Confirm the source

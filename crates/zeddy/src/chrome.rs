@@ -14,9 +14,15 @@ use crate::{
     fonts::UI_LABEL_DEFAULT,
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
-use gpui::{EntityId, Pixels};
+use gpui::{EntityId, Pixels, SharedString};
 use ui::{CommonAnimationExt, prelude::*};
 use zeddy_herdr::control::SessionStatus;
+
+const TAB_LABEL_MIN_WIDTH: f32 = 24.;
+
+pub(crate) fn tab_label(title: impl Into<SharedString>) -> impl IntoElement {
+    div().min_w(px(TAB_LABEL_MIN_WIDTH)).child(Label::new(title).size(UI_LABEL_DEFAULT).truncate())
+}
 
 /// One row in the sidebar, or one tab in the strip.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -2605,7 +2605,7 @@ impl Zeddy {
                             close_item(Action::Close { space: None, item: close }, window, cx)
                         }),
                     )
-                    .child(Label::new(item.title()).size(UI_LABEL_DEFAULT).truncate())
+                    .child(chrome::tab_label(item.title()))
                     .into_any_element(),
             )
         });

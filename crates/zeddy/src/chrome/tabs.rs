@@ -14,8 +14,6 @@ use ui::{
 use super::Emit;
 
 use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
-use crate::fonts::UI_LABEL_DEFAULT;
-
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 pub fn render(
@@ -27,15 +25,35 @@ pub fn render(
 ) -> impl IntoElement {
     let menu_actions = on.clone();
     let active_index = entries.iter().position(|entry| entry.selected);
+    let tabs_with_pinned_new_item = h_flex()
+        .w_full()
+        .min_w_0()
+        .h_full()
+        .child(
+            h_flex()
+                .id("workspace-tab-list")
+                .min_w_0()
+                .flex_shrink_1()
+                .overflow_x_scroll()
+                .children(entries.iter().enumerate().map(|(index, entry)| {
+                    tab(index, entries.len(), active_index, entry, on.clone(), cx)
+                })),
+        )
+        .child(
+            h_flex()
+                .h_full()
+                .flex_none()
+                // Collapse this divider onto the last tab's border.
+                .ml(px(-1.))
+                .px(DynamicSpacing::Base04.rems(cx))
+                .border_l_1()
+                .border_color(cx.theme().colors().border)
+                .child(new_item),
+        );
 
     TabBar::new("workspace-tabs")
         .start_child(h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher))
-        .children(
-            entries.iter().enumerate().map(|(index, entry)| {
-                tab(index, entries.len(), active_index, entry, on.clone(), cx)
-            }),
-        )
-        .end_child(new_item)
+        .child(tabs_with_pinned_new_item)
         .end_child(
             PopoverMenu::new("chrome-menu")
                 .trigger_with_tooltip(
@@ -167,7 +185,7 @@ fn tab(
             cx,
         ))
         .end_slot::<AnyElement>(close_slot)
-        .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate());
+        .child(super::tab_label(entry.title.clone()));
 
     if grouped {
         right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
