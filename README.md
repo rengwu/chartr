@@ -47,7 +47,10 @@ standalone item and every pane group as one outer entry. Sidebar mode can show
 all spaces or only the active space; tabbed mode keeps the active space's outer
 entries beside its name. Selecting a group reveals its Zed-style draggable
 pane-local tab bars, while a standalone has no duplicate inner bar. Switching
-presentation never reparents or recreates an item.
+presentation never reparents or recreates an item. In All Spaces, drag a space
+heading to reorder its whole card. The card stays locked to the sidebar's X axis,
+continues tracking vertically outside the sidebar, autoscrolls at the list edges,
+and settles into the closest legal slot at release.
 
 Terminal titles follow Herdr's live view of the PTY, as in Chartr-rs: a detected
 agent wins, otherwise the non-shell foreground process is shown, and an idle
@@ -67,7 +70,8 @@ Chartr Dark is the fixed default. Appearance exposes the same Ayu, Catppuccin,
 Gruvbox, One, and VS Code catalog as Chartr-rs, plus Chartr Dark and Chartr
 Light. Fixed mode chooses one theme; Match System keeps independent light and
 dark selections. IBM Plex Sans and the bundled IBM Plex Mono are configurable
-defaults.
+defaults. Reduce Motion disables the short space-sort settle animation while
+retaining direct pointer tracking.
 
 User-editable data remains text:
 
@@ -75,9 +79,12 @@ User-editable data remains text:
 - `$XDG_CONFIG_HOME/chartr-zeddy/keymap.toml`
 - `$XDG_CONFIG_HOME/chartr-zeddy/spaces.toml`
 
-Application-owned window, chrome, pane, selection, and restorable-item state is
-versioned SQLite under `$XDG_STATE_HOME/chartr-zeddy/state.sqlite`. No existing
-Go Chartr or Chartr-rs configuration is imported automatically.
+Application-owned window, chrome, full space order, pane, selection, and
+restorable-item state is versioned SQLite under
+`$XDG_STATE_HOME/chartr-zeddy/state.sqlite`. Registered folder order is also the
+file order in `spaces.toml`, so a registry write failure rejects and rolls back
+the drop. No existing Go Chartr or Chartr-rs configuration is imported
+automatically.
 
 Normal app exit detaches sessions. An optional setting terminates them instead.
 The private Herdr runtime uses an exact socket under

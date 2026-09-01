@@ -14,8 +14,8 @@ use std::{
 };
 
 use gpui::{
-    Anchor, AnyView, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, PathPromptOptions,
-    Role,
+    Anchor, AnyView, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, MouseButton,
+    PathPromptOptions, Role,
 };
 use ui::{
     Banner, ButtonLike, ButtonSize, ContextMenu, IconButtonShape, IconPosition, ListItem,
@@ -130,6 +130,7 @@ pub struct Zeddy {
     supervision_started: bool,
     registry: Option<Registry>,
     spaces: Vec<Entity<Space>>,
+    space_sorter: chrome::sidebar::SpaceSorter,
     active: Option<Entity<Space>>,
     mode: Mode,
     catalog: Catalog,
@@ -156,6 +157,7 @@ impl Zeddy {
         let settings = cx.global::<SettingsStore>().clone();
         cx.observe_global::<SettingsStore>(|this, cx| {
             this.settings = cx.global::<SettingsStore>().clone();
+            cx.set_reduce_motion(this.settings.resolved().reduce_motion);
             cx.notify();
         })
         .detach();
@@ -194,6 +196,7 @@ impl Zeddy {
                     supervision_started: false,
                     registry: None,
                     spaces: Vec::new(),
+                    space_sorter: chrome::sidebar::SpaceSorter::default(),
                     active: None,
                     mode: Mode::default(),
                     catalog: Catalog::default(),
@@ -269,6 +272,7 @@ impl Zeddy {
                 space
             })
             .collect();
+        let spaces = restore_space_order(spaces, &saved.spaces, cx);
         for space in &spaces {
             let key = space.read(cx).persisted().key;
             if let Some(saved_space) = saved.spaces.iter().find(|saved| saved.key == key) {
@@ -307,6 +311,7 @@ impl Zeddy {
             supervision_started: false,
             registry,
             spaces,
+            space_sorter: chrome::sidebar::SpaceSorter::default(),
             active,
             mode: saved.window.chrome,
             catalog,
@@ -780,6 +785,7 @@ impl Zeddy {
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
+            Action::BeginSpaceDrag { at } => self.space_sorter.press(at),
             Action::OpenSettings => self.open_settings(window, cx),
             Action::New => {
                 if matches!(self.backend, Backend::Ready)
@@ -844,6 +850,74 @@ impl Zeddy {
             }
         }
         cx.notify();
+    }
+
+    fn finish_space_drag(
+        &mut self,
+        pointer_y: gpui::Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let now = cx.background_executor().now();
+        let Some((space, target)) =
+            self.space_sorter.drop_at(pointer_y, window.rem_size(), now, cx.reduce_motion())
+        else {
+            return;
+        };
+        if self.commit_space_order(space, target, cx) {
+            self.space_sorter.accept_drop(now, cx.reduce_motion());
+        } else {
+            // The registry is the durable folder-list authority. If it refuses
+            // the arrangement, the temporary drawn order was never a model
+            // change and disappears in one frame.
+            self.space_sorter.cancel();
+        }
+        cx.notify();
+    }
+
+    fn commit_space_order(&mut self, space: EntityId, target: usize, cx: &App) -> bool {
+        let Some(from) = self.spaces.iter().position(|candidate| candidate.entity_id() == space)
+        else {
+            return false;
+        };
+        let target = target.min(self.spaces.len().saturating_sub(1));
+        if from == target {
+            return true;
+        }
+
+        let mut candidate = self.spaces.clone();
+        let moved = candidate.remove(from);
+        candidate.insert(target, moved);
+
+        let Some(registry) = self.registry.as_ref() else {
+            self.problem = Some("the space registry is unavailable".into());
+            return false;
+        };
+        // The synthetic Free space has no registry row unless the operator had
+        // explicitly registered its directory. Recovered state-only folders
+        // likewise stay out. The remaining projection names every registry row
+        // exactly once and preserves its relative sidebar order.
+        let registered: Vec<_> = candidate
+            .iter()
+            .filter_map(|space| {
+                let path = space.read(cx).path();
+                registry
+                    .spaces()
+                    .iter()
+                    .any(|registered| spaces::same_path(registered.path(), path))
+                    .then(|| path.clone())
+            })
+            .collect();
+        match self.registry.as_mut().expect("checked above").reorder(&registered) {
+            Ok(_) => {
+                self.spaces = candidate;
+                true
+            }
+            Err(error) => {
+                self.problem = Some(error.to_string());
+                false
+            }
+        }
     }
 
     fn close_active_item(&mut self, cx: &mut Context<Self>) {
@@ -1415,6 +1489,7 @@ impl Zeddy {
             return;
         }
         if event.keystroke.key == "escape" && cx.stop_active_drag(window) {
+            self.space_sorter.cancel();
             if let Some(space) = self.active.clone() {
                 space.update(cx, |space, _| {
                     space.clear_drag_target();
@@ -2707,7 +2782,12 @@ impl Render for Zeddy {
         self.restore_plugins_once(window, cx);
         self.persist_if_changed(cx);
         let entries = self.entries(cx);
-        let sidebar_spaces = self.sidebar_spaces(cx);
+        let now = cx.background_executor().now();
+        if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
+            window.request_animation_frame();
+        }
+        let mut sidebar_spaces = self.sidebar_spaces(cx);
+        self.space_sorter.arrange(&mut sidebar_spaces, |space| space.id);
         let chrome_entries: &[Entry] = &entries;
         let switcher = self.space_switcher(window, cx);
         let new_item = self.new_item_menu(cx);
@@ -2734,6 +2814,7 @@ impl Render for Zeddy {
                     &sidebar_spaces,
                     switcher,
                     emit.clone(),
+                    &self.space_sorter,
                     self.sidebar_width,
                     cx,
                 ))
@@ -2771,6 +2852,34 @@ impl Render for Zeddy {
                     cx.notify();
                 },
             ))
+            .on_drag_move::<chrome::DraggedSpace>(cx.listener(
+                |this, event: &DragMoveEvent<chrome::DraggedSpace>, window, cx| {
+                    let dragged = event.drag(cx).0;
+                    let order = this.spaces.iter().map(|space| space.entity_id()).collect();
+                    if this.space_sorter.drag_move(
+                        dragged,
+                        order,
+                        event.event.position,
+                        window.rem_size(),
+                        cx.background_executor().now(),
+                        cx.reduce_motion(),
+                    ) {
+                        cx.notify();
+                    }
+                },
+            ))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseUpEvent, window, cx| {
+                    this.finish_space_drag(event.position.y, window, cx)
+                }),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|this, event: &gpui::MouseUpEvent, window, cx| {
+                    this.finish_space_drag(event.position.y, window, cx)
+                }),
+            )
             .on_action(cx.listener(|this, _: &actions::pane::CloseActiveItem, _, cx| {
                 this.close_active_item(cx)
             }))
@@ -2820,6 +2929,35 @@ impl Render for Zeddy {
             .children(command_palette)
             .children(rename_space)
     }
+}
+
+/// Seats every space the current registry/state can recover in the last saved
+/// full-vector order. Registry-only additions retain file order at the end;
+/// an older snapshot that predates the synthetic Free entry gets that entry at
+/// the front instead of unexpectedly moving it behind every recovered folder.
+fn restore_space_order(
+    mut spaces: Vec<Entity<Space>>,
+    saved: &[crate::persistence::PersistedSpace],
+    cx: &App,
+) -> Vec<Entity<Space>> {
+    if saved.is_empty() {
+        return spaces;
+    }
+    let mut ordered = Vec::with_capacity(spaces.len());
+    for saved in saved {
+        let Some(index) = spaces.iter().position(|space| space.read(cx).key() == saved.key) else {
+            continue;
+        };
+        ordered.push(spaces.remove(index));
+    }
+    if !saved.iter().any(|space| space.kind == PersistedSpaceKind::AdHoc)
+        && let Some(index) =
+            spaces.iter().position(|space| space.read(cx).kind() == SpaceKind::AdHoc)
+    {
+        ordered.insert(0, spaces.remove(index));
+    }
+    ordered.extend(spaces);
+    ordered
 }
 
 fn pane_drop_direction_for_drag(

@@ -43,6 +43,7 @@ fn main() {
         // Zed themes before applying the user-global selection.
         theme::init(theme::LoadThemes::All(Box::new(zed_assets::Assets)), cx);
         settings::init_themes(settings.resolved(), cx);
+        cx.set_reduce_motion(settings.resolved().reduce_motion);
         if let Err(error) = zed_assets::Assets.load_fonts(cx) {
             eprintln!("Chartr could not load its bundled fonts: {error}");
         }

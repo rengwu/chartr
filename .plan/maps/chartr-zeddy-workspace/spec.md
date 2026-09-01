@@ -45,6 +45,12 @@ local draggable pane tab bars, while selecting a standalone item renders no
 redundant inner bar. Only the active pane exposes compact split/zoom controls.
 Presentation never changes item ownership.
 
+In the all-spaces sidebar, space headings directly sort their complete cards.
+Sorting uses measured variable-height midpoints, remains active during horizontal
+overdrag, resolves the final slot from release Y, and autoscrolls at the vertical
+edges. A short interruptible FLIP transition settles displaced cards unless the
+user enables Reduce Motion.
+
 Use Zed's existing GPUI, UI, and theme crates and their components, semantic
 colors, spacing, typography, focus, accessibility, menu, modal, notification,
 and drag-and-drop conventions. Chartr owns product composition, not replacement
@@ -158,6 +164,8 @@ configuration automatically.
 88. As a Chartr user, I want a fresh installation to open the empty Ad-hoc space without spawning a terminal, so that startup has no unnecessary process side effect.
 89. As a Chartr user, I want window geometry, pane ratios, expansion state, selection, and chrome restored, so that the entire cockpit returns after relaunch.
 90. As an existing Chartr user, I want Chartr-zeddy data isolated from older installations, so that the rewrite cannot corrupt or conflict with existing settings.
+91. As a Chartr user, I want to drag-sort every sidebar space, including Free sessions and recovered folders, so that the cockpit order matches my workflow and survives relaunch.
+92. As an accessibility user, I want Reduce Motion to disable space-sort settling without disabling direct manipulation, so that reordering remains usable with less animation.
 
 ## Implementation Decisions
 
@@ -228,6 +236,11 @@ configuration automatically.
 - Sidebar mode persists an All Spaces or Active Space submode. Selecting an item
   from another space activates its space, pane, and item as one operation.
 - The sidebar is resizable with bounded width. Tabbed mode is active-space-only.
+  All-Spaces card sorting is a window-owned, space-specific interaction: the
+  complete card carries only on Y, live order changes at measured card
+  midpoints, tracked-scroll edge autoscroll follows Zed's curve, and release
+  outside the sidebar resolves the closest legal Y slot. Displaced cards use an
+  interruptible fixed 150 ms quintic FLIP unless Reduce Motion is enabled.
 - User-visible actions are semantic GPUI actions with contextual keybindings.
   Platform defaults follow Zed except that terminal focus does not override the
   requested `Cmd/Ctrl+W` close behavior.
@@ -292,7 +305,7 @@ configuration automatically.
   newly empty splits and outer tabs, and retains spaces plus space-bound plugins.
 - Herdr is authoritative for live session existence. Orphaned sessions enter the
   owning space as standalone outer tabs; stale saved terminal items are dropped.
-- Versioned SQLite persistence stores space identities, ordered outer workspace
+- Versioned SQLite persistence stores ordered space identities, ordered outer workspace
   tabs, pane trees, item records, active state, split ratios, window bounds,
   sidebar width/submode, chrome mode, expansion state, and migrations. A legacy
   single pane tree migrates to one outer workspace tab.
@@ -321,7 +334,10 @@ configuration automatically.
 - Chrome tests assert that switching Tabbed, Sidebar/All Spaces, and Sidebar/Active
   Space changes only presentation; both chromes show the same standalone and
   grouped outer entries. Selecting and creating items from inactive groups must
-  activate the correct space, outer tab, and pane without duplication.
+  activate the correct space, outer tab, and pane without duplication. Sorter
+  tests cover variable-height midpoint order, final release Y, interruptible
+  FLIP, Reduce Motion, durable relaunch order, and registry-write rollback;
+  pointer acceptance covers horizontal overdrag and edge autoscroll.
 - Action tests use semantic commands and contexts, including close, Settings close,
   split, join, focus, move, zoom, palette dispatch, and keybinding conflicts.
 - Settings tests cover default resolution, sparse user content, atomic updates,
@@ -366,6 +382,8 @@ configuration automatically.
 - A generic process-supervisor framework or backend administration UI.
 - Phosphor compatibility or user-selectable application-control icon sets.
 - Exposing non-default UI density before it has dedicated visual acceptance.
+- A command, keybinding, or Hotkeys row for space sorting.
+- A reusable generic sortable framework or user-configurable sort animation.
 
 ## Further Notes
 

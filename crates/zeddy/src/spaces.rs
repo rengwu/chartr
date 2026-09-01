@@ -154,6 +154,39 @@ impl Registry {
         Ok(())
     }
 
+    /// Replaces the registered-space order with a complete path permutation.
+    ///
+    /// The candidate is validated before the in-memory registry changes. A
+    /// failed write restores the previous order, so the sidebar can reject a
+    /// drop without ever presenting an arrangement the next launch would lose.
+    pub fn reorder(&mut self, paths: &[PathBuf]) -> Result<bool, Error> {
+        if paths.len() != self.spaces.len() {
+            return Err(Error::BadReorder);
+        }
+        let mut remaining = self.spaces.clone();
+        let mut candidate = Vec::with_capacity(remaining.len());
+        for path in paths {
+            let Some(index) = remaining.iter().position(|space| same_path(space.path(), path))
+            else {
+                return Err(Error::BadReorder);
+            };
+            candidate.push(remaining.remove(index));
+        }
+        if !remaining.is_empty() {
+            return Err(Error::BadReorder);
+        }
+        if candidate == self.spaces {
+            return Ok(false);
+        }
+
+        let previous = std::mem::replace(&mut self.spaces, candidate);
+        if let Err(error) = self.save() {
+            self.spaces = previous;
+            return Err(error);
+        }
+        Ok(true)
+    }
+
     pub fn relocate(
         &mut self,
         old_path: impl AsRef<Path>,
@@ -298,6 +331,7 @@ pub enum Error {
     NoConfigRoot,
     BadName,
     DuplicateFolder(PathBuf),
+    BadReorder,
 }
 
 impl Error {
@@ -340,6 +374,9 @@ impl fmt::Display for Error {
             Self::DuplicateFolder(path) => {
                 write!(f, "{} is already registered as another space", path.display())
             }
+            Self::BadReorder => {
+                write!(f, "a space reorder must name every registered folder exactly once")
+            }
         }
     }
 }
@@ -357,7 +394,8 @@ impl std::error::Error for Error {
             | Self::NotUnicode { .. }
             | Self::NoConfigRoot
             | Self::BadName
-            | Self::DuplicateFolder(_) => None,
+            | Self::DuplicateFolder(_)
+            | Self::BadReorder => None,
         }
     }
 }
@@ -445,5 +483,70 @@ mod tests {
 
         assert!(written.contains("future_top = \"kept\""));
         assert!(written.contains("future_row = 42"));
+    }
+
+    #[test]
+    fn reordered_spaces_survive_relaunch_in_file_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        let third = temp.path().join("third");
+        for folder in [&first, &second, &third] {
+            fs::create_dir(folder).unwrap();
+        }
+        let file = temp.path().join("spaces.toml");
+        let mut registry = Registry::load(&file).unwrap();
+        for folder in [&first, &second, &third] {
+            registry.register(folder).unwrap();
+        }
+
+        assert!(registry.reorder(&[third.clone(), first.clone(), second.clone()]).unwrap());
+        let relaunched = Registry::load(file).unwrap();
+        let order: Vec<_> = relaunched.spaces().iter().map(|space| space.path()).collect();
+        assert_eq!(order, vec![&third, &first, &second]);
+    }
+
+    #[test]
+    fn invalid_reorders_are_rejected_without_mutating_the_registry() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+        let mut registry = Registry::load(temp.path().join("spaces.toml")).unwrap();
+        registry.register(&first).unwrap();
+        registry.register(&second).unwrap();
+
+        assert!(matches!(registry.reorder(std::slice::from_ref(&first)), Err(Error::BadReorder)));
+        assert!(matches!(
+            registry.reorder(&[first.clone(), first.clone()]),
+            Err(Error::BadReorder)
+        ));
+        assert_eq!(registry.spaces()[0].path(), &first);
+        assert_eq!(registry.spaces()[1].path(), &second);
+    }
+
+    #[test]
+    fn no_op_avoids_io_and_a_failed_write_rolls_back_memory() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+        let config = temp.path().join("config");
+        let file = config.join("spaces.toml");
+        let mut registry = Registry::load(&file).unwrap();
+        registry.register(&first).unwrap();
+        registry.register(&second).unwrap();
+
+        // Leave the loaded registry pointing at a path whose parent is now a
+        // plain file. This reliably fails staging on every platform without
+        // relying on permission behavior under a privileged test runner.
+        fs::rename(&config, temp.path().join("moved-config")).unwrap();
+        fs::write(&config, "not a directory").unwrap();
+
+        assert!(!registry.reorder(&[first.clone(), second.clone()]).unwrap());
+        assert!(registry.reorder(&[second, first.clone()]).is_err());
+        assert_eq!(registry.spaces()[0].path(), &first);
     }
 }

@@ -534,6 +534,7 @@ impl Space {
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }
+            | Action::BeginSpaceDrag { .. }
             | Action::OpenSettings => {}
         }
         cx.notify();

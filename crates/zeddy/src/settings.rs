@@ -71,6 +71,7 @@ pub enum ThemeMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedSettings {
     pub terminate_sessions_on_exit: bool,
+    pub reduce_motion: bool,
     pub theme_mode: ThemeMode,
     pub fixed_theme: String,
     pub light_theme: String,
@@ -87,6 +88,7 @@ impl Default for ResolvedSettings {
     fn default() -> Self {
         Self {
             terminate_sessions_on_exit: false,
+            reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: CHARTR_DARK.to_owned(),
             light_theme: CHARTR_LIGHT.to_owned(),
@@ -148,6 +150,8 @@ pub struct GeneralContent {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 pub struct AppearanceContent {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_motion: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub theme_mode: Option<ThemeMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixed_theme: Option<String>,
@@ -185,6 +189,9 @@ impl SettingsContent {
             terminate_sessions_on_exit: general
                 .and_then(|content| content.terminate_sessions_on_exit)
                 .unwrap_or(defaults.terminate_sessions_on_exit),
+            reduce_motion: appearance
+                .and_then(|content| content.reduce_motion)
+                .unwrap_or(defaults.reduce_motion),
             theme_mode: appearance
                 .and_then(|content| content.theme_mode)
                 .unwrap_or(defaults.theme_mode),
@@ -1041,6 +1048,7 @@ mod tests {
         assert_eq!(resolved.ui_font_family, "IBM Plex Sans");
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, CHARTR_DARK);
+        assert!(!resolved.reduce_motion);
     }
 
     #[test]
@@ -1051,10 +1059,12 @@ mod tests {
         store
             .update(|content| {
                 content.terminal.get_or_insert_default().font_size = Some(17.);
+                content.appearance.get_or_insert_default().reduce_motion = Some(true);
             })
             .unwrap();
         let relaunched = SettingsStore::load(&file);
         assert_eq!(relaunched.resolved().terminal_font_size, 17.);
+        assert!(relaunched.resolved().reduce_motion);
         assert!(fs::read_to_string(file).unwrap().starts_with("# Chartr-zeddy"));
     }
 

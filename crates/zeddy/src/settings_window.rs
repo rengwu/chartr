@@ -166,6 +166,7 @@ impl SettingsWindow {
     ) {
         match settings::update_global(cx, mutate) {
             Ok(resolved) => {
+                cx.set_reduce_motion(resolved.reduce_motion);
                 if apply_theme {
                     settings::apply_theme(&resolved, cx);
                 }
@@ -204,6 +205,18 @@ impl SettingsWindow {
             },
             true,
             true,
+            cx,
+        );
+    }
+
+    fn set_reduce_motion(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.update_settings(
+            move |content| {
+                content.appearance.get_or_insert_with(AppearanceContent::default).reduce_motion =
+                    Some(enabled);
+            },
+            false,
+            false,
             cx,
         );
     }
@@ -701,6 +714,9 @@ impl SettingsWindow {
             .collect();
         let fixed_mode = cx.listener(|this, _, _, cx| this.set_theme_mode(ThemeMode::Fixed, cx));
         let system_mode = cx.listener(|this, _, _, cx| this.set_theme_mode(ThemeMode::System, cx));
+        let reduce_motion = settings.reduce_motion;
+        let toggle_reduce_motion =
+            cx.listener(move |this, _, _, cx| this.set_reduce_motion(!reduce_motion, cx));
         let font = cx.weak_entity();
         let smaller = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(-1., cx));
         let larger = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(1., cx));
@@ -806,6 +822,24 @@ impl SettingsWindow {
                         IconButton::new("ui-font-larger", IconName::Plus)
                             .tooltip(Tooltip::text("Increase interface font size"))
                             .on_click(larger),
+                    ),
+            )
+            .child(setting_label("Motion"))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .gap_4()
+                    .child(
+                        v_flex().child(Label::new("Reduce motion").size(UI_LABEL_DEFAULT)).child(
+                            Label::new("Disable movement animations when space cards are sorted.")
+                                .size(UI_LABEL_SMALL)
+                                .color(Color::Muted),
+                        ),
+                    )
+                    .child(
+                        Button::new("reduce-motion", if reduce_motion { "On" } else { "Off" })
+                            .toggle_state(reduce_motion)
+                            .on_click(toggle_reduce_motion),
                     ),
             )
             .into_any_element()

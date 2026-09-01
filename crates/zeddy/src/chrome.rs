@@ -14,7 +14,7 @@ use crate::{
     fonts::UI_LABEL_DEFAULT,
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
-use gpui::EntityId;
+use gpui::{EntityId, Pixels};
 use ui::{CommonAnimationExt, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
@@ -53,18 +53,34 @@ pub struct SpaceEntries {
 }
 
 /// What the user did to the chrome.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Select { space: Option<EntityId>, item: ItemId },
     Close { space: Option<EntityId>, item: ItemId },
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
     MoveWorkspaceTab { space: EntityId, tab: WorkspaceTabId, target_index: usize },
+    BeginSpaceDrag { at: Pixels },
     CloseSpace { space: EntityId },
     RenameSpace { space: EntityId },
     LocateSpace { space: EntityId },
     NewInSpace { space: EntityId },
     New,
     OpenSettings,
+}
+
+/// A whole sidebar space card in flight.
+///
+/// Space sorting deliberately has its own payload type. Session rows nested in
+/// the card continue to carry [`DraggedItem`], so GPUI dispatches the two drag
+/// gestures to different listeners without either surface inspecting or
+/// rejecting the other's values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DraggedSpace(pub EntityId);
+
+impl Render for DraggedSpace {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
 }
 
 /// How a chrome reports what the user did.

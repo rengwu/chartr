@@ -24,6 +24,7 @@ Review at 700×900, 1100×720, and a maximized window in both Chartr Dark and
 Chartr Light. Capture and compare:
 
 - empty Free sessions startup, one folder, and several spaces;
+- several variable-height space cards before, during, and after a reorder;
 - Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
 - empty space, one standalone tab, nested horizontal/vertical panes, resized dividers,
   and automatic split collapse after its last item moves or closes;
@@ -76,14 +77,27 @@ entry disappears, the target group remains selected, and no item is duplicated.
 Inspect the GPUI accessibility tree on macOS and Linux. Tabs and Settings
 navigation must expose roles, labels, and selection; Zed buttons and menus must
 retain their labels and focus rings; contrast must remain readable in both
-themes. Chartr introduces no animation, so reduced-motion mode requires no
-alternate transition path.
+themes.
+
+In Sidebar / All Spaces, drag the top, middle, and bottom cards by their headings.
+The complete card must track the pointer vertically without horizontal drift;
+neighbouring variable-height cards must change places only after their midpoints
+are crossed. Move the pointer beyond both vertical scroll edges and confirm
+Zed-style autoscroll. Move it horizontally into the workspace, continue upward
+or downward, and release there: the card must settle in the closest legal slot
+for that final Y. `Escape` and a simulated `spaces.toml` write failure must snap
+back to the model order. Repeat rapid direction reversals to confirm the 150 ms
+FLIP settle remains continuous. Enable Appearance / Reduce Motion and repeat:
+direct pointer carrying and sorting remain, while displaced-card and release
+settle animations are absent.
 
 ## Persistence and lifecycle
 
-Relaunch after changing window bounds, sidebar width/scope, mode, space names,
+Relaunch after changing window bounds, sidebar width/scope, mode, full space
+order (including Free sessions and a recovered missing folder), space names,
 outer-tab order, split ratios, active groups/panes/items, plugin Settings, and a
-missing folder. Confirm normal exit adopts detached terminals; item close kills exactly one session;
+missing folder. Confirm the sidebar and `spaces.toml` retain the committed order.
+Confirm normal exit adopts detached terminals; item close kills exactly one session;
 closing a populated pane or folder space confirms and kills all descendants;
 session-bound plugins cascade; disabling or revoking a plugin closes every live
 instance; and stale backend/plugin records are summarized without corrupting the
