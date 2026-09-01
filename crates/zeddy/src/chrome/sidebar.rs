@@ -428,6 +428,7 @@ pub fn render(
     spaces: &[SpaceEntries],
     space_switcher: AnyElement,
     on: Emit,
+    active_space_only: bool,
     sorter: &SpaceSorter,
     width: f32,
     cx: &App,
@@ -444,6 +445,7 @@ pub fn render(
     let reduce_motion = cx.reduce_motion();
     for (space_index, space) in spaces.iter().enumerate() {
         let mut contents = Vec::with_capacity(space.entries.len() + 1);
+        let activate = on.clone();
         let add = on.clone();
         let actions = on.clone();
         let space_id = space.id;
@@ -595,6 +597,7 @@ pub fn render(
             .relative()
             .w_full()
             .flex_none()
+            .cursor_pointer()
             .p_1()
             .rounded_md()
             .border_1()
@@ -606,6 +609,9 @@ pub fn render(
             })
             .when(held, |card| card.border_color(colors.drop_target_border).shadow_md())
             .when(offset != px(0.), |card| card.top(offset))
+            .on_click(move |_, window, cx| {
+                activate(Action::ActivateSpace { space: space_id }, window, cx)
+            })
             .children(contents);
         cards.push(
             div()
@@ -631,7 +637,7 @@ pub fn render(
         .bg(colors.panel_background)
         .border_r_1()
         .border_color(colors.border)
-        .child(header(space_switcher, on.clone()))
+        .child(header(space_switcher, on.clone(), active_space_only))
         .child(
             v_flex()
                 .id("sessions")
@@ -662,8 +668,8 @@ pub fn render(
         ))
 }
 
-fn header(space_switcher: AnyElement, on: Emit) -> impl IntoElement {
-    let settings = on;
+fn header(space_switcher: AnyElement, on: Emit, active_space_only: bool) -> impl IntoElement {
+    let menu_actions = on;
     h_flex()
         .h(px(36.))
         .px_2()
@@ -672,10 +678,38 @@ fn header(space_switcher: AnyElement, on: Emit) -> impl IntoElement {
         .child(h_flex().min_w_0().flex_1().child(space_switcher))
         .child(
             h_flex().gap_px().child(
-                IconButton::new("open-settings", IconName::Settings)
-                    .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Settings"))
-                    .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
+                PopoverMenu::new("chrome-menu")
+                    .trigger_with_tooltip(
+                        IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
+                            .icon_size(IconSize::Small),
+                        Tooltip::text("View options"),
+                    )
+                    .anchor(Anchor::TopRight)
+                    .menu(move |window, cx| {
+                        let switch = menu_actions.clone();
+                        let toggle_scope = menu_actions.clone();
+                        let settings = menu_actions.clone();
+                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                            menu.entry("Switch to Tabbed mode", None, move |window, cx| {
+                                switch(Action::SwitchToTabs, window, cx)
+                            })
+                            .toggleable_entry(
+                                "Show only active space",
+                                active_space_only,
+                                IconPosition::End,
+                                None,
+                                move |window, cx| {
+                                    toggle_scope(Action::ToggleActiveSpaceOnly, window, cx)
+                                },
+                            )
+                            .separator()
+                            .entry(
+                                "Settings",
+                                None,
+                                move |window, cx| settings(Action::OpenSettings, window, cx),
+                            )
+                        }))
+                    }),
             ),
         )
 }

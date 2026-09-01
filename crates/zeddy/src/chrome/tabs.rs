@@ -5,10 +5,10 @@
 //! squeezed in — the dot still carries the state, and the title carries the
 //! identity.
 
-use gpui::Role;
+use gpui::{Anchor, Role};
 use ui::{
-    ButtonSize, ContextMenu, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*,
-    right_click_menu,
+    ButtonSize, ContextMenu, IconButtonShape, PopoverMenu, Tab, TabBar, TabPosition, Tooltip,
+    prelude::*, right_click_menu,
 };
 
 use super::Emit;
@@ -25,7 +25,7 @@ pub fn render(
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
-    let settings = on.clone();
+    let menu_actions = on.clone();
     let active_index = entries.iter().position(|entry| entry.selected);
 
     TabBar::new("workspace-tabs")
@@ -37,10 +37,26 @@ pub fn render(
         )
         .end_child(new_item)
         .end_child(
-            IconButton::new("open-settings", IconName::Settings)
-                .icon_size(IconSize::Small)
-                .tooltip(Tooltip::text("Settings"))
-                .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
+            PopoverMenu::new("chrome-menu")
+                .trigger_with_tooltip(
+                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
+                        .icon_size(IconSize::Small),
+                    Tooltip::text("View options"),
+                )
+                .anchor(Anchor::TopRight)
+                .menu(move |window, cx| {
+                    let switch = menu_actions.clone();
+                    let settings = menu_actions.clone();
+                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                        menu.entry("Switch to Sidebar mode", None, move |window, cx| {
+                            switch(Action::SwitchToSidebar, window, cx)
+                        })
+                        .separator()
+                        .entry("Settings", None, move |window, cx| {
+                            settings(Action::OpenSettings, window, cx)
+                        })
+                    }))
+                }),
         )
 }
 

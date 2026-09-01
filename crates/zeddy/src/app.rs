@@ -789,6 +789,22 @@ impl Zeddy {
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
             Action::BeginSpaceDrag { at } => self.space_sorter.press(at),
+            Action::ActivateSpace { space } => {
+                if let Some(target) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    self.activate(target, window, cx);
+                }
+            }
+            Action::SwitchToTabs => self.settings_set_mode(Mode::Tabs, cx),
+            Action::SwitchToSidebar => self.settings_set_mode(Mode::Sidebar, cx),
+            Action::ToggleActiveSpaceOnly => {
+                let scope = match self.sidebar_scope {
+                    SidebarScope::AllSpaces => SidebarScope::ActiveSpace,
+                    SidebarScope::ActiveSpace => SidebarScope::AllSpaces,
+                };
+                self.settings_set_sidebar_scope(scope, cx);
+            }
             Action::OpenSettings => self.open_settings(window, cx),
             Action::New => {
                 if matches!(self.backend, Backend::Ready)
@@ -2940,6 +2956,7 @@ impl Render for Zeddy {
                     &sidebar_spaces,
                     switcher,
                     emit.clone(),
+                    self.sidebar_scope == SidebarScope::ActiveSpace,
                     &self.space_sorter,
                     self.sidebar_width,
                     cx,

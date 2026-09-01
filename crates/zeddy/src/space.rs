@@ -549,6 +549,7 @@ impl Space {
             }
             Action::Close { item, .. } => self.close_item(item, cx),
             Action::New
+            | Action::ActivateSpace { .. }
             | Action::NewInSpace { .. }
             | Action::MoveWorkspaceTab { .. }
             | Action::CloseGroup { .. }
@@ -557,6 +558,9 @@ impl Space {
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }
+            | Action::SwitchToTabs
+            | Action::SwitchToSidebar
+            | Action::ToggleActiveSpaceOnly
             | Action::BeginSpaceDrag { .. }
             | Action::OpenSettings => {}
         }

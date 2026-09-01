@@ -58,6 +58,12 @@ directional focus, move-to-existing-pane, join, Settings singleton focus, native
 `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling. Close the last workspace
 and confirm Settings closes too.
 
+Open the chevron menu in both chrome modes. Sidebar mode offers `Switch to
+Tabbed mode`, a trailing-checkmarked `Show only active space` toggle, a separator,
+and `Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
+`Settings`. Switching presentation or sidebar scope updates immediately and
+survives relaunch.
+
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,
 movement between panes, and movement of the last source tab. Confirm the source
@@ -68,6 +74,10 @@ other items move normally. Repeat with terminal, native-plugin, and web-plugin
 items; tab headers must remain visible and draggable throughout. Clicking inside
 a web plugin must activate its pane, and its native child view must yield during
 a drag so neither the tab preview nor drop highlight is obscured.
+
+In the All Spaces sidebar, clicking anywhere on a space card activates that
+space and returns keyboard focus to its workspace. Its session rows still select
+their specific tabs, and its buttons retain their own actions.
 
 Create five standalone tabs in one space. Move tabs 4 and 5 into tab 3, split
 tab 4 to the right, and leave tabs 1 and 2 standalone. Both sidebar and tabbed

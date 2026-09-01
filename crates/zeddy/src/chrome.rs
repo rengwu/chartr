@@ -54,6 +54,7 @@ pub struct SpaceEntries {
 /// What the user did to the chrome.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
+    ActivateSpace { space: EntityId },
     Select { space: Option<EntityId>, item: ItemId },
     Close { space: Option<EntityId>, item: ItemId },
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
@@ -64,6 +65,9 @@ pub enum Action {
     CloseSpace { space: EntityId },
     RenameSpace { space: EntityId },
     LocateSpace { space: EntityId },
+    SwitchToTabs,
+    SwitchToSidebar,
+    ToggleActiveSpaceOnly,
     NewInSpace { space: EntityId },
     New,
     OpenSettings,

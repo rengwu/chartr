@@ -61,8 +61,9 @@ use their item count as the title, such as **5 tabs**.
 
 ## Settings and persistence
 
-Settings uses one application-wide native window, following Zed: every gear,
-the command palette, and `Cmd/Ctrl+,` opens it or focuses the existing instance.
+Settings uses one application-wide native window, following Zed: every chrome
+view menu, the command palette, and `Cmd/Ctrl+,` opens it or focuses the existing
+instance.
 It closes with the native window controls or `Cmd/Ctrl+W`, and closes when the
 last workspace window closes. The implemented pages are General, Appearance,
 Terminal, Hotkeys, and Plugins. Changes update every workspace live and are
