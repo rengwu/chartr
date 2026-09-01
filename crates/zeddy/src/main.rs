@@ -25,6 +25,7 @@ mod space;
 mod spaces;
 mod terminal;
 mod text_input;
+mod title_bar;
 mod web_plugin;
 mod workspace;
 
@@ -97,10 +98,8 @@ fn main() {
         let window = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Chartr".into()),
-                    ..Default::default()
-                }),
+                titlebar: Some(title_bar::options("Chartr")),
+                app_owns_titlebar_drag: title_bar::app_owns_drag(),
                 ..Default::default()
             },
             |window, cx| {

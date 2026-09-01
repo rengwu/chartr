@@ -91,10 +91,8 @@ fn open_with_origin(
         let opened = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("Chartr — Settings".into()),
-                    ..Default::default()
-                }),
+                titlebar: Some(crate::title_bar::options("Chartr — Settings")),
+                app_owns_titlebar_drag: crate::title_bar::app_owns_drag(),
                 focus: true,
                 show: true,
                 is_movable: true,
@@ -125,6 +123,7 @@ pub struct SettingsWindow {
     ui_font_size_input: Entity<TextInput>,
     terminal_font_size_input: Entity<TextInput>,
     hotkey_widths: Entity<RedistributableColumnsState>,
+    title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
     problem: Option<String>,
 }
@@ -208,6 +207,7 @@ impl SettingsWindow {
                     vec![TableResizeBehavior::Resizable, TableResizeBehavior::Resizable],
                 )
             }),
+            title_bar: cx.new(|_| crate::title_bar::TitleBar::new("settings-title-bar")),
             focus: cx.focus_handle(),
             problem: None,
         }
@@ -1256,6 +1256,8 @@ impl Render for SettingsWindow {
             .key_context("ChartrSettings")
             .track_focus(&self.focus)
             .size_full()
+            .flex()
+            .flex_col()
             .font(ui_font)
             .text_size(UI_TEXT_DEFAULT)
             .bg(cx.theme().colors().background)
@@ -1265,9 +1267,11 @@ impl Render for SettingsWindow {
                 window.activate_window()
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
+            .child(self.title_bar.clone())
             .child(
                 h_flex()
-                    .size_full()
+                    .w_full()
+                    .flex_1()
                     .min_h_0()
                     .child(
                         v_flex()

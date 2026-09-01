@@ -149,6 +149,7 @@ pub struct Zeddy {
     window_bounds: Option<crate::persistence::WindowBounds>,
     state: Option<StateStore>,
     last_persisted: Option<String>,
+    title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
     problem: Option<String>,
 }
@@ -164,6 +165,7 @@ impl Zeddy {
         .detach();
         let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
         let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
+        let title_bar = cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar"));
         cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
             this.command_palette_query = input.read(cx).text().to_owned();
             this.command_palette_selected = 0;
@@ -216,6 +218,7 @@ impl Zeddy {
                     window_bounds: saved.window.bounds,
                     state,
                     last_persisted: saved_json,
+                    title_bar,
                     focus: cx.focus_handle(),
                     problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
                 };
@@ -332,6 +335,7 @@ impl Zeddy {
             window_bounds: saved.window.bounds,
             state,
             last_persisted: saved_json,
+            title_bar,
             focus: cx.focus_handle(),
             problem: state_problem.or(registry_problem),
         };
@@ -2980,7 +2984,9 @@ impl Render for Zeddy {
 
         let body = match self.mode {
             Mode::Sidebar => h_flex()
-                .size_full()
+                .w_full()
+                .flex_1()
+                .min_h_0()
                 .child(chrome::sidebar::render(
                     &sidebar_spaces,
                     switcher,
@@ -2993,7 +2999,9 @@ impl Render for Zeddy {
                 .child(workspace)
                 .into_any_element(),
             Mode::Tabs => v_flex()
-                .size_full()
+                .w_full()
+                .flex_1()
+                .min_h_0()
                 .child(chrome::tabs::render(chrome_entries, switcher, new_item, emit, cx))
                 .child(workspace)
                 .into_any_element(),
@@ -3016,6 +3024,8 @@ impl Render for Zeddy {
                 "Chartr"
             })
             .size_full()
+            .flex()
+            .flex_col()
             .font(ui_font)
             .text_size(UI_TEXT_DEFAULT)
             .bg(background)
@@ -3100,6 +3110,7 @@ impl Render for Zeddy {
                 this.toggle_command_palette(window, cx)
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
+            .child(self.title_bar.clone())
             .child(body)
             .children(command_palette)
             .children(rename_space)
