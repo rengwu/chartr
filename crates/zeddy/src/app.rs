@@ -85,10 +85,6 @@ enum PaletteCommand {
     NewTerminal,
     CloseItem,
     CloseAllItems,
-    SplitLeft,
-    SplitRight,
-    SplitUp,
-    SplitDown,
     MoveLeft,
     MoveRight,
     MoveUp,
@@ -98,19 +94,14 @@ enum PaletteCommand {
     FocusRight,
     FocusUp,
     FocusDown,
-    ToggleZoom,
     OpenSettings,
 }
 
 impl PaletteCommand {
-    const ALL: [(Self, &'static str, &'static str); 18] = [
+    const ALL: [(Self, &'static str, &'static str); 13] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
         (Self::CloseItem, "Pane: Close Active Item", "Cmd/Ctrl+W"),
         (Self::CloseAllItems, "Pane: Close All Items", ""),
-        (Self::SplitLeft, "Pane: Split and Move Left", ""),
-        (Self::SplitRight, "Pane: Split and Move Right", ""),
-        (Self::SplitUp, "Pane: Split and Move Up", ""),
-        (Self::SplitDown, "Pane: Split and Move Down", ""),
         (Self::MoveLeft, "Pane: Move Active Item Left", ""),
         (Self::MoveRight, "Pane: Move Active Item Right", ""),
         (Self::MoveUp, "Pane: Move Active Item Up", ""),
@@ -120,7 +111,6 @@ impl PaletteCommand {
         (Self::FocusRight, "Pane: Focus Right", "Cmd/Ctrl+K →"),
         (Self::FocusUp, "Pane: Focus Up", "Cmd/Ctrl+K ↑"),
         (Self::FocusDown, "Pane: Focus Down", "Cmd/Ctrl+K ↓"),
-        (Self::ToggleZoom, "Pane: Toggle Zoom", "Shift+Esc"),
         (Self::OpenSettings, "Chartr: Open Settings", "Cmd/Ctrl+,"),
     ];
 }
@@ -1288,26 +1278,6 @@ impl Zeddy {
         cx.notify();
     }
 
-    fn split_and_move(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
-        if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.split_and_move(direction));
-            cx.notify();
-        }
-    }
-
-    fn split_and_move_in(
-        &mut self,
-        tab: WorkspaceTabId,
-        pane: LayoutPaneId,
-        direction: SplitDirection,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.split_and_move_in(tab, pane, direction));
-            cx.notify();
-        }
-    }
-
     fn move_active_to_pane(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.move_active_to_pane(direction));
@@ -1331,20 +1301,6 @@ impl Zeddy {
     fn join_active_into_next(&mut self, cx: &mut Context<Self>) {
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.join_active_into_next());
-            cx.notify();
-        }
-    }
-
-    fn toggle_zoom(&mut self, cx: &mut Context<Self>) {
-        if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.toggle_zoom());
-            cx.notify();
-        }
-    }
-
-    fn toggle_zoom_in(&mut self, tab: WorkspaceTabId, pane: LayoutPaneId, cx: &mut Context<Self>) {
-        if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.toggle_zoom_in(tab, pane));
             cx.notify();
         }
     }
@@ -1383,10 +1339,6 @@ impl Zeddy {
             PaletteCommand::NewTerminal => Box::new(actions::workspace::NewTerminal),
             PaletteCommand::CloseItem => Box::new(actions::pane::CloseActiveItem),
             PaletteCommand::CloseAllItems => Box::new(actions::pane::CloseAllItems),
-            PaletteCommand::SplitLeft => Box::new(actions::pane::SplitAndMoveLeft),
-            PaletteCommand::SplitRight => Box::new(actions::pane::SplitAndMoveRight),
-            PaletteCommand::SplitUp => Box::new(actions::pane::SplitAndMoveUp),
-            PaletteCommand::SplitDown => Box::new(actions::pane::SplitAndMoveDown),
             PaletteCommand::MoveLeft => Box::new(actions::pane::MoveLeft),
             PaletteCommand::MoveRight => Box::new(actions::pane::MoveRight),
             PaletteCommand::MoveUp => Box::new(actions::pane::MoveUp),
@@ -1396,7 +1348,6 @@ impl Zeddy {
             PaletteCommand::FocusRight => Box::new(actions::workspace::ActivatePaneRight),
             PaletteCommand::FocusUp => Box::new(actions::workspace::ActivatePaneUp),
             PaletteCommand::FocusDown => Box::new(actions::workspace::ActivatePaneDown),
-            PaletteCommand::ToggleZoom => Box::new(actions::workspace::ToggleZoom),
             PaletteCommand::OpenSettings => Box::new(actions::settings::Open),
         };
         window.dispatch_action(action, cx);
@@ -1909,6 +1860,13 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return;
         };
+        if dragged.grouped {
+            space.update(cx, |space, _| {
+                space.clear_drag_target();
+            });
+            cx.notify();
+            return;
+        }
         if space.read(cx).key() != dragged.space {
             space.update(cx, |space, _| {
                 space.clear_drag_target();
@@ -1967,32 +1925,18 @@ impl Zeddy {
         let workspace = if let Some(tab) = space.workspace_tabs().active_tab() {
             let layout = &tab.layout;
             let show_pane_headers = tab.is_grouped();
-            if let Some(maximized) = layout.center.maximized {
-                self.render_pane(
-                    &space,
-                    tab.id,
-                    layout,
-                    maximized,
-                    show_pane_headers,
-                    &emit,
-                    &weak,
-                    window,
-                    cx,
-                )
-            } else {
-                self.render_member(
-                    &space,
-                    tab.id,
-                    layout,
-                    &layout.center.root,
-                    show_pane_headers,
-                    &emit,
-                    &weak,
-                    &[],
-                    window,
-                    cx,
-                )
-            }
+            self.render_member(
+                &space,
+                tab.id,
+                layout,
+                &layout.center.root,
+                show_pane_headers,
+                &emit,
+                &weak,
+                &[],
+                window,
+                cx,
+            )
         } else {
             message("No tabs. Create a new item to begin.", cx).into_any_element()
         };
@@ -2347,7 +2291,8 @@ impl Zeddy {
                             // callbacks from every pane except the one under the pointer.
                             return;
                         };
-                        let accepted = event.drag(cx).space == drag_space;
+                        let dragged = event.drag(cx);
+                        let accepted = !dragged.grouped && dragged.space == drag_space;
                         let _ = drag_move.update(cx, |this, cx| {
                             let changed = this.active.clone().is_some_and(|space| {
                                 space.update(cx, |space, _| {
@@ -2457,9 +2402,8 @@ impl Zeddy {
                 pane: pane_id,
                 index,
                 item: *id,
-                title: item.title(),
-                selected,
                 top_level: false,
+                grouped: false,
             };
             Some(
                 Tab::new(format!("pane-{}-item-{}", pane_id.get(), id.get()))
@@ -2477,7 +2421,7 @@ impl Zeddy {
                     .can_drop(move |value, _, _| {
                         value
                             .downcast_ref::<DraggedItem>()
-                            .is_some_and(|dragged| dragged.space == drop_space)
+                            .is_some_and(|dragged| !dragged.grouped && dragged.space == drop_space)
                     })
                     .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
                         let mut tab = tab
@@ -2538,7 +2482,7 @@ impl Zeddy {
             .can_drop(move |value, _, _| {
                 value
                     .downcast_ref::<DraggedItem>()
-                    .is_some_and(|dragged| dragged.space == append_space)
+                    .is_some_and(|dragged| !dragged.grouped && dragged.space == append_space)
             })
             .drag_over::<DraggedItem>(|bar, _, _, cx| {
                 bar.bg(cx.theme().colors().drop_target_background)
@@ -2560,7 +2504,6 @@ impl Zeddy {
         TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
             .children(tabs)
             .child(tab_bar_drop_target)
-            .end_child(pane_controls(weak, tab_id, pane_id))
             .into_any_element()
     }
 
@@ -2834,18 +2777,6 @@ impl Render for Zeddy {
             .on_action(cx.listener(|this, _: &actions::pane::CloseAllItems, window, cx| {
                 this.request_close_active_pane(window, cx)
             }))
-            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveLeft, _, cx| {
-                this.split_and_move(SplitDirection::Left, cx)
-            }))
-            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveRight, _, cx| {
-                this.split_and_move(SplitDirection::Right, cx)
-            }))
-            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveUp, _, cx| {
-                this.split_and_move(SplitDirection::Up, cx)
-            }))
-            .on_action(cx.listener(|this, _: &actions::pane::SplitAndMoveDown, _, cx| {
-                this.split_and_move(SplitDirection::Down, cx)
-            }))
             .on_action(cx.listener(|this, _: &actions::pane::MoveLeft, _, cx| {
                 this.move_active_to_pane(SplitDirection::Left, cx)
             }))
@@ -2875,9 +2806,6 @@ impl Render for Zeddy {
             .on_action(cx.listener(|this, _: &actions::workspace::ActivatePaneDown, window, cx| {
                 this.activate_pane_in_direction(SplitDirection::Down, window, cx)
             }))
-            .on_action(
-                cx.listener(|this, _: &actions::workspace::ToggleZoom, _, cx| this.toggle_zoom(cx)),
-            )
             .on_action(cx.listener(|this, _: &actions::workspace::NewTerminal, window, cx| {
                 this.act(Action::New, window, cx)
             }))
@@ -2946,7 +2874,9 @@ fn drop_target(direction: Option<SplitDirection>, group: String, space: String, 
         .absolute()
         .bg(cx.theme().colors().drop_target_background)
         .can_drop(move |value, _, _| {
-            value.downcast_ref::<DraggedItem>().is_some_and(|dragged| dragged.space == space)
+            value
+                .downcast_ref::<DraggedItem>()
+                .is_some_and(|dragged| !dragged.grouped && dragged.space == space)
         })
         .group_drag_over::<DraggedItem>(group, |style| style.visible())
         .map(|target| match direction {
@@ -2974,85 +2904,6 @@ fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> i
         })
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .occlude()
-}
-
-fn pane_controls(
-    weak: &gpui::WeakEntity<Zeddy>,
-    tab_id: WorkspaceTabId,
-    pane_id: LayoutPaneId,
-) -> AnyElement {
-    let focus = weak.clone();
-    let split = weak.clone();
-    let zoom = weak.clone();
-
-    h_flex()
-        .id(format!("workspace-tab-{}-pane-{}-controls", tab_id.get(), pane_id.get()))
-        .gap_0p5()
-        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
-            let _ = focus.update(cx, |this, cx| {
-                if let Some(space) = this.active.clone() {
-                    space.update(cx, |space, _| space.activate_pane(tab_id, pane_id));
-                }
-                cx.notify();
-            });
-        })
-        .child(
-            PopoverMenu::new(format!(
-                "workspace-tab-{}-pane-{}-split-menu",
-                tab_id.get(),
-                pane_id.get()
-            ))
-            .trigger_with_tooltip(
-                IconButton::new(
-                    format!("workspace-tab-{}-pane-{}-split", tab_id.get(), pane_id.get()),
-                    IconName::Split,
-                )
-                .icon_size(IconSize::XSmall),
-                Tooltip::text("Split Pane"),
-            )
-            .anchor(Anchor::TopRight)
-            .menu(move |window, cx| {
-                let split = split.clone();
-                Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                    let left = split.clone();
-                    let right = split.clone();
-                    let up = split.clone();
-                    let down = split.clone();
-                    menu.entry("Split Left", None, move |_, cx| {
-                        let _ = left.update(cx, |this, cx| {
-                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Left, cx)
-                        });
-                    })
-                    .entry("Split Right", None, move |_, cx| {
-                        let _ = right.update(cx, |this, cx| {
-                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Right, cx)
-                        });
-                    })
-                    .entry("Split Up", None, move |_, cx| {
-                        let _ = up.update(cx, |this, cx| {
-                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Up, cx)
-                        });
-                    })
-                    .entry("Split Down", None, move |_, cx| {
-                        let _ = down.update(cx, |this, cx| {
-                            this.split_and_move_in(tab_id, pane_id, SplitDirection::Down, cx)
-                        });
-                    })
-                }))
-            }),
-        )
-        .child(
-            IconButton::new(
-                format!("workspace-tab-{}-pane-{}-zoom", tab_id.get(), pane_id.get()),
-                IconName::Maximize,
-            )
-            .icon_size(IconSize::XSmall)
-            .tooltip(Tooltip::text("Toggle Pane Zoom"))
-            .on_click(move |_, _, cx| {
-                let _ = zoom.update(cx, |this, cx| this.toggle_zoom_in(tab_id, pane_id, cx));
-            }),
-        )
-        .into_any_element()
 }
 
 fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {

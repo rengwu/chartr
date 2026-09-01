@@ -32,17 +32,15 @@ multiple instances, modifier cloning, restoration, and explicit binding to one
 terminal session.
 
 Panes support nested horizontal and vertical splits, divider resizing,
-directional focus, joining, zooming, and Zed-style tab dragging. Tab and
+directional focus, joining, and Zed-style tab dragging. Tab and
 trailing-strip drops reorder or move items; pane-body center drops move into a
 pane; the four edge targets split it, with Zed's transient full/half-pane
 highlight. Escape cancels a drag. The command palette provides keyboard
-alternatives for pane operations. `Cmd+W` on macOS and `Ctrl+W` on Linux closes
-the active item; operations that terminate multiple live sessions confirm with
-an exact count. As in Zed, a non-root pane disappears when its last item leaves;
-an outer tab disappears when its final item closes. An empty space remains
-usable through its New action. Splitting a lone-tab pane uses Zed's
-opposite-empty-pane rule, keeping the tab focused and leaving the requested side
-available as a drop target.
+alternatives for pane navigation and moving or joining items. `Cmd+W` on macOS
+and `Ctrl+W` on Linux closes the active item; operations that terminate multiple
+live sessions confirm with an exact count. As in Zed, a non-root pane disappears
+when its last item leaves; an outer tab disappears when its final item closes.
+An empty space remains usable through its New action.
 
 Sidebar and tabbed modes are projections over that same model. Both list every
 standalone item and every pane group as one outer entry. Sidebar mode can show

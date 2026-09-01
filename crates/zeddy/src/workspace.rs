@@ -67,15 +67,6 @@ impl SplitDirection {
     pub fn increasing(self) -> bool {
         matches!(self, Self::Down | Self::Right)
     }
-
-    pub fn opposite(self) -> Self {
-        match self {
-            Self::Up => Self::Down,
-            Self::Down => Self::Up,
-            Self::Left => Self::Right,
-            Self::Right => Self::Left,
-        }
-    }
 }
 
 /// One leaf or split axis in a pane tree.
@@ -266,12 +257,11 @@ impl PaneAxis {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaneGroup {
     pub root: Member,
-    pub maximized: Option<PaneId>,
 }
 
 impl PaneGroup {
     pub fn new(root: PaneId) -> Self {
-        Self { root: Member::pane(root), maximized: None }
+        Self { root: Member::pane(root) }
     }
 
     pub fn panes(&self) -> Vec<PaneId> {
@@ -342,9 +332,6 @@ impl PaneGroup {
                 if let Some(replacement) = axis.remove(pane)? {
                     self.root = replacement;
                 }
-                if self.maximized == Some(pane) {
-                    self.maximized = None;
-                }
                 Ok(true)
             }
         }
@@ -396,14 +383,6 @@ impl PaneGroup {
         let left = (fraction.clamp(0., 1.) * total - before).clamp(minimum, pair - minimum);
         axis.flexes[divider] = left;
         axis.flexes[divider + 1] = pair - left;
-        Ok(())
-    }
-
-    pub fn toggle_maximized(&mut self, pane: PaneId) -> Result<(), ModelError> {
-        if !self.contains(pane) {
-            return Err(ModelError::PaneNotFound(pane));
-        }
-        self.maximized = (self.maximized != Some(pane)).then_some(pane);
         Ok(())
     }
 }
@@ -698,28 +677,6 @@ impl Workspace {
         self.center.split(pane, new, direction);
         self.active_pane = new;
         Ok(new)
-    }
-
-    /// Zed's `SplitMode::MovePane` behavior. Moving the sole tab would leave
-    /// its source empty and make ordinary empty-pane cleanup collapse the split
-    /// immediately. Zed instead inserts an empty pane on the opposite side and
-    /// keeps the sole tab focused, producing the same requested visual result.
-    pub fn split_and_move(
-        &mut self,
-        source: PaneId,
-        direction: SplitDirection,
-    ) -> Result<PaneId, ModelError> {
-        let pane = self.panes.get(&source).ok_or(ModelError::PaneNotFound(source))?;
-        if pane.items.len() <= 1 {
-            let empty = self.split_pane(source, direction.opposite())?;
-            self.active_pane = source;
-            return Ok(empty);
-        }
-
-        let active = pane.active.expect("a pane with multiple items always has an active item");
-        let destination = self.split_pane(source, direction)?;
-        self.move_item(active, destination, None)?;
-        Ok(destination)
     }
 
     /// Join `source` into `destination`, moving every item in order and then
@@ -1261,58 +1218,6 @@ mod tests {
     }
 
     #[test]
-    fn splitting_a_lone_tab_with_two_existing_panes_matches_zeds_empty_pane_rule() {
-        for direction in
-            [SplitDirection::Up, SplitDirection::Down, SplitDirection::Left, SplitDirection::Right]
-        {
-            let mut workspace = Workspace::new();
-            let first = workspace.active_pane();
-            let second = workspace.split_pane(first, SplitDirection::Right).unwrap();
-            let first_item = workspace.alloc_item();
-            let second_item = workspace.alloc_item();
-            workspace.add_item(first_item, Some(first), None).unwrap();
-            workspace.add_item(second_item, Some(second), None).unwrap();
-
-            let empty = workspace.split_and_move(first, direction).unwrap();
-
-            let expected_order = if direction.increasing() {
-                vec![empty, first, second]
-            } else {
-                vec![first, empty, second]
-            };
-            assert_eq!(workspace.center.panes(), expected_order, "{direction:?}");
-            assert_eq!(workspace.pane(first).unwrap().items(), &[first_item]);
-            assert_eq!(workspace.pane(second).unwrap().items(), &[second_item]);
-            assert!(workspace.pane(empty).unwrap().items().is_empty());
-            assert_eq!(workspace.active_pane(), first);
-            workspace.validate().unwrap();
-        }
-    }
-
-    #[test]
-    fn split_and_move_uses_the_explicit_source_when_another_pane_is_active() {
-        let mut workspace = Workspace::new();
-        let first = workspace.active_pane();
-        let second = workspace.split_pane(first, SplitDirection::Right).unwrap();
-        let first_a = workspace.alloc_item();
-        let first_b = workspace.alloc_item();
-        let second_item = workspace.alloc_item();
-        workspace.add_item(first_a, Some(first), None).unwrap();
-        workspace.add_item(first_b, Some(first), None).unwrap();
-        workspace.add_item(second_item, Some(second), None).unwrap();
-        assert_eq!(workspace.active_pane(), second);
-
-        let split = workspace.split_and_move(first, SplitDirection::Right).unwrap();
-
-        assert_eq!(workspace.center.panes(), vec![first, split, second]);
-        assert_eq!(workspace.pane(first).unwrap().items(), &[first_a]);
-        assert_eq!(workspace.pane(split).unwrap().items(), &[first_b]);
-        assert_eq!(workspace.pane(second).unwrap().items(), &[second_item]);
-        assert_eq!(workspace.active_pane(), split);
-        workspace.validate().unwrap();
-    }
-
-    #[test]
     fn moving_the_last_item_removes_its_empty_source_pane_like_zed() {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
@@ -1472,7 +1377,6 @@ mod tests {
         let item = workspace.alloc_item();
         workspace.add_item(item, Some(down), None).unwrap();
         workspace.center.set_flexes(&[], vec![1.5, 0.5]).unwrap();
-        workspace.center.toggle_maximized(down).unwrap();
 
         let encoded = serde_json::to_string(&workspace).unwrap();
         let restored: Workspace = serde_json::from_str(&encoded).unwrap();

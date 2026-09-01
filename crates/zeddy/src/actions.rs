@@ -10,33 +10,14 @@ use crate::keymap::{KeymapAction, KeymapStore};
 pub mod pane {
     gpui::actions!(
         pane,
-        [
-            CloseActiveItem,
-            CloseAllItems,
-            JoinIntoNext,
-            SplitAndMoveLeft,
-            SplitAndMoveRight,
-            SplitAndMoveUp,
-            SplitAndMoveDown,
-            MoveLeft,
-            MoveRight,
-            MoveUp,
-            MoveDown
-        ]
+        [CloseActiveItem, CloseAllItems, JoinIntoNext, MoveLeft, MoveRight, MoveUp, MoveDown]
     );
 }
 
 pub mod workspace {
     gpui::actions!(
         workspace,
-        [
-            NewTerminal,
-            ActivatePaneLeft,
-            ActivatePaneRight,
-            ActivatePaneUp,
-            ActivatePaneDown,
-            ToggleZoom
-        ]
+        [NewTerminal, ActivatePaneLeft, ActivatePaneRight, ActivatePaneUp, ActivatePaneDown]
     );
 }
 
@@ -61,7 +42,6 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
         ),
         KeyBinding::new(keymap.key(KeymapAction::FocusUp), workspace::ActivatePaneUp, context),
         KeyBinding::new(keymap.key(KeymapAction::FocusDown), workspace::ActivatePaneDown, context),
-        KeyBinding::new(keymap.key(KeymapAction::ToggleZoom), workspace::ToggleZoom, context),
         KeyBinding::new(keymap.key(KeymapAction::CommandPalette), command_palette::Toggle, context),
         KeyBinding::new(keymap.key(KeymapAction::OpenSettings), settings::Open, context),
     ]);

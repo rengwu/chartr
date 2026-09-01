@@ -26,7 +26,7 @@ Chartr Light. Capture and compare:
 - empty Free sessions startup, one folder, and several spaces;
 - Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
 - empty space, one standalone tab, nested horizontal/vertical panes, resized dividers,
-  zoom, and automatic split collapse after its last item moves or closes;
+  and automatic split collapse after its last item moves or closes;
 - terminal and plugin close buttons, active/hover/focus states, two standalone
   outer tabs beside one collapsed three-item pane group in both chromes, visible
   draggable tab bars in every selected group pane, and bulk confirmation scoped
@@ -51,12 +51,9 @@ tier.
 ## Interaction and accessibility
 
 Run the matrix with pointer and keyboard. Confirm `Cmd/Ctrl+W`, command palette,
-directional focus, split-and-move, move-to-existing-pane, join, zoom, Settings
-singleton focus, native `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling.
-Close the last workspace and confirm Settings closes too. Every drag outcome
-must have a semantic action alternative. With two panes already open, invoke all
-four split directions from the first lone-tab pane and confirm each creates the
-expected adjacent empty drop target without moving, losing focus, or collapsing.
+directional focus, move-to-existing-pane, join, Settings singleton focus, native
+`Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling. Close the last workspace
+and confirm Settings closes too.
 
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,

@@ -10,6 +10,7 @@ use gpui_platform::application;
 mod actions;
 mod app;
 mod chrome;
+mod components;
 mod fonts;
 mod item;
 mod keymap;

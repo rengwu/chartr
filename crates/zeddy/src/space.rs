@@ -395,34 +395,6 @@ impl Space {
         }
     }
 
-    /// Zed's split-and-move action creates the neighboring pane and moves the
-    /// active item into it. Items remain unique; terminals are never cloned.
-    pub fn split_and_move(&mut self, direction: SplitDirection) {
-        let Some(tab) = self.layout.active_tab_id() else {
-            return;
-        };
-        let source = self.layout.workspace(tab).expect("active tab").active_pane();
-        self.split_and_move_in(tab, source, direction);
-    }
-
-    pub fn split_and_move_in(
-        &mut self,
-        tab: WorkspaceTabId,
-        source: crate::workspace::PaneId,
-        direction: SplitDirection,
-    ) {
-        let result = self
-            .layout
-            .workspace_mut(tab)
-            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
-            .and_then(|layout| layout.split_and_move(source, direction));
-        if let Err(error) = result {
-            self.problem = Some(error.to_string());
-        } else {
-            let _ = self.layout.activate_tab(tab);
-        }
-    }
-
     pub fn remove_empty_pane(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
         let result = self
             .layout
@@ -461,27 +433,6 @@ impl Space {
             && let Err(error) = layout.join_pane(source, destination)
         {
             self.problem = Some(error.to_string());
-        }
-    }
-
-    pub fn toggle_zoom(&mut self) {
-        let Some(tab) = self.layout.active_tab_id() else {
-            return;
-        };
-        let active = self.layout.workspace(tab).expect("active tab").active_pane();
-        self.toggle_zoom_in(tab, active);
-    }
-
-    pub fn toggle_zoom_in(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
-        let result = self
-            .layout
-            .workspace_mut(tab)
-            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
-            .and_then(|layout| layout.center.toggle_maximized(pane));
-        if let Err(error) = result {
-            self.problem = Some(error.to_string());
-        } else {
-            let _ = self.layout.activate_tab(tab);
         }
     }
 

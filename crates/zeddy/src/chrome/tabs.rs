@@ -88,9 +88,8 @@ fn tab(
         pane: entry.pane,
         index,
         item: entry.key,
-        title: entry.title.clone(),
-        selected: entry.selected,
         top_level: true,
+        grouped: entry.grouped,
     };
     let close_slot: Option<AnyElement> = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close)

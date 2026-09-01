@@ -15,7 +15,7 @@ use crate::{
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
 use gpui::EntityId;
-use ui::{CommonAnimationExt, Tab, prelude::*};
+use ui::{CommonAnimationExt, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
 /// One row in the sidebar, or one tab in the strip.
@@ -89,17 +89,41 @@ pub struct DraggedItem {
     pub pane: PaneId,
     pub index: usize,
     pub item: ItemId,
-    pub title: String,
-    pub selected: bool,
     pub top_level: bool,
+    /// The drag represents the whole outer workspace tab, not its
+    /// representative item. Grouped tabs may be sorted by outer chrome, but
+    /// cannot be dropped into an individual pane as though they were one item.
+    pub grouped: bool,
 }
 
 impl Render for DraggedItem {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        Tab::new(("dragged-item", self.item.get() as usize))
-            .toggle_state(self.selected)
-            .child(Label::new(self.title.clone()).size(UI_LABEL_DEFAULT))
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        dragged_item_pill(self.grouped, cx)
     }
+}
+
+const DRAGGED_ITEM_PILL_WIDTH: f32 = 44.;
+const DRAGGED_GROUP_PILL_WIDTH: f32 = 60.;
+const DRAGGED_ITEM_PILL_HEIGHT: f32 = 22.;
+
+fn dragged_item_pill_width(grouped: bool) -> f32 {
+    if grouped { DRAGGED_GROUP_PILL_WIDTH } else { DRAGGED_ITEM_PILL_WIDTH }
+}
+
+fn dragged_item_pill(grouped: bool, cx: &App) -> impl IntoElement {
+    let colors = cx.theme().colors();
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .w(px(dragged_item_pill_width(grouped)))
+        .h(px(DRAGGED_ITEM_PILL_HEIGHT))
+        .rounded_full()
+        .border_1()
+        .border_color(colors.border)
+        .bg(colors.elevated_surface_background)
+        .shadow_md()
+        .child(Label::new(if grouped { "group" } else { "tab" }).size(UI_LABEL_DEFAULT))
 }
 
 /// Builds the one drag preview used by every Chartr tab surface.
@@ -108,8 +132,8 @@ impl Render for DraggedItem {
 /// perfect when the preview has the source element's dimensions. Chartr's
 /// sidebar rows and outer tabs are often much wider than the compact preview,
 /// though, so using the source offset makes the visible ghost trail behind the
-/// pointer. Translating the compact preview by that same offset locks its
-/// visible origin to GPUI's current-frame pointer position.
+/// pointer. Translating the compact preview by that same offset and half of
+/// its own size locks its center to GPUI's current-frame pointer position.
 pub(crate) fn dragged_item_preview(
     dragged: &DraggedItem,
     source_offset: gpui::Point<gpui::Pixels>,
@@ -125,12 +149,13 @@ pub(crate) struct DraggedItemPreview {
 }
 
 impl Render for DraggedItemPreview {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().relative().left(self.source_offset.x).top(self.source_offset.y).child(
-            Tab::new(("dragged-item-preview", self.dragged.item.get() as usize))
-                .toggle_state(self.dragged.selected)
-                .child(Label::new(self.dragged.title.clone()).size(UI_LABEL_DEFAULT)),
-        )
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let width = dragged_item_pill_width(self.dragged.grouped);
+        div()
+            .relative()
+            .left(self.source_offset.x - px(width / 2.))
+            .top(self.source_offset.y - px(DRAGGED_ITEM_PILL_HEIGHT / 2.))
+            .child(dragged_item_pill(self.dragged.grouped, cx))
     }
 }
 

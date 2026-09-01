@@ -13,6 +13,7 @@ use super::{
     Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview,
     status_indicator,
 };
+use crate::components::{selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 
 /// The sidebar's width. Fixed rather than draggable: a resizable sidebar is a
@@ -125,10 +126,18 @@ pub fn render(
                 )
                 .into_any_element(),
         );
-        for entry in &space.entries {
+        for (target_index, entry) in space.entries.iter().enumerate() {
             groups.push(
-                row(index, entry, space.active && entry.selected, entry.grouped, on.clone(), cx)
-                    .into_any_element(),
+                row(
+                    index,
+                    target_index,
+                    entry,
+                    space.active && entry.selected,
+                    entry.grouped,
+                    on.clone(),
+                    cx,
+                )
+                .into_any_element(),
             );
             index += 1;
         }
@@ -144,12 +153,22 @@ pub fn render(
         .border_r_1()
         .border_color(colors.border)
         .child(header(space_switcher, on.clone()))
-        .child(v_flex().id("sessions").flex_1().overflow_y_scroll().p_1().gap_px().children(groups))
+        .child(
+            selection_list()
+                .id("sessions")
+                .flex_1()
+                .overflow_y_scroll()
+                .py_1()
+                .px_1()
+                .children(groups),
+        )
         .child(deferred(
             div()
                 .id("sidebar-resize-handle")
                 .absolute()
-                .right(px(-3.))
+                // Keep the resize target fully outside the sidebar so it
+                // cannot occlude a trailing row action at the panel boundary.
+                .right(px(-6.))
                 .top_0()
                 .h_full()
                 .w(px(6.))
@@ -182,97 +201,137 @@ fn header(space_switcher: AnyElement, on: Emit) -> impl IntoElement {
 
 fn row(
     index: usize,
+    target_index: usize,
     entry: &Entry,
     selected: bool,
     grouped: bool,
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
-    let colors = cx.theme().colors();
     let close = on.clone();
+    let move_tab = on.clone();
 
     let select = entry.key;
     let close_key = entry.key;
     let close_tab = entry.tab;
     let space = entry.space;
     let close_space = entry.space;
+    let target_space_key = entry.space_key.clone();
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
         tab: entry.tab,
         pane: entry.pane,
-        index: entry.index,
+        // A sidebar row is an outer workspace tab. Its drag index therefore
+        // belongs to the space's outer list, not to the representative item's
+        // position inside its pane.
+        index: target_index,
         item: entry.key,
-        title: entry.title.clone(),
-        selected,
         top_level: true,
+        grouped,
     };
-    h_flex()
-        .id(("session", index))
-        .role(Role::Tab)
-        .aria_label(if grouped {
-            format!("Pane group: {}", entry.title)
-        } else {
-            entry.title.clone()
-        })
-        .aria_selected(selected)
-        .group("session")
-        // The close button's standard Zed control height is the row's natural
-        // minimum. Let content establish that compact height, then keep it
-        // from flex-shrinking further when the list scrolls.
-        .flex_none()
-        .px_2()
-        .gap_2()
-        .rounded_sm()
-        .when(selected, |row| row.bg(colors.element_selected))
-        .when(!selected, |row| row.hover(|row| row.bg(colors.element_hover)))
-        .on_click(move |_, window, cx| {
-            on(Action::Select { space: Some(space), item: select }, window, cx)
-        })
-        .when(!grouped, |row| {
-            row.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
-        })
-        .child(status_indicator(
-            entry.status,
-            entry.process_running,
-            entry.ended,
-            entry.grouped,
-            &entry.space_key,
-            entry.key,
-            cx,
-        ))
-        .child(
-            v_flex()
-                .flex_1()
-                .overflow_hidden()
-                .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate()),
-        )
-        .when(grouped, |row| {
-            row.child(
+    let close_button_width = IconSize::XSmall.rems() + DynamicSpacing::Base04.rems(cx) * 2.;
+    let close_slot_width = close_button_width - DynamicSpacing::Base06.rems(cx);
+    let end_slot = h_flex()
+        .gap_1()
+        .when(grouped, |slot| {
+            slot.child(
                 Label::new(format!("{} tabs", entry.item_count))
                     .size(UI_LABEL_SMALL)
                     .color(Color::Muted),
             )
         })
-        .when(entry.closable, |row| {
-            row.child(
-                // Revealed on hover so a list of ten sessions is ten titles rather
-                // than ten titles and ten buttons.
-                div().visible_on_hover("session").child(
-                    IconButton::new(("close", index), IconName::Close)
-                        .icon_size(IconSize::XSmall)
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            close(
-                                if grouped {
-                                    Action::CloseGroup { space: close_space, tab: close_tab }
-                                } else {
-                                    Action::Close { space: Some(close_space), item: close_key }
-                                },
-                                window,
-                                cx,
-                            )
-                        }),
-                ),
+        .when(entry.closable, |slot| {
+            // Reserve exactly the portion of the button not already covered
+            // by ListItem's trailing Base06 inset. The real control is an
+            // unclipped overlay at the wrapper level below.
+            slot.child(div().w(close_slot_width).flex_none())
+        });
+    let close_button = entry.closable.then(|| {
+        IconButton::new(("close", index), IconName::Close).icon_size(IconSize::XSmall).on_click(
+            move |_, window, cx| {
+                cx.stop_propagation();
+                close(
+                    if grouped {
+                        Action::CloseGroup { space: close_space, tab: close_tab }
+                    } else {
+                        Action::Close { space: Some(close_space), item: close_key }
+                    },
+                    window,
+                    cx,
+                )
+            },
+        )
+    });
+
+    // `ListItem` deliberately owns row visuals and click semantics. This thin
+    // wrapper owns sidebar-tab dragging, which Zed's generic row does not.
+    div()
+        .id(("session-drag", index))
+        .relative()
+        .group("session")
+        .w_full()
+        .flex_none()
+        .on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
+        // Like both earlier Chartr clients, sorting stays within the card/space
+        // where the drag began. Pane-local tab drags are rejected as well: this
+        // surface only reorders top-level workspace tabs.
+        .can_drop(move |value, _, _| {
+            value
+                .downcast_ref::<DraggedItem>()
+                .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
+        })
+        .drag_over::<DraggedItem>(move |wrapper, dragged, _, cx| {
+            let mut wrapper = wrapper
+                .bg(cx.theme().colors().drop_target_background)
+                .border_color(cx.theme().colors().drop_target_border)
+                .border_0();
+            if target_index < dragged.index {
+                wrapper = wrapper.border_t_2();
+            } else if target_index > dragged.index {
+                wrapper = wrapper.border_b_2();
+            }
+            wrapper
+        })
+        .on_drop(move |dragged: &DraggedItem, window, cx| {
+            move_tab(Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index }, window, cx)
+        })
+        .child(
+            selection_row(("session", index), selected)
+                .aria_role(Role::Tab)
+                .aria_label(if grouped {
+                    format!("Pane group: {}", entry.title)
+                } else {
+                    entry.title.clone()
+                })
+                .on_click(move |_, window, cx| {
+                    on(Action::Select { space: Some(space), item: select }, window, cx)
+                })
+                .start_slot(status_indicator(
+                    entry.status,
+                    entry.process_running,
+                    entry.ended,
+                    entry.grouped,
+                    &entry.space_key,
+                    entry.key,
+                    cx,
+                ))
+                .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate())
+                .end_slot(end_slot),
+        )
+        .when_some(close_button, |wrapper, close_button| {
+            wrapper.child(
+                div()
+                    .absolute()
+                    .right_0()
+                    .top_0()
+                    .bottom_0()
+                    .flex()
+                    .items_center()
+                    .visible_on_hover("session")
+                    // A press on Close belongs to the control, not the row's
+                    // drag recognizer; the button handles the resulting click.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(close_button),
             )
         })
 }

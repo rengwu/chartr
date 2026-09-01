@@ -25,20 +25,18 @@ pub enum KeymapAction {
     FocusRight,
     FocusUp,
     FocusDown,
-    ToggleZoom,
     CommandPalette,
     OpenSettings,
 }
 
 impl KeymapAction {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::CloseItem,
         Self::NewTerminal,
         Self::FocusLeft,
         Self::FocusRight,
         Self::FocusUp,
         Self::FocusDown,
-        Self::ToggleZoom,
         Self::CommandPalette,
         Self::OpenSettings,
     ];
@@ -51,7 +49,6 @@ impl KeymapAction {
             Self::FocusRight => "workspace.activate_pane_right",
             Self::FocusUp => "workspace.activate_pane_up",
             Self::FocusDown => "workspace.activate_pane_down",
-            Self::ToggleZoom => "workspace.toggle_zoom",
             Self::CommandPalette => "command_palette.toggle",
             Self::OpenSettings => "settings.open",
         }
@@ -65,7 +62,6 @@ impl KeymapAction {
             Self::FocusRight => "Focus pane right",
             Self::FocusUp => "Focus pane up",
             Self::FocusDown => "Focus pane down",
-            Self::ToggleZoom => "Toggle pane zoom",
             Self::CommandPalette => "Command palette",
             Self::OpenSettings => "Open Settings",
         }
@@ -80,7 +76,6 @@ impl KeymapAction {
             Self::FocusRight => "cmd-k cmd-right",
             Self::FocusUp => "cmd-k cmd-up",
             Self::FocusDown => "cmd-k cmd-down",
-            Self::ToggleZoom => "shift-escape",
             Self::CommandPalette => "cmd-shift-p",
             Self::OpenSettings => "cmd-,",
         };
@@ -93,7 +88,6 @@ impl KeymapAction {
             Self::FocusRight => "ctrl-k ctrl-right",
             Self::FocusUp => "ctrl-k ctrl-up",
             Self::FocusDown => "ctrl-k ctrl-down",
-            Self::ToggleZoom => "shift-escape",
             Self::CommandPalette => "ctrl-shift-p",
             Self::OpenSettings => "ctrl-,",
         };
@@ -244,7 +238,7 @@ mod tests {
         store.set(KeymapAction::CloseItem, "ctrl-alt-w".to_owned()).unwrap();
         let loaded = KeymapStore::load(file);
         assert_eq!(loaded.key(KeymapAction::CloseItem), "ctrl-alt-w");
-        assert_eq!(loaded.key(KeymapAction::ToggleZoom), KeymapAction::ToggleZoom.default_key());
+        assert_eq!(loaded.key(KeymapAction::FocusLeft), KeymapAction::FocusLeft.default_key());
     }
 
     #[test]

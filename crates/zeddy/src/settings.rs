@@ -357,9 +357,7 @@ pub fn init_themes(settings: &ResolvedSettings, cx: &mut gpui::App) {
         }));
     }
     if let Some(source) = dark_source {
-        let mut dark = (*source).clone();
-        dark.id = "chartr_dark".to_owned();
-        dark.name = CHARTR_DARK.into();
+        let dark = chartr_dark(&source);
         let light = chartr_light(&dark);
         registry.insert_themes([dark, light]);
     }
@@ -729,15 +727,20 @@ fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
     let colors = &mut theme.styles.colors;
     colors.background = surface;
     colors.surface_background = sidebar;
-    colors.elevated_surface_background = card_open;
+    // `card_open` is the palette's active/selected card color. Using it for
+    // the whole elevated surface makes context-menu borders disappear in
+    // palettes where `card_open` intentionally matches `border` (notably the
+    // Catppuccin themes). Keep the menu on the normal card surface so both its
+    // outline and its selected row retain contrast.
+    colors.elevated_surface_background = card;
     colors.element_background = card;
     colors.element_hover = hover;
-    colors.element_active = selected;
-    colors.element_selected = selected;
+    colors.element_active = card_open;
+    colors.element_selected = card_open;
     colors.element_selection_background = selected;
     colors.ghost_element_hover = hover;
-    colors.ghost_element_active = selected;
-    colors.ghost_element_selected = selected;
+    colors.ghost_element_active = card_open;
+    colors.ghost_element_selected = card_open;
     colors.drop_target_background = selected;
     colors.drop_target_border = ring;
     colors.border = border;
@@ -796,6 +799,23 @@ fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
     theme
 }
 
+fn chartr_dark(source: &Theme) -> Theme {
+    let mut dark = source.clone();
+    dark.id = "chartr_dark".to_owned();
+    dark.name = CHARTR_DARK.into();
+    dark.appearance = Appearance::Dark;
+
+    let colors = &mut dark.styles.colors;
+    let border = gpui::rgb(0x505866).into();
+    let border_variant = gpui::rgb(0x414956).into();
+    colors.border = border;
+    colors.border_variant = border_variant;
+    colors.pane_group_border = border;
+    colors.panel_indent_guide = border_variant;
+    colors.scrollbar_track_border = border_variant;
+    dark
+}
+
 fn chartr_light(dark: &Theme) -> Theme {
     let mut light = dark.clone();
     light.id = "chartr_light".to_owned();
@@ -823,6 +843,9 @@ fn chartr_light(dark: &Theme) -> Theme {
     colors.ghost_element_selected = selected;
     colors.border = border;
     colors.border_variant = border;
+    colors.pane_group_border = border;
+    colors.panel_indent_guide = border;
+    colors.scrollbar_track_border = border;
     colors.text = text;
     colors.text_muted = muted;
     colors.text_placeholder = muted;
@@ -878,9 +901,29 @@ mod tests {
             for palette in THEME_PALETTES {
                 let registered = registry.get(palette.name).unwrap();
                 assert_eq!(registered.appearance, palette.appearance);
+                assert_ne!(
+                    registered.styles.colors.elevated_surface_background,
+                    registered.styles.colors.border_variant,
+                    "{} must retain a visible elevated-surface border",
+                    palette.name,
+                );
             }
             assert_eq!(registry.get(CHARTR_DARK).unwrap().appearance, Appearance::Dark);
             assert_eq!(registry.get(CHARTR_LIGHT).unwrap().appearance, Appearance::Light);
+        });
+    }
+
+    #[gpui::test]
+    fn chartr_dark_keeps_structural_borders_clear_of_its_surfaces(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(theme::LoadThemes::JustBase, cx);
+            init_themes(&ResolvedSettings::default(), cx);
+            let theme = ThemeRegistry::global(cx).get(CHARTR_DARK).unwrap();
+            let colors = &theme.styles.colors;
+
+            assert!((colors.border.l - colors.editor_background.l).abs() >= 0.15);
+            assert!((colors.border_variant.l - colors.elevated_surface_background.l).abs() >= 0.08);
+            assert_eq!(colors.pane_group_border, colors.border);
         });
     }
 

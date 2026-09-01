@@ -18,6 +18,7 @@ use ui::{
 
 use crate::{
     app::Zeddy,
+    components::{selection_list, selection_row},
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
     mode::Mode,
@@ -1103,24 +1104,9 @@ impl Render for SettingsWindow {
         let navigation: Vec<_> = SettingsPage::ALL
             .into_iter()
             .map(|page| {
-                div()
-                    .id(format!("settings-page-{}", page.slug()))
-                    .role(Role::Tab)
+                selection_row(format!("settings-page-{}", page.slug()), page == selected)
+                    .aria_role(Role::Tab)
                     .aria_label(page.title())
-                    .aria_selected(page == selected)
-                    .mx_1()
-                    .px_2()
-                    .py_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .when(page == selected, |row| {
-                        row.bg(cx.theme().colors().element_selected)
-                            .text_color(cx.theme().colors().text)
-                    })
-                    .when(page != selected, |row| {
-                        row.text_color(cx.theme().colors().text_muted)
-                            .hover(|row| row.bg(cx.theme().colors().element_hover))
-                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.page = page;
                         if page != SettingsPage::Plugins {
@@ -1128,7 +1114,11 @@ impl Render for SettingsWindow {
                         }
                         cx.notify();
                     }))
-                    .child(Label::new(page.title()).size(UI_LABEL_DEFAULT))
+                    .child(
+                        Label::new(page.title())
+                            .size(UI_LABEL_DEFAULT)
+                            .when(page != selected, |label| label.color(Color::Muted)),
+                    )
             })
             .collect();
         let unreadable = cx.global::<SettingsStore>().unreadable().map(str::to_owned);
@@ -1171,7 +1161,7 @@ impl Render for SettingsWindow {
                             .child(div().px_3().py_1().child(
                                 Label::new("Options").size(UI_LABEL_SMALL).color(Color::Muted),
                             ))
-                            .children(navigation),
+                            .child(selection_list().px_1().children(navigation)),
                     )
                     .child(
                         div()
