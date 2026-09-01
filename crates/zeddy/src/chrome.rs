@@ -152,9 +152,8 @@ impl Render for DraggedItemPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let width = dragged_item_pill_width(self.dragged.grouped);
         div()
-            .relative()
-            .left(self.source_offset.x - px(width / 2.))
-            .top(self.source_offset.y - px(DRAGGED_ITEM_PILL_HEIGHT / 2.))
+            .pl(self.source_offset.x - px(width / 2.))
+            .pt(self.source_offset.y - px(DRAGGED_ITEM_PILL_HEIGHT / 2.))
             .child(dragged_item_pill(self.dragged.grouped, cx))
     }
 }
