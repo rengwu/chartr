@@ -18,9 +18,8 @@ use gpui::{
     PathPromptOptions, Role,
 };
 use ui::{
-    Banner, ButtonLike, ButtonSize, ContextMenu, IconButtonShape, IconPosition, ListItem,
-    ListItemSpacing, PopoverMenu, Severity, Tab, TabBar, TabPosition, TintColor, Tooltip,
-    prelude::*,
+    Banner, ButtonLike, ButtonSize, IconButtonShape, IconPosition, ListItem, ListItemSpacing,
+    PopoverMenu, Severity, Tab, TabBar, TabPosition, Tooltip, prelude::*,
 };
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
 use zeddy_plugin::{InstanceContext, manifest::Multiplicity};
@@ -29,6 +28,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 use crate::{
     actions,
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
+    components::ContextMenu,
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::PluginItem,
     keys,
@@ -1641,7 +1641,7 @@ impl Zeddy {
                 ButtonLike::new("space-switcher-trigger")
                     .aria_label("Current space")
                     .aria_value(current.clone())
-                    .selected_style(ButtonStyle::Tinted(TintColor::Accent))
+                    .selected_style(ButtonStyle::Filled)
                     .child(div().min_w_0().max_w(px(148.)).child(Label::new(current).truncate()))
                     .child(
                         Icon::new(IconName::ChevronUpDown)

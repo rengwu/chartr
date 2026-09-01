@@ -13,7 +13,7 @@ use gpui::{
     Anchor, Bounds, EntityId, MouseButton, Pixels, Point, Rems, Role, ScrollHandle, deferred,
     point, px, transparent_black,
 };
-use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*, right_click_menu};
+use ui::{PopoverMenu, Tooltip, prelude::*, right_click_menu};
 
 use super::Emit;
 
@@ -21,7 +21,7 @@ use super::{
     Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, dragged_item_preview,
     status_indicator,
 };
-use crate::components::{SelectionRowBackgrounds, selection_list, selection_row};
+use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 use crate::settings::sidebar_theme_colors;
 

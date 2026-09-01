@@ -837,12 +837,15 @@ fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
     colors.text_muted = muted;
     colors.text_placeholder = muted;
     colors.text_disabled = quiet;
-    colors.text_accent = accent;
+    // Selected controls should read through surface contrast, not a saturated
+    // blue foreground. Semantic accents remain available to links, focus
+    // rings, and status colors below.
+    colors.text_accent = text;
     colors.icon = text;
     colors.icon_muted = muted;
     colors.icon_placeholder = muted;
     colors.icon_disabled = quiet;
-    colors.icon_accent = accent;
+    colors.icon_accent = text;
     colors.title_bar_background = sidebar;
     colors.title_bar_inactive_background = card;
     colors.toolbar_background = sidebar;
@@ -894,6 +897,8 @@ fn chartr_dark(source: &Theme) -> Theme {
     let colors = &mut dark.styles.colors;
     let border = gpui::rgb(0x505866).into();
     let border_variant = gpui::rgb(0x414956).into();
+    colors.text_accent = colors.text;
+    colors.icon_accent = colors.icon;
     colors.border = border;
     colors.border_variant = border_variant;
     colors.pane_group_border = border;
@@ -912,7 +917,7 @@ fn chartr_light(dark: &Theme) -> Theme {
     let surface = gpui::rgb(0xffffff).into();
     let raised = gpui::rgb(0xf1f3f5).into();
     let hover = gpui::rgb(0xe8ebef).into();
-    let selected = gpui::rgb(0xdce6f5).into();
+    let selected = gpui::rgb(0xdfe3e8).into();
     let border = gpui::rgb(0xd4d8de).into();
     let text = gpui::rgb(0x24272d).into();
     let muted = gpui::rgb(0x66707d).into();
@@ -933,10 +938,12 @@ fn chartr_light(dark: &Theme) -> Theme {
     colors.panel_indent_guide = border;
     colors.scrollbar_track_border = border;
     colors.text = text;
+    colors.text_accent = text;
     colors.text_muted = muted;
     colors.text_placeholder = muted;
     colors.text_disabled = muted;
     colors.icon = text;
+    colors.icon_accent = text;
     colors.icon_muted = muted;
     colors.icon_placeholder = muted;
     colors.icon_disabled = muted;
@@ -1025,6 +1032,26 @@ mod tests {
             assert!((colors.border.l - colors.editor_background.l).abs() >= 0.15);
             assert!((colors.border_variant.l - colors.elevated_surface_background.l).abs() >= 0.08);
             assert_eq!(colors.pane_group_border, colors.border);
+        });
+    }
+
+    #[gpui::test]
+    fn active_control_foregrounds_are_neutral_across_the_theme_catalog(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(theme::LoadThemes::JustBase, cx);
+            init_themes(&ResolvedSettings::default(), cx);
+            let registry = ThemeRegistry::global(cx);
+
+            for name in THEME_PALETTES
+                .map(|palette| palette.name)
+                .into_iter()
+                .chain([CHARTR_DARK, CHARTR_LIGHT])
+            {
+                let theme = registry.get(name).unwrap();
+                let colors = &theme.styles.colors;
+                assert_eq!(colors.text_accent, colors.text, "{name} has tinted active text");
+                assert_eq!(colors.icon_accent, colors.icon, "{name} has tinted active icons");
+            }
         });
     }
 

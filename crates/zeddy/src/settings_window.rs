@@ -11,14 +11,15 @@ use gpui::{
     WindowHandle, WindowOptions, actions, px, size,
 };
 use ui::{
-    Banner, Button, ColumnWidthConfig, ContextMenu, DropdownMenu, DropdownStyle, Icon, IconButton,
-    PopoverMenu, RedistributableColumnsState, Severity, Table, TableResizeBehavior, Tooltip,
-    prelude::*,
+    Banner, Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
+    RedistributableColumnsState, Severity, Table, TableResizeBehavior, Tooltip, prelude::*,
 };
 
 use crate::{
     app::Zeddy,
-    components::{selection_list, selection_row},
+    components::{
+        ContextMenu, SegmentedControl, SegmentedControlOption, selection_list, selection_row,
+    },
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
     mode::Mode,
@@ -537,12 +538,26 @@ impl SettingsWindow {
         let mode = mode.unwrap_or_default();
         let sidebar_scope = sidebar_scope.unwrap_or_default();
         let toggle = cx.listener(move |this, _, _, cx| this.set_terminate_on_exit(!terminate, cx));
-        let use_sidebar = cx.listener(|this, _, _, cx| this.set_mode(Mode::Sidebar, cx));
-        let use_tabs = cx.listener(|this, _, _, cx| this.set_mode(Mode::Tabs, cx));
-        let show_all =
-            cx.listener(|this, _, _, cx| this.set_sidebar_scope(SidebarScope::AllSpaces, cx));
-        let show_active =
-            cx.listener(|this, _, _, cx| this.set_sidebar_scope(SidebarScope::ActiveSpace, cx));
+        let use_sidebar = cx.listener(move |this, _, _, cx| {
+            if runtime_available {
+                this.set_mode(Mode::Sidebar, cx);
+            }
+        });
+        let use_tabs = cx.listener(move |this, _, _, cx| {
+            if runtime_available {
+                this.set_mode(Mode::Tabs, cx);
+            }
+        });
+        let show_all = cx.listener(move |this, _, _, cx| {
+            if runtime_available {
+                this.set_sidebar_scope(SidebarScope::AllSpaces, cx);
+            }
+        });
+        let show_active = cx.listener(move |this, _, _, cx| {
+            if runtime_available {
+                this.set_sidebar_scope(SidebarScope::ActiveSpace, cx);
+            }
+        });
         v_flex()
             .gap_4()
             .child(Label::new("Chartr").size(UI_LABEL_LARGE))
@@ -573,6 +588,8 @@ impl SettingsWindow {
                             if terminate { "On" } else { "Off" },
                         )
                         .toggle_state(terminate)
+                        .selected_style(ButtonStyle::Filled)
+                        .selected_label_color(Color::Default)
                         .on_click(toggle),
                     ),
             )
@@ -589,20 +606,24 @@ impl SettingsWindow {
                         ),
                     )
                     .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Button::new("presentation-sidebar", "Sidebar")
-                                    .disabled(!runtime_available)
-                                    .toggle_state(mode == Mode::Sidebar)
-                                    .on_click(use_sidebar),
-                            )
-                            .child(
-                                Button::new("presentation-tabs", "Tabbed")
-                                    .disabled(!runtime_available)
-                                    .toggle_state(mode == Mode::Tabs)
-                                    .on_click(use_tabs),
-                            ),
+                        SegmentedControl::new(
+                            "Session list presentation",
+                            [
+                                SegmentedControlOption::new(
+                                    "presentation-sidebar",
+                                    "Sidebar",
+                                    mode == Mode::Sidebar,
+                                    use_sidebar,
+                                ),
+                                SegmentedControlOption::new(
+                                    "presentation-tabs",
+                                    "Tabbed",
+                                    mode == Mode::Tabs,
+                                    use_tabs,
+                                ),
+                            ],
+                        )
+                        .disabled(!runtime_available),
                     ),
             )
             .child(setting_label("Sidebar"))
@@ -618,20 +639,24 @@ impl SettingsWindow {
                         ),
                     )
                     .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Button::new("sidebar-all-spaces", "All spaces")
-                                    .disabled(!runtime_available)
-                                    .toggle_state(sidebar_scope == SidebarScope::AllSpaces)
-                                    .on_click(show_all),
-                            )
-                            .child(
-                                Button::new("sidebar-active-space", "Active space only")
-                                    .disabled(!runtime_available)
-                                    .toggle_state(sidebar_scope == SidebarScope::ActiveSpace)
-                                    .on_click(show_active),
-                            ),
+                        SegmentedControl::new(
+                            "Spaces shown in the sidebar",
+                            [
+                                SegmentedControlOption::new(
+                                    "sidebar-all-spaces",
+                                    "All spaces",
+                                    sidebar_scope == SidebarScope::AllSpaces,
+                                    show_all,
+                                ),
+                                SegmentedControlOption::new(
+                                    "sidebar-active-space",
+                                    "Active space only",
+                                    sidebar_scope == SidebarScope::ActiveSpace,
+                                    show_active,
+                                ),
+                            ],
+                        )
+                        .disabled(!runtime_available),
                     ),
             )
             .into_any_element()
@@ -756,11 +781,15 @@ impl SettingsWindow {
                     .child(
                         Button::new("theme-fixed", "Fixed")
                             .toggle_state(mode == ThemeMode::Fixed)
+                            .selected_style(ButtonStyle::Filled)
+                            .selected_label_color(Color::Default)
                             .on_click(fixed_mode),
                     )
                     .child(
                         Button::new("theme-system", "Match system")
                             .toggle_state(mode == ThemeMode::System)
+                            .selected_style(ButtonStyle::Filled)
+                            .selected_label_color(Color::Default)
                             .on_click(system_mode),
                     ),
             )
@@ -839,6 +868,8 @@ impl SettingsWindow {
                     .child(
                         Button::new("reduce-motion", if reduce_motion { "On" } else { "Off" })
                             .toggle_state(reduce_motion)
+                            .selected_style(ButtonStyle::Filled)
+                            .selected_label_color(Color::Default)
                             .on_click(toggle_reduce_motion),
                     ),
             )
@@ -953,6 +984,8 @@ impl SettingsWindow {
                         },
                     )
                     .toggle_state(recording == Some(action))
+                    .selected_style(ButtonStyle::Filled)
+                    .selected_label_color(Color::Default)
                     .on_click(capture)
                     .into_any_element(),
                 ])
@@ -1051,6 +1084,8 @@ impl SettingsWindow {
                         )
                         .disabled(!origin_available)
                         .toggle_state(configured.unsafe_filesystem)
+                        .selected_style(ButtonStyle::Filled)
+                        .selected_label_color(Color::Default)
                         .on_click(change)
                     });
                 let configure = has_settings.then(|| {
@@ -1086,6 +1121,8 @@ impl SettingsWindow {
                                 )
                                 .disabled(!origin_available)
                                 .toggle_state(enabled)
+                                .selected_style(ButtonStyle::Filled)
+                                .selected_label_color(Color::Default)
                                 .on_click(toggle),
                             ),
                     )
@@ -1179,9 +1216,10 @@ impl Render for SettingsWindow {
                     .min_h_0()
                     .child(
                         v_flex()
-                            .w(px(176.))
+                            .w(px(240.))
                             .h_full()
                             .py_3()
+                            .px_1()
                             .border_r_1()
                             .border_color(cx.theme().colors().border)
                             .bg(cx.theme().colors().surface_background)
@@ -1192,10 +1230,7 @@ impl Render for SettingsWindow {
                                         .weight(FontWeight::SEMIBOLD),
                                 ),
                             )
-                            .child(div().px_3().py_1().child(
-                                Label::new("Options").size(UI_LABEL_SMALL).color(Color::Muted),
-                            ))
-                            .child(selection_list().px_1().children(navigation)),
+                            .child(selection_list().px_2().children(navigation)),
                     )
                     .child(
                         div()

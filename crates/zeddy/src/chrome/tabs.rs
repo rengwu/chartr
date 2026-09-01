@@ -7,13 +7,14 @@
 
 use gpui::{Anchor, Role};
 use ui::{
-    ButtonSize, ContextMenu, IconButtonShape, PopoverMenu, Tab, TabBar, TabPosition, Tooltip,
-    prelude::*, right_click_menu,
+    ButtonSize, IconButtonShape, PopoverMenu, Tab, TabBar, TabPosition, Tooltip, prelude::*,
+    right_click_menu,
 };
 
 use super::Emit;
 
 use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
+use crate::components::ContextMenu;
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 pub fn render(
