@@ -6,7 +6,7 @@
 //! identity.
 
 use gpui::Role;
-use ui::{ButtonSize, IconButtonShape, Tab, TabPosition, Tooltip, prelude::*};
+use ui::{ButtonSize, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*};
 
 use super::Emit;
 
@@ -22,39 +22,22 @@ pub fn render(
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
-    let colors = cx.theme().colors();
     let settings = on.clone();
     let active_index = entries.iter().position(|entry| entry.selected);
 
-    h_flex()
-        .h(Tab::container_height(cx))
-        .flex_none()
-        .w_full()
-        .bg(colors.tab_bar_background)
-        .border_b_1()
-        .border_color(colors.border)
-        .child(
-            h_flex()
-                .h_full()
-                .flex_none()
-                .max_w(px(SPACE_SWITCHER_MAX_WIDTH))
-                .px_2()
-                .border_r_1()
-                .border_color(colors.border)
-                .child(space_switcher),
-        )
-        .child(h_flex().id("tabs").flex_1().overflow_x_scroll().children(
+    TabBar::new("workspace-tabs")
+        .start_child(h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher))
+        .children(
             entries.iter().enumerate().map(|(index, entry)| {
                 tab(index, entries.len(), active_index, entry, on.clone(), cx)
             }),
-        ))
-        .child(
-            h_flex().px_1().gap_px().flex_none().child(new_item).child(
-                IconButton::new("open-settings", IconName::Settings)
-                    .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Settings"))
-                    .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
-            ),
+        )
+        .end_child(new_item)
+        .end_child(
+            IconButton::new("open-settings", IconName::Settings)
+                .icon_size(IconSize::Small)
+                .tooltip(Tooltip::text("Settings"))
+                .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
         )
 }
 
