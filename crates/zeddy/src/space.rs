@@ -762,6 +762,23 @@ impl Space {
     }
 
     pub fn start_session(&mut self, cx: &mut Context<Self>) {
+        self.start_session_at(None, cx);
+    }
+
+    pub fn start_session_in(
+        &mut self,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_session_at(Some((tab, pane)), cx);
+    }
+
+    fn start_session_at(
+        &mut self,
+        destination: Option<(WorkspaceTabId, crate::workspace::PaneId)>,
+        cx: &mut Context<Self>,
+    ) {
         if self.starting {
             return;
         }
@@ -798,7 +815,11 @@ impl Space {
                 this.starting = false;
                 match result {
                     Ok(session) => {
-                        this.insert_session(session);
+                        if let Some((tab, pane)) = destination {
+                            this.insert_session_in(session, tab, pane);
+                        } else {
+                            this.insert_session(session);
+                        }
                         this.problem = None;
                     }
                     Err(error) => this.problem = Some(error.to_string()),
@@ -811,6 +832,35 @@ impl Space {
 
     fn insert_session(&mut self, session: Session) {
         self.insert_session_with_id(session, None);
+    }
+
+    fn insert_session_in(
+        &mut self,
+        session: Session,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+    ) {
+        self.workspace = Some(session.info.workspace.clone());
+        let backend_id = session.id().clone();
+        if self.sessions.contains_key(&backend_id) {
+            return;
+        }
+
+        let id = self.layout.alloc_item();
+        self.items.insert(id, Item::Session(SessionItem::new(session)));
+        let placed = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.add_item(id, Some(pane), None));
+        if placed.is_ok() {
+            let _ = self.layout.activate_tab(tab);
+        } else if let Err(error) = self.layout.push_standalone(id) {
+            self.items.remove(&id);
+            self.problem = Some(error.to_string());
+            return;
+        }
+        self.sessions.insert(backend_id, id);
     }
 
     fn insert_session_with_id(&mut self, session: Session, restored: Option<ItemId>) {

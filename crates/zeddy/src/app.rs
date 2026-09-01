@@ -1693,6 +1693,30 @@ impl Zeddy {
             .into_any_element()
     }
 
+    fn pane_new_item_button(
+        &self,
+        tab_id: WorkspaceTabId,
+        pane_id: LayoutPaneId,
+        weak: &gpui::WeakEntity<Self>,
+    ) -> AnyElement {
+        let button_id = format!("new-item-pane-{}-{}", tab_id.get(), pane_id.get());
+        let start = weak.clone();
+        IconButton::new(button_id, IconName::Plus)
+            .icon_size(IconSize::XSmall)
+            .tooltip(Tooltip::text("New session in this pane"))
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                let _ = start.update(cx, |this, cx| {
+                    if matches!(this.backend, Backend::Ready)
+                        && let Some(space) = this.active.clone()
+                    {
+                        space.update(cx, |space, cx| space.start_session_in(tab_id, pane_id, cx));
+                    }
+                });
+            })
+            .into_any_element()
+    }
+
     fn web_plugin_focus_handler(
         space: Entity<Space>,
         cx: &Context<Self>,
@@ -2477,24 +2501,28 @@ impl Zeddy {
         let close = weak.clone();
         TabBar::new(format!("workspace-tab-{}-pane-{}-empty", tab_id.get(), pane_id.get()))
             .end_child(
-                IconButton::new(
-                    format!("close-empty-pane-{}-{}", tab_id.get(), pane_id.get()),
-                    IconName::Close,
-                )
-                .shape(IconButtonShape::Square)
-                .size(ButtonSize::None)
-                .icon_size(IconSize::XSmall)
-                .aria_label("Close Empty Pane")
-                .tooltip(Tooltip::text("Close Empty Pane"))
-                .on_click(move |_, _, cx| {
-                    cx.stop_propagation();
-                    let _ = close.update(cx, |this, cx| {
-                        if let Some(space) = this.active.clone() {
-                            space.update(cx, |space, _| space.remove_empty_pane(tab_id, pane_id));
-                        }
-                        cx.notify();
-                    });
-                }),
+                h_flex().gap_1().child(self.pane_new_item_button(tab_id, pane_id, weak)).child(
+                    IconButton::new(
+                        format!("close-empty-pane-{}-{}", tab_id.get(), pane_id.get()),
+                        IconName::Close,
+                    )
+                    .shape(IconButtonShape::Square)
+                    .size(ButtonSize::None)
+                    .icon_size(IconSize::XSmall)
+                    .aria_label("Close Empty Pane")
+                    .tooltip(Tooltip::text("Close Empty Pane"))
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        let _ = close.update(cx, |this, cx| {
+                            if let Some(space) = this.active.clone() {
+                                space.update(cx, |space, _| {
+                                    space.remove_empty_pane(tab_id, pane_id)
+                                });
+                            }
+                            cx.notify();
+                        });
+                    }),
+                ),
             )
             .into_any_element()
     }
@@ -2643,6 +2671,7 @@ impl Zeddy {
         TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
             .children(tabs)
             .child(tab_bar_drop_target)
+            .end_child(self.pane_new_item_button(tab_id, pane_id, weak))
             .into_any_element()
     }
 
