@@ -4,8 +4,8 @@
 //! shared across features belong here.
 
 use gpui::{
-    AnyElement, App, ClickEvent, Div, ElementId, IntoElement, ParentElement, RenderOnce, Role,
-    SharedString, Window, px, relative,
+    AnyElement, App, ClickEvent, Div, ElementId, Hsla, IntoElement, ParentElement, RenderOnce,
+    Role, SharedString, Window, px, relative,
 };
 use ui::{DynamicSpacing, prelude::*};
 
@@ -24,6 +24,13 @@ pub fn selection_row(id: impl Into<ElementId>, selected: bool) -> SelectionRow {
     SelectionRow::new(id, selected)
 }
 
+/// Optional state surfaces for a selection row embedded on a custom ground.
+#[derive(Debug, Clone, Copy)]
+pub struct SelectionRowBackgrounds {
+    pub hover: Hsla,
+    pub selected: Hsla,
+}
+
 #[derive(IntoElement)]
 pub struct SelectionRow {
     id: ElementId,
@@ -33,6 +40,7 @@ pub struct SelectionRow {
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     start_slot: Option<AnyElement>,
     end_slot: Option<AnyElement>,
+    backgrounds: Option<SelectionRowBackgrounds>,
     children: Vec<AnyElement>,
 }
 
@@ -46,6 +54,7 @@ impl SelectionRow {
             on_click: None,
             start_slot: None,
             end_slot: None,
+            backgrounds: None,
             children: Vec::new(),
         }
     }
@@ -77,6 +86,11 @@ impl SelectionRow {
         self.end_slot = slot.into().map(IntoElement::into_any_element);
         self
     }
+
+    pub fn backgrounds(mut self, backgrounds: SelectionRowBackgrounds) -> Self {
+        self.backgrounds = Some(backgrounds);
+        self
+    }
 }
 
 impl ParentElement for SelectionRow {
@@ -91,6 +105,15 @@ impl RenderOnce for SelectionRow {
         let vertical_padding =
             if sparse_padding > px(1.) { sparse_padding - px(1.) } else { px(0.) };
         let has_end_slot = self.end_slot.is_some();
+        let colors = cx.theme().colors();
+        let (selected_background, hover_background, active_background) = if let Some(backgrounds) =
+            self.backgrounds
+        {
+            let interaction = if self.selected { backgrounds.selected } else { backgrounds.hover };
+            (backgrounds.selected, interaction, interaction)
+        } else {
+            (colors.ghost_element_selected, colors.ghost_element_hover, colors.ghost_element_active)
+        };
 
         h_flex()
             .id(self.id)
@@ -103,9 +126,9 @@ impl RenderOnce for SelectionRow {
             .rounded_sm()
             .when_some(self.aria_role, |row, role| row.role(role).aria_selected(self.selected))
             .when_some(self.aria_label, |row, label| row.aria_label(label))
-            .hover(|style| style.bg(cx.theme().colors().ghost_element_hover))
-            .active(|style| style.bg(cx.theme().colors().ghost_element_active))
-            .when(self.selected, |row| row.bg(cx.theme().colors().ghost_element_selected))
+            .when(self.selected, |row| row.bg(selected_background))
+            .hover(|style| style.bg(hover_background))
+            .active(|style| style.bg(active_background))
             .when_some(self.on_click, |row, on_click| row.cursor_pointer().on_click(on_click))
             .child(
                 h_flex()

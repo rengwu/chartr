@@ -13,6 +13,8 @@ use super::Emit;
 use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
 use crate::fonts::UI_LABEL_DEFAULT;
 
+const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
+
 pub fn render(
     entries: &[Entry],
     space_switcher: AnyElement,
@@ -33,9 +35,9 @@ pub fn render(
         .border_color(colors.border)
         .child(
             h_flex()
-                .w(px(super::sidebar::DEFAULT_WIDTH))
                 .h_full()
                 .flex_none()
+                .max_w(px(SPACE_SWITCHER_MAX_WIDTH))
                 .px_2()
                 .border_r_1()
                 .border_color(colors.border)

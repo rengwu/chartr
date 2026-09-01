@@ -4,7 +4,7 @@
 //! tab cannot hold — the agent's name under the title, and a close button that
 //! is not fighting the title for space — so this chrome shows them.
 
-use gpui::{Anchor, MouseButton, Role, deferred};
+use gpui::{Anchor, MouseButton, Role, deferred, transparent_black};
 use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*};
 
 use super::Emit;
@@ -13,13 +13,11 @@ use super::{
     Action, DraggedItem, DraggedSidebar, Entry, SpaceEntries, dragged_item_preview,
     status_indicator,
 };
-use crate::components::{selection_list, selection_row};
+use crate::components::{SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
+use crate::settings::sidebar_theme_colors;
 
-/// The sidebar's width. Fixed rather than draggable: a resizable sidebar is a
-/// preference to persist, a drag handle to hit-test, and a minimum to enforce,
-/// and none of that is what makes this mode useful.
-pub const DEFAULT_WIDTH: f32 = 280.;
+/// Limits for the resizable sidebar.
 pub const MIN_WIDTH: f32 = 180.;
 pub const MAX_WIDTH: f32 = 480.;
 
@@ -31,20 +29,26 @@ pub fn render(
     cx: &App,
 ) -> impl IntoElement {
     let colors = cx.theme().colors();
-    let mut groups = Vec::new();
+    let sidebar_colors = sidebar_theme_colors(cx.theme());
+    let session_backgrounds = SelectionRowBackgrounds {
+        hover: sidebar_colors.session_hover,
+        selected: sidebar_colors.session_active,
+    };
+    let mut cards = Vec::with_capacity(spaces.len());
     let mut index = 0;
     for (space_index, space) in spaces.iter().enumerate() {
+        let mut contents = Vec::with_capacity(space.entries.len() + 1);
         let add = on.clone();
         let actions = on.clone();
         let space_id = space.id;
         let action_space = space.id;
         let removable = space.removable;
         let available = space.available;
-        groups.push(
+        contents.push(
             h_flex()
                 .group("space-heading")
-                .px_2()
-                .pt_2()
+                .pl_1()
+                .pt_0()
                 .pb_1()
                 .justify_between()
                 .child(Label::new(space.name.clone()).size(UI_LABEL_SMALL).color(Color::Muted))
@@ -127,13 +131,14 @@ pub fn render(
                 .into_any_element(),
         );
         for (target_index, entry) in space.entries.iter().enumerate() {
-            groups.push(
+            contents.push(
                 row(
                     index,
                     target_index,
                     entry,
                     space.active && entry.selected,
                     entry.grouped,
+                    session_backgrounds,
                     on.clone(),
                     cx,
                 )
@@ -141,6 +146,33 @@ pub fn render(
             );
             index += 1;
         }
+
+        // A space and its sessions are one object in the sidebar. Keep the
+        // plate restrained so it separates neighbouring spaces without
+        // turning every session into a nested card; the stronger row fill is
+        // then free to keep meaning "selected session". A transparent resting
+        // border reserves the active-space ring without changing geometry.
+        cards.push(
+            selection_list()
+                .id(("space-card", space_index))
+                .w_full()
+                .flex_none()
+                .p_1()
+                .rounded_md()
+                .border_1()
+                .border_color(if space.active {
+                    colors.border_selected
+                } else {
+                    transparent_black()
+                })
+                .bg(if space.active {
+                    sidebar_colors.card_active
+                } else {
+                    sidebar_colors.card_inactive
+                })
+                .children(contents)
+                .into_any_element(),
+        );
     }
 
     v_flex()
@@ -154,13 +186,14 @@ pub fn render(
         .border_color(colors.border)
         .child(header(space_switcher, on.clone()))
         .child(
-            selection_list()
+            v_flex()
                 .id("sessions")
                 .flex_1()
                 .overflow_y_scroll()
                 .py_1()
-                .px_1()
-                .children(groups),
+                .px_1p5()
+                .gap_2()
+                .children(cards),
         )
         .child(deferred(
             div()
@@ -205,6 +238,7 @@ fn row(
     entry: &Entry,
     selected: bool,
     grouped: bool,
+    backgrounds: SelectionRowBackgrounds,
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
@@ -297,6 +331,7 @@ fn row(
         })
         .child(
             selection_row(("session", index), selected)
+                .backgrounds(backgrounds)
                 .aria_role(Role::Tab)
                 .aria_label(if grouped {
                     format!("Pane group: {}", entry.title)

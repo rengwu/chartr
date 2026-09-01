@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use gpui::BorrowAppContext;
+use gpui::{BorrowAppContext, Hsla};
 use serde::{Deserialize, Serialize};
 use theme::{Appearance, GlobalTheme, SystemAppearance, Theme, ThemeRegistry};
 
@@ -562,7 +562,7 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0x5f5650,
         0xecddb4,
         0xc8b899,
-        0xadc5cc,
+        0xab9965,
         0xc8b899,
         0xddcca7,
         0x9d0308,
@@ -653,6 +653,85 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0xd4d4d4,
     ),
 ];
+
+/// Sidebar-only colors whose layering is too specific to borrow safely from
+/// Zed's general element tokens. These values are deliberately explicit: this
+/// table is the one hand-tuning point for every theme Chartr exposes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SidebarThemeColors {
+    pub card_inactive: Hsla,
+    pub card_active: Hsla,
+    pub session_hover: Hsla,
+    pub session_active: Hsla,
+}
+
+#[derive(Clone, Copy)]
+struct SidebarThemePalette {
+    name: &'static str,
+    card_inactive: u32,
+    card_active: u32,
+    session_hover: u32,
+    session_active: u32,
+}
+
+impl SidebarThemePalette {
+    const fn new(
+        name: &'static str,
+        card_inactive: u32,
+        card_active: u32,
+        session_hover: u32,
+        session_active: u32,
+    ) -> Self {
+        Self { name, card_inactive, card_active, session_hover, session_active }
+    }
+
+    fn colors(self) -> SidebarThemeColors {
+        let color = |value| gpui::rgb(value).into();
+        SidebarThemeColors {
+            card_inactive: color(self.card_inactive),
+            card_active: color(self.card_active),
+            session_hover: color(self.session_hover),
+            session_active: color(self.session_active),
+        }
+    }
+}
+
+//                                          card       card       session    session
+// Theme                                    inactive   active     hover      active
+const SIDEBAR_THEME_PALETTES: [SidebarThemePalette; 15] = [
+    SidebarThemePalette::new("Ayu Dark", 0x23252a, 0x26282e, 0x27292f, 0x2d2f34),
+    SidebarThemePalette::new("Ayu Light", 0xe9e9ea, 0xe6e6e7, 0xe4e5e6, 0xdfe0e1),
+    SidebarThemePalette::new("Ayu Mirage", 0x393c47, 0x3c404a, 0x3d414b, 0x43464f),
+    SidebarThemePalette::new("Catppuccin Frappé", 0x2f3243, 0x35394b, 0x373b4d, 0x414559),
+    SidebarThemePalette::new("Catppuccin Latte", 0xe0e3ea, 0xd9dde5, 0xd6dae2, 0xccd0da),
+    SidebarThemePalette::new("Catppuccin Macchiato", 0x242738, 0x2a2d40, 0x2c3043, 0x363a4f),
+    SidebarThemePalette::new("Catppuccin Mocha", 0x1e1f2d, 0x252535, 0x272838, 0x313244),
+    SidebarThemePalette::new("Gruvbox Dark", 0x3e3a38, 0x423d3b, 0x433e3c, 0x494340),
+    SidebarThemePalette::new("Gruvbox Light", 0xF0E6C9, 0xF0E6C9, 0xe3d3ac, 0xddcca7),
+    SidebarThemePalette::new("One Dark", 0x313640, 0x333842, 0x333943, 0x363c46),
+    SidebarThemePalette::new("One Light", 0xe8e8e9, 0xe5e5e6, 0xe4e4e5, 0xdfdfe0),
+    SidebarThemePalette::new("VSCode Dark Modern", 0x1d1d1d, 0x222222, 0x232323, 0x2b2b2b),
+    SidebarThemePalette::new("VSCode Dark Plus", 0x262728, 0x28292a, 0x282a2b, 0x2a2d2e),
+    SidebarThemePalette::new(CHARTR_DARK, 0x313640, 0x333842, 0x333943, 0x363c46),
+    SidebarThemePalette::new(CHARTR_LIGHT, 0xf9fafb, 0xf4f5f7, 0xf1f3f5, 0xe8ebef),
+];
+
+pub fn sidebar_theme_colors(theme: &Theme) -> SidebarThemeColors {
+    SIDEBAR_THEME_PALETTES
+        .iter()
+        .find(|palette| palette.name == theme.name.as_ref())
+        .copied()
+        .map(SidebarThemePalette::colors)
+        .unwrap_or_else(|| {
+            let colors = &theme.styles.colors;
+            SidebarThemeColors {
+                card_inactive: colors.element_background,
+                card_active: colors.element_active,
+                session_hover: colors.ghost_element_hover,
+                session_active: colors.ghost_element_selected,
+            }
+        })
+}
 
 impl ThemePalette {
     #[allow(clippy::too_many_arguments)]
@@ -905,6 +984,21 @@ mod tests {
                     registered.styles.colors.elevated_surface_background,
                     registered.styles.colors.border_variant,
                     "{} must retain a visible elevated-surface border",
+                    palette.name,
+                );
+            }
+            for palette in SIDEBAR_THEME_PALETTES {
+                let registered = registry.get(palette.name).unwrap();
+                let colors = sidebar_theme_colors(&registered);
+                assert_eq!(colors, palette.colors());
+                assert_ne!(
+                    colors.card_inactive, colors.card_active,
+                    "{} needs distinct inactive and active cards",
+                    palette.name,
+                );
+                assert_ne!(
+                    colors.card_active, colors.session_active,
+                    "{} needs a visible selected session inside an active card",
                     palette.name,
                 );
             }
