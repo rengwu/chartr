@@ -583,8 +583,7 @@ impl Space {
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }
-            | Action::ToggleMode
-            | Action::ToggleSidebarScope => {}
+            | Action::OpenSettings => {}
         }
         cx.notify();
     }
@@ -943,7 +942,7 @@ impl Drop for Space {
 
 pub fn name_for(kind: Kind, path: &std::path::Path) -> String {
     match kind {
-        Kind::AdHoc => "Ad-hoc sessions".to_owned(),
+        Kind::AdHoc => "Free sessions".to_owned(),
         Kind::Registered => spaces::display_name(path),
     }
 }
@@ -953,7 +952,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_synthetic_space_has_the_product_name_from_the_sketch() {
-        assert_eq!(name_for(Kind::AdHoc, std::path::Path::new("/home/op")), "Ad-hoc sessions");
+    fn the_folderless_space_is_named_free_sessions() {
+        assert_eq!(name_for(Kind::AdHoc, std::path::Path::new("/home/op")), "Free sessions");
     }
 }

@@ -17,7 +17,7 @@ backend instead of exposing web panes that fail only on Wayland.
 ## Spaces, panes, and items
 
 One window owns ordered spaces and one active space, following Zed's
-`MultiWorkspace` responsibility. The permanent **Ad-hoc sessions** space is
+`MultiWorkspace` responsibility. The permanent **Free sessions** space is
 folderless and starts sessions in the home directory (or its configured
 replacement). Folder spaces are canonical-path identities with independent
 outer tab collections and recursive pane groups.
@@ -59,11 +59,16 @@ titles. Collapsed pane groups use the neutral title **Grouped Tabs**.
 
 ## Settings and persistence
 
-Settings is presented inside the main window, retaining the spaces sidebar.
-The implemented pages are General, Appearance, Terminal, Hotkeys, and Plugins.
-Changes are written atomically; hotkeys are semantic GPUI actions with conflict
-detection. Chartr Dark is the fixed default, with Chartr Light and system theme
-pairs available. IBM Plex Sans and the bundled IBM Plex Mono are configurable
+Settings uses one application-wide native window, following Zed: every gear,
+the command palette, and `Cmd/Ctrl+,` opens it or focuses the existing instance.
+It closes with the native window controls or `Cmd/Ctrl+W`, and closes when the
+last workspace window closes. The implemented pages are General, Appearance,
+Terminal, Hotkeys, and Plugins. Changes update every workspace live and are
+written atomically; hotkeys are semantic GPUI actions with conflict detection.
+Chartr Dark is the fixed default. Appearance exposes the same Ayu, Catppuccin,
+Gruvbox, One, and VS Code catalog as Chartr-rs, plus Chartr Dark and Chartr
+Light. Fixed mode chooses one theme; Match System keeps independent light and
+dark selections. IBM Plex Sans and the bundled IBM Plex Mono are configurable
 defaults.
 
 User-editable data remains text:

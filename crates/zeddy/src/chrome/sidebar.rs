@@ -4,8 +4,8 @@
 //! tab cannot hold — the agent's name under the title, and a close button that
 //! is not fighting the title for space — so this chrome shows them.
 
-use gpui::{MouseButton, Role, deferred};
-use ui::{Tooltip, prelude::*};
+use gpui::{Anchor, MouseButton, Role, deferred};
+use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*};
 
 use super::Emit;
 
@@ -24,7 +24,6 @@ pub const MAX_WIDTH: f32 = 480.;
 pub fn render(
     spaces: &[SpaceEntries],
     space_switcher: AnyElement,
-    new_item: AnyElement,
     on: Emit,
     width: f32,
     cx: &App,
@@ -32,15 +31,13 @@ pub fn render(
     let colors = cx.theme().colors();
     let mut groups = Vec::new();
     let mut index = 0;
-    for space in spaces {
+    for (space_index, space) in spaces.iter().enumerate() {
         let add = on.clone();
-        let close = on.clone();
-        let rename = on.clone();
-        let locate = on.clone();
+        let actions = on.clone();
         let space_id = space.id;
-        let close_space = space.id;
-        let rename_space = space.id;
-        let locate_space = space.id;
+        let action_space = space.id;
+        let removable = space.removable;
+        let available = space.available;
         groups.push(
             h_flex()
                 .group("space-heading")
@@ -53,48 +50,74 @@ pub fn render(
                     h_flex()
                         .gap_px()
                         .child(
-                            IconButton::new(("new-in-space", index), IconName::Plus)
+                            IconButton::new(("new-in-space", space_index), IconName::Plus)
                                 .icon_size(IconSize::XSmall)
                                 .tooltip(Tooltip::text("New session in this space"))
                                 .on_click(move |_, window, cx| {
                                     add(Action::NewInSpace { space: space_id }, window, cx)
                                 }),
                         )
-                        .when(space.removable, |controls| {
+                        .when(removable || !available, |controls| {
                             controls.child(
-                                IconButton::new(("rename-space", index), IconName::Pencil)
-                                    .icon_size(IconSize::XSmall)
-                                    .tooltip(Tooltip::text("Rename Space"))
-                                    .on_click(move |_, window, cx| {
-                                        rename(
-                                            Action::RenameSpace { space: rename_space },
-                                            window,
-                                            cx,
+                                PopoverMenu::new(format!("space-actions-{space_index}"))
+                                    .trigger_with_tooltip(
+                                        IconButton::new(
+                                            ("space-actions-trigger", space_index),
+                                            IconName::Ellipsis,
                                         )
-                                    }),
-                            )
-                        })
-                        .when(!space.available, |controls| {
-                            controls.child(
-                                IconButton::new(("locate-space", index), IconName::FolderOpen)
-                                    .icon_size(IconSize::XSmall)
-                                    .tooltip(Tooltip::text("Locate Space Folder"))
-                                    .on_click(move |_, window, cx| {
-                                        locate(
-                                            Action::LocateSpace { space: locate_space },
-                                            window,
-                                            cx,
-                                        )
-                                    }),
-                            )
-                        })
-                        .when(space.removable, |controls| {
-                            controls.child(
-                                IconButton::new(("close-space", index), IconName::Close)
-                                    .icon_size(IconSize::XSmall)
-                                    .tooltip(Tooltip::text("Close Space"))
-                                    .on_click(move |_, window, cx| {
-                                        close(Action::CloseSpace { space: close_space }, window, cx)
+                                        .icon_size(IconSize::XSmall),
+                                        Tooltip::text("Space Actions"),
+                                    )
+                                    .anchor(Anchor::TopRight)
+                                    .menu(move |window, cx| {
+                                        let rename = actions.clone();
+                                        let locate = actions.clone();
+                                        let close = actions.clone();
+                                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                                            let menu = menu.when(!available, |menu| {
+                                                menu.entry(
+                                                    "Locate Space Folder",
+                                                    None,
+                                                    move |window, cx| {
+                                                        locate(
+                                                            Action::LocateSpace {
+                                                                space: action_space,
+                                                            },
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    },
+                                                )
+                                            });
+                                            menu.when(removable, |menu| {
+                                                let menu = menu.entry(
+                                                    "Rename Space",
+                                                    None,
+                                                    move |window, cx| {
+                                                        rename(
+                                                            Action::RenameSpace {
+                                                                space: action_space,
+                                                            },
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    },
+                                                );
+                                                menu.separator().entry(
+                                                    "Close Space",
+                                                    None,
+                                                    move |window, cx| {
+                                                        close(
+                                                            Action::CloseSpace {
+                                                                space: action_space,
+                                                            },
+                                                            window,
+                                                            cx,
+                                                        )
+                                                    },
+                                                )
+                                            })
+                                        }))
                                     }),
                             )
                         }),
@@ -119,7 +142,7 @@ pub fn render(
         .bg(colors.panel_background)
         .border_r_1()
         .border_color(colors.border)
-        .child(header(space_switcher, new_item, on.clone()))
+        .child(header(space_switcher, on.clone()))
         .child(v_flex().id("sessions").flex_1().overflow_y_scroll().p_1().gap_px().children(groups))
         .child(deferred(
             div()
@@ -138,33 +161,21 @@ pub fn render(
         ))
 }
 
-fn header(space_switcher: AnyElement, new_item: AnyElement, on: Emit) -> impl IntoElement {
-    let toggle = on.clone();
-    let scope = on.clone();
+fn header(space_switcher: AnyElement, on: Emit) -> impl IntoElement {
+    let settings = on;
     h_flex()
         .h(px(36.))
         .px_2()
         .gap_1()
         .justify_between()
-        .child(div().min_w_0().flex_1().child(space_switcher))
+        .child(h_flex().min_w_0().flex_1().child(space_switcher))
         .child(
-            h_flex()
-                .gap_px()
-                .child(new_item)
-                .child(
-                    IconButton::new("toggle-space-scope", IconName::ListTree)
-                        .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Show all or active space"))
-                        .on_click(move |_, window, cx| {
-                            scope(Action::ToggleSidebarScope, window, cx)
-                        }),
-                )
-                .child(
-                    IconButton::new("toggle-mode", IconName::Tab)
-                        .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Switch to tabs"))
-                        .on_click(move |_, window, cx| toggle(Action::ToggleMode, window, cx)),
-                ),
+            h_flex().gap_px().child(
+                IconButton::new("open-settings", IconName::Settings)
+                    .icon_size(IconSize::Small)
+                    .tooltip(Tooltip::text("Settings"))
+                    .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
+            ),
         )
 }
 
@@ -204,7 +215,10 @@ fn row(
         })
         .aria_selected(selected)
         .group("session")
-        .h(px(38.))
+        // The close button's standard Zed control height is the row's natural
+        // minimum. Let content establish that compact height, then keep it
+        // from flex-shrinking further when the list scrolls.
+        .flex_none()
         .px_2()
         .gap_2()
         .rounded_sm()
@@ -220,6 +234,7 @@ fn row(
             entry.status,
             entry.process_running,
             entry.ended,
+            entry.grouped,
             &entry.space_key,
             entry.key,
             cx,

@@ -20,7 +20,7 @@ pub fn render(
     cx: &App,
 ) -> impl IntoElement {
     let colors = cx.theme().colors();
-    let toggle = on.clone();
+    let settings = on.clone();
     let active_index = entries.iter().position(|entry| entry.selected);
 
     h_flex()
@@ -31,10 +31,11 @@ pub fn render(
         .border_b_1()
         .border_color(colors.border)
         .child(
-            div()
+            h_flex()
                 .w(px(super::sidebar::DEFAULT_WIDTH))
                 .h_full()
                 .flex_none()
+                .px_2()
                 .border_r_1()
                 .border_color(colors.border)
                 .child(space_switcher),
@@ -46,10 +47,10 @@ pub fn render(
         ))
         .child(
             h_flex().px_1().gap_px().flex_none().child(new_item).child(
-                IconButton::new("toggle-mode", IconName::Menu)
+                IconButton::new("open-settings", IconName::Settings)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Switch to sidebar"))
-                    .on_click(move |_, window, cx| toggle(Action::ToggleMode, window, cx)),
+                    .tooltip(Tooltip::text("Settings"))
+                    .on_click(move |_, window, cx| settings(Action::OpenSettings, window, cx)),
             ),
         )
 }
@@ -154,6 +155,7 @@ fn tab(
             entry.status,
             entry.process_running,
             entry.ended,
+            entry.grouped,
             &entry.space_key,
             entry.key,
             cx,

@@ -31,7 +31,7 @@ pane trees, item ownership, and restorable plugin state live in Chartr's SQLite
 state store. A pre-outer-tab pane tree migrates to one grouped outer entry. The
 rewrite deliberately does not import or mutate older Chartr registries.
 
-Ad-hoc sessions are the one synthetic space. They use the operator's home
+Free sessions are the one synthetic space. They use the operator's home
 directory and have no registry row. A registered home-directory row is not
 drawn beside it because herdr has one workspace per directory; two labels over
 one backend workspace would pretend to be independent state when they are not.

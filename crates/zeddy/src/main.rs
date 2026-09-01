@@ -19,9 +19,11 @@ mod palette;
 mod persistence;
 mod session;
 mod settings;
+mod settings_window;
 mod space;
 mod spaces;
 mod terminal;
+mod text_input;
 mod web_plugin;
 mod workspace;
 
@@ -35,9 +37,9 @@ fn main() {
         let keymap = keymap::keymap_file()
             .map(keymap::KeymapStore::load)
             .unwrap_or_else(|_| keymap::KeymapStore::bare());
-        // `JustBase` loads no theme JSON, which means no asset source and no
-        // bundled themes. zeddy has no theme picker, so the built-in dark theme
-        // is the whole theming story until it does.
+        // Keep Zed's assets on the registry for the component and icon layer;
+        // `settings::init_themes` registers Chartr's theme catalog as ordinary
+        // Zed themes before applying the user-global selection.
         theme::init(theme::LoadThemes::All(Box::new(zed_assets::Assets)), cx);
         settings::init_themes(settings.resolved(), cx);
         if let Err(error) = zed_assets::Assets.load_fonts(cx) {
@@ -53,6 +55,10 @@ fn main() {
             cx,
         );
         actions::init(&keymap, cx);
+        text_input::init(cx);
+        settings_window::init(&keymap, cx);
+        cx.set_global(settings.clone());
+        cx.set_global(keymap);
 
         // A build whose platform layer cannot rasterise glyphs paints every
         // quad and icon correctly and shows not one character. Saying so is
@@ -96,9 +102,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let settings = settings.clone();
-                let keymap = keymap.clone();
-                let view = cx.new(|cx| app::Zeddy::new(cwd.clone(), settings, keymap, cx));
+                let view = cx.new(|cx| app::Zeddy::new(cwd.clone(), cx));
                 window.focus(&view.read(cx).focus_handle(cx), cx);
                 view
             },

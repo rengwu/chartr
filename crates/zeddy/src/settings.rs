@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use gpui::BorrowAppContext;
 use serde::{Deserialize, Serialize};
 use theme::{Appearance, GlobalTheme, SystemAppearance, Theme, ThemeRegistry};
 
@@ -242,6 +243,18 @@ pub struct SettingsStore {
     unreadable: Option<String>,
 }
 
+// Zed keeps settings as application-global state and has every window observe
+// that store. Chartr does the same so the dedicated Settings window and every
+// workspace always render one authoritative value.
+impl gpui::Global for SettingsStore {}
+
+pub fn update_global(
+    cx: &mut gpui::App,
+    mutate: impl FnOnce(&mut SettingsContent),
+) -> Result<ResolvedSettings, io::Error> {
+    cx.update_global::<SettingsStore, _>(|store, _| store.update(mutate).cloned())
+}
+
 impl SettingsStore {
     pub fn load(file: impl Into<PathBuf>) -> Self {
         let file = file.into();
@@ -323,12 +336,27 @@ pub fn settings_file() -> Result<PathBuf, crate::spaces::Error> {
     Ok(crate::spaces::config_root()?.join(SETTINGS_FILE))
 }
 
-/// Register Chartr's named semantic theme pair, then select the resolved
-/// fixed/system variant. Both are ordinary Zed `Theme` values, so every Zed
-/// component consumes the same tokens as Chartr's product views.
+/// Register Chartr's theme catalog, then select the resolved fixed/system
+/// variant. Every entry is an ordinary Zed `Theme`, so Chartr's terminal and
+/// every Zed UI component consume one registry and one set of tokens.
 pub fn init_themes(settings: &ResolvedSettings, cx: &mut gpui::App) {
     let registry = ThemeRegistry::global(cx);
-    if let Ok(source) = registry.get("One Dark") {
+    let dark_source = registry.get("One Dark").ok();
+    if let Some(dark_source) = &dark_source {
+        let light_source = registry
+            .get("One Light")
+            .map(|theme| (*theme).clone())
+            .unwrap_or_else(|_| chartr_light(dark_source));
+        registry.insert_themes(THEME_PALETTES.map(|palette| {
+            let source = if palette.appearance == Appearance::Light {
+                &light_source
+            } else {
+                dark_source.as_ref()
+            };
+            catalog_theme(source, palette)
+        }));
+    }
+    if let Some(source) = dark_source {
         let mut dark = (*source).clone();
         dark.id = "chartr_dark".to_owned();
         dark.name = CHARTR_DARK.into();
@@ -336,6 +364,436 @@ pub fn init_themes(settings: &ResolvedSettings, cx: &mut gpui::App) {
         registry.insert_themes([dark, light]);
     }
     apply_theme(settings, cx);
+}
+
+/// The same operator-facing catalog Chartr-rs exposes. Its palette values are
+/// copied from that implementation: Ayu, Gruvbox, and One follow Zed's bundled
+/// themes; Catppuccin follows its official semantic palette; VS Code follows
+/// the workbench colors. Chartr only adapts those established values into
+/// Zed's richer semantic token model.
+#[derive(Clone, Copy)]
+struct ThemePalette {
+    name: &'static str,
+    appearance: Appearance,
+    surface: u32,
+    sidebar: u32,
+    border: u32,
+    text: u32,
+    muted: u32,
+    card: u32,
+    card_open: u32,
+    ring: u32,
+    selected: u32,
+    hover: u32,
+    notice: u32,
+    accent: u32,
+    done: u32,
+    idle: u32,
+    quiet: u32,
+    terminal_foreground: u32,
+}
+
+const THEME_PALETTES: [ThemePalette; 13] = [
+    ThemePalette::new(
+        "Ayu Dark",
+        Appearance::Dark,
+        0x0d1016,
+        0x1f2127,
+        0x3f4043,
+        0xbfbdb6,
+        0x8a8986,
+        0x1f2127,
+        0x3e4043,
+        0x1b4a6e,
+        0x3e4043,
+        0x2d2f34,
+        0xef7177,
+        0x5ac1fe,
+        0xaad84c,
+        0xfeb454,
+        0x696a6a,
+        0xbfbdb6,
+    ),
+    ThemePalette::new(
+        "Ayu Light",
+        Appearance::Light,
+        0xfcfcfc,
+        0xececed,
+        0xcfd1d2,
+        0x5c6166,
+        0x8b8e92,
+        0xececed,
+        0xcfd0d2,
+        0xc4daf6,
+        0xcfd0d2,
+        0xdfe0e1,
+        0xef7271,
+        0x3b9ee5,
+        0x85b304,
+        0xf1ad49,
+        0xa9acae,
+        0x5c6166,
+    ),
+    ThemePalette::new(
+        "Ayu Mirage",
+        Appearance::Dark,
+        0x242835,
+        0x353944,
+        0x53565d,
+        0xcccac2,
+        0x9a9a98,
+        0x353944,
+        0x53565d,
+        0x24556f,
+        0x53565d,
+        0x43464f,
+        0xf18779,
+        0x72cffe,
+        0xd5fe80,
+        0xfecf72,
+        0x7b7d7f,
+        0xcccac2,
+    ),
+    ThemePalette::new(
+        "Catppuccin Frappé",
+        Appearance::Dark,
+        0x303446,
+        0x292c3c,
+        0x51576d,
+        0xc6d0f5,
+        0xa5adce,
+        0x414559,
+        0x51576d,
+        0xca9ee6,
+        0x51576d,
+        0x414559,
+        0xe78284,
+        0xca9ee6,
+        0xa6d189,
+        0xe5c890,
+        0x737994,
+        0xc6d0f5,
+    ),
+    ThemePalette::new(
+        "Catppuccin Latte",
+        Appearance::Light,
+        0xeff1f5,
+        0xe6e9ef,
+        0xbcc0cc,
+        0x4c4f69,
+        0x6c6f85,
+        0xccd0da,
+        0xbcc0cc,
+        0x8839ef,
+        0xbcc0cc,
+        0xccd0da,
+        0xd20f39,
+        0x8839ef,
+        0x40a02b,
+        0xdf8e1d,
+        0x9ca0b0,
+        0x4c4f69,
+    ),
+    ThemePalette::new(
+        "Catppuccin Macchiato",
+        Appearance::Dark,
+        0x24273a,
+        0x1e2030,
+        0x494d64,
+        0xcad3f5,
+        0xa5adcb,
+        0x363a4f,
+        0x494d64,
+        0xc6a0f6,
+        0x494d64,
+        0x363a4f,
+        0xed8796,
+        0xc6a0f6,
+        0xa6da95,
+        0xeed49f,
+        0x6e738d,
+        0xcad3f5,
+    ),
+    ThemePalette::new(
+        "Catppuccin Mocha",
+        Appearance::Dark,
+        0x1e1e2e,
+        0x181825,
+        0x45475a,
+        0xcdd6f4,
+        0xa6adc8,
+        0x313244,
+        0x45475a,
+        0xcba6f7,
+        0x45475a,
+        0x313244,
+        0xf38ba8,
+        0xcba6f7,
+        0xa6e3a1,
+        0xf9e2af,
+        0x6c7086,
+        0xcdd6f4,
+    ),
+    ThemePalette::new(
+        "Gruvbox Dark",
+        Appearance::Dark,
+        0x282828,
+        0x3a3735,
+        0x5b534d,
+        0xfbf1c7,
+        0xc5b597,
+        0x3a3735,
+        0x5b524c,
+        0x303a36,
+        0x5b524c,
+        0x494340,
+        0xfb4a35,
+        0x83a598,
+        0xb7bb26,
+        0xf9bd2f,
+        0x998b78,
+        0xebdbb2,
+    ),
+    ThemePalette::new(
+        "Gruvbox Light",
+        Appearance::Light,
+        0xfbf1c7,
+        0xecddb4,
+        0xc8b899,
+        0x282828,
+        0x5f5650,
+        0xecddb4,
+        0xc8b899,
+        0xadc5cc,
+        0xc8b899,
+        0xddcca7,
+        0x9d0308,
+        0x0b6678,
+        0x797410,
+        0xb57615,
+        0x897b6e,
+        0x282828,
+    ),
+    ThemePalette::new(
+        "One Dark",
+        Appearance::Dark,
+        0x282c33,
+        0x2f343e,
+        0x464b57,
+        0xdce0e5,
+        0xa9afbc,
+        0x2e343e,
+        0x454a56,
+        0x47679e,
+        0x454a56,
+        0x363c46,
+        0xd07277,
+        0x74ade8,
+        0xa1c181,
+        0xdec184,
+        0x878a98,
+        0xabb2bf,
+    ),
+    ThemePalette::new(
+        "One Light",
+        Appearance::Light,
+        0xfafafa,
+        0xebebec,
+        0xc9c9ca,
+        0x242529,
+        0x58585a,
+        0xebebec,
+        0xcacaca,
+        0x7d82e8,
+        0xcacaca,
+        0xdfdfe0,
+        0xd36151,
+        0x5c78e2,
+        0x669f59,
+        0xa48819,
+        0x7e8086,
+        0x2a2c33,
+    ),
+    ThemePalette::new(
+        "VSCode Dark Modern",
+        Appearance::Dark,
+        0x1f1f1f,
+        0x181818,
+        0x2b2b2b,
+        0xcccccc,
+        0x9d9d9d,
+        0x313131,
+        0x313131,
+        0x0078d4,
+        0x313131,
+        0x2b2b2b,
+        0xf85149,
+        0x0078d4,
+        0x2ea043,
+        0xe2c08d,
+        0x6e7681,
+        0xcccccc,
+    ),
+    ThemePalette::new(
+        "VSCode Dark Plus",
+        Appearance::Dark,
+        0x1e1e1e,
+        0x252526,
+        0x3f3f46,
+        0xd4d4d4,
+        0x969696,
+        0x2d2d30,
+        0x37373d,
+        0x007acc,
+        0x37373d,
+        0x2a2d2e,
+        0xf44747,
+        0x007acc,
+        0x6a9955,
+        0xdcdcaa,
+        0x707070,
+        0xd4d4d4,
+    ),
+];
+
+impl ThemePalette {
+    #[allow(clippy::too_many_arguments)]
+    const fn new(
+        name: &'static str,
+        appearance: Appearance,
+        surface: u32,
+        sidebar: u32,
+        border: u32,
+        text: u32,
+        muted: u32,
+        card: u32,
+        card_open: u32,
+        ring: u32,
+        selected: u32,
+        hover: u32,
+        notice: u32,
+        accent: u32,
+        done: u32,
+        idle: u32,
+        quiet: u32,
+        terminal_foreground: u32,
+    ) -> Self {
+        Self {
+            name,
+            appearance,
+            surface,
+            sidebar,
+            border,
+            text,
+            muted,
+            card,
+            card_open,
+            ring,
+            selected,
+            hover,
+            notice,
+            accent,
+            done,
+            idle,
+            quiet,
+            terminal_foreground,
+        }
+    }
+}
+
+fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
+    let mut theme = source.clone();
+    theme.id =
+        format!("chartr_catalog_{}", palette.name.to_ascii_lowercase().replace([' ', 'é'], "_"));
+    theme.name = palette.name.into();
+    theme.appearance = palette.appearance;
+
+    let color = |value| gpui::rgb(value).into();
+    let surface = color(palette.surface);
+    let sidebar = color(palette.sidebar);
+    let border = color(palette.border);
+    let text = color(palette.text);
+    let muted = color(palette.muted);
+    let card = color(palette.card);
+    let card_open = color(palette.card_open);
+    let ring = color(palette.ring);
+    let selected = color(palette.selected);
+    let hover = color(palette.hover);
+    let notice = color(palette.notice);
+    let accent = color(palette.accent);
+    let done = color(palette.done);
+    let idle = color(palette.idle);
+    let quiet = color(palette.quiet);
+    let terminal_foreground = color(palette.terminal_foreground);
+
+    let colors = &mut theme.styles.colors;
+    colors.background = surface;
+    colors.surface_background = sidebar;
+    colors.elevated_surface_background = card_open;
+    colors.element_background = card;
+    colors.element_hover = hover;
+    colors.element_active = selected;
+    colors.element_selected = selected;
+    colors.element_selection_background = selected;
+    colors.ghost_element_hover = hover;
+    colors.ghost_element_active = selected;
+    colors.ghost_element_selected = selected;
+    colors.drop_target_background = selected;
+    colors.drop_target_border = ring;
+    colors.border = border;
+    colors.border_variant = border;
+    colors.border_focused = ring;
+    colors.border_selected = ring;
+    colors.text = text;
+    colors.text_muted = muted;
+    colors.text_placeholder = muted;
+    colors.text_disabled = quiet;
+    colors.text_accent = accent;
+    colors.icon = text;
+    colors.icon_muted = muted;
+    colors.icon_placeholder = muted;
+    colors.icon_disabled = quiet;
+    colors.icon_accent = accent;
+    colors.title_bar_background = sidebar;
+    colors.title_bar_inactive_background = card;
+    colors.toolbar_background = sidebar;
+    colors.tab_bar_background = card;
+    colors.tab_inactive_background = card;
+    colors.tab_active_background = surface;
+    colors.panel_background = sidebar;
+    colors.panel_focused_border = ring;
+    colors.panel_indent_guide = border;
+    colors.panel_indent_guide_hover = muted;
+    colors.panel_indent_guide_active = ring;
+    colors.panel_overlay_background = card;
+    colors.panel_overlay_hover = hover;
+    colors.pane_group_border = border;
+    colors.editor_background = surface;
+    colors.editor_foreground = text;
+    colors.editor_gutter_background = surface;
+    colors.editor_subheader_background = card;
+    colors.terminal_background = surface;
+    colors.terminal_ansi_background = surface;
+    colors.terminal_foreground = terminal_foreground;
+    colors.terminal_bright_foreground = text;
+    colors.terminal_dim_foreground = muted;
+    colors.link_text_hover = accent;
+    colors.version_control_added = done;
+    colors.version_control_deleted = notice;
+    colors.version_control_modified = idle;
+
+    let status = &mut theme.styles.status;
+    status.error = notice;
+    status.error_border = notice;
+    status.warning = idle;
+    status.warning_border = idle;
+    status.success = done;
+    status.success_border = done;
+    status.info = accent;
+    status.info_border = accent;
+    status.hidden = quiet;
+    status.ignored = quiet;
+    theme
 }
 
 fn chartr_light(dark: &Theme) -> Theme {
@@ -384,6 +842,11 @@ fn chartr_light(dark: &Theme) -> Theme {
     colors.editor_foreground = text;
     colors.editor_gutter_background = surface;
     colors.editor_subheader_background = raised;
+    colors.terminal_background = surface;
+    colors.terminal_ansi_background = surface;
+    colors.terminal_foreground = text;
+    colors.terminal_bright_foreground = text;
+    colors.terminal_dim_foreground = muted;
     light
 }
 
@@ -403,6 +866,23 @@ pub fn apply_theme(settings: &ResolvedSettings, cx: &mut gpui::App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::TestAppContext;
+
+    #[gpui::test]
+    fn the_chartr_rs_theme_catalog_is_registered_as_zed_themes(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            theme::init(theme::LoadThemes::JustBase, cx);
+            init_themes(&ResolvedSettings::default(), cx);
+            let registry = ThemeRegistry::global(cx);
+
+            for palette in THEME_PALETTES {
+                let registered = registry.get(palette.name).unwrap();
+                assert_eq!(registered.appearance, palette.appearance);
+            }
+            assert_eq!(registry.get(CHARTR_DARK).unwrap().appearance, Appearance::Dark);
+            assert_eq!(registry.get(CHARTR_LIGHT).unwrap().appearance, Appearance::Light);
+        });
+    }
 
     #[test]
     fn a_missing_file_resolves_to_fixed_chartr_dark() {

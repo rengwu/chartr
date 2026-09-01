@@ -61,8 +61,7 @@ pub enum Action {
     LocateSpace { space: EntityId },
     NewInSpace { space: EntityId },
     New,
-    ToggleMode,
-    ToggleSidebarScope,
+    OpenSettings,
 }
 
 /// How a chrome reports what the user did.
@@ -142,6 +141,7 @@ pub fn status_indicator(
     status: Option<SessionStatus>,
     process_running: bool,
     ended: bool,
+    grouped: bool,
     space: &str,
     key: ItemId,
     cx: &App,
@@ -151,6 +151,9 @@ pub fn status_indicator(
 
     if ended {
         return slot().child(icon(IconName::XCircle, Color::Error)).into_any_element();
+    }
+    if grouped {
+        return slot().child(icon(IconName::Split, Color::Muted)).into_any_element();
     }
 
     match status {

@@ -29,6 +29,7 @@ tempfile.workspace = true
 rusqlite.workspace = true
 url.workspace = true
 ureq.workspace = true
+unicode-segmentation.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 wry.workspace = true

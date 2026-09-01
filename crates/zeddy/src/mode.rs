@@ -20,23 +20,9 @@ pub enum Mode {
     Tabs,
 }
 
-impl Mode {
-    pub fn toggled(self) -> Self {
-        match self {
-            Self::Sidebar => Self::Tabs,
-            Self::Tabs => Self::Sidebar,
-        }
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn toggling_twice_is_the_identity() {
-        assert_eq!(Mode::Sidebar.toggled().toggled(), Mode::Sidebar);
-        assert_eq!(Mode::Tabs.toggled().toggled(), Mode::Tabs);
-    }
 
     #[test]
     fn the_two_modes_are_the_only_two() {

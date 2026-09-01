@@ -115,6 +115,8 @@ pub struct KeymapStore {
     problem: Option<String>,
 }
 
+impl gpui::Global for KeymapStore {}
+
 impl KeymapStore {
     pub fn load(file: impl Into<PathBuf>) -> Self {
         let file = file.into();

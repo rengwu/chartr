@@ -23,7 +23,7 @@ replace the daemon, and reject the stale session identity.
 Review at 700×900, 1100×720, and a maximized window in both Chartr Dark and
 Chartr Light. Capture and compare:
 
-- empty Ad-hoc startup, one folder, and several spaces;
+- empty Free sessions startup, one folder, and several spaces;
 - Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
 - empty space, one standalone tab, nested horizontal/vertical panes, resized dividers,
   zoom, and automatic split collapse after its last item moves or closes;
@@ -37,8 +37,8 @@ Chartr Light. Capture and compare:
 - Zed-style transient pane-body drop highlights: full-content center and
   half-content left, right, top, and bottom targets, including nearest-edge
   corner resolution and no split target over a pane's tab bar;
-- General, Appearance, Terminal, Hotkeys, Plugins, and a contributed plugin
-  Settings view;
+- one native, application-wide Settings window with General, Appearance,
+  Terminal, Hotkeys, Plugins, and a contributed plugin Settings view;
 - command palette, unavailable-folder recovery, broken-stream recovery, backend
   crash-loop banner, rejected plugin, and visible web permissions;
 - the native Hello pane and real Clock web pane, including its persisted format.
@@ -52,7 +52,8 @@ tier.
 
 Run the matrix with pointer and keyboard. Confirm `Cmd/Ctrl+W`, command palette,
 directional focus, split-and-move, move-to-existing-pane, join, zoom, Settings
-close/focus restoration, and `Ctrl+Tab` Settings-page cycling. Every drag outcome
+singleton focus, native `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling.
+Close the last workspace and confirm Settings closes too. Every drag outcome
 must have a semantic action alternative. With two panes already open, invoke all
 four split directions from the first lone-tab pane and confirm each creates the
 expected adjacent empty drop target without moving, losing focus, or collapsing.
@@ -84,8 +85,8 @@ alternate transition path.
 ## Persistence and lifecycle
 
 Relaunch after changing window bounds, sidebar width/scope, mode, space names,
-outer-tab order, split ratios, active groups/panes/items, plugin Settings, and a missing folder. Confirm
-normal exit adopts detached terminals; item close kills exactly one session;
+outer-tab order, split ratios, active groups/panes/items, plugin Settings, and a
+missing folder. Confirm normal exit adopts detached terminals; item close kills exactly one session;
 closing a populated pane or folder space confirms and kills all descendants;
 session-bound plugins cascade; disabling or revoking a plugin closes every live
 instance; and stale backend/plugin records are summarized without corrupting the

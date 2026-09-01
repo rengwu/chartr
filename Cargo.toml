@@ -78,6 +78,7 @@ tempfile = "3"
 url = "2"
 wry = "0.56.1"
 ureq = "3"
+unicode-segmentation = "1"
 
 # The dev profile is the build whose window you actually drag. GPUI and the VT
 # core are both unusably slow at opt-level 0, and neither is code we are

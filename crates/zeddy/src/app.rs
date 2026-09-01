@@ -18,8 +18,8 @@ use gpui::{
     Role,
 };
 use ui::{
-    Banner, ButtonSize, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition,
-    ListItem, ListItemSpacing, PopoverMenu, Severity, Tab, TabBar, TabPosition, Tooltip,
+    Banner, ButtonLike, ButtonSize, ContextMenu, IconButtonShape, IconPosition, ListItem,
+    ListItemSpacing, PopoverMenu, Severity, Tab, TabBar, TabPosition, TintColor, Tooltip,
     prelude::*,
 };
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
@@ -31,20 +31,17 @@ use crate::{
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
     fonts::Fonts,
     item::PluginItem,
-    keymap::{KeymapAction, KeymapStore},
     keys,
     mode::Mode,
     palette,
     persistence::{
         SidebarScope, Snapshot, SpaceKind as PersistedSpaceKind, StateStore, WindowState,
     },
-    settings::{
-        AppearanceContent, CHARTR_DARK, CHARTR_LIGHT, GeneralContent, PluginSettingsContent,
-        ResolvedSettings, SettingsPage, SettingsStore, TerminalContent, ThemeMode,
-    },
+    settings::{PluginSettingsContent, ResolvedSettings, SettingsStore},
     space::{Kind as SpaceKind, Space, name_for},
     spaces::{self, Registry},
     terminal::{Appearance, TerminalElement},
+    text_input::{InputEvent, TextInput},
     workspace::{
         Axis as PaneAxisDirection, Member, PaneId as LayoutPaneId, SplitDirection, Workspace,
         WorkspaceTabId,
@@ -61,6 +58,19 @@ enum Backend {
     Ready,
     Recovering(String),
     Failed(String),
+}
+
+#[derive(Clone)]
+pub(crate) struct SettingsPluginDescriptor {
+    pub manifest: zeddy_plugin::manifest::Manifest,
+    pub enabled: bool,
+    pub has_settings: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct SettingsPluginRejection {
+    pub dir: PathBuf,
+    pub why: String,
 }
 
 #[derive(Clone)]
@@ -134,17 +144,13 @@ pub struct Zeddy {
     mode: Mode,
     catalog: Catalog,
     plugins_restored: bool,
-    plugin_settings: Option<(String, AnyView)>,
     settings: SettingsStore,
-    keymap: KeymapStore,
-    settings_open: bool,
-    settings_page: SettingsPage,
-    recording_keymap: Option<KeymapAction>,
-    keymap_restart_required: bool,
     command_palette_open: bool,
+    command_palette_input: Entity<TextInput>,
     command_palette_query: String,
     command_palette_selected: usize,
     rename_space: Option<EntityId>,
+    rename_input: Entity<TextInput>,
     rename_query: String,
     sidebar_scope: SidebarScope,
     sidebar_width: f32,
@@ -156,12 +162,26 @@ pub struct Zeddy {
 }
 
 impl Zeddy {
-    pub fn new(
-        cwd: PathBuf,
-        settings: SettingsStore,
-        keymap: KeymapStore,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(cwd: PathBuf, cx: &mut Context<Self>) -> Self {
+        let settings = cx.global::<SettingsStore>().clone();
+        cx.observe_global::<SettingsStore>(|this, cx| {
+            this.settings = cx.global::<SettingsStore>().clone();
+            cx.notify();
+        })
+        .detach();
+        let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
+        let rename_input = cx.new(|cx| TextInput::new("Type a space name…", cx));
+        cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
+            this.command_palette_query = input.read(cx).text().to_owned();
+            this.command_palette_selected = 0;
+            cx.notify();
+        })
+        .detach();
+        cx.subscribe(&rename_input, |this, input, _: &InputEvent, cx| {
+            this.rename_query = input.read(cx).text().to_owned();
+            cx.notify();
+        })
+        .detach();
         let (state, saved, state_problem) =
             match crate::persistence::state_file().and_then(StateStore::open) {
                 Ok(store) => match store.load() {
@@ -188,17 +208,13 @@ impl Zeddy {
                     mode: Mode::default(),
                     catalog: Catalog::default(),
                     plugins_restored: true,
-                    plugin_settings: None,
                     settings,
-                    keymap,
-                    settings_open: false,
-                    settings_page: SettingsPage::default(),
-                    recording_keymap: None,
-                    keymap_restart_required: false,
                     command_palette_open: false,
+                    command_palette_input,
                     command_palette_query: String::new(),
                     command_palette_selected: 0,
                     rename_space: None,
+                    rename_input,
                     rename_query: String::new(),
                     sidebar_scope: saved.window.sidebar_scope,
                     sidebar_width: saved.window.sidebar_width,
@@ -220,13 +236,13 @@ impl Zeddy {
             .or_else(std::env::home_dir)
             .filter(|path| path.is_absolute())
             .unwrap_or_else(|| cwd.clone());
-        descriptors.push(("Ad-hoc sessions".to_owned(), home.clone(), SpaceKind::AdHoc));
+        descriptors.push(("Free sessions".to_owned(), home.clone(), SpaceKind::AdHoc));
         if let Some(registry) = registry.as_ref() {
             descriptors.extend(
                 registry
                     .spaces()
                     .iter()
-                    // The synthetic ad-hoc space already owns the home
+                    // The synthetic Free sessions space already owns the home
                     // workspace. herdr has one workspace per directory, so a
                     // second row for the same path could not own independent
                     // sessions and would be a false distinction.
@@ -305,17 +321,13 @@ impl Zeddy {
             mode: saved.window.chrome,
             catalog,
             plugins_restored: false,
-            plugin_settings: None,
             settings,
-            keymap,
-            settings_open: false,
-            settings_page: SettingsPage::default(),
-            recording_keymap: None,
-            keymap_restart_required: false,
             command_palette_open: false,
+            command_palette_input,
             command_palette_query: String::new(),
             command_palette_selected: 0,
             rename_space: None,
+            rename_input,
             rename_query: String::new(),
             sidebar_scope: saved.window.sidebar_scope,
             sidebar_width: saved.window.sidebar_width,
@@ -778,13 +790,7 @@ impl Zeddy {
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
-            Action::ToggleMode => self.mode = self.mode.toggled(),
-            Action::ToggleSidebarScope => {
-                self.sidebar_scope = match self.sidebar_scope {
-                    SidebarScope::AllSpaces => SidebarScope::ActiveSpace,
-                    SidebarScope::ActiveSpace => SidebarScope::AllSpaces,
-                }
-            }
+            Action::OpenSettings => self.open_settings(window, cx),
             Action::New => {
                 if matches!(self.backend, Backend::Ready)
                     && let Some(space) = self.active.clone()
@@ -824,7 +830,10 @@ impl Zeddy {
                 {
                     self.rename_space = Some(space);
                     self.rename_query = target.read(cx).name().to_owned();
-                    window.focus(&self.focus, cx);
+                    self.rename_input.update(cx, |input, cx| {
+                        input.set_text(self.rename_query.clone(), true, cx)
+                    });
+                    window.focus(&self.rename_input.focus_handle(cx), cx);
                 }
             }
             Action::LocateSpace { space } => self.locate_space(space, cx),
@@ -851,12 +860,6 @@ impl Zeddy {
         if self.command_palette_open {
             self.command_palette_open = false;
             self.command_palette_query.clear();
-            cx.notify();
-            return;
-        }
-        if self.settings_open {
-            self.settings_open = false;
-            self.plugin_settings = None;
             cx.notify();
             return;
         }
@@ -1026,12 +1029,16 @@ impl Zeddy {
         }
     }
 
-    fn commit_space_rename(&mut self, cx: &mut Context<Self>) {
+    fn commit_space_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.rename_space.take() else {
             return;
         };
-        let name = self.rename_query.trim().to_owned();
+        // Read from the input directly so Enter always commits the latest IME
+        // transaction, even before the subscription's mirrored value flushes.
+        let name = self.rename_input.read(cx).text().trim().to_owned();
         self.rename_query.clear();
+        self.rename_input.update(cx, |input, cx| input.clear(cx));
+        window.focus(&self.focus, cx);
         let Some(space) = self.spaces.iter().find(|space| space.entity_id() == id).cloned() else {
             return;
         };
@@ -1094,62 +1101,14 @@ impl Zeddy {
         .detach();
     }
 
-    fn open_settings(&mut self, cx: &mut Context<Self>) {
+    fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.command_palette_open = false;
-        self.settings_open = true;
-        self.settings_page = SettingsPage::default();
-        self.plugin_settings = None;
-        cx.notify();
-    }
-
-    fn cycle_settings_page(&mut self, backwards: bool, cx: &mut Context<Self>) {
-        let current =
-            SettingsPage::ALL.iter().position(|page| *page == self.settings_page).unwrap_or(0);
-        let next = if backwards {
-            current.checked_sub(1).unwrap_or(SettingsPage::ALL.len() - 1)
-        } else {
-            (current + 1) % SettingsPage::ALL.len()
+        self.command_palette_query.clear();
+        self.command_palette_input.update(cx, |input, cx| input.clear(cx));
+        let Some(original_window) = window.window_handle().downcast::<Self>() else {
+            return;
         };
-        self.settings_page = SettingsPage::ALL[next];
-        self.plugin_settings = None;
-        cx.notify();
-    }
-
-    fn set_theme_preference(
-        &mut self,
-        mode: ThemeMode,
-        fixed_theme: Option<&str>,
-        cx: &mut Context<Self>,
-    ) {
-        let result = self.settings.update(|content| {
-            let appearance = content.appearance.get_or_insert_with(AppearanceContent::default);
-            appearance.theme_mode = Some(mode);
-            if let Some(theme) = fixed_theme {
-                appearance.fixed_theme = Some(theme.to_owned());
-            }
-        });
-        match result {
-            Ok(settings) => {
-                crate::settings::apply_theme(settings, cx);
-                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
-                self.problem = None;
-            }
-            Err(error) => self.problem = Some(error.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn set_terminate_on_exit(&mut self, enabled: bool, cx: &mut Context<Self>) {
-        let result = self.settings.update(|content| {
-            content
-                .general
-                .get_or_insert_with(GeneralContent::default)
-                .terminate_sessions_on_exit = Some(enabled);
-        });
-        match result {
-            Ok(_) => self.problem = None,
-            Err(error) => self.problem = Some(error.to_string()),
-        }
+        crate::settings_window::open(original_window, cx.weak_entity(), cx);
         cx.notify();
     }
 
@@ -1160,18 +1119,85 @@ impl Zeddy {
         }
     }
 
-    fn set_plugin_enabled(&mut self, plugin: String, enabled: bool, cx: &mut Context<Self>) {
-        if enabled {
-            match self.catalog.enable(&plugin_paths(), &plugin, cx) {
-                Ok(()) => {}
-                Err(error) => {
-                    self.problem = Some(error.to_string());
-                    cx.notify();
-                    return;
-                }
-            }
+    pub(crate) fn settings_backend_label(&self) -> String {
+        match &self.backend {
+            Backend::Ready => "Connected".to_owned(),
+            Backend::Starting => "Starting".to_owned(),
+            Backend::Recovering(detail) | Backend::Failed(detail) => detail.clone(),
         }
-        let result = self.settings.update(|content| {
+    }
+
+    pub(crate) fn settings_sidebar_scope(&self) -> SidebarScope {
+        self.sidebar_scope
+    }
+
+    pub(crate) fn settings_mode(&self) -> Mode {
+        self.mode
+    }
+
+    pub(crate) fn settings_set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        self.mode = mode;
+        cx.notify();
+    }
+
+    pub(crate) fn settings_set_sidebar_scope(
+        &mut self,
+        scope: SidebarScope,
+        cx: &mut Context<Self>,
+    ) {
+        self.sidebar_scope = scope;
+        cx.notify();
+    }
+
+    pub(crate) fn settings_retry_backend(&mut self, cx: &mut Context<Self>) {
+        self.retry_backend(false, cx);
+    }
+
+    pub(crate) fn settings_restart_backend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_backend_restart(window, cx);
+    }
+
+    pub(crate) fn settings_plugins(
+        &self,
+    ) -> (Vec<SettingsPluginDescriptor>, Vec<SettingsPluginRejection>) {
+        let mut descriptors: Vec<_> = self
+            .catalog
+            .loaded
+            .values()
+            .map(|loaded| SettingsPluginDescriptor {
+                manifest: loaded.manifest.clone(),
+                enabled: true,
+                has_settings: loaded.has_settings,
+            })
+            .chain(self.catalog.disabled.values().map(|disabled| SettingsPluginDescriptor {
+                manifest: disabled.manifest.clone(),
+                enabled: false,
+                has_settings: false,
+            }))
+            .collect();
+        descriptors.sort_by(|left, right| left.manifest.name.cmp(&right.manifest.name));
+        let rejected = self
+            .catalog
+            .rejected
+            .iter()
+            .map(|rejected| SettingsPluginRejection {
+                dir: rejected.dir.clone(),
+                why: rejected.why.clone(),
+            })
+            .collect();
+        (descriptors, rejected)
+    }
+
+    pub(crate) fn settings_set_plugin_enabled(
+        &mut self,
+        plugin: String,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if enabled {
+            self.catalog.enable(&plugin_paths(), &plugin, cx).map_err(|error| error.to_string())?;
+        }
+        let result = crate::settings::update_global(cx, |content| {
             content
                 .plugins
                 .entry(plugin.clone())
@@ -1182,65 +1208,61 @@ impl Zeddy {
             Ok(_) => {
                 if !enabled {
                     self.close_plugin_instances(&plugin, cx);
-                    if self.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
-                        self.plugin_settings = None;
-                    }
                     self.catalog.disable(&plugin);
                 }
                 self.problem = None;
+                cx.notify();
+                Ok(())
             }
             Err(error) => {
                 if enabled {
                     self.catalog.disable(&plugin);
                 }
-                self.problem = Some(error.to_string());
+                Err(error.to_string())
             }
         }
-        cx.notify();
     }
 
-    fn set_plugin_unsafe(&mut self, plugin: String, enabled: bool, cx: &mut Context<Self>) {
-        let result = self.settings.update(|content| {
+    pub(crate) fn settings_set_plugin_unsafe(
+        &mut self,
+        plugin: String,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        crate::settings::update_global(cx, |content| {
             content
                 .plugins
                 .entry(plugin.clone())
                 .or_insert_with(PluginSettingsContent::default)
                 .unsafe_filesystem = Some(enabled);
-        });
-        match result {
-            Ok(_) => {
-                // Brokers are instance-owned. Destroying the view is the
-                // revocation boundary; reopening constructs one with the new grant.
-                self.close_plugin_instances(&plugin, cx);
-                if self.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
-                    self.plugin_settings = None;
-                }
-                self.problem = None;
-            }
-            Err(error) => self.problem = Some(error.to_string()),
-        }
+        })
+        .map_err(|error| error.to_string())?;
+        // Brokers are instance-owned. Destroying every instance is the
+        // revocation boundary; reopening constructs one with the new grant.
+        self.close_plugin_instances(&plugin, cx);
+        self.problem = None;
         cx.notify();
+        Ok(())
     }
 
-    fn open_plugin_settings(
+    pub(crate) fn settings_plugin_view(
         &mut self,
-        plugin: String,
+        plugin: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        let Some(loaded) = self.catalog.get(&plugin) else {
-            return;
-        };
+    ) -> Option<AnyView> {
+        let loaded = self.catalog.get(plugin)?;
         let permissions = loaded.permissions().clone();
-        let unsafe_filesystem = self.settings.resolved().plugin(&plugin).unsafe_filesystem;
-        let source = self.catalog.get_mut(&plugin).and_then(|loaded| loaded.settings(window, cx));
-        let view = match source {
-            Some(SettingsSource::Native(view)) => view,
-            Some(SettingsSource::Web(entry)) => crate::web_plugin::view(
+        let unsafe_filesystem =
+            cx.global::<SettingsStore>().resolved().plugin(plugin).unsafe_filesystem;
+        let source = self.catalog.get_mut(plugin)?.settings(window, cx)?;
+        Some(match source {
+            SettingsSource::Native(view) => view,
+            SettingsSource::Web(entry) => crate::web_plugin::view(
                 entry,
                 FileBroker::new(
                     None,
-                    plugin_paths().data.join(&plugin),
+                    plugin_paths().data.join(plugin),
                     permissions.project_files,
                     unsafe_filesystem,
                 ),
@@ -1250,108 +1272,20 @@ impl Zeddy {
                 window,
                 cx,
             ),
-            None => return,
-        };
-        self.plugin_settings = Some((plugin, view));
-        cx.notify();
-    }
-
-    fn set_ui_font(&mut self, family: String, cx: &mut Context<Self>) {
-        let result = self.settings.update(|content| {
-            content.appearance.get_or_insert_with(AppearanceContent::default).ui_font_family =
-                Some(family);
-        });
-        match result {
-            Ok(settings) => {
-                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
-                self.problem = None;
-            }
-            Err(error) => self.problem = Some(error.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn adjust_ui_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
-        let current = self.settings.resolved().ui_font_size;
-        let result = self.settings.update(|content| {
-            content.appearance.get_or_insert_with(AppearanceContent::default).ui_font_size =
-                Some((current + delta).clamp(8., 32.));
-        });
-        match result {
-            Ok(settings) => {
-                theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
-                self.problem = None;
-            }
-            Err(error) => self.problem = Some(error.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn set_terminal_font(&mut self, family: String, cx: &mut Context<Self>) {
-        let result = self.settings.update(|content| {
-            content.terminal.get_or_insert_with(TerminalContent::default).font_family =
-                Some(family);
-        });
-        match result {
-            Ok(_) => self.problem = None,
-            Err(error) => self.problem = Some(error.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn adjust_terminal_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
-        let current = self.settings.resolved().terminal_font_size;
-        let result = self.settings.update(|content| {
-            content.terminal.get_or_insert_with(TerminalContent::default).font_size =
-                Some((current + delta).clamp(8., 72.));
-        });
-        match result {
-            Ok(_) => self.problem = None,
-            Err(error) => self.problem = Some(error.to_string()),
-        }
-        cx.notify();
-    }
-
-    fn pick_ad_hoc_directory(&mut self, cx: &mut Context<Self>) {
-        let chosen = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("Use for Ad-hoc sessions".into()),
-        });
-        cx.spawn(async move |this, cx| {
-            let outcome = chosen.await;
-            let _ = this.update(cx, |this, cx| match outcome {
-                Ok(Ok(Some(paths))) if !paths.is_empty() => {
-                    let path = paths[0].clone();
-                    match this.settings.update(|content| {
-                        content
-                            .terminal
-                            .get_or_insert_with(TerminalContent::default)
-                            .ad_hoc_directory = Some(path.clone());
-                    }) {
-                        Ok(_) => {
-                            if let Some(space) = this
-                                .spaces
-                                .iter()
-                                .find(|space| space.read(cx).kind() == SpaceKind::AdHoc)
-                            {
-                                space.update(cx, |space, _| space.set_path(path));
-                            }
-                            this.problem = None;
-                        }
-                        Err(error) => this.problem = Some(error.to_string()),
-                    }
-                    cx.notify();
-                }
-                Ok(Ok(_)) | Err(_) => {}
-                Ok(Err(error)) => {
-                    this.problem = Some(error.to_string());
-                    cx.notify();
-                }
-            });
         })
-        .detach();
+    }
+
+    pub(crate) fn settings_set_free_sessions_directory(
+        &mut self,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(space) =
+            self.spaces.iter().find(|space| space.read(cx).kind() == SpaceKind::AdHoc)
+        {
+            space.update(cx, |space, _| space.set_path(path));
+        }
+        cx.notify();
     }
 
     fn split_and_move(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
@@ -1418,8 +1352,13 @@ impl Zeddy {
     fn toggle_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.command_palette_open = !self.command_palette_open;
         self.command_palette_query.clear();
+        self.command_palette_input.update(cx, |input, cx| input.clear(cx));
         self.command_palette_selected = 0;
-        window.focus(&self.focus, cx);
+        if self.command_palette_open {
+            window.focus(&self.command_palette_input.focus_handle(cx), cx);
+        } else {
+            window.focus(&self.focus, cx);
+        }
         cx.notify();
     }
 
@@ -1439,6 +1378,7 @@ impl Zeddy {
     ) {
         self.command_palette_open = false;
         self.command_palette_query.clear();
+        self.command_palette_input.update(cx, |input, cx| input.clear(cx));
         let action: Box<dyn gpui::Action> = match command {
             PaletteCommand::NewTerminal => Box::new(actions::workspace::NewTerminal),
             PaletteCommand::CloseItem => Box::new(actions::pane::CloseActiveItem),
@@ -1466,70 +1406,36 @@ impl Zeddy {
 
     fn on_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.rename_space.is_some() {
-            cx.stop_propagation();
             match event.keystroke.key.as_str() {
                 "escape" => {
+                    cx.stop_propagation();
                     self.rename_space = None;
                     self.rename_query.clear();
+                    self.rename_input.update(cx, |input, cx| input.clear(cx));
+                    window.focus(&self.focus, cx);
                 }
                 "enter" => {
-                    self.commit_space_rename(cx);
+                    cx.stop_propagation();
+                    self.commit_space_rename(window, cx);
                     return;
                 }
-                "backspace" => {
-                    self.rename_query.pop();
-                }
-                _ if !event.keystroke.modifiers.control
-                    && !event.keystroke.modifiers.platform
-                    && !event.keystroke.modifiers.alt =>
-                {
-                    if let Some(text) = event.keystroke.key_char.as_deref() {
-                        self.rename_query.push_str(text);
-                    }
-                }
-                _ => {}
-            }
-            cx.notify();
-            return;
-        }
-        if let Some(action) = self.recording_keymap {
-            cx.stop_propagation();
-            if event.keystroke.key == "escape" {
-                self.recording_keymap = None;
-                cx.notify();
-                return;
-            }
-            if matches!(
-                event.keystroke.key.as_str(),
-                "shift" | "control" | "alt" | "cmd" | "super" | "fn"
-            ) {
-                return;
-            }
-            let key = event.keystroke.unparse();
-            match self.keymap.set(action, key) {
-                Ok(()) => {
-                    self.recording_keymap = None;
-                    self.keymap_restart_required = true;
-                    self.problem = None;
-                }
-                Err(error) => self.problem = Some(error.to_string()),
+                _ => return,
             }
             cx.notify();
             return;
         }
         if self.command_palette_open {
-            cx.stop_propagation();
             let key = event.keystroke.key.as_str();
             match key {
                 "escape" => {
+                    cx.stop_propagation();
                     self.command_palette_open = false;
                     self.command_palette_query.clear();
-                }
-                "backspace" => {
-                    self.command_palette_query.pop();
-                    self.command_palette_selected = 0;
+                    self.command_palette_input.update(cx, |input, cx| input.clear(cx));
+                    window.focus(&self.focus, cx);
                 }
                 "up" => {
+                    cx.stop_propagation();
                     let count = self.filtered_palette_commands().len();
                     if count > 0 {
                         self.command_palette_selected =
@@ -1537,12 +1443,14 @@ impl Zeddy {
                     }
                 }
                 "down" => {
+                    cx.stop_propagation();
                     let count = self.filtered_palette_commands().len();
                     if count > 0 {
                         self.command_palette_selected = (self.command_palette_selected + 1) % count;
                     }
                 }
                 "enter" => {
+                    cx.stop_propagation();
                     if let Some((command, _, _)) =
                         self.filtered_palette_commands().get(self.command_palette_selected).copied()
                     {
@@ -1550,16 +1458,7 @@ impl Zeddy {
                         return;
                     }
                 }
-                _ if !event.keystroke.modifiers.control
-                    && !event.keystroke.modifiers.platform
-                    && !event.keystroke.modifiers.alt =>
-                {
-                    if let Some(text) = event.keystroke.key_char.as_deref() {
-                        self.command_palette_query.push_str(text);
-                        self.command_palette_selected = 0;
-                    }
-                }
-                _ => {}
+                _ => return,
             }
             cx.notify();
             return;
@@ -1572,13 +1471,6 @@ impl Zeddy {
             }
             cx.stop_propagation();
             cx.notify();
-            return;
-        }
-        if self.settings_open {
-            if event.keystroke.modifiers.control && event.keystroke.key == "tab" {
-                cx.stop_propagation();
-                self.cycle_settings_page(event.keystroke.modifiers.shift, cx);
-            }
             return;
         }
         let Some(bytes) = keys::bytes_for(&event.keystroke) else {
@@ -1608,19 +1500,22 @@ impl Zeddy {
 
         let menu = ContextMenu::build(window, cx, move |menu, _, _| {
             let add = weak.clone();
-            let mut menu = menu.entry("New space…", None, move |_, cx| {
+            let mut menu = menu.entry("New Space…", None, move |_, cx| {
                 let _ = add.update(cx, |this, cx| this.pick_a_folder(cx));
             });
 
-            for (space, name, _kind) in
-                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
-            {
+            let registered: Vec<_> =
+                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::Registered).collect();
+            if !registered.is_empty() {
+                menu = menu.separator().header("Project Spaces");
+            }
+            for (space, name, _) in registered {
                 let target = space.clone();
                 let select = weak.clone();
                 menu = menu.toggleable_entry(
                     name.clone(),
                     active_id == Some(space.entity_id()),
-                    IconPosition::Start,
+                    IconPosition::End,
                     None,
                     move |window, cx| {
                         let _ =
@@ -1629,18 +1524,16 @@ impl Zeddy {
                 );
             }
 
-            let registered: Vec<_> =
-                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::Registered).collect();
-            if !registered.is_empty() {
-                menu = menu.separator();
-            }
-            for (space, name, _) in registered {
+            menu = menu.separator();
+            for (space, name, _kind) in
+                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
+            {
                 let target = space.clone();
                 let select = weak.clone();
                 menu = menu.toggleable_entry(
                     name.clone(),
                     active_id == Some(space.entity_id()),
-                    IconPosition::Start,
+                    IconPosition::End,
                     None,
                     move |window, cx| {
                         let _ =
@@ -1651,11 +1544,28 @@ impl Zeddy {
             menu
         });
 
-        DropdownMenu::new("space-switcher", current, menu)
-            .style(DropdownStyle::Ghost)
-            .full_width(true)
-            .attach(Anchor::BottomLeft)
-            .aria_label("Current space")
+        let menu_for_open = menu.clone();
+        let menu_for_render = menu.clone();
+        PopoverMenu::new("space-switcher")
+            .trigger(
+                ButtonLike::new("space-switcher-trigger")
+                    .aria_label("Current space")
+                    .aria_value(current.clone())
+                    .selected_style(ButtonStyle::Tinted(TintColor::Accent))
+                    .child(div().min_w_0().max_w(px(148.)).child(Label::new(current).truncate()))
+                    .child(
+                        Icon::new(IconName::ChevronUpDown)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    ),
+            )
+            .anchor(Anchor::TopLeft)
+            .on_open(Rc::new(move |window, cx| {
+                menu_for_open.update(cx, |menu, cx| {
+                    menu.select_toggled_or_first(window, cx);
+                });
+            }))
+            .menu(move |_, _| Some(menu_for_render.clone()))
             .into_any_element()
     }
 
@@ -2593,6 +2503,7 @@ impl Zeddy {
                         status,
                         process_running,
                         ended,
+                        false,
                         &space_key,
                         *id,
                         cx,
@@ -2695,18 +2606,13 @@ impl Zeddy {
                     )
             })
             .collect();
-        let dismiss = cx.listener(|this, _, _, cx| {
+        let dismiss = cx.listener(|this, _, window, cx| {
             this.command_palette_open = false;
             this.command_palette_query.clear();
+            this.command_palette_input.update(cx, |input, cx| input.clear(cx));
+            window.focus(&this.focus, cx);
             cx.notify();
         });
-        let query = if self.command_palette_query.is_empty() {
-            "Type a command…".to_owned()
-        } else {
-            self.command_palette_query.clone()
-        };
-        let query_color =
-            if self.command_palette_query.is_empty() { Color::Muted } else { Color::Default };
 
         Some(
             div()
@@ -2746,7 +2652,7 @@ impl Zeddy {
                                         .size(IconSize::Small)
                                         .color(Color::Muted),
                                 )
-                                .child(Label::new(query).size(LabelSize::Small).color(query_color)),
+                                .child(self.command_palette_input.clone()),
                         )
                         .child(
                             v_flex()
@@ -2769,17 +2675,21 @@ impl Zeddy {
 
     fn rename_space_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.rename_space?;
-        let cancel_scrim = cx.listener(|this, _, _, cx| {
+        let cancel_scrim = cx.listener(|this, _, window, cx| {
             this.rename_space = None;
             this.rename_query.clear();
+            this.rename_input.update(cx, |input, cx| input.clear(cx));
+            window.focus(&this.focus, cx);
             cx.notify();
         });
-        let cancel_button = cx.listener(|this, _, _, cx| {
+        let cancel_button = cx.listener(|this, _, window, cx| {
             this.rename_space = None;
             this.rename_query.clear();
+            this.rename_input.update(cx, |input, cx| input.clear(cx));
+            window.focus(&this.focus, cx);
             cx.notify();
         });
-        let save = cx.listener(|this, _, _, cx| this.commit_space_rename(cx));
+        let save = cx.listener(|this, _, window, cx| this.commit_space_rename(window, cx));
         Some(
             div()
                 .id("rename-space-scrim")
@@ -2815,21 +2725,7 @@ impl Zeddy {
                                 .border_1()
                                 .border_color(cx.theme().colors().border_focused)
                                 .bg(cx.theme().colors().editor_background)
-                                .child(
-                                    Label::new(if self.rename_query.is_empty() {
-                                        "Type a space name…".to_owned()
-                                    } else {
-                                        self.rename_query.clone()
-                                    })
-                                    .size(LabelSize::Small)
-                                    .color(
-                                        if self.rename_query.is_empty() {
-                                            Color::Muted
-                                        } else {
-                                            Color::Default
-                                        },
-                                    ),
-                                ),
+                                .child(self.rename_input.clone()),
                         )
                         .child(
                             h_flex()
@@ -2844,585 +2740,6 @@ impl Zeddy {
                 )
                 .into_any_element(),
         )
-    }
-
-    fn settings_workspace(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let close = cx.listener(|this, _, _, cx| {
-            this.settings_open = false;
-            this.plugin_settings = None;
-            cx.notify();
-        });
-        let selected = self.settings_page;
-        let navigation: Vec<_> = SettingsPage::ALL
-            .into_iter()
-            .map(|page| {
-                div()
-                    .id(format!("settings-page-{}", page.slug()))
-                    .role(Role::Tab)
-                    .aria_label(page.title())
-                    .aria_selected(page == selected)
-                    .mx_1()
-                    .px_2()
-                    .py_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .when(page == selected, |row| {
-                        row.bg(cx.theme().colors().element_selected)
-                            .text_color(cx.theme().colors().text)
-                    })
-                    .when(page != selected, |row| {
-                        row.text_color(cx.theme().colors().text_muted)
-                            .hover(|row| row.bg(cx.theme().colors().element_hover))
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.settings_page = page;
-                        if page != SettingsPage::Plugins {
-                            this.plugin_settings = None;
-                        }
-                        cx.notify();
-                    }))
-                    .child(Label::new(page.title()).size(LabelSize::Small))
-            })
-            .collect();
-        let content = self.settings_content(cx);
-
-        v_flex()
-            .id("settings-workspace")
-            .size_full()
-            .min_h_0()
-            .bg(cx.theme().colors().background)
-            .child(
-                h_flex()
-                    .h(Tab::container_height(cx))
-                    .px_3()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(cx.theme().colors().border)
-                    .child(Label::new("Settings").size(LabelSize::Small))
-                    .child(
-                        IconButton::new("close-settings", IconName::Close)
-                            .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Close Settings"))
-                            .on_click(close),
-                    ),
-            )
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        v_flex()
-                            .w(px(176.))
-                            .h_full()
-                            .py_2()
-                            .border_r_1()
-                            .border_color(cx.theme().colors().border)
-                            .bg(cx.theme().colors().surface_background)
-                            .child(div().px_3().py_1().child(
-                                Label::new("Options").size(LabelSize::XSmall).color(Color::Muted),
-                            ))
-                            .children(navigation),
-                    )
-                    .child(content),
-            )
-            .into_any_element()
-    }
-
-    fn settings_content(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.settings_page;
-        let plugin_override = (page == SettingsPage::Plugins)
-            .then(|| self.plugin_settings.as_ref())
-            .flatten()
-            .map(|(plugin, view)| {
-                let back = cx.listener(|this, _, _, cx| {
-                    this.plugin_settings = None;
-                    cx.notify();
-                });
-                v_flex()
-                    .gap_3()
-                    .child(Button::new("plugin-settings-back", "Back to plugins").on_click(back))
-                    .child(Label::new(plugin.clone()).size(LabelSize::XSmall).color(Color::Muted))
-                    .child(div().min_h(px(320.)).child(view.clone()))
-                    .into_any_element()
-            });
-        let body = if let Some(plugin_override) = plugin_override {
-            plugin_override
-        } else {
-            match page {
-                SettingsPage::General => {
-                    let terminate = self.settings.resolved().terminate_sessions_on_exit;
-                    let toggle = cx
-                        .listener(move |this, _, _, cx| this.set_terminate_on_exit(!terminate, cx));
-                    v_flex()
-                    .gap_4()
-                    .child(Label::new("Chartr").size(LabelSize::Large))
-                    .child(
-                        Label::new(format!(
-                            "Version {} · configuration namespace chartr-zeddy",
-                            env!("CARGO_PKG_VERSION")
-                        ))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                    )
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .gap_4()
-                            .child(
-                                v_flex()
-                                    .child(
-                                        Label::new("Terminate sessions on exit")
-                                            .size(LabelSize::Small),
-                                    )
-                                    .child(
-                                        Label::new(
-                                            "Normal app exit detaches and leaves sessions running.",
-                                        )
-                                        .size(LabelSize::XSmall)
-                                        .color(Color::Muted),
-                                    ),
-                            )
-                            .child(
-                                Button::new(
-                                    "terminate-sessions-on-exit",
-                                    if terminate { "On" } else { "Off" },
-                                )
-                                .toggle_state(terminate)
-                                .on_click(toggle),
-                            ),
-                    )
-                    .into_any_element()
-                }
-                SettingsPage::Appearance => {
-                    let selected = self.settings.resolved().fixed_theme.clone();
-                    let mode = self.settings.resolved().theme_mode;
-                    let dark = cx.listener(|this, _, _, cx| {
-                        this.set_theme_preference(ThemeMode::Fixed, Some(CHARTR_DARK), cx)
-                    });
-                    let light = cx.listener(|this, _, _, cx| {
-                        this.set_theme_preference(ThemeMode::Fixed, Some(CHARTR_LIGHT), cx)
-                    });
-                    let system = cx.listener(|this, _, _, cx| {
-                        this.set_theme_preference(ThemeMode::System, None, cx)
-                    });
-                    let font = cx.weak_entity();
-                    let smaller = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(-1., cx));
-                    let larger = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(1., cx));
-                    v_flex()
-                        .gap_3()
-                        .child(setting_label("Theme"))
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("theme-chartr-dark", CHARTR_DARK)
-                                        .toggle_state(
-                                            mode == ThemeMode::Fixed && selected == CHARTR_DARK,
-                                        )
-                                        .on_click(dark),
-                                )
-                                .child(
-                                    Button::new("theme-chartr-light", CHARTR_LIGHT)
-                                        .toggle_state(
-                                            mode == ThemeMode::Fixed && selected == CHARTR_LIGHT,
-                                        )
-                                        .on_click(light),
-                                )
-                                .child(
-                                    Button::new("theme-system", "System")
-                                        .toggle_state(mode == ThemeMode::System)
-                                        .on_click(system),
-                                ),
-                        )
-                        .child(setting_label("Interface font"))
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .child(
-                                    PopoverMenu::new("ui-font-menu")
-                                        .trigger(
-                                            Button::new(
-                                                "ui-font-family",
-                                                self.settings.resolved().ui_font_family.clone(),
-                                            )
-                                            .end_icon(Icon::new(IconName::ChevronDown)),
-                                        )
-                                        .anchor(Anchor::BottomLeft)
-                                        .menu(move |window, cx| {
-                                            let font = font.clone();
-                                            Some(ContextMenu::build(
-                                                window,
-                                                cx,
-                                                move |menu, _, _| {
-                                                    ["IBM Plex Sans", ".ZedSans", "System UI"]
-                                                        .into_iter()
-                                                        .fold(menu, |menu, family| {
-                                                            let set = font.clone();
-                                                            menu.entry(
-                                                                family,
-                                                                None,
-                                                                move |_, cx| {
-                                                                    let _ = set.update(
-                                                                        cx,
-                                                                        |this, cx| {
-                                                                            this.set_ui_font(
-                                                                                family.to_owned(),
-                                                                                cx,
-                                                                            )
-                                                                        },
-                                                                    );
-                                                                },
-                                                            )
-                                                        })
-                                                },
-                                            ))
-                                        }),
-                                )
-                                .child(
-                                    IconButton::new("ui-font-smaller", IconName::Dash)
-                                        .tooltip(Tooltip::text("Decrease interface font size"))
-                                        .on_click(smaller),
-                                )
-                                .child(
-                                    Label::new(format!(
-                                        "{} px",
-                                        self.settings.resolved().ui_font_size
-                                    ))
-                                    .size(LabelSize::Small),
-                                )
-                                .child(
-                                    IconButton::new("ui-font-larger", IconName::Plus)
-                                        .tooltip(Tooltip::text("Increase interface font size"))
-                                        .on_click(larger),
-                                ),
-                        )
-                        .into_any_element()
-                }
-                SettingsPage::Terminal => {
-                    let font = cx.weak_entity();
-                    let smaller =
-                        cx.listener(|this, _, _, cx| this.adjust_terminal_font_size(-1., cx));
-                    let larger =
-                        cx.listener(|this, _, _, cx| this.adjust_terminal_font_size(1., cx));
-                    let choose_directory =
-                        cx.listener(|this, _, _, cx| this.pick_ad_hoc_directory(cx));
-                    let retry = cx.listener(|this, _, _, cx| this.retry_backend(false, cx));
-                    let restart =
-                        cx.listener(|this, _, window, cx| this.request_backend_restart(window, cx));
-                    let backend = match &self.backend {
-                        Backend::Ready => "Connected".to_owned(),
-                        Backend::Starting => "Starting".to_owned(),
-                        Backend::Recovering(detail) | Backend::Failed(detail) => detail.clone(),
-                    };
-                    v_flex()
-                        .gap_3()
-                        .child(setting_label("Terminal font"))
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .child(
-                                    PopoverMenu::new("terminal-font-menu")
-                                        .trigger(
-                                            Button::new(
-                                                "terminal-font-family",
-                                                self.settings
-                                                    .resolved()
-                                                    .terminal_font_family
-                                                    .clone(),
-                                            )
-                                            .end_icon(Icon::new(IconName::ChevronDown)),
-                                        )
-                                        .anchor(Anchor::BottomLeft)
-                                        .menu(move |window, cx| {
-                                            let font = font.clone();
-                                            Some(ContextMenu::build(
-                                                window,
-                                                cx,
-                                                move |menu, _, _| {
-                                                    ["IBM Plex Mono", "Lilex", ".ZedMono"]
-                                                        .into_iter()
-                                                        .fold(menu, |menu, family| {
-                                                            let set = font.clone();
-                                                            menu.entry(
-                                                                family,
-                                                                None,
-                                                                move |_, cx| {
-                                                                    let _ = set.update(
-                                                                        cx,
-                                                                        |this, cx| {
-                                                                            this.set_terminal_font(
-                                                                                family.to_owned(),
-                                                                                cx,
-                                                                            )
-                                                                        },
-                                                                    );
-                                                                },
-                                                            )
-                                                        })
-                                                },
-                                            ))
-                                        }),
-                                )
-                                .child(
-                                    IconButton::new("terminal-font-smaller", IconName::Dash)
-                                        .tooltip(Tooltip::text("Decrease terminal font size"))
-                                        .on_click(smaller),
-                                )
-                                .child(
-                                    Label::new(format!(
-                                        "{} px",
-                                        self.settings.resolved().terminal_font_size
-                                    ))
-                                    .size(LabelSize::Small),
-                                )
-                                .child(
-                                    IconButton::new("terminal-font-larger", IconName::Plus)
-                                        .tooltip(Tooltip::text("Increase terminal font size"))
-                                        .on_click(larger),
-                                ),
-                        )
-                        .child(setting_label("Ad-hoc directory"))
-                        .child(
-                            Button::new(
-                                "choose-ad-hoc-directory",
-                                self.settings.resolved().ad_hoc_directory.as_ref().map_or_else(
-                                    || "Home directory".to_owned(),
-                                    |path| path.display().to_string(),
-                                ),
-                            )
-                            .on_click(choose_directory),
-                        )
-                        .child(setting_value("Backend", backend))
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .child(
-                                    Button::new("settings-retry-backend", "Retry").on_click(retry),
-                                )
-                                .child(
-                                    Button::new("settings-restart-backend", "Restart Backend")
-                                        .on_click(restart),
-                                ),
-                        )
-                        .into_any_element()
-                }
-                SettingsPage::Hotkeys => {
-                    let recording = self.recording_keymap;
-                    let rows: Vec<_> = KeymapAction::ALL
-                        .into_iter()
-                        .map(|action| {
-                            let capture = cx.listener(move |this, _, _, cx| {
-                                this.recording_keymap = Some(action);
-                                this.problem = None;
-                                cx.notify();
-                            });
-                            h_flex()
-                                .justify_between()
-                                .gap_4()
-                                .child(Label::new(action.title()).size(LabelSize::Small))
-                                .child(
-                                    Button::new(
-                                        format!("record-hotkey-{}", action.id()),
-                                        if recording == Some(action) {
-                                            "Press shortcut…".to_owned()
-                                        } else {
-                                            self.keymap.key(action).to_owned()
-                                        },
-                                    )
-                                    .toggle_state(recording == Some(action))
-                                    .on_click(capture),
-                                )
-                        })
-                        .collect();
-                    v_flex()
-                    .gap_2()
-                    .when_some(self.keymap.problem().map(str::to_owned), |view, problem| {
-                        view.child(
-                            Banner::new()
-                                .severity(Severity::Error)
-                                .child(Label::new(problem).size(LabelSize::Small)),
-                        )
-                    })
-                    .when(self.keymap_restart_required, |view| {
-                        view.child(Banner::new().child(
-                            Label::new(
-                                "Shortcut changes are saved. Restart Chartr to rebuild the application keymap.",
-                            )
-                            .size(LabelSize::Small),
-                        ))
-                    })
-                    .child(
-                        Label::new(
-                            "Click a shortcut, then press one key chord. Conflicts in the Chartr context are rejected.",
-                        )
-                        .size(LabelSize::XSmall)
-                        .color(Color::Muted),
-                    )
-                    .children(rows)
-                    .into_any_element()
-                }
-                SettingsPage::Plugins => {
-                    let mut descriptors: Vec<_> = self
-                        .catalog
-                        .loaded
-                        .values()
-                        .map(|loaded| (loaded.manifest.clone(), true, loaded.has_settings))
-                        .chain(
-                            self.catalog
-                                .disabled
-                                .values()
-                                .map(|disabled| (disabled.manifest.clone(), false, false)),
-                        )
-                        .collect();
-                    descriptors.sort_by(|(left, _, _), (right, _, _)| left.name.cmp(&right.name));
-                    let rows: Vec<_> = descriptors
-                        .into_iter()
-                        .map(|(manifest, enabled, has_settings)| {
-                            let id = manifest.id.clone();
-                            let control_id = id.clone();
-                            let configured = self.settings.resolved().plugin(&id);
-                            let toggle = cx.listener(move |this, _, _, cx| {
-                                this.set_plugin_enabled(id.clone(), !enabled, cx)
-                            });
-                            let trust = match manifest.kind {
-                                zeddy_plugin::manifest::Kind::Native => {
-                                    "Native — fully trusted code".to_owned()
-                                }
-                                zeddy_plugin::manifest::Kind::Web => {
-                                    let project = match manifest.permissions.project_files {
-                                        zeddy_plugin::manifest::ProjectAccess::None => {
-                                            "no project files"
-                                        }
-                                        zeddy_plugin::manifest::ProjectAccess::Read => {
-                                            "read project files"
-                                        }
-                                        zeddy_plugin::manifest::ProjectAccess::ReadWrite => {
-                                            "read/write project files"
-                                        }
-                                    };
-                                    let mut grants = vec![project.to_owned()];
-                                    if !manifest.permissions.network.is_empty() {
-                                        grants.push(format!(
-                                            "network: {}",
-                                            manifest.permissions.network.join(", ")
-                                        ));
-                                    }
-                                    if manifest.permissions.process {
-                                        grants.push("process actions".to_owned());
-                                    }
-                                    if manifest.permissions.session {
-                                        grants.push("bound-session actions".to_owned());
-                                    }
-                                    format!("Web — {}", grants.join(" · "))
-                                }
-                            };
-                            let unsafe_control =
-                                (manifest.kind == zeddy_plugin::manifest::Kind::Web).then(|| {
-                                    let id = manifest.id.clone();
-                                    let change = cx.listener(move |this, _, _, cx| {
-                                        this.set_plugin_unsafe(
-                                            id.clone(),
-                                            !configured.unsafe_filesystem,
-                                            cx,
-                                        )
-                                    });
-                                    Button::new(
-                                        format!("plugin-unsafe-{}", manifest.id),
-                                        if configured.unsafe_filesystem {
-                                            "Unsafe filesystem granted"
-                                        } else {
-                                            "Grant unsafe filesystem"
-                                        },
-                                    )
-                                    .toggle_state(configured.unsafe_filesystem)
-                                    .on_click(change)
-                                });
-                            let configure = has_settings.then(|| {
-                                let id = manifest.id.clone();
-                                Button::new(format!("plugin-settings-{}", manifest.id), "Configure")
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.open_plugin_settings(id.clone(), window, cx)
-                                    }))
-                            });
-                            v_flex()
-                                .gap_2()
-                                .p_3()
-                                .border_1()
-                                .border_color(cx.theme().colors().border)
-                                .rounded_md()
-                                .child(
-                                    h_flex()
-                                        .justify_between()
-                                        .child(
-                                            v_flex()
-                                                .child(
-                                                    Label::new(manifest.name)
-                                                        .size(LabelSize::Small),
-                                                )
-                                                .child(
-                                                    Label::new(manifest.id)
-                                                        .size(LabelSize::XSmall)
-                                                        .color(Color::Muted),
-                                                ),
-                                        )
-                                        .child(
-                                            Button::new(
-                                                format!("plugin-enabled-{control_id}"),
-                                                if enabled { "Enabled" } else { "Disabled" },
-                                            )
-                                            .toggle_state(enabled)
-                                            .on_click(toggle),
-                                        ),
-                                )
-                                .child(
-                                    Label::new(trust).size(LabelSize::XSmall).color(Color::Muted),
-                                )
-                                .when_some(configure, |row, control| row.child(control))
-                                .when_some(unsafe_control, |row, control| row.child(control))
-                        })
-                        .collect();
-                    let rejected: Vec<_> = self
-                        .catalog
-                        .rejected
-                        .iter()
-                        .map(|rejected| {
-                            Banner::new().severity(Severity::Error).child(
-                                Label::new(format!("{}: {}", rejected.dir.display(), rejected.why))
-                                    .size(LabelSize::XSmall),
-                            )
-                        })
-                        .collect();
-                    v_flex()
-                        .gap_2()
-                        .when(rows.is_empty() && rejected.is_empty(), |view| {
-                            view.child(Label::new("No plugins installed.").color(Color::Muted))
-                        })
-                        .children(rows)
-                        .children(rejected)
-                        .into_any_element()
-                }
-            }
-        };
-        v_flex()
-            .id(format!("settings-content-{}", page.slug()))
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .overflow_y_scroll()
-            .items_center()
-            .child(
-                v_flex()
-                    .w_full()
-                    .max_w(px(680.))
-                    .p_6()
-                    .gap_5()
-                    .child(Label::new(page.title()).size(LabelSize::Large))
-                    .when_some(self.settings.unreadable().map(str::to_owned), |view, error| {
-                        view.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
-                    })
-                    .child(body),
-            )
-            .into_any_element()
     }
 }
 
@@ -3461,48 +2778,30 @@ impl Render for Zeddy {
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
 
-        let workspace =
-            v_flex().flex_1().h_full().overflow_hidden().bg(workspace_background).child(
-                if self.settings_open {
-                    self.settings_workspace(cx)
-                } else {
-                    self.workspace_pane(window, cx)
-                },
-            );
+        let workspace = v_flex()
+            .flex_1()
+            .h_full()
+            .overflow_hidden()
+            .bg(workspace_background)
+            .child(self.workspace_pane(window, cx));
 
-        let body = if self.settings_open {
-            h_flex()
+        let body = match self.mode {
+            Mode::Sidebar => h_flex()
                 .size_full()
                 .child(chrome::sidebar::render(
                     &sidebar_spaces,
                     switcher,
-                    new_item,
                     emit.clone(),
                     self.sidebar_width,
                     cx,
                 ))
                 .child(workspace)
-                .into_any_element()
-        } else {
-            match self.mode {
-                Mode::Sidebar => h_flex()
-                    .size_full()
-                    .child(chrome::sidebar::render(
-                        &sidebar_spaces,
-                        switcher,
-                        new_item,
-                        emit.clone(),
-                        self.sidebar_width,
-                        cx,
-                    ))
-                    .child(workspace)
-                    .into_any_element(),
-                Mode::Tabs => v_flex()
-                    .size_full()
-                    .child(chrome::tabs::render(chrome_entries, switcher, new_item, emit, cx))
-                    .child(workspace)
-                    .into_any_element(),
-            }
+                .into_any_element(),
+            Mode::Tabs => v_flex()
+                .size_full()
+                .child(chrome::tabs::render(chrome_entries, switcher, new_item, emit, cx))
+                .child(workspace)
+                .into_any_element(),
         };
 
         let command_palette = self.command_palette(cx);
@@ -3515,8 +2814,6 @@ impl Render for Zeddy {
                 "RenameSpace"
             } else if self.command_palette_open {
                 "CommandPalette"
-            } else if self.settings_open {
-                "Chartr Settings"
             } else {
                 "Chartr"
             })
@@ -3583,9 +2880,9 @@ impl Render for Zeddy {
             .on_action(cx.listener(|this, _: &actions::workspace::NewTerminal, window, cx| {
                 this.act(Action::New, window, cx)
             }))
-            .on_action(
-                cx.listener(|this, _: &actions::settings::Open, _, cx| this.open_settings(cx)),
-            )
+            .on_action(cx.listener(|this, _: &actions::settings::Open, window, cx| {
+                this.open_settings(window, cx)
+            }))
             .on_action(cx.listener(|this, _: &actions::command_palette::Toggle, window, cx| {
                 this.toggle_command_palette(window, cx)
             }))
@@ -3594,10 +2891,6 @@ impl Render for Zeddy {
             .children(command_palette)
             .children(rename_space)
     }
-}
-
-fn setting_label(label: &'static str) -> AnyElement {
-    Label::new(label).size(LabelSize::Small).color(Color::Muted).into_any_element()
 }
 
 fn pane_drop_direction_for_drag(
@@ -3761,14 +3054,6 @@ fn pane_controls(
         .into_any_element()
 }
 
-fn setting_value(label: &'static str, value: String) -> AnyElement {
-    v_flex()
-        .gap_1()
-        .child(setting_label(label))
-        .child(Label::new(value).size(LabelSize::Small))
-        .into_any_element()
-}
-
 fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {
     let file = match spaces::spaces_file() {
         Ok(file) => file,
@@ -3813,7 +3098,7 @@ fn terminal(
         cursor: theme.colors().terminal_foreground,
     };
 
-    v_flex().size_full().p_2().child(TerminalElement::new(
+    v_flex().size_full().p_2().bg(theme.colors().terminal_background).child(TerminalElement::new(
         screen,
         colors,
         appearance,
