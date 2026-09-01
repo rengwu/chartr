@@ -812,6 +812,13 @@ impl Zeddy {
                 let ids = space.read(cx).tab_item_ids(tab);
                 self.request_bulk_close(space, ids, false, "group", window, cx);
             }
+            Action::UngroupPane { space, tab } => {
+                if let Some(space) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    space.update(cx, |space, _| space.ungroup_pane(tab));
+                }
+            }
             Action::MoveWorkspaceTab { space, tab, target_index } => {
                 if let Some(space) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()

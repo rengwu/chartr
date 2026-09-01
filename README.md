@@ -56,7 +56,7 @@ Terminal titles follow Herdr's live view of the PTY, as in Chartr-rs: a detected
 agent wins, otherwise the non-shell foreground process is shown, and an idle
 shell falls back to Herdr's persistent tab label or number. The same two-second
 backend refresh that discovers sessions updates and clears these inferred
-titles. Collapsed pane groups use the neutral title **Grouped Tabs**.
+titles. Collapsed pane groups use their item count as the title, such as **5 Tabs**.
 
 ## Settings and persistence
 

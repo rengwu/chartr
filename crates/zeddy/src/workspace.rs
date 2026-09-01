@@ -989,6 +989,61 @@ impl WorkspaceTabs {
         Ok(())
     }
 
+    /// Expand one grouped workspace back into standalone outer tabs.
+    ///
+    /// Items follow pane-tree order and retain their order within each pane,
+    /// so ungrouping is deterministic even for recursively nested splits.
+    pub fn ungroup_tab(&mut self, id: WorkspaceTabId) -> Result<(), ModelError> {
+        let index = self
+            .tabs
+            .iter()
+            .position(|candidate| candidate.id == id)
+            .ok_or(ModelError::WorkspaceTabNotFound(id))?;
+        let tab = &self.tabs[index];
+        if !tab.is_grouped() {
+            return Ok(());
+        }
+
+        let items: Vec<_> = tab
+            .layout
+            .center
+            .panes()
+            .into_iter()
+            .flat_map(|pane| {
+                tab.layout.pane(pane).into_iter().flat_map(|pane| pane.items().iter().copied())
+            })
+            .collect();
+        if items.is_empty() {
+            return Ok(());
+        }
+
+        let was_active = self.active == Some(id);
+        let previously_active = self.active;
+        let representative = tab.representative_item();
+        self.tabs.remove(index);
+        self.activation_history.retain(|candidate| *candidate != id);
+        if was_active {
+            self.active = None;
+        }
+
+        let mut representative_tab = None;
+        for (offset, item) in items.into_iter().enumerate() {
+            let standalone = self.push_standalone_at(item, index + offset)?;
+            if Some(item) == representative {
+                representative_tab = Some(standalone);
+            }
+        }
+
+        if was_active {
+            if let Some(active) = representative_tab {
+                self.activate_tab(active)?;
+            }
+        } else if let Some(active) = previously_active {
+            self.activate_tab(active)?;
+        }
+        Ok(())
+    }
+
     pub fn remove_item(&mut self, item: ItemId) -> Result<(), ModelError> {
         let (tab, _) = self.location(item).ok_or(ModelError::ItemNotFound(item))?;
         self.workspace_mut(tab).expect("known workspace tab").remove_item(item)?;
@@ -1149,6 +1204,61 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&tabs).unwrap()).unwrap();
         assert_eq!(restored, tabs);
         restored.validate().unwrap();
+    }
+
+    #[test]
+    fn ungrouping_restores_items_as_outer_tabs_in_pane_and_tab_order() {
+        let mut tabs = WorkspaceTabs::new();
+        let items: Vec<_> = (0..5).map(|_| tabs.alloc_item()).collect();
+        let outer: Vec<_> = items.iter().map(|item| tabs.push_standalone(*item).unwrap()).collect();
+        let left = tabs.workspace(outer[1]).unwrap().active_pane();
+        let right =
+            tabs.workspace_mut(outer[1]).unwrap().split_pane(left, SplitDirection::Right).unwrap();
+
+        tabs.move_item(items[2], outer[2], PaneId(1), outer[1], left, None).unwrap();
+        tabs.move_item(items[3], outer[3], PaneId(1), outer[1], right, None).unwrap();
+        tabs.ungroup_tab(outer[1]).unwrap();
+
+        assert_eq!(
+            tabs.tabs().iter().filter_map(WorkspaceTab::representative_item).collect::<Vec<_>>(),
+            items,
+        );
+        assert!(tabs.tabs().iter().all(|tab| !tab.is_grouped()));
+        assert_eq!(tabs.active_item(), Some(items[3]));
+        tabs.validate().unwrap();
+    }
+
+    #[test]
+    fn ungrouping_an_inactive_group_preserves_the_active_outer_tab() {
+        let mut tabs = WorkspaceTabs::new();
+        let items: Vec<_> = (0..3).map(|_| tabs.alloc_item()).collect();
+        let outer: Vec<_> = items.iter().map(|item| tabs.push_standalone(*item).unwrap()).collect();
+        let target_pane = tabs.workspace(outer[0]).unwrap().active_pane();
+        tabs.move_item(items[1], outer[1], PaneId(1), outer[0], target_pane, None).unwrap();
+        tabs.activate_tab(outer[2]).unwrap();
+
+        tabs.ungroup_tab(outer[0]).unwrap();
+
+        assert_eq!(tabs.active_tab_id(), Some(outer[2]));
+        assert_eq!(tabs.active_item(), Some(items[2]));
+        assert!(tabs.tabs().iter().all(|tab| !tab.is_grouped()));
+        tabs.validate().unwrap();
+    }
+
+    #[test]
+    fn ungrouping_a_single_item_with_an_empty_split_makes_it_standalone() {
+        let mut tabs = WorkspaceTabs::new();
+        let item = tabs.alloc_item();
+        let grouped = tabs.push_standalone(item).unwrap();
+        let occupied = tabs.workspace(grouped).unwrap().active_pane();
+        tabs.workspace_mut(grouped).unwrap().split_pane(occupied, SplitDirection::Right).unwrap();
+
+        tabs.ungroup_tab(grouped).unwrap();
+
+        assert_eq!(tabs.tabs().len(), 1);
+        assert_eq!(tabs.active_item(), Some(item));
+        assert!(!tabs.tabs()[0].is_grouped());
+        tabs.validate().unwrap();
     }
 
     #[test]

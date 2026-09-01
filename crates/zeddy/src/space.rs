@@ -454,14 +454,17 @@ impl Space {
                     tab: tab.id,
                     pane,
                     index,
-                    title: if grouped { "Grouped Tabs".to_owned() } else { item.title() },
+                    title: if grouped {
+                        format!("{} Tabs", tab.layout.item_count())
+                    } else {
+                        item.title()
+                    },
                     status: (!grouped).then(|| item.status()).flatten(),
                     process_running: !grouped && item.process_running(),
                     ended: !grouped && item.ended(),
                     selected: self.layout.active_tab_id() == Some(tab.id),
                     closable: true,
                     grouped,
-                    item_count: tab.layout.item_count(),
                 })
             })
             .collect()
@@ -485,6 +488,12 @@ impl Space {
 
     pub fn move_workspace_tab(&mut self, tab: WorkspaceTabId, target_index: usize) {
         if let Err(error) = self.layout.move_tab(tab, target_index) {
+            self.problem = Some(error.to_string());
+        }
+    }
+
+    pub fn ungroup_pane(&mut self, tab: WorkspaceTabId) {
+        if let Err(error) = self.layout.ungroup_tab(tab) {
             self.problem = Some(error.to_string());
         }
     }
@@ -531,6 +540,7 @@ impl Space {
             | Action::NewInSpace { .. }
             | Action::MoveWorkspaceTab { .. }
             | Action::CloseGroup { .. }
+            | Action::UngroupPane { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }

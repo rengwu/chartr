@@ -39,7 +39,6 @@ pub struct Entry {
     pub selected: bool,
     pub closable: bool,
     pub grouped: bool,
-    pub item_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +57,7 @@ pub enum Action {
     Select { space: Option<EntityId>, item: ItemId },
     Close { space: Option<EntityId>, item: ItemId },
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
+    UngroupPane { space: EntityId, tab: WorkspaceTabId },
     MoveWorkspaceTab { space: EntityId, tab: WorkspaceTabId, target_index: usize },
     BeginSpaceDrag { at: Pixels },
     CloseSpace { space: EntityId },

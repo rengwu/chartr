@@ -60,7 +60,7 @@ animations without changing direct manipulation.
 Standalone terminal labels are live backend presentation: detected agent,
 non-shell foreground process, then Herdr's persistent tab label or number. They
 are refreshed on the same two-second cadence as session discovery and are not
-persisted locally. A collapsed pane group is deliberately just `Grouped Tabs`;
+persisted locally. A collapsed pane group is deliberately just its item count, such as `5 Tabs`;
 its children retain their individual live labels in the pane-local tab bars.
 
 ## Consequence

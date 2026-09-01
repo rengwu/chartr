@@ -13,7 +13,7 @@ use gpui::{
     Anchor, Bounds, EntityId, MouseButton, Pixels, Point, Rems, Role, ScrollHandle, deferred,
     point, px, transparent_black,
 };
-use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*};
+use ui::{ContextMenu, PopoverMenu, Tooltip, prelude::*, right_click_menu};
 
 use super::Emit;
 
@@ -689,8 +689,9 @@ fn row(
     backgrounds: SelectionRowBackgrounds,
     on: Emit,
     cx: &App,
-) -> impl IntoElement {
+) -> AnyElement {
     let close = on.clone();
+    let ungroup = on.clone();
     let move_tab = on.clone();
 
     let select = entry.key;
@@ -713,21 +714,12 @@ fn row(
     };
     let close_button_width = IconSize::XSmall.rems() + DynamicSpacing::Base04.rems(cx) * 2.;
     let close_slot_width = close_button_width - DynamicSpacing::Base06.rems(cx);
-    let end_slot = h_flex()
-        .gap_1()
-        .when(grouped, |slot| {
-            slot.child(
-                Label::new(format!("{} tabs", entry.item_count))
-                    .size(UI_LABEL_SMALL)
-                    .color(Color::Muted),
-            )
-        })
-        .when(entry.closable, |slot| {
-            // Reserve exactly the portion of the button not already covered
-            // by ListItem's trailing Base06 inset. The real control is an
-            // unclipped overlay at the wrapper level below.
-            slot.child(div().w(close_slot_width).flex_none())
-        });
+    let end_slot = h_flex().when(entry.closable, |slot| {
+        // Reserve exactly the portion of the button not already covered
+        // by ListItem's trailing Base06 inset. The real control is an
+        // unclipped overlay at the wrapper level below.
+        slot.child(div().w(close_slot_width).flex_none())
+    });
     let close_button = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close).icon_size(IconSize::XSmall).on_click(
             move |_, window, cx| {
@@ -747,7 +739,7 @@ fn row(
 
     // `ListItem` deliberately owns row visuals and click semantics. This thin
     // wrapper owns sidebar-tab dragging, which Zed's generic row does not.
-    div()
+    let row = div()
         .id(("session-drag", index))
         .relative()
         .group("session")
@@ -816,7 +808,23 @@ fn row(
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(close_button),
             )
-        })
+        });
+
+    if grouped {
+        right_click_menu(format!("group-row-menu-{space:?}-{}", close_tab.get()))
+            .trigger(move |_, _, _| row)
+            .menu(move |window, cx| {
+                let ungroup = ungroup.clone();
+                ContextMenu::build(window, cx, move |menu, _, _| {
+                    menu.entry("Ungroup", None, move |window, cx| {
+                        ungroup(Action::UngroupPane { space, tab: close_tab }, window, cx)
+                    })
+                })
+            })
+            .into_any_element()
+    } else {
+        row.into_any_element()
+    }
 }
 
 #[cfg(test)]

@@ -6,7 +6,10 @@
 //! identity.
 
 use gpui::Role;
-use ui::{ButtonSize, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*};
+use ui::{
+    ButtonSize, ContextMenu, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*,
+    right_click_menu,
+};
 
 use super::Emit;
 
@@ -48,7 +51,7 @@ fn tab(
     entry: &Entry,
     on: Emit,
     cx: &App,
-) -> impl IntoElement {
+) -> AnyElement {
     let close = on.clone();
     let position = if index == 0 {
         TabPosition::First
@@ -59,6 +62,7 @@ fn tab(
     };
     let select = entry.key;
     let select_item = on.clone();
+    let ungroup = on.clone();
     let move_tab = on;
     let close_key = entry.key;
     let close_tab = entry.tab;
@@ -96,7 +100,7 @@ fn tab(
             })
             .into_any_element()
     });
-    Tab::new(("tab", index))
+    let tab = Tab::new(("tab", index))
         .role(Role::Tab)
         .aria_label(if entry.grouped {
             format!("Pane group: {}", entry.title)
@@ -146,5 +150,21 @@ fn tab(
             cx,
         ))
         .end_slot::<AnyElement>(close_slot)
-        .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate())
+        .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate());
+
+    if grouped {
+        right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
+            .trigger(move |_, _, _| tab)
+            .menu(move |window, cx| {
+                let ungroup = ungroup.clone();
+                ContextMenu::build(window, cx, move |menu, _, _| {
+                    menu.entry("Ungroup", None, move |window, cx| {
+                        ungroup(Action::UngroupPane { space, tab: close_tab }, window, cx)
+                    })
+                })
+            })
+            .into_any_element()
+    } else {
+        tab.into_any_element()
+    }
 }
