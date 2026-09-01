@@ -750,6 +750,8 @@ impl Workspace {
 pub struct WorkspaceTab {
     pub id: WorkspaceTabId,
     pub layout: Workspace,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 impl WorkspaceTab {
@@ -759,6 +761,10 @@ impl WorkspaceTab {
 
     pub fn active_item(&self) -> Option<ItemId> {
         self.layout.pane(self.layout.active_pane()).and_then(Pane::active)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// The item outer chrome can use to identify this tab even when its active
@@ -832,7 +838,7 @@ impl<'de> Deserialize<'de> for WorkspaceTabs {
             } else {
                 let id = WorkspaceTabId(1);
                 Self {
-                    tabs: vec![WorkspaceTab { id, layout }],
+                    tabs: vec![WorkspaceTab { id, layout, name: None }],
                     active: Some(id),
                     activation_history: vec![id],
                     next_tab_id: 2,
@@ -871,6 +877,12 @@ impl WorkspaceTabs {
     }
 
     fn normalize(&mut self) {
+        for tab in &mut self.tabs {
+            tab.name = tab.name.take().and_then(|name| {
+                let name = name.trim();
+                (!name.is_empty()).then(|| name.to_owned())
+            });
+        }
         let known: HashSet<_> = self.tabs.iter().map(|tab| tab.id).collect();
         self.activation_history.retain(|tab| known.contains(tab));
         if self.active.is_none_or(|active| !known.contains(&active)) {
@@ -973,9 +985,22 @@ impl WorkspaceTabs {
         self.next_tab_id += 1;
         let mut layout = Workspace::new();
         layout.add_item(item, None, None)?;
-        self.tabs.insert(index.min(self.tabs.len()), WorkspaceTab { id, layout });
+        self.tabs.insert(index.min(self.tabs.len()), WorkspaceTab { id, layout, name: None });
         self.activate_tab(id)?;
         Ok(id)
+    }
+
+    pub fn rename_tab(
+        &mut self,
+        id: WorkspaceTabId,
+        name: Option<String>,
+    ) -> Result<(), ModelError> {
+        let tab = self.tab_mut(id).ok_or(ModelError::WorkspaceTabNotFound(id))?;
+        tab.name = name.and_then(|name| {
+            let name = name.trim();
+            (!name.is_empty()).then(|| name.to_owned())
+        });
+        Ok(())
     }
 
     pub fn move_tab(&mut self, tab: WorkspaceTabId, destination: usize) -> Result<(), ModelError> {
@@ -1310,6 +1335,31 @@ mod tests {
 
         assert_eq!(restored, tabs);
         assert_eq!(restored.alloc_item(), ItemId(3));
+        restored.validate().unwrap();
+    }
+
+    #[test]
+    fn workspace_tab_names_round_trip_and_empty_names_restore_the_default() {
+        let mut tabs = WorkspaceTabs::new();
+        let first = tabs.alloc_item();
+        let second = tabs.alloc_item();
+        let group = tabs.push_standalone(first).unwrap();
+        let source = tabs.push_standalone(second).unwrap();
+        let target_pane = tabs.workspace(group).unwrap().active_pane();
+        tabs.move_item(second, source, PaneId(1), group, target_pane, None).unwrap();
+
+        tabs.rename_tab(group, Some("  Build Logs  ".to_owned())).unwrap();
+
+        assert_eq!(tabs.tab(group).unwrap().name(), Some("Build Logs"));
+        let json = serde_json::to_string(&tabs).unwrap();
+        let mut restored: WorkspaceTabs = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored, tabs);
+        assert_eq!(restored.tab(group).unwrap().name(), Some("Build Logs"));
+
+        restored.rename_tab(group, Some("   ".to_owned())).unwrap();
+
+        assert_eq!(restored.tab(group).unwrap().name(), None);
+        assert!(!serde_json::to_string(&restored).unwrap().contains("\"name\""));
         restored.validate().unwrap();
     }
 

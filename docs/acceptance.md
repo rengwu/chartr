@@ -34,7 +34,9 @@ Chartr Light. Capture and compare:
   to only the selected group;
 - live terminal titles changing from their Herdr tab number to `nano`, `htop`,
   or a detected agent and back when that foreground process exits; every
-  collapsed pane group title remains its current item count, such as `5 Tabs`;
+  collapsed pane groups can be renamed from their context menu, blank names
+  restore the count title, and unnamed groups track their current item count,
+  such as `5 tabs`;
 - Zed-style transient pane-body drop highlights: full-content center and
   half-content left, right, top, and bottom targets, including nearest-edge
   corner resolution and no split target over a pane's tab bar;

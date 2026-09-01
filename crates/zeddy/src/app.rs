@@ -141,6 +141,7 @@ pub struct Zeddy {
     command_palette_query: String,
     command_palette_selected: usize,
     rename_space: Option<EntityId>,
+    rename_group: Option<(EntityId, WorkspaceTabId)>,
     rename_input: Entity<TextInput>,
     rename_query: String,
     sidebar_scope: SidebarScope,
@@ -162,7 +163,7 @@ impl Zeddy {
         })
         .detach();
         let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
-        let rename_input = cx.new(|cx| TextInput::new("Type a space name…", cx));
+        let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
         cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
             this.command_palette_query = input.read(cx).text().to_owned();
             this.command_palette_selected = 0;
@@ -207,6 +208,7 @@ impl Zeddy {
                     command_palette_query: String::new(),
                     command_palette_selected: 0,
                     rename_space: None,
+                    rename_group: None,
                     rename_input,
                     rename_query: String::new(),
                     sidebar_scope: saved.window.sidebar_scope,
@@ -322,6 +324,7 @@ impl Zeddy {
             command_palette_query: String::new(),
             command_palette_selected: 0,
             rename_space: None,
+            rename_group: None,
             rename_input,
             rename_query: String::new(),
             sidebar_scope: saved.window.sidebar_scope,
@@ -819,6 +822,20 @@ impl Zeddy {
                     space.update(cx, |space, _| space.ungroup_pane(tab));
                 }
             }
+            Action::RenameGroup { space, tab } => {
+                if let Some(target) =
+                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
+                {
+                    self.rename_space = None;
+                    self.rename_group = Some((space, tab));
+                    self.rename_query =
+                        target.read(cx).group_name(tab).unwrap_or_default().to_owned();
+                    self.rename_input.update(cx, |input, cx| {
+                        input.set_text(self.rename_query.clone(), true, cx)
+                    });
+                    window.focus(&self.rename_input.focus_handle(cx), cx);
+                }
+            }
             Action::MoveWorkspaceTab { space, tab, target_index } => {
                 if let Some(space) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
@@ -831,6 +848,7 @@ impl Zeddy {
                 if let Some(target) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space)
                 {
+                    self.rename_group = None;
                     self.rename_space = Some(space);
                     self.rename_query = target.read(cx).name().to_owned();
                     self.rename_input.update(cx, |input, cx| {
@@ -1125,6 +1143,24 @@ impl Zeddy {
                 self.problem = None;
             }
             Err(error) => self.problem = Some(error.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn commit_group_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((space_id, tab)) = self.rename_group.take() else {
+            return;
+        };
+        // Read from the input directly so Enter always commits the latest IME
+        // transaction, even before the subscription's mirrored value flushes.
+        let name = self.rename_input.read(cx).text().trim().to_owned();
+        let name = (!name.is_empty()).then_some(name);
+        self.rename_query.clear();
+        self.rename_input.update(cx, |input, cx| input.clear(cx));
+        window.focus(&self.focus, cx);
+        if let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
+        {
+            space.update(cx, |space, _| space.rename_group(tab, name));
         }
         cx.notify();
     }
@@ -1437,18 +1473,23 @@ impl Zeddy {
     }
 
     fn on_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.rename_space.is_some() {
+        if self.rename_space.is_some() || self.rename_group.is_some() {
             match event.keystroke.key.as_str() {
                 "escape" => {
                     cx.stop_propagation();
                     self.rename_space = None;
+                    self.rename_group = None;
                     self.rename_query.clear();
                     self.rename_input.update(cx, |input, cx| input.clear(cx));
                     window.focus(&self.focus, cx);
                 }
                 "enter" => {
                     cx.stop_propagation();
-                    self.commit_space_rename(window, cx);
+                    if self.rename_group.is_some() {
+                        self.commit_group_rename(window, cx);
+                    } else {
+                        self.commit_space_rename(window, cx);
+                    }
                     return;
                 }
                 _ => return,
@@ -2764,6 +2805,84 @@ impl Zeddy {
                 .into_any_element(),
         )
     }
+
+    fn rename_group_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.rename_group?;
+        let cancel_scrim = cx.listener(|this, _, window, cx| {
+            this.rename_group = None;
+            this.rename_query.clear();
+            this.rename_input.update(cx, |input, cx| input.clear(cx));
+            window.focus(&this.focus, cx);
+            cx.notify();
+        });
+        let cancel_button = cx.listener(|this, _, window, cx| {
+            this.rename_group = None;
+            this.rename_query.clear();
+            this.rename_input.update(cx, |input, cx| input.clear(cx));
+            window.focus(&this.focus, cx);
+            cx.notify();
+        });
+        let save = cx.listener(|this, _, window, cx| this.commit_group_rename(window, cx));
+        Some(
+            div()
+                .id("rename-group-scrim")
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .bg(gpui::black().opacity(0.35))
+                .on_mouse_down(gpui::MouseButton::Left, cancel_scrim)
+                .child(
+                    v_flex()
+                        .id("rename-group-dialog")
+                        .absolute()
+                        .top(px(96.))
+                        .left(relative(0.5))
+                        .ml(px(-220.))
+                        .w(px(440.))
+                        .p_4()
+                        .gap_3()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .bg(cx.theme().colors().elevated_surface_background)
+                        .shadow_lg()
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(Label::new("Rename Group").size(UI_LABEL_LARGE))
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    h_flex()
+                                        .h(px(36.))
+                                        .px_2()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(cx.theme().colors().border_focused)
+                                        .bg(cx.theme().colors().editor_background)
+                                        .child(self.rename_input.clone()),
+                                )
+                                .child(
+                                    Label::new("Leave blank to use the tab count.")
+                                        .size(UI_LABEL_SMALL)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                        .child(
+                            h_flex()
+                                .justify_end()
+                                .gap_1()
+                                .child(
+                                    Button::new("cancel-group-rename", "Cancel")
+                                        .on_click(cancel_button),
+                                )
+                                .child(Button::new("save-group-rename", "Rename").on_click(save)),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
 }
 
 impl Focusable for Zeddy {
@@ -2836,12 +2955,15 @@ impl Render for Zeddy {
 
         let command_palette = self.command_palette(cx);
         let rename_space = self.rename_space_overlay(cx);
+        let rename_group = self.rename_group_overlay(cx);
 
         div()
             .relative()
             .track_focus(&self.focus)
             .key_context(if self.rename_space.is_some() {
                 "RenameSpace"
+            } else if self.rename_group.is_some() {
+                "RenameGroup"
             } else if self.command_palette_open {
                 "CommandPalette"
             } else {
@@ -2935,6 +3057,7 @@ impl Render for Zeddy {
             .child(body)
             .children(command_palette)
             .children(rename_space)
+            .children(rename_group)
     }
 }
 

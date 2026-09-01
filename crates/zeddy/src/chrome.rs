@@ -58,6 +58,7 @@ pub enum Action {
     Close { space: Option<EntityId>, item: ItemId },
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
     UngroupPane { space: EntityId, tab: WorkspaceTabId },
+    RenameGroup { space: EntityId, tab: WorkspaceTabId },
     MoveWorkspaceTab { space: EntityId, tab: WorkspaceTabId, target_index: usize },
     BeginSpaceDrag { at: Pixels },
     CloseSpace { space: EntityId },

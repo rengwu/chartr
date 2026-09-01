@@ -455,7 +455,9 @@ impl Space {
                     pane,
                     index,
                     title: if grouped {
-                        format!("{} Tabs", tab.layout.item_count())
+                        tab.name()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| format!("{} tabs", tab.layout.item_count()))
                     } else {
                         item.title()
                     },
@@ -494,6 +496,16 @@ impl Space {
 
     pub fn ungroup_pane(&mut self, tab: WorkspaceTabId) {
         if let Err(error) = self.layout.ungroup_tab(tab) {
+            self.problem = Some(error.to_string());
+        }
+    }
+
+    pub fn group_name(&self, tab: WorkspaceTabId) -> Option<&str> {
+        self.layout.tab(tab).filter(|tab| tab.is_grouped()).and_then(|tab| tab.name())
+    }
+
+    pub fn rename_group(&mut self, tab: WorkspaceTabId, name: Option<String>) {
+        if let Err(error) = self.layout.rename_tab(tab, name) {
             self.problem = Some(error.to_string());
         }
     }
@@ -541,6 +553,7 @@ impl Space {
             | Action::MoveWorkspaceTab { .. }
             | Action::CloseGroup { .. }
             | Action::UngroupPane { .. }
+            | Action::RenameGroup { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::LocateSpace { .. }

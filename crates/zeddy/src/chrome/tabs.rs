@@ -63,6 +63,7 @@ fn tab(
     let select = entry.key;
     let select_item = on.clone();
     let ungroup = on.clone();
+    let rename = on.clone();
     let move_tab = on;
     let close_key = entry.key;
     let close_tab = entry.tab;
@@ -157,8 +158,12 @@ fn tab(
             .trigger(move |_, _, _| tab)
             .menu(move |window, cx| {
                 let ungroup = ungroup.clone();
+                let rename = rename.clone();
                 ContextMenu::build(window, cx, move |menu, _, _| {
-                    menu.entry("Ungroup", None, move |window, cx| {
+                    menu.entry("Rename", None, move |window, cx| {
+                        rename(Action::RenameGroup { space, tab: close_tab }, window, cx)
+                    })
+                    .entry("Ungroup", None, move |window, cx| {
                         ungroup(Action::UngroupPane { space, tab: close_tab }, window, cx)
                     })
                 })
