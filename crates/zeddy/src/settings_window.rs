@@ -6,13 +6,14 @@
 //! runtime state (the backend and plugin catalog).
 
 use gpui::{
-    Anchor, AnyView, App, Bounds, Context, DefiniteLength, Entity, FocusHandle, Focusable,
-    FontWeight, KeyBinding, PathPromptOptions, Render, Role, WeakEntity, Window, WindowBounds,
-    WindowHandle, WindowOptions, actions, px, size,
+    Anchor, AnyView, App, Bounds, ClickEvent, Context, DefiniteLength, ElementId, Entity,
+    FocusHandle, Focusable, FontWeight, Hsla, KeyBinding, PathPromptOptions, Render, Role,
+    SharedString, TextAlign, WeakEntity, Window, WindowBounds, WindowHandle, WindowOptions,
+    actions, px, size,
 };
 use ui::{
-    Banner, Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
-    RedistributableColumnsState, Severity, Table, TableResizeBehavior, Tooltip, prelude::*,
+    Banner, Button, ButtonSize, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, PopoverMenu,
+    RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
 };
 
 use crate::{
@@ -28,9 +29,14 @@ use crate::{
         self, AppearanceContent, GeneralContent, ResolvedSettings, SettingsPage, SettingsStore,
         TerminalContent, ThemeMode,
     },
+    text_input::{InputEvent, TextInput},
 };
 
 actions!(settings_window, [Close]);
+
+const SETTINGS_WINDOW_MIN_WIDTH: f32 = 720.;
+const SETTINGS_CONTROL_COLUMN_WIDTH: f32 = 200.;
+const SETTINGS_FIELD_VERTICAL_PADDING: f32 = 16.;
 
 #[derive(Clone, Copy)]
 enum ThemeTarget {
@@ -94,7 +100,7 @@ fn open_with_origin(
                 is_movable: true,
                 kind: gpui::WindowKind::Normal,
                 window_background: cx.theme().window_background_appearance(),
-                window_min_size: Some(size(px(640.), px(420.))),
+                window_min_size: Some(size(px(SETTINGS_WINDOW_MIN_WIDTH), px(420.))),
                 ..Default::default()
             },
             |window, cx| {
@@ -116,6 +122,8 @@ pub struct SettingsWindow {
     plugin_settings: Option<(String, AnyView)>,
     recording_keymap: Option<KeymapAction>,
     keymap_restart_required: bool,
+    ui_font_size_input: Entity<TextInput>,
+    terminal_font_size_input: Entity<TextInput>,
     hotkey_widths: Entity<RedistributableColumnsState>,
     focus: FocusHandle,
     problem: Option<String>,
@@ -128,8 +136,53 @@ impl SettingsWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify()).detach();
+        let resolved = cx.global::<SettingsStore>().resolved().clone();
+        let ui_font_size = format_number(resolved.ui_font_size);
+        let ui_font_size_input = cx.new(|cx| {
+            let mut input = TextInput::new("Interface font size", cx);
+            input.set_text(ui_font_size, false, cx);
+            input.set_text_align(TextAlign::Center, cx);
+            input
+        });
+        let terminal_font_size = format_number(resolved.terminal_font_size);
+        let terminal_font_size_input = cx.new(|cx| {
+            let mut input = TextInput::new("Terminal font size", cx);
+            input.set_text(terminal_font_size, false, cx);
+            input.set_text_align(TextAlign::Center, cx);
+            input
+        });
+        cx.observe_global_in::<SettingsStore>(window, |this, window, cx| {
+            this.sync_font_size_inputs(window, cx);
+            cx.notify();
+        })
+        .detach();
         cx.observe_global_in::<KeymapStore>(window, |_, _, cx| cx.notify()).detach();
+        cx.subscribe(&ui_font_size_input, |this, input, _: &InputEvent, cx| {
+            if let Ok(value) = input.read(cx).text().parse::<f32>()
+                && value.is_finite()
+                && (8. ..=32.).contains(&value)
+            {
+                this.set_ui_font_size(value, cx);
+            }
+        })
+        .detach();
+        cx.subscribe(&terminal_font_size_input, |this, input, _: &InputEvent, cx| {
+            if let Ok(value) = input.read(cx).text().parse::<f32>()
+                && value.is_finite()
+                && (8. ..=72.).contains(&value)
+            {
+                this.set_terminal_font_size(value, cx);
+            }
+        })
+        .detach();
+        cx.on_focus_out(&ui_font_size_input.focus_handle(cx), window, |this, _, _, cx| {
+            this.commit_ui_font_size_input(cx)
+        })
+        .detach();
+        cx.on_focus_out(&terminal_font_size_input.focus_handle(cx), window, |this, _, _, cx| {
+            this.commit_terminal_font_size_input(cx)
+        })
+        .detach();
         cx.on_window_closed(|cx, _| {
             if let Some(settings) =
                 cx.windows().into_iter().find_map(|window| window.downcast::<SettingsWindow>())
@@ -146,6 +199,8 @@ impl SettingsWindow {
             plugin_settings: None,
             recording_keymap: None,
             keymap_restart_required: false,
+            ui_font_size_input,
+            terminal_font_size_input,
             hotkey_widths: cx.new(|_| {
                 RedistributableColumnsState::new(
                     2,
@@ -259,17 +314,25 @@ impl SettingsWindow {
         );
     }
 
-    fn adjust_ui_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
-        let current = cx.global::<SettingsStore>().resolved().ui_font_size;
+    fn set_ui_font_size(&mut self, size: f32, cx: &mut Context<Self>) {
+        let size = size.clamp(8., 32.);
+        if cx.global::<SettingsStore>().resolved().ui_font_size == size {
+            return;
+        }
         self.update_settings(
             move |content| {
                 content.appearance.get_or_insert_with(AppearanceContent::default).ui_font_size =
-                    Some((current + delta).clamp(8., 32.));
+                    Some(size);
             },
             false,
             true,
             cx,
         );
+    }
+
+    fn adjust_ui_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
+        let current = cx.global::<SettingsStore>().resolved().ui_font_size;
+        self.set_ui_font_size(current + delta, cx);
     }
 
     fn set_terminal_font(&mut self, family: String, cx: &mut Context<Self>) {
@@ -284,17 +347,65 @@ impl SettingsWindow {
         );
     }
 
-    fn adjust_terminal_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
-        let current = cx.global::<SettingsStore>().resolved().terminal_font_size;
+    fn set_terminal_font_size(&mut self, size: f32, cx: &mut Context<Self>) {
+        let size = size.clamp(8., 72.);
+        if cx.global::<SettingsStore>().resolved().terminal_font_size == size {
+            return;
+        }
         self.update_settings(
             move |content| {
                 content.terminal.get_or_insert_with(TerminalContent::default).font_size =
-                    Some((current + delta).clamp(8., 72.));
+                    Some(size);
             },
             false,
             false,
             cx,
         );
+    }
+
+    fn adjust_terminal_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
+        let current = cx.global::<SettingsStore>().resolved().terminal_font_size;
+        self.set_terminal_font_size(current + delta, cx);
+    }
+
+    fn commit_ui_font_size_input(&mut self, cx: &mut Context<Self>) {
+        let current = self.settings(cx).ui_font_size;
+        let value = self
+            .ui_font_size_input
+            .read(cx)
+            .text()
+            .parse::<f32>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(|value| value.clamp(8., 32.))
+            .unwrap_or(current);
+        self.set_ui_font_size(value, cx);
+        sync_number_text(&self.ui_font_size_input, value, cx);
+    }
+
+    fn commit_terminal_font_size_input(&mut self, cx: &mut Context<Self>) {
+        let current = self.settings(cx).terminal_font_size;
+        let value = self
+            .terminal_font_size_input
+            .read(cx)
+            .text()
+            .parse::<f32>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(|value| value.clamp(8., 72.))
+            .unwrap_or(current);
+        self.set_terminal_font_size(value, cx);
+        sync_number_text(&self.terminal_font_size_input, value, cx);
+    }
+
+    fn sync_font_size_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let settings = self.settings(cx);
+        if !self.ui_font_size_input.focus_handle(cx).is_focused(window) {
+            sync_number_text(&self.ui_font_size_input, settings.ui_font_size, cx);
+        }
+        if !self.terminal_font_size_input.focus_handle(cx).is_focused(window) {
+            sync_number_text(&self.terminal_font_size_input, settings.terminal_font_size, cx);
+        }
     }
 
     fn pick_free_sessions_directory(&mut self, cx: &mut Context<Self>) {
@@ -537,7 +648,7 @@ impl SettingsWindow {
         let runtime_available = mode.is_some() && sidebar_scope.is_some();
         let mode = mode.unwrap_or_default();
         let sidebar_scope = sidebar_scope.unwrap_or_default();
-        let toggle = cx.listener(move |this, _, _, cx| this.set_terminate_on_exit(!terminate, cx));
+        let terminate_setting = cx.weak_entity();
         let use_sidebar = cx.listener(move |this, _, _, cx| {
             if runtime_available {
                 this.set_mode(Mode::Sidebar, cx);
@@ -558,108 +669,71 @@ impl SettingsWindow {
                 this.set_sidebar_scope(SidebarScope::ActiveSpace, cx);
             }
         });
-        v_flex()
-            .gap_4()
-            .child(Label::new("Chartr").size(UI_LABEL_LARGE))
-            .child(
-                Label::new(format!(
-                    "Version {} · configuration namespace chartr-zeddy",
-                    env!("CARGO_PKG_VERSION")
-                ))
-                .size(UI_LABEL_SMALL)
-                .color(Color::Muted),
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        v_flex()
-                            .child(Label::new("Terminate sessions on exit").size(UI_LABEL_DEFAULT))
-                            .child(
-                                Label::new("Normal app exit detaches and leaves sessions running.")
-                                    .size(UI_LABEL_SMALL)
-                                    .color(Color::Muted),
+        settings_fields(
+            vec![
+                setting_field(
+                    "Terminate sessions on exit",
+                    "End running sessions when Chartr exits instead of leaving them detached.",
+                    Switch::new("terminate-sessions-on-exit", terminate.into())
+                        .tab_index(0isize)
+                        .aria_label("Terminate sessions on exit")
+                        .aria_description(
+                            "End running sessions when Chartr exits instead of leaving them detached.",
+                        )
+                        .on_click(move |state, _, cx| {
+                            let terminate = state.selected();
+                            let _ = terminate_setting.update(cx, |this, cx| {
+                                this.set_terminate_on_exit(terminate, cx)
+                            });
+                        }),
+                ),
+                setting_field(
+                    "Session list",
+                    "Choose where sessions appear in the workspace.",
+                    SegmentedControl::new(
+                        "Session list presentation",
+                        [
+                            SegmentedControlOption::new(
+                                "presentation-sidebar",
+                                "Sidebar",
+                                mode == Mode::Sidebar,
+                                use_sidebar,
                             ),
+                            SegmentedControlOption::new(
+                                "presentation-tabs",
+                                "Tabbed",
+                                mode == Mode::Tabs,
+                                use_tabs,
+                            ),
+                        ],
                     )
-                    .child(
-                        Button::new(
-                            "terminate-sessions-on-exit",
-                            if terminate { "On" } else { "Off" },
-                        )
-                        .toggle_state(terminate)
-                        .selected_style(ButtonStyle::Filled)
-                        .selected_label_color(Color::Default)
-                        .on_click(toggle),
-                    ),
-            )
-            .child(setting_label("Presentation"))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        v_flex().child(Label::new("Session list").size(UI_LABEL_DEFAULT)).child(
-                            Label::new("Show sessions in a sidebar or a tab strip.")
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted),
-                        ),
+                    .disabled(!runtime_available),
+                ),
+                setting_field(
+                    "Spaces shown",
+                    "Show every space in the sidebar or only the active one.",
+                    SegmentedControl::new(
+                        "Spaces shown in the sidebar",
+                        [
+                            SegmentedControlOption::new(
+                                "sidebar-all-spaces",
+                                "All spaces",
+                                sidebar_scope == SidebarScope::AllSpaces,
+                                show_all,
+                            ),
+                            SegmentedControlOption::new(
+                                "sidebar-active-space",
+                                "Active only",
+                                sidebar_scope == SidebarScope::ActiveSpace,
+                                show_active,
+                            ),
+                        ],
                     )
-                    .child(
-                        SegmentedControl::new(
-                            "Session list presentation",
-                            [
-                                SegmentedControlOption::new(
-                                    "presentation-sidebar",
-                                    "Sidebar",
-                                    mode == Mode::Sidebar,
-                                    use_sidebar,
-                                ),
-                                SegmentedControlOption::new(
-                                    "presentation-tabs",
-                                    "Tabbed",
-                                    mode == Mode::Tabs,
-                                    use_tabs,
-                                ),
-                            ],
-                        )
-                        .disabled(!runtime_available),
-                    ),
-            )
-            .child(setting_label("Sidebar"))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        v_flex().child(Label::new("Spaces shown").size(UI_LABEL_DEFAULT)).child(
-                            Label::new("Show every space or only the currently active space.")
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted),
-                        ),
-                    )
-                    .child(
-                        SegmentedControl::new(
-                            "Spaces shown in the sidebar",
-                            [
-                                SegmentedControlOption::new(
-                                    "sidebar-all-spaces",
-                                    "All spaces",
-                                    sidebar_scope == SidebarScope::AllSpaces,
-                                    show_all,
-                                ),
-                                SegmentedControlOption::new(
-                                    "sidebar-active-space",
-                                    "Active space only",
-                                    sidebar_scope == SidebarScope::ActiveSpace,
-                                    show_active,
-                                ),
-                            ],
-                        )
-                        .disabled(!runtime_available),
-                    ),
-            )
-            .into_any_element()
+                    .disabled(!runtime_available),
+                ),
+            ],
+            cx.theme().colors().border_variant,
+        )
     }
 
     fn theme_dropdown(
@@ -740,8 +814,7 @@ impl SettingsWindow {
         let fixed_mode = cx.listener(|this, _, _, cx| this.set_theme_mode(ThemeMode::Fixed, cx));
         let system_mode = cx.listener(|this, _, _, cx| this.set_theme_mode(ThemeMode::System, cx));
         let reduce_motion = settings.reduce_motion;
-        let toggle_reduce_motion =
-            cx.listener(move |this, _, _, cx| this.set_reduce_motion(!reduce_motion, cx));
+        let reduce_motion_setting = cx.weak_entity();
         let font = cx.weak_entity();
         let smaller = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(-1., cx));
         let larger = cx.listener(|this, _, _, cx| this.adjust_ui_font_size(1., cx));
@@ -772,108 +845,100 @@ impl SettingsWindow {
             window,
             cx,
         );
-        v_flex()
-            .gap_3()
-            .child(setting_label("Theme mode"))
-            .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        Button::new("theme-fixed", "Fixed")
-                            .toggle_state(mode == ThemeMode::Fixed)
-                            .selected_style(ButtonStyle::Filled)
-                            .selected_label_color(Color::Default)
-                            .on_click(fixed_mode),
-                    )
-                    .child(
-                        Button::new("theme-system", "Match system")
-                            .toggle_state(mode == ThemeMode::System)
-                            .selected_style(ButtonStyle::Filled)
-                            .selected_label_color(Color::Default)
-                            .on_click(system_mode),
-                    ),
+        let font_picker = PopoverMenu::new("ui-font-menu")
+            .trigger(
+                Button::new("ui-font-family", settings.ui_font_family)
+                    .end_icon(Icon::new(IconName::ChevronDown)),
             )
-            .when(mode == ThemeMode::Fixed, |view| {
-                view.child(setting_label("Theme")).child(fixed_picker)
-            })
-            .when(mode == ThemeMode::System, |view| {
-                view.child(
-                    h_flex()
-                        .gap_6()
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(setting_label("Light theme"))
-                                .child(light_picker),
-                        )
-                        .child(
-                            v_flex().gap_1().child(setting_label("Dark theme")).child(dark_picker),
-                        ),
-                )
-            })
-            .child(setting_label("Interface font"))
-            .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        PopoverMenu::new("ui-font-menu")
-                            .trigger(
-                                Button::new("ui-font-family", settings.ui_font_family)
-                                    .end_icon(Icon::new(IconName::ChevronDown)),
-                            )
-                            .anchor(Anchor::BottomLeft)
-                            .menu(move |window, cx| {
-                                let font = font.clone();
-                                Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                                    ["IBM Plex Sans", ".ZedSans", "System UI"].into_iter().fold(
-                                        menu,
-                                        |menu, family| {
-                                            let set = font.clone();
-                                            menu.entry(family, None, move |_, cx| {
-                                                let _ = set.update(cx, |this, cx| {
-                                                    this.set_ui_font(family.to_owned(), cx)
-                                                });
-                                            })
-                                        },
-                                    )
-                                }))
-                            }),
+            .anchor(Anchor::BottomLeft)
+            .menu(move |window, cx| {
+                let font = font.clone();
+                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                    ["IBM Plex Sans", ".ZedSans", "System UI"].into_iter().fold(
+                        menu,
+                        |menu, family| {
+                            let set = font.clone();
+                            menu.entry(family, None, move |_, cx| {
+                                let _ = set
+                                    .update(cx, |this, cx| this.set_ui_font(family.to_owned(), cx));
+                            })
+                        },
                     )
-                    .child(
-                        IconButton::new("ui-font-smaller", IconName::Dash)
-                            .tooltip(Tooltip::text("Decrease interface font size"))
-                            .on_click(smaller),
-                    )
-                    .child(
-                        Label::new(format!("{} px", settings.ui_font_size)).size(UI_LABEL_DEFAULT),
-                    )
-                    .child(
-                        IconButton::new("ui-font-larger", IconName::Plus)
-                            .tooltip(Tooltip::text("Increase interface font size"))
-                            .on_click(larger),
+                }))
+            });
+        let font_size = number_field(
+            "ui-font-size",
+            "Interface font size",
+            "Adjust the size of interface text.",
+            self.ui_font_size_input.clone(),
+            smaller,
+            larger,
+            cx,
+        );
+
+        let mut fields = vec![setting_field(
+            "Theme mode",
+            "Use one theme at all times or follow the system appearance.",
+            SegmentedControl::new(
+                "Theme mode",
+                [
+                    SegmentedControlOption::new(
+                        "theme-fixed",
+                        "Fixed",
+                        mode == ThemeMode::Fixed,
+                        fixed_mode,
                     ),
-            )
-            .child(setting_label("Motion"))
-            .child(
-                h_flex()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        v_flex().child(Label::new("Reduce motion").size(UI_LABEL_DEFAULT)).child(
-                            Label::new("Disable movement animations when space cards are sorted.")
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted),
-                        ),
-                    )
-                    .child(
-                        Button::new("reduce-motion", if reduce_motion { "On" } else { "Off" })
-                            .toggle_state(reduce_motion)
-                            .selected_style(ButtonStyle::Filled)
-                            .selected_label_color(Color::Default)
-                            .on_click(toggle_reduce_motion),
+                    SegmentedControlOption::new(
+                        "theme-system",
+                        "System",
+                        mode == ThemeMode::System,
+                        system_mode,
                     ),
-            )
-            .into_any_element()
+                ],
+            ),
+        )];
+        match mode {
+            ThemeMode::Fixed => fields.push(setting_field(
+                "Theme",
+                "Choose the theme used throughout the interface.",
+                fixed_picker,
+            )),
+            ThemeMode::System => {
+                fields.push(setting_field(
+                    "Light theme",
+                    "Choose the theme used while the system is in light mode.",
+                    light_picker,
+                ));
+                fields.push(setting_field(
+                    "Dark theme",
+                    "Choose the theme used while the system is in dark mode.",
+                    dark_picker,
+                ));
+            }
+        }
+        fields.extend([
+            setting_field(
+                "Font family",
+                "Choose the typeface used throughout the interface.",
+                font_picker,
+            ),
+            setting_field("Font size", "Adjust the size of interface text.", font_size),
+            setting_field(
+                "Reduce motion",
+                "Disable movement animations when space cards are sorted.",
+                Switch::new("reduce-motion", reduce_motion.into())
+                    .tab_index(0isize)
+                    .aria_label("Reduce motion")
+                    .aria_description("Disable movement animations when space cards are sorted.")
+                    .on_click(move |state, _, cx| {
+                        let reduce_motion = state.selected();
+                        let _ = reduce_motion_setting
+                            .update(cx, |this, cx| this.set_reduce_motion(reduce_motion, cx));
+                    }),
+            ),
+        ]);
+
+        settings_fields(fields, cx.theme().colors().border_variant)
     }
 
     fn terminal_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -885,78 +950,79 @@ impl SettingsWindow {
         let retry = cx.listener(|this, _, _, cx| this.retry_backend(cx));
         let restart = cx.listener(|this, _, _, cx| this.restart_backend(cx));
         let runtime_available = self.original.upgrade().is_some();
-        v_flex()
-            .gap_3()
-            .child(setting_label("Terminal font"))
-            .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        PopoverMenu::new("terminal-font-menu")
-                            .trigger(
-                                Button::new("terminal-font-family", settings.terminal_font_family)
-                                    .end_icon(Icon::new(IconName::ChevronDown)),
-                            )
-                            .anchor(Anchor::BottomLeft)
-                            .menu(move |window, cx| {
-                                let font = font.clone();
-                                Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                                    ["IBM Plex Mono", "Lilex", ".ZedMono"].into_iter().fold(
-                                        menu,
-                                        |menu, family| {
-                                            let set = font.clone();
-                                            menu.entry(family, None, move |_, cx| {
-                                                let _ = set.update(cx, |this, cx| {
-                                                    this.set_terminal_font(family.to_owned(), cx)
-                                                });
-                                            })
-                                        },
-                                    )
-                                }))
-                            }),
-                    )
-                    .child(
-                        IconButton::new("terminal-font-smaller", IconName::Dash)
-                            .tooltip(Tooltip::text("Decrease terminal font size"))
-                            .on_click(smaller),
-                    )
-                    .child(
-                        Label::new(format!("{} px", settings.terminal_font_size))
-                            .size(UI_LABEL_DEFAULT),
-                    )
-                    .child(
-                        IconButton::new("terminal-font-larger", IconName::Plus)
-                            .tooltip(Tooltip::text("Increase terminal font size"))
-                            .on_click(larger),
-                    ),
+        let font_picker = PopoverMenu::new("terminal-font-menu")
+            .trigger(
+                Button::new("terminal-font-family", settings.terminal_font_family)
+                    .end_icon(Icon::new(IconName::ChevronDown)),
             )
-            .child(setting_label("Free sessions directory"))
-            .child(
-                Button::new(
-                    "choose-free-sessions-directory",
-                    settings.ad_hoc_directory.as_ref().map_or_else(
-                        || "Home directory".to_owned(),
-                        |path| path.display().to_string(),
-                    ),
-                )
-                .on_click(choose_directory),
-            )
-            .child(setting_value("Backend", self.backend_label(cx)))
-            .child(
-                h_flex()
-                    .gap_1()
-                    .child(
-                        Button::new("settings-retry-backend", "Retry")
-                            .disabled(!runtime_available)
-                            .on_click(retry),
-                    )
-                    .child(
-                        Button::new("settings-restart-backend", "Restart Backend")
-                            .disabled(!runtime_available)
-                            .on_click(restart),
-                    ),
-            )
-            .into_any_element()
+            .anchor(Anchor::BottomLeft)
+            .menu(move |window, cx| {
+                let font = font.clone();
+                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                    ["IBM Plex Mono", "Lilex", ".ZedMono"].into_iter().fold(menu, |menu, family| {
+                        let set = font.clone();
+                        menu.entry(family, None, move |_, cx| {
+                            let _ = set.update(cx, |this, cx| {
+                                this.set_terminal_font(family.to_owned(), cx)
+                            });
+                        })
+                    })
+                }))
+            });
+        let font_size = number_field(
+            "terminal-font-size",
+            "Terminal font size",
+            "Adjust the size of terminal text.",
+            self.terminal_font_size_input.clone(),
+            smaller,
+            larger,
+            cx,
+        );
+        let directory = settings
+            .ad_hoc_directory
+            .as_ref()
+            .map_or_else(|| "Home directory".to_owned(), |path| path.display().to_string());
+
+        settings_fields(
+            vec![
+                setting_field(
+                    "Font family",
+                    "Choose the typeface used in terminal sessions.",
+                    font_picker,
+                ),
+                setting_field("Font size", "Adjust the size of terminal text.", font_size),
+                setting_field(
+                    "Free sessions directory",
+                    "Choose the working directory used when a Free session starts.",
+                    Button::new("choose-free-sessions-directory", directory)
+                        .start_icon(Icon::new(IconName::FolderOpen).color(Color::Muted))
+                        .end_icon(Icon::new(IconName::ChevronRight).color(Color::Muted))
+                        .truncate(true)
+                        .tooltip(Tooltip::text("Choose Free sessions directory"))
+                        .on_click(choose_directory),
+                ),
+                setting_field(
+                    "Backend status",
+                    "Show the session backend connected to this workspace.",
+                    Label::new(self.backend_label(cx)).size(UI_LABEL_DEFAULT),
+                ),
+                setting_field(
+                    "Retry connection",
+                    "Try to reconnect after a backend connection failure.",
+                    Button::new("settings-retry-backend", "Retry")
+                        .disabled(!runtime_available)
+                        .on_click(retry),
+                ),
+                setting_field(
+                    "Restart backend",
+                    "Stop and start the backend process for this workspace.",
+                    Button::new("settings-restart-backend", "Restart")
+                        .disabled(!runtime_available)
+                        .on_click(restart),
+                ),
+            ],
+            cx.theme().colors().border_variant,
+        )
     }
 
     fn hotkeys_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -1028,109 +1094,96 @@ impl SettingsWindow {
             .map(|origin| origin.read(cx).settings_plugins())
             .unwrap_or_default();
         let settings = self.settings(cx);
-        let rows: Vec<_> = descriptors
-            .into_iter()
-            .map(|descriptor| {
-                let manifest = descriptor.manifest;
-                let enabled = descriptor.enabled;
-                let has_settings = descriptor.has_settings;
-                let id = manifest.id.clone();
-                let control_id = id.clone();
-                let configured = settings.plugin(&id);
-                let toggle = cx.listener(move |this, _, _, cx| {
-                    this.set_plugin_enabled(id.clone(), !enabled, cx)
-                });
-                let trust = match manifest.kind {
-                    zeddy_plugin::manifest::Kind::Native => {
-                        "Native — fully trusted code".to_owned()
+        let mut fields = Vec::new();
+        for descriptor in descriptors {
+            let manifest = descriptor.manifest;
+            let name = manifest.name.clone();
+            let id = manifest.id.clone();
+            let enabled = descriptor.enabled;
+            let has_settings = descriptor.has_settings;
+            let unsafe_filesystem = settings.plugin(&id).unsafe_filesystem;
+            let is_web = manifest.kind == zeddy_plugin::manifest::Kind::Web;
+            let access = match manifest.kind {
+                zeddy_plugin::manifest::Kind::Native => {
+                    format!("Identifier: {id}. Runs as fully trusted native code.")
+                }
+                zeddy_plugin::manifest::Kind::Web => {
+                    let project = match manifest.permissions.project_files {
+                        zeddy_plugin::manifest::ProjectAccess::None => "no project files",
+                        zeddy_plugin::manifest::ProjectAccess::Read => "read project files",
+                        zeddy_plugin::manifest::ProjectAccess::ReadWrite => {
+                            "read and write project files"
+                        }
+                    };
+                    let mut grants = vec![project.to_owned()];
+                    if !manifest.permissions.network.is_empty() {
+                        grants.push(format!(
+                            "network access to {}",
+                            manifest.permissions.network.join(", ")
+                        ));
                     }
-                    zeddy_plugin::manifest::Kind::Web => {
-                        let project = match manifest.permissions.project_files {
-                            zeddy_plugin::manifest::ProjectAccess::None => "no project files",
-                            zeddy_plugin::manifest::ProjectAccess::Read => "read project files",
-                            zeddy_plugin::manifest::ProjectAccess::ReadWrite => {
-                                "read/write project files"
-                            }
-                        };
-                        let mut grants = vec![project.to_owned()];
-                        if !manifest.permissions.network.is_empty() {
-                            grants.push(format!(
-                                "network: {}",
-                                manifest.permissions.network.join(", ")
-                            ));
-                        }
-                        if manifest.permissions.process {
-                            grants.push("process actions".to_owned());
-                        }
-                        if manifest.permissions.session {
-                            grants.push("bound-session actions".to_owned());
-                        }
-                        format!("Web — {}", grants.join(" · "))
+                    if manifest.permissions.process {
+                        grants.push("process actions".to_owned());
                     }
-                };
-                let unsafe_control =
-                    (manifest.kind == zeddy_plugin::manifest::Kind::Web).then(|| {
-                        let id = manifest.id.clone();
-                        let change = cx.listener(move |this, _, _, cx| {
-                            this.set_plugin_unsafe(id.clone(), !configured.unsafe_filesystem, cx)
-                        });
-                        Button::new(
-                            format!("plugin-unsafe-{}", manifest.id),
-                            if configured.unsafe_filesystem {
-                                "Unsafe filesystem granted"
-                            } else {
-                                "Grant unsafe filesystem"
-                            },
-                        )
-                        .disabled(!origin_available)
-                        .toggle_state(configured.unsafe_filesystem)
-                        .selected_style(ButtonStyle::Filled)
-                        .selected_label_color(Color::Default)
-                        .on_click(change)
+                    if manifest.permissions.session {
+                        grants.push("bound-session actions".to_owned());
+                    }
+                    format!("Identifier: {id}. Access: {}.", grants.join(", "))
+                }
+            };
+
+            let enabled_name = format!("{name} — Enabled");
+            let enabled_description = access;
+            let enabled_id = id.clone();
+            let enabled_setting = cx.weak_entity();
+            let enabled_control = Switch::new(format!("plugin-enabled-{id}"), enabled.into())
+                .disabled(!origin_available)
+                .tab_index(0isize)
+                .aria_label(enabled_name.clone())
+                .aria_description(enabled_description.clone())
+                .on_click(move |state, _, cx| {
+                    let enabled = state.selected();
+                    let _ = enabled_setting.update(cx, |this, cx| {
+                        this.set_plugin_enabled(enabled_id.clone(), enabled, cx)
                     });
-                let configure = has_settings.then(|| {
-                    let id = manifest.id.clone();
-                    Button::new(format!("plugin-settings-{}", manifest.id), "Configure")
+                });
+            fields.push(setting_field(enabled_name, enabled_description, enabled_control));
+
+            if has_settings {
+                let settings_id = id.clone();
+                fields.push(setting_field(
+                    format!("{name} — Configuration"),
+                    "Open this plugin's own settings.",
+                    Button::new(format!("plugin-settings-{id}"), "Configure")
                         .disabled(!origin_available)
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_plugin_settings(id.clone(), window, cx)
-                        }))
-                });
-                v_flex()
-                    .gap_2()
-                    .p_3()
-                    .border_1()
-                    .border_color(cx.theme().colors().border)
-                    .rounded_md()
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .child(
-                                v_flex()
-                                    .child(Label::new(manifest.name).size(UI_LABEL_DEFAULT))
-                                    .child(
-                                        Label::new(manifest.id)
-                                            .size(UI_LABEL_SMALL)
-                                            .color(Color::Muted),
-                                    ),
-                            )
-                            .child(
-                                Button::new(
-                                    format!("plugin-enabled-{control_id}"),
-                                    if enabled { "Enabled" } else { "Disabled" },
-                                )
-                                .disabled(!origin_available)
-                                .toggle_state(enabled)
-                                .selected_style(ButtonStyle::Filled)
-                                .selected_label_color(Color::Default)
-                                .on_click(toggle),
-                            ),
-                    )
-                    .child(Label::new(trust).size(UI_LABEL_SMALL).color(Color::Muted))
-                    .when_some(configure, |row, control| row.child(control))
-                    .when_some(unsafe_control, |row, control| row.child(control))
-            })
-            .collect();
+                            this.open_plugin_settings(settings_id.clone(), window, cx)
+                        })),
+                ));
+            }
+
+            if is_web {
+                let unsafe_name = format!("{name} — Unsafe filesystem access");
+                let unsafe_description =
+                    "Allow access to files outside the plugin's declared project permissions.";
+                let unsafe_id = id.clone();
+                let unsafe_setting = cx.weak_entity();
+                let unsafe_control =
+                    Switch::new(format!("plugin-unsafe-{id}"), unsafe_filesystem.into())
+                        .disabled(!origin_available)
+                        .tab_index(0isize)
+                        .aria_label(unsafe_name.clone())
+                        .aria_description(unsafe_description)
+                        .on_click(move |state, _, cx| {
+                            let enabled = state.selected();
+                            let _ = unsafe_setting.update(cx, |this, cx| {
+                                this.set_plugin_unsafe(unsafe_id.clone(), enabled, cx)
+                            });
+                        });
+                fields.push(setting_field(unsafe_name, unsafe_description, unsafe_control));
+            }
+        }
+        let has_fields = !fields.is_empty();
         let rejected: Vec<_> = rejected
             .into_iter()
             .map(|rejected| {
@@ -1142,7 +1195,7 @@ impl SettingsWindow {
             .collect();
         let _ = window;
         v_flex()
-            .gap_2()
+            .gap_4()
             .when(!origin_available, |view| {
                 view.child(
                     Banner::new().child(
@@ -1153,10 +1206,12 @@ impl SettingsWindow {
                     ),
                 )
             })
-            .when(rows.is_empty() && rejected.is_empty(), |view| {
+            .when(!has_fields && rejected.is_empty(), |view| {
                 view.child(Label::new("No plugins installed.").color(Color::Muted))
             })
-            .children(rows)
+            .when(has_fields, |view| {
+                view.child(settings_fields(fields, cx.theme().colors().border_variant))
+            })
             .children(rejected)
             .into_any_element()
     }
@@ -1267,16 +1322,123 @@ impl Render for SettingsWindow {
     }
 }
 
-fn setting_label(label: &'static str) -> AnyElement {
-    Label::new(label).size(UI_LABEL_DEFAULT).color(Color::Muted).into_any_element()
+fn format_number(value: f32) -> String {
+    value.to_string()
 }
 
-fn setting_value(label: &'static str, value: String) -> AnyElement {
+fn sync_number_text(input: &Entity<TextInput>, value: f32, cx: &mut Context<SettingsWindow>) {
+    let value = format_number(value);
+    if input.read(cx).text() != value {
+        input.update(cx, |input, cx| input.set_text(value, false, cx));
+    }
+}
+
+fn number_field(
+    id: &'static str,
+    label: &'static str,
+    description: &'static str,
+    input: Entity<TextInput>,
+    decrement: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    increment: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let id: ElementId = id.into();
+    let colors = cx.theme().colors();
+    let border = colors.border_variant;
+    let background = colors.surface_background;
+    let hover = colors.element_hover;
+    let focus = input.focus_handle(cx);
+
+    let decrement = h_flex()
+        .id((id.clone(), "decrement"))
+        .role(Role::Button)
+        .aria_label("Decrement")
+        .tab_index(0isize)
+        .w(px(32.))
+        .h_full()
+        .justify_center()
+        .cursor_pointer()
+        .rounded_l_sm()
+        .border_1()
+        .border_color(border)
+        .bg(background)
+        .hover(|style| style.bg(hover))
+        .on_click(decrement)
+        .child(Icon::new(IconName::Dash).size(IconSize::Small));
+    let increment = h_flex()
+        .id((id.clone(), "increment"))
+        .role(Role::Button)
+        .aria_label("Increment")
+        .tab_index(0isize)
+        .w(px(32.))
+        .h_full()
+        .justify_center()
+        .cursor_pointer()
+        .rounded_r_sm()
+        .border_1()
+        .border_color(border)
+        .bg(background)
+        .hover(|style| style.bg(hover))
+        .on_click(increment)
+        .child(Icon::new(IconName::Plus).size(IconSize::Small));
+
     h_flex()
-        .justify_between()
-        .gap_4()
-        .child(Label::new(label).size(UI_LABEL_DEFAULT).color(Color::Muted))
-        .child(Label::new(value).size(UI_LABEL_DEFAULT))
+        .id(id)
+        .role(Role::SpinButton)
+        .aria_label(label)
+        .aria_description(description)
+        .h(ButtonSize::Default.rems())
+        .gap_1()
+        .child(decrement)
+        .child(
+            h_flex()
+                .w(px(64.))
+                .h_full()
+                .px_2()
+                .border_y_1()
+                .border_color(border)
+                .bg(background)
+                .track_focus(&focus)
+                .in_focus(|field| field.border_1().border_color(colors.border_focused))
+                .child(input),
+        )
+        .child(increment)
+        .into_any_element()
+}
+
+fn settings_fields(fields: Vec<AnyElement>, separator: Hsla) -> AnyElement {
+    v_flex()
+        .w_full()
+        .children(fields.into_iter().enumerate().map(|(index, field)| {
+            div()
+                .w_full()
+                .when(index > 0, |row| row.border_t_1().border_color(separator))
+                .child(field)
+        }))
+        .into_any_element()
+}
+
+fn setting_field(
+    name: impl Into<SharedString>,
+    description: impl Into<SharedString>,
+    control: impl IntoElement,
+) -> AnyElement {
+    h_flex()
+        .w_full()
+        .items_start()
+        .gap_6()
+        .py(px(SETTINGS_FIELD_VERTICAL_PADDING))
+        .child(
+            v_flex()
+                .min_w_0()
+                .flex_1()
+                .gap_1()
+                .child(Label::new(name).size(UI_LABEL_DEFAULT))
+                .child(Label::new(description).size(UI_LABEL_SMALL).color(Color::Muted)),
+        )
+        .child(
+            h_flex().w(px(SETTINGS_CONTROL_COLUMN_WIDTH)).flex_none().justify_end().child(control),
+        )
         .into_any_element()
 }
 
@@ -1373,6 +1535,34 @@ mod tests {
                 .update(cx, |settings, _, cx| settings.set_terminate_on_exit(true, cx))
                 .unwrap();
             assert!(cx.global::<SettingsStore>().resolved().terminate_sessions_on_exit);
+        });
+    }
+
+    #[gpui::test]
+    fn font_size_inputs_update_the_application_settings(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| open_with_origin(None, WeakEntity::new_invalid(), cx));
+        cx.run_until_parked();
+        let settings = cx
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SettingsWindow>())
+            .unwrap();
+        let (ui_input, terminal_input) = cx.update(|cx| {
+            let settings = settings.read(cx).unwrap();
+            (settings.ui_font_size_input.clone(), settings.terminal_font_size_input.clone())
+        });
+
+        cx.update(|cx| {
+            ui_input.update(cx, |input, cx| input.set_text("18", false, cx));
+            terminal_input.update(cx, |input, cx| input.set_text("16", false, cx));
+        });
+        cx.run_until_parked();
+
+        cx.update(|cx| {
+            let resolved = cx.global::<SettingsStore>().resolved();
+            assert_eq!(resolved.ui_font_size, 18.);
+            assert_eq!(resolved.terminal_font_size, 16.);
         });
     }
 }
