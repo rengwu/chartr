@@ -645,7 +645,7 @@ pub fn render(
                 .flex_1()
                 .overflow_y_scroll()
                 .track_scroll(sorter.scroll_handle())
-                .py_1()
+                .pb_2()
                 .px_1p5()
                 .gap(CARD_GAP)
                 .children(cards),
@@ -795,7 +795,7 @@ fn row(
             wrapper.child(
                 div()
                     .absolute()
-                    .right_0()
+                    .right_1()
                     .top_0()
                     .bottom_0()
                     .flex()

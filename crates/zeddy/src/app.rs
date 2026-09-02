@@ -2020,12 +2020,41 @@ impl Zeddy {
         }
     }
 
-    fn workspace_title_bar(&self, controls: Option<(AnyElement, AnyElement)>) -> AnyElement {
+    fn workspace_title_bar(
+        &self,
+        controls: Option<(AnyElement, AnyElement)>,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
         if !cfg!(target_os = "macos") {
             return self.title_bar.clone().into_any_element();
         }
 
-        let mut overlays = Vec::with_capacity(2);
+        let colors = cx.theme().colors();
+        let window_active = window.is_window_active();
+        let mut overlays = Vec::with_capacity(4);
+        overlays.push(
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom(px(1.))
+                .left_0()
+                .bg(colors.panel_background)
+                .into_any_element(),
+        );
+        if self.mode == Mode::Sidebar {
+            overlays.push(
+                div()
+                    .absolute()
+                    .left_0()
+                    .bottom_0()
+                    .w(px(self.sidebar_width - 1.))
+                    .h(px(1.))
+                    .bg(colors.panel_background)
+                    .into_any_element(),
+            );
+        }
         if let Some((space_switcher, view_menu)) = controls {
             overlays.push(
                 h_flex()
@@ -2035,6 +2064,7 @@ impl Zeddy {
                     .top_0()
                     .h(px(crate::title_bar::HEIGHT))
                     .max_w(px(200.))
+                    .when(!window_active, |controls| controls.opacity(0.65))
                     .child(space_switcher)
                     .into_any_element(),
             );
@@ -2044,6 +2074,7 @@ impl Zeddy {
                     .right(px(6.))
                     .top_0()
                     .h(px(crate::title_bar::HEIGHT))
+                    .when(!window_active, |controls| controls.opacity(0.65))
                     .child(view_menu)
                     .into_any_element(),
             );
@@ -3366,7 +3397,7 @@ impl Render for Zeddy {
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
         let title_controls = cfg!(target_os = "macos")
             .then(|| (self.space_switcher(window, cx), self.view_menu(emit.clone())));
-        let title_bar = self.workspace_title_bar(title_controls);
+        let title_bar = self.workspace_title_bar(title_controls, window, cx);
 
         let workspace = v_flex()
             .flex_1()
