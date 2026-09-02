@@ -28,6 +28,14 @@ the local parser can observe but cannot reconstruct modes Herdr omits. Legacy
 Ghostty encoding is authoritative today; fully negotiated Kitty behavior
 requires Herdr to carry structured keys or terminal mode state in the future.
 
+The same limitation affects wheel input: repaint frames omit alternate-screen
+and mouse-tracking modes. Zeddy therefore uses observed modes when present and
+a deliberately narrow control-plane fallback for Claude Code, OpenCode, and
+Codex, whose foreground identities Herdr preserves and whose full-screen TUIs
+request xterm SGR mouse input. Shift always bypasses application wheel handling
+to expose host scrollback. Other foreground processes remain on host scrollback
+rather than receiving guessed escape sequences.
+
 ## Snapshots, not borrows
 
 `Terminal::screen` copies. A borrowed grid would be faster and would tie the

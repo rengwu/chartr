@@ -3442,7 +3442,16 @@ fn terminal(
             let Some(lines) = fit.wheel_lines(event) else {
                 return;
             };
-            if session.scroll(lines) {
+            let Some(position) = fit.cell_at(event.position) else {
+                return;
+            };
+            let modifiers = zeddy_vt::Modifiers {
+                shift: event.modifiers.shift,
+                alt: event.modifiers.alt,
+                control: event.modifiers.control,
+                super_key: event.modifiers.platform,
+            };
+            if session.wheel(zeddy_vt::WheelEvent { lines, position, modifiers }) {
                 window.refresh();
             }
             cx.stop_propagation();

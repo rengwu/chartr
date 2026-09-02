@@ -155,6 +155,37 @@ pub struct Modifiers {
     pub super_key: bool,
 }
 
+/// A cell under a pointer, relative to the visible terminal grid.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CellPosition {
+    pub col: u16,
+    pub row: u16,
+}
+
+impl CellPosition {
+    pub fn new(col: u16, row: u16) -> Self {
+        Self { col, row }
+    }
+}
+
+/// One quantized vertical wheel movement over a terminal cell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WheelEvent {
+    pub lines: i32,
+    pub position: CellPosition,
+    pub modifiers: Modifiers,
+}
+
+/// Application-wheel behavior to use when a repaint stream omitted VT modes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WheelFallback {
+    /// Leave the gesture available to host scrollback.
+    #[default]
+    Scrollback,
+    /// Encode the gesture as an xterm SGR mouse report.
+    SgrMouse,
+}
+
 /// The terminal modes which affect keyboard encoding.
 ///
 /// This copyable snapshot is the seam between Zeddy's background-owned output
@@ -464,6 +495,45 @@ impl Terminal {
         }
     }
 
+    /// Encode a wheel gesture when the application owns scrolling.
+    ///
+    /// Mouse tracking takes precedence. Otherwise xterm alternate-scroll mode
+    /// turns vertical wheel movement into application-cursor keys while the
+    /// alternate screen is active. Shift deliberately bypasses both so the
+    /// host terminal can expose its own scrollback.
+    pub fn wheel_input(&self, event: WheelEvent) -> Option<Vec<u8>> {
+        self.wheel_input_with_fallback(event, WheelFallback::Scrollback)
+    }
+
+    /// Encode a wheel gesture, with a narrow fallback for mode-less repaint
+    /// streams whose control plane identifies a mouse-aware application.
+    pub fn wheel_input_with_fallback(
+        &self,
+        event: WheelEvent,
+        fallback: WheelFallback,
+    ) -> Option<Vec<u8>> {
+        if event.lines == 0 || event.modifiers.shift {
+            return None;
+        }
+
+        let mode = self.live.term.mode();
+        if mode.intersects(TermMode::MOUSE_MODE) {
+            // A legacy mouse encoding cannot represent every large-grid cell.
+            // An empty payload still means the application owns the gesture;
+            // it must not unexpectedly turn into host scrollback at an edge.
+            Some(mouse_wheel_input(event, *mode).unwrap_or_default())
+        } else if mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL) {
+            Some(alternate_scroll_input(event.lines))
+        } else {
+            match fallback {
+                WheelFallback::Scrollback => None,
+                WheelFallback::SgrMouse => {
+                    Some(mouse_wheel_input(event, TermMode::SGR_MOUSE).unwrap_or_default())
+                }
+            }
+        }
+    }
+
     /// Replace the historical snapshot with ANSI-styled rows from Herdr, then
     /// apply the wheel movement that requested them.
     pub fn load_history(&mut self, ansi: &str, lines: i32, requested_at: u64) -> bool {
@@ -513,6 +583,58 @@ fn kitty_flags(modes: KeyboardModes) -> key::KittyKeyFlags {
     flags.set(key::KittyKeyFlags::REPORT_ALL, modes.report_all_keys);
     flags.set(key::KittyKeyFlags::REPORT_ASSOCIATED, modes.report_associated_text);
     flags
+}
+
+fn alternate_scroll_input(lines: i32) -> Vec<u8> {
+    let command = if lines > 0 { b'A' } else { b'B' };
+    let mut bytes = Vec::with_capacity(lines.unsigned_abs() as usize * 3);
+    for _ in 0..lines.unsigned_abs() {
+        bytes.extend_from_slice(&[b'\x1b', b'O', command]);
+    }
+    bytes
+}
+
+fn mouse_wheel_input(event: WheelEvent, mode: TermMode) -> Option<Vec<u8>> {
+    let button = if event.lines > 0 { 64 } else { 65 };
+    let button = button
+        + u8::from(event.modifiers.shift) * 4
+        + u8::from(event.modifiers.alt) * 8
+        + u8::from(event.modifiers.control) * 16;
+
+    let report = if mode.contains(TermMode::SGR_MOUSE) {
+        format!(
+            "\x1b[<{button};{};{}M",
+            u32::from(event.position.col) + 1,
+            u32::from(event.position.row) + 1,
+        )
+        .into_bytes()
+    } else {
+        normal_mouse_report(event.position, button, mode.contains(TermMode::UTF8_MOUSE))?
+    };
+
+    Some(report.repeat(event.lines.unsigned_abs() as usize))
+}
+
+fn normal_mouse_report(position: CellPosition, button: u8, utf8: bool) -> Option<Vec<u8>> {
+    let max_position = if utf8 { 2015 } else { 223 };
+    if position.col >= max_position || position.row >= max_position {
+        return None;
+    }
+
+    let mut report = vec![b'\x1b', b'[', b'M', 32 + button];
+    encode_mouse_position(&mut report, position.col, utf8);
+    encode_mouse_position(&mut report, position.row, utf8);
+    Some(report)
+}
+
+fn encode_mouse_position(report: &mut Vec<u8>, position: u16, utf8: bool) {
+    let position = usize::from(position) + 33;
+    if utf8 && position >= 128 {
+        report.push((0xc0 + position / 64) as u8);
+        report.push((0x80 + (position & 63)) as u8);
+    } else {
+        report.push(position as u8);
+    }
 }
 
 fn screen(term: &alacritty_terminal::Term<TitleSink>, size: Size, title: &TitleSink) -> Screen {
@@ -772,6 +894,119 @@ mod tests {
 
         term.feed(b"\x1b[?1h");
         assert_eq!(encoded(&term, &left), b"\x1bOD");
+    }
+
+    #[test]
+    fn alternate_screen_wheel_gestures_become_application_cursor_keys() {
+        let mut term = Terminal::new(Size::default());
+        let position = CellPosition::new(4, 2);
+        assert_eq!(
+            term.wheel_input(WheelEvent { lines: 1, position, modifiers: Modifiers::default() }),
+            None,
+        );
+
+        term.feed(b"\x1b[?1049h");
+        assert_eq!(
+            term.wheel_input(WheelEvent { lines: 2, position, modifiers: Modifiers::default() }),
+            Some(b"\x1bOA\x1bOA".to_vec()),
+        );
+        assert_eq!(
+            term.wheel_input(WheelEvent { lines: -1, position, modifiers: Modifiers::default() }),
+            Some(b"\x1bOB".to_vec()),
+        );
+    }
+
+    #[test]
+    fn shift_bypasses_application_wheel_input_for_host_scrollback() {
+        let mut term = Terminal::new(Size::default());
+        term.feed(b"\x1b[?1049h\x1b[?1000h\x1b[?1006h");
+
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: 1,
+                position: CellPosition::new(4, 2),
+                modifiers: Modifiers { shift: true, ..Modifiers::default() },
+            }),
+            None,
+        );
+    }
+
+    #[test]
+    fn mouse_tracking_receives_sgr_wheel_reports_at_the_pointer_cell() {
+        let mut term = Terminal::new(Size::default());
+        term.feed(b"\x1b[?1000h\x1b[?1006h");
+
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: 2,
+                position: CellPosition::new(4, 2),
+                modifiers: Modifiers { control: true, ..Modifiers::default() },
+            }),
+            Some(b"\x1b[<80;5;3M\x1b[<80;5;3M".to_vec()),
+        );
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: -1,
+                position: CellPosition::new(4, 2),
+                modifiers: Modifiers::default(),
+            }),
+            Some(b"\x1b[<65;5;3M".to_vec()),
+        );
+    }
+
+    #[test]
+    fn legacy_mouse_tracking_receives_wheel_reports_and_owns_unencodable_cells() {
+        let mut term = Terminal::new(Size::default());
+        term.feed(b"\x1b[?1000h");
+
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: 1,
+                position: CellPosition::new(4, 2),
+                modifiers: Modifiers::default(),
+            }),
+            Some(b"\x1b[M`%#".to_vec()),
+        );
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: 1,
+                position: CellPosition::new(300, 2),
+                modifiers: Modifiers::default(),
+            }),
+            Some(Vec::new()),
+            "mouse mode still owns positions its legacy encoding cannot represent",
+        );
+    }
+
+    #[test]
+    fn disabling_alternate_scroll_restores_host_scrollback() {
+        let mut term = Terminal::new(Size::default());
+        term.feed(b"\x1b[?1049h\x1b[?1007l");
+
+        assert_eq!(
+            term.wheel_input(WheelEvent {
+                lines: 1,
+                position: CellPosition::default(),
+                modifiers: Modifiers::default(),
+            }),
+            None,
+        );
+    }
+
+    #[test]
+    fn sgr_fallback_restores_wheel_input_when_repaints_omit_modes() {
+        let term = Terminal::new(Size::default());
+        let wheel = WheelEvent {
+            lines: 1,
+            position: CellPosition::new(4, 2),
+            modifiers: Modifiers::default(),
+        };
+
+        assert_eq!(term.wheel_input(wheel), None);
+        assert_eq!(
+            term.wheel_input_with_fallback(wheel, WheelFallback::SgrMouse),
+            Some(b"\x1b[<64;5;3M".to_vec()),
+        );
     }
 
     #[test]

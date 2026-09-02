@@ -65,6 +65,11 @@ small pixel deltas accumulate smoothly, colors survive in history, new output
 does not pull a historical viewport to the bottom, and scrolling up again after
 returning to the prompt refreshes the host history.
 
+Open OpenCode, Claude Code, and Codex and scroll in both directions with a wheel
+and a trackpad. Confirm each application viewport moves instead of host history.
+Then hold Shift while scrolling and confirm the gesture reaches host scrollback
+instead.
+
 Confirm the active-space picker sits in the macOS title bar immediately after
 the traffic lights, and the chevron menu sits at the far-right corner in both
 chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a

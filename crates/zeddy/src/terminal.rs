@@ -20,10 +20,10 @@ use std::{cell::Cell as StdCell, rc::Rc};
 
 use gpui::{
     App, Bounds, Element, ElementId, Font, FontWeight, GlobalElementId, Hsla, InspectorElementId,
-    IntoElement, LayoutId, Pixels, SharedString, Style, TextAlign, TextRun, UnderlineStyle, Window,
-    fill, point, px, size,
+    IntoElement, LayoutId, Pixels, Point, SharedString, Style, TextAlign, TextRun, UnderlineStyle,
+    Window, fill, point, px, size,
 };
-use zeddy_vt::{Screen, Size};
+use zeddy_vt::{CellPosition, Screen, Size};
 
 /// The grid the last paint found room for.
 ///
@@ -37,6 +37,8 @@ use zeddy_vt::{Screen, Size};
 pub struct Fit {
     size: Rc<StdCell<Option<Size>>>,
     line_height: Rc<StdCell<Option<Pixels>>>,
+    bounds: Rc<StdCell<Option<Bounds<Pixels>>>>,
+    cell_width: Rc<StdCell<Option<Pixels>>>,
     scroll_px: Rc<StdCell<f32>>,
 }
 
@@ -49,9 +51,29 @@ impl Fit {
         self.size.replace(Some(size)) != Some(size)
     }
 
-    fn measure(&self, size: Size, line_height: Pixels) -> bool {
+    fn measure(
+        &self,
+        size: Size,
+        bounds: Bounds<Pixels>,
+        cell_width: Pixels,
+        line_height: Pixels,
+    ) -> bool {
+        self.bounds.set(Some(bounds));
+        self.cell_width.set(Some(cell_width));
         self.line_height.set(Some(line_height));
         self.set(size)
+    }
+
+    /// Resolve a window-space pointer position to the nearest visible cell.
+    pub fn cell_at(&self, position: Point<Pixels>) -> Option<CellPosition> {
+        let bounds = self.bounds.get()?;
+        let cell_width = self.cell_width.get()?;
+        let line_height = self.line_height.get()?;
+        let size = self.size.get()?;
+        let local = position - bounds.origin;
+        let col = (local.x / cell_width).floor().clamp(0., f32::from(size.cols - 1)) as u16;
+        let row = (local.y / line_height).floor().clamp(0., f32::from(size.rows - 1)) as u16;
+        Some(CellPosition::new(col, row))
     }
 
     /// Quantize a wheel or trackpad gesture into terminal lines.
@@ -189,7 +211,7 @@ impl Element for TerminalElement {
             (bounds.size.width / cell.width).floor() as u16,
             (bounds.size.height / cell.height).floor() as u16,
         );
-        let fit_changed = self.fit.measure(measured, cell.height);
+        let fit_changed = self.fit.measure(measured, bounds, cell.width, cell.height);
         if fit_changed {
             // `Window::refresh` is intentionally ignored while GPUI is in a
             // draw pass. Defer it until the pass completes so the next render
@@ -331,7 +353,12 @@ mod tests {
     #[test]
     fn wheel_deltas_are_measured_in_terminal_lines() {
         let fit = Fit::default();
-        fit.measure(Size::new(80, 24), px(20.));
+        fit.measure(
+            Size::new(80, 24),
+            Bounds::new(point(px(0.), px(0.)), size(px(800.), px(480.))),
+            px(10.),
+            px(20.),
+        );
         let event = gpui::ScrollWheelEvent {
             delta: gpui::ScrollDelta::Lines(point(0., 2.)),
             ..Default::default()
@@ -343,7 +370,12 @@ mod tests {
     #[test]
     fn trackpad_pixels_accumulate_to_complete_rows() {
         let fit = Fit::default();
-        fit.measure(Size::new(80, 24), px(20.));
+        fit.measure(
+            Size::new(80, 24),
+            Bounds::new(point(px(0.), px(0.)), size(px(800.), px(480.))),
+            px(10.),
+            px(20.),
+        );
         let event = |pixels| gpui::ScrollWheelEvent {
             delta: gpui::ScrollDelta::Pixels(point(px(0.), px(pixels))),
             ..Default::default()
@@ -356,7 +388,12 @@ mod tests {
     #[test]
     fn a_trackpad_gestures_first_delta_is_not_dropped() {
         let fit = Fit::default();
-        fit.measure(Size::new(80, 24), px(20.));
+        fit.measure(
+            Size::new(80, 24),
+            Bounds::new(point(px(0.), px(0.)), size(px(800.), px(480.))),
+            px(10.),
+            px(20.),
+        );
         let event = gpui::ScrollWheelEvent {
             delta: gpui::ScrollDelta::Pixels(point(px(0.), px(20.))),
             touch_phase: gpui::TouchPhase::Started,
@@ -364,5 +401,20 @@ mod tests {
         };
 
         assert_eq!(fit.wheel_lines(&event), Some(1));
+    }
+
+    #[test]
+    fn pointer_positions_resolve_to_bounded_terminal_cells() {
+        let fit = Fit::default();
+        fit.measure(
+            Size::new(80, 24),
+            Bounds::new(point(px(10.), px(20.)), size(px(800.), px(480.))),
+            px(10.),
+            px(20.),
+        );
+
+        assert_eq!(fit.cell_at(point(px(35.), px(65.))), Some(CellPosition::new(2, 2)));
+        assert_eq!(fit.cell_at(point(px(0.), px(0.))), Some(CellPosition::new(0, 0)));
+        assert_eq!(fit.cell_at(point(px(900.), px(600.))), Some(CellPosition::new(79, 23)));
     }
 }

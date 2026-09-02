@@ -27,7 +27,7 @@ use zeddy_herdr::{
     control::{self, Client},
     stream::{Frame, Input},
 };
-use zeddy_vt::{KeyboardModes, Screen, ScrollResult, Size, Terminal};
+use zeddy_vt::{KeyboardModes, Screen, ScrollResult, Size, Terminal, WheelEvent, WheelFallback};
 
 const HISTORY_LINES: u32 = 10_000;
 
@@ -199,13 +199,24 @@ impl SessionAccess {
         self.input.lock().expect("session input mutex").send(bytes)
     }
 
-    pub fn scroll(&self, lines: i32) -> bool {
-        match self.terminal.lock().expect("terminal mutex").scroll(lines) {
+    pub fn wheel(&self, event: WheelEvent) -> bool {
+        let mut terminal = self.terminal.lock().expect("terminal mutex");
+        if let Some(bytes) = terminal.wheel_input_with_fallback(event, wheel_fallback(&self.info)) {
+            drop(terminal);
+            if !bytes.is_empty() {
+                let _ = self.input.lock().expect("session input mutex").send(&bytes);
+            }
+            return false;
+        }
+
+        let result = terminal.scroll(event.lines);
+        drop(terminal);
+        match result {
             ScrollResult::Changed => true,
             ScrollResult::Unchanged => false,
             ScrollResult::NeedsHistory => {
                 let mut pending = self.pending_scroll.lock().expect("pending scroll mutex");
-                *pending = pending.saturating_add(lines);
+                *pending = pending.saturating_add(event.lines);
                 drop(pending);
                 self.fetch_history();
                 false
@@ -242,6 +253,24 @@ impl SessionAccess {
             loading_on_failure.store(false, Ordering::Release);
         }
     }
+}
+
+/// Herdr's repaint protocol currently omits mouse and alternate-screen modes.
+/// Keep the workaround deliberately scoped to agents verified to use SGR
+/// mouse input; ordinary foreground processes must retain host scrollback.
+fn wheel_fallback(info: &control::Session) -> WheelFallback {
+    info.agent
+        .as_deref()
+        .into_iter()
+        .chain(info.running.as_deref())
+        .any(is_mouse_aware_full_tui)
+        .then_some(WheelFallback::SgrMouse)
+        .unwrap_or(WheelFallback::Scrollback)
+}
+
+fn is_mouse_aware_full_tui(name: &str) -> bool {
+    let compact: String = name.chars().filter(|character| character.is_alphanumeric()).collect();
+    matches!(compact.to_ascii_lowercase().as_str(), "claude" | "claudecode" | "opencode" | "codex")
 }
 
 impl std::fmt::Debug for Session {
@@ -284,9 +313,31 @@ fn apply_frame(terminal: &mut Terminal, frame: &Frame) -> bool {
 mod tests {
     use super::*;
 
+    fn info(agent: Option<&str>, running: Option<&str>) -> control::Session {
+        control::Session {
+            id: PaneId("pane".to_owned()),
+            workspace: zeddy_herdr::WorkspaceId("workspace".to_owned()),
+            label: "shell".to_owned(),
+            running: running.map(str::to_owned),
+            status: control::SessionStatus::Unknown,
+            agent: agent.map(str::to_owned),
+            cwd: None,
+        }
+    }
+
     #[test]
     fn the_two_grid_types_round_trip() {
         assert_eq!(size_of(geometry(Size::new(120, 40))), Size::new(120, 40));
+    }
+
+    #[test]
+    fn only_verified_mouse_aware_full_tuis_use_the_mode_less_fallback() {
+        for name in ["Claude", "Claude Code", "OpenCode", "codex"] {
+            assert_eq!(wheel_fallback(&info(Some(name), None)), WheelFallback::SgrMouse);
+            assert_eq!(wheel_fallback(&info(None, Some(name))), WheelFallback::SgrMouse);
+        }
+        assert_eq!(wheel_fallback(&info(None, Some("npm run dev"))), WheelFallback::Scrollback,);
+        assert_eq!(wheel_fallback(&info(None, None)), WheelFallback::Scrollback);
     }
 
     #[test]

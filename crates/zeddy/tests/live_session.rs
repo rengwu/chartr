@@ -13,7 +13,7 @@ use std::{
 };
 
 use zeddy_herdr::{Geometry, Namespace, Sidecar, control::Client};
-use zeddy_vt::{Size, Terminal};
+use zeddy_vt::{CellPosition, Modifiers, Size, Terminal, WheelEvent, WheelFallback};
 
 struct Live {
     client: Client,
@@ -161,6 +161,51 @@ fn scrollback_survives_the_real_frame_stream() {
     let _ = client.close_session(&session.id);
     assert!(history.contains("scroll-01"), "the oldest received output was not retained");
     assert!(!history.contains("scroll-40"), "scrolling did not move away from the live viewport");
+}
+
+#[test]
+#[ignore = "needs a real herdr daemon"]
+fn full_screen_wheel_fallback_survives_the_real_frame_stream() {
+    let live = Live::start();
+    let client = &live.client;
+    let workspace =
+        client.open_workspace(&std::env::temp_dir(), Some("zeddy-wheel-modes")).expect("workspace");
+    let session = client.start_session(&workspace, None).expect("session");
+    let size = Size::new(80, 24);
+    let attachment =
+        client.attach(&session.id, Geometry::new(size.cols, size.rows)).expect("attach");
+    let (mut frames, mut input) = attachment.split();
+    let mut terminal = Terminal::new(size);
+
+    input
+        .send(b"printf '\\033[?1049h\\033[?1000h\\033[?1006hfull-tui-marker'\r")
+        .expect("enter full-screen mouse mode");
+
+    for _ in 0..20 {
+        let frame = frames.next_frame().expect("the stream stays valid").expect("a frame");
+        if frame.full {
+            terminal.resize(Size::new(frame.geometry.cols, frame.geometry.rows));
+        }
+        terminal.feed(&frame.bytes);
+        if terminal.screen().to_text().contains("full-tui-marker") {
+            break;
+        }
+    }
+
+    assert!(terminal.screen().to_text().contains("full-tui-marker"));
+    let wheel =
+        WheelEvent { lines: 1, position: CellPosition::new(4, 2), modifiers: Modifiers::default() };
+    assert_eq!(
+        terminal.wheel_input(wheel),
+        None,
+        "Herdr's repaint stream currently omits the application's mouse mode",
+    );
+    assert_eq!(
+        terminal.wheel_input_with_fallback(wheel, WheelFallback::SgrMouse),
+        Some(b"\x1b[<64;5;3M".to_vec()),
+        "the control-plane fallback must restore the application's wheel input",
+    );
+    let _ = client.close_session(&session.id);
 }
 
 #[test]
