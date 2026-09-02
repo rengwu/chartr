@@ -14,14 +14,143 @@ use crate::{
     fonts::UI_LABEL_DEFAULT,
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
-use gpui::{EntityId, Pixels, SharedString};
-use ui::{CommonAnimationExt, prelude::*};
+use gpui::{ElementId, EntityId, Pixels, Role, SharedString};
+use ui::{CommonAnimationExt, IconButton, Tab, TabPosition, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
 const TAB_LABEL_MIN_WIDTH: f32 = 24.;
 
-pub(crate) fn tab_label(title: impl Into<SharedString>) -> impl IntoElement {
-    div().min_w(px(TAB_LABEL_MIN_WIDTH)).child(Label::new(title).size(UI_LABEL_DEFAULT).truncate())
+pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
+    IconButton::new(id, IconName::Plus).icon_size(IconSize::Small)
+}
+
+pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {
+    h_flex()
+        // Zed's inner TabBar row derives its height from its tabs. Keep an
+        // empty strip at the same height instead of collapsing to the button.
+        .h(Tab::container_height(cx))
+        .flex_none()
+        // Collapse this divider onto the last tab's border.
+        .ml(px(-1.))
+        .px(DynamicSpacing::Base04.rems(cx))
+        .border_l_1()
+        .border_color(cx.theme().colors().border)
+        .child(button)
+        .into_any_element()
+}
+
+fn tab_label(title: impl Into<SharedString>, selected: bool) -> impl IntoElement {
+    h_flex().when(selected, |label| label.pr_px()).child(
+        div()
+            .min_w(px(TAB_LABEL_MIN_WIDTH))
+            .child(Label::new(title).size(UI_LABEL_DEFAULT).truncate()),
+    )
+}
+
+/// Resolve the Zed border shape shared by outer and pane-local tab strips.
+pub(crate) fn tab_position(index: usize, count: usize, active_index: Option<usize>) -> TabPosition {
+    if index == 0 {
+        TabPosition::First
+    } else if index + 1 == count {
+        TabPosition::Last
+    } else {
+        TabPosition::Middle(index.cmp(&active_index.unwrap_or(index)))
+    }
+}
+
+/// The common visual core for every workspace tab.
+///
+/// Zed's selected [`Tab`] replaces one horizontal pixel of padding with a
+/// border. GPUI paints that border inside the box, so its intrinsic width is
+/// one pixel smaller than the inactive state. Restore that pixel here to keep
+/// selection from shifting the rest of either tab strip.
+pub(crate) struct ItemTab<'a> {
+    id: ElementId,
+    title: SharedString,
+    aria_label: SharedString,
+    selected: bool,
+    position: TabPosition,
+    status: Option<SessionStatus>,
+    process_running: bool,
+    ended: bool,
+    grouped: bool,
+    space: &'a str,
+    key: ItemId,
+    close_slot: Option<AnyElement>,
+}
+
+impl<'a> ItemTab<'a> {
+    pub(crate) fn new(
+        id: impl Into<ElementId>,
+        title: impl Into<SharedString>,
+        selected: bool,
+        position: TabPosition,
+        space: &'a str,
+        key: ItemId,
+    ) -> Self {
+        let title = title.into();
+        Self {
+            id: id.into(),
+            aria_label: title.clone(),
+            title,
+            selected,
+            position,
+            status: None,
+            process_running: false,
+            ended: false,
+            grouped: false,
+            space,
+            key,
+            close_slot: None,
+        }
+    }
+
+    pub(crate) fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = label.into();
+        self
+    }
+
+    pub(crate) fn activity(
+        mut self,
+        status: Option<SessionStatus>,
+        process_running: bool,
+        ended: bool,
+    ) -> Self {
+        self.status = status;
+        self.process_running = process_running;
+        self.ended = ended;
+        self
+    }
+
+    pub(crate) fn grouped(mut self, grouped: bool) -> Self {
+        self.grouped = grouped;
+        self
+    }
+
+    pub(crate) fn close_slot(mut self, close_slot: Option<AnyElement>) -> Self {
+        self.close_slot = close_slot;
+        self
+    }
+
+    pub(crate) fn build(self, cx: &App) -> Tab {
+        Tab::new(self.id)
+            .role(Role::Tab)
+            .aria_label(self.aria_label)
+            .aria_selected(self.selected)
+            .position(self.position)
+            .toggle_state(self.selected)
+            .start_slot(status_indicator(
+                self.status,
+                self.process_running,
+                self.ended,
+                self.grouped,
+                self.space,
+                self.key,
+                cx,
+            ))
+            .end_slot::<AnyElement>(self.close_slot)
+            .child(tab_label(self.title, self.selected))
+    }
 }
 
 /// One row in the sidebar, or one tab in the strip.

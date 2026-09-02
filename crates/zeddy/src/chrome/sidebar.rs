@@ -26,7 +26,7 @@ use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 use crate::settings::sidebar_theme_colors;
 
 /// Limits for the resizable sidebar.
-pub const MIN_WIDTH: f32 = 180.;
+pub const MIN_WIDTH: f32 = 108.;
 pub const MAX_WIDTH: f32 = 480.;
 
 /// One shared value for layout and FLIP arithmetic. `gap_2` is half a rem;

@@ -5,14 +5,13 @@
 //! squeezed in — the dot still carries the state, and the title carries the
 //! identity.
 
-use gpui::Role;
-use ui::{
-    ButtonSize, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*, right_click_menu,
-};
+use ui::{ButtonSize, IconButtonShape, TabBar, Tooltip, prelude::*, right_click_menu};
 
 use super::Emit;
 
-use super::{Action, DraggedItem, Entry, dragged_item_preview, status_indicator};
+use super::{
+    Action, DraggedItem, Entry, ItemTab, dragged_item_preview, new_item_cell, tab_position,
+};
 use crate::components::ContextMenu;
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
@@ -38,17 +37,7 @@ pub fn render(
                     tab(index, entries.len(), active_index, entry, on.clone(), cx)
                 })),
         )
-        .child(
-            h_flex()
-                .h_full()
-                .flex_none()
-                // Collapse this divider onto the last tab's border.
-                .ml(px(-1.))
-                .px(DynamicSpacing::Base04.rems(cx))
-                .border_l_1()
-                .border_color(cx.theme().colors().border)
-                .child(new_item),
-        );
+        .child(new_item_cell(new_item, cx));
 
     let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
     match controls {
@@ -71,13 +60,7 @@ fn tab(
     cx: &App,
 ) -> AnyElement {
     let close = on.clone();
-    let position = if index == 0 {
-        TabPosition::First
-    } else if index + 1 == count {
-        TabPosition::Last
-    } else {
-        TabPosition::Middle(index.cmp(&active_index.unwrap_or(index)))
-    };
+    let position = tab_position(index, count, active_index);
     let select = entry.key;
     let select_item = on.clone();
     let ungroup = on.clone();
@@ -119,57 +102,47 @@ fn tab(
             })
             .into_any_element()
     });
-    let tab = Tab::new(("tab", index))
-        .role(Role::Tab)
-        .aria_label(if entry.grouped {
-            format!("Pane group: {}", entry.title)
-        } else {
-            entry.title.clone()
-        })
-        .aria_selected(entry.selected)
-        .position(position)
-        .toggle_state(entry.selected)
-        .on_click(move |_, window, cx| {
-            select_item(Action::Select { space: Some(space), item: select }, window, cx)
-        })
-        .when(!entry.grouped, |tab| {
-            tab.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
-        })
-        .can_drop(move |value, _, _| {
-            value
-                .downcast_ref::<DraggedItem>()
-                .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
-        })
-        .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
-            let mut tab = tab
-                .bg(cx.theme().colors().drop_target_background)
-                .border_color(cx.theme().colors().drop_target_border)
-                .border_0();
-            if target_index < dragged.index {
-                tab = tab.border_l_2();
-            } else if target_index > dragged.index {
-                tab = tab.border_r_2();
-            }
-            tab
-        })
-        .on_drop(move |dragged: &DraggedItem, window, cx| {
-            move_tab(
-                Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index },
-                window,
-                cx,
-            );
-        })
-        .start_slot(status_indicator(
-            entry.status,
-            entry.process_running,
-            entry.ended,
-            entry.grouped,
-            &entry.space_key,
-            entry.key,
-            cx,
-        ))
-        .end_slot::<AnyElement>(close_slot)
-        .child(super::tab_label(entry.title.clone()));
+    let aria_label =
+        if entry.grouped { format!("Pane group: {}", entry.title) } else { entry.title.clone() };
+    let tab = ItemTab::new(
+        ("tab", index),
+        entry.title.clone(),
+        entry.selected,
+        position,
+        &entry.space_key,
+        entry.key,
+    )
+    .aria_label(aria_label)
+    .activity(entry.status, entry.process_running, entry.ended)
+    .grouped(entry.grouped)
+    .close_slot(close_slot)
+    .build(cx)
+    .on_click(move |_, window, cx| {
+        select_item(Action::Select { space: Some(space), item: select }, window, cx)
+    })
+    .when(!entry.grouped, |tab| {
+        tab.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
+    })
+    .can_drop(move |value, _, _| {
+        value
+            .downcast_ref::<DraggedItem>()
+            .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
+    })
+    .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
+        let mut tab = tab
+            .bg(cx.theme().colors().drop_target_background)
+            .border_color(cx.theme().colors().drop_target_border)
+            .border_0();
+        if target_index < dragged.index {
+            tab = tab.border_l_2();
+        } else if target_index > dragged.index {
+            tab = tab.border_r_2();
+        }
+        tab
+    })
+    .on_drop(move |dragged: &DraggedItem, window, cx| {
+        move_tab(Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index }, window, cx);
+    });
 
     if grouped {
         right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))

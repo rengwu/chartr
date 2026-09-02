@@ -79,6 +79,14 @@ the tabs overflow, only the tabs scroll: `+` pins beside their right edge, while
 the title-bar chevron remains pinned at the window's far right. The padded `+`
 cell retains a left divider against the scrolling tabs. Every tab retains its
 minimum clickable width, including pane-local tabs within grouped workspaces.
+Switch selection across both tab strips and confirm tab edges, following tabs,
+and trailing controls remain stationary without a one-pixel shift.
+Each pane-local `+` likewise follows its last tab on the left and stays pinned
+beside the scrolling pane tabs. Outer and pane-local `+` controls use the same
+icon size and padded divider cell; an empty outer strip keeps the `+` vertically
+centered at the normal tab-bar height. The muted tab-bar background continues
+after its compact cell and remains the append drop target without reserving width;
+when pane tabs overflow, `+` reaches the pane's right edge.
 
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,
