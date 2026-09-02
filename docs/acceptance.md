@@ -65,15 +65,18 @@ small pixel deltas accumulate smoothly, colors survive in history, new output
 does not pull a historical viewport to the bottom, and scrolling up again after
 returning to the prompt refreshes the host history.
 
-Open the chevron menu in both chrome modes. Sidebar mode offers `Switch to
-Tabbed mode`, a trailing-checkmarked `Show only active space` toggle, a separator,
-and `Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
+Confirm the active-space picker sits in the macOS title bar immediately after
+the traffic lights, and the chevron menu sits at the far-right corner in both
+chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a
+trailing-checkmarked `Show only active space` toggle, a separator, and
+`Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
 `Settings`. Switching presentation or sidebar scope updates immediately and
-survives relaunch.
+survives relaunch. On platforms with a native system title bar, confirm both
+controls retain their in-app chrome positions.
 
 In tabbed mode, the `+` control follows the last outer tab while they fit. When
-the tabs overflow, only the tabs scroll: `+` pins beside their right edge, and
-the chevron view-menu control remains pinned at the far right. The padded `+`
+the tabs overflow, only the tabs scroll: `+` pins beside their right edge, while
+the title-bar chevron remains pinned at the window's far right. The padded `+`
 cell retains a left divider against the scrolling tabs. Every tab retains its
 minimum clickable width, including pane-local tabs within grouped workspaces.
 

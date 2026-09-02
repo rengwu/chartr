@@ -39,11 +39,15 @@ Offer tabbed and sidebar projections over the same model. Both show every
 standalone item and every pane group as one outer entry. Standalone terminals
 use Herdr's live agent or foreground-process inference before falling back to
 the persistent Herdr tab label; pane groups use the neutral `Grouped Tabs`
-title. Tabbed mode places that collection beside the active space name;
-sidebar mode places it beneath each visible space. Selecting a group renders its
-local draggable pane tab bars, while selecting a standalone item renders no
-redundant inner bar. Only the active pane exposes compact split/zoom controls.
-Presentation never changes item ownership.
+title. Tabbed mode places that collection in a horizontal strip beneath the
+title bar; sidebar mode places it beneath each visible space. Selecting a group
+renders its local draggable pane tab bars, while selecting a standalone item
+renders no redundant inner bar. Only the active pane exposes compact split/zoom
+controls.
+On macOS, the active space name is selected from the title bar beside the
+traffic lights, and the presentation menu stays in the title bar's far-right
+corner; platforms with a native system title bar retain those controls in the
+in-app chrome. Presentation never changes item ownership.
 
 In the all-spaces sidebar, space headings directly sort their complete cards.
 Sorting uses measured variable-height midpoints, remains active during horizontal

@@ -1663,6 +1663,108 @@ impl Zeddy {
             .into_any_element()
     }
 
+    fn view_menu(&self, on: chrome::Emit) -> AnyElement {
+        match self.mode {
+            Mode::Sidebar => {
+                let active_space_only = self.sidebar_scope == SidebarScope::ActiveSpace;
+                PopoverMenu::new("chrome-menu")
+                    .trigger_with_tooltip(
+                        IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
+                            .icon_size(IconSize::Small),
+                        Tooltip::text("View options"),
+                    )
+                    .anchor(Anchor::TopRight)
+                    .menu(move |window, cx| {
+                        let switch = on.clone();
+                        let toggle_scope = on.clone();
+                        let settings = on.clone();
+                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                            menu.entry("Switch to Tabbed mode", None, move |window, cx| {
+                                switch(Action::SwitchToTabs, window, cx)
+                            })
+                            .toggleable_entry(
+                                "Show only active space",
+                                active_space_only,
+                                IconPosition::End,
+                                None,
+                                move |window, cx| {
+                                    toggle_scope(Action::ToggleActiveSpaceOnly, window, cx)
+                                },
+                            )
+                            .separator()
+                            .entry(
+                                "Settings",
+                                None,
+                                move |window, cx| settings(Action::OpenSettings, window, cx),
+                            )
+                        }))
+                    })
+                    .into_any_element()
+            }
+            Mode::Tabs => PopoverMenu::new("chrome-menu")
+                .trigger_with_tooltip(
+                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
+                        .icon_size(IconSize::Small),
+                    Tooltip::text("View options"),
+                )
+                .anchor(Anchor::TopRight)
+                .menu(move |window, cx| {
+                    let switch = on.clone();
+                    let settings = on.clone();
+                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                        menu.entry("Switch to Sidebar mode", None, move |window, cx| {
+                            switch(Action::SwitchToSidebar, window, cx)
+                        })
+                        .separator()
+                        .entry("Settings", None, move |window, cx| {
+                            settings(Action::OpenSettings, window, cx)
+                        })
+                    }))
+                })
+                .into_any_element(),
+        }
+    }
+
+    fn workspace_title_bar(&self, controls: Option<(AnyElement, AnyElement)>) -> AnyElement {
+        if !cfg!(target_os = "macos") {
+            return self.title_bar.clone().into_any_element();
+        }
+
+        let mut overlays = Vec::with_capacity(2);
+        if let Some((space_switcher, view_menu)) = controls {
+            overlays.push(
+                h_flex()
+                    .absolute()
+                    // Clear the native macOS traffic-light cluster.
+                    .left(px(78.))
+                    .top_0()
+                    .h(px(crate::title_bar::HEIGHT))
+                    .max_w(px(200.))
+                    .child(space_switcher)
+                    .into_any_element(),
+            );
+            overlays.push(
+                h_flex()
+                    .absolute()
+                    .right(px(6.))
+                    .top_0()
+                    .h(px(crate::title_bar::HEIGHT))
+                    .child(view_menu)
+                    .into_any_element(),
+            );
+        }
+
+        div()
+            .id("workspace-title-bar-with-controls")
+            .relative()
+            .w_full()
+            .h(px(crate::title_bar::HEIGHT))
+            .flex_none()
+            .child(self.title_bar.clone())
+            .children(overlays)
+            .into_any_element()
+    }
+
     fn new_item_menu(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
         let panes: Vec<_> = self.catalog.panes().into_iter().cloned().collect();
@@ -2964,7 +3066,6 @@ impl Render for Zeddy {
         let mut sidebar_spaces = self.sidebar_spaces(cx);
         self.space_sorter.arrange(&mut sidebar_spaces, |space| space.id);
         let chrome_entries: &[Entry] = &entries;
-        let switcher = self.space_switcher(window, cx);
         let new_item = self.new_item_menu(cx);
         let (background, text, workspace_background) = {
             let colors = cx.theme().colors();
@@ -2974,6 +3075,9 @@ impl Render for Zeddy {
         let on_action =
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
+        let title_controls = cfg!(target_os = "macos")
+            .then(|| (self.space_switcher(window, cx), self.view_menu(emit.clone())));
+        let title_bar = self.workspace_title_bar(title_controls);
 
         let workspace = v_flex()
             .flex_1()
@@ -2983,28 +3087,35 @@ impl Render for Zeddy {
             .child(self.workspace_pane(window, cx));
 
         let body = match self.mode {
-            Mode::Sidebar => h_flex()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(chrome::sidebar::render(
-                    &sidebar_spaces,
-                    switcher,
-                    emit.clone(),
-                    self.sidebar_scope == SidebarScope::ActiveSpace,
-                    &self.space_sorter,
-                    self.sidebar_width,
-                    cx,
-                ))
-                .child(workspace)
-                .into_any_element(),
-            Mode::Tabs => v_flex()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(chrome::tabs::render(chrome_entries, switcher, new_item, emit, cx))
-                .child(workspace)
-                .into_any_element(),
+            Mode::Sidebar => {
+                let controls = (!cfg!(target_os = "macos"))
+                    .then(|| (self.space_switcher(window, cx), self.view_menu(emit.clone())));
+                h_flex()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .child(chrome::sidebar::render(
+                        &sidebar_spaces,
+                        controls,
+                        emit.clone(),
+                        &self.space_sorter,
+                        self.sidebar_width,
+                        cx,
+                    ))
+                    .child(workspace)
+                    .into_any_element()
+            }
+            Mode::Tabs => {
+                let controls = (!cfg!(target_os = "macos"))
+                    .then(|| (self.space_switcher(window, cx), self.view_menu(emit.clone())));
+                v_flex()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .child(chrome::tabs::render(chrome_entries, controls, new_item, emit, cx))
+                    .child(workspace)
+                    .into_any_element()
+            }
         };
 
         let command_palette = self.command_palette(cx);
@@ -3110,7 +3221,7 @@ impl Render for Zeddy {
                 this.toggle_command_palette(window, cx)
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
-            .child(self.title_bar.clone())
+            .child(title_bar)
             .child(body)
             .children(command_palette)
             .children(rename_space)

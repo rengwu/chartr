@@ -3,7 +3,7 @@
 use gpui::{ElementId, MouseButton, TitlebarOptions, point, px};
 use ui::prelude::*;
 
-const HEIGHT: f32 = 34.;
+pub const HEIGHT: f32 = 34.;
 
 /// Use the native title bar everywhere except macOS, where Chartr draws the
 /// background and AppKit keeps responsibility for the traffic-light controls.

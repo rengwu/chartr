@@ -1,14 +1,13 @@
-//! Tabs mode: standalone tabs and pane groups beside the active space name.
+//! Tabs mode: standalone tabs and pane groups in a horizontal strip.
 //!
 //! The mode for a handful of sessions you are switching between quickly. A tab
 //! has no second line, so the agent's name is dropped here rather than
 //! squeezed in — the dot still carries the state, and the title carries the
 //! identity.
 
-use gpui::{Anchor, Role};
+use gpui::Role;
 use ui::{
-    ButtonSize, IconButtonShape, PopoverMenu, Tab, TabBar, TabPosition, Tooltip, prelude::*,
-    right_click_menu,
+    ButtonSize, IconButtonShape, Tab, TabBar, TabPosition, Tooltip, prelude::*, right_click_menu,
 };
 
 use super::Emit;
@@ -19,12 +18,11 @@ const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 pub fn render(
     entries: &[Entry],
-    space_switcher: AnyElement,
+    controls: Option<(AnyElement, AnyElement)>,
     new_item: AnyElement,
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
-    let menu_actions = on.clone();
     let active_index = entries.iter().position(|entry| entry.selected);
     let tabs_with_pinned_new_item = h_flex()
         .w_full()
@@ -52,31 +50,16 @@ pub fn render(
                 .child(new_item),
         );
 
-    TabBar::new("workspace-tabs")
-        .start_child(h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher))
-        .child(tabs_with_pinned_new_item)
-        .end_child(
-            PopoverMenu::new("chrome-menu")
-                .trigger_with_tooltip(
-                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
-                        .icon_size(IconSize::Small),
-                    Tooltip::text("View options"),
-                )
-                .anchor(Anchor::TopRight)
-                .menu(move |window, cx| {
-                    let switch = menu_actions.clone();
-                    let settings = menu_actions.clone();
-                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                        menu.entry("Switch to Sidebar mode", None, move |window, cx| {
-                            switch(Action::SwitchToSidebar, window, cx)
-                        })
-                        .separator()
-                        .entry("Settings", None, move |window, cx| {
-                            settings(Action::OpenSettings, window, cx)
-                        })
-                    }))
-                }),
-        )
+    let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
+    match controls {
+        Some((space_switcher, view_menu)) => tab_bar
+            .start_child(
+                h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher),
+            )
+            .end_child(view_menu)
+            .into_any_element(),
+        None => tab_bar.into_any_element(),
+    }
 }
 
 fn tab(

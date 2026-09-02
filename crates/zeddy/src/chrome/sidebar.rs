@@ -426,9 +426,8 @@ impl SpaceSorter {
 
 pub fn render(
     spaces: &[SpaceEntries],
-    space_switcher: AnyElement,
+    controls: Option<(AnyElement, AnyElement)>,
     on: Emit,
-    active_space_only: bool,
     sorter: &SpaceSorter,
     width: f32,
     cx: &App,
@@ -440,6 +439,8 @@ pub fn render(
         selected: sidebar_colors.session_active,
     };
     let mut cards = Vec::with_capacity(spaces.len());
+    let header = controls
+        .map(|(space_switcher, view_menu)| header(space_switcher, view_menu).into_any_element());
     let mut index = 0;
     let now = cx.background_executor().now();
     let reduce_motion = cx.reduce_motion();
@@ -637,7 +638,7 @@ pub fn render(
         .bg(colors.panel_background)
         .border_r_1()
         .border_color(colors.border)
-        .child(header(space_switcher, on.clone(), active_space_only))
+        .children(header)
         .child(
             v_flex()
                 .id("sessions")
@@ -668,50 +669,14 @@ pub fn render(
         ))
 }
 
-fn header(space_switcher: AnyElement, on: Emit, active_space_only: bool) -> impl IntoElement {
-    let menu_actions = on;
+fn header(space_switcher: AnyElement, view_menu: AnyElement) -> impl IntoElement {
     h_flex()
         .h(px(36.))
         .px_2()
         .gap_1()
         .justify_between()
         .child(h_flex().min_w_0().flex_1().child(space_switcher))
-        .child(
-            h_flex().gap_px().child(
-                PopoverMenu::new("chrome-menu")
-                    .trigger_with_tooltip(
-                        IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
-                            .icon_size(IconSize::Small),
-                        Tooltip::text("View options"),
-                    )
-                    .anchor(Anchor::TopRight)
-                    .menu(move |window, cx| {
-                        let switch = menu_actions.clone();
-                        let toggle_scope = menu_actions.clone();
-                        let settings = menu_actions.clone();
-                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                            menu.entry("Switch to Tabbed mode", None, move |window, cx| {
-                                switch(Action::SwitchToTabs, window, cx)
-                            })
-                            .toggleable_entry(
-                                "Show only active space",
-                                active_space_only,
-                                IconPosition::End,
-                                None,
-                                move |window, cx| {
-                                    toggle_scope(Action::ToggleActiveSpaceOnly, window, cx)
-                                },
-                            )
-                            .separator()
-                            .entry(
-                                "Settings",
-                                None,
-                                move |window, cx| settings(Action::OpenSettings, window, cx),
-                            )
-                        }))
-                    }),
-            ),
-        )
+        .child(h_flex().gap_px().child(view_menu))
 }
 
 fn row(
