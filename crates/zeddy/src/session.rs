@@ -16,7 +16,10 @@
 //! session producing a thousand repaints a second costs the window one redraw
 //! per vsync, not a thousand.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use futures::channel::mpsc;
 use zeddy_herdr::{
@@ -24,7 +27,9 @@ use zeddy_herdr::{
     control::{self, Client},
     stream::{Frame, Input},
 };
-use zeddy_vt::{Screen, Size, Terminal};
+use zeddy_vt::{Screen, ScrollResult, Size, Terminal};
+
+const HISTORY_LINES: u32 = 10_000;
 
 /// A wakeup from a session's reader thread. Carries nothing: the state is in
 /// the emulator, and the message only says to look at it.
@@ -45,6 +50,10 @@ pub struct Session {
     terminal: Arc<Mutex<Terminal>>,
     ended: Arc<Mutex<Option<Ended>>>,
     input: Arc<Mutex<Input>>,
+    client: Client,
+    wakeups: mpsc::UnboundedSender<Wakeup>,
+    history_loading: Arc<AtomicBool>,
+    pending_scroll: Arc<Mutex<i32>>,
     size: Size,
 }
 
@@ -64,6 +73,7 @@ impl Session {
 
         let terminal = Arc::new(Mutex::new(Terminal::new(size)));
         let ended = Arc::new(Mutex::new(None));
+        let reader_wakeups = wakeups.clone();
 
         std::thread::Builder::new()
             .name(format!("zeddy-session-{}", info.id))
@@ -83,17 +93,27 @@ impl Session {
                         // Sent after the frame is applied, so a redraw woken by
                         // this always sees it. A closed receiver means the
                         // window is gone, and so is the reason to keep reading.
-                        if wakeups.unbounded_send(()).is_err() {
+                        if reader_wakeups.unbounded_send(()).is_err() {
                             return;
                         }
                     };
                     *ended.lock().expect("ended mutex") = Some(outcome);
-                    let _ = wakeups.unbounded_send(());
+                    let _ = reader_wakeups.unbounded_send(());
                 }
             })
             .expect("spawn a session reader thread");
 
-        Ok(Self { info, terminal, ended, input: Arc::new(Mutex::new(input)), size })
+        Ok(Self {
+            info,
+            terminal,
+            ended,
+            input: Arc::new(Mutex::new(input)),
+            client: client.clone(),
+            wakeups,
+            history_loading: Arc::new(AtomicBool::new(false)),
+            pending_scroll: Arc::new(Mutex::new(0)),
+            size,
+        })
     }
 
     pub fn id(&self) -> &PaneId {
@@ -146,7 +166,15 @@ impl Session {
     }
 
     pub fn access(&self) -> SessionAccess {
-        SessionAccess { info: self.info.clone(), input: self.input.clone() }
+        SessionAccess {
+            info: self.info.clone(),
+            input: self.input.clone(),
+            terminal: self.terminal.clone(),
+            client: self.client.clone(),
+            wakeups: self.wakeups.clone(),
+            history_loading: self.history_loading.clone(),
+            pending_scroll: self.pending_scroll.clone(),
+        }
     }
 }
 
@@ -154,11 +182,60 @@ impl Session {
 pub struct SessionAccess {
     pub info: control::Session,
     input: Arc<Mutex<Input>>,
+    terminal: Arc<Mutex<Terminal>>,
+    client: Client,
+    wakeups: mpsc::UnboundedSender<Wakeup>,
+    history_loading: Arc<AtomicBool>,
+    pending_scroll: Arc<Mutex<i32>>,
 }
 
 impl SessionAccess {
     pub fn send(&self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
         self.input.lock().expect("session input mutex").send(bytes)
+    }
+
+    pub fn scroll(&self, lines: i32) -> bool {
+        match self.terminal.lock().expect("terminal mutex").scroll(lines) {
+            ScrollResult::Changed => true,
+            ScrollResult::Unchanged => false,
+            ScrollResult::NeedsHistory => {
+                let mut pending = self.pending_scroll.lock().expect("pending scroll mutex");
+                *pending = pending.saturating_add(lines);
+                drop(pending);
+                self.fetch_history();
+                false
+            }
+        }
+    }
+
+    fn fetch_history(&self) {
+        if self.history_loading.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let client = self.client.clone();
+        let pane = self.info.id.clone();
+        let terminal = self.terminal.clone();
+        let loading = self.history_loading.clone();
+        let loading_on_failure = self.history_loading.clone();
+        let pending = self.pending_scroll.clone();
+        let wakeups = self.wakeups.clone();
+        let spawned =
+            std::thread::Builder::new().name(format!("zeddy-history-{pane}")).spawn(move || {
+                let requested_at = terminal.lock().expect("terminal mutex").generation();
+                let history = client.history(&pane, HISTORY_LINES);
+                if let Ok(history) = history {
+                    let mut terminal = terminal.lock().expect("terminal mutex");
+                    let lines = std::mem::take(&mut *pending.lock().expect("pending scroll mutex"));
+                    terminal.load_history(&history, lines, requested_at);
+                } else {
+                    *pending.lock().expect("pending scroll mutex") = 0;
+                }
+                loading.store(false, Ordering::Release);
+                let _ = wakeups.unbounded_send(());
+            });
+        if spawned.is_err() {
+            loading_on_failure.store(false, Ordering::Release);
+        }
     }
 }
 

@@ -3,7 +3,8 @@
 ## Decision
 
 `zeddy-vt` wraps `alacritty_terminal` — Zed's fork, at the revision Zed's own
-terminal uses. Bytes in, a `Screen` out. That is the whole public surface.
+terminal uses. Repaint bytes and optional ANSI host history go in; a `Screen`
+comes out.
 
 ## Why
 
@@ -25,12 +26,16 @@ render pass to the lifetime of an emulator owned by a different thread than the
 one painting. At the sizes a terminal runs — a few thousand cells — the copy is
 not what makes a frame slow.
 
-## No scrollback
+## Host-backed scrollback
 
-`scrolling_history` is zero. herdr's frame stream sends the viewport and has no
-way to move it back through history, so a scrollback buffer here would be one
-nothing can ever scroll to. History, when zeddy grows it, comes from the control
-plane and is a different rendering.
+The live emulator keeps `scrolling_history` at zero because herdr's frame stream
+sends only viewport repaints; treating those repaints as raw PTY output creates
+duplicate and missing history. On the first upward wheel gesture, zeddy reads
+ANSI-styled `recent` history through Herdr's `pane.read` control method on a
+background thread. `zeddy-vt` parses that into a separate historical emulator
+and moves its display offset. Returning to offset zero renders the live emulator
+again. New output marks a bottomed history snapshot stale, and a resize discards
+it, so the next upward gesture asks Herdr for an authoritative replacement.
 
 ## Colour is not resolved here
 

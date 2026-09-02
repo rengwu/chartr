@@ -3260,6 +3260,8 @@ fn terminal(
 ) -> impl IntoElement {
     let theme = cx.theme();
     let screen = item.session.screen();
+    let fit = item.fit.clone();
+    let session = item.session.access();
     let colors = screen
         .rows
         .iter()
@@ -3275,13 +3277,20 @@ fn terminal(
         cursor: theme.colors().terminal_foreground,
     };
 
-    v_flex().size_full().p_2().bg(theme.colors().terminal_background).child(TerminalElement::new(
-        screen,
-        colors,
-        appearance,
-        focused,
-        item.fit.clone(),
-    ))
+    v_flex()
+        .size_full()
+        .p_2()
+        .bg(theme.colors().terminal_background)
+        .on_scroll_wheel(move |event, window, cx| {
+            let Some(lines) = fit.wheel_lines(event) else {
+                return;
+            };
+            if session.scroll(lines) {
+                window.refresh();
+            }
+            cx.stop_propagation();
+        })
+        .child(TerminalElement::new(screen, colors, appearance, focused, item.fit.clone()))
 }
 
 fn message(text: &str, cx: &App) -> impl IntoElement {

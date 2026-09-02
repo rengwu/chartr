@@ -27,7 +27,6 @@ The settled product contract is recorded in [the specification](./spec.md).
 ## Out of scope
 
 - Windows support, pending a non-Unix Herdr transport.
-- Terminal scrollback, pending a real Herdr history source.
 - Cross-space item movement.
 - Terminal mirroring, preview tabs, and pinned tabs.
 - Automatic migration from existing Chartr installations.

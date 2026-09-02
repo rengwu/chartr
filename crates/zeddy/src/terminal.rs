@@ -34,15 +34,46 @@ use zeddy_vt::{Screen, Size};
 /// ignores a size it is already running at, so a steady window costs one
 /// comparison per frame and a dragged one costs a resize per frame.
 #[derive(Debug, Clone, Default)]
-pub struct Fit(Rc<StdCell<Option<Size>>>);
+pub struct Fit {
+    size: Rc<StdCell<Option<Size>>>,
+    line_height: Rc<StdCell<Option<Pixels>>>,
+    scroll_px: Rc<StdCell<f32>>,
+}
 
 impl Fit {
     pub fn get(&self) -> Option<Size> {
-        self.0.get()
+        self.size.get()
     }
 
     fn set(&self, size: Size) -> bool {
-        self.0.replace(Some(size)) != Some(size)
+        self.size.replace(Some(size)) != Some(size)
+    }
+
+    fn measure(&self, size: Size, line_height: Pixels) -> bool {
+        self.line_height.set(Some(line_height));
+        self.set(size)
+    }
+
+    /// Quantize a wheel or trackpad gesture into terminal lines.
+    ///
+    /// Pixel deltas accumulate until they cross a full row, while traditional
+    /// mouse-wheel line deltas pass through exactly.
+    pub fn wheel_lines(&self, event: &gpui::ScrollWheelEvent) -> Option<i32> {
+        let line_height = self.line_height.get()?;
+        match event.touch_phase {
+            gpui::TouchPhase::Started => {
+                self.scroll_px.set(0.);
+            }
+            gpui::TouchPhase::Ended | gpui::TouchPhase::Cancelled => return None,
+            gpui::TouchPhase::Moved => {}
+        }
+
+        let line_height = line_height / px(1.);
+        let accumulated =
+            self.scroll_px.get() + event.delta.pixel_delta(px(line_height)).y / px(1.);
+        let lines = (accumulated / line_height).trunc() as i32;
+        self.scroll_px.set(accumulated - lines as f32 * line_height);
+        (lines != 0).then_some(lines)
     }
 }
 
@@ -154,10 +185,11 @@ impl Element for TerminalElement {
             .max(px(1.));
         let cell = size(em, self.appearance.line_height);
 
-        let fit_changed = self.fit.set(Size::new(
+        let measured = Size::new(
             (bounds.size.width / cell.width).floor() as u16,
             (bounds.size.height / cell.height).floor() as u16,
-        ));
+        );
+        let fit_changed = self.fit.measure(measured, cell.height);
         if fit_changed {
             // `Window::refresh` is intentionally ignored while GPUI is in a
             // draw pass. Defer it until the pass completes so the next render
@@ -294,5 +326,43 @@ mod tests {
         assert!(!fit.set(Size::new(80, 24)));
         assert!(fit.set(Size::new(120, 40)));
         assert_eq!(fit.get(), Some(Size::new(120, 40)));
+    }
+
+    #[test]
+    fn wheel_deltas_are_measured_in_terminal_lines() {
+        let fit = Fit::default();
+        fit.measure(Size::new(80, 24), px(20.));
+        let event = gpui::ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Lines(point(0., 2.)),
+            ..Default::default()
+        };
+
+        assert_eq!(fit.wheel_lines(&event), Some(2));
+    }
+
+    #[test]
+    fn trackpad_pixels_accumulate_to_complete_rows() {
+        let fit = Fit::default();
+        fit.measure(Size::new(80, 24), px(20.));
+        let event = |pixels| gpui::ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Pixels(point(px(0.), px(pixels))),
+            ..Default::default()
+        };
+
+        assert_eq!(fit.wheel_lines(&event(9.)), None);
+        assert_eq!(fit.wheel_lines(&event(11.)), Some(1));
+    }
+
+    #[test]
+    fn a_trackpad_gestures_first_delta_is_not_dropped() {
+        let fit = Fit::default();
+        fit.measure(Size::new(80, 24), px(20.));
+        let event = gpui::ScrollWheelEvent {
+            delta: gpui::ScrollDelta::Pixels(point(px(0.), px(20.))),
+            touch_phase: gpui::TouchPhase::Started,
+            ..Default::default()
+        };
+
+        assert_eq!(fit.wheel_lines(&event), Some(1));
     }
 }

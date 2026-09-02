@@ -15,8 +15,9 @@ shipping architecture:
 cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
-That suite must paint a real shell, hard-kill Herdr, observe the broken stream,
-replace the daemon, and reject the stale session identity.
+That suite must paint a real shell, load ANSI host scrollback, hard-kill Herdr,
+observe the broken stream, replace the daemon, and reject the stale session
+identity.
 
 ## Visual matrix
 
@@ -57,6 +58,12 @@ Run the matrix with pointer and keyboard. Confirm `Cmd/Ctrl+W`, command palette,
 directional focus, move-to-existing-pane, join, Settings singleton focus, native
 `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling. Close the last workspace
 and confirm Settings closes too.
+
+Print more than two viewports of styled output in a terminal. With both a mouse
+wheel and a trackpad, move to the oldest row and back to the live prompt. Confirm
+small pixel deltas accumulate smoothly, colors survive in history, new output
+does not pull a historical viewport to the bottom, and scrolling up again after
+returning to the prompt refreshes the host history.
 
 Open the chevron menu in both chrome modes. Sidebar mode offers `Switch to
 Tabbed mode`, a trailing-checkmarked `Show only active space` toggle, a separator,

@@ -122,6 +122,49 @@ fn a_shell_paints_something_within_a_few_seconds() {
 
 #[test]
 #[ignore = "needs a real herdr daemon"]
+fn scrollback_survives_the_real_frame_stream() {
+    let live = Live::start();
+    let client = &live.client;
+    let workspace =
+        client.open_workspace(&std::env::temp_dir(), Some("zeddy-modes")).expect("a workspace");
+    let session = client.start_session(&workspace, None).expect("a session");
+    let size = Size::new(80, 24);
+    let attachment =
+        client.attach(&session.id, Geometry::new(size.cols, size.rows)).expect("attach");
+    let (mut frames, mut input) = attachment.split();
+    let mut terminal = Terminal::new(size);
+
+    input
+        .send(b"i=1; while [ $i -le 40 ]; do printf 'scroll-%02d\\r\\n' $i; i=$((i+1)); done\r")
+        .expect("send scrolling output");
+
+    for _ in 0..20 {
+        let frame = frames.next_frame().expect("the stream stays valid").expect("a frame");
+        if frame.full {
+            terminal.resize(Size::new(frame.geometry.cols, frame.geometry.rows));
+        }
+        terminal.feed(&frame.bytes);
+        if terminal.screen().to_text().contains("scroll-40") {
+            break;
+        }
+    }
+
+    let live_screen = terminal.screen().to_text();
+    assert!(live_screen.contains("scroll-40"), "the command did not finish painting");
+    let requested_at = terminal.generation();
+    let ansi = client.history(&session.id, 10_000).expect("read host scrollback");
+    assert!(
+        terminal.load_history(&ansi, i32::MAX, requested_at),
+        "host scrollback did not move the viewport"
+    );
+    let history = terminal.screen().to_text();
+    let _ = client.close_session(&session.id);
+    assert!(history.contains("scroll-01"), "the oldest received output was not retained");
+    assert!(!history.contains("scroll-40"), "scrolling did not move away from the live viewport");
+}
+
+#[test]
+#[ignore = "needs a real herdr daemon"]
 fn a_broken_transport_recovers_without_resurrecting_dead_sessions() {
     let mut live = Live::start();
     let workspace = live

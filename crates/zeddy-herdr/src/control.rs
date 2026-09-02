@@ -23,8 +23,9 @@ use crate::{
     Error, Geometry, Namespace, PaneId, Result, SUPPORTED_HERDR_VERSION, SUPPORTED_PROTOCOL,
     Sidecar, WorkspaceId,
     protocol::{
-        self, Created, Empty, PaneCloseParams, PaneList, PaneListParams, Pong, Request, Response,
-        TabCreateParams, TabList, TabListParams, WorkspaceCreateParams, WorkspaceList,
+        self, Created, Empty, PaneCloseParams, PaneList, PaneListParams, PaneReadEnvelope,
+        PaneReadParams, Pong, Request, Response, TabCreateParams, TabList, TabListParams,
+        WorkspaceCreateParams, WorkspaceList,
     },
     stream::Attachment,
 };
@@ -369,6 +370,22 @@ impl Client {
         let _: serde_json::Value =
             self.call("pane.close", &PaneCloseParams { pane_id: &pane.0 })?;
         Ok(())
+    }
+
+    /// Styled host scrollback, oldest requested row first and including the
+    /// live viewport at the bottom.
+    pub fn history(&self, pane: &PaneId, lines: u32) -> Result<String> {
+        let read: PaneReadEnvelope = self.call(
+            "pane.read",
+            &PaneReadParams {
+                pane_id: &pane.0,
+                source: "recent",
+                lines,
+                format: "ansi",
+                strip_ansi: false,
+            },
+        )?;
+        Ok(read.read.text)
     }
 
     /// Attach to a session's byte stream at a given geometry.

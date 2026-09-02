@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex};
 
 use alacritty_terminal::{
     event::{Event, EventListener},
-    grid::Dimensions,
+    grid::{Dimensions, Scroll as AlacrittyScroll},
     index::{Column, Line, Point},
     term::{Config, cell::Flags},
     vte::ansi::{Color as AnsiColor, NamedColor, Processor},
@@ -158,25 +158,47 @@ impl EventListener for TitleSink {
     }
 }
 
-/// A terminal emulator fed by [`Terminal::feed`].
-pub struct Terminal {
+struct Emulation {
     term: alacritty_terminal::Term<TitleSink>,
     parser: Processor,
+}
+
+impl Emulation {
+    fn new(size: Size, scrolling_history: usize, title: TitleSink) -> Self {
+        let config = Config { scrolling_history, ..Config::default() };
+        Self { term: alacritty_terminal::Term::new(config, &size, title), parser: Processor::new() }
+    }
+}
+
+/// The outcome of trying to move the visible viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollResult {
+    Changed,
+    NeedsHistory,
+    Unchanged,
+}
+
+/// A terminal emulator fed by [`Terminal::feed`].
+pub struct Terminal {
+    live: Emulation,
+    history: Option<Emulation>,
+    history_stale: bool,
+    generation: u64,
     size: Size,
     title: TitleSink,
 }
 
 impl Terminal {
     pub fn new(size: Size) -> Self {
-        // No scrollback. herdr's frame stream sends the viewport and has no way
-        // to move it back through history, so a scrollback buffer here would be
-        // a buffer nothing can ever scroll to. History comes from the control
-        // plane instead, and is a different rendering.
-        let config = Config { scrolling_history: 0, ..Config::default() };
         let title = TitleSink::default();
         Self {
-            term: alacritty_terminal::Term::new(config, &size, title.clone()),
-            parser: Processor::new(),
+            // Repaint frames describe only the live viewport. Letting them
+            // manufacture local history retains arbitrary repaint artifacts,
+            // so real history is loaded separately from Herdr's control plane.
+            live: Emulation::new(size, 0, title.clone()),
+            history: None,
+            history_stale: false,
+            generation: 0,
             size,
             title,
         }
@@ -188,7 +210,9 @@ impl Terminal {
 
     /// Apply a repaint. Bytes must arrive in the order they were produced.
     pub fn feed(&mut self, bytes: &[u8]) {
-        self.parser.advance(&mut self.term, bytes);
+        self.live.parser.advance(&mut self.live.term, bytes);
+        self.generation = self.generation.wrapping_add(1);
+        self.history_stale = self.history.is_some();
     }
 
     /// Re-run the grid at a new size.
@@ -200,35 +224,107 @@ impl Terminal {
             return;
         }
         self.size = size;
-        self.term.resize(size);
+        self.live.term.resize(size);
+        self.history = None;
+        self.history_stale = false;
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// Move through the most recently loaded host scrollback.
+    pub fn scroll(&mut self, lines: i32) -> ScrollResult {
+        if lines == 0 {
+            return ScrollResult::Unchanged;
+        }
+        let Some(history) = self.history.as_mut() else {
+            return if lines > 0 { ScrollResult::NeedsHistory } else { ScrollResult::Unchanged };
+        };
+        if lines > 0 && self.history_stale && history.term.grid().display_offset() == 0 {
+            return ScrollResult::NeedsHistory;
+        }
+
+        let before = history.term.grid().display_offset();
+        history.term.scroll_display(AlacrittyScroll::Delta(lines));
+        if before != history.term.grid().display_offset() {
+            ScrollResult::Changed
+        } else {
+            ScrollResult::Unchanged
+        }
+    }
+
+    /// A token for deciding whether live output arrived during an asynchronous
+    /// history request.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Replace the historical snapshot with ANSI-styled rows from Herdr, then
+    /// apply the wheel movement that requested them.
+    pub fn load_history(&mut self, ansi: &str, lines: i32, requested_at: u64) -> bool {
+        let mut history =
+            Emulation::new(self.size, Config::default().scrolling_history, TitleSink::default());
+        let ansi = crlf(ansi);
+        history.parser.advance(&mut history.term, &ansi);
+
+        // This snapshot may have become stale while it was in flight, but it
+        // is still the answer to the gesture that requested it. Apply that
+        // gesture once; `scroll` will require a refresh after returning to the
+        // live viewport.
+        let before = history.term.grid().display_offset();
+        history.term.scroll_display(AlacrittyScroll::Delta(lines));
+        let changed = before != history.term.grid().display_offset();
+        self.history = Some(history);
+        self.history_stale = self.generation != requested_at;
+        changed
     }
 
     /// Copy the current screen out.
     pub fn screen(&self) -> Screen {
-        let grid = self.term.grid();
-        let mut rows = Vec::with_capacity(self.size.rows as usize);
-        for line in 0..self.size.rows as i32 {
-            let mut cells = Vec::with_capacity(self.size.cols as usize);
-            for column in 0..self.size.cols as usize {
-                cells.push(convert(&grid[Point::new(Line(line), Column(column))]));
-            }
-            rows.push(cells);
-        }
-
-        let cursor = {
-            let point = grid.cursor.point;
-            let visible =
-                self.term.mode().contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
-            visible.then(|| Cursor { col: point.column.0 as u16, row: point.line.0.max(0) as u16 })
-        };
-
-        Screen {
-            size: self.size,
-            rows,
-            cursor,
-            title: self.title.0.lock().expect("title mutex").clone(),
-        }
+        let term = self
+            .history
+            .as_ref()
+            .filter(|history| history.term.grid().display_offset() > 0)
+            .map(|history| &history.term)
+            .unwrap_or(&self.live.term);
+        screen(term, self.size, &self.title)
     }
+}
+
+fn screen(term: &alacritty_terminal::Term<TitleSink>, size: Size, title: &TitleSink) -> Screen {
+    let grid = term.grid();
+    let mode = term.mode();
+    let display_offset = i32::try_from(grid.display_offset()).unwrap_or(i32::MAX);
+    let mut rows = Vec::with_capacity(size.rows as usize);
+    for line in 0..size.rows as i32 {
+        let mut cells = Vec::with_capacity(size.cols as usize);
+        for column in 0..size.cols as usize {
+            let line = Line(line.saturating_sub(display_offset));
+            cells.push(convert(&grid[Point::new(line, Column(column))]));
+        }
+        rows.push(cells);
+    }
+
+    let cursor = {
+        let point = grid.cursor.point;
+        let visible = mode.contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
+        let viewport_row = point.line.0.saturating_add(display_offset);
+        (visible && viewport_row >= 0 && viewport_row < i32::from(size.rows))
+            .then(|| Cursor { col: point.column.0 as u16, row: viewport_row as u16 })
+    };
+
+    Screen { size, rows, cursor, title: title.0.lock().expect("title mutex").clone() }
+}
+
+fn crlf(text: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut previous = None;
+    for byte in text.bytes() {
+        if byte == b'\n' && previous != Some(b'\r') {
+            bytes.push(b'\r');
+        }
+        bytes.push(byte);
+        previous = Some(byte);
+    }
+    bytes
 }
 
 impl std::fmt::Debug for Terminal {
@@ -345,6 +441,47 @@ mod tests {
         assert_eq!(screen.size, Size::new(40, 10));
         assert_eq!(screen.rows.len(), 10);
         assert_eq!(screen.rows[0].len(), 40);
+    }
+
+    #[test]
+    fn host_history_can_move_the_visible_viewport() {
+        let mut term = Terminal::new(Size::new(20, 3));
+        term.feed(b"one\r\ntwo\r\nthree\r\nfour");
+        assert_eq!(term.screen().to_text(), "two\nthree\nfour");
+        assert_eq!(term.scroll(1), ScrollResult::NeedsHistory);
+
+        let requested_at = term.generation();
+        assert!(term.load_history("\x1b[31mone\x1b[0m\ntwo\nthree\nfour", 1, requested_at,));
+        let history = term.screen();
+        assert_eq!(history.to_text(), "one\ntwo\nthree");
+        assert_eq!(history.rows[0][0].fg, Color::Indexed(NamedColor::Red as u8));
+        assert_eq!(history.cursor, None, "the live cursor is outside the historical viewport");
+
+        assert_eq!(term.scroll(-1), ScrollResult::Changed);
+        assert_eq!(term.screen().to_text(), "two\nthree\nfour");
+        assert_eq!(term.scroll(-1), ScrollResult::Unchanged);
+    }
+
+    #[test]
+    fn live_output_marks_a_bottomed_history_snapshot_for_refresh() {
+        let mut term = Terminal::new(Size::new(20, 3));
+        let requested_at = term.generation();
+        assert!(term.load_history("one\ntwo\nthree\nfour", 1, requested_at));
+        assert_eq!(term.scroll(-1), ScrollResult::Changed);
+
+        term.feed(b"new output");
+        assert_eq!(term.scroll(1), ScrollResult::NeedsHistory);
+    }
+
+    #[test]
+    fn history_loaded_after_live_output_is_already_stale() {
+        let mut term = Terminal::new(Size::new(20, 3));
+        let requested_at = term.generation();
+
+        term.feed(b"latest\r\n");
+        assert!(term.load_history("one\ntwo\nthree\nfour", 1, requested_at));
+        assert_eq!(term.scroll(-1), ScrollResult::Changed);
+        assert_eq!(term.scroll(1), ScrollResult::NeedsHistory);
     }
 
     #[test]

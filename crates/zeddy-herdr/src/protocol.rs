@@ -189,6 +189,29 @@ pub struct PaneCloseParams<'a> {
     pub pane_id: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+pub struct PaneReadParams<'a> {
+    pub pane_id: &'a str,
+    pub source: &'static str,
+    pub lines: u32,
+    pub format: &'static str,
+    pub strip_ansi: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaneRead {
+    pub text: String,
+    #[serde(default)]
+    pub revision: u64,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaneReadEnvelope {
+    pub read: PaneRead,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct WorkspaceList {
     #[serde(default)]
@@ -273,6 +296,16 @@ mod tests {
         let raw = r#"{"id":"1","result":{"panes":[{"pane_id":"p1","invented_in_0_9":true}]}}"#;
         let parsed: Response<PaneList> = serde_json::from_str(raw).expect("parses");
         assert_eq!(parsed.result.expect("result").panes[0].pane_id, "p1");
+    }
+
+    #[test]
+    fn styled_history_uses_the_pane_read_envelope() {
+        let raw = r#"{"id":"1","result":{"type":"pane_read","read":{"pane_id":"p1","workspace_id":"w1","tab_id":"t1","source":"recent","format":"ansi","text":"\u001b[31mred","revision":4,"truncated":false}}}"#;
+        let parsed: Response<PaneReadEnvelope> = serde_json::from_str(raw).expect("parses");
+        let read = parsed.result.expect("result").read;
+        assert_eq!(read.text, "\x1b[31mred");
+        assert_eq!(read.revision, 4);
+        assert!(!read.truncated);
     }
 
     #[test]

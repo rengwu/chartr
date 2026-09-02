@@ -166,6 +166,7 @@ configuration automatically.
 90. As an existing Chartr user, I want Chartr-zeddy data isolated from older installations, so that the rewrite cannot corrupt or conflict with existing settings.
 91. As a Chartr user, I want to drag-sort every sidebar space, including Free sessions and recovered folders, so that the cockpit order matches my workflow and survives relaunch.
 92. As an accessibility user, I want Reduce Motion to disable space-sort settling without disabling direct manipulation, so that reordering remains usable with less animation.
+93. As a Chartr user, I want wheel and trackpad gestures to move through Herdr's host scrollback, so that output remains reviewable after it leaves the live viewport.
 
 ## Implementation Decisions
 
@@ -188,6 +189,11 @@ configuration automatically.
   refresh: display agent, internal agent, non-shell foreground process, then
   persistent tab label/number. Exiting a process restores the fallback rather
   than leaving a stale locally remembered title.
+- Terminal wheel deltas are accumulated in row units. The first upward gesture
+  loads ANSI-styled `pane.read` host history on a background thread and moves a
+  separate historical VT viewport; live repaint frames remain isolated from
+  history so they cannot manufacture duplicate or missing rows. New live output
+  marks a bottomed history snapshot for refresh, and resizing invalidates it.
 - An opened item entity may appear in only one outer workspace tab, pane, and
   space. Moving an item removes it from its source before insertion; an emptied
   outer tab disappears. Cross-space moves are absent.
@@ -256,8 +262,6 @@ configuration automatically.
   command palette, menus, buttons, and shortcuts dispatch the same actions.
 - The settings catalog contains General, Appearance, Terminal, Hotkeys, and
   Plugins. Controls are omitted until their behavior exists.
-- Scrollback is omitted because the current Herdr frame stream exposes only the
-  viewport and cannot implement genuine history.
 - Zed's existing UI components and semantic styles are audited before any local
   reusable component is introduced. Chartr may compose product-specific views.
 - `Chartr Light` and `Chartr Dark` are standard semantic theme families. Chartr
@@ -374,7 +378,6 @@ configuration automatically.
 - Cross-space tab movement or duplication.
 - Terminal cloning or mirrored views.
 - Preview tabs and pinned tabs.
-- Terminal scrollback until Herdr provides a correct history source.
 - Automatic import or shared configuration with Go Chartr or Chartr-rs.
 - Multiple operating-system windows; spaces provide independent workspace
   ownership within the Chartr window.
