@@ -6,8 +6,9 @@
 //! owns neither type. Invalid weak handles express that absence without
 //! manufacturing a partial Zed workspace; disabling workspace actions selects
 //! the view's documented non-workspace-host path. Chartr then selects the one
-//! maintained host extension, top grid alignment; all terminal behavior remains
-//! Zed's pinned model and view.
+//! maintained host extensions: top grid alignment, balanced cell padding, and
+//! an overlay scrollbar. All terminal behavior remains Zed's pinned model and
+//! view.
 
 use gpui::{
     App, AppContext as _, Div, Entity, Hsla, InteractiveElement as _, ParentElement as _,
@@ -31,13 +32,14 @@ pub fn new_view(
         );
         view.set_show_workspace_actions(false, cx);
         view.set_vertical_alignment(terminal_view::TerminalVerticalAlignment::Top, cx);
+        view.set_grid_padding(true, cx);
         view
     })
 }
 
 /// Mount a TerminalView exactly as Zed mounts it: it fills the available pane
 /// without an additional product-level inset, and the TerminalElement remains
-/// the innermost mouse target. The view itself owns its one-cell grid gutter.
+/// the innermost mouse target. The view itself owns its balanced grid gutter.
 pub fn element(view: Entity<terminal_view::TerminalView>, background: Hsla) -> Div {
     let drop_view = view.clone();
     div()
@@ -128,20 +130,18 @@ mod tests {
         assert!(terminal.read_with(cx, |terminal, _| terminal.used_lines()) >= 1);
         let initial_line_height = terminal.read_with(cx, |terminal, _| {
             let bounds = terminal.last_content().terminal_bounds;
-            assert_eq!(bounds.bounds.origin.y, px(0.));
-            assert!(bounds.bounds.origin.x > px(0.));
-            assert!(bounds.bounds.origin.x <= bounds.cell_width);
+            assert_balanced_padding(bounds, size(px(400.), px(201.)));
             bounds.line_height
         });
 
         cx.simulate_resize(size(px(400.), px(202.)));
         cx.run_until_parked();
-        assert_eq!(
-            terminal.read_with(cx, |terminal, _| {
-                terminal.last_content().terminal_bounds.bounds.origin.y
-            }),
-            px(0.)
-        );
+        terminal.read_with(cx, |terminal, _| {
+            assert_balanced_padding(
+                terminal.last_content().terminal_bounds,
+                size(px(400.), px(202.)),
+            );
+        });
 
         let mut larger_typography = crate::settings::ResolvedSettings::default();
         larger_typography.terminal_font_size = 19.;
@@ -152,5 +152,29 @@ mod tests {
         assert!(larger_line_height > initial_line_height);
 
         assert_eq!(host.read_with(cx, |host, _| host.terminal.entity_id()), terminal.entity_id());
+    }
+
+    fn assert_balanced_padding(
+        terminal: terminal::TerminalBounds,
+        viewport: gpui::Size<gpui::Pixels>,
+    ) {
+        let left = terminal.bounds.origin.x;
+        let top = terminal.bounds.origin.y;
+        let grid_right = left + terminal.cell_width * terminal.num_columns() as f32;
+        let grid_bottom = top + terminal.line_height * terminal.num_lines() as f32;
+        let right = viewport.width - grid_right;
+        let bottom = viewport.height - grid_bottom;
+
+        assert!(left > px(0.));
+        assert!(f32::from(top - left).abs() <= 1.);
+        assert!(right + px(1.) >= left);
+        assert!(right - left <= terminal.cell_width + px(1.));
+        assert!(bottom + px(1.) >= top);
+        assert!(
+            bottom - top <= terminal.line_height + px(2.),
+            "top={top:?}, bottom={bottom:?}, line_height={:?}, lines={}",
+            terminal.line_height,
+            terminal.num_lines()
+        );
     }
 }

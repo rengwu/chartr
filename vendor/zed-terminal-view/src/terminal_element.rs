@@ -1281,7 +1281,7 @@ impl Element for TerminalElement {
                 let text_system = cx.text_system();
                 let player_color = theme.players().local();
                 let match_color = theme.colors().search_match_background;
-                let gutter;
+                let horizontal_insets;
                 let (dimensions, line_height_px) = {
                     let rem_size = window.rem_size();
                     let font_pixels = text_style.font_size.to_pixels(rem_size);
@@ -1292,10 +1292,18 @@ impl Element for TerminalElement {
                         .advance(font_id, font_pixels, 'm')
                         .unwrap()
                         .width;
-                    gutter = cell_width;
+                    let padded_grid = {
+                        let terminal_view = self.terminal_view.read(cx);
+                        matches!(terminal_view.mode, TerminalMode::Standalone)
+                            && terminal_view.grid_padding
+                    };
+                    let trailing_padding = if padded_grid { cell_width } else { px(0.) };
+                    let vertical_padding = trailing_padding;
+                    horizontal_insets = cell_width + trailing_padding;
 
                     let mut size = bounds.size;
-                    size.width -= gutter;
+                    size.width -= horizontal_insets;
+                    size.height = (size.height - vertical_padding * 2.).max(px(0.));
                     let available_height = size.height;
 
                     // https://github.com/zed-industries/zed/issues/2750
@@ -1306,7 +1314,8 @@ impl Element for TerminalElement {
                     }
 
                     let mut origin = bounds.origin;
-                    origin.x += gutter;
+                    origin.x += cell_width;
+                    origin.y += vertical_padding;
 
                     if matches!(self.terminal_view.read(cx).mode, TerminalMode::Standalone) {
                         let should_anchor_to_bottom = {
@@ -1566,7 +1575,7 @@ impl Element for TerminalElement {
                         let element = render(&mut block_cx);
                         let mut element = div().occlude().child(element).into_any_element();
                         let available_space = size(
-                            AvailableSpace::Definite(dimensions.width() + gutter),
+                            AvailableSpace::Definite(dimensions.width() + horizontal_insets),
                             AvailableSpace::Definite(
                                 block.height as f32 * dimensions.line_height(),
                             ),

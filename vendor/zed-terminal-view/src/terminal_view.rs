@@ -139,6 +139,7 @@ pub struct TerminalView {
     blink_manager: Entity<BlinkManager>,
     mode: TerminalMode,
     vertical_alignment: TerminalVerticalAlignment,
+    grid_padding: bool,
     // Explicit override for whether workspace-specific context menu actions are shown.
     // When `None`, visibility is derived from `mode` (hidden for embedded terminals).
     show_workspace_actions: Option<bool>,
@@ -304,6 +305,7 @@ impl TerminalView {
             hover_tooltip_update: Task::ready(()),
             mode: TerminalMode::Standalone,
             vertical_alignment: TerminalVerticalAlignment::default(),
+            grid_padding: false,
             show_workspace_actions: None,
             workspace_id,
             show_breadcrumbs: TerminalSettings::get_global(cx).toolbar.breadcrumbs,
@@ -341,6 +343,14 @@ impl TerminalView {
     ) {
         if self.vertical_alignment != alignment {
             self.vertical_alignment = alignment;
+            cx.notify();
+        }
+    }
+
+    /// Give every edge of a standalone grid the same one-cell base padding.
+    pub fn set_grid_padding(&mut self, padded: bool, cx: &mut Context<Self>) {
+        if self.grid_padding != padded {
+            self.grid_padding = padded;
             cx.notify();
         }
     }
@@ -1432,14 +1442,9 @@ impl Render for TerminalView {
                         self.mode.clone(),
                     ))
                     .when(self.content_mode(window, cx).is_scrollable(), |div| {
-                        let colors = cx.theme().colors();
                         div.custom_scrollbars(
                             Scrollbars::for_settings::<TerminalScrollbarSettingsWrapper>()
                                 .show_along(ScrollAxes::Vertical)
-                                .with_stable_track_along(
-                                    ScrollAxes::Vertical,
-                                    colors.editor_background,
-                                )
                                 .tracked_scroll_handle(&self.scroll_handle),
                             window,
                             cx,
