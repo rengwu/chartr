@@ -17,6 +17,7 @@ use crate::{mode::Mode, workspace::WorkspaceTabs};
 
 pub const STATE_FILE: &str = "state.sqlite";
 const SCHEMA_VERSION: i64 = 1;
+const IMPLICIT_ROOT_CLEANUP: &str = "migration.implicit-root-space";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -201,6 +202,28 @@ impl StateStore {
         Ok(())
     }
 
+    /// Whether this installation still needs the one-time cleanup for builds
+    /// that mistook a desktop launcher's `/` working directory for a project.
+    pub fn implicit_root_cleanup_pending(&self) -> Result<bool> {
+        let completed = self
+            .connection
+            .query_row(
+                "SELECT 1 FROM app_state WHERE key = ?1",
+                [IMPLICIT_ROOT_CLEANUP],
+                |_| Ok(()),
+            )
+            .optional()?;
+        Ok(completed.is_none())
+    }
+
+    pub fn complete_implicit_root_cleanup(&mut self) -> Result<()> {
+        self.connection.execute(
+            "INSERT OR REPLACE INTO app_state (key, value_json) VALUES (?1, 'true')",
+            [IMPLICIT_ROOT_CLEANUP],
+        )?;
+        Ok(())
+    }
+
     #[cfg(test)]
     fn schema_version(&self) -> Result<i64> {
         Ok(self.connection.pragma_query_value(None, "user_version", |row| row.get(0))?)
@@ -284,6 +307,14 @@ mod tests {
         store.save(&Snapshot { spaces: vec![space("two")], ..Snapshot::default() }).unwrap();
         assert_eq!(store.load().unwrap().spaces[0].key, "two");
         assert_eq!(store.load().unwrap().spaces.len(), 1);
+    }
+
+    #[test]
+    fn one_time_migrations_have_an_explicit_completion_marker() {
+        let mut store = StateStore::memory().unwrap();
+        assert!(store.implicit_root_cleanup_pending().unwrap());
+        store.complete_implicit_root_cleanup().unwrap();
+        assert!(!store.implicit_root_cleanup_pending().unwrap());
     }
 
     #[test]

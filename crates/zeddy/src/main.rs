@@ -1,6 +1,9 @@
 //! Chartr — a multi-space agent multiplexer.
 
-use std::path::PathBuf;
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use gpui::{
     App, AppContext as _, Bounds, Focusable as _, WindowBounds, WindowOptions, point, px, size,
@@ -29,6 +32,7 @@ mod workspace;
 
 fn main() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let opened_path = opened_path_from_args(std::env::args_os(), &cwd);
 
     application().with_assets(zed_assets::Assets).run(move |cx: &mut App| {
         // Zed's terminal model/view keeps its native emulator settings graph
@@ -104,7 +108,8 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| app::Zeddy::new(cwd.clone(), window, cx));
+                let view =
+                    cx.new(|cx| app::Zeddy::new(cwd.clone(), opened_path.clone(), window, cx));
                 window.focus(&view.read(cx).focus_handle(cx), cx);
                 view
             },
@@ -125,4 +130,61 @@ fn main() {
         .detach();
         cx.activate(true);
     });
+}
+
+/// Return only a folder explicitly passed to Chartr.
+///
+/// A desktop launcher controls the process working directory; on macOS that is
+/// commonly `/`. It is therefore never evidence that the operator opened a
+/// project. Relative command-line paths still resolve against the shell's
+/// working directory, as users expect from `Chartr .`.
+fn opened_path_from_args(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Option<PathBuf> {
+    let mut args = args.into_iter();
+    args.next();
+    let mut argument = args.next()?;
+    if argument == "--" {
+        argument = args.next()?;
+    }
+    // Older macOS launch services may inject this process-serial-number
+    // argument. It is launcher metadata, not a path selected by the user.
+    if argument.to_string_lossy().starts_with("-psn_") {
+        return None;
+    }
+    let path = PathBuf::from(argument);
+    Some(if path.is_absolute() { path } else { cwd.join(path) })
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    #[test]
+    fn a_plain_desktop_launch_does_not_open_its_inherited_working_directory() {
+        assert_eq!(opened_path_from_args([OsString::from("Chartr")], Path::new("/")), None);
+        assert_eq!(
+            opened_path_from_args(
+                [OsString::from("Chartr"), OsString::from("-psn_0_12345")],
+                Path::new("/"),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn an_explicit_relative_path_is_resolved_from_the_shell_directory() {
+        assert_eq!(
+            opened_path_from_args(
+                [OsString::from("Chartr"), OsString::from("project")],
+                Path::new("/work"),
+            ),
+            Some(PathBuf::from("/work/project"))
+        );
+        assert_eq!(
+            opened_path_from_args(
+                [OsString::from("Chartr"), OsString::from("--"), OsString::from(".")],
+                Path::new("/work"),
+            ),
+            Some(PathBuf::from("/work/."))
+        );
+    }
 }

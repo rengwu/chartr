@@ -159,7 +159,12 @@ pub struct Zeddy {
 }
 
 impl Zeddy {
-    pub fn new(cwd: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        cwd: PathBuf,
+        opened_path: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let focus = cx.focus_handle();
         cx.on_focus_in(&focus, window, |this, window, cx| {
             this.focus_active_terminal(window, cx);
@@ -192,7 +197,7 @@ impl Zeddy {
             cx.notify();
         })
         .detach();
-        let (state, saved, state_problem) =
+        let (mut state, mut saved, mut state_problem) =
             match crate::persistence::state_file().and_then(StateStore::open) {
                 Ok(store) => match store.load() {
                     Ok(saved) => (Some(store), saved, None),
@@ -247,7 +252,38 @@ impl Zeddy {
             }
         };
 
-        let (registry, registry_problem) = load_registry(&cwd);
+        let (mut registry, mut registry_problem) = load_registry(opened_path.as_deref());
+        if opened_path.is_none() && cwd.parent().is_none() {
+            let cleanup_pending = match state.as_ref() {
+                Some(state) => match state.implicit_root_cleanup_pending() {
+                    Ok(pending) => pending,
+                    Err(error) => {
+                        state_problem = Some(error.to_string());
+                        false
+                    }
+                },
+                None => true,
+            };
+            if cleanup_pending {
+                let cleanup = registry
+                    .as_mut()
+                    .map(|registry| cleanup_empty_implicit_root(registry, &mut saved, &cwd))
+                    .transpose();
+                match cleanup {
+                    Ok(Some(changed)) => {
+                        if let Some(state) = state.as_mut() {
+                            let result = if changed { state.save(&saved) } else { Ok(()) }
+                                .and_then(|_| state.complete_implicit_root_cleanup());
+                            if let Err(error) = result {
+                                state_problem = Some(error.to_string());
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => registry_problem = Some(error.to_string()),
+                }
+            }
+        }
         let mut descriptors = Vec::new();
         let home = settings
             .resolved()
@@ -306,22 +342,22 @@ impl Zeddy {
                 space.update(cx, |space, _| space.restore_saved(saved_space));
             }
         }
-        let active = saved
-            .window
-            .active_space
+        let active = opened_path
             .as_ref()
-            .and_then(|key| {
-                spaces.iter().find(|space| space.read(cx).persisted().key == *key).cloned()
-            })
-            .or_else(|| {
+            .and_then(|opened_path| {
                 spaces
                     .iter()
                     .find(|space| {
                         let space = space.read(cx);
                         space.kind() == SpaceKind::Registered
-                            && spaces::same_path(space.path(), &cwd)
+                            && spaces::same_path(space.path(), opened_path)
                     })
                     .cloned()
+            })
+            .or_else(|| {
+                saved.window.active_space.as_ref().and_then(|key| {
+                    spaces.iter().find(|space| space.read(cx).persisted().key == *key).cloned()
+                })
             })
             .or_else(|| spaces.first().cloned());
 
@@ -3653,7 +3689,7 @@ fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> i
         .occlude()
 }
 
-fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {
+fn load_registry(opened_path: Option<&std::path::Path>) -> (Option<Registry>, Option<String>) {
     let file = match spaces::spaces_file() {
         Ok(file) => file,
         Err(error) => return (None, Some(error.to_string())),
@@ -3662,16 +3698,50 @@ fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {
         Ok(registry) => registry,
         Err(error) => return (None, Some(error.to_string())),
     };
-    // Launching zeddy in a folder is the command-line equivalent of Zed's
-    // `zed <path>`: the opened project joins the persisted recent/space list.
-    let is_ad_hoc_home = std::env::home_dir().is_some_and(|home| spaces::same_path(&home, cwd));
-    if !is_ad_hoc_home
-        && !registry.spaces().iter().any(|space| spaces::same_path(space.path(), cwd))
-        && let Err(error) = registry.register(cwd)
-    {
-        return (Some(registry), Some(error.to_string()));
+    // Only an explicit command-line path is equivalent to Zed's `zed <path>`.
+    // The inherited process working directory belongs to the desktop launcher.
+    if let Some(opened_path) = opened_path {
+        let is_ad_hoc_home =
+            std::env::home_dir().is_some_and(|home| spaces::same_path(&home, opened_path));
+        if !is_ad_hoc_home
+            && !registry.spaces().iter().any(|space| spaces::same_path(space.path(), opened_path))
+            && let Err(error) = registry.register(opened_path)
+        {
+            return (Some(registry), Some(error.to_string()));
+        }
     }
     (Some(registry), None)
+}
+
+/// Remove the legacy root row only when it cannot own anything. An explicit
+/// `Chartr /` launch bypasses this migration, and a root space with items is
+/// retained so cleanup can never orphan a live terminal or plugin.
+fn cleanup_empty_implicit_root(
+    registry: &mut Registry,
+    saved: &mut Snapshot,
+    root: &std::path::Path,
+) -> Result<bool, spaces::Error> {
+    let saved_root_has_items = saved.spaces.iter().any(|space| {
+        space.kind == PersistedSpaceKind::Folder
+            && space.path.as_deref().is_some_and(|path| spaces::same_path(path, root))
+            && !space.items.is_empty()
+    });
+    if saved_root_has_items {
+        return Ok(false);
+    }
+
+    let registry_changed = registry.remove(root)?;
+    let previous_len = saved.spaces.len();
+    saved.spaces.retain(|space| {
+        space.kind != PersistedSpaceKind::Folder
+            || !space.path.as_deref().is_some_and(|path| spaces::same_path(path, root))
+    });
+    let state_changed = saved.spaces.len() != previous_len;
+    let root_key = format!("folder:{}", root.display());
+    if state_changed && saved.window.active_space.as_deref() == Some(root_key.as_str()) {
+        saved.window.active_space = Some("ad-hoc".to_owned());
+    }
+    Ok(registry_changed || state_changed)
 }
 
 fn message(text: &str, cx: &App) -> impl IntoElement {
@@ -3706,9 +3776,12 @@ fn plugin_paths() -> Paths {
 #[cfg(test)]
 mod pane_drop_tests {
     use super::{
-        SplitDirection, pane_drop_direction_for_position, regex_escape_literal,
-        resolve_terminal_path, split_direction_for_position,
+        PersistedSpaceKind, Registry, Snapshot, SplitDirection, cleanup_empty_implicit_root,
+        pane_drop_direction_for_position, regex_escape_literal, resolve_terminal_path,
+        split_direction_for_position,
     };
+    use crate::{persistence::PersistedSpace, workspace::WorkspaceTabs};
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn terminal_search_treats_user_text_as_a_literal() {
@@ -3766,5 +3839,61 @@ mod pane_drop_tests {
         assert_eq!(split_direction_for_position(100., 100., 96., 8.), Some(SplitDirection::Right));
         assert_eq!(split_direction_for_position(100., 100., 92., 97.), Some(SplitDirection::Down));
         assert_eq!(split_direction_for_position(100., 100., 3., 90.), Some(SplitDirection::Left));
+    }
+
+    #[test]
+    fn migration_removes_the_empty_root_space_from_registry_and_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("spaces.toml");
+        let mut registry = Registry::load(&file).unwrap();
+        registry.register(Path::new("/")).unwrap();
+        let mut saved = Snapshot {
+            spaces: vec![PersistedSpace {
+                key: "folder:/".to_owned(),
+                name: "/".to_owned(),
+                path: Some(PathBuf::from("/")),
+                kind: PersistedSpaceKind::Folder,
+                layout: WorkspaceTabs::new(),
+                items: Vec::new(),
+                expanded: true,
+            }],
+            ..Snapshot::default()
+        };
+        saved.window.active_space = Some("folder:/".to_owned());
+
+        assert!(cleanup_empty_implicit_root(&mut registry, &mut saved, Path::new("/")).unwrap());
+        assert!(registry.spaces().is_empty());
+        assert!(saved.spaces.is_empty());
+        assert_eq!(saved.window.active_space.as_deref(), Some("ad-hoc"));
+        assert!(Registry::load(file).unwrap().spaces().is_empty());
+    }
+
+    #[test]
+    fn migration_keeps_a_root_space_that_owns_items() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut registry = Registry::load(temp.path().join("spaces.toml")).unwrap();
+        registry.register(Path::new("/")).unwrap();
+        let mut saved = Snapshot {
+            spaces: vec![PersistedSpace {
+                key: "folder:/".to_owned(),
+                name: "/".to_owned(),
+                path: Some(PathBuf::from("/")),
+                kind: PersistedSpaceKind::Folder,
+                layout: WorkspaceTabs::new(),
+                items: vec![crate::persistence::PersistedItem::Plugin {
+                    item_id: 1,
+                    plugin: "example.plugin".to_owned(),
+                    pane: "main".to_owned(),
+                    state: None,
+                    bound_session: None,
+                }],
+                expanded: true,
+            }],
+            ..Snapshot::default()
+        };
+
+        assert!(!cleanup_empty_implicit_root(&mut registry, &mut saved, Path::new("/")).unwrap());
+        assert_eq!(registry.spaces().len(), 1);
+        assert_eq!(saved.spaces.len(), 1);
     }
 }

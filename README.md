@@ -9,6 +9,12 @@ sh vendor/herdr/fetch.sh
 cargo run -p zeddy
 ```
 
+Pass a folder explicitly when it should be registered and opened at launch:
+
+```sh
+cargo run -p zeddy -- .
+```
+
 The workspace build requires Zig 0.16.0 for its pinned libghostty terminal
 input encoder. The sidecar fetch currently builds an immutable post-0.8.2
 Herdr revision, because the latest tagged release drops non-wheel mouse input
