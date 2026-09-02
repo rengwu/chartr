@@ -1,16 +1,17 @@
 //! zeddy's only VT boundary.
 //!
-//! Bytes go in, a [`Screen`] comes out. That is the whole contract, and it is
-//! the whole reason this crate exists: the renderer above it never sees an
-//! escape sequence, and swapping the parser underneath it is a change to one
-//! file rather than to the window.
+//! Output bytes go in and a [`Screen`] comes out; normalized [`KeyEvent`]s go
+//! in and terminal input bytes come out. This is the whole reason the crate
+//! exists: neither the renderer nor the keyboard adapter above it sees an
+//! escape sequence or an upstream terminal type.
 //!
-//! # Why alacritty's core
+//! # Two deliberately different cores
 //!
-//! It is the parser Zed's own terminal uses, and zeddy is built on Zed's
-//! frontend. Taking the same one means the grid semantics the renderer assumes
-//! and the grid semantics the parser produces already agree — and, unlike
-//! libghostty-vt, it needs no Zig in the build.
+//! Alacritty parses output because it is the parser Zed's own terminal uses and
+//! its grid semantics already agree with Zeddy's renderer. libghostty encodes
+//! input because it implements the legacy, xterm, fixterms, and Kitty keyboard
+//! protocols as one mode-aware encoder. Both are private implementation
+//! details of this boundary.
 //!
 //! # Snapshots, not references
 //!
@@ -28,9 +29,199 @@ use alacritty_terminal::{
     event::{Event, EventListener},
     grid::{Dimensions, Scroll as AlacrittyScroll},
     index::{Column, Line, Point},
-    term::{Config, cell::Flags},
+    term::{Config, TermMode, cell::Flags},
     vte::ansi::{Color as AnsiColor, NamedColor, Processor},
 };
+use libghostty_vt::key;
+
+/// An error produced while turning a normalized key event into terminal bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyEncodingError(String);
+
+impl std::fmt::Display for KeyEncodingError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for KeyEncodingError {}
+
+impl From<libghostty_vt::Error> for KeyEncodingError {
+    fn from(error: libghostty_vt::Error) -> Self {
+        Self(error.to_string())
+    }
+}
+
+/// Declares the normalized keyboard and its Ghostty counterpart together, so
+/// adding a key cannot leave either the physical identity or its unshifted
+/// character behind.
+macro_rules! key_codes {
+    ($($name:ident => $upstream:ident, $unshifted:expr;)*) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        #[allow(missing_docs)]
+        pub enum KeyCode {
+            $($name,)*
+        }
+
+        impl KeyCode {
+            const ALL: &'static [Self] = &[$(Self::$name,)*];
+
+            /// Find the physical key which types `character` without modifiers.
+            pub fn typing(character: char) -> Option<Self> {
+                Self::ALL.iter().copied().find(|key| key.unshifted() == Some(character))
+            }
+
+            /// The character this key types without modifiers, when it has one.
+            pub fn unshifted(self) -> Option<char> {
+                match self {
+                    $(Self::$name => $unshifted,)*
+                }
+            }
+
+            fn upstream(self) -> key::Key {
+                match self {
+                    $(Self::$name => key::Key::$upstream,)*
+                }
+            }
+        }
+    };
+}
+
+key_codes! {
+    A => A, Some('a'); B => B, Some('b'); C => C, Some('c'); D => D, Some('d');
+    E => E, Some('e'); F => F, Some('f'); G => G, Some('g'); H => H, Some('h');
+    I => I, Some('i'); J => J, Some('j'); K => K, Some('k'); L => L, Some('l');
+    M => M, Some('m'); N => N, Some('n'); O => O, Some('o'); P => P, Some('p');
+    Q => Q, Some('q'); R => R, Some('r'); S => S, Some('s'); T => T, Some('t');
+    U => U, Some('u'); V => V, Some('v'); W => W, Some('w'); X => X, Some('x');
+    Y => Y, Some('y'); Z => Z, Some('z');
+
+    Digit0 => Digit0, Some('0'); Digit1 => Digit1, Some('1');
+    Digit2 => Digit2, Some('2'); Digit3 => Digit3, Some('3');
+    Digit4 => Digit4, Some('4'); Digit5 => Digit5, Some('5');
+    Digit6 => Digit6, Some('6'); Digit7 => Digit7, Some('7');
+    Digit8 => Digit8, Some('8'); Digit9 => Digit9, Some('9');
+
+    Backquote => Backquote, Some('`'); Backslash => Backslash, Some('\\');
+    BracketLeft => BracketLeft, Some('['); BracketRight => BracketRight, Some(']');
+    Comma => Comma, Some(','); Equal => Equal, Some('='); Minus => Minus, Some('-');
+    Period => Period, Some('.'); Quote => Quote, Some('\''); Semicolon => Semicolon, Some(';');
+    Slash => Slash, Some('/'); Space => Space, Some(' ');
+
+    Enter => Enter, None; Tab => Tab, None; Escape => Escape, None;
+    Backspace => Backspace, None; Delete => Delete, None; Insert => Insert, None;
+    Home => Home, None; End => End, None; PageUp => PageUp, None; PageDown => PageDown, None;
+    ArrowUp => ArrowUp, None; ArrowDown => ArrowDown, None;
+    ArrowLeft => ArrowLeft, None; ArrowRight => ArrowRight, None;
+
+    F1 => F1, None; F2 => F2, None; F3 => F3, None; F4 => F4, None;
+    F5 => F5, None; F6 => F6, None; F7 => F7, None; F8 => F8, None;
+    F9 => F9, None; F10 => F10, None; F11 => F11, None; F12 => F12, None;
+    F13 => F13, None; F14 => F14, None; F15 => F15, None; F16 => F16, None;
+    F17 => F17, None; F18 => F18, None; F19 => F19, None; F20 => F20, None;
+    F21 => F21, None; F22 => F22, None; F23 => F23, None; F24 => F24, None;
+    F25 => F25, None;
+
+    BrowserBack => BrowserBack, None; BrowserForward => BrowserForward, None;
+    Copy => Copy, None; Cut => Cut, None; Paste => Paste, None;
+    Unidentified => Unidentified, None;
+}
+
+/// One keyboard event after the window system's spelling has been normalized.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyEvent {
+    pub code: KeyCode,
+    /// Text after Shift/layout processing but before Control/Alt transformations.
+    pub text: Option<String>,
+    pub action: KeyAction,
+    pub modifiers: Modifiers,
+    pub consumed_modifiers: Modifiers,
+    pub composing: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyAction {
+    #[default]
+    Press,
+    Repeat,
+    Release,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub shift: bool,
+    pub alt: bool,
+    pub control: bool,
+    pub super_key: bool,
+}
+
+/// The terminal modes which affect keyboard encoding.
+///
+/// This copyable snapshot is the seam between Zeddy's background-owned output
+/// parser and the window-thread-only Ghostty encoder.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeyboardModes {
+    cursor_key_application: bool,
+    keypad_key_application: bool,
+    disambiguate_escape_codes: bool,
+    report_event_types: bool,
+    report_alternate_keys: bool,
+    report_all_keys: bool,
+    report_associated_text: bool,
+}
+
+/// Ghostty's keyboard encoder, kept separate because the safe binding is not
+/// `Send` and must remain on the window thread which created it.
+#[derive(Debug)]
+pub struct KeyEncoder(key::Encoder<'static>);
+
+impl KeyEncoder {
+    pub fn new() -> Result<Self, KeyEncodingError> {
+        Ok(Self(key::Encoder::new()?))
+    }
+
+    /// Encode one normalized event under an active terminal's mode snapshot.
+    pub fn encode(
+        &mut self,
+        input: &KeyEvent,
+        modes: KeyboardModes,
+    ) -> Result<Vec<u8>, KeyEncodingError> {
+        self.0
+            .set_cursor_key_application(modes.cursor_key_application)
+            .set_keypad_key_application(modes.keypad_key_application)
+            .set_alt_esc_prefix(true)
+            .set_modify_other_keys_state_2(false)
+            .set_kitty_flags(kitty_flags(modes))
+            .set_macos_option_as_alt(key::OptionAsAlt::True)
+            .set_backarrow_key_mode(false);
+
+        let mut event = key::Event::new()?;
+        event
+            .set_action(match input.action {
+                KeyAction::Press => key::Action::Press,
+                KeyAction::Repeat => key::Action::Repeat,
+                KeyAction::Release => key::Action::Release,
+            })
+            .set_key(input.code.upstream())
+            .set_mods(key_modifiers(input.modifiers))
+            .set_consumed_mods(key_modifiers(input.consumed_modifiers))
+            .set_composing(input.composing);
+        if let Some(text) = &input.text {
+            event.set_utf8(Some(text.clone()));
+        }
+        if let Some(codepoint) = input
+            .code
+            .unshifted()
+            .or_else(|| input.text.as_ref().and_then(|text| text.chars().next()))
+        {
+            event.set_unshifted_codepoint(codepoint);
+        }
+
+        let mut encoded = Vec::new();
+        self.0.encode_to_vec(&event, &mut encoded)?;
+        Ok(encoded)
+    }
+}
 
 /// A terminal grid, in cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +356,9 @@ struct Emulation {
 
 impl Emulation {
     fn new(size: Size, scrolling_history: usize, title: TitleSink) -> Self {
-        let config = Config { scrolling_history, ..Config::default() };
+        // This permits applications to negotiate Kitty keyboard modes. It does
+        // not enable any flag by itself; legacy encoding remains the default.
+        let config = Config { scrolling_history, kitty_keyboard: true, ..Config::default() };
         Self { term: alacritty_terminal::Term::new(config, &size, title), parser: Processor::new() }
     }
 }
@@ -257,6 +450,20 @@ impl Terminal {
         self.generation
     }
 
+    /// Take a copyable snapshot of the modes which affect keyboard encoding.
+    pub fn keyboard_modes(&self) -> KeyboardModes {
+        let mode = self.live.term.mode();
+        KeyboardModes {
+            cursor_key_application: mode.contains(TermMode::APP_CURSOR),
+            keypad_key_application: mode.contains(TermMode::APP_KEYPAD),
+            disambiguate_escape_codes: mode.contains(TermMode::DISAMBIGUATE_ESC_CODES),
+            report_event_types: mode.contains(TermMode::REPORT_EVENT_TYPES),
+            report_alternate_keys: mode.contains(TermMode::REPORT_ALTERNATE_KEYS),
+            report_all_keys: mode.contains(TermMode::REPORT_ALL_KEYS_AS_ESC),
+            report_associated_text: mode.contains(TermMode::REPORT_ASSOCIATED_TEXT),
+        }
+    }
+
     /// Replace the historical snapshot with ANSI-styled rows from Herdr, then
     /// apply the wheel movement that requested them.
     pub fn load_history(&mut self, ansi: &str, lines: i32, requested_at: u64) -> bool {
@@ -289,6 +496,25 @@ impl Terminal {
     }
 }
 
+fn key_modifiers(modifiers: Modifiers) -> key::Mods {
+    let mut result = key::Mods::empty();
+    result.set(key::Mods::SHIFT, modifiers.shift);
+    result.set(key::Mods::ALT, modifiers.alt);
+    result.set(key::Mods::CTRL, modifiers.control);
+    result.set(key::Mods::SUPER, modifiers.super_key);
+    result
+}
+
+fn kitty_flags(modes: KeyboardModes) -> key::KittyKeyFlags {
+    let mut flags = key::KittyKeyFlags::DISABLED;
+    flags.set(key::KittyKeyFlags::DISAMBIGUATE, modes.disambiguate_escape_codes);
+    flags.set(key::KittyKeyFlags::REPORT_EVENTS, modes.report_event_types);
+    flags.set(key::KittyKeyFlags::REPORT_ALTERNATES, modes.report_alternate_keys);
+    flags.set(key::KittyKeyFlags::REPORT_ALL, modes.report_all_keys);
+    flags.set(key::KittyKeyFlags::REPORT_ASSOCIATED, modes.report_associated_text);
+    flags
+}
+
 fn screen(term: &alacritty_terminal::Term<TitleSink>, size: Size, title: &TitleSink) -> Screen {
     let grid = term.grid();
     let mode = term.mode();
@@ -308,7 +534,7 @@ fn screen(term: &alacritty_terminal::Term<TitleSink>, size: Size, title: &TitleS
         let visible = mode.contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
         let viewport_row = point.line.0.saturating_add(display_offset);
         (visible && viewport_row >= 0 && viewport_row < i32::from(size.rows))
-            .then(|| Cursor { col: point.column.0 as u16, row: viewport_row as u16 })
+            .then_some(Cursor { col: point.column.0 as u16, row: viewport_row as u16 })
     };
 
     Screen { size, rows, cursor, title: title.0.lock().expect("title mutex").clone() }
@@ -375,6 +601,21 @@ mod tests {
         let mut term = Terminal::new(Size::new(20, 3));
         term.feed(bytes);
         term.screen()
+    }
+
+    fn press(code: KeyCode, text: Option<&str>, modifiers: Modifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            text: text.map(str::to_owned),
+            action: KeyAction::Press,
+            modifiers,
+            consumed_modifiers: Modifiers::default(),
+            composing: false,
+        }
+    }
+
+    fn encoded(term: &Terminal, event: &KeyEvent) -> Vec<u8> {
+        KeyEncoder::new().unwrap().encode(event, term.keyboard_modes()).unwrap()
     }
 
     #[test]
@@ -487,5 +728,73 @@ mod tests {
     #[test]
     fn a_zero_sized_grid_is_never_handed_to_the_emulator() {
         assert_eq!(Size::new(0, 0), Size::new(1, 1));
+    }
+
+    #[test]
+    fn ghostty_encodes_the_legacy_terminal_key_matrix() {
+        let term = Terminal::new(Size::default());
+        let alt = Modifiers { alt: true, ..Modifiers::default() };
+        let shift = Modifiers { shift: true, ..Modifiers::default() };
+        let control = Modifiers { control: true, ..Modifiers::default() };
+
+        for (event, expected) in [
+            (press(KeyCode::Enter, None, Modifiers::default()), b"\r".to_vec()),
+            (press(KeyCode::Enter, None, shift), b"\x1b[27;2;13~".to_vec()),
+            (press(KeyCode::ArrowLeft, None, alt), b"\x1b[1;3D".to_vec()),
+            (press(KeyCode::ArrowRight, None, control), b"\x1b[1;5C".to_vec()),
+            (press(KeyCode::Tab, None, shift), b"\x1b[Z".to_vec()),
+            (press(KeyCode::F5, None, Modifiers::default()), b"\x1b[15~".to_vec()),
+            (press(KeyCode::B, Some("b"), alt), b"\x1bb".to_vec()),
+            (
+                press(
+                    KeyCode::Slash,
+                    Some("?"),
+                    Modifiers { control: true, shift: true, ..Modifiers::default() },
+                ),
+                vec![0x7f],
+            ),
+        ] {
+            assert_eq!(
+                encoded(&term, &event),
+                expected,
+                "unexpected encoding for {:?} with {:?}",
+                event.code,
+                event.modifiers,
+            );
+        }
+    }
+
+    #[test]
+    fn application_cursor_mode_changes_unmodified_arrows() {
+        let mut term = Terminal::new(Size::default());
+        let left = press(KeyCode::ArrowLeft, None, Modifiers::default());
+        assert_eq!(encoded(&term, &left), b"\x1b[D");
+
+        term.feed(b"\x1b[?1h");
+        assert_eq!(encoded(&term, &left), b"\x1bOD");
+    }
+
+    #[test]
+    fn kitty_mode_reports_modified_enter_and_key_releases() {
+        let mut term = Terminal::new(Size::default());
+        // Disambiguate, report event types, and report every key. The latter is
+        // required by the Kitty protocol before Enter releases are reported.
+        term.feed(b"\x1b[>11u");
+        let shifted_enter =
+            press(KeyCode::Enter, None, Modifiers { shift: true, ..Modifiers::default() });
+        assert_eq!(encoded(&term, &shifted_enter), b"\x1b[13;2u");
+
+        let release = KeyEvent { action: KeyAction::Release, ..shifted_enter };
+        assert_eq!(encoded(&term, &release), b"\x1b[13;2:3u");
+    }
+
+    #[test]
+    fn a_release_is_silent_until_an_application_requests_it() {
+        let term = Terminal::new(Size::default());
+        let release = KeyEvent {
+            action: KeyAction::Release,
+            ..press(KeyCode::A, None, Modifiers::default())
+        };
+        assert!(encoded(&term, &release).is_empty());
     }
 }

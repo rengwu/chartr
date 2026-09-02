@@ -685,6 +685,12 @@ impl Space {
         }
     }
 
+    /// Keyboard mode state for the active terminal, or `None` for a plugin.
+    pub fn active_keyboard_modes(&self) -> Option<zeddy_vt::KeyboardModes> {
+        let id = self.active()?;
+        self.items.get(&id)?.as_session().map(|item| item.session.keyboard_modes())
+    }
+
     pub fn fit_items(&mut self) {
         for item in self.items.values_mut() {
             let Some(item) = item.as_session_mut() else {

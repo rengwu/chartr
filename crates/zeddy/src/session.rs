@@ -27,7 +27,7 @@ use zeddy_herdr::{
     control::{self, Client},
     stream::{Frame, Input},
 };
-use zeddy_vt::{Screen, ScrollResult, Size, Terminal};
+use zeddy_vt::{KeyboardModes, Screen, ScrollResult, Size, Terminal};
 
 const HISTORY_LINES: u32 = 10_000;
 
@@ -143,6 +143,11 @@ impl Session {
     /// Send typed bytes to the session.
     pub fn send(&mut self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
         self.input.lock().expect("session input mutex").send(bytes)
+    }
+
+    /// Copy the active VT modes needed by the window-thread key encoder.
+    pub fn keyboard_modes(&self) -> KeyboardModes {
+        self.terminal.lock().expect("terminal mutex").keyboard_modes()
     }
 
     /// Tell the session how many cells it now has.

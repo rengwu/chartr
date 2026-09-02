@@ -1,23 +1,32 @@
-# 0004 — alacritty's VT core, not libghostty
+# 0004 — Alacritty output and Ghostty input behind one VT boundary
 
 ## Decision
 
-`zeddy-vt` wraps `alacritty_terminal` — Zed's fork, at the revision Zed's own
-terminal uses. Repaint bytes and optional ANSI host history go in; a `Screen`
-comes out.
+`zeddy-vt` wraps two terminal cores for different jobs. Zed's pinned
+`alacritty_terminal` parses repaint bytes and optional ANSI host history into a
+`Screen`. The pinned safe `libghostty-vt` binding turns normalized key events
+into mode-aware terminal input bytes. Neither upstream vocabulary crosses the
+crate boundary.
 
 ## Why
 
-libghostty-vt is the faster parser and is what a terminal built for raw speed
-would reach for. It also needs an exact Zig version and, on macOS, Xcode's Metal
-toolchain, before `cargo build` does anything. zeddy's renderer is built on Zed's
-frontend, and taking Zed's parser means the grid semantics the renderer assumes
-and the grid semantics the parser produces already agree.
+Zeddy's renderer is built on Zed's frontend, and taking Zed's parser means the
+grid semantics the renderer assumes and the grid semantics the parser produces
+already agree. The traffic Zeddy parses is not where Ghostty's faster parser is
+valuable.
 
-The traffic zeddy parses is also not what that speed is for. herdr's frame
-stream is a *re-render of its own emulated grid* — cell-addressed writes with
-normalised SGR, at herdr's repaint rate — not the raw output of the program in
-the PTY. The parser is not the bottleneck on that path.
+Keyboard encoding is different. Modified navigation, function keys, application
+cursor/keypad modes, xterm extensions, fixterms, and the Kitty keyboard protocol
+form a stateful protocol rather than a maintainable escape-sequence table.
+Ghostty already implements that protocol and is also the encoder used by
+chartr-rs. The Zig 0.16.0 build dependency is accepted for input fidelity; the
+safe binding, Ghostty commit, and Zig version move as one deliberate pin.
+
+Herdr's frame stream remains a *re-render of its own emulated grid*, not the raw
+output of the program in the PTY. Mode-aware encoding therefore uses every mode
+the local parser can observe but cannot reconstruct modes Herdr omits. Legacy
+Ghostty encoding is authoritative today; fully negotiated Kitty behavior
+requires Herdr to carry structured keys or terminal mode state in the future.
 
 ## Snapshots, not borrows
 

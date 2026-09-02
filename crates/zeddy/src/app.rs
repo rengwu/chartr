@@ -151,6 +151,13 @@ pub struct Zeddy {
     last_persisted: Option<String>,
     title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
+    /// Presses actually delivered to a terminal, keyed by GPUI's physical key
+    /// name. A matching release is sent only for one of these, so a release for
+    /// an application shortcut never leaks into a Kitty-aware TUI.
+    terminal_keys_down: HashMap<String, zeddy_vt::KeyEvent>,
+    /// libghostty's safe encoder is window-thread-bound. It is reconfigured
+    /// from the active session's copyable mode snapshot for every event.
+    key_encoder: zeddy_vt::KeyEncoder,
     problem: Option<String>,
 }
 
@@ -166,6 +173,8 @@ impl Zeddy {
         let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
         let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
         let title_bar = cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar"));
+        let key_encoder =
+            zeddy_vt::KeyEncoder::new().expect("create the libghostty terminal key encoder");
         cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
             this.command_palette_query = input.read(cx).text().to_owned();
             this.command_palette_selected = 0;
@@ -220,6 +229,8 @@ impl Zeddy {
                     last_persisted: saved_json,
                     title_bar,
                     focus: cx.focus_handle(),
+                    terminal_keys_down: HashMap::new(),
+                    key_encoder,
                     problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
                 };
             }
@@ -337,6 +348,8 @@ impl Zeddy {
             last_persisted: saved_json,
             title_bar,
             focus: cx.focus_handle(),
+            terminal_keys_down: HashMap::new(),
+            key_encoder,
             problem: state_problem.or(registry_problem),
         };
         this.connect(cx);
@@ -1567,12 +1580,47 @@ impl Zeddy {
             cx.notify();
             return;
         }
-        let Some(bytes) = keys::bytes_for(&event.keystroke) else {
+        let key_name = event.keystroke.key.clone();
+        if event.is_held && !self.terminal_keys_down.contains_key(&key_name) {
+            return;
+        }
+        let pressed = keys::normalize(&event.keystroke, event.is_held);
+        if self.send_terminal_key(&pressed, cx) && !event.is_held {
+            self.terminal_keys_down.insert(key_name, pressed);
+        }
+    }
+
+    fn on_key_up(&mut self, event: &gpui::KeyUpEvent, cx: &mut Context<Self>) {
+        let Some(pressed) = self.terminal_keys_down.remove(&event.keystroke.key) else {
             return;
         };
-        if let Some(space) = self.active.clone() {
-            space.update(cx, |space, cx| space.send_active(&bytes, cx));
+        let released = keys::released(pressed);
+        self.send_terminal_key(&released, cx);
+    }
+
+    /// Encode and deliver an event to the active terminal. Empty encodings are
+    /// intentionally not tracked: under the active protocol that key has no
+    /// matching release to deliver either.
+    fn send_terminal_key(&mut self, event: &zeddy_vt::KeyEvent, cx: &mut Context<Self>) -> bool {
+        let Some(space) = self.active.clone() else {
+            return false;
+        };
+        let Some(modes) = space.read(cx).active_keyboard_modes() else {
+            return false;
+        };
+        let bytes = match self.key_encoder.encode(event, modes) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.problem = Some(format!("encoding terminal input: {error}"));
+                cx.notify();
+                return false;
+            }
+        };
+        if bytes.is_empty() {
+            return false;
         }
+        space.update(cx, |space, cx| space.send_active(&bytes, cx));
+        true
     }
 
     fn space_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -3218,6 +3266,7 @@ impl Render for Zeddy {
                 this.toggle_command_palette(window, cx)
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
+            .on_key_up(cx.listener(|this, event, _, cx| this.on_key_up(event, cx)))
             .child(title_bar)
             .child(body)
             .children(command_palette)

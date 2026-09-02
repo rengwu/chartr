@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 alacritty_terminal.workspace = true
+libghostty-vt.workspace = true

@@ -1,84 +1,161 @@
-//! Turning a keystroke into the bytes a terminal expects.
+//! The platform keyboard normalized for the VT boundary.
 //!
-//! GPUI hands us a [`Keystroke`] — a key name and a set of modifiers. A PTY
-//! wants bytes. This is the whole translation, kept in one file with tests
-//! because it is the part of a terminal that is quietly wrong for years if
-//! nobody checks it.
-//!
-//! Only the sequences an agent session actually needs are here: text, the
-//! control range, the arrows and their bracketed forms, and the editing keys.
-//! Mouse reporting, the kitty keyboard protocol, and application-cursor mode
-//! are deliberately absent — none of them is reachable through herdr's frame
-//! stream, which sends a re-render rather than the program's own output.
+//! GPUI describes a keystroke with its platform key name, produced text and
+//! modifiers. This module preserves those facts in Zeddy's normalized event;
+//! `zeddy-vt` and libghostty decide which terminal bytes they mean.
 
-use gpui::Keystroke;
+use gpui::{Keystroke, Modifiers as WindowModifiers};
+use zeddy_vt::{KeyAction, KeyCode, KeyEvent, Modifiers};
 
-/// The bytes to send for a keystroke, or `None` for one that means nothing to
-/// a terminal (a bare modifier, an unhandled function key).
-pub fn bytes_for(keystroke: &Keystroke) -> Option<Vec<u8>> {
-    let modifiers = &keystroke.modifiers;
-
-    let named = match keystroke.key.as_str() {
-        "enter" => Some("\r"),
-        "tab" if modifiers.shift => Some("\x1b[Z"),
-        "tab" => Some("\t"),
-        "backspace" => Some("\x7f"),
-        "escape" => Some("\x1b"),
-        "space" => Some(" "),
-        "up" => Some("\x1b[A"),
-        "down" => Some("\x1b[B"),
-        "right" => Some("\x1b[C"),
-        "left" => Some("\x1b[D"),
-        "home" => Some("\x1b[H"),
-        "end" => Some("\x1b[F"),
-        "pageup" => Some("\x1b[5~"),
-        "pagedown" => Some("\x1b[6~"),
-        "delete" => Some("\x1b[3~"),
-        "insert" => Some("\x1b[2~"),
-        _ => None,
-    };
-
-    if let Some(named) = named {
-        return Some(with_alt(named.as_bytes(), modifiers.alt));
+/// Normalize a key press or auto-repeat without choosing a terminal encoding.
+pub fn normalize(keystroke: &Keystroke, held: bool) -> KeyEvent {
+    KeyEvent {
+        code: code_of(&keystroke.key),
+        text: typed(keystroke),
+        action: if held { KeyAction::Repeat } else { KeyAction::Press },
+        modifiers: modifiers_of(keystroke.modifiers),
+        // GPUI does not currently expose consumed modifiers or IME composition
+        // state on a Keystroke. Keeping them explicit avoids inventing facts and
+        // leaves the encoder boundary ready when the platform API grows them.
+        consumed_modifiers: Modifiers::default(),
+        composing: false,
     }
-
-    // Control folds a letter into the C0 range: ^A is 1, ^Z is 26. The handful
-    // of punctuation controls follow the same table.
-    if modifiers.control {
-        let byte = match keystroke.key.as_str() {
-            key if key.len() == 1 => {
-                let c = key.chars().next().expect("one char");
-                match c {
-                    'a'..='z' => Some(c as u8 - b'a' + 1),
-                    '@' | ' ' => Some(0),
-                    '[' => Some(27),
-                    '\\' => Some(28),
-                    ']' => Some(29),
-                    '^' => Some(30),
-                    '_' | '?' => Some(31),
-                    _ => None,
-                }
-            }
-            _ => None,
-        };
-        return byte.map(|byte| with_alt(&[byte], modifiers.alt));
-    }
-
-    // Anything else is text, and GPUI already worked out what text it is —
-    // including the shifted and dead-key forms this code should not re-derive.
-    let text = keystroke.key_char.as_deref().filter(|text| !text.is_empty())?;
-    Some(with_alt(text.as_bytes(), modifiers.alt))
 }
 
-/// Alt is a leading escape. That is what a terminal means by "meta".
-fn with_alt(bytes: &[u8], alt: bool) -> Vec<u8> {
-    if alt {
-        let mut out = Vec::with_capacity(bytes.len() + 1);
-        out.push(0x1b);
-        out.extend_from_slice(bytes);
-        out
-    } else {
-        bytes.to_vec()
+/// Turn a press previously delivered to the terminal into its matching release.
+pub fn released(mut pressed: KeyEvent) -> KeyEvent {
+    pressed.text = None;
+    pressed.action = KeyAction::Release;
+    pressed
+}
+
+/// Text after Shift/layout processing but before Control/Alt transformations.
+///
+/// Platforms commonly put the already-encoded C0 byte in `key_char` for
+/// Control chords. Passing that through would decide the protocol before
+/// Ghostty sees the event. Recover the printable physical character instead;
+/// Ghostty can then choose C0, fixterms, modifyOtherKeys, or Kitty encoding.
+fn typed(keystroke: &Keystroke) -> Option<String> {
+    match keystroke.key_char.as_deref() {
+        Some(text) if !text.is_empty() && !text.chars().any(char::is_control) => {
+            Some(text.to_owned())
+        }
+        Some(_) | None if keystroke.modifiers.control => physical_text(keystroke),
+        _ => None,
+    }
+}
+
+fn physical_text(keystroke: &Keystroke) -> Option<String> {
+    if keystroke.key == "space" {
+        return Some(" ".to_owned());
+    }
+    let character = single(&keystroke.key)?;
+    let character = if keystroke.modifiers.shift { shifted_ascii(character) } else { character };
+    Some(character.to_string())
+}
+
+/// The conventional shifted ASCII face of a physical key. This is needed only
+/// when a platform replaced a Control chord's text with its C0 byte.
+fn shifted_ascii(character: char) -> char {
+    match character {
+        'a'..='z' => character.to_ascii_uppercase(),
+        '`' => '~',
+        '1' => '!',
+        '2' => '@',
+        '3' => '#',
+        '4' => '$',
+        '5' => '%',
+        '6' => '^',
+        '7' => '&',
+        '8' => '*',
+        '9' => '(',
+        '0' => ')',
+        '-' => '_',
+        '=' => '+',
+        '[' => '{',
+        ']' => '}',
+        '\\' => '|',
+        ';' => ':',
+        '\'' => '"',
+        ',' => '<',
+        '.' => '>',
+        '/' => '?',
+        _ => character,
+    }
+}
+
+fn code_of(key: &str) -> KeyCode {
+    match key {
+        "space" => KeyCode::Space,
+        "enter" => KeyCode::Enter,
+        "tab" => KeyCode::Tab,
+        "escape" => KeyCode::Escape,
+        "backspace" => KeyCode::Backspace,
+        "delete" => KeyCode::Delete,
+        "insert" => KeyCode::Insert,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "pageup" => KeyCode::PageUp,
+        "pagedown" => KeyCode::PageDown,
+        "up" => KeyCode::ArrowUp,
+        "down" => KeyCode::ArrowDown,
+        "left" => KeyCode::ArrowLeft,
+        "right" => KeyCode::ArrowRight,
+        "back" => KeyCode::BrowserBack,
+        "forward" => KeyCode::BrowserForward,
+        "copy" => KeyCode::Copy,
+        "cut" => KeyCode::Cut,
+        "paste" => KeyCode::Paste,
+        _ => function_key(key)
+            .or_else(|| single(key).and_then(KeyCode::typing))
+            .unwrap_or(KeyCode::Unidentified),
+    }
+}
+
+fn function_key(key: &str) -> Option<KeyCode> {
+    let number: u8 = key.strip_prefix('f')?.parse().ok()?;
+    Some(match number {
+        1 => KeyCode::F1,
+        2 => KeyCode::F2,
+        3 => KeyCode::F3,
+        4 => KeyCode::F4,
+        5 => KeyCode::F5,
+        6 => KeyCode::F6,
+        7 => KeyCode::F7,
+        8 => KeyCode::F8,
+        9 => KeyCode::F9,
+        10 => KeyCode::F10,
+        11 => KeyCode::F11,
+        12 => KeyCode::F12,
+        13 => KeyCode::F13,
+        14 => KeyCode::F14,
+        15 => KeyCode::F15,
+        16 => KeyCode::F16,
+        17 => KeyCode::F17,
+        18 => KeyCode::F18,
+        19 => KeyCode::F19,
+        20 => KeyCode::F20,
+        21 => KeyCode::F21,
+        22 => KeyCode::F22,
+        23 => KeyCode::F23,
+        24 => KeyCode::F24,
+        25 => KeyCode::F25,
+        _ => return None,
+    })
+}
+
+fn single(key: &str) -> Option<char> {
+    let mut characters = key.chars();
+    let first = characters.next()?;
+    characters.next().is_none().then_some(first)
+}
+
+fn modifiers_of(modifiers: WindowModifiers) -> Modifiers {
+    Modifiers {
+        shift: modifiers.shift,
+        alt: modifiers.alt,
+        control: modifiers.control,
+        super_key: modifiers.platform,
     }
 }
 
@@ -86,62 +163,90 @@ fn with_alt(bytes: &[u8], alt: bool) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    fn key(spec: &str) -> Keystroke {
-        Keystroke::parse(spec).expect("a parseable keystroke")
-    }
-
-    fn typed(spec: &str, text: &str) -> Keystroke {
-        let mut keystroke = key(spec);
-        keystroke.key_char = Some(text.to_owned());
-        keystroke
-    }
-
-    #[test]
-    fn plain_text_goes_through_as_itself() {
-        assert_eq!(bytes_for(&typed("a", "a")), Some(b"a".to_vec()));
-        assert_eq!(bytes_for(&typed("shift-a", "A")), Some(b"A".to_vec()));
+    fn keystroke(key: &str, text: Option<&str>) -> Keystroke {
+        Keystroke {
+            modifiers: WindowModifiers::default(),
+            key: key.to_owned(),
+            key_char: text.map(str::to_owned),
+        }
     }
 
     #[test]
-    fn enter_is_a_carriage_return_and_not_a_newline() {
-        // A PTY in canonical mode reads CR as "submit"; LF would insert a line.
-        assert_eq!(bytes_for(&key("enter")), Some(b"\r".to_vec()));
+    fn names_printable_navigation_and_function_keys() {
+        assert_eq!(code_of("a"), KeyCode::A);
+        assert_eq!(code_of("/"), KeyCode::Slash);
+        assert_eq!(code_of("left"), KeyCode::ArrowLeft);
+        assert_eq!(code_of("f20"), KeyCode::F20);
+        assert_eq!(code_of("f25"), KeyCode::F25);
+        assert_eq!(code_of("f26"), KeyCode::Unidentified);
     }
 
     #[test]
-    fn backspace_is_del_which_is_what_readline_expects() {
-        assert_eq!(bytes_for(&key("backspace")), Some(vec![0x7f]));
+    fn preserves_platform_text_instead_of_rederiving_it() {
+        let event = normalize(&keystroke("e", Some("é")), false);
+        assert_eq!(event.code, KeyCode::E);
+        assert_eq!(event.text.as_deref(), Some("é"));
     }
 
     #[test]
-    fn control_letters_fold_into_the_c0_range() {
-        assert_eq!(bytes_for(&key("ctrl-a")), Some(vec![1]));
-        assert_eq!(bytes_for(&key("ctrl-c")), Some(vec![3]));
-        assert_eq!(bytes_for(&key("ctrl-z")), Some(vec![26]));
+    fn recovers_printable_text_from_platform_control_bytes() {
+        let mut control_i = keystroke("i", Some("\t"));
+        control_i.modifiers.control = true;
+        assert_eq!(normalize(&control_i, false).text.as_deref(), Some("i"));
+
+        let mut control_question = keystroke("/", Some("\u{7f}"));
+        control_question.modifiers.control = true;
+        control_question.modifiers.shift = true;
+        assert_eq!(normalize(&control_question, false).text.as_deref(), Some("?"));
     }
 
     #[test]
-    fn the_arrows_are_csi_sequences() {
-        assert_eq!(bytes_for(&key("up")), Some(b"\x1b[A".to_vec()));
-        assert_eq!(bytes_for(&key("left")), Some(b"\x1b[D".to_vec()));
+    fn held_and_released_keys_keep_their_identity() {
+        let mut input = keystroke("left", None);
+        input.modifiers.alt = true;
+        let repeated = normalize(&input, true);
+        assert_eq!(repeated.action, KeyAction::Repeat);
+        assert!(repeated.modifiers.alt);
+
+        let release = released(repeated);
+        assert_eq!(release.action, KeyAction::Release);
+        assert_eq!(release.code, KeyCode::ArrowLeft);
+        assert_eq!(release.text, None);
+        assert!(release.modifiers.alt);
     }
 
     #[test]
-    fn shift_tab_is_a_back_tab_and_not_a_tab() {
-        assert_eq!(bytes_for(&key("tab")), Some(b"\t".to_vec()));
-        assert_eq!(bytes_for(&key("shift-tab")), Some(b"\x1b[Z".to_vec()));
+    fn the_original_missing_chords_reach_ghostty_intact() {
+        let mut encoder = zeddy_vt::KeyEncoder::new().unwrap();
+
+        let mut shifted_enter = keystroke("enter", Some("\n"));
+        shifted_enter.modifiers.shift = true;
+        let event = normalize(&shifted_enter, false);
+        assert_eq!(
+            encoder.encode(&event, zeddy_vt::KeyboardModes::default()).unwrap(),
+            b"\x1b[27;2;13~",
+        );
+
+        let mut option_left = keystroke("left", None);
+        option_left.modifiers.alt = true;
+        let event = normalize(&option_left, false);
+        assert_eq!(
+            encoder.encode(&event, zeddy_vt::KeyboardModes::default()).unwrap(),
+            b"\x1b[1;3D",
+        );
     }
 
     #[test]
-    fn alt_prefixes_an_escape_whatever_the_key_was() {
-        assert_eq!(bytes_for(&typed("alt-b", "b")), Some(b"\x1bb".to_vec()));
-        assert_eq!(bytes_for(&key("alt-up")), Some(b"\x1b\x1b[A".to_vec()));
-        assert_eq!(bytes_for(&key("ctrl-alt-a")), Some(vec![0x1b, 1]));
-    }
+    fn control_i_remains_distinct_from_tab() {
+        let mut encoder = zeddy_vt::KeyEncoder::new().unwrap();
+        let mut control_i = keystroke("i", Some("\t"));
+        control_i.modifiers.control = true;
 
-    #[test]
-    fn a_keystroke_with_no_text_and_no_name_sends_nothing() {
-        // An unhandled function key must send nothing rather than send garbage.
-        assert_eq!(bytes_for(&key("f13")), None);
+        assert_eq!(
+            encoder
+                .encode(&normalize(&control_i, false), zeddy_vt::KeyboardModes::default())
+                .unwrap(),
+            b"\x1b[105;5u",
+        );
     }
 }

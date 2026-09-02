@@ -53,10 +53,15 @@ theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd
 zed_assets = { package = "assets", git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 # --- the terminal --------------------------------------------------------
 #
-# Zed's fork of alacritty's VT core. Taking the same parser Zed's own terminal
-# uses is the whole point of picking it over libghostty-vt: no Zig in the
-# build, and grid semantics that already agree with the renderer above them.
+# Zed's fork of alacritty's VT core supplies the output parser, whose grid
+# semantics already agree with the renderer above it. Ghostty supplies the
+# input encoder: terminal keyboard protocols are too stateful and too broad to
+# reproduce with a table of escape sequences. Both dependencies are contained
+# by `zeddy-vt`; the application sees only zeddy-owned screen and input types.
 alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
+# This is the same safe-binding/Ghostty/Zig pin as chartr-rs. The binding pins
+# Ghostty 22d13172cde98a0a4dda05d3d6a3fcb0dd8ed018 and requires Zig 0.16.0.
+libghostty-vt = { git = "https://github.com/Uzaaft/libghostty-rs", rev = "de9fd9b0fa4ab53faebd3d489f4c74fe0ec832ec", default-features = false }
 
 # --- everything else -----------------------------------------------------
 anyhow = "1"

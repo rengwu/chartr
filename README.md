@@ -9,6 +9,8 @@ sh vendor/herdr/fetch.sh
 cargo run -p zeddy
 ```
 
+Building requires Zig 0.16.0 for the pinned libghostty terminal input encoder.
+
 The supported desktop targets are macOS and Linux under X11 or XWayland.
 Windows is deferred because Herdr currently uses Unix-domain sockets. Wry's
 in-window Linux child webviews require X11, so Chartr selects the same GPUI
@@ -134,7 +136,7 @@ are development references and are not installed automatically.
 ```text
 crates/zeddy/              window, spaces, panes, settings, persistence, UI
 crates/zeddy-herdr/        private Herdr protocol and lifecycle
-crates/zeddy-vt/           terminal parser boundary
+crates/zeddy-vt/           Alacritty output parser and Ghostty input encoder boundary
 crates/zeddy-plugin/       native and manifest authoring contract
 crates/zeddy-plugin-host/  discovery, loading, and web filesystem broker
 plugins/                   one complete example per plugin tier
