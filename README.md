@@ -21,6 +21,16 @@ Windows is deferred because Herdr currently uses Unix-domain sockets. Wry's
 in-window Linux child webviews require X11, so Chartr selects the same GPUI
 backend instead of exposing web panes that fail only on Wayland.
 
+For a macOS development disk image, run:
+
+```sh
+scripts/build-dev-dmg.sh
+```
+
+It produces an ad-hoc-signed, unnotarized `Chartr Dev.app` disk image and SHA-256
+sidecar under `target/`. Pass an output path as the script's only argument to
+place the image elsewhere.
+
 ## Spaces, panes, and items
 
 One window owns ordered spaces and one active space, following Zed's
