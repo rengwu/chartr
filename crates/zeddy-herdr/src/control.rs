@@ -2,7 +2,7 @@
 //!
 //! One request per connection, NDJSON, blocking. Blocking is deliberate — the
 //! calls are local, they take microseconds, and the alternative is an async
-//! runtime in a crate whose entire job is six methods.
+//! runtime around this deliberately small control surface.
 //!
 //! Callers on the window thread should still not sit on these directly; the app
 //! runs them on a background executor and delivers the answer back. This crate
@@ -20,14 +20,13 @@ use std::{
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-    Error, Geometry, Namespace, PaneId, Result, SUPPORTED_HERDR_VERSION, SUPPORTED_PROTOCOL,
-    Sidecar, WorkspaceId,
+    Error, Namespace, PaneId, Result, SUPPORTED_HERDR_VERSION, SUPPORTED_PROTOCOL, Sidecar,
+    TerminalId, WorkspaceId,
     protocol::{
-        self, Created, Empty, PaneCloseParams, PaneList, PaneListParams, PaneReadEnvelope,
-        PaneReadParams, Pong, Request, Response, TabCreateParams, TabList, TabListParams,
-        WorkspaceCreateParams, WorkspaceList,
+        self, Created, Empty, PaneCloseParams, PaneList, PaneListParams, Pong, Request, Response,
+        ServerLiveHandoffParams, TabCreateParams, TabList, TabListParams, WorkspaceCreateParams,
+        WorkspaceList,
     },
-    stream::Attachment,
 };
 
 /// What an agent in a session is doing, once Herdr's vocabulary has been left
@@ -59,6 +58,8 @@ impl From<protocol::AgentStatus> for SessionStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
     pub id: PaneId,
+    /// The persistent PTY identifier consumed by `herdr terminal attach`.
+    pub terminal: TerminalId,
     pub workspace: WorkspaceId,
     /// Herdr's persistent tab label/number, used when nothing is running.
     pub label: String,
@@ -85,6 +86,7 @@ impl Session {
             .map(str::to_owned);
         Self {
             id: PaneId(pane.pane_id),
+            terminal: TerminalId(pane.terminal_id),
             workspace: WorkspaceId(pane.workspace_id),
             label,
             running,
@@ -104,6 +106,18 @@ impl Session {
     pub fn process_running(&self) -> bool {
         self.agent.is_none() && self.running.is_some()
     }
+}
+
+/// A complete, namespace-safe invocation of Herdr's interactive attach CLI.
+///
+/// The UI layer decides how to host this command (currently in Zed's PTY),
+/// while this crate remains the only layer that knows Herdr's executable,
+/// arguments, or private environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectAttach {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
 impl From<protocol::Pane> for Session {
@@ -141,9 +155,19 @@ impl Client {
     /// is "can I talk to it", and that is a `ping`.
     pub fn connect(&self, timeout: Duration) -> Result<()> {
         self.namespace.prepare()?;
-        if self.handshake().is_ok() {
-            return Ok(());
+        match self.handshake() {
+            Ok(()) => return Ok(()),
+            // A private daemon may outlive the Chartr build that started it
+            // because it owns persistent PTYs. Replace only a daemon that
+            // answered with an incompatible identity; an unrelated transient
+            // handshake failure must not trigger an upgrade.
+            Err(Error::IncompatibleDaemon { .. }) if self.answers() => {
+                self.live_handoff()?;
+                return self.reconnect(timeout);
+            }
+            Err(_) => {}
         }
+
         self.spawn_daemon()?;
 
         let deadline = Instant::now() + timeout;
@@ -158,6 +182,24 @@ impl Client {
                 }
             }
         }
+    }
+
+    /// Replace the daemon at this private socket with the pinned sidecar while
+    /// preserving its live PTYs.
+    fn live_handoff(&self) -> Result<()> {
+        let import_exe = self.sidecar.path().to_str().ok_or_else(|| {
+            Error::Sidecar(format!(
+                "Herdr sidecar path is not valid UTF-8: {}",
+                self.sidecar.path().display()
+            ))
+        })?;
+        let params = ServerLiveHandoffParams {
+            import_exe,
+            expected_protocol: SUPPORTED_PROTOCOL,
+            expected_version: SUPPORTED_HERDR_VERSION,
+        };
+        let _: Empty = self.call("server.live_handoff", &params)?;
+        Ok(())
     }
 
     /// Whether anything is accepting connections at this private socket.
@@ -243,19 +285,15 @@ impl Client {
 
     /// `ping`, checked against the version this client was written for.
     ///
-    /// A version mismatch is an error and not a warning. The frame stream rides
+    /// A version mismatch is an error and not a warning. Direct attachment rides
     /// herdr's command line, so a daemon zeddy did not ship is a daemon zeddy
     /// cannot promise to render.
     pub fn handshake(&self) -> Result<()> {
         let pong: Pong = self.call("ping", &Empty {})?;
         if pong.version != SUPPORTED_HERDR_VERSION || pong.protocol != SUPPORTED_PROTOCOL {
-            return Err(Error::Backend {
-                method: "ping",
-                message: format!(
-                    "daemon is herdr {} (protocol {}); zeddy ships {SUPPORTED_HERDR_VERSION} \
-                     (protocol {SUPPORTED_PROTOCOL})",
-                    pong.version, pong.protocol
-                ),
+            return Err(Error::IncompatibleDaemon {
+                version: pong.version,
+                protocol: pong.protocol,
             });
         }
         Ok(())
@@ -372,29 +410,38 @@ impl Client {
         Ok(())
     }
 
-    /// Styled host scrollback, oldest requested row first and including the
-    /// live viewport at the bottom.
-    pub fn history(&self, pane: &PaneId, lines: u32) -> Result<String> {
-        let read: PaneReadEnvelope = self.call(
-            "pane.read",
-            &PaneReadParams {
-                pane_id: &pane.0,
-                source: "recent",
-                lines,
-                format: "ansi",
-                strip_ansi: false,
-            },
-        )?;
-        Ok(read.read.text)
-    }
-
-    /// Attach to a session's byte stream at a given geometry.
+    /// Complete launch specification for Herdr's native interactive terminal
+    /// client.
     ///
-    /// The client hands its own sidecar and namespace to the attachment, so the
-    /// stream cannot end up pointed at a herdr the control plane is not talking
-    /// to.
-    pub fn attach(&self, pane: &PaneId, geometry: Geometry) -> Result<Attachment> {
-        Attachment::open(&self.sidecar, &self.namespace, pane, geometry)
+    /// `--takeover` makes Chartr the sole controller after a relaunch instead
+    /// of failing because a dead or superseded frontend still owns the stream.
+    /// `/usr/bin/env -u` is the standard process adapter on both supported
+    /// desktop targets; it removes inherited Herdr selectors before executing
+    /// the exact vendored sidecar. The terminal host therefore consumes this
+    /// value without knowing or reconstructing Herdr's namespace rules.
+    pub fn direct_attach(&self, terminal: &TerminalId) -> DirectAttach {
+        let mut env = HashMap::new();
+        let mut args = Vec::new();
+        for (key, value) in self.namespace.env() {
+            let key = key.to_string_lossy().into_owned();
+            match value {
+                Some(value) => {
+                    env.insert(key, value.to_string_lossy().into_owned());
+                }
+                None => {
+                    args.push("-u".to_owned());
+                    args.push(key);
+                }
+            }
+        }
+        args.push(self.sidecar.path().to_string_lossy().into_owned());
+        args.extend([
+            "terminal".to_owned(),
+            "attach".to_owned(),
+            terminal.0.clone(),
+            "--takeover".to_owned(),
+        ]);
+        DirectAttach { program: PathBuf::from("/usr/bin/env"), args, env }
     }
 
     /// Send one request, read one response, close the connection.
@@ -498,11 +545,14 @@ fn next_id() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::net::UnixListener;
+
     use super::*;
 
     fn pane(id: &str, title: Option<&str>, agent: Option<&str>) -> protocol::Pane {
         protocol::Pane {
             pane_id: id.to_owned(),
+            terminal_id: format!("term-{id}"),
             workspace_id: "w1".to_owned(),
             tab_id: "w1:t1".to_owned(),
             title: title.map(str::to_owned),
@@ -537,6 +587,7 @@ mod tests {
     fn an_unknown_future_agent_status_degrades_to_unknown() {
         let pane: protocol::Pane = serde_json::from_value(serde_json::json!({
             "pane_id": "p1",
+            "terminal_id": "term1",
             "agent_status": "meditating"
         }))
         .expect("pane");
@@ -573,6 +624,35 @@ mod tests {
     }
 
     #[test]
+    fn direct_attach_uses_the_terminal_id_and_private_namespace() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let executable = tmp.path().join("herdr");
+        std::fs::write(&executable, []).expect("sidecar fixture");
+        let namespace = Namespace::rooted(tmp.path().join("private/herdr"));
+        let client = Client::new(Sidecar::at(&executable).expect("sidecar"), namespace.clone());
+
+        let attach = client.direct_attach(&TerminalId("terminal-7".to_owned()));
+
+        assert_eq!(attach.program, PathBuf::from("/usr/bin/env"));
+        assert!(attach.args.windows(2).any(|pair| pair == ["-u", "HERDR_PANE_ID"]));
+        assert!(attach.args.windows(2).any(|pair| pair == ["-u", "HERDR_SESSION"]));
+        assert_eq!(
+            &attach.args[attach.args.len() - 5..],
+            &[
+                executable.to_string_lossy().into_owned(),
+                "terminal".to_owned(),
+                "attach".to_owned(),
+                "terminal-7".to_owned(),
+                "--takeover".to_owned(),
+            ]
+        );
+        assert_eq!(
+            attach.env.get("HERDR_SOCKET_PATH"),
+            Some(&namespace.socket().to_string_lossy().into_owned())
+        );
+    }
+
+    #[test]
     fn an_ordinary_foreground_process_is_distinct_from_an_agent() {
         let session = Session::from_pane(
             pane("p1", None, None),
@@ -597,6 +677,49 @@ mod tests {
     }
 
     #[test]
+    fn connect_live_handoffs_an_incompatible_private_daemon() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let namespace = Namespace::rooted(tmp.path().join("private"));
+        namespace.prepare().expect("prepare namespace");
+        let herdr = tmp.path().join("herdr");
+        std::fs::write(&herdr, b"sidecar fixture").expect("sidecar fixture");
+        let listener = UnixListener::bind(namespace.socket()).expect("test daemon socket");
+        let expected_exe = herdr.to_string_lossy().into_owned();
+
+        let server = std::thread::spawn(move || {
+            let (mut first_ping, _) = listener.accept().expect("first ping");
+            let request = read_test_request(&mut first_ping);
+            assert_eq!(request["method"], "ping");
+            writeln!(first_ping, r#"{{"id":"1","result":{{"version":"0.8.0","protocol":19}}}}"#)
+                .expect("old ping response");
+
+            // `answers` deliberately performs only an OS-level connect.
+            let (_probe, _) = listener.accept().expect("socket probe");
+
+            let (mut handoff, _) = listener.accept().expect("handoff request");
+            let request = read_test_request(&mut handoff);
+            assert_eq!(request["method"], "server.live_handoff");
+            assert_eq!(request["params"]["import_exe"], expected_exe);
+            assert_eq!(request["params"]["expected_protocol"], SUPPORTED_PROTOCOL);
+            assert_eq!(request["params"]["expected_version"], SUPPORTED_HERDR_VERSION);
+            writeln!(handoff, r#"{{"id":"2","result":{{}}}}"#).expect("handoff response");
+
+            let (mut final_ping, _) = listener.accept().expect("final ping");
+            let request = read_test_request(&mut final_ping);
+            assert_eq!(request["method"], "ping");
+            writeln!(
+                final_ping,
+                r#"{{"id":"3","result":{{"version":"{SUPPORTED_HERDR_VERSION}","protocol":{SUPPORTED_PROTOCOL}}}}}"#
+            )
+            .expect("new ping response");
+        });
+
+        let client = Client::new(Sidecar::at(&herdr).expect("sidecar"), namespace);
+        client.connect(Duration::from_secs(1)).expect("handoff reaches the pinned daemon");
+        server.join().expect("test daemon");
+    }
+
+    #[test]
     fn a_clean_restart_removes_only_the_saved_shape() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let namespace = Namespace::rooted(tmp.path().join("private"));
@@ -615,5 +738,11 @@ mod tests {
         assert!(!shape.exists());
         assert_eq!(std::fs::read(&neighbor).expect("config remains"), b"managed config");
         client.clear_saved_shape().expect("already absent is harmless");
+    }
+
+    fn read_test_request(stream: &mut UnixStream) -> serde_json::Value {
+        let mut line = String::new();
+        BufReader::new(stream).read_line(&mut line).expect("read request");
+        serde_json::from_str(&line).expect("request JSON")
     }
 }

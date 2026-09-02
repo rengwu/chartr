@@ -70,9 +70,7 @@ pub(crate) struct ItemTab<'a> {
     aria_label: SharedString,
     selected: bool,
     position: TabPosition,
-    status: Option<SessionStatus>,
-    process_running: bool,
-    ended: bool,
+    activity: Activity,
     grouped: bool,
     space: &'a str,
     key: ItemId,
@@ -95,9 +93,7 @@ impl<'a> ItemTab<'a> {
             title,
             selected,
             position,
-            status: None,
-            process_running: false,
-            ended: false,
+            activity: Activity::default(),
             grouped: false,
             space,
             key,
@@ -110,15 +106,8 @@ impl<'a> ItemTab<'a> {
         self
     }
 
-    pub(crate) fn activity(
-        mut self,
-        status: Option<SessionStatus>,
-        process_running: bool,
-        ended: bool,
-    ) -> Self {
-        self.status = status;
-        self.process_running = process_running;
-        self.ended = ended;
+    pub(crate) fn activity(mut self, activity: Activity) -> Self {
+        self.activity = activity;
         self
     }
 
@@ -139,15 +128,7 @@ impl<'a> ItemTab<'a> {
             .aria_selected(self.selected)
             .position(self.position)
             .toggle_state(self.selected)
-            .start_slot(status_indicator(
-                self.status,
-                self.process_running,
-                self.ended,
-                self.grouped,
-                self.space,
-                self.key,
-                cx,
-            ))
+            .start_slot(status_indicator(self.activity, self.grouped, self.space, self.key, cx))
             .end_slot::<AnyElement>(self.close_slot)
             .child(tab_label(self.title, self.selected))
     }
@@ -171,9 +152,30 @@ pub struct Entry {
     /// A session whose reader has stopped is still listed — closing it is the
     /// user's decision, not something that happens to them.
     pub ended: bool,
+    /// Zed's terminal emulator received BEL since the terminal last handled input.
+    pub bell: bool,
     pub selected: bool,
     pub closable: bool,
     pub grouped: bool,
+}
+
+impl Entry {
+    pub(crate) fn activity(&self) -> Activity {
+        Activity {
+            status: self.status,
+            process_running: self.process_running,
+            ended: self.ended,
+            bell: self.bell,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Activity {
+    pub status: Option<SessionStatus>,
+    pub process_running: bool,
+    pub ended: bool,
+    pub bell: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -321,9 +323,7 @@ impl Render for DraggedItemPreview {
 /// animation primitive. A plain foreground process gets a slower neutral
 /// spinner so it cannot be mistaken for an agent actively working.
 pub fn status_indicator(
-    status: Option<SessionStatus>,
-    process_running: bool,
-    ended: bool,
+    activity: Activity,
     grouped: bool,
     space: &str,
     key: ItemId,
@@ -332,14 +332,17 @@ pub fn status_indicator(
     let slot = || div().flex_none().size(px(12.)).flex().items_center().justify_center();
     let icon = |name, color| Icon::new(name).size(IconSize::XSmall).color(color);
 
-    if ended {
+    if activity.ended {
         return slot().child(icon(IconName::XCircle, Color::Error)).into_any_element();
     }
     if grouped {
         return slot().child(icon(IconName::Split, Color::Muted)).into_any_element();
     }
+    if activity.bell {
+        return slot().child(icon(IconName::BellRing, Color::Warning)).into_any_element();
+    }
 
-    match status {
+    match activity.status {
         Some(SessionStatus::Working) => {
             slot()
                 .child(icon(IconName::LoadCircle, Color::Accent).with_keyed_rotate_animation(
@@ -354,7 +357,7 @@ pub fn status_indicator(
         Some(SessionStatus::Done) => {
             slot().child(icon(IconName::Check, Color::Success)).into_any_element()
         }
-        Some(SessionStatus::Idle | SessionStatus::Unknown) if process_running => {
+        Some(SessionStatus::Idle | SessionStatus::Unknown) if activity.process_running => {
             slot()
                 .child(icon(IconName::LoadCircle, Color::Muted).with_keyed_rotate_animation(
                     format!("process-status-{space}-{}", key.get()),

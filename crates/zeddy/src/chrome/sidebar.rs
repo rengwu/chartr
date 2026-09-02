@@ -782,9 +782,7 @@ fn row(
                     on(Action::Select { space: Some(space), item: select }, window, cx)
                 })
                 .start_slot(status_indicator(
-                    entry.status,
-                    entry.process_running,
-                    entry.ended,
+                    entry.activity(),
                     entry.grouped,
                     &entry.space_key,
                     entry.key,

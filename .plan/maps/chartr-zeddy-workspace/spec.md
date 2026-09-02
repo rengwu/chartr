@@ -67,7 +67,7 @@ semantic action/keymap system, atomic persistence, live updates, and plugin page
 contributions. Settings are user-global in this version.
 
 Restore Chartr-rs's small, explicit Herdr lifecycle: fresh control connections,
-per-session stream failure states, one clean backend restart, a crash-loop guard,
+per-session attach-client failure states, one clean backend restart, a crash-loop guard,
 and a non-destructive Retry action. Avoid a generic supervisor or backend
 administration surface.
 
@@ -158,7 +158,7 @@ configuration automatically.
 78. As a Chartr user, I want semantic theme colors and Zed UI components everywhere, so that alternate themes remain coherent.
 79. As a keyboard user, I want every drag operation to have an action-based alternative, so that pane management is not pointer-only.
 80. As an accessibility user, I want reliable focus order, focus restoration, labels, contrast, and reduced-motion behavior, so that the application is operable without visual guesswork.
-81. As a Chartr user, I want an affected terminal to show a clear state when its Herdr stream breaks, so that a transport failure is understandable.
+81. As a Chartr user, I want an affected terminal to show a clear state when its Herdr attach client closes, so that a transport failure is understandable.
 82. As a Chartr user, I want reattachment offered only when Herdr confirms the same session exists, so that retry cannot silently create or target the wrong session.
 83. As a Chartr user, I want Chartr to restart its private Herdr once after unexpected death, so that a transient backend crash recovers automatically.
 84. As a Chartr user, I want repeated backend death to become a stable crash-loop state with Retry, so that Chartr does not restart forever.
@@ -170,7 +170,7 @@ configuration automatically.
 90. As an existing Chartr user, I want Chartr-zeddy data isolated from older installations, so that the rewrite cannot corrupt or conflict with existing settings.
 91. As a Chartr user, I want to drag-sort every sidebar space, including Free sessions and recovered folders, so that the cockpit order matches my workflow and survives relaunch.
 92. As an accessibility user, I want Reduce Motion to disable space-sort settling without disabling direct manipulation, so that reordering remains usable with less animation.
-93. As a Chartr user, I want wheel and trackpad gestures to move through Herdr's host scrollback, so that output remains reviewable after it leaves the live viewport.
+93. As a Chartr user, I want Zed's wheel and trackpad behavior and terminal-owned scrollback, so that shell output and alternate-screen TUIs respond like a modern terminal.
 
 ## Implementation Decisions
 
@@ -193,11 +193,11 @@ configuration automatically.
   refresh: display agent, internal agent, non-shell foreground process, then
   persistent tab label/number. Exiting a process restores the fallback rather
   than leaving a stale locally remembered title.
-- Terminal wheel deltas are accumulated in row units. The first upward gesture
-  loads ANSI-styled `pane.read` host history on a background thread and moves a
-  separate historical VT viewport; live repaint frames remain isolated from
-  history so they cannot manufacture duplicate or missing rows. New live output
-  marks a bottomed history snapshot for refresh, and resizing invalidates it.
+- Zed's pinned `terminal` model and `TerminalView` own emulation, rendering,
+  input, selection, clipboard, IME, mouse reporting, resizing, and scrollback as
+  one unit. Its local PTY runs Herdr's native attach client while Herdr retains
+  the persistent PTY and process lifetime. Chartr has no parallel VT or history
+  implementation.
 - An opened item entity may appear in only one outer workspace tab, pane, and
   space. Moving an item removes it from its source before insertion; an emptied
   outer tab disappears. Cross-space moves are absent.
@@ -303,8 +303,8 @@ configuration automatically.
   Bundled examples move with the contract; incompatible plugins fail clearly.
 - Herdr control requests use a fresh Unix connection and exact handshake. There is
   no long-lived reconnecting control client.
-- A stream error removes the terminal command channel and renders an actionable
-  notice inside that item. Reattach is offered only after confirming the stable
+- An attach-client exit renders an actionable notice inside that item. Reattach
+  is offered only after confirming the stable
   session identity through the control plane.
 - A small window-owned health state machine checks the private daemon, performs one
   clean replacement, and detects a second failure within 60 seconds as a crash
@@ -361,10 +361,12 @@ configuration automatically.
 - Web plugin tests cover real view hosting, safe project read/write, canonical and
   symlink containment, folderless storage, unsafe per-plugin access, declared
   network/process/session actions, permission display, and immediate revocation.
-- Herdr unit tests cover protocol framing and lifecycle transitions. Required live
-  tests launch the vendored private backend and cover handshake, shell painting,
-  close/kill, detach/adopt, broken stream, confirmed reattach, one backend restart,
-  and crash-loop Retry. Transport completion requires these live tests to pass.
+- Herdr unit tests cover protocol framing, namespace-safe attach specifications,
+  and lifecycle transitions. Required live tests launch the vendored private
+  backend and cover handshake, terminal identity, direct attachment, and clean
+  replacement after a hard crash. OS clipboard, IME, pointer, scrollback, and
+  alternate-screen behavior remain release interaction checks because they
+  require a real GPUI window and native input devices.
 - Visual acceptance captures Chartr Dark and Light at common window sizes for
   tabbed mode, both sidebar submodes, nested panes, drag targets, empty panes,
   confirmations, errors, settings, command palette, and plugin permissions.

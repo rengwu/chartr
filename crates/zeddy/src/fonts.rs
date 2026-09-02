@@ -9,6 +9,8 @@
 use std::borrow::Cow;
 
 use gpui::{App, Font, Pixels, Rems, Window, px};
+use settings::Settings as _;
+use terminal::terminal_settings::TerminalSettings;
 use theme::{ThemeSettingsProvider, UiDensity};
 use ui::LabelSize;
 
@@ -44,6 +46,23 @@ pub fn load_bundled(cx: &App) -> anyhow::Result<()> {
     cx.text_system().add_fonts(vec![Cow::Borrowed(IBM_PLEX_MONO)])
 }
 
+/// Install Chartr's resolved typography at the two native Zed settings
+/// boundaries that consume it. UI components use `ThemeSettingsProvider`,
+/// while a standalone `TerminalElement` deliberately gives the terminal's own
+/// font override precedence. Keeping both in sync lets TerminalView perform its
+/// normal relayout and PTY resize when typography changes.
+pub fn install(settings: &ResolvedSettings, cx: &mut App) {
+    theme::set_theme_settings_provider(Box::new(Fonts::from_settings(settings)), cx);
+
+    if let Some(mut terminal_settings) = TerminalSettings::try_get(cx).cloned() {
+        terminal_settings.font_family = Some(settings.terminal_font_family.clone().into());
+        terminal_settings.font_size = Some(px(settings.terminal_font_size));
+        TerminalSettings::override_global(terminal_settings, cx);
+    }
+
+    cx.refresh_windows();
+}
+
 impl Default for Fonts {
     fn default() -> Self {
         Self::from_settings(&ResolvedSettings::default())
@@ -58,16 +77,6 @@ impl Fonts {
             ui_size: px(settings.ui_font_size),
             buffer_size: px(settings.terminal_font_size),
         }
-    }
-
-    /// The terminal's font and the line height to draw it at.
-    ///
-    /// The ratio is the one every terminal uses and nobody writes down: a line
-    /// box about 1.4× the point size, which leaves box-drawing characters
-    /// touching and leaves text legible.
-    pub fn terminal(&self) -> (Font, Pixels, Pixels) {
-        let size = self.buffer_size;
-        (self.buffer.clone(), size, (size * 1.4).round())
     }
 
     /// Install the configured interface type scale on a window and return the
@@ -100,7 +109,7 @@ impl ThemeSettingsProvider for Fonts {
     }
 
     fn buffer_font_size(&self, _: &App) -> Pixels {
-        self.terminal().1
+        self.buffer_size
     }
 
     fn ui_density(&self, _: &App) -> UiDensity {
@@ -112,11 +121,20 @@ impl ThemeSettingsProvider for Fonts {
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_terminal_line_box_leaves_room_for_descenders() {
-        let (_, size, line_height) = Fonts::default().terminal();
-        assert!(line_height > size, "glyphs would clip");
-        assert!(line_height < size * 2., "the grid would look double-spaced");
+    #[gpui::test]
+    fn installs_terminal_typography_in_zeds_native_settings(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            let mut settings = ResolvedSettings::default();
+            settings.terminal_font_family = "IBM Plex Mono".to_owned();
+            settings.terminal_font_size = 19.;
+
+            install(&settings, cx);
+
+            let native = TerminalSettings::get_global(cx);
+            assert_eq!(native.font_size, Some(px(19.)));
+            assert_eq!(native.font_family.as_ref().map(AsRef::as_ref), Some("IBM Plex Mono"));
+        });
     }
 
     #[test]

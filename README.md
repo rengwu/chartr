@@ -9,7 +9,12 @@ sh vendor/herdr/fetch.sh
 cargo run -p zeddy
 ```
 
-Building requires Zig 0.16.0 for the pinned libghostty terminal input encoder.
+The workspace build requires Zig 0.16.0 for its pinned libghostty terminal
+input encoder. The sidecar fetch currently builds an immutable post-0.8.2
+Herdr revision, because the latest tagged release drops non-wheel mouse input
+during direct attachment. That one maintenance step requires Rustup and Zig
+0.15.2; set `ZIG` when needed. The source pin can return to a release asset once
+Herdr tags its semantic direct-attach mouse forwarding.
 
 The supported desktop targets are macOS and Linux under X11 or XWayland.
 Windows is deferred because Herdr currently uses Unix-domain sockets. Wry's
@@ -61,6 +66,20 @@ backend refresh that discovers sessions updates and clears these inferred
 titles. Collapsed pane groups can be renamed from their context menu and otherwise
 use their item count as the title, such as **5 tabs**.
 
+Every terminal is Zed's pinned `terminal` model and `TerminalView`, used as one
+stack. Zed owns emulation, rendering, scrollback, resizing, keyboard
+encoding, selection, clipboard, IME, links, and mouse reporting. Its local PTY
+runs Herdr's native `terminal attach <id> --takeover` client; the persistent PTY
+and shell remain owned by the private Herdr daemon. Chartr owns only attachment
+lifecycle, pane placement, settings/theme inputs, and platform terminal bindings.
+The pinned view has one documented host extension: Chartr can top-align the grid
+instead of moving it by the spare sub-row pixels during pane resize. Zed's
+bottom-alignment policy remains the default inside the vendored crate.
+The pinned Zed terminal keymap supplies copy/paste, word navigation, scrollback,
+vi mode, and character-palette behavior; Chartr adds terminal-buffer search,
+desktop file drops, filesystem-link opening, and tab bell state at the host
+boundary. Terminal font changes reflow live through the shared theme provider.
+
 ## Settings and persistence
 
 Settings uses one application-wide native window, following Zed: every chrome
@@ -93,7 +112,7 @@ automatically.
 Normal app exit detaches sessions. An optional setting terminates them instead.
 The private Herdr runtime uses an exact socket under
 `$XDG_CONFIG_HOME/chartr-zeddy/herdr`; inherited Herdr selectors are cleared so
-Chartr cannot attach to a user's standalone daemon. Broken streams become
+Chartr cannot attach to a user's standalone daemon. Closed attach clients become
 item-local recovery states, and unexpected daemon death receives one clean
 restart before entering a stable crash-loop state with Retry.
 
@@ -136,7 +155,6 @@ are development references and are not installed automatically.
 ```text
 crates/zeddy/              window, spaces, panes, settings, persistence, UI
 crates/zeddy-herdr/        private Herdr protocol and lifecycle
-crates/zeddy-vt/           Alacritty output parser and Ghostty input encoder boundary
 crates/zeddy-plugin/       native and manifest authoring contract
 crates/zeddy-plugin-host/  discovery, loading, and web filesystem broker
 plugins/                   one complete example per plugin tier
@@ -154,8 +172,9 @@ cargo check --manifest-path plugins/hello/Cargo.toml --locked
 cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
-The last command launches and hard-crashes the real pinned private Herdr. The
-macOS/Linux build matrix and release acceptance checklist live in
+The last command validates native attach targets and hard-crashes the real
+pinned private Herdr. Interactive terminal behavior is covered by the release
+acceptance checklist. The macOS/Linux build matrix and full checklist live in
 `.github/workflows/ci.yml` and `docs/acceptance.md`.
 
 ## Licence

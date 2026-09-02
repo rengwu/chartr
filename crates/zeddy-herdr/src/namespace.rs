@@ -3,7 +3,7 @@
 //! Every path here is under a single zeddy-owned root, so "which herdr" is one
 //! decision made once rather than a rule each call site has to remember. The
 //! environment in [`Namespace::env`] is applied to every herdr process zeddy
-//! launches — the daemon and each frame stream alike — which is what keeps a
+//! launches — the daemon and each interactive attach client alike — which keeps a
 //! `HERDR_SOCKET_PATH` inherited from the user's shell from reaching herdr at
 //! all.
 

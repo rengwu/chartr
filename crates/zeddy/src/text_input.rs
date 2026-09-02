@@ -19,7 +19,7 @@ use ui::prelude::*;
 use unicode_segmentation::UnicodeSegmentation as _;
 
 actions!(
-    native_text_input,
+    chartr_text_input,
     [
         Backspace,
         Delete,

@@ -1,12 +1,11 @@
 # zeddy — a simple agent multiplexer.
 #
-# Five crates, each one a boundary rather than a bag of helpers:
+# Four crates, each one a boundary rather than a bag of helpers:
 #
 #   zeddy-herdr        the only code that knows herdr exists
-#   zeddy-vt           the only code that knows a VT parser exists
 #   zeddy-plugin       the contract a native plugin is written against
 #   zeddy-plugin-host  the only code that loads foreign code
-#   zeddy              the window, and nothing a lower crate could own
+#   zeddy              the window and the pinned Zed terminal host
 #
 # Nothing above depends on anything below it out of order, and no crate but
 # `zeddy` links GPUI's platform backend.
@@ -17,8 +16,8 @@ members = [
     "crates/zeddy-herdr",
     "crates/zeddy-plugin",
     "crates/zeddy-plugin-host",
-    "crates/zeddy-vt",
 ]
+exclude = ["vendor/zed-terminal-view"]
 
 [workspace.package]
 version = "0.1.0"
@@ -32,10 +31,10 @@ repository = "https://github.com/rengwu/chartr-zeddy"
 [workspace.dependencies]
 # --- the Zed layer -------------------------------------------------------
 #
-# One pinned Zed revision supplies three crates. `gpui` is the framework,
-# `gpui_platform` is the AppKit/Win32/Wayland backend, and `ui` + `theme` are
-# Zed's own component kit and color system — the reason zeddy looks native
-# rather than looks like a rewrite of native. Only `zeddy` may name
+# One pinned Zed revision supplies the framework, platform, UI/theme, and full
+# terminal model/view. Keeping the terminal pair at the same revision is what
+# gives Chartr Zed's emulator, rendering, input, selection, clipboard, IME, and
+# mouse behavior as one unit. Only `zeddy` may name
 # `gpui_platform`: a plugin that linked a second window-server backend would
 # register a second application with the OS.
 gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false, features = ["x11"] }
@@ -51,30 +50,22 @@ gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "1ea1
 ui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 zed_assets = { package = "assets", git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
-# --- the terminal --------------------------------------------------------
-#
-# Zed's fork of alacritty's VT core supplies the output parser, whose grid
-# semantics already agree with the renderer above it. Ghostty supplies the
-# input encoder: terminal keyboard protocols are too stateful and too broad to
-# reproduce with a table of escape sequences. Both dependencies are contained
-# by `zeddy-vt`; the application sees only zeddy-owned screen and input types.
-alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
-# This is the same safe-binding/Ghostty/Zig pin as chartr-rs. The binding pins
-# Ghostty 22d13172cde98a0a4dda05d3d6a3fcb0dd8ed018 and requires Zig 0.16.0.
-libghostty-vt = { git = "https://github.com/Uzaaft/libghostty-rs", rev = "de9fd9b0fa4ab53faebd3d489f4c74fe0ec832ec", default-features = false }
-
+terminal = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+terminal_view = { path = "vendor/zed-terminal-view" }
+editor = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+settings = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+task = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+collections = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+util = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 # --- everything else -----------------------------------------------------
 anyhow = "1"
-# Frames arrive on a thread of their own and must wake the window's thread
-# without it polling. Already in the tree as one of GPUI's own dependencies, so
-# it costs nothing new to build.
+# Background tasks deliver terminal and backend events without polling the
+# window thread. This is already part of GPUI's dependency graph.
 futures = "0.3"
-# herdr's control plane is NDJSON and its frame payloads are base64. That is
-# the entire wire format, so this is the entire wire dependency.
+# Herdr's control plane is NDJSON.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-base64 = "0.22"
 toml = "0.9"
 # The whole of the native plugin loader. There is no renderer, RPC transport,
 # or display-list replay between a plugin's view and zeddy's element tree.
@@ -85,12 +76,19 @@ wry = "0.56.1"
 ureq = "3"
 unicode-segmentation = "1"
 
-# The dev profile is the build whose window you actually drag. GPUI and the VT
-# core are both unusably slow at opt-level 0, and neither is code we are
-# debugging, so they are optimised even in dev while zeddy's own crates stay
-# fast to rebuild.
+# The dev profile is the build whose window you actually drag. GPUI and Zed's
+# terminal stack are not useful at opt-level 0, so dependencies are optimized
+# in dev while Chartr's own crates stay fast to rebuild.
 [profile.dev.package."*"]
 opt-level = 2
 
 [profile.dev]
 opt-level = 0
+
+# Zed's crates are normally built inside its workspace and rely on these
+# workspace-level patches. Keep them pinned beside the Zed revision above so
+# importing `terminal_view` is reproducible outside the Zed monorepo.
+[patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+tree-sitter-language = { git = "https://github.com/tree-sitter/tree-sitter", rev = "dff1fd868c750dbbae179fcd5c43ce987e4e0528" }

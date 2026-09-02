@@ -1,6 +1,6 @@
 //! herdr's wire types — exactly the ones zeddy sends or reads, and no more.
 //!
-//! herdr's socket API has ninety methods. zeddy uses eight of them. Modelling
+//! herdr's socket API has ninety methods. zeddy uses nine of them. Modelling
 //! only those keeps the pin in [`crate::SUPPORTED_HERDR_VERSION`] honest: a
 //! herdr release can change anything zeddy does not name here without zeddy
 //! having an opinion about it.
@@ -40,8 +40,17 @@ pub struct ErrorBody {
 }
 
 /// Methods take a params object even when they take no parameters.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Empty {}
+
+/// `server.live_handoff` — replace an incompatible private daemon without
+/// terminating the PTYs it owns.
+#[derive(Debug, Serialize)]
+pub struct ServerLiveHandoffParams<'a> {
+    pub import_exe: &'a str,
+    pub expected_protocol: u32,
+    pub expected_version: &'a str,
+}
 
 /// `ping` — the handshake. Its answer is the version check.
 #[derive(Debug, Deserialize)]
@@ -66,6 +75,9 @@ pub struct Workspace {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Pane {
     pub pane_id: String,
+    /// The server-owned PTY behind this pane. Herdr's interactive attach CLI
+    /// addresses the terminal rather than the pane that currently displays it.
+    pub terminal_id: String,
     #[serde(default)]
     pub workspace_id: String,
     /// The Herdr tab containing this pane. Chartr keeps one session per Herdr
@@ -189,29 +201,6 @@ pub struct PaneCloseParams<'a> {
     pub pane_id: &'a str,
 }
 
-#[derive(Debug, Serialize)]
-pub struct PaneReadParams<'a> {
-    pub pane_id: &'a str,
-    pub source: &'static str,
-    pub lines: u32,
-    pub format: &'static str,
-    pub strip_ansi: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PaneRead {
-    pub text: String,
-    #[serde(default)]
-    pub revision: u64,
-    #[serde(default)]
-    pub truncated: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PaneReadEnvelope {
-    pub read: PaneRead,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct WorkspaceList {
     #[serde(default)]
@@ -230,55 +219,6 @@ pub struct Created {
     pub root_pane: Pane,
 }
 
-// --- the data plane ------------------------------------------------------
-
-/// A line of `herdr terminal session control`'s stdout.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type")]
-pub enum StreamMessage {
-    #[serde(rename = "terminal.frame")]
-    Frame(RawFrame),
-    #[serde(rename = "terminal.closed")]
-    Closed(Closed),
-}
-
-/// A repaint, as it arrives: base64 ANSI plus the geometry it was painted for.
-///
-/// Only the first frame after an attach or a resize is `full`. Every other one
-/// is a diff against what the frames before it drew, which is why
-/// [`crate::stream::Frames`] refuses a stream with a gap in `seq` rather than
-/// painting a plausible-looking wrong screen.
-#[derive(Debug, Clone, Deserialize)]
-pub struct RawFrame {
-    pub bytes: String,
-    #[serde(default)]
-    pub full: bool,
-    #[serde(default)]
-    pub seq: u64,
-    #[serde(default)]
-    pub width: u16,
-    #[serde(default)]
-    pub height: u16,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Closed {
-    #[serde(default)]
-    pub reason: String,
-}
-
-/// A line written to `herdr terminal session control`'s stdin.
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type")]
-pub enum StreamCommand {
-    #[serde(rename = "terminal.input")]
-    Input { bytes: String },
-    #[serde(rename = "terminal.resize")]
-    Resize { cols: u16, rows: u16 },
-    #[serde(rename = "terminal.release")]
-    Release,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,34 +233,8 @@ mod tests {
 
     #[test]
     fn unknown_response_fields_do_not_fail_the_parse() {
-        let raw = r#"{"id":"1","result":{"panes":[{"pane_id":"p1","invented_in_0_9":true}]}}"#;
+        let raw = r#"{"id":"1","result":{"panes":[{"pane_id":"p1","terminal_id":"term1","invented_in_0_9":true}]}}"#;
         let parsed: Response<PaneList> = serde_json::from_str(raw).expect("parses");
         assert_eq!(parsed.result.expect("result").panes[0].pane_id, "p1");
-    }
-
-    #[test]
-    fn styled_history_uses_the_pane_read_envelope() {
-        let raw = r#"{"id":"1","result":{"type":"pane_read","read":{"pane_id":"p1","workspace_id":"w1","tab_id":"t1","source":"recent","format":"ansi","text":"\u001b[31mred","revision":4,"truncated":false}}}"#;
-        let parsed: Response<PaneReadEnvelope> = serde_json::from_str(raw).expect("parses");
-        let read = parsed.result.expect("result").read;
-        assert_eq!(read.text, "\x1b[31mred");
-        assert_eq!(read.revision, 4);
-        assert!(!read.truncated);
-    }
-
-    #[test]
-    fn stream_messages_are_tagged_by_type() {
-        let raw = r#"{"type":"terminal.frame","bytes":"aGk=","full":true,"seq":0,"width":80,"height":24}"#;
-        match serde_json::from_str::<StreamMessage>(raw).expect("parses") {
-            StreamMessage::Frame(frame) => assert!(frame.full && frame.seq == 0),
-            StreamMessage::Closed(_) => panic!("that was a frame"),
-        }
-    }
-
-    #[test]
-    fn commands_serialise_the_way_herdr_reads_them() {
-        let json = serde_json::to_string(&StreamCommand::Resize { cols: 120, rows: 40 })
-            .expect("serialises");
-        assert_eq!(json, r#"{"type":"terminal.resize","cols":120,"rows":40}"#);
     }
 }

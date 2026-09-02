@@ -1,7 +1,7 @@
 //! The herdr executable zeddy ships, resolved by path and never through `PATH`.
 //!
-//! Both halves of the client — the socket and the frame stream — spawn or
-//! handshake herdr, and they must be the same build. Resolving once and
+//! Both halves of the integration — control requests and interactive attach —
+//! execute or handshake Herdr, and they must be the same build. Resolving once and
 //! carrying the result makes that true by construction instead of by
 //! convention.
 

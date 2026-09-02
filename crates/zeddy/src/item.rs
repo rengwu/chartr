@@ -5,10 +5,10 @@
 //! items. Opening a plugin creates one `PluginItem`, just as attaching a Herdr
 //! session creates one `SessionItem`.
 
-use gpui::AnyView;
+use gpui::{AnyView, Entity};
 use zeddy_plugin::PaneKey;
 
-use crate::{session::Session, terminal::Fit};
+use crate::session::Session;
 
 pub enum Item {
     Session(SessionItem),
@@ -62,12 +62,38 @@ impl Item {
 
 pub struct SessionItem {
     pub session: Session,
-    pub fit: Fit,
+    view: Option<Entity<terminal_view::TerminalView>>,
+    bell: bool,
 }
 
 impl SessionItem {
     pub fn new(session: Session) -> Self {
-        Self { session, fit: Fit::default() }
+        Self { session, view: None, bell: false }
+    }
+
+    pub fn terminal_view(&self) -> Option<Entity<terminal_view::TerminalView>> {
+        self.view.clone()
+    }
+
+    pub fn install_terminal_view(&mut self, view: Entity<terminal_view::TerminalView>) {
+        self.view = Some(view);
+    }
+
+    pub fn clear_terminal_view(&mut self) {
+        self.view = None;
+        self.bell = false;
+    }
+
+    pub fn bell(&self) -> bool {
+        self.bell
+    }
+
+    pub fn set_bell(&mut self, bell: bool) -> bool {
+        if self.bell == bell {
+            return false;
+        }
+        self.bell = bell;
+        true
     }
 }
 

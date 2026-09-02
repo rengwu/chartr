@@ -15,9 +15,9 @@ shipping architecture:
 cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
-That suite must paint a real shell, load ANSI host scrollback, hard-kill Herdr,
-observe the broken stream, replace the daemon, and reject the stale session
-identity.
+That suite must handshake the exact sidecar, create a persistent terminal,
+produce a namespace-safe native attach target, hard-kill Herdr, replace the
+daemon, and reject the stale session identity.
 
 ## Visual matrix
 
@@ -43,7 +43,7 @@ Chartr Light. Capture and compare:
   corner resolution and no split target over a pane's tab bar;
 - one native, application-wide Settings window with General, Appearance,
   Terminal, Hotkeys, Plugins, and a contributed plugin Settings view;
-- command palette, unavailable-folder recovery, broken-stream recovery, backend
+- command palette, unavailable-folder recovery, closed-attach recovery, backend
   crash-loop banner, rejected plugin, and visible web permissions;
 - the native Hello pane and real Clock web pane, including its persisted format.
 
@@ -59,16 +59,34 @@ directional focus, move-to-existing-pane, join, Settings singleton focus, native
 `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling. Close the last workspace
 and confirm Settings closes too.
 
-Print more than two viewports of styled output in a terminal. With both a mouse
-wheel and a trackpad, move to the oldest row and back to the live prompt. Confirm
-small pixel deltas accumulate smoothly, colors survive in history, new output
-does not pull a historical viewport to the bottom, and scrolling up again after
-returning to the prompt refreshes the host history.
+Exercise the terminal as a terminal, not only as a shell prompt:
 
-Open OpenCode, Claude Code, and Codex and scroll in both directions with a wheel
-and a trackpad. Confirm each application viewport moves instead of host history.
-Then hold Shift while scrolling and confirm the gesture reaches host scrollback
-instead.
+- paste single-line and multiline text with the platform shortcut and context
+  menu, then copy a pointer and keyboard selection back out;
+- press Shift+Enter in a multiline-capable prompt and confirm it inserts LF
+  without submitting, while Enter submits normally;
+- use Option/Alt+Left and Option/Alt+Right to move by words;
+- print more than two viewports of styled Unicode output, then use both a mouse
+  wheel and a trackpad to reach the oldest row and return to the live prompt;
+- run alternate-screen TUIs such as `less`, `nano`, and `htop`; confirm wheel,
+  trackpad, mouse clicks, dragging, arrow keys, function keys, and resize reports
+  reach the application instead of moving host scrollback;
+- verify double/triple-click selection, select all, clear, scroll-to-top/bottom,
+  URL and filesystem hyperlinks, wide glyphs, combining marks, and IME
+  composition;
+- open terminal search (`Cmd+F` on macOS, `Ctrl+Shift+F` elsewhere), confirm
+  literal punctuation is matched, cycle in both directions, and dismiss back
+  to the terminal without sending the search keystrokes to the shell;
+- drag one or more files from the desktop into a terminal and confirm their
+  shell-quoted paths are pasted exactly once;
+- change terminal font family and size while a terminal is visible and confirm
+  the grid reflows immediately without restart, clipping, or stale alignment;
+- emit BEL and confirm the tab indicator appears, then type in that terminal
+  and confirm the indicator clears.
+
+Repeat the input and scrolling checks in standalone, grouped, and split panes,
+including after detach/reattach and window resize. Reject any duplicate input,
+stale viewport, focus loss, or interaction that works only in one pane shape.
 
 Confirm the active-space picker sits in the macOS title bar immediately after
 the traffic lights, and the chevron menu sits at the far-right corner in both

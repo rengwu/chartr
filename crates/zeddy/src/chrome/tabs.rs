@@ -113,7 +113,7 @@ fn tab(
         entry.key,
     )
     .aria_label(aria_label)
-    .activity(entry.status, entry.process_running, entry.ended)
+    .activity(entry.activity())
     .grouped(entry.grouped)
     .close_slot(close_slot)
     .build(cx)

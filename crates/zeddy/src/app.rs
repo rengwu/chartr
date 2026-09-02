@@ -31,16 +31,13 @@ use crate::{
     components::ContextMenu,
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::PluginItem,
-    keys,
     mode::Mode,
-    palette,
     persistence::{
         SidebarScope, Snapshot, SpaceKind as PersistedSpaceKind, StateStore, WindowState,
     },
-    settings::{PluginSettingsContent, ResolvedSettings, SettingsStore},
-    space::{Kind as SpaceKind, Space, name_for},
+    settings::{PluginSettingsContent, SettingsStore},
+    space::{Kind as SpaceKind, Space, SpaceEvent, name_for},
     spaces::{self, Registry},
-    terminal::{Appearance, TerminalElement},
     text_input::{InputEvent, TextInput},
     workspace::{
         Axis as PaneAxisDirection, Member, PaneId as LayoutPaneId, SplitDirection, Workspace,
@@ -140,6 +137,13 @@ pub struct Zeddy {
     command_palette_input: Entity<TextInput>,
     command_palette_query: String,
     command_palette_selected: usize,
+    terminal_search_open: bool,
+    terminal_search_input: Entity<TextInput>,
+    terminal_search_query: String,
+    terminal_search_matches: Vec<terminal::Range>,
+    terminal_search_active: Option<usize>,
+    terminal_search_generation: u64,
+    terminal_search_target: Option<Entity<terminal::Terminal>>,
     rename_space: Option<EntityId>,
     rename_group: Option<(EntityId, WorkspaceTabId)>,
     rename_input: Entity<TextInput>,
@@ -151,18 +155,16 @@ pub struct Zeddy {
     last_persisted: Option<String>,
     title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
-    /// Presses actually delivered to a terminal, keyed by GPUI's physical key
-    /// name. A matching release is sent only for one of these, so a release for
-    /// an application shortcut never leaks into a Kitty-aware TUI.
-    terminal_keys_down: HashMap<String, zeddy_vt::KeyEvent>,
-    /// libghostty's safe encoder is window-thread-bound. It is reconfigured
-    /// from the active session's copyable mode snapshot for every event.
-    key_encoder: zeddy_vt::KeyEncoder,
     problem: Option<String>,
 }
 
 impl Zeddy {
-    pub fn new(cwd: PathBuf, cx: &mut Context<Self>) -> Self {
+    pub fn new(cwd: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus = cx.focus_handle();
+        cx.on_focus_in(&focus, window, |this, window, cx| {
+            this.focus_active_terminal(window, cx);
+        })
+        .detach();
         let settings = cx.global::<SettingsStore>().clone();
         cx.observe_global::<SettingsStore>(|this, cx| {
             this.settings = cx.global::<SettingsStore>().clone();
@@ -171,14 +173,18 @@ impl Zeddy {
         })
         .detach();
         let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
+        let terminal_search_input = cx.new(|cx| TextInput::new("Find in terminal…", cx));
         let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
         let title_bar = cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar"));
-        let key_encoder =
-            zeddy_vt::KeyEncoder::new().expect("create the libghostty terminal key encoder");
         cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
             this.command_palette_query = input.read(cx).text().to_owned();
             this.command_palette_selected = 0;
             cx.notify();
+        })
+        .detach();
+        cx.subscribe(&terminal_search_input, |this, input, _: &InputEvent, cx| {
+            this.terminal_search_query = input.read(cx).text().to_owned();
+            this.start_terminal_search(cx);
         })
         .detach();
         cx.subscribe(&rename_input, |this, input, _: &InputEvent, cx| {
@@ -218,6 +224,13 @@ impl Zeddy {
                     command_palette_input,
                     command_palette_query: String::new(),
                     command_palette_selected: 0,
+                    terminal_search_open: false,
+                    terminal_search_input,
+                    terminal_search_query: String::new(),
+                    terminal_search_matches: Vec::new(),
+                    terminal_search_active: None,
+                    terminal_search_generation: 0,
+                    terminal_search_target: None,
                     rename_space: None,
                     rename_group: None,
                     rename_input,
@@ -228,9 +241,7 @@ impl Zeddy {
                     state,
                     last_persisted: saved_json,
                     title_bar,
-                    focus: cx.focus_handle(),
-                    terminal_keys_down: HashMap::new(),
-                    key_encoder,
+                    focus,
                     problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
                 };
             }
@@ -284,7 +295,7 @@ impl Zeddy {
             .into_iter()
             .map(|(name, path, kind)| {
                 let space = cx.new(|cx| Space::new(name, path, kind, client.clone(), cx));
-                cx.observe(&space, |_, _, cx| cx.notify()).detach();
+                Self::subscribe_to_space(&space, window, cx);
                 space
             })
             .collect();
@@ -337,6 +348,13 @@ impl Zeddy {
             command_palette_input,
             command_palette_query: String::new(),
             command_palette_selected: 0,
+            terminal_search_open: false,
+            terminal_search_input,
+            terminal_search_query: String::new(),
+            terminal_search_matches: Vec::new(),
+            terminal_search_active: None,
+            terminal_search_generation: 0,
+            terminal_search_target: None,
             rename_space: None,
             rename_group: None,
             rename_input,
@@ -347,13 +365,244 @@ impl Zeddy {
             state,
             last_persisted: saved_json,
             title_bar,
-            focus: cx.focus_handle(),
-            terminal_keys_down: HashMap::new(),
-            key_encoder,
+            focus,
             problem: state_problem.or(registry_problem),
         };
         this.connect(cx);
         this
+    }
+
+    fn subscribe_to_space(space: &Entity<Space>, window: &mut Window, cx: &mut Context<Self>) {
+        cx.observe_in(space, window, |this, space, window, cx| {
+            if this.active.as_ref() == Some(&space)
+                && this.focus.is_focused(window)
+                && !this.command_palette_open
+                && !this.terminal_search_open
+                && this.rename_space.is_none()
+                && this.rename_group.is_none()
+            {
+                this.focus_active_terminal(window, cx);
+            }
+            cx.notify();
+        })
+        .detach();
+        cx.subscribe_in(space, window, |this, space, event, window, cx| {
+            let SpaceEvent::TerminalReady(id) = *event;
+            let Some(terminal) = space
+                .read(cx)
+                .item(id)
+                .and_then(crate::item::Item::as_session)
+                .map(|item| item.session.terminal())
+            else {
+                return;
+            };
+            let view = crate::terminal_host::new_view(terminal.clone(), window, cx);
+            space.update(cx, |space, _| space.install_terminal_view(id, view.clone()));
+            cx.subscribe(&terminal, |_, _, event, cx| {
+                let terminal::Event::Open(terminal::MaybeNavigationTarget::PathLike(target)) =
+                    event
+                else {
+                    return;
+                };
+                if let Some(path) = resolve_terminal_path(target)
+                    && let Ok(url) = url::Url::from_file_path(path)
+                {
+                    cx.open_url(url.as_str());
+                }
+            })
+            .detach();
+            let observed_space = space.clone();
+            cx.observe(&view, move |_, view, cx| {
+                let bell = view.read(cx).has_bell();
+                if observed_space.update(cx, |space, _| space.set_terminal_bell(id, bell)) {
+                    cx.notify();
+                }
+            })
+            .detach();
+
+            if this.active.as_ref() == Some(space)
+                && space.read(cx).active() == Some(id)
+                && !this.command_palette_open
+                && this.rename_space.is_none()
+                && this.rename_group.is_none()
+            {
+                this.focus_active_terminal(window, cx);
+            }
+            cx.notify();
+        })
+        .detach();
+    }
+
+    fn focus_active_terminal(&self, window: &mut Window, cx: &mut App) {
+        let Some(view) = self
+            .active
+            .as_ref()
+            .and_then(|space| {
+                let space = space.read(cx);
+                space.active().and_then(|id| space.item(id))
+            })
+            .and_then(crate::item::Item::as_session)
+            .and_then(crate::item::SessionItem::terminal_view)
+        else {
+            return;
+        };
+        window.focus(&view.read(cx).focus_handle(cx), cx);
+    }
+
+    fn active_terminal(&self, cx: &App) -> Option<Entity<terminal::Terminal>> {
+        self.active
+            .as_ref()
+            .and_then(|space| {
+                let space = space.read(cx);
+                space.active().and_then(|id| space.item(id))
+            })
+            .and_then(crate::item::Item::as_session)
+            .map(|item| item.session.terminal())
+    }
+
+    fn toggle_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.terminal_search_open {
+            self.close_terminal_search(window, cx);
+            return;
+        }
+        let Some(terminal) = self.active_terminal(cx) else {
+            return;
+        };
+        let suggestion =
+            terminal.read(cx).last_content().selection_text.clone().unwrap_or_default();
+        self.terminal_search_open = true;
+        self.terminal_search_target = Some(terminal);
+        self.terminal_search_query = suggestion.clone();
+        self.terminal_search_input.update(cx, |input, cx| {
+            input.set_text(suggestion, true, cx);
+        });
+        self.start_terminal_search(cx);
+        window.focus(&self.terminal_search_input.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    fn start_terminal_search(&mut self, cx: &mut Context<Self>) {
+        if !self.terminal_search_open {
+            return;
+        }
+        self.terminal_search_generation = self.terminal_search_generation.wrapping_add(1);
+        let generation = self.terminal_search_generation;
+        let Some(terminal) = self.terminal_search_target.clone() else {
+            return;
+        };
+        let query = self.terminal_search_query.clone();
+        if query.is_empty() {
+            terminal.update(cx, |terminal, _| terminal.matches.clear());
+            self.terminal_search_matches.clear();
+            self.terminal_search_active = None;
+            cx.notify();
+            return;
+        }
+        let Some(search) = terminal::Search::new(&regex_escape_literal(&query)) else {
+            return;
+        };
+        let debounce = cx.background_executor().timer(Duration::from_millis(60));
+        cx.spawn(async move |this, cx| {
+            debounce.await;
+            let Ok(Some(find)) = this.update(cx, |this, cx| {
+                if !this.terminal_search_open
+                    || this.terminal_search_generation != generation
+                    || this.terminal_search_target.as_ref() != Some(&terminal)
+                {
+                    return None;
+                }
+                Some(terminal.update(cx, |terminal, cx| terminal.find_matches(search, cx)))
+            }) else {
+                return;
+            };
+            let matches = find.await;
+            let _ = this.update(cx, |this, cx| {
+                if !this.terminal_search_open
+                    || this.terminal_search_generation != generation
+                    || this.terminal_search_target.as_ref() != Some(&terminal)
+                {
+                    return;
+                }
+                let active = matches.len().checked_sub(1);
+                terminal.update(cx, |terminal, _| {
+                    terminal.matches = matches.clone();
+                    if let Some(active) = active {
+                        terminal.activate_match(active);
+                    }
+                });
+                this.terminal_search_matches = matches;
+                this.terminal_search_active = active;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn navigate_terminal_search(&mut self, forward: bool, cx: &mut Context<Self>) {
+        let count = self.terminal_search_matches.len();
+        if count == 0 {
+            return;
+        }
+        let active = match (self.terminal_search_active, forward) {
+            (Some(active), true) => (active + 1) % count,
+            (Some(0), false) | (None, false) => count - 1,
+            (Some(active), false) => active - 1,
+            (None, true) => 0,
+        };
+        self.terminal_search_active = Some(active);
+        if let Some(terminal) = self.terminal_search_target.as_ref() {
+            terminal.update(cx, |terminal, _| terminal.activate_match(active));
+        }
+        cx.notify();
+    }
+
+    fn close_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.terminal_search_open = false;
+        self.terminal_search_generation = self.terminal_search_generation.wrapping_add(1);
+        self.terminal_search_query.clear();
+        self.terminal_search_matches.clear();
+        self.terminal_search_active = None;
+        if let Some(terminal) = self.terminal_search_target.take() {
+            terminal.update(cx, |terminal, _| terminal.matches.clear());
+        }
+        self.terminal_search_input.update(cx, |input, cx| input.clear(cx));
+        self.focus_active_terminal(window, cx);
+        cx.notify();
+    }
+
+    fn terminal_search_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.terminal_search_open {
+            return None;
+        }
+        let count = self.terminal_search_matches.len();
+        let current = self.terminal_search_active.map_or(0, |active| active + 1);
+        let previous = cx.listener(|this, _, _, cx| this.navigate_terminal_search(false, cx));
+        let next = cx.listener(|this, _, _, cx| this.navigate_terminal_search(true, cx));
+        let close = cx.listener(|this, _, window, cx| this.close_terminal_search(window, cx));
+        Some(
+            h_flex()
+                .id("terminal-search")
+                .key_context("ChartrTerminalSearch")
+                .absolute()
+                .top_2()
+                .right_2()
+                .gap_1()
+                .p_1()
+                .rounded_md()
+                .border_1()
+                .border_color(cx.theme().colors().border)
+                .bg(cx.theme().colors().elevated_surface_background)
+                .child(div().w(px(220.)).child(self.terminal_search_input.clone()))
+                .child(
+                    Label::new(format!("{current}/{count}"))
+                        .size(UI_LABEL_SMALL)
+                        .color(Color::Muted),
+                )
+                .child(Button::new("terminal-search-previous", "Prev").on_click(previous))
+                .child(Button::new("terminal-search-next", "Next").on_click(next))
+                .child(Button::new("terminal-search-close", "Close").on_click(close))
+                .into_any_element(),
+        )
     }
 
     /// Apply the explicit exit policy while the window and its entities are
@@ -677,24 +926,23 @@ impl Zeddy {
             return;
         }
         self.active = Some(space.clone());
-        space.update(cx, |space, _| space.fit_items());
         window.focus(&self.focus, cx);
         cx.notify();
     }
 
-    fn pick_a_folder(&mut self, cx: &mut Context<Self>) {
+    fn pick_a_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let chosen = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
             prompt: Some("Add".into()),
         });
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let outcome = chosen.await;
-            let _ = this.update(cx, |this, cx| match outcome {
+            let _ = this.update_in(cx, |this, window, cx| match outcome {
                 Ok(Ok(Some(paths))) => {
                     for path in paths {
-                        this.register(path, cx);
+                        this.register(path, window, cx);
                     }
                 }
                 Ok(Ok(None)) => {}
@@ -711,7 +959,7 @@ impl Zeddy {
         .detach();
     }
 
-    fn register(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    fn register(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let Some(registry) = self.registry.as_mut() else {
             self.problem = Some("the space registry is unavailable".into());
             cx.notify();
@@ -742,7 +990,7 @@ impl Zeddy {
         };
         let name = name_for(SpaceKind::Registered, &path);
         let space = cx.new(|cx| Space::new(name, path, SpaceKind::Registered, client, cx));
-        cx.observe(&space, |_, _, cx| cx.notify()).detach();
+        Self::subscribe_to_space(&space, window, cx);
         self.spaces.push(space.clone());
         self.active = Some(space);
         self.problem = None;
@@ -892,6 +1140,7 @@ impl Zeddy {
             }
             Action::LocateSpace { space } => self.locate_space(space, cx),
             action @ (Action::Select { .. } | Action::Close { .. }) => {
+                let selecting = matches!(action, Action::Select { .. });
                 let target = match &action {
                     Action::Select { space, .. } | Action::Close { space, .. } => space
                         .and_then(|id| self.spaces.iter().find(|space| space.entity_id() == id))
@@ -900,10 +1149,13 @@ impl Zeddy {
                     _ => None,
                 };
                 if let Some(space) = target {
-                    if matches!(action, Action::Select { .. }) {
+                    if selecting {
                         self.activate(space.clone(), window, cx);
                     }
                     space.update(cx, |space, cx| space.act(action, cx));
+                    if selecting {
+                        self.focus_active_terminal(window, cx);
+                    }
                 }
             }
         }
@@ -1580,47 +1832,6 @@ impl Zeddy {
             cx.notify();
             return;
         }
-        let key_name = event.keystroke.key.clone();
-        if event.is_held && !self.terminal_keys_down.contains_key(&key_name) {
-            return;
-        }
-        let pressed = keys::normalize(&event.keystroke, event.is_held);
-        if self.send_terminal_key(&pressed, cx) && !event.is_held {
-            self.terminal_keys_down.insert(key_name, pressed);
-        }
-    }
-
-    fn on_key_up(&mut self, event: &gpui::KeyUpEvent, cx: &mut Context<Self>) {
-        let Some(pressed) = self.terminal_keys_down.remove(&event.keystroke.key) else {
-            return;
-        };
-        let released = keys::released(pressed);
-        self.send_terminal_key(&released, cx);
-    }
-
-    /// Encode and deliver an event to the active terminal. Empty encodings are
-    /// intentionally not tracked: under the active protocol that key has no
-    /// matching release to deliver either.
-    fn send_terminal_key(&mut self, event: &zeddy_vt::KeyEvent, cx: &mut Context<Self>) -> bool {
-        let Some(space) = self.active.clone() else {
-            return false;
-        };
-        let Some(modes) = space.read(cx).active_keyboard_modes() else {
-            return false;
-        };
-        let bytes = match self.key_encoder.encode(event, modes) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                self.problem = Some(format!("encoding terminal input: {error}"));
-                cx.notify();
-                return false;
-            }
-        };
-        if bytes.is_empty() {
-            return false;
-        }
-        space.update(cx, |space, cx| space.send_active(&bytes, cx));
-        true
     }
 
     fn space_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1642,8 +1853,8 @@ impl Zeddy {
 
         let menu = ContextMenu::build(window, cx, move |menu, _, _| {
             let add = weak.clone();
-            let mut menu = menu.entry("New Space…", None, move |_, cx| {
-                let _ = add.update(cx, |this, cx| this.pick_a_folder(cx));
+            let mut menu = menu.entry("New Space…", None, move |window, cx| {
+                let _ = add.update(cx, |this, cx| this.pick_a_folder(window, cx));
             });
 
             let registered: Vec<_> =
@@ -2233,10 +2444,8 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return message("No space. Add a folder to begin.", cx).into_any_element();
         };
-        let (problem, active) = space.update(cx, |space, _| {
-            space.fit_items();
-            (space.problem().map(str::to_owned), space.active())
-        });
+        let (problem, active) =
+            space.update(cx, |space, _| (space.problem().map(str::to_owned), space.active()));
         let on_action =
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
@@ -2264,11 +2473,14 @@ impl Zeddy {
             message("No tabs. Create a new item to begin.", cx).into_any_element()
         };
         let notices = self.workspace_notices(problem, cx);
+        let terminal_search = self.terminal_search_overlay(cx);
         v_flex()
+            .relative()
             .size_full()
             .min_h_0()
             .children(notices)
             .child(div().flex_1().min_h_0().child(workspace))
+            .children(terminal_search)
             .into_any_element()
     }
 
@@ -2480,7 +2692,7 @@ impl Zeddy {
         show_header: bool,
         on: &chrome::Emit,
         weak: &gpui::WeakEntity<Self>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &App,
     ) -> AnyElement {
         let Some(pane) = layout.pane(pane_id) else {
@@ -2494,76 +2706,68 @@ impl Zeddy {
                 self.empty_pane_header(tab_id, pane_id, weak, cx)
             }
         });
-        let content = pane
-            .active()
-            .and_then(|id| space.item(id).map(|item| (id, item)))
-            .map(|(id, item)| match item {
-                crate::item::Item::Session(item) => {
-                    let terminal = terminal(
-                        item,
-                        active_pane && self.focus.is_focused(window),
-                        self.settings.resolved(),
-                        cx,
-                    )
-                    .into_any_element();
-                    let ended = item.session.ended();
-                    let retrying = space.reattaching(id);
-                    let retry = weak.clone();
-                    v_flex()
-                        .relative()
-                        .size_full()
-                        .child(terminal)
-                        .when_some(ended, |view, ended| {
-                            let detail = match &ended {
+        let content =
+            pane.active()
+                .and_then(|id| space.item(id).map(|item| (id, item)))
+                .map(|(id, item)| match item {
+                    crate::item::Item::Session(item) => {
+                        let Some(terminal_view) = item.terminal_view() else {
+                            return message("Starting terminal…", cx).into_any_element();
+                        };
+                        let terminal = crate::terminal_host::element(
+                            terminal_view,
+                            cx.theme().colors().terminal_background,
+                        );
+                        let ended = item.session.ended();
+                        let retrying = space.reattaching(id);
+                        let retry = weak.clone();
+                        v_flex()
+                            .relative()
+                            .size_full()
+                            .child(terminal)
+                            .when_some(ended, |view, ended| {
+                                let detail = match &ended {
                                 crate::session::Ended::Closed => {
                                     "Session ended. Close this tab when you are done reviewing it."
                                         .to_owned()
                                 }
-                                crate::session::Ended::Failed(error) => {
-                                    format!("Terminal connection failed: {error}")
-                                }
                             };
-                            view.child(
-                                div().absolute().left_2().right_2().bottom_2().child(
-                                    Banner::new()
-                                        .severity(Severity::Error)
-                                        .child(Label::new(detail).size(UI_LABEL_DEFAULT))
-                                        .when(
-                                            matches!(ended, crate::session::Ended::Failed(_)),
-                                            |banner| {
-                                                banner.action_slot(
-                                                    Button::new(
-                                                        format!("reattach-session-{}", id.get()),
-                                                        if retrying {
-                                                            "Reattaching…"
-                                                        } else {
-                                                            "Reattach"
-                                                        },
-                                                    )
-                                                    .disabled(retrying)
-                                                    .on_click(move |_, _, cx| {
-                                                        let _ = retry.update(cx, |this, cx| {
-                                                            if let Some(space) = this.active.clone()
-                                                            {
-                                                                space.update(cx, |space, cx| {
-                                                                    space.reattach(id, cx)
-                                                                });
-                                                            }
-                                                        });
-                                                    }),
+                                view.child(
+                                    div().absolute().left_2().right_2().bottom_2().child(
+                                        Banner::new()
+                                            .severity(Severity::Error)
+                                            .child(Label::new(detail).size(UI_LABEL_DEFAULT))
+                                            .action_slot(
+                                                Button::new(
+                                                    format!("reattach-session-{}", id.get()),
+                                                    if retrying {
+                                                        "Reattaching…"
+                                                    } else {
+                                                        "Reattach"
+                                                    },
                                                 )
-                                            },
-                                        ),
-                                ),
-                            )
-                        })
+                                                .disabled(retrying)
+                                                .on_click(move |_, _, cx| {
+                                                    let _ = retry.update(cx, |this, cx| {
+                                                        if let Some(space) = this.active.clone() {
+                                                            space.update(cx, |space, cx| {
+                                                                space.reattach(id, cx)
+                                                            });
+                                                        }
+                                                    });
+                                                }),
+                                            ),
+                                    ),
+                                )
+                            })
+                            .into_any_element()
+                    }
+                    crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
+                })
+                .unwrap_or_else(|| {
+                    empty_pane_message("Drop a tab here or create a new item.", cx)
                         .into_any_element()
-                }
-                crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
-            })
-            .unwrap_or_else(|| {
-                empty_pane_message("Drop a tab here or create a new item.", cx).into_any_element()
-            });
+                });
 
         let drag_move = weak.clone();
         let drop_item = weak.clone();
@@ -2575,6 +2779,7 @@ impl Zeddy {
             .active()
             .and_then(|active| pane.items().iter().position(|item| *item == active))
             .unwrap_or(pane.items().len());
+        let pane_is_empty = pane.active().is_none();
         let drop_direction = space
             .drag_target()
             .filter(|(tab, pane, _)| *tab == tab_id && *pane == pane_id)
@@ -2589,12 +2794,14 @@ impl Zeddy {
             .when(pane.active().is_none() && active_pane, |pane| {
                 pane.role(Role::Group).aria_label("Empty pane").tab_group().tab_index(0)
             })
-            .capture_any_mouse_down(move |_, window, cx| {
+            .on_any_mouse_down(move |_, window, cx| {
                 let _ = focus_pane.update(cx, |this, cx| {
                     if let Some(space) = this.active.clone() {
                         space.update(cx, |space, _| space.activate_pane(tab_id, pane_id));
                     }
-                    window.focus(&this.focus, cx);
+                    if pane_is_empty {
+                        window.focus(&this.focus, cx);
+                    }
                     cx.notify();
                 });
             })
@@ -2709,6 +2916,7 @@ impl Zeddy {
             let status = item.status();
             let process_running = item.process_running();
             let ended = item.ended();
+            let bell = item.as_session().is_some_and(crate::item::SessionItem::bell);
             let position = chrome::tab_position(index, pane.items().len(), active_index);
             let select = *id;
             let close = *id;
@@ -2747,7 +2955,7 @@ impl Zeddy {
                     &space_key,
                     *id,
                 )
-                .activity(status, process_running, ended)
+                .activity(chrome::Activity { status, process_running, ended, bell })
                 .close_slot(Some(close_slot))
                 .build(cx)
                 .on_click(move |_, window, cx| {
@@ -3265,14 +3473,71 @@ impl Render for Zeddy {
             .on_action(cx.listener(|this, _: &actions::command_palette::Toggle, window, cx| {
                 this.toggle_command_palette(window, cx)
             }))
+            .on_action(cx.listener(|this, _: &actions::terminal_search::Toggle, window, cx| {
+                this.toggle_terminal_search(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::terminal_search::Next, _, cx| {
+                this.navigate_terminal_search(true, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::terminal_search::Previous, _, cx| {
+                this.navigate_terminal_search(false, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::terminal_search::Close, window, cx| {
+                this.close_terminal_search(window, cx)
+            }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
-            .on_key_up(cx.listener(|this, event, _, cx| this.on_key_up(event, cx)))
             .child(title_bar)
             .child(body)
             .children(command_palette)
             .children(rename_space)
             .children(rename_group)
     }
+}
+
+fn regex_escape_literal(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if matches!(
+            character,
+            '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+fn resolve_terminal_path(target: &terminal::PathLikeTarget) -> Option<PathBuf> {
+    let base = target.working_directory.as_deref();
+    let resolve = |text: &str| {
+        let path = PathBuf::from(text);
+        if path.is_absolute() {
+            path
+        } else if let Some(base) = base {
+            base.join(path)
+        } else {
+            path
+        }
+    };
+    let direct = resolve(&target.maybe_path);
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let mut path = target.maybe_path.as_str();
+    for _ in 0..2 {
+        let (candidate, suffix) = path.rsplit_once(':')?;
+        if suffix.parse::<u32>().is_err() {
+            return None;
+        }
+        path = candidate;
+        let resolved = resolve(path);
+        if resolved.exists() {
+            return Some(resolved);
+        }
+    }
+    None
 }
 
 /// Seats every space the current registry/state can recover in the last saved
@@ -3409,56 +3674,6 @@ fn load_registry(cwd: &std::path::Path) -> (Option<Registry>, Option<String>) {
     (Some(registry), None)
 }
 
-fn terminal(
-    item: &crate::item::SessionItem,
-    focused: bool,
-    settings: &ResolvedSettings,
-    cx: &App,
-) -> impl IntoElement {
-    let theme = cx.theme();
-    let screen = item.session.screen();
-    let fit = item.fit.clone();
-    let session = item.session.access();
-    let colors = screen
-        .rows
-        .iter()
-        .map(|row| row.iter().map(|cell| palette::cell_colors(cell, theme)).collect())
-        .collect();
-
-    let (font, font_size, line_height) = Fonts::from_settings(settings).terminal();
-    let appearance = Appearance {
-        font,
-        font_size,
-        line_height,
-        background: theme.colors().terminal_background,
-        cursor: theme.colors().terminal_foreground,
-    };
-
-    v_flex()
-        .size_full()
-        .p_2()
-        .bg(theme.colors().terminal_background)
-        .on_scroll_wheel(move |event, window, cx| {
-            let Some(lines) = fit.wheel_lines(event) else {
-                return;
-            };
-            let Some(position) = fit.cell_at(event.position) else {
-                return;
-            };
-            let modifiers = zeddy_vt::Modifiers {
-                shift: event.modifiers.shift,
-                alt: event.modifiers.alt,
-                control: event.modifiers.control,
-                super_key: event.modifiers.platform,
-            };
-            if session.wheel(zeddy_vt::WheelEvent { lines, position, modifiers }) {
-                window.refresh();
-            }
-            cx.stop_propagation();
-        })
-        .child(TerminalElement::new(screen, colors, appearance, focused, item.fit.clone()))
-}
-
 fn message(text: &str, cx: &App) -> impl IntoElement {
     v_flex()
         .size_full()
@@ -3490,7 +3705,27 @@ fn plugin_paths() -> Paths {
 
 #[cfg(test)]
 mod pane_drop_tests {
-    use super::{SplitDirection, pane_drop_direction_for_position, split_direction_for_position};
+    use super::{
+        SplitDirection, pane_drop_direction_for_position, regex_escape_literal,
+        resolve_terminal_path, split_direction_for_position,
+    };
+
+    #[test]
+    fn terminal_search_treats_user_text_as_a_literal() {
+        assert_eq!(regex_escape_literal("a.b[c]+(d)?\\e"), "a\\.b\\[c\\]\\+\\(d\\)\\?\\\\e");
+    }
+
+    #[test]
+    fn terminal_paths_resolve_relative_locations_without_inventing_an_editor() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("example.rs");
+        std::fs::write(&file, "fn main() {}\n").unwrap();
+        let target = terminal::PathLikeTarget {
+            maybe_path: "example.rs:12:3".to_owned(),
+            working_directory: Some(directory.path().to_path_buf()),
+        };
+        assert_eq!(resolve_terminal_path(&target), Some(file));
+    }
 
     #[test]
     fn panes_outside_the_pointer_do_not_overwrite_the_hovered_panes_drop_target() {

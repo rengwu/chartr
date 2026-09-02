@@ -18,14 +18,27 @@ stop` typed in one of zeddy's own terminals killing the window's backend.
 
 Resolving by path rather than through `PATH` follows from the same thing: a
 herdr the user installed is theirs, and picking it up would make zeddy's backend
-version depend on the machine. The frame stream rides herdr's *command line*,
+version depend on the machine. Direct terminal attachment rides Herdr's *command line*,
 which carries no compatibility promise, so the version is pinned exactly rather
 than as a floor.
+
+The pin may be an immutable upstream source revision when a required backend
+fix has not reached a release. In that case the acquisition script gives the
+binary a revision-specific build version, and the ordinary version/protocol
+handshake rejects released or locally built binaries that merely share the
+same package version. This is currently required for semantic direct-attach
+mouse forwarding: released Herdr 0.8.2 consumes click reports instead of
+forwarding them according to the attached child's active mouse mode.
+
+Because the daemon can outlive the Chartr binary that launched it, a pin change
+uses Herdr's live-handoff API when the private socket is occupied by an
+incompatible version. The replacement sidecar inherits the live PTYs; Chartr
+never stops an old daemon merely to upgrade it.
 
 `Namespace::env` sets only Herdr's config root and exact socket, then clears
 `HERDR_SESSION`, `HERDR_PANE_ID`, and their siblings rather than merely
 overriding what it sets. Chartr is frequently launched *from* a Herdr pane, and
-an inherited selector would otherwise point a frame stream at a daemon the
+an inherited selector would otherwise point an attach client at a daemon the
 control plane is not talking to.
 
 ## What this rules out

@@ -21,7 +21,7 @@ use crate::{
     components::{
         ContextMenu, SegmentedControl, SegmentedControlOption, selection_list, selection_row,
     },
-    fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
+    fonts::{self, Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
     mode::Mode,
     persistence::SidebarScope,
@@ -32,7 +32,7 @@ use crate::{
     text_input::{InputEvent, TextInput},
 };
 
-actions!(settings_window, [Close]);
+actions!(chartr_settings_window, [Close]);
 
 const SETTINGS_WINDOW_MIN_WIDTH: f32 = 720.;
 const SETTINGS_CONTROL_COLUMN_WIDTH: f32 = 200.;
@@ -227,10 +227,7 @@ impl SettingsWindow {
                     settings::apply_theme(&resolved, cx);
                 }
                 if apply_fonts {
-                    theme::set_theme_settings_provider(
-                        Box::new(Fonts::from_settings(&resolved)),
-                        cx,
-                    );
+                    fonts::install(&resolved, cx);
                 }
                 self.problem = None;
             }
@@ -342,7 +339,7 @@ impl SettingsWindow {
                     Some(family);
             },
             false,
-            false,
+            true,
             cx,
         );
     }
@@ -358,7 +355,7 @@ impl SettingsWindow {
                     Some(size);
             },
             false,
-            false,
+            true,
             cx,
         );
     }
@@ -1461,12 +1458,10 @@ mod tests {
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
+            ::settings::init(cx);
             theme::init(theme::LoadThemes::JustBase, cx);
             let settings = SettingsStore::bare();
-            theme::set_theme_settings_provider(
-                Box::new(Fonts::from_settings(settings.resolved())),
-                cx,
-            );
+            fonts::install(settings.resolved(), cx);
             cx.set_global(settings);
             let keymap = KeymapStore::bare();
             init(&keymap, cx);
@@ -1567,6 +1562,14 @@ mod tests {
             let resolved = cx.global::<SettingsStore>().resolved();
             assert_eq!(resolved.ui_font_size, 18.);
             assert_eq!(resolved.terminal_font_size, 16.);
+            assert_eq!(theme::theme_settings(cx).buffer_font_size(cx), px(16.));
+            assert_eq!(
+                <terminal::terminal_settings::TerminalSettings as ::settings::Settings>::get_global(
+                    cx,
+                )
+                .font_size,
+                Some(px(16.))
+            );
         });
     }
 }

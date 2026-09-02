@@ -10,8 +10,7 @@ use std::{
     path::PathBuf,
 };
 
-use futures::{StreamExt as _, channel::mpsc};
-use gpui::{Context, Task};
+use gpui::{Context, EventEmitter};
 use zeddy_herdr::{PaneId, WorkspaceId, control::Client};
 
 use crate::{
@@ -27,6 +26,14 @@ use crate::{
 pub enum Kind {
     AdHoc,
     Registered,
+}
+
+/// Window-owned integrations are created in response to these events. A
+/// `Space` can finish attaching a session without access to a GPUI window;
+/// emitting the stable item id keeps that asynchronous model boundary clean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpaceEvent {
+    TerminalReady(ItemId),
 }
 
 pub struct Space {
@@ -45,8 +52,6 @@ pub struct Space {
     restoring_plugins: Vec<PersistedItem>,
     drag_target: Option<(WorkspaceTabId, crate::workspace::PaneId, Option<SplitDirection>)>,
     problem: Option<String>,
-    wakeup_tx: mpsc::UnboundedSender<()>,
-    _wakeups: Task<()>,
 }
 
 impl Space {
@@ -55,9 +60,8 @@ impl Space {
         path: PathBuf,
         kind: Kind,
         client: Client,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> Self {
-        let (wakeup_tx, wakeup_rx) = mpsc::unbounded();
         Self {
             name,
             path,
@@ -74,20 +78,7 @@ impl Space {
             restoring_plugins: Vec::new(),
             drag_target: None,
             problem: None,
-            wakeup_tx,
-            _wakeups: Self::watch(wakeup_rx, cx),
         }
-    }
-
-    fn watch(mut wakeups: mpsc::UnboundedReceiver<()>, cx: &mut Context<Self>) -> Task<()> {
-        cx.spawn(async move |this, cx| {
-            while wakeups.next().await.is_some() {
-                while wakeups.try_recv().is_ok() {}
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    return;
-                }
-            }
-        })
     }
 
     pub fn name(&self) -> &str {
@@ -139,6 +130,23 @@ impl Space {
         self.items.get(&id)
     }
 
+    pub fn install_terminal_view(
+        &mut self,
+        id: ItemId,
+        view: gpui::Entity<terminal_view::TerminalView>,
+    ) {
+        if let Some(item) = self.items.get_mut(&id).and_then(Item::as_session_mut) {
+            item.install_terminal_view(view);
+        }
+    }
+
+    pub fn set_terminal_bell(&mut self, id: ItemId, bell: bool) -> bool {
+        self.items
+            .get_mut(&id)
+            .and_then(Item::as_session_mut)
+            .is_some_and(|item| item.set_bell(bell))
+    }
+
     pub fn reattaching(&self, id: ItemId) -> bool {
         self.reattaching.contains(&id)
     }
@@ -155,6 +163,37 @@ impl Space {
             .map(|item| item.session.id().clone())
     }
 
+    fn session_from_builder(
+        &mut self,
+        info: zeddy_herdr::control::Session,
+        builder: terminal::TerminalBuilder,
+        cx: &mut Context<Self>,
+    ) -> Session {
+        let backend_id = info.id.clone();
+        let session = Session::from_builder(info, builder, cx);
+        let terminal = session.terminal();
+        let terminal_entity = terminal.entity_id();
+        cx.subscribe(&terminal, move |this, _, event, cx| {
+            if !matches!(event, terminal::Event::CloseTerminal) {
+                return;
+            }
+            let Some(item_id) = this.sessions.get(&backend_id).copied() else {
+                return;
+            };
+            let Some(item) = this.items.get_mut(&item_id).and_then(Item::as_session_mut) else {
+                return;
+            };
+            // A reattach uses `--takeover`, which closes the superseded local
+            // client. Do not let that old client's exit mark the replacement.
+            if item.session.terminal().entity_id() == terminal_entity {
+                item.session.mark_ended();
+                cx.notify();
+            }
+        })
+        .detach();
+        session
+    }
+
     pub fn reattach(&mut self, id: ItemId, cx: &mut Context<Self>) {
         if !self.reattaching.insert(id) {
             return;
@@ -163,34 +202,21 @@ impl Space {
             self.reattaching.remove(&id);
             return;
         };
-        let backend_id = session.session.id().clone();
-        let size = session.session.size();
+        let info = session.session.info.clone();
         let client = self.client.clone();
-        let wakeups = self.wakeup_tx.clone();
-        let executor = cx.background_executor().clone();
+        let attach = Session::attach_builder(&client, &info, cx.entity_id().as_u64(), cx);
         cx.spawn(async move |this, cx| {
-            let result = executor
-                .spawn(async move {
-                    let info = client
-                        .sessions(None)?
-                        .into_iter()
-                        .find(|info| info.id == backend_id)
-                        .ok_or_else(|| {
-                            zeddy_herdr::Error::Protocol(format!(
-                                "Herdr no longer reports session {}",
-                                backend_id.0
-                            ))
-                        })?;
-                    Session::attach(&client, info, size, wakeups)
-                })
-                .await;
+            let result = attach.await;
             let _ = this.update(cx, |this, cx| {
                 this.reattaching.remove(&id);
                 match result {
-                    Ok(session) => {
+                    Ok(builder) => {
+                        let session = this.session_from_builder(info, builder, cx);
                         if let Some(item) = this.items.get_mut(&id).and_then(Item::as_session_mut) {
                             item.session = session;
+                            item.clear_terminal_view();
                             this.problem = None;
+                            cx.emit(SpaceEvent::TerminalReady(id));
                         }
                     }
                     Err(error) => this.problem = Some(error.to_string()),
@@ -464,6 +490,7 @@ impl Space {
                     status: (!grouped).then(|| item.status()).flatten(),
                     process_running: !grouped && item.process_running(),
                     ended: !grouped && item.ended(),
+                    bell: !grouped && item.as_session().is_some_and(SessionItem::bell),
                     selected: self.layout.active_tab_id() == Some(tab.id),
                     closable: true,
                     grouped,
@@ -545,7 +572,6 @@ impl Space {
                 if let Err(error) = self.layout.activate_item(item) {
                     self.problem = Some(error.to_string());
                 }
-                self.fit_items();
             }
             Action::Close { item, .. } => self.close_item(item, cx),
             Action::New
@@ -673,40 +699,8 @@ impl Space {
         }
     }
 
-    pub fn send_active(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
-        let Some(id) = self.active() else {
-            return;
-        };
-        if let Some(session) = self.items.get_mut(&id).and_then(Item::as_session_mut)
-            && let Err(error) = session.session.send(bytes)
-        {
-            self.problem = Some(error.to_string());
-            cx.notify();
-        }
-    }
-
-    /// Keyboard mode state for the active terminal, or `None` for a plugin.
-    pub fn active_keyboard_modes(&self) -> Option<zeddy_vt::KeyboardModes> {
-        let id = self.active()?;
-        self.items.get(&id)?.as_session().map(|item| item.session.keyboard_modes())
-    }
-
-    pub fn fit_items(&mut self) {
-        for item in self.items.values_mut() {
-            let Some(item) = item.as_session_mut() else {
-                continue;
-            };
-            let Some(size) = item.fit.get() else {
-                continue;
-            };
-            if let Err(error) = item.session.resize(size) {
-                self.problem = Some(error.to_string());
-            }
-        }
-    }
-
     /// Attach sessions discovered by the parent's one backend snapshot.
-    /// Process spawning and stream setup stay off the frame thread.
+    /// Local PTY creation stays off the frame thread.
     pub fn adopt(&mut self, infos: Vec<zeddy_herdr::control::Session>, cx: &mut Context<Self>) {
         let mut discovered = Vec::new();
         for info in infos {
@@ -723,10 +717,6 @@ impl Space {
             return;
         }
 
-        let client = self.client.clone();
-        let wakeups = self.wakeup_tx.clone();
-        let size = zeddy_vt::Size::default();
-        let executor = cx.background_executor().clone();
         let restored_ids: HashMap<_, _> = infos
             .iter()
             .filter_map(|info| {
@@ -737,22 +727,30 @@ impl Space {
         for item in stale {
             let _ = self.layout.remove_item(item);
         }
+        let client = self.client.clone();
+        let window_id = cx.entity_id().as_u64();
+        let pending = infos
+            .into_iter()
+            .map(|info| {
+                let restored = restored_ids.get(&info.id).copied();
+                let attach = Session::attach_builder(&client, &info, window_id, cx);
+                (restored, info, attach)
+            })
+            .collect::<Vec<_>>();
         cx.spawn(async move |this, cx| {
-            let attached = executor
-                .spawn(async move {
-                    infos
-                        .into_iter()
-                        .map(|info| {
-                            let restored = restored_ids.get(&info.id).copied();
-                            (restored, Session::attach(&client, info, size, wakeups.clone()))
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .await;
+            let mut attached = Vec::with_capacity(pending.len());
+            for (restored, info, attach) in pending {
+                attached.push((restored, info, attach.await));
+            }
             let _ = this.update(cx, |this, cx| {
-                for (restored, result) in attached {
+                for (restored, info, result) in attached {
                     match result {
-                        Ok(session) => this.insert_session_with_id(session, restored),
+                        Ok(builder) => {
+                            let session = this.session_from_builder(info, builder, cx);
+                            if let Some(id) = this.insert_session_with_id(session, restored) {
+                                cx.emit(SpaceEvent::TerminalReady(id));
+                            }
+                        }
                         Err(error) => {
                             if let Some(item) = restored {
                                 let _ = this.layout.remove_item(item);
@@ -804,27 +802,49 @@ impl Space {
         let workspace = self.workspace.clone();
         let path = self.path.clone();
         let label = self.name.clone();
-        let wakeups = self.wakeup_tx.clone();
-        let size = zeddy_vt::Size::default();
+        let create_client = client.clone();
         let executor = cx.background_executor().clone();
+        let window_id = cx.entity_id().as_u64();
         cx.spawn(async move |this, cx| {
-            let result = executor
+            let info = executor
                 .spawn(async move {
                     let info = match workspace {
-                        Some(workspace) => client.start_session(&workspace, None),
-                        None => client.create_workspace(&path, Some(&label)),
+                        Some(workspace) => create_client.start_session(&workspace, None),
+                        None => create_client.create_workspace(&path, Some(&label)),
                     }?;
-                    Session::attach(&client, info, size, wakeups)
+                    zeddy_herdr::Result::Ok(info)
                 })
                 .await;
+            let info = match info {
+                Ok(info) => info,
+                Err(error) => {
+                    let _ = this.update(cx, |this, cx| {
+                        this.starting = false;
+                        this.problem = Some(error.to_string());
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            let Ok(attach) =
+                this.update(cx, |_, cx| Session::attach_builder(&client, &info, window_id, cx))
+            else {
+                return;
+            };
+            let result = attach.await;
             let _ = this.update(cx, |this, cx| {
                 this.starting = false;
                 match result {
-                    Ok(session) => {
+                    Ok(builder) => {
+                        let session = this.session_from_builder(info, builder, cx);
                         if let Some((tab, pane)) = destination {
-                            this.insert_session_in(session, tab, pane);
+                            if let Some(id) = this.insert_session_in(session, tab, pane) {
+                                cx.emit(SpaceEvent::TerminalReady(id));
+                            }
                         } else {
-                            this.insert_session(session);
+                            if let Some(id) = this.insert_session(session) {
+                                cx.emit(SpaceEvent::TerminalReady(id));
+                            }
                         }
                         this.problem = None;
                     }
@@ -836,8 +856,8 @@ impl Space {
         .detach();
     }
 
-    fn insert_session(&mut self, session: Session) {
-        self.insert_session_with_id(session, None);
+    fn insert_session(&mut self, session: Session) -> Option<ItemId> {
+        self.insert_session_with_id(session, None)
     }
 
     fn insert_session_in(
@@ -845,11 +865,11 @@ impl Space {
         session: Session,
         tab: WorkspaceTabId,
         pane: crate::workspace::PaneId,
-    ) {
+    ) -> Option<ItemId> {
         self.workspace = Some(session.info.workspace.clone());
         let backend_id = session.id().clone();
         if self.sessions.contains_key(&backend_id) {
-            return;
+            return None;
         }
 
         let id = self.layout.alloc_item();
@@ -864,16 +884,21 @@ impl Space {
         } else if let Err(error) = self.layout.push_standalone(id) {
             self.items.remove(&id);
             self.problem = Some(error.to_string());
-            return;
+            return None;
         }
         self.sessions.insert(backend_id, id);
+        Some(id)
     }
 
-    fn insert_session_with_id(&mut self, session: Session, restored: Option<ItemId>) {
+    fn insert_session_with_id(
+        &mut self,
+        session: Session,
+        restored: Option<ItemId>,
+    ) -> Option<ItemId> {
         self.workspace = Some(session.info.workspace.clone());
         let backend_id = session.id().clone();
         if self.sessions.contains_key(&backend_id) {
-            return;
+            return None;
         }
         let id = restored.unwrap_or_else(|| self.layout.alloc_item());
         self.items.insert(id, Item::Session(SessionItem::new(session)));
@@ -882,9 +907,10 @@ impl Space {
         {
             self.items.remove(&id);
             self.problem = Some(error.to_string());
-            return;
+            return None;
         }
         self.sessions.insert(backend_id, id);
+        Some(id)
     }
 
     fn close_item(&mut self, id: ItemId, cx: &mut Context<Self>) {
@@ -917,13 +943,12 @@ impl Space {
     }
 
     fn remove_item(&mut self, id: ItemId) {
-        let Some(mut item) = self.items.remove(&id) else {
+        let Some(item) = self.items.remove(&id) else {
             return;
         };
-        if let Some(session) = item.as_session_mut() {
+        if let Some(session) = item.as_session() {
             let backend_id = session.session.id().clone();
             self.sessions.remove(&backend_id);
-            session.session.release();
             let dependents: Vec<_> = self
                 .items
                 .iter()
@@ -965,15 +990,7 @@ impl Space {
     }
 }
 
-impl Drop for Space {
-    fn drop(&mut self) {
-        for item in self.items.values_mut() {
-            if let Some(item) = item.as_session_mut() {
-                item.session.release();
-            }
-        }
-    }
-}
+impl EventEmitter<SpaceEvent> for Space {}
 
 pub fn name_for(kind: Kind, path: &std::path::Path) -> String {
     match kind {

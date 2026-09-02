@@ -14,16 +14,14 @@ mod components;
 mod fonts;
 mod item;
 mod keymap;
-mod keys;
 mod mode;
-mod palette;
 mod persistence;
 mod session;
 mod settings;
 mod settings_window;
 mod space;
 mod spaces;
-mod terminal;
+mod terminal_host;
 mod text_input;
 mod title_bar;
 mod web_plugin;
@@ -33,6 +31,12 @@ fn main() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     application().with_assets(zed_assets::Assets).run(move |cx: &mut App| {
+        // Zed's terminal model/view keeps its native emulator settings graph
+        // (cursor, scrollback, mouse behavior, and escape-sequence policy).
+        // Chartr owns product settings and adapts its terminal typography into
+        // Zed's shared theme provider below; it does not duplicate shell or PTY
+        // settings that belong to Herdr's persistent session.
+        ::settings::init(cx);
         let settings = settings::settings_file()
             .map(settings::SettingsStore::load)
             .unwrap_or_else(|_| settings::SettingsStore::bare());
@@ -53,10 +57,7 @@ fn main() {
         }
         // Zed's components read their font through this, and zeddy has no
         // settings file for the `theme_settings` crate to read one from.
-        theme::set_theme_settings_provider(
-            Box::new(fonts::Fonts::from_settings(settings.resolved())),
-            cx,
-        );
+        fonts::install(settings.resolved(), cx);
         actions::init(&keymap, cx);
         text_input::init(cx);
         settings_window::init(&keymap, cx);
@@ -103,7 +104,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| app::Zeddy::new(cwd.clone(), cx));
+                let view = cx.new(|cx| app::Zeddy::new(cwd.clone(), window, cx));
                 window.focus(&view.read(cx).focus_handle(cx), cx);
                 view
             },
