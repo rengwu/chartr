@@ -24,6 +24,7 @@ pub fn render(
     cx: &App,
 ) -> impl IntoElement {
     let active_index = entries.iter().position(|entry| entry.selected);
+    let selected_is_grouped = entries.iter().any(|entry| entry.selected && entry.grouped);
     let tabs_with_pinned_new_item = h_flex()
         .w_full()
         .min_w_0()
@@ -41,7 +42,7 @@ pub fn render(
         .child(new_item_cell(new_item, cx));
 
     let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
-    match controls {
+    let tab_bar = match controls {
         Some((space_switcher, view_menu)) => tab_bar
             .start_child(
                 h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher),
@@ -49,7 +50,16 @@ pub fn render(
             .end_child(view_menu)
             .into_any_element(),
         None => tab_bar.into_any_element(),
-    }
+    };
+
+    div().relative().w_full().flex_none().child(tab_bar).when(selected_is_grouped, |tab_bar| {
+        // Selected Zed tabs omit their bottom border to join their content.
+        // A group opens onto another tab strip instead, so paint over that
+        // gap after the tabs while sharing the existing strip border's edge.
+        tab_bar.child(
+            div().absolute().left_0().right_0().bottom_0().h(px(1.)).bg(cx.theme().colors().border),
+        )
+    })
 }
 
 fn tab(
