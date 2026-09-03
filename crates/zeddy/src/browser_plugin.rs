@@ -27,8 +27,9 @@ use wry::{
 use zeddy_plugin::InstanceContext;
 
 use crate::{
+    item::PluginView,
     text_input::TextInput,
-    web_plugin::{FocusHandler, NativeViewLease, NativeViewLeaseOwner},
+    web_plugin::{FocusHandler, NativeViewLease, NativeViewLeaseOwner, NativeWebViewHandle},
 };
 
 actions!(
@@ -63,11 +64,16 @@ pub fn view(
     on_focus: Option<FocusHandler>,
     window: &mut Window,
     cx: &mut App,
-) -> gpui::AnyView {
+) -> PluginView {
     let space = instance.space.clone();
     let instance_id = instance.instance_id;
     let theme = active_pane_theme(cx);
-    cx.new(|cx| BrowserView::new(data_dir, space, instance_id, theme, on_focus, window, cx)).into()
+    let content = NativeWebViewHandle::default();
+    let view = cx.new(|cx| {
+        BrowserView::new(data_dir, space, instance_id, theme, on_focus, content.clone(), window, cx)
+    });
+    let close = content.clone();
+    PluginView::with_close(view.into(), move || close.shutdown())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -95,7 +101,7 @@ enum BrowserEvent {
 }
 
 struct BrowserView {
-    content: Option<Rc<wry::WebView>>,
+    content: NativeWebViewHandle,
     content_visibility: NativeViewLeaseOwner,
     address_input: gpui::Entity<TextInput>,
     runtime: BrowserRuntime,
@@ -126,6 +132,7 @@ impl BrowserView {
         instance_id: u64,
         pane_theme: PaneTheme,
         on_focus: Option<FocusHandler>,
+        content: NativeWebViewHandle,
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -162,7 +169,7 @@ impl BrowserView {
         #[cfg(target_os = "linux")]
         if let Err(error) = gtk::init() {
             return Self {
-                content: None,
+                content,
                 content_visibility,
                 address_input,
                 runtime,
@@ -213,13 +220,15 @@ impl BrowserView {
         } else {
             builder.with_html(local_page(&runtime.theme, LocalPage::Start))
         };
-        let (content, error) = match builder.build_as_child(window) {
-            Ok(content) => (Some(Rc::new(content)), None),
-            Err(error) => (None, Some(format!("Could not create the website view: {error}"))),
+        let error = match builder.build_as_child(window) {
+            Ok(webview) => {
+                let webview = Rc::new(webview);
+                runtime.content = Rc::downgrade(&webview);
+                content.install(webview);
+                None
+            }
+            Err(error) => Some(format!("Could not create the website view: {error}")),
         };
-        if let Some(content) = &content {
-            runtime.content = Rc::downgrade(content);
-        }
 
         Self {
             content,
@@ -264,7 +273,7 @@ impl BrowserView {
     }
 
     fn focus_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(content) = &self.content {
+        if let Some(content) = self.content.get() {
             let _ = content.focus_parent();
         }
         let address = self.runtime.address().to_owned();
@@ -413,7 +422,7 @@ impl BrowserView {
     fn apply_theme(&self, theme: &BrowserTheme) {
         let encoded = serde_json::to_string(theme).unwrap_or_else(|_| "{}".into());
         if self.runtime.showing_local
-            && let Some(content) = &self.content
+            && let Some(content) = self.content.get()
         {
             let _ = content.evaluate_script(&format!("window.setChartrTheme({encoded})"));
         }
@@ -518,7 +527,7 @@ impl Render for BrowserView {
             .on_action(cx.listener(Self::go_forward))
             .on_action(cx.listener(Self::stop_loading))
             .child(toolbar);
-        if let Some(content) = self.content.clone() {
+        if let Some(content) = self.content.get() {
             root = root.child(div().w_full().flex_1().min_h_0().child(NativeWebViewElement::new(
                 content,
                 format!("{}-content", self.element_key),

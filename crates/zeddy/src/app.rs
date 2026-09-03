@@ -30,7 +30,7 @@ use crate::{
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
     components::{ContextMenu, PopupMenu},
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
-    item::PluginItem,
+    item::{PluginItem, PluginView},
     mode::Mode,
     persistence::{
         SidebarScope, Snapshot, SpaceKind as PersistedSpaceKind, StateStore, WindowState,
@@ -1383,12 +1383,25 @@ impl Zeddy {
         cx: &mut Context<Self>,
     ) {
         let targets = space.read(cx).close_targets(&ids);
+        let (terminal_targets, immediate): (Vec<_>, Vec<_>) =
+            targets.into_iter().partition(|(_, backend)| backend.is_some());
+        let immediate: Vec<_> = immediate.into_iter().map(|(item, _)| item).collect();
+        space.update(cx, |space, _| space.finish_bulk_close(&immediate));
+
+        if terminal_targets.is_empty() {
+            if remove_space {
+                self.remove_space_after_close(&space, cx);
+            }
+            cx.notify();
+            return;
+        }
+
         let client = self.client.clone();
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
             let results = executor
                 .spawn(async move {
-                    targets
+                    terminal_targets
                         .into_iter()
                         .map(|(item, backend)| {
                             let result = match (&client, backend) {
@@ -2346,7 +2359,9 @@ impl Zeddy {
             return;
         };
         let view = match plugin.pane(&key) {
-            Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Native(plugin)) => {
+                PluginView::new(plugin.view(&key, &instance, window, cx))
+            }
             Some(PaneSource::Hosted(HostedSurface::Browser)) => crate::browser_plugin::view(
                 plugin_paths().data.join(&key.plugin),
                 &instance,
@@ -2361,7 +2376,7 @@ impl Zeddy {
                     permissions.project_files,
                     unsafe_filesystem,
                 );
-                crate::web_plugin::view(
+                crate::web_plugin::pane(
                     entry.to_path_buf(),
                     broker,
                     permissions.clone(),
@@ -2453,7 +2468,9 @@ impl Zeddy {
                     continue;
                 };
                 let view = match loaded.pane(&key) {
-                    Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+                    Some(PaneSource::Native(plugin)) => {
+                        PluginView::new(plugin.view(&key, &instance, window, cx))
+                    }
                     Some(PaneSource::Hosted(HostedSurface::Browser)) => {
                         crate::browser_plugin::view(
                             plugin_paths().data.join(plugin),
@@ -2470,7 +2487,7 @@ impl Zeddy {
                             permissions.project_files,
                             unsafe_filesystem,
                         );
-                        crate::web_plugin::view(
+                        crate::web_plugin::pane(
                             entry.to_path_buf(),
                             broker,
                             permissions.clone(),
@@ -2545,7 +2562,9 @@ impl Zeddy {
             return false;
         };
         let view = match loaded.pane(&key) {
-            Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Native(plugin)) => {
+                PluginView::new(plugin.view(&key, &instance, window, cx))
+            }
             Some(PaneSource::Hosted(HostedSurface::Browser)) => crate::browser_plugin::view(
                 plugin_paths().data.join(&key.plugin),
                 &instance,
@@ -2553,7 +2572,7 @@ impl Zeddy {
                 window,
                 cx,
             ),
-            Some(PaneSource::Web(entry)) => crate::web_plugin::view(
+            Some(PaneSource::Web(entry)) => crate::web_plugin::pane(
                 entry.to_path_buf(),
                 FileBroker::new(
                     project,
@@ -2973,7 +2992,7 @@ impl Zeddy {
                             })
                             .into_any_element()
                     }
-                    crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
+                    crate::item::Item::Plugin(item) => item.view.clone_view().into_any_element(),
                     crate::item::Item::PluginLauncher { .. } => self.plugin_launcher(id, weak, cx),
                 })
                 .unwrap_or_else(|| {

@@ -693,7 +693,10 @@ impl Space {
 
     pub fn activate_plugin_view(&mut self, view: gpui::EntityId) -> bool {
         let Some(item) = self.items.iter().find_map(|(item, candidate)| {
-            candidate.as_plugin().filter(|plugin| plugin.view.entity_id() == view).map(|_| *item)
+            candidate
+                .as_plugin()
+                .filter(|plugin| plugin.view.any_view().entity_id() == view)
+                .map(|_| *item)
         }) else {
             return false;
         };
@@ -1036,6 +1039,7 @@ pub fn name_for(kind: Kind, path: &std::path::Path) -> String {
 mod tests {
     use super::*;
     use gpui::AppContext as _;
+    use std::{cell::Cell, rc::Rc};
 
     struct LauncherReplacementView;
 
@@ -1055,7 +1059,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn selecting_a_plugin_replaces_the_launcher_at_the_same_workspace_location(
+    fn selecting_a_plugin_replaces_the_launcher_and_close_tears_it_down_immediately(
         cx: &mut gpui::TestAppContext,
     ) {
         let temporary = tempfile::tempdir().unwrap();
@@ -1076,7 +1080,12 @@ mod tests {
         });
         let launcher = space.update(cx, |space, cx| space.open_plugin_launcher(cx));
         let before = cx.read(|cx| space.read(cx).workspace_tabs().location(launcher));
-        let view = cx.new(|_| LauncherReplacementView).into();
+        let closed = Rc::new(Cell::new(false));
+        let close_signal = closed.clone();
+        let view = crate::item::PluginView::with_close(
+            cx.new(|_| LauncherReplacementView).into(),
+            move || close_signal.set(true),
+        );
 
         let replaced = space.update(cx, |space, cx| {
             space.replace_plugin_launcher(
@@ -1100,5 +1109,9 @@ mod tests {
             assert_eq!(space.item(launcher).unwrap().title(), "Hello");
             assert!(!space.item(launcher).unwrap().is_plugin_launcher());
         });
+
+        space.update(cx, |space, cx| space.act(Action::Close { space: None, item: launcher }, cx));
+        assert!(closed.get());
+        cx.read(|cx| assert!(space.read(cx).item(launcher).is_none()));
     }
 }

@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use zeddy_plugin::manifest::Permissions;
 use zeddy_plugin_host::FileBroker;
 
+use crate::item::PluginView;
 use crate::session::SessionAccess;
 
 pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
@@ -51,6 +52,48 @@ pub(crate) struct NativeViewLease {
     current: NativeViewLeaseOwner,
 }
 
+/// Owns a native webview independently of the GPUI entity that renders it.
+/// Closing a plugin pane clears this slot synchronously, even if GPUI keeps the
+/// entity from the previous frame alive for a little longer.
+#[derive(Clone, Default)]
+pub(crate) struct NativeWebViewHandle(Rc<RefCell<Option<Rc<wry::WebView>>>>);
+
+impl NativeWebViewHandle {
+    pub(crate) fn install(&self, webview: Rc<wry::WebView>) {
+        *self.0.borrow_mut() = Some(webview);
+    }
+
+    pub(crate) fn get(&self) -> Option<Rc<wry::WebView>> {
+        self.0.borrow().clone()
+    }
+
+    pub(crate) fn shutdown(&self) {
+        let Some(webview) = self.0.borrow_mut().take() else {
+            return;
+        };
+
+        // Stop media before releasing the native view. WebKit can otherwise
+        // keep its media pipeline audible while destruction drains through the
+        // platform event loop.
+        let _ = webview.evaluate_script(
+            r#"(() => {
+                window.stop();
+                document.querySelectorAll('audio, video').forEach(media => {
+                    media.pause();
+                    media.removeAttribute('src');
+                    media.load();
+                });
+                document.open();
+                document.write('<!doctype html><title>Closed</title>');
+                document.close();
+            })();"#,
+        );
+        let _ = webview.focus_parent();
+        let _ = webview.set_visible(false);
+        let _ = webview.load_html("<!doctype html><title>Closed</title>");
+    }
+}
+
 impl NativeViewLease {
     pub(crate) fn is_current(&self) -> bool {
         self.current.0.get() == self.generation
@@ -73,13 +116,50 @@ pub fn view(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    cx.new(|cx| WebPluginView::new(entry, broker, permissions, session, on_focus, window, cx))
-        .into()
+    create_view(entry, broker, permissions, session, on_focus, window, cx).0
+}
+
+pub fn pane(
+    entry: PathBuf,
+    broker: FileBroker,
+    permissions: Permissions,
+    session: Option<SessionAccess>,
+    on_focus: Option<FocusHandler>,
+    window: &mut Window,
+    cx: &mut App,
+) -> PluginView {
+    let (view, webview) = create_view(entry, broker, permissions, session, on_focus, window, cx);
+    let close = webview.clone();
+    PluginView::with_close(view, move || close.shutdown())
+}
+
+fn create_view(
+    entry: PathBuf,
+    broker: FileBroker,
+    permissions: Permissions,
+    session: Option<SessionAccess>,
+    on_focus: Option<FocusHandler>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (AnyView, NativeWebViewHandle) {
+    let webview = NativeWebViewHandle::default();
+    let view = cx.new(|cx| {
+        WebPluginView::new(
+            entry,
+            broker,
+            permissions,
+            session,
+            on_focus,
+            webview.clone(),
+            window,
+            cx,
+        )
+    });
+    (view.into(), webview)
 }
 
 struct WebPluginView {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    webview: Option<Rc<wry::WebView>>,
+    webview: NativeWebViewHandle,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     visibility: NativeViewLeaseOwner,
     #[cfg(target_os = "linux")]
@@ -96,13 +176,17 @@ impl WebPluginView {
         permissions: Permissions,
         session: Option<SessionAccess>,
         on_focus: Option<FocusHandler>,
+        webview_handle: NativeWebViewHandle,
         window: &Window,
         _cx: &mut Context<Self>,
     ) -> Self {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
             let _ = (entry, broker, permissions, session, on_focus, window, _cx);
-            return Self { error: Some("Web plugins are supported on macOS and Linux.".into()) };
+            return Self {
+                webview: webview_handle,
+                error: Some("Web plugins are supported on macOS and Linux.".into()),
+            };
         }
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -122,7 +206,7 @@ impl WebPluginView {
             #[cfg(target_os = "linux")]
             if let Err(error) = gtk::init() {
                 return Self {
-                    webview: None,
+                    webview: webview_handle,
                     visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
@@ -132,7 +216,7 @@ impl WebPluginView {
 
             let Some(root) = entry.parent().and_then(|path| path.canonicalize().ok()) else {
                 return Self {
-                    webview: None,
+                    webview: webview_handle,
                     visibility,
                     #[cfg(target_os = "linux")]
                     _gtk_pump: gtk_pump,
@@ -178,7 +262,7 @@ impl WebPluginView {
                 Ok(webview) => Rc::new(webview),
                 Err(error) => {
                     return Self {
-                        webview: None,
+                        webview: webview_handle,
                         visibility,
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
@@ -188,8 +272,9 @@ impl WebPluginView {
                 }
             };
             *webview_slot.borrow_mut() = Some(Rc::downgrade(&webview));
+            webview_handle.install(webview);
             Self {
-                webview: Some(webview),
+                webview: webview_handle,
                 visibility,
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
@@ -226,7 +311,7 @@ impl Render for WebPluginView {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let mut root = div().size_full();
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if let Some(webview) = self.webview.clone() {
+        if let Some(webview) = self.webview.get() {
             root = root.child(NativeWebViewElement::new(
                 webview,
                 "chartr-web-plugin",

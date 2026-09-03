@@ -10,6 +10,41 @@ use zeddy_plugin::PaneKey;
 
 use crate::session::Session;
 
+/// A plugin view plus any host-owned resource teardown that must happen when
+/// the item leaves the workspace. GPUI may retain a view entity briefly after
+/// its last render, so native resources must not rely on entity destruction as
+/// their close signal.
+pub struct PluginView {
+    view: AnyView,
+    close: Option<Box<dyn FnOnce()>>,
+}
+
+impl PluginView {
+    pub fn new(view: AnyView) -> Self {
+        Self { view, close: None }
+    }
+
+    pub fn with_close(view: AnyView, close: impl FnOnce() + 'static) -> Self {
+        Self { view, close: Some(Box::new(close)) }
+    }
+
+    pub fn any_view(&self) -> &AnyView {
+        &self.view
+    }
+
+    pub fn clone_view(&self) -> AnyView {
+        self.view.clone()
+    }
+}
+
+impl Drop for PluginView {
+    fn drop(&mut self) {
+        if let Some(close) = self.close.take() {
+            close();
+        }
+    }
+}
+
 pub enum Item {
     Session(SessionItem),
     Plugin(PluginItem),
@@ -120,7 +155,7 @@ impl SessionItem {
 pub struct PluginItem {
     pub contribution: PaneKey,
     pub title: String,
-    pub view: AnyView,
+    pub view: PluginView,
     /// A session-specific plugin closes when this Herdr session ends.
     pub bound_session: Option<zeddy_herdr::PaneId>,
     pub can_clone: bool,
