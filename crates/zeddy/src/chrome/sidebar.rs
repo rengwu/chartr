@@ -24,7 +24,7 @@ use super::{
 };
 use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
-use crate::settings::sidebar_theme_colors;
+use crate::settings::{SettingsStore, sidebar_theme_colors};
 
 /// Limits for the resizable sidebar.
 pub const MIN_WIDTH: f32 = 108.;
@@ -643,6 +643,7 @@ fn row(
     cx: &App,
 ) -> AnyElement {
     let close = on.clone();
+    let middle_close = on.clone();
     let ungroup = on.clone();
     let rename = on.clone();
     let move_tab = on.clone();
@@ -653,6 +654,10 @@ fn row(
     let space = entry.space;
     let close_space = entry.space;
     let target_space_key = entry.space_key.clone();
+    let settings = cx.global::<SettingsStore>().resolved();
+    let middle_click_closes_tab = settings.middle_click_closes_tab
+        && settings.middle_click_closes_sidebar_tab
+        && entry.closable;
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
         tab: entry.tab,
@@ -744,6 +749,22 @@ fn row(
                 .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate())
                 .end_slot(end_slot),
         )
+        .when(middle_click_closes_tab, |row| {
+            row.on_aux_click(move |event, window, cx| {
+                if event.is_middle_click() {
+                    cx.stop_propagation();
+                    middle_close(
+                        if grouped {
+                            Action::CloseGroup { space: close_space, tab: close_tab }
+                        } else {
+                            Action::Close { space: Some(close_space), item: close_key }
+                        },
+                        window,
+                        cx,
+                    );
+                }
+            })
+        })
         .when_some(close_button, |wrapper, close_button| {
             wrapper.child(
                 div()

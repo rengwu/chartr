@@ -12,6 +12,8 @@ use gpui_platform::application;
 
 mod actions;
 mod app;
+mod assets;
+mod browser_plugin;
 mod chrome;
 mod components;
 mod fonts;
@@ -21,6 +23,7 @@ mod item;
 mod keymap;
 mod mode;
 mod persistence;
+mod plugin_installer;
 mod session;
 mod settings;
 mod settings_window;
@@ -36,7 +39,7 @@ fn main() {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let opened_path = opened_path_from_args(std::env::args_os(), &cwd);
 
-    application().with_assets(zed_assets::Assets).run(move |cx: &mut App| {
+    application().with_assets(assets::Assets).run(move |cx: &mut App| {
         // Zed's terminal model/view keeps its native emulator settings graph
         // (cursor, scrollback, mouse behavior, and escape-sequence policy).
         // Chartr owns product settings and adapts its terminal typography into
@@ -66,6 +69,7 @@ fn main() {
         fonts::install(settings.resolved(), cx);
         actions::init(&keymap, cx);
         text_input::init(cx);
+        browser_plugin::init(cx);
         settings_window::init(&keymap, cx);
         cx.set_global(settings.clone());
         cx.set_global(keymap);

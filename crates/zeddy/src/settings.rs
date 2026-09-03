@@ -71,6 +71,8 @@ pub enum ThemeMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedSettings {
     pub terminate_sessions_on_exit: bool,
+    pub middle_click_closes_tab: bool,
+    pub middle_click_closes_sidebar_tab: bool,
     pub reduce_motion: bool,
     pub theme_mode: ThemeMode,
     pub fixed_theme: String,
@@ -88,6 +90,8 @@ impl Default for ResolvedSettings {
     fn default() -> Self {
         Self {
             terminate_sessions_on_exit: false,
+            middle_click_closes_tab: false,
+            middle_click_closes_sidebar_tab: false,
             reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: CHARTR_DARK.to_owned(),
@@ -143,6 +147,10 @@ impl Default for PluginSettings {
 pub struct GeneralContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminate_sessions_on_exit: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub middle_click_closes_tab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub middle_click_closes_sidebar_tab: Option<bool>,
     #[serde(flatten)]
     extra: toml::Table,
 }
@@ -189,6 +197,12 @@ impl SettingsContent {
             terminate_sessions_on_exit: general
                 .and_then(|content| content.terminate_sessions_on_exit)
                 .unwrap_or(defaults.terminate_sessions_on_exit),
+            middle_click_closes_tab: general
+                .and_then(|content| content.middle_click_closes_tab)
+                .unwrap_or(defaults.middle_click_closes_tab),
+            middle_click_closes_sidebar_tab: general
+                .and_then(|content| content.middle_click_closes_sidebar_tab)
+                .unwrap_or(defaults.middle_click_closes_sidebar_tab),
             reduce_motion: appearance
                 .and_then(|content| content.reduce_motion)
                 .unwrap_or(defaults.reduce_motion),
@@ -1071,6 +1085,8 @@ mod tests {
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, CHARTR_DARK);
         assert!(!resolved.reduce_motion);
+        assert!(!resolved.middle_click_closes_tab);
+        assert!(!resolved.middle_click_closes_sidebar_tab);
     }
 
     #[test]
@@ -1082,11 +1098,16 @@ mod tests {
             .update(|content| {
                 content.terminal.get_or_insert_default().font_size = Some(17.);
                 content.appearance.get_or_insert_default().reduce_motion = Some(true);
+                let general = content.general.get_or_insert_default();
+                general.middle_click_closes_tab = Some(true);
+                general.middle_click_closes_sidebar_tab = Some(true);
             })
             .unwrap();
         let relaunched = SettingsStore::load(&file);
         assert_eq!(relaunched.resolved().terminal_font_size, 17.);
         assert!(relaunched.resolved().reduce_motion);
+        assert!(relaunched.resolved().middle_click_closes_tab);
+        assert!(relaunched.resolved().middle_click_closes_sidebar_tab);
         assert!(fs::read_to_string(file).unwrap().starts_with("# Chartr-zeddy"));
     }
 

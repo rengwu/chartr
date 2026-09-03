@@ -1,13 +1,8 @@
-//! zeddy's assets: four icons, compiled in.
+//! Chartr's icon overrides, compiled in, with Zed's assets as a fallback.
 //!
-//! Zed's `ui` components ask an [`AssetSource`] for an icon by path. zeddy uses
-//! four of them, so they are embedded with `include_str!` rather than read from
-//! a directory beside the binary — a GUI that cannot find its own icons at
-//! runtime is a class of bug worth not having.
-//!
-//! Asking for anything else answers `None` rather than failing. A component
-//! zeddy does not draw is not a missing asset, and an icon that silently does
-//! not appear is a better failure than a window that does not open.
+//! Zed's `ui` components ask an [`AssetSource`] for icons by their `IconName`
+//! path. Chartr overrides the handful it owns (including its Hugeicons browser
+//! controls), then delegates every other asset to Zed's bundled catalog.
 
 use std::borrow::Cow;
 
@@ -21,22 +16,31 @@ const ICONS: &[(&str, &str)] = &[
     ("icons/close.svg", include_str!("../assets/icons/close.svg")),
     ("icons/tab.svg", include_str!("../assets/icons/tab.svg")),
     ("icons/menu.svg", include_str!("../assets/icons/menu.svg")),
+    ("icons/arrow_left.svg", include_str!("../assets/icons/arrow_left.svg")),
+    ("icons/arrow_right.svg", include_str!("../assets/icons/arrow_right.svg")),
+    ("icons/rotate_cw.svg", include_str!("../assets/icons/rotate_cw.svg")),
+    ("icons/stop.svg", include_str!("../assets/icons/stop.svg")),
+    ("icons/lock.svg", include_str!("../assets/icons/lock.svg")),
+    ("icons/public.svg", include_str!("../assets/icons/public.svg")),
 ];
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
-        Ok(ICONS
-            .iter()
-            .find(|(name, _)| *name == path)
-            .map(|(_, svg)| Cow::Borrowed(svg.as_bytes())))
+        if let Some((_, svg)) = ICONS.iter().find(|(name, _)| *name == path) {
+            return Ok(Some(Cow::Borrowed(svg.as_bytes())));
+        }
+        zed_assets::Assets.load(path)
     }
 
     fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
-        Ok(ICONS
-            .iter()
-            .filter(|(name, _)| name.starts_with(path))
-            .map(|(name, _)| SharedString::from(*name))
-            .collect())
+        let mut assets = zed_assets::Assets.list(path)?;
+        for (name, _) in ICONS.iter().filter(|(name, _)| name.starts_with(path)) {
+            let name = SharedString::from(*name);
+            if !assets.contains(&name) {
+                assets.push(name);
+            }
+        }
+        Ok(assets)
     }
 }
 
@@ -47,7 +51,18 @@ mod tests {
 
     #[test]
     fn every_icon_zeddy_draws_is_embedded() {
-        for icon in [IconName::Plus, IconName::Close, IconName::Tab, IconName::Menu] {
+        for icon in [
+            IconName::Plus,
+            IconName::Close,
+            IconName::Tab,
+            IconName::Menu,
+            IconName::ArrowLeft,
+            IconName::ArrowRight,
+            IconName::RotateCw,
+            IconName::Stop,
+            IconName::Lock,
+            IconName::Public,
+        ] {
             let path = icon.path();
             assert!(
                 Assets.load(&path).expect("load").is_some(),
@@ -57,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn an_icon_zeddy_does_not_draw_is_absent_rather_than_an_error() {
-        assert!(Assets.load("icons/nonexistent.svg").expect("load").is_none());
+    fn other_assets_fall_back_to_zeds_catalog() {
+        assert!(Assets.load(&IconName::Check.path()).expect("load").is_some());
     }
 }

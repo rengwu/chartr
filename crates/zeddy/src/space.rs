@@ -629,15 +629,19 @@ impl Space {
         true
     }
 
-    pub fn open_plugin_in(
+    pub fn reserve_plugin_item(&mut self) -> ItemId {
+        self.layout.alloc_item()
+    }
+
+    pub fn open_plugin_in_at(
         &mut self,
+        id: ItemId,
         plugin: PluginItem,
         tab: WorkspaceTabId,
         pane: crate::workspace::PaneId,
         index: Option<usize>,
         cx: &mut Context<Self>,
-    ) -> ItemId {
-        let id = self.layout.alloc_item();
+    ) {
         self.items.insert(id, Item::Plugin(plugin));
         let result = self
             .layout
@@ -651,7 +655,6 @@ impl Space {
             let _ = self.layout.activate_tab(tab);
         }
         cx.notify();
-        id
     }
 
     pub fn cloneable_plugin(

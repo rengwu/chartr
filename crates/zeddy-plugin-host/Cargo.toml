@@ -9,7 +9,6 @@ repository.workspace = true
 [dependencies]
 zeddy-plugin = { path = "../zeddy-plugin" }
 gpui.workspace = true
-libloading.workspace = true
 
 [dev-dependencies]
 # `#[gpui::test]` needs an app context to run the loader against.

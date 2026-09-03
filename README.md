@@ -110,7 +110,8 @@ Gruvbox, One, and VS Code catalog as Chartr-rs, plus Chartr Dark and Chartr
 Light. Fixed mode chooses one theme; Match System keeps independent light and
 dark selections. IBM Plex Sans and the bundled IBM Plex Mono are configurable
 defaults. Reduce Motion disables the short space-sort settle animation while
-retaining direct pointer tracking.
+retaining direct pointer tracking. General can opt into middle-click tab closing
+for both tabbed and pane-local tabs, with a dependent option for sidebar rows.
 
 User-editable data remains text:
 
@@ -138,12 +139,25 @@ Plugins are directories under
 `$XDG_DATA_HOME/chartr-zeddy/plugins/<reverse-dns-id>/` containing
 `zeddy-plugin.toml`.
 
+Settings → Plugins installs a plugin from a Git repository whose default-branch
+root contains that manifest, or from a folder selected with the native picker.
+Chartr inspects the manifest, shows the package details and declared web
+permissions, and stages the result before atomically replacing the managed
+directory. Installation never invokes a compiler or package script. Web and
+hosted packages are architecture-independent and copied directly; separately
+compiled GPUI dynamic libraries are rejected because precompilation does not
+make Rust GUI objects ABI-safe. Plugin data is kept separately and survives
+replacement. A successful install offers **Restart** and **Later**; choosing
+Later leaves an in-app restart reminder.
+The full package and release naming contract is in
+[`docs/plugins.md`](docs/plugins.md).
+
 In Tabbed mode, the trailing plus menu offers **New Terminal Session** and
 **New Plugin Pane**. The latter opens a picker as its own tab; choosing a
 surface replaces the picker in place, so the plugin opens in that same tab.
 
-Native plugins are fully trusted Rust dynamic libraries. They receive a stable
-`InstanceContext` and return ordinary GPUI views:
+Build-time native modules receive an `InstanceContext` and return ordinary GPUI
+views:
 
 ```rust
 fn view(
@@ -155,9 +169,9 @@ fn view(
 ) -> gpui::AnyView;
 ```
 
-Native plugins may advertise one lazy Settings contribution through their
-registrar. Libraries remain mapped until process exit so disabling one cannot
-invalidate a live Rust vtable.
+These modules are compiled into Chartr; the installer does not accept Rust
+dynamic libraries. Native modules may advertise one lazy Settings contribution
+through their registrar.
 
 Web plugins are real Wry panes with local assets and a restrictive CSP. Their
 manifest declares project-file, domain-scoped network, process, and optional
@@ -167,10 +181,21 @@ filesystem access is an explicit per-plugin grant; there is no global unsafe
 switch. Revoking a grant or disabling a plugin destroys its live brokers and
 views immediately. A web plugin may name a lazy `settings_entry` document.
 
-`plugins/hello` and `plugins/clock` are complete native and web examples. Chartr
-bundles them as the **Hello** and **Clock** launcher entries so a clean install
-always has one working example of each tier; the same directories remain the
-reference source for plugin authors.
+Hosted plugins are small declarative packages that activate a reviewed surface
+implemented inside Chartr. They are reserved for integrations—such as
+Browser—that need native operating-system facilities while keeping all GPUI
+objects inside the host process's single framework copy.
+
+`plugins/hello` and `plugins/clock` are complete build-time native and web
+examples. Chartr bundles them as the **Hello** and **Clock** launcher entries;
+the Clock directory remains a reference for portable plugin authors.
+
+`plugins/browser` is the code-free package for the separately released,
+first-party **Browser** plugin. It is deliberately absent from the bundled
+catalog and activates Chartr's host-owned browser surface only after install.
+Each instance owns one page and uses the operating-system WebKit view behind a
+small, theme-adaptive Back/Forward/Stop/Reload/address toolbar; Chartr's own
+tabs and splits provide multi-page layout.
 
 ## Repository boundaries
 
@@ -179,7 +204,7 @@ crates/zeddy/              window, spaces, panes, settings, persistence, UI
 crates/zeddy-herdr/        private Herdr protocol and lifecycle
 crates/zeddy-plugin/       native and manifest authoring contract
 crates/zeddy-plugin-host/  discovery, loading, and web filesystem broker
-plugins/                   one complete example per plugin tier
+plugins/                   example and separately installable plugin packages
 vendor/herdr/              pinned sidecar fetch and licence
 docs/adr/                  architectural decisions
 .plan/maps/                durable product specification

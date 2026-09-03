@@ -13,6 +13,7 @@ use super::{
     Action, DraggedItem, Entry, ItemTab, dragged_item_preview, new_item_cell, tab_position,
 };
 use crate::components::{ContextMenu, popup_right_click_menu};
+use crate::settings::SettingsStore;
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 pub fn render(
@@ -60,6 +61,8 @@ fn tab(
     cx: &App,
 ) -> AnyElement {
     let close = on.clone();
+    let middle_close = on.clone();
+    let middle_click_closes_tab = cx.global::<SettingsStore>().resolved().middle_click_closes_tab;
     let position = tab_position(index, count, active_index);
     let select = entry.key;
     let select_item = on.clone();
@@ -119,6 +122,22 @@ fn tab(
     .build(cx)
     .on_click(move |_, window, cx| {
         select_item(Action::Select { space: Some(space), item: select }, window, cx)
+    })
+    .when(entry.closable && middle_click_closes_tab, |tab| {
+        tab.on_aux_click(move |event, window, cx| {
+            if event.is_middle_click() {
+                cx.stop_propagation();
+                middle_close(
+                    if grouped {
+                        Action::CloseGroup { space: close_space, tab: close_tab }
+                    } else {
+                        Action::Close { space: Some(close_space), item: close_key }
+                    },
+                    window,
+                    cx,
+                );
+            }
+        })
     })
     .when(!entry.grouped, |tab| {
         tab.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))

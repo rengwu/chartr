@@ -8,7 +8,7 @@
 use std::time::Duration;
 use std::{
     borrow::Cow,
-    cell::RefCell,
+    cell::{Cell, RefCell},
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -26,6 +26,36 @@ use zeddy_plugin_host::FileBroker;
 use crate::session::SessionAccess;
 
 pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
+
+/// Arbitrates ownership when one native child view moves between GPUI element paths.
+///
+/// GPUI drops element state that was not used by the newest frame after that frame
+/// has already been painted. Without a generation, the stale state's destructor
+/// can therefore hide a webview that its new location just made visible.
+#[derive(Clone, Default)]
+pub(crate) struct NativeViewLeaseOwner(Rc<Cell<u64>>);
+
+impl NativeViewLeaseOwner {
+    pub(crate) fn acquire(&self) -> NativeViewLease {
+        let mut generation = self.0.get().wrapping_add(1);
+        if generation == 0 {
+            generation = 1;
+        }
+        self.0.set(generation);
+        NativeViewLease { generation, current: self.clone() }
+    }
+}
+
+pub(crate) struct NativeViewLease {
+    generation: u64,
+    current: NativeViewLeaseOwner,
+}
+
+impl NativeViewLease {
+    pub(crate) fn is_current(&self) -> bool {
+        self.current.0.get() == self.generation
+    }
+}
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use wry::{
@@ -50,6 +80,8 @@ pub fn view(
 struct WebPluginView {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     webview: Option<Rc<wry::WebView>>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    visibility: NativeViewLeaseOwner,
     #[cfg(target_os = "linux")]
     _gtk_pump: gpui::Task<()>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -75,6 +107,7 @@ impl WebPluginView {
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
+            let visibility = NativeViewLeaseOwner::default();
             let (focus_tx, mut focus_rx) = mpsc::unbounded();
             let entity_id = _cx.entity_id();
             let focus_task = _cx.spawn(async move |_, cx| {
@@ -90,6 +123,7 @@ impl WebPluginView {
             if let Err(error) = gtk::init() {
                 return Self {
                     webview: None,
+                    visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
                     error: Some(format!("Could not initialize GTK: {error}")),
@@ -99,6 +133,7 @@ impl WebPluginView {
             let Some(root) = entry.parent().and_then(|path| path.canonicalize().ok()) else {
                 return Self {
                     webview: None,
+                    visibility,
                     #[cfg(target_os = "linux")]
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
@@ -144,6 +179,7 @@ impl WebPluginView {
                 Err(error) => {
                     return Self {
                         webview: None,
+                        visibility,
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
                         _focus_task: focus_task,
@@ -154,6 +190,7 @@ impl WebPluginView {
             *webview_slot.borrow_mut() = Some(Rc::downgrade(&webview));
             Self {
                 webview: Some(webview),
+                visibility,
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
                 _focus_task: focus_task,
@@ -190,7 +227,11 @@ impl Render for WebPluginView {
         let mut root = div().size_full();
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if let Some(webview) = self.webview.clone() {
-            root = root.child(NativeWebViewElement::new(webview, "chartr-web-plugin"));
+            root = root.child(NativeWebViewElement::new(
+                webview,
+                "chartr-web-plugin",
+                self.visibility.clone(),
+            ));
         }
         if let Some(error) = &self.error {
             root = root.flex().items_center().justify_center().child(error.clone());
@@ -418,12 +459,17 @@ fn fetch(requested: &str, allowed: &[String]) -> Result<serde_json::Value, Strin
 struct NativeWebViewElement {
     webview: Rc<wry::WebView>,
     id: ElementId,
+    visibility: NativeViewLeaseOwner,
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl NativeWebViewElement {
-    fn new(webview: Rc<wry::WebView>, id: impl Into<ElementId>) -> Self {
-        Self { webview, id: id.into() }
+    fn new(
+        webview: Rc<wry::WebView>,
+        id: impl Into<ElementId>,
+        visibility: NativeViewLeaseOwner,
+    ) -> Self {
+        Self { webview, id: id.into(), visibility }
     }
 }
 
@@ -438,6 +484,7 @@ impl IntoElement for NativeWebViewElement {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct VisibleWebView {
     webview: Weak<wry::WebView>,
+    lease: NativeViewLease,
     frame: Option<NativeFrame>,
     visible: bool,
 }
@@ -445,6 +492,9 @@ struct VisibleWebView {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl Drop for VisibleWebView {
     fn drop(&mut self) {
+        if !self.lease.is_current() {
+            return;
+        }
         if let Some(webview) = self.webview.upgrade() {
             let _ = webview.focus_parent();
             let _ = webview.set_visible(false);
@@ -517,6 +567,7 @@ impl Element for NativeWebViewElement {
             let is_new = lease.is_none();
             let mut lease = lease.unwrap_or_else(|| VisibleWebView {
                 webview: Rc::downgrade(&self.webview),
+                lease: self.visibility.acquire(),
                 frame: None,
                 visible: false,
             });
@@ -558,6 +609,17 @@ mod tests {
         let mut value = serde_json::json!({ "id": id, "action": action });
         value.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
         value.to_string()
+    }
+
+    #[test]
+    fn a_repaned_native_view_supersedes_its_stale_visibility_lease() {
+        let owner = NativeViewLeaseOwner::default();
+        let old_location = owner.acquire();
+        assert!(old_location.is_current());
+
+        let new_location = owner.acquire();
+        assert!(new_location.is_current());
+        assert!(!old_location.is_current());
     }
 
     #[test]

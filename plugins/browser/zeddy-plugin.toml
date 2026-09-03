@@ -1,0 +1,10 @@
+manifest_version = 2
+id = "com.chartr.browser"
+name = "Browser"
+version = "0.1.0"
+kind = "hosted"
+surface = "browser"
+
+[capabilities]
+multiplicity = "multiple"
+restorable = true

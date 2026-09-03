@@ -47,6 +47,24 @@ Chartr Light. Capture and compare:
   crash-loop banner, rejected plugin, and visible web permissions;
 - the native Hello pane and real Clock web pane, including its persisted format.
 
+Install a web plugin from both a local folder and a Git repository in Settings →
+Plugins. Confirm that its declared permissions appear before installation, the
+managed copy is not a live reference to the source, and **Later** leaves a
+restart-required banner. Replace that plugin and confirm its data survives.
+Attempt to install a separately compiled native GPUI plugin and confirm Chartr
+rejects it without executing or loading the library. Confirm **Restart**
+persists the workspace, relaunches Chartr, and exposes a newly installed web or
+hosted contribution.
+
+Install the separately packaged `com.chartr.browser` plugin and exercise it in
+standalone, grouped, and split panes on macOS and Linux/X11. Confirm its
+manifest-only package installs with no compiler or platform binary. Verify the
+themed toolbar, URL/search interpretation, redirects, Back/Forward, Stop/Reload,
+keyboard shortcuts, one page per pane, current-pane handling of new-window
+links, native file uploads, system-browser download handoff, denied site
+permissions, ephemeral web-engine storage, and per-pane last-URL restoration.
+Network/TLS failures may retain the operating system web engine's error page.
+
 Reject the build for clipping, overlapping hit targets, hard-coded feature
 colors, inconsistent spacing, missing close controls, duplicated tabs, a webview
 that survives its pane, or any placeholder standing in for an advertised plugin
@@ -58,6 +76,13 @@ Run the matrix with pointer and keyboard. Confirm `Cmd/Ctrl+W`, command palette,
 directional focus, move-to-existing-pane, join, Settings singleton focus, native
 `Cmd/Ctrl+W` close, and `Ctrl+Tab` Settings-page cycling. Close the last workspace
 and confirm Settings closes too.
+
+In General settings, confirm the sidebar middle-click switch is hidden until
+"Middle click to close tab" is checked. With only the parent enabled, middle-click
+standalone and grouped tabs in tabbed mode and pane-local tabs; each target closes,
+while sidebar rows do not. Enable the sidebar checkbox and confirm its standalone
+and grouped rows close as well. Disable the parent and confirm none of these
+surfaces close from a middle click.
 
 Exercise the terminal as a terminal, not only as a shell prompt:
 

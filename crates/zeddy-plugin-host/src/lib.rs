@@ -1,25 +1,20 @@
-//! The only code in zeddy that loads foreign code.
+//! Chartr's plugin runtime catalog and isolation boundary.
 //!
-//! Both plugin tiers are discovered the same way — a directory with a
-//! `zeddy-plugin.toml` in it — and both arrive at the app as the same thing: a
+//! Plugin packages are discovered the same way — a directory with a
+//! `zeddy-plugin.toml` in it — and all arrive at the app as the same thing: a
 //! list of panes with a way to build each one. Everything above this crate sees
 //! [`Loaded`] and never asks which tier a pane came from.
 //!
 //! # Discovery, not installation
 //!
-//! This crate reads what is already on disk. Fetching a plugin from Git,
-//! building one from source, and deciding whether the user trusts it are
-//! separate concerns and separate code; putting them here would mean the window
-//! could not enumerate plugins without also being able to install them.
+//! This crate reads what is already on disk. Fetching a package and deciding
+//! whether the user trusts it are separate concerns and separate code;
+//! putting them here would mean the window could not enumerate plugins without
+//! also being able to install them.
 //!
-//! # Native libraries are never unloaded
-//!
-//! A native plugin's GPUI views hold vtables that live in its library. Dropping
-//! the library while a view is alive is a use-after-free, and there is no
-//! reliable moment at which zeddy knows the last one is gone. So [`Native`]
-//! leaks its [`libloading::Library`] deliberately: a reload brings a *new*
-//! generation up and swaps it in, and the old code stays mapped until the
-//! process exits. Memory is the cost, and it is the cheap side of that trade.
+//! Separately compiled GPUI libraries are rejected. Rust GUI objects and crate
+//! globals do not have a stable dynamic-library ABI; native examples that ship
+//! with Chartr are linked into the application instead.
 
 use std::{
     collections::BTreeMap,
@@ -27,7 +22,7 @@ use std::{
 };
 
 use zeddy_plugin::{
-    Entry, Host, PaneKey, PaneSpec, PluginObject, Registrar,
+    Host, PaneKey, PaneSpec, PluginObject, Registrar,
     manifest::{Capabilities, Invalid, Kind, Manifest, Permissions, ProjectAccess},
 };
 
@@ -51,11 +46,26 @@ enum LoadSource {
     BundledNative(NativeFactory),
 }
 
-/// The tier-specific half of a loaded plugin — the only place the difference
-/// between "native" and "web" is still visible.
+/// The runtime-specific half of a loaded plugin.
 enum Tier {
     Native(Native),
+    Hosted(HostedSurface),
     Web { entry: PathBuf, settings_entry: Option<PathBuf> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostedSurface {
+    Browser,
+}
+
+impl HostedSurface {
+    /// Resolve the small, explicit allowlist of surfaces implemented by Chartr.
+    pub fn named(name: &str) -> Result<Self, LoadError> {
+        match name {
+            "browser" => Ok(Self::Browser),
+            name => Err(LoadError::UnsupportedSurface(name.to_owned())),
+        }
+    }
 }
 
 pub enum SettingsSource {
@@ -63,17 +73,16 @@ pub enum SettingsSource {
     Web(PathBuf),
 }
 
-/// A loaded native library and the object it produced.
+/// A native module linked into Chartr and the object it produced.
 struct Native {
     plugin: Box<dyn PluginObject>,
-    /// Kept for the life of the process. See the module comment.
-    _library: Option<&'static libloading::Library>,
 }
 
 /// How a pane should be built, once something above decides to show it.
 pub enum PaneSource<'a> {
     /// Call into the plugin for a GPUI view, mounted directly in the tree.
     Native(&'a mut dyn PluginObject),
+    Hosted(HostedSurface),
     /// Point a webview at this document.
     Web(&'a Path),
 }
@@ -105,6 +114,7 @@ impl Loaded {
         }
         Some(match &mut self.tier {
             Tier::Native(native) => PaneSource::Native(native.plugin.as_mut()),
+            Tier::Hosted(surface) => PaneSource::Hosted(*surface),
             Tier::Web { entry, .. } => PaneSource::Web(entry.as_path()),
         })
     }
@@ -119,6 +129,7 @@ impl Loaded {
         }
         match &mut self.tier {
             Tier::Native(native) => native.plugin.settings(window, cx).map(SettingsSource::Native),
+            Tier::Hosted(_) => None,
             Tier::Web { settings_entry, .. } => settings_entry.clone().map(SettingsSource::Web),
         }
     }
@@ -444,9 +455,9 @@ pub enum LoadError {
         manifest: String,
     },
     MissingFile(PathBuf),
+    ExternalNative,
+    UnsupportedSurface(String),
     BundledKind(Kind),
-    /// `dlopen` failed, or the library had no entry point.
-    Library(String),
 }
 
 impl std::fmt::Display for LoadError {
@@ -457,17 +468,23 @@ impl std::fmt::Display for LoadError {
                 write!(f, "directory `{dir}` holds a plugin with id `{manifest}`")
             }
             Self::MissingFile(path) => write!(f, "{} is missing", path.display()),
+            Self::ExternalNative => write!(
+                f,
+                "separately compiled native GPUI plugins are unsupported; use a web package or a Chartr-hosted surface"
+            ),
+            Self::UnsupportedSurface(surface) => {
+                write!(f, "Chartr does not support the hosted surface `{surface}`")
+            }
             Self::BundledKind(kind) => {
                 write!(f, "a bundled native factory cannot use a {kind:?} manifest")
             }
-            Self::Library(why) => write!(f, "cannot load the plugin library: {why}"),
         }
     }
 }
 
 impl std::error::Error for LoadError {}
 
-fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, LoadError> {
+fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, LoadError> {
     let manifest = Manifest::read(dir).map_err(LoadError::Manifest)?;
 
     let dir_name = dir.file_name().unwrap_or_default().to_string_lossy();
@@ -478,21 +495,19 @@ fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, Loa
         });
     }
 
-    let data_dir = paths.data.join(&manifest.id);
-    std::fs::create_dir_all(&data_dir).ok();
-    let host = Host { data_dir, plugin_dir: dir.to_owned() };
+    std::fs::create_dir_all(paths.data.join(&manifest.id)).ok();
 
     let (tier, panes, has_settings) = match manifest.kind {
         Kind::Native => {
-            let filename = manifest
-                .library_filename()
-                .ok_or_else(|| LoadError::MissingFile(dir.join("<library>")))?;
-            let library_path = dir.join(&filename);
-            if !library_path.is_file() {
-                return Err(LoadError::MissingFile(library_path));
-            }
-            let (native, panes, has_settings) = open_native(&library_path, &manifest.id, host, cx)?;
-            (Tier::Native(native), panes, has_settings)
+            return Err(LoadError::ExternalNative);
+        }
+        Kind::Hosted => {
+            let surface = HostedSurface::named(manifest.surface.as_deref().unwrap_or_default())?;
+            let panes = vec![PaneSpec {
+                key: PaneKey::new(manifest.id.clone(), "main"),
+                title: manifest.name.clone(),
+            }];
+            (Tier::Hosted(surface), panes, false)
         }
         Kind::Web => {
             let entry = dir.join(manifest.entry.as_deref().unwrap_or("index.html"));
@@ -555,52 +570,15 @@ fn load_builtin_native(
         dir,
         panes,
         has_settings,
-        tier: Tier::Native(Native { plugin, _library: None }),
+        tier: Tier::Native(Native { plugin }),
         source: LoadSource::BundledNative(factory),
     })
 }
 
-fn open_native(
-    path: &Path,
-    id: &str,
-    host: Host,
-    cx: &mut gpui::App,
-) -> Result<(Native, Vec<PaneSpec>, bool), LoadError> {
-    // SAFETY: loading a library runs its initialisers, which is arbitrary
-    // native code. That is the documented trust model of the native tier — the
-    // manifest's `native_abi` has already been checked to match this build, and
-    // nothing beyond that is verifiable in-process.
-    let library = unsafe { libloading::Library::new(path) }
-        .map_err(|err| LoadError::Library(format!("{}: {err}", path.display())))?;
-    // Leaked on purpose: see the module comment.
-    let library: &'static libloading::Library = Box::leak(Box::new(library));
-
-    // SAFETY: the symbol's type is the contract in `zeddy-plugin`, and the ABI
-    // check above is what makes that contract the same one this build compiled.
-    let entry: libloading::Symbol<'static, Entry> =
-        unsafe { library.get(zeddy_plugin::ENTRY_SYMBOL) }
-            .map_err(|err| LoadError::Library(format!("no zeddy_plugin_entry: {err}")))?;
-
-    // SAFETY: as above.
-    let mut plugin = unsafe { entry(host, cx) };
-
-    if plugin.id() != id {
-        return Err(LoadError::IdMismatch { dir: id.to_owned(), manifest: plugin.id().to_owned() });
-    }
-
-    let mut registrar = Registrar::new(id);
-    plugin.activate(&mut registrar, cx);
-    let panes = registrar.panes().to_vec();
-    let has_settings = registrar.has_settings();
-
-    Ok((Native { plugin, _library: Some(library) }, panes, has_settings))
-}
-
 #[cfg(test)]
 mod tests {
-    //! Loading a real native library needs one to have been built, so these
-    //! cover discovery, validation, and the web tier. The native path is
-    //! exercised end to end by `plugins/hello` in the app's own tests.
+    //! Discovery, validation, portable web packages, hosted surfaces, and
+    //! rejection of separately linked native libraries.
 
     use super::*;
     use gpui::{AppContext as _, ParentElement as _};
@@ -775,7 +753,7 @@ mod tests {
         let dir = paths.bundled.join(BundledPlugin::ID);
         let manifest = Manifest::parse(
             "manifest_version = 2\nid = \"com.example.bundled\"\nname = \"Bundled\"\n\
-             version = \"0.1.0\"\nkind = \"native\"\nlibrary = \"bundled\"\nnative_abi = 2\n",
+            version = \"0.1.0\"\nkind = \"native\"\n",
         )
         .unwrap();
         let mut catalog = cx.update(|cx| {
@@ -788,6 +766,62 @@ mod tests {
         assert!(catalog.disable(BundledPlugin::ID));
         cx.update(|cx| catalog.enable(&paths, BundledPlugin::ID, cx)).unwrap();
         assert_eq!(catalog.panes()[0].key.plugin, BundledPlugin::ID);
+    }
+
+    #[gpui::test]
+    fn a_hosted_browser_surface_is_discovered_without_loading_code(cx: &mut gpui::TestAppContext) {
+        let (_tmp, paths) = paths();
+        let dir = paths.installed.join("com.chartr.browser");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("zeddy-plugin.toml"),
+            "manifest_version = 2\nid = 'com.chartr.browser'\nname = 'Browser'\nversion = '1'\nkind = 'hosted'\nsurface = 'browser'\n",
+        )
+        .unwrap();
+
+        let mut catalog = cx.update(|cx| load_all(&paths, cx));
+        let browser = catalog.get_mut("com.chartr.browser").unwrap();
+        assert!(matches!(
+            browser.pane(&PaneKey::new("com.chartr.browser", "main")),
+            Some(PaneSource::Hosted(HostedSurface::Browser))
+        ));
+    }
+
+    #[gpui::test]
+    fn unknown_hosted_surfaces_and_manually_copied_native_plugins_are_rejected(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_tmp, paths) = paths();
+        for (id, kind) in [
+            ("com.example.unknown", "kind = 'hosted'\nsurface = 'unknown'"),
+            ("com.example.native", "kind = 'native'"),
+        ] {
+            let dir = paths.installed.join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("zeddy-plugin.toml"),
+                format!(
+                    "manifest_version = 2\nid = '{id}'\nname = 'Rejected'\nversion = '1'\n{kind}\n"
+                ),
+            )
+            .unwrap();
+        }
+
+        let catalog = cx.update(|cx| load_all(&paths, cx));
+        assert!(catalog.loaded.is_empty());
+        assert_eq!(catalog.rejected.len(), 2);
+        assert!(
+            catalog
+                .rejected
+                .iter()
+                .any(|rejected| rejected.why.contains("hosted surface `unknown`"))
+        );
+        assert!(
+            catalog
+                .rejected
+                .iter()
+                .any(|rejected| rejected.why.contains("separately compiled native"))
+        );
     }
 
     #[test]

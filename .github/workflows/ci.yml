@@ -44,5 +44,5 @@ jobs:
       - name: Build and test
         run: cargo test --workspace --locked --no-fail-fast
 
-      - name: Build the native plugin contract example
+      - name: Build the build-time native module example
         run: cargo check --manifest-path plugins/hello/Cargo.toml --locked

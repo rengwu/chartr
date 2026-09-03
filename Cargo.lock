@@ -12828,7 +12828,6 @@ name = "zeddy-plugin-host"
 version = "0.1.0"
 dependencies = [
  "gpui",
- "libloading",
  "tempfile",
  "zeddy-plugin",
 ]

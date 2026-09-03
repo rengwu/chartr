@@ -118,6 +118,10 @@ pub struct SettingsWindow {
     original: WeakEntity<Zeddy>,
     page: SettingsPage,
     plugin_settings: Option<(String, AnyView)>,
+    git_install_open: bool,
+    git_url_input: Entity<TextInput>,
+    plugin_installing: Option<String>,
+    plugin_restart_required: bool,
     recording_keymap: Option<KeymapAction>,
     keymap_restart_required: bool,
     ui_font_size_input: Entity<TextInput>,
@@ -150,6 +154,7 @@ impl SettingsWindow {
             input.set_text_align(TextAlign::Center, cx);
             input
         });
+        let git_url_input = cx.new(|cx| TextInput::new("https://github.com/owner/plugin.git", cx));
         cx.observe_global_in::<SettingsStore>(window, |this, window, cx| {
             this.sync_font_size_inputs(window, cx);
             cx.notify();
@@ -196,6 +201,10 @@ impl SettingsWindow {
             original,
             page: SettingsPage::default(),
             plugin_settings: None,
+            git_install_open: false,
+            git_url_input,
+            plugin_installing: None,
+            plugin_restart_required: false,
             recording_keymap: None,
             keymap_restart_required: false,
             ui_font_size_input,
@@ -243,6 +252,34 @@ impl SettingsWindow {
                     .general
                     .get_or_insert_with(GeneralContent::default)
                     .terminate_sessions_on_exit = Some(enabled);
+            },
+            false,
+            false,
+            cx,
+        );
+    }
+
+    fn set_middle_click_closes_tab(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.update_settings(
+            |content| {
+                content
+                    .general
+                    .get_or_insert_with(GeneralContent::default)
+                    .middle_click_closes_tab = Some(enabled);
+            },
+            false,
+            false,
+            cx,
+        );
+    }
+
+    fn set_middle_click_closes_sidebar_tab(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.update_settings(
+            |content| {
+                content
+                    .general
+                    .get_or_insert_with(GeneralContent::default)
+                    .middle_click_closes_sidebar_tab = Some(enabled);
             },
             false,
             false,
@@ -610,6 +647,141 @@ impl SettingsWindow {
         cx.notify();
     }
 
+    fn pick_plugin_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.plugin_installing.is_some() {
+            return;
+        }
+        let chosen = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Install Plugin".into()),
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let outcome = chosen.await;
+            let _ = this.update_in(cx, |this, window, cx| match outcome {
+                Ok(Ok(Some(paths))) if !paths.is_empty() => this.begin_plugin_install(
+                    crate::plugin_installer::Source::Local(paths[0].clone()),
+                    window,
+                    cx,
+                ),
+                Ok(Ok(Some(_))) | Ok(Ok(None)) => {}
+                Ok(Err(error)) => {
+                    this.problem = Some(format!("choosing a plugin folder: {error}"));
+                    cx.notify();
+                }
+                Err(_) => {
+                    this.problem = Some("the plugin folder picker closed unexpectedly".into());
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn install_from_git(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let url = self.git_url_input.read(cx).text().trim().to_owned();
+        if url.is_empty() {
+            self.problem = Some("Enter a Git repository URL.".into());
+            cx.notify();
+            return;
+        }
+        self.begin_plugin_install(crate::plugin_installer::Source::Git(url), window, cx);
+    }
+
+    fn begin_plugin_install(
+        &mut self,
+        source: crate::plugin_installer::Source,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.plugin_installing.is_some() {
+            return;
+        }
+        let source_label = source.label();
+        self.problem = None;
+        self.plugin_installing = Some(format!("Inspecting {source_label}…"));
+        cx.notify();
+
+        let paths = crate::app::plugin_paths();
+        let executor = cx.background_executor().clone();
+        let prepare =
+            executor.spawn(async move { crate::plugin_installer::prepare(source, &paths) });
+        cx.spawn_in(window, async move |this, cx| {
+            let prepared = match prepare.await {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    let _ = this.update_in(cx, |this, _, cx| {
+                        this.plugin_installing = None;
+                        this.problem = Some(error.to_string());
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            let name = prepared.manifest.name.clone();
+            let detail = prepared.trust_detail();
+            let confirmation = this.update_in(cx, |this, window, cx| {
+                this.plugin_installing = None;
+                cx.notify();
+                window.prompt(
+                    gpui::PromptLevel::Info,
+                    &format!("Install {name}?"),
+                    Some(&detail),
+                    &["Install", "Cancel"],
+                    cx,
+                )
+            });
+            let Ok(confirmation) = confirmation else {
+                return;
+            };
+            if confirmation.await != Ok(0) {
+                return;
+            }
+
+            let _ = this.update_in(cx, |this, _, cx| {
+                this.plugin_installing = Some(format!("Installing {name}…"));
+                this.problem = None;
+                cx.notify();
+            });
+            let paths = crate::app::plugin_paths();
+            let install =
+                executor.spawn(async move { crate::plugin_installer::install(prepared, &paths) });
+            let installed = match install.await {
+                Ok(installed) => installed,
+                Err(error) => {
+                    let _ = this.update_in(cx, |this, _, cx| {
+                        this.plugin_installing = None;
+                        this.problem = Some(error.to_string());
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            let restart = this.update_in(cx, |this, window, cx| {
+                this.plugin_installing = None;
+                this.plugin_restart_required = true;
+                this.git_install_open = false;
+                this.git_url_input.update(cx, |input, cx| input.clear(cx));
+                this.problem = None;
+                cx.notify();
+                window.prompt(
+                    gpui::PromptLevel::Info,
+                    &format!("{} installed", installed.name),
+                    Some("Restart Chartr to enable the plugin."),
+                    &["Restart", "Later"],
+                    cx,
+                )
+            });
+            if let Ok(restart) = restart
+                && restart.await == Ok(0)
+            {
+                let _ = cx.update(|_, cx| cx.restart());
+            }
+        })
+        .detach();
+    }
+
     fn settings(&self, cx: &App) -> ResolvedSettings {
         cx.global::<SettingsStore>().resolved().clone()
     }
@@ -639,13 +811,18 @@ impl SettingsWindow {
     }
 
     fn general_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let terminate = self.settings(cx).terminate_sessions_on_exit;
+        let settings = self.settings(cx);
+        let terminate = settings.terminate_sessions_on_exit;
+        let middle_click_closes_tab = settings.middle_click_closes_tab;
+        let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
         let mode = self.mode(cx);
         let sidebar_scope = self.sidebar_scope(cx);
         let runtime_available = mode.is_some() && sidebar_scope.is_some();
         let mode = mode.unwrap_or_default();
         let sidebar_scope = sidebar_scope.unwrap_or_default();
         let terminate_setting = cx.weak_entity();
+        let middle_click_setting = cx.weak_entity();
+        let sidebar_middle_click_setting = cx.weak_entity();
         let use_sidebar = cx.listener(move |this, _, _, cx| {
             if runtime_available {
                 this.set_mode(Mode::Sidebar, cx);
@@ -666,71 +843,106 @@ impl SettingsWindow {
                 this.set_sidebar_scope(SidebarScope::ActiveSpace, cx);
             }
         });
-        settings_fields(
-            vec![
-                setting_field(
-                    "Terminate sessions on exit",
-                    "End running sessions when Chartr exits instead of leaving them detached.",
-                    Switch::new("terminate-sessions-on-exit", terminate.into())
-                        .tab_index(0isize)
-                        .aria_label("Terminate sessions on exit")
-                        .aria_description(
-                            "End running sessions when Chartr exits instead of leaving them detached.",
-                        )
-                        .on_click(move |state, _, cx| {
-                            let terminate = state.selected();
-                            let _ = terminate_setting.update(cx, |this, cx| {
-                                this.set_terminate_on_exit(terminate, cx)
-                            });
-                        }),
-                ),
-                setting_field(
-                    "Session list",
-                    "Choose where sessions appear in the workspace.",
-                    SegmentedControl::new(
-                        "Session list presentation",
-                        [
-                            SegmentedControlOption::new(
-                                "presentation-sidebar",
-                                "Sidebar",
-                                mode == Mode::Sidebar,
-                                use_sidebar,
-                            ),
-                            SegmentedControlOption::new(
-                                "presentation-tabs",
-                                "Tabbed",
-                                mode == Mode::Tabs,
-                                use_tabs,
-                            ),
-                        ],
+        let mut fields = vec![
+            setting_field(
+                "Terminate sessions on exit",
+                "End running sessions when Chartr exits instead of leaving them detached.",
+                Switch::new("terminate-sessions-on-exit", terminate.into())
+                    .tab_index(0isize)
+                    .aria_label("Terminate sessions on exit")
+                    .aria_description(
+                        "End running sessions when Chartr exits instead of leaving them detached.",
                     )
-                    .disabled(!runtime_available),
-                ),
-                setting_field(
-                    "Spaces shown",
-                    "Show every space in the sidebar or only the active one.",
-                    SegmentedControl::new(
-                        "Spaces shown in the sidebar",
-                        [
-                            SegmentedControlOption::new(
-                                "sidebar-all-spaces",
-                                "All spaces",
-                                sidebar_scope == SidebarScope::AllSpaces,
-                                show_all,
-                            ),
-                            SegmentedControlOption::new(
-                                "sidebar-active-space",
-                                "Active only",
-                                sidebar_scope == SidebarScope::ActiveSpace,
-                                show_active,
-                            ),
-                        ],
+                    .on_click(move |state, _, cx| {
+                        let terminate = state.selected();
+                        let _ = terminate_setting
+                            .update(cx, |this, cx| this.set_terminate_on_exit(terminate, cx));
+                    }),
+            ),
+            setting_field(
+                "Middle click to close tab",
+                "Close tabs in tabbed mode and pane tab bars with the middle mouse button.",
+                Switch::new("middle-click-closes-tab", middle_click_closes_tab.into())
+                    .tab_index(0isize)
+                    .aria_label("Middle click to close tab")
+                    .aria_description(
+                        "Close tabs in tabbed mode and pane tab bars with the middle mouse button.",
                     )
-                    .disabled(!runtime_available),
-                ),
-            ],
-            cx.theme().colors().border_variant,
-        )
+                    .on_click(move |state, _, cx| {
+                        let enabled = state.selected();
+                        let _ = middle_click_setting
+                            .update(cx, |this, cx| this.set_middle_click_closes_tab(enabled, cx));
+                    }),
+            ),
+        ];
+        if middle_click_closes_tab {
+            fields.push(setting_field(
+                "Middle click to close tab on sidebar",
+                "Also close tabs from sidebar session rows with the middle mouse button.",
+                Switch::new(
+                    "middle-click-closes-sidebar-tab",
+                    middle_click_closes_sidebar_tab.into(),
+                )
+                .tab_index(0isize)
+                .aria_label("Middle click to close tab on sidebar")
+                .aria_description(
+                    "Also close tabs from sidebar session rows with the middle mouse button.",
+                )
+                .on_click(move |state, _, cx| {
+                    let enabled = state.selected();
+                    let _ = sidebar_middle_click_setting.update(cx, |this, cx| {
+                        this.set_middle_click_closes_sidebar_tab(enabled, cx)
+                    });
+                }),
+            ));
+        }
+        fields.extend([
+            setting_field(
+                "Session list",
+                "Choose where sessions appear in the workspace.",
+                SegmentedControl::new(
+                    "Session list presentation",
+                    [
+                        SegmentedControlOption::new(
+                            "presentation-sidebar",
+                            "Sidebar",
+                            mode == Mode::Sidebar,
+                            use_sidebar,
+                        ),
+                        SegmentedControlOption::new(
+                            "presentation-tabs",
+                            "Tabbed",
+                            mode == Mode::Tabs,
+                            use_tabs,
+                        ),
+                    ],
+                )
+                .disabled(!runtime_available),
+            ),
+            setting_field(
+                "Spaces shown",
+                "Show every space in the sidebar or only the active one.",
+                SegmentedControl::new(
+                    "Spaces shown in the sidebar",
+                    [
+                        SegmentedControlOption::new(
+                            "sidebar-all-spaces",
+                            "All spaces",
+                            sidebar_scope == SidebarScope::AllSpaces,
+                            show_all,
+                        ),
+                        SegmentedControlOption::new(
+                            "sidebar-active-space",
+                            "Active only",
+                            sidebar_scope == SidebarScope::ActiveSpace,
+                            show_active,
+                        ),
+                    ],
+                )
+                .disabled(!runtime_available),
+            ),
+        ]);
+        settings_fields(fields, cx.theme().colors().border_variant)
     }
 
     fn theme_dropdown(
@@ -1085,6 +1297,66 @@ impl SettingsWindow {
 
     fn plugins_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let origin_available = self.original.upgrade().is_some();
+        let busy = self.plugin_installing.is_some();
+        let show_git = self.git_install_open;
+        let open_git = cx.listener(|this, _, window, cx| {
+            this.git_install_open = true;
+            this.problem = None;
+            window.focus(&this.git_url_input.focus_handle(cx), cx);
+            cx.notify();
+        });
+        let install_git = cx.listener(|this, _, window, cx| {
+            this.install_from_git(window, cx);
+        });
+        let cancel_git = cx.listener(|this, _, _, cx| {
+            this.git_install_open = false;
+            this.problem = None;
+            cx.notify();
+        });
+        let pick_folder = cx.listener(|this, _, window, cx| {
+            this.pick_plugin_folder(window, cx);
+        });
+        let restart = cx.listener(|_, _, _, cx| cx.restart());
+        let git_focus = self.git_url_input.focus_handle(cx);
+        let colors = cx.theme().colors();
+        let install_actions = h_flex()
+            .gap_2()
+            .child(
+                Button::new("install-plugin-git", "Install from Git…")
+                    .disabled(busy)
+                    .on_click(open_git),
+            )
+            .child(
+                Button::new("install-plugin-folder", "Install from Folder…")
+                    .disabled(busy)
+                    .on_click(pick_folder),
+            );
+        let git_form = v_flex()
+            .gap_2()
+            .p_3()
+            .border_1()
+            .border_color(colors.border_variant)
+            .rounded_md()
+            .child(Label::new("Git repository URL").size(UI_LABEL_DEFAULT))
+            .child(
+                h_flex()
+                    .h(ButtonSize::Default.rems())
+                    .px_2()
+                    .border_1()
+                    .border_color(colors.border_variant)
+                    .bg(colors.surface_background)
+                    .track_focus(&git_focus)
+                    .in_focus(|field| field.border_color(colors.border_focused))
+                    .child(self.git_url_input.clone()),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("confirm-install-plugin-git", "Install").on_click(install_git),
+                    )
+                    .child(Button::new("cancel-install-plugin-git", "Cancel").on_click(cancel_git)),
+            );
         let (descriptors, rejected) = self
             .original
             .upgrade()
@@ -1104,6 +1376,10 @@ impl SettingsWindow {
                 zeddy_plugin::manifest::Kind::Native => {
                     format!("Identifier: {id}. Runs as fully trusted native code.")
                 }
+                zeddy_plugin::manifest::Kind::Hosted => format!(
+                    "Identifier: {id}. Uses Chartr's built-in {} surface.",
+                    manifest.surface.as_deref().unwrap_or("hosted")
+                ),
                 zeddy_plugin::manifest::Kind::Web => {
                     let project = match manifest.permissions.project_files {
                         zeddy_plugin::manifest::ProjectAccess::None => "no project files",
@@ -1193,6 +1469,26 @@ impl SettingsWindow {
         let _ = window;
         v_flex()
             .gap_4()
+            .child(install_actions)
+            .when(show_git, |view| view.child(git_form))
+            .when_some(self.plugin_installing.clone(), |view, status| {
+                view.child(Banner::new().child(Label::new(status).size(UI_LABEL_DEFAULT)))
+            })
+            .when(self.plugin_restart_required, |view| {
+                view.child(
+                    Banner::new().child(
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .gap_3()
+                            .child(Label::new("Restart Chartr to enable installed plugins."))
+                            .child(
+                                Button::new("restart-after-plugin-install", "Restart")
+                                    .on_click(restart),
+                            ),
+                    ),
+                )
+            })
             .when(!origin_available, |view| {
                 view.child(
                     Banner::new().child(
@@ -1531,9 +1827,16 @@ mod tests {
             .unwrap();
         cx.update(|cx| {
             settings
-                .update(cx, |settings, _, cx| settings.set_terminate_on_exit(true, cx))
+                .update(cx, |settings, _, cx| {
+                    settings.set_terminate_on_exit(true, cx);
+                    settings.set_middle_click_closes_tab(true, cx);
+                    settings.set_middle_click_closes_sidebar_tab(true, cx);
+                })
                 .unwrap();
-            assert!(cx.global::<SettingsStore>().resolved().terminate_sessions_on_exit);
+            let resolved = cx.global::<SettingsStore>().resolved();
+            assert!(resolved.terminate_sessions_on_exit);
+            assert!(resolved.middle_click_closes_tab);
+            assert!(resolved.middle_click_closes_sidebar_tab);
         });
     }
 

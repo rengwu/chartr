@@ -4,7 +4,7 @@
 #
 #   zeddy-herdr        the only code that knows herdr exists
 #   zeddy-plugin       the contract a native plugin is written against
-#   zeddy-plugin-host  the only code that loads foreign code
+#   zeddy-plugin-host  plugin discovery and runtime isolation
 #   zeddy              the window and the pinned Zed terminal host
 #
 # Nothing above depends on anything below it out of order, and no crate but
@@ -72,9 +72,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 toml = "0.9"
-# The whole of the native plugin loader. There is no renderer, RPC transport,
-# or display-list replay between a plugin's view and zeddy's element tree.
-libloading = "0.8"
+# Staged installs and tests use temporary directories on the destination
+# filesystem so validated packages can be renamed into place.
 tempfile = "3"
 url = "2"
 wry = "0.56.1"
@@ -89,6 +88,10 @@ opt-level = 2
 
 [profile.dev]
 opt-level = 0
+# The pinned Zed graph is large enough that incremental object caches can fill
+# a development machine. Cold builds are slower than warm launches either way;
+# keep the reusable non-incremental artifacts bounded and predictable.
+incremental = false
 
 # Zed's crates are normally built inside its workspace and rely on these
 # workspace-level patches. Keep them pinned beside the Zed revision above so

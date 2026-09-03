@@ -23,7 +23,7 @@ use ui::{
 };
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
 use zeddy_plugin::{InstanceContext, manifest::Multiplicity};
-use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
+use zeddy_plugin_host::{Catalog, FileBroker, HostedSurface, PaneSource, Paths, SettingsSource};
 
 use crate::{
     actions,
@@ -2133,6 +2133,7 @@ impl Zeddy {
                 let surface = pane.title.clone();
                 let kind = match plugin.kind() {
                     zeddy_plugin::manifest::Kind::Native => "Native plugin",
+                    zeddy_plugin::manifest::Kind::Hosted => "Hosted plugin",
                     zeddy_plugin::manifest::Kind::Web => "Web plugin",
                 };
                 let key = pane.key.clone();
@@ -2329,14 +2330,15 @@ impl Zeddy {
         }
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let instance = InstanceContext {
+            instance_id: launcher.get(),
             space: space.read(cx).key(),
             project_dir: project.clone(),
             bound_session: bound_session.as_ref().map(|session| session.0.clone()),
         };
         let session_access =
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
-        let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
         let Some(plugin) = self.catalog.get_mut(&key.plugin) else {
             self.problem = Some("That plugin is no longer loaded.".to_owned());
@@ -2345,6 +2347,13 @@ impl Zeddy {
         };
         let view = match plugin.pane(&key) {
             Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Hosted(HostedSurface::Browser)) => crate::browser_plugin::view(
+                plugin_paths().data.join(&key.plugin),
+                &instance,
+                on_focus,
+                window,
+                cx,
+            ),
             Some(PaneSource::Web(entry)) => {
                 let broker = FileBroker::new(
                     project,
@@ -2434,6 +2443,7 @@ impl Zeddy {
                     continue;
                 }
                 let instance = InstanceContext {
+                    instance_id: record.item_id(),
                     space: space.read(cx).key(),
                     project_dir: project.clone(),
                     bound_session: bound_session.clone(),
@@ -2444,6 +2454,15 @@ impl Zeddy {
                 };
                 let view = match loaded.pane(&key) {
                     Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+                    Some(PaneSource::Hosted(HostedSurface::Browser)) => {
+                        crate::browser_plugin::view(
+                            plugin_paths().data.join(plugin),
+                            &instance,
+                            on_focus,
+                            window,
+                            cx,
+                        )
+                    }
                     Some(PaneSource::Web(entry)) => {
                         let broker = FileBroker::new(
                             project,
@@ -2506,11 +2525,6 @@ impl Zeddy {
         let permissions = loaded.permissions().clone();
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
-        let instance = InstanceContext {
-            space: space.read(cx).key(),
-            project_dir: project.clone(),
-            bound_session: bound_session.as_ref().map(|session| session.0.clone()),
-        };
         let session_access =
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
@@ -2520,11 +2534,25 @@ impl Zeddy {
         else {
             return true;
         };
+        let item = space.update(cx, |space, _| space.reserve_plugin_item());
+        let instance = InstanceContext {
+            instance_id: item.get(),
+            space: space.read(cx).key(),
+            project_dir: project.clone(),
+            bound_session: bound_session.as_ref().map(|session| session.0.clone()),
+        };
         let Some(loaded) = self.catalog.get_mut(&key.plugin) else {
             return false;
         };
         let view = match loaded.pane(&key) {
             Some(PaneSource::Native(plugin)) => plugin.view(&key, &instance, window, cx),
+            Some(PaneSource::Hosted(HostedSurface::Browser)) => crate::browser_plugin::view(
+                plugin_paths().data.join(&key.plugin),
+                &instance,
+                on_focus,
+                window,
+                cx,
+            ),
             Some(PaneSource::Web(entry)) => crate::web_plugin::view(
                 entry.to_path_buf(),
                 FileBroker::new(
@@ -2542,7 +2570,8 @@ impl Zeddy {
             None => return false,
         };
         space.update(cx, |space, cx| {
-            space.open_plugin_in(
+            space.open_plugin_in_at(
+                item,
                 PluginItem {
                     contribution: key,
                     title,
@@ -3093,6 +3122,7 @@ impl Zeddy {
         let active_index =
             pane.active().and_then(|active| pane.items().iter().position(|item| *item == active));
         let space_key = space.key();
+        let middle_click_closes_tab = self.settings.resolved().middle_click_closes_tab;
         let tabs = pane.items().iter().enumerate().filter_map(|(index, id)| {
             let item = space.item(*id)?;
             let selected = pane.active() == Some(*id);
@@ -3105,6 +3135,7 @@ impl Zeddy {
             let close = *id;
             let select_item = on.clone();
             let close_item = on.clone();
+            let middle_close_item = on.clone();
             let drop_item = weak.clone();
             let drop_space = space_key.clone();
             let dragged = DraggedItem {
@@ -3143,6 +3174,18 @@ impl Zeddy {
                 .build(cx)
                 .on_click(move |_, window, cx| {
                     select_item(Action::Select { space: None, item: select }, window, cx)
+                })
+                .when(middle_click_closes_tab, |tab| {
+                    tab.on_aux_click(move |event, window, cx| {
+                        if event.is_middle_click() {
+                            cx.stop_propagation();
+                            middle_close_item(
+                                Action::Close { space: None, item: close },
+                                window,
+                                cx,
+                            );
+                        }
+                    })
                 })
                 .on_drag(dragged, |dragged, offset, _, cx| {
                     dragged_item_preview(dragged, offset, cx)
@@ -3910,7 +3953,7 @@ fn empty_pane_message(text: &str, cx: &App) -> impl IntoElement {
         .bg(cx.theme().colors().editor_background)
 }
 
-fn plugin_paths() -> Paths {
+pub(crate) fn plugin_paths() -> Paths {
     let root = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
@@ -3927,6 +3970,9 @@ fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
     let paths = plugin_paths();
     let mut catalog =
         zeddy_plugin_host::load_all_where(&paths, |id| settings.resolved().plugin(id).enabled, cx);
+    for rejected in &catalog.rejected {
+        eprintln!("Chartr rejected plugin {}: {}", rejected.dir.display(), rejected.why);
+    }
 
     if !catalog.contains(BUNDLED_HELLO_ID) {
         let dir = paths.bundled.join(BUNDLED_HELLO_ID);

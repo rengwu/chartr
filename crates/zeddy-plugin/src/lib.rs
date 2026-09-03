@@ -1,20 +1,20 @@
 //! The contract a zeddy plugin is written against.
 //!
-//! Both tiers contribute the same thing — a **pane**: a titled surface zeddy
+//! All plugin kinds contribute the same thing — a **pane**: a titled surface zeddy
 //! can show in the sidebar or as a tab. Nothing above the plugin host cares
-//! which tier a pane came from, which is what lets a web plugin and a native
+//! which runtime a pane came from, which is what lets a web plugin and a native
 //! one sit side by side in the same tab strip.
 //!
-//! # The native tier
+//! # Build-time native modules
 //!
-//! One trait, one macro, one manifest. A native plugin's view is an ordinary
+//! One trait and one manifest. A native plugin's view is an ordinary
 //! GPUI [`AnyView`](gpui::AnyView) mounted directly in zeddy's element tree, so
 //! scrolling, resizing, focus, input, and painting use exactly the same frame
 //! path as a built-in view. There is no webview, no Wasm runtime, no synthetic
 //! window, no display-list replay, and no UI RPC layer.
 //!
 //! ```ignore
-//! use zeddy_plugin::{Host, Plugin, Registrar, gpui, register};
+//! use zeddy_plugin::{Host, Plugin, Registrar, gpui};
 //!
 //! struct StarMap;
 //!
@@ -34,19 +34,23 @@
 //!     }
 //! }
 //!
-//! register!(StarMap);
 //! ```
 //!
-//! That openness is also the trust model. A native plugin may use raw GPUI, any
-//! compatible crate, the filesystem, processes, and the network — installing
-//! one is installing native code, and no sandbox is claimed. Install
-//! repositories you trust, or use the web tier, which is sandboxed.
+//! Native modules may use raw GPUI, compatible crates, the filesystem,
+//! processes, and the network. They are linked into Chartr at build time;
+//! separately compiled GPUI libraries are not an installable package format.
 //!
 //! # The web tier
 //!
 //! A web plugin has no Rust in it at all: a manifest and an entry document.
 //! zeddy hosts it in an OS webview and hands it the same pane slot. See
 //! [`manifest::Kind::Web`].
+//!
+//! # Hosted surfaces
+//!
+//! A hosted plugin is a declarative, separately installed package that
+//! activates an operating-system surface implemented by Chartr. It carries no
+//! executable plugin code. See [`manifest::Kind::Hosted`].
 
 #![forbid(unsafe_code)]
 
@@ -83,6 +87,8 @@ pub struct PaneSpec {
 /// Stable ownership handed to one concrete pane instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceContext {
+    /// Stable within the owning space and retained when this item is restored.
+    pub instance_id: u64,
     pub space: String,
     pub project_dir: Option<PathBuf>,
     pub bound_session: Option<String>,
@@ -172,8 +178,7 @@ pub trait Plugin: Sized + 'static {
     }
 }
 
-/// The object-safe face of [`Plugin`], which is what crosses the library
-/// boundary. Written for you by [`register!`]; never implemented by hand.
+/// The object-safe face of [`Plugin`] used by Chartr's build-time registry.
 pub trait PluginObject {
     fn id(&self) -> &str;
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
@@ -209,39 +214,6 @@ impl<P: Plugin> PluginObject for P {
     fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyView> {
         Plugin::settings(self, window, cx)
     }
-}
-
-/// The exported symbol every native plugin defines, and the only symbol zeddy
-/// looks up.
-pub const ENTRY_SYMBOL: &[u8] = b"zeddy_plugin_entry";
-
-/// The signature of [`ENTRY_SYMBOL`].
-///
-/// `Host` is an ordinary Rust type and is not `repr(C)`, which is exactly what
-/// the `improper_ctypes_definitions` lint is for. It is silenced deliberately:
-/// this boundary is Rust-to-Rust, and what makes it sound is
-/// [`manifest::NATIVE_ABI`] — both sides are compiled by the same toolchain
-/// against the same `zeddy-plugin`, and a mismatch is refused at load rather
-/// than survived. A `repr(C)` shim here would add a conversion without adding a
-/// guarantee, because `Box<dyn PluginObject>` and `gpui::App` cannot be made
-/// C-compatible anyway.
-#[allow(improper_ctypes_definitions)]
-pub type Entry = unsafe extern "C" fn(Host, &mut gpui::App) -> Box<dyn PluginObject>;
-
-/// Export a [`Plugin`] as a loadable library.
-///
-/// One macro invocation is the entire boilerplate of a native plugin.
-#[macro_export]
-macro_rules! register {
-    ($plugin:ty) => {
-        #[unsafe(no_mangle)]
-        pub extern "C" fn zeddy_plugin_entry(
-            host: $crate::Host,
-            cx: &mut $crate::gpui::App,
-        ) -> ::std::boxed::Box<dyn $crate::PluginObject> {
-            ::std::boxed::Box::new(<$plugin as $crate::Plugin>::new(host, cx))
-        }
-    };
 }
 
 #[cfg(test)]

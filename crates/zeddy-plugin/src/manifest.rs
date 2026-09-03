@@ -1,7 +1,7 @@
-//! `zeddy-plugin.toml` — the one file both plugin tiers have in common.
+//! `zeddy-plugin.toml` — the file every plugin package has in common.
 //!
 //! A plugin is a directory with this file in it. What the directory *contains*
-//! beyond the manifest is what makes it native or web, and the manifest's
+//! beyond the manifest depends on its runtime, and the manifest's
 //! [`Kind`] is what says which.
 
 use std::path::Path;
@@ -10,15 +10,6 @@ use serde::Deserialize;
 
 /// The manifest version this build reads. Bumped when a field changes meaning.
 pub const MANIFEST_VERSION: u32 = 2;
-
-/// The native ABI this build links.
-///
-/// A native plugin passes Rust and GPUI objects across a dynamic-library
-/// boundary, so its `native_abi` must match zeddy's *exactly*. There is no
-/// compatibility range and there is not going to be one: a mismatch is a
-/// vtable from a different compilation, and the failure mode is a crash rather
-/// than a wrong answer.
-pub const NATIVE_ABI: u32 = 2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,17 +56,19 @@ pub struct Capabilities {
 
 /// Which tier a plugin belongs to.
 ///
-/// The two tiers exist because "anyone can author one" and "fast enough to
-/// paint a star-map at 120fps" are different requirements, and one runtime
-/// cannot honestly be both.
+/// The runtimes keep portable extensions, reviewed OS integrations, and
+/// build-time GPUI modules explicit rather than pretending they share one
+/// security or distribution model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
-    /// A `cdylib` mounted directly in zeddy's element tree. Its view is an
-    /// ordinary GPUI view: same frame path, same input, same scrolling as a
-    /// built-in. Installing one is installing native code, and the trust model
-    /// says so out loud.
+    /// A module mounted directly in zeddy's element tree at application build
+    /// time. Separately compiled GPUI libraries are rejected by the installer.
     Native,
+    /// A separately installed package that activates a surface implemented by
+    /// Chartr. This is the safest option for first-party integrations that need
+    /// operating-system UI facilities such as a child browser webview.
+    Hosted,
     /// HTML and JavaScript in an OS webview. Sandboxed, hot-reloadable,
     /// authorable by anyone who has written a web page — and a frame behind
     /// native, because it is composited rather than painted.
@@ -97,13 +90,9 @@ pub struct Manifest {
     pub capabilities: Capabilities,
     #[serde(default)]
     pub permissions: Permissions,
-    /// Native only: the Cargo library stem. zeddy appends the platform's
-    /// extension, so one manifest covers `.dylib`, `.so`, and `.dll`.
+    /// Hosted only: the Chartr-provided surface to activate.
     #[serde(default)]
-    pub library: Option<String>,
-    /// Native only, and required there.
-    #[serde(default)]
-    pub native_abi: Option<u32>,
+    pub surface: Option<String>,
     /// Web only: the entry document, relative to the plugin directory.
     #[serde(default)]
     pub entry: Option<String>,
@@ -121,10 +110,6 @@ pub enum Invalid {
     ManifestVersion {
         found: u32,
     },
-    /// A native plugin compiled against a different zeddy.
-    NativeAbi {
-        found: Option<u32>,
-    },
     /// A field the manifest's own `kind` requires is missing.
     Missing {
         field: &'static str,
@@ -141,10 +126,6 @@ impl std::fmt::Display for Invalid {
             Self::ManifestVersion { found } => {
                 write!(f, "manifest_version is {found}; this zeddy reads {MANIFEST_VERSION}")
             }
-            Self::NativeAbi { found } => match found {
-                Some(found) => write!(f, "native_abi is {found}; this zeddy links {NATIVE_ABI}"),
-                None => write!(f, "a native plugin must declare native_abi = {NATIVE_ABI}"),
-            },
             Self::Missing { field, kind } => {
                 write!(f, "a {kind:?} plugin must declare `{field}`")
             }
@@ -183,12 +164,10 @@ impl Manifest {
             return Err(Invalid::BadId(self.id.clone()));
         }
         match self.kind {
-            Kind::Native => {
-                if self.native_abi != Some(NATIVE_ABI) {
-                    return Err(Invalid::NativeAbi { found: self.native_abi });
-                }
-                if self.library.is_none() {
-                    return Err(Invalid::Missing { field: "library", kind: self.kind });
+            Kind::Native => {}
+            Kind::Hosted => {
+                if self.surface.is_none() {
+                    return Err(Invalid::Missing { field: "surface", kind: self.kind });
                 }
             }
             Kind::Web => {
@@ -198,18 +177,6 @@ impl Manifest {
             }
         }
         Ok(())
-    }
-
-    /// The library filename this platform expects, for a native plugin.
-    pub fn library_filename(&self) -> Option<String> {
-        let stem = self.library.as_deref()?;
-        Some(if cfg!(target_os = "windows") {
-            format!("{stem}.dll")
-        } else if cfg!(target_os = "macos") {
-            format!("lib{stem}.dylib")
-        } else {
-            format!("lib{stem}.so")
-        })
     }
 }
 
@@ -235,8 +202,6 @@ mod tests {
         name = "Star map"
         version = "0.1.0"
         kind = "native"
-        library = "starmap"
-        native_abi = 2
     "#;
 
     const WEB: &str = r#"
@@ -248,9 +213,19 @@ mod tests {
         entry = "index.html"
     "#;
 
+    const HOSTED: &str = r#"
+        manifest_version = 2
+        id = "com.chartr.browser"
+        name = "Browser"
+        version = "0.1.0"
+        kind = "hosted"
+        surface = "browser"
+    "#;
+
     #[test]
-    fn both_tiers_parse() {
+    fn all_runtimes_parse() {
         assert_eq!(parse(NATIVE).expect("native").kind, Kind::Native);
+        assert_eq!(parse(HOSTED).expect("hosted").kind, Kind::Hosted);
         assert_eq!(parse(WEB).expect("web").kind, Kind::Web);
     }
 
@@ -274,24 +249,18 @@ mod tests {
     }
 
     #[test]
-    fn a_native_plugin_from_another_abi_is_refused() {
-        let wrong = NATIVE.replace("native_abi = 2", "native_abi = 99");
-        assert_eq!(parse(&wrong), Err(Invalid::NativeAbi { found: Some(99) }));
-    }
-
-    #[test]
-    fn a_native_plugin_without_an_abi_is_refused_rather_than_assumed() {
-        let missing = NATIVE.replace("native_abi = 2", "");
-        assert_eq!(parse(&missing), Err(Invalid::NativeAbi { found: None }));
-    }
-
-    #[test]
     fn each_tier_requires_only_its_own_fields() {
-        // A web plugin needs no ABI, and a native plugin needs no entry point.
+        // Each plugin kind requires only its own runtime field.
         assert!(parse(WEB).is_ok());
         assert!(parse(NATIVE).is_ok());
+        assert!(parse(HOSTED).is_ok());
         let no_entry = WEB.replace("entry = \"index.html\"", "");
         assert_eq!(parse(&no_entry), Err(Invalid::Missing { field: "entry", kind: Kind::Web }));
+        let no_surface = HOSTED.replace("surface = \"browser\"", "");
+        assert_eq!(
+            parse(&no_surface),
+            Err(Invalid::Missing { field: "surface", kind: Kind::Hosted })
+        );
     }
 
     #[test]
@@ -300,17 +269,5 @@ mod tests {
             let toml = NATIVE.replace("com.example.starmap", bad);
             assert!(matches!(parse(&toml), Err(Invalid::BadId(_))), "accepted {bad:?}");
         }
-    }
-
-    #[test]
-    fn the_library_filename_follows_the_platform() {
-        let name = parse(NATIVE).expect("native").library_filename().expect("a name");
-        assert!(name.contains("starmap"));
-        assert!(name.ends_with(std::env::consts::DLL_SUFFIX));
-    }
-
-    #[test]
-    fn a_web_plugin_has_no_library_filename() {
-        assert_eq!(parse(WEB).expect("web").library_filename(), None);
     }
 }
