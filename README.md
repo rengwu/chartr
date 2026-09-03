@@ -138,6 +138,10 @@ Plugins are directories under
 `$XDG_DATA_HOME/chartr-zeddy/plugins/<reverse-dns-id>/` containing
 `zeddy-plugin.toml`.
 
+In Tabbed mode, the trailing plus menu offers **New Terminal Session** and
+**New Plugin Pane**. The latter opens a picker as its own tab; choosing a
+surface replaces the picker in place, so the plugin opens in that same tab.
+
 Native plugins are fully trusted Rust dynamic libraries. They receive a stable
 `InstanceContext` and return ordinary GPUI views:
 
@@ -163,8 +167,10 @@ filesystem access is an explicit per-plugin grant; there is no global unsafe
 switch. Revoking a grant or disabling a plugin destroys its live brokers and
 views immediately. A web plugin may name a lazy `settings_entry` document.
 
-`plugins/hello` and `plugins/clock` are complete native and web examples. They
-are development references and are not installed automatically.
+`plugins/hello` and `plugins/clock` are complete native and web examples. Chartr
+bundles them as the **Hello** and **Clock** launcher entries so a clean install
+always has one working example of each tier; the same directories remain the
+reference source for plugin authors.
 
 ## Repository boundaries
 

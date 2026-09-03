@@ -13,6 +13,14 @@ use crate::session::Session;
 pub enum Item {
     Session(SessionItem),
     Plugin(PluginItem),
+    /// A temporary, space-owned item that presents the plugin surface picker.
+    /// Selecting a contribution replaces this item at the same stable id, so
+    /// the resulting plugin stays in this tab (and pane, if it was moved).
+    PluginLauncher {
+        /// Session-bound contributions bind to the terminal that was active
+        /// when the launcher tab was created.
+        bound_session: Option<zeddy_herdr::PaneId>,
+    },
 }
 
 impl Item {
@@ -20,13 +28,14 @@ impl Item {
         match self {
             Self::Session(item) => item.session.title(),
             Self::Plugin(item) => item.title.clone(),
+            Self::PluginLauncher { .. } => "New Plugin Pane".to_owned(),
         }
     }
 
     pub fn status(&self) -> Option<zeddy_herdr::control::SessionStatus> {
         match self {
             Self::Session(item) => Some(item.session.info.status),
-            Self::Plugin(_) => None,
+            Self::Plugin(_) | Self::PluginLauncher { .. } => None,
         }
     }
 
@@ -41,21 +50,32 @@ impl Item {
     pub fn as_session(&self) -> Option<&SessionItem> {
         match self {
             Self::Session(item) => Some(item),
-            Self::Plugin(_) => None,
+            Self::Plugin(_) | Self::PluginLauncher { .. } => None,
         }
     }
 
     pub fn as_session_mut(&mut self) -> Option<&mut SessionItem> {
         match self {
             Self::Session(item) => Some(item),
-            Self::Plugin(_) => None,
+            Self::Plugin(_) | Self::PluginLauncher { .. } => None,
         }
     }
 
     pub fn as_plugin(&self) -> Option<&PluginItem> {
         match self {
             Self::Plugin(item) => Some(item),
-            Self::Session(_) => None,
+            Self::Session(_) | Self::PluginLauncher { .. } => None,
+        }
+    }
+
+    pub fn is_plugin_launcher(&self) -> bool {
+        matches!(self, Self::PluginLauncher { .. })
+    }
+
+    pub fn plugin_launcher_bound_session(&self) -> Option<&zeddy_herdr::PaneId> {
+        match self {
+            Self::PluginLauncher { bound_session } => bound_session.as_ref(),
+            Self::Session(_) | Self::Plugin(_) => None,
         }
     }
 }

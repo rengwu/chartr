@@ -5,14 +5,14 @@
 //! squeezed in — the dot still carries the state, and the title carries the
 //! identity.
 
-use ui::{ButtonSize, IconButtonShape, TabBar, Tooltip, prelude::*, right_click_menu};
+use ui::{ButtonSize, IconButtonShape, TabBar, Tooltip, prelude::*};
 
 use super::Emit;
 
 use super::{
     Action, DraggedItem, Entry, ItemTab, dragged_item_preview, new_item_cell, tab_position,
 };
-use crate::components::ContextMenu;
+use crate::components::{ContextMenu, popup_right_click_menu};
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 pub fn render(
@@ -145,12 +145,12 @@ fn tab(
     });
 
     if grouped {
-        right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
+        popup_right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
             .trigger(move |_, _, _| tab)
             .menu(move |window, cx| {
                 let ungroup = ungroup.clone();
                 let rename = rename.clone();
-                ContextMenu::build(window, cx, move |menu, _, _| {
+                ContextMenu::build_popup(window, cx, move |menu| {
                     menu.entry("Rename", None, move |window, cx| {
                         rename(Action::RenameGroup { space, tab: close_tab }, window, cx)
                     })

@@ -38,6 +38,17 @@ pub struct Loaded {
     pub panes: Vec<PaneSpec>,
     pub has_settings: bool,
     tier: Tier,
+    source: LoadSource,
+}
+
+/// A statically bundled native example still exercises the native plugin
+/// contract, while avoiding a second copy of GPUI in the application bundle.
+pub type NativeFactory = fn(Host, &mut gpui::App) -> Box<dyn PluginObject>;
+
+#[derive(Debug, Clone, Copy)]
+enum LoadSource {
+    Directory,
+    BundledNative(NativeFactory),
 }
 
 /// The tier-specific half of a loaded plugin — the only place the difference
@@ -56,7 +67,7 @@ pub enum SettingsSource {
 struct Native {
     plugin: Box<dyn PluginObject>,
     /// Kept for the life of the process. See the module comment.
-    _library: &'static libloading::Library,
+    _library: Option<&'static libloading::Library>,
 }
 
 /// How a pane should be built, once something above decides to show it.
@@ -125,6 +136,7 @@ pub struct Rejected {
 pub struct Disabled {
     pub manifest: Manifest,
     pub dir: PathBuf,
+    source: LoadSource,
 }
 
 /// Everything found in one scan.
@@ -151,12 +163,18 @@ impl Catalog {
         self.loaded.get(plugin)
     }
 
+    pub fn contains(&self, plugin: &str) -> bool {
+        self.loaded.contains_key(plugin) || self.disabled.contains_key(plugin)
+    }
+
     pub fn disable(&mut self, plugin: &str) -> bool {
         let Some(loaded) = self.loaded.remove(plugin) else {
             return false;
         };
-        self.disabled
-            .insert(plugin.to_owned(), Disabled { manifest: loaded.manifest, dir: loaded.dir });
+        self.disabled.insert(
+            plugin.to_owned(),
+            Disabled { manifest: loaded.manifest, dir: loaded.dir, source: loaded.source },
+        );
         true
     }
 
@@ -173,7 +191,17 @@ impl Catalog {
         let Some(disabled) = self.disabled.remove(plugin) else {
             return Ok(());
         };
-        match load_one(&disabled.dir, paths, cx) {
+        let result = match disabled.source {
+            LoadSource::Directory => load_one(&disabled.dir, paths, cx),
+            LoadSource::BundledNative(factory) => load_builtin_native(
+                disabled.manifest.clone(),
+                disabled.dir.clone(),
+                paths,
+                factory,
+                cx,
+            ),
+        };
+        match result {
             Ok(loaded) => {
                 self.loaded.insert(plugin.to_owned(), loaded);
                 Ok(())
@@ -182,6 +210,65 @@ impl Catalog {
                 self.disabled.insert(plugin.to_owned(), disabled);
                 Err(error)
             }
+        }
+    }
+
+    /// Add one plugin from a directory outside the user installation root.
+    /// Bundled web examples use the exact same loader and sandbox as installed
+    /// web plugins; only their source directory differs.
+    pub fn add_directory(&mut self, dir: &Path, paths: &Paths, enabled: bool, cx: &mut gpui::App) {
+        let manifest = match Manifest::read(dir) {
+            Ok(manifest) => manifest,
+            Err(why) => {
+                self.rejected.push(Rejected { dir: dir.to_owned(), why: why.to_string() });
+                return;
+            }
+        };
+        if self.loaded.contains_key(&manifest.id) || self.disabled.contains_key(&manifest.id) {
+            return;
+        }
+        if !enabled {
+            self.disabled.insert(
+                manifest.id.clone(),
+                Disabled { manifest, dir: dir.to_owned(), source: LoadSource::Directory },
+            );
+            return;
+        }
+        match load_one(dir, paths, cx) {
+            Ok(plugin) => {
+                self.loaded.insert(plugin.manifest.id.clone(), plugin);
+            }
+            Err(why) => {
+                self.rejected.push(Rejected { dir: dir.to_owned(), why: why.to_string() });
+            }
+        }
+    }
+
+    /// Add a trusted native plugin compiled into Chartr itself.
+    pub fn add_bundled_native(
+        &mut self,
+        manifest: Manifest,
+        dir: PathBuf,
+        paths: &Paths,
+        enabled: bool,
+        factory: NativeFactory,
+        cx: &mut gpui::App,
+    ) {
+        if self.loaded.contains_key(&manifest.id) || self.disabled.contains_key(&manifest.id) {
+            return;
+        }
+        if !enabled {
+            self.disabled.insert(
+                manifest.id.clone(),
+                Disabled { manifest, dir, source: LoadSource::BundledNative(factory) },
+            );
+            return;
+        }
+        match load_builtin_native(manifest, dir.clone(), paths, factory, cx) {
+            Ok(plugin) => {
+                self.loaded.insert(plugin.manifest.id.clone(), plugin);
+            }
+            Err(why) => self.rejected.push(Rejected { dir, why: why.to_string() }),
         }
     }
 }
@@ -288,12 +375,18 @@ pub struct Paths {
     pub installed: PathBuf,
     /// One directory per plugin id, owned by the plugin and never by zeddy.
     pub data: PathBuf,
+    /// Application-owned copies of examples shipped with this build.
+    pub bundled: PathBuf,
 }
 
 impl Paths {
     pub fn under(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
-        Self { installed: root.join("plugins"), data: root.join("plugin-data") }
+        Self {
+            installed: root.join("plugins"),
+            data: root.join("plugin-data"),
+            bundled: root.join("bundled-plugins"),
+        }
     }
 }
 
@@ -323,7 +416,10 @@ pub fn load_all_where(
         if let Ok(manifest) = Manifest::read(&dir)
             && !enabled(&manifest.id)
         {
-            catalog.disabled.insert(manifest.id.clone(), Disabled { manifest, dir });
+            catalog.disabled.insert(
+                manifest.id.clone(),
+                Disabled { manifest, dir, source: LoadSource::Directory },
+            );
             continue;
         }
         match load_one(&dir, paths, cx) {
@@ -348,6 +444,7 @@ pub enum LoadError {
         manifest: String,
     },
     MissingFile(PathBuf),
+    BundledKind(Kind),
     /// `dlopen` failed, or the library had no entry point.
     Library(String),
 }
@@ -360,6 +457,9 @@ impl std::fmt::Display for LoadError {
                 write!(f, "directory `{dir}` holds a plugin with id `{manifest}`")
             }
             Self::MissingFile(path) => write!(f, "{} is missing", path.display()),
+            Self::BundledKind(kind) => {
+                write!(f, "a bundled native factory cannot use a {kind:?} manifest")
+            }
             Self::Library(why) => write!(f, "cannot load the plugin library: {why}"),
         }
     }
@@ -417,7 +517,47 @@ fn load_one(dir: &Path, paths: &Paths, cx: &mut gpui::App) -> Result<Loaded, Loa
         }
     };
 
-    Ok(Loaded { manifest, dir: dir.to_owned(), panes, has_settings, tier })
+    Ok(Loaded {
+        manifest,
+        dir: dir.to_owned(),
+        panes,
+        has_settings,
+        tier,
+        source: LoadSource::Directory,
+    })
+}
+
+fn load_builtin_native(
+    manifest: Manifest,
+    dir: PathBuf,
+    paths: &Paths,
+    factory: NativeFactory,
+    cx: &mut gpui::App,
+) -> Result<Loaded, LoadError> {
+    if manifest.kind != Kind::Native {
+        return Err(LoadError::BundledKind(manifest.kind));
+    }
+    let host = Host { data_dir: paths.data.join(&manifest.id), plugin_dir: dir.clone() };
+    std::fs::create_dir_all(&host.data_dir).ok();
+    let mut plugin = factory(host, cx);
+    if plugin.id() != manifest.id {
+        return Err(LoadError::IdMismatch {
+            dir: manifest.id.clone(),
+            manifest: plugin.id().to_owned(),
+        });
+    }
+    let mut registrar = Registrar::new(&manifest.id);
+    plugin.activate(&mut registrar, cx);
+    let panes = registrar.panes().to_vec();
+    let has_settings = registrar.has_settings();
+    Ok(Loaded {
+        manifest,
+        dir,
+        panes,
+        has_settings,
+        tier: Tier::Native(Native { plugin, _library: None }),
+        source: LoadSource::BundledNative(factory),
+    })
 }
 
 fn open_native(
@@ -453,7 +593,7 @@ fn open_native(
     let panes = registrar.panes().to_vec();
     let has_settings = registrar.has_settings();
 
-    Ok((Native { plugin, _library: library }, panes, has_settings))
+    Ok((Native { plugin, _library: Some(library) }, panes, has_settings))
 }
 
 #[cfg(test)]
@@ -463,6 +603,48 @@ mod tests {
     //! exercised end to end by `plugins/hello` in the app's own tests.
 
     use super::*;
+    use gpui::{AppContext as _, ParentElement as _};
+    use zeddy_plugin::Plugin as _;
+
+    struct BundledPlugin;
+
+    impl zeddy_plugin::Plugin for BundledPlugin {
+        const ID: &'static str = "com.example.bundled";
+
+        fn new(_: Host, _: &mut gpui::App) -> Self {
+            Self
+        }
+
+        fn activate(&mut self, registrar: &mut Registrar, _: &mut gpui::App) {
+            registrar.add_pane("main", "Bundled");
+        }
+
+        fn view(
+            &mut self,
+            _: &PaneKey,
+            _: &zeddy_plugin::InstanceContext,
+            _: &mut gpui::Window,
+            cx: &mut gpui::App,
+        ) -> gpui::AnyView {
+            cx.new(|_| BundledView).into()
+        }
+    }
+
+    struct BundledView;
+
+    impl gpui::Render for BundledView {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            gpui::div().child("Bundled")
+        }
+    }
+
+    fn bundled_factory(host: Host, cx: &mut gpui::App) -> Box<dyn PluginObject> {
+        Box::new(<BundledPlugin as zeddy_plugin::Plugin>::new(host, cx))
+    }
 
     fn paths() -> (tempfile::TempDir, Paths) {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -585,6 +767,27 @@ mod tests {
         let paths = Paths::under(tmp.path().join("nothing-here"));
         let catalog = cx.update(|cx| load_all(&paths, cx));
         assert!(catalog.loaded.is_empty() && catalog.rejected.is_empty());
+    }
+
+    #[gpui::test]
+    fn a_bundled_native_plugin_can_be_disabled_and_enabled_again(cx: &mut gpui::TestAppContext) {
+        let (_tmp, paths) = paths();
+        let dir = paths.bundled.join(BundledPlugin::ID);
+        let manifest = Manifest::parse(
+            "manifest_version = 2\nid = \"com.example.bundled\"\nname = \"Bundled\"\n\
+             version = \"0.1.0\"\nkind = \"native\"\nlibrary = \"bundled\"\nnative_abi = 2\n",
+        )
+        .unwrap();
+        let mut catalog = cx.update(|cx| {
+            let mut catalog = Catalog::default();
+            catalog.add_bundled_native(manifest, dir, &paths, true, bundled_factory, cx);
+            catalog
+        });
+
+        assert_eq!(catalog.panes()[0].title, "Bundled");
+        assert!(catalog.disable(BundledPlugin::ID));
+        cx.update(|cx| catalog.enable(&paths, BundledPlugin::ID, cx)).unwrap();
+        assert_eq!(catalog.panes()[0].key.plugin, BundledPlugin::ID);
     }
 
     #[test]

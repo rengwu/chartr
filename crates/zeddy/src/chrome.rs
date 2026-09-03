@@ -207,6 +207,7 @@ pub enum Action {
     ToggleActiveSpaceOnly,
     NewInSpace { space: EntityId },
     New,
+    NewPluginPane,
     OpenSettings,
 }
 

@@ -3,11 +3,72 @@
 //! Content and behavior stay with their owning feature; only visual contracts
 //! shared across features belong here.
 
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+
 use gpui::{
-    Action, AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, Hsla, IntoElement,
-    ParentElement, RenderOnce, Role, SharedString, Window, px, relative,
+    Action, Anchor, AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Bounds, ClickEvent,
+    Context, DismissEvent, Div, ElementId, Entity, Focusable, Hsla, IntoElement, MouseButton,
+    ParentElement, Pixels, Render, RenderOnce, Role, SharedString, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, px,
+    relative, size,
 };
 use ui::{ButtonSize, ContextMenu as UiContextMenu, DynamicSpacing, IconPosition, prelude::*};
+
+// Matches ui::ContextMenu's default minimum width.
+const POPUP_CONTENT_WIDTH: Pixels = px(200.);
+const POPUP_OUTSET: Pixels = px(8.);
+const POPUP_GAP: Pixels = px(4.);
+
+#[derive(Clone, Copy, Default)]
+struct PopupMetrics {
+    entries: usize,
+    inter_item_gaps: usize,
+    separators: usize,
+    headers: usize,
+}
+
+impl PopupMetrics {
+    fn height(self, cx: &App) -> Pixels {
+        let rem = theme::theme_settings(cx).ui_font_size(cx);
+        let entry = rem * theme::BufferLineHeight::Comfortable.value();
+        let inter_item_gap = rem * 0.25;
+        let separator = px(1.) + DynamicSpacing::Base06.px(cx) * 2.;
+        let header = rem * 1.25 + DynamicSpacing::Base04.px(cx);
+        let list_padding = DynamicSpacing::Base04.px(cx) * 2.;
+        let height = list_padding
+            + entry * self.entries
+            + inter_item_gap * self.inter_item_gaps
+            + separator * self.separators
+            + header * self.headers;
+        px(height.as_f32().ceil().max(1.))
+    }
+}
+
+/// A context menu prepared for rendering in an anchored child window.
+pub struct AnchoredContextMenu {
+    items: Vec<PopupItem>,
+    target_window: AnyWindowHandle,
+    height: Pixels,
+}
+
+type PopupHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+
+struct PopupEntry {
+    label: SharedString,
+    toggle: Option<(IconPosition, bool)>,
+    action: Option<Box<dyn Action>>,
+    handler: PopupHandler,
+}
+
+enum PopupItem {
+    Entry(PopupEntry),
+    Gap,
+    Separator,
+    Header(SharedString),
+}
 
 /// Chartr's shared context-menu builder.
 ///
@@ -15,8 +76,10 @@ use ui::{ButtonSize, ContextMenu as UiContextMenu, DynamicSpacing, IconPosition,
 /// non-selectable gap between adjacent actions while leaving separators and
 /// headers as distinct group boundaries.
 pub struct ContextMenu {
-    inner: UiContextMenu,
+    inner: Option<UiContextMenu>,
+    popup_items: Vec<PopupItem>,
     has_item_in_group: bool,
+    metrics: PopupMetrics,
 }
 
 impl ContextMenu {
@@ -26,15 +89,53 @@ impl ContextMenu {
         build: impl FnOnce(Self, &mut Window, &mut Context<UiContextMenu>) -> Self,
     ) -> Entity<UiContextMenu> {
         UiContextMenu::build(window, cx, |menu, window, cx| {
-            build(Self { inner: menu, has_item_in_group: false }, window, cx).inner
+            build(
+                Self {
+                    inner: Some(menu),
+                    popup_items: Vec::new(),
+                    has_item_in_group: false,
+                    metrics: PopupMetrics::default(),
+                },
+                window,
+                cx,
+            )
+            .inner
+            .expect("in-window context menus keep their UI menu")
         })
+    }
+
+    /// Entry handlers are routed back to `window`; the anchored popup is only
+    /// a host for the stock UI context menu.
+    pub fn build_popup(
+        window: &mut Window,
+        cx: &mut App,
+        build: impl FnOnce(Self) -> Self,
+    ) -> AnchoredContextMenu {
+        let target_window = window.window_handle();
+        let built = build(Self {
+            inner: None,
+            popup_items: Vec::new(),
+            has_item_in_group: false,
+            metrics: PopupMetrics::default(),
+        });
+        AnchoredContextMenu {
+            items: built.popup_items,
+            target_window,
+            height: built.metrics.height(cx),
+        }
     }
 
     fn before_item(mut self) -> Self {
         if self.has_item_in_group {
-            self.inner = self.inner.custom_row(|_, _| div().h_1().into_any_element());
+            if let Some(inner) = self.inner.take() {
+                self.inner = Some(inner.custom_row(|_, _| div().h_1().into_any_element()));
+            } else {
+                self.popup_items.push(PopupItem::Gap);
+            }
+            self.metrics.inter_item_gaps += 1;
         }
         self.has_item_in_group = true;
+        self.metrics.entries += 1;
         self
     }
 
@@ -45,7 +146,16 @@ impl ContextMenu {
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         let mut this = self.before_item();
-        this.inner = this.inner.entry(label, action, handler);
+        if let Some(inner) = this.inner.take() {
+            this.inner = Some(inner.entry(label, action, handler));
+        } else {
+            this.popup_items.push(PopupItem::Entry(PopupEntry {
+                label: label.into(),
+                toggle: None,
+                action,
+                handler: Rc::new(handler),
+            }));
+        }
         this
     }
 
@@ -58,24 +168,407 @@ impl ContextMenu {
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         let mut this = self.before_item();
-        this.inner = this.inner.toggleable_entry(label, toggled, position, action, handler);
+        if let Some(inner) = this.inner.take() {
+            this.inner = Some(inner.toggleable_entry(label, toggled, position, action, handler));
+        } else {
+            this.popup_items.push(PopupItem::Entry(PopupEntry {
+                label: label.into(),
+                toggle: Some((position, toggled)),
+                action,
+                handler: Rc::new(handler),
+            }));
+        }
         this
     }
 
     pub fn separator(mut self) -> Self {
-        self.inner = self.inner.separator();
+        if let Some(inner) = self.inner.take() {
+            self.inner = Some(inner.separator());
+        } else {
+            self.popup_items.push(PopupItem::Separator);
+        }
         self.has_item_in_group = false;
+        self.metrics.separators += 1;
         self
     }
 
     pub fn header(mut self, title: impl Into<SharedString>) -> Self {
-        self.inner = self.inner.header(title);
+        if let Some(inner) = self.inner.take() {
+            self.inner = Some(inner.header(title));
+        } else {
+            self.popup_items.push(PopupItem::Header(title.into()));
+        }
         self.has_item_in_group = false;
+        self.metrics.headers += 1;
         self
     }
 }
 
 impl FluentBuilder for ContextMenu {}
+
+type PopupBuilder = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnchoredContextMenu>>;
+
+/// A button-triggered menu rendered in a separate native popup window.
+#[derive(IntoElement)]
+pub struct PopupMenu {
+    id: ElementId,
+    trigger: Option<AnyElement>,
+    trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    anchor: Rc<Cell<Anchor>>,
+    builder: Rc<RefCell<Option<PopupBuilder>>>,
+}
+
+impl PopupMenu {
+    pub fn new(id: impl Into<ElementId>) -> Self {
+        Self {
+            id: id.into(),
+            trigger: None,
+            trigger_bounds: Rc::default(),
+            anchor: Rc::new(Cell::new(Anchor::TopLeft)),
+            builder: Rc::default(),
+        }
+    }
+
+    pub fn trigger<T: ui::PopoverTrigger>(mut self, trigger: T) -> Self {
+        self.trigger = Some(trigger.toggle_state(false).into_any_element());
+        self
+    }
+
+    pub fn trigger_with_tooltip<T: ui::PopoverTrigger + ui::ButtonCommon>(
+        mut self,
+        trigger: T,
+        tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
+    ) -> Self {
+        self.trigger = Some(trigger.toggle_state(false).tooltip(tooltip).into_any_element());
+        self
+    }
+
+    pub fn anchor(self, anchor: Anchor) -> Self {
+        self.anchor.set(anchor);
+        self
+    }
+
+    pub fn menu(
+        self,
+        builder: impl Fn(&mut Window, &mut App) -> Option<AnchoredContextMenu> + 'static,
+    ) -> Self {
+        *self.builder.borrow_mut() = Some(Rc::new(builder));
+        self
+    }
+}
+
+impl RenderOnce for PopupMenu {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let bounds = self.trigger_bounds;
+        let measured_bounds = bounds.clone();
+        let anchor = self.anchor;
+        let builder = self.builder;
+        div()
+            .id(self.id)
+            .relative()
+            .child(self.trigger.expect("popup menus require a trigger"))
+            .child(
+                canvas(move |measured, _, _| measured_bounds.set(Some(measured)), |_, _, _, _| {})
+                    .absolute()
+                    .inset_0(),
+            )
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                cx.stop_propagation();
+                let Some(bounds) = bounds.get() else {
+                    return;
+                };
+                let Some(builder) = builder.borrow().clone() else {
+                    return;
+                };
+                let Some(menu) = builder(window, cx) else {
+                    return;
+                };
+                open_popup(menu, bounds, anchor.get(), window, cx);
+            })
+    }
+}
+
+/// A secondary-click menu rendered in a separate native popup window.
+#[derive(IntoElement)]
+pub struct PopupRightClickMenu {
+    id: ElementId,
+    child_builder: Option<Box<dyn FnOnce(bool, &mut Window, &mut App) -> AnyElement>>,
+    menu_builder: Rc<RefCell<Option<PopupBuilder>>>,
+}
+
+pub fn popup_right_click_menu(id: impl Into<ElementId>) -> PopupRightClickMenu {
+    PopupRightClickMenu { id: id.into(), child_builder: None, menu_builder: Rc::default() }
+}
+
+impl PopupRightClickMenu {
+    pub fn trigger<F, E>(mut self, trigger: F) -> Self
+    where
+        F: FnOnce(bool, &mut Window, &mut App) -> E + 'static,
+        E: IntoElement + 'static,
+    {
+        self.child_builder = Some(Box::new(move |active, window, cx| {
+            trigger(active, window, cx).into_any_element()
+        }));
+        self
+    }
+
+    pub fn menu(
+        self,
+        builder: impl Fn(&mut Window, &mut App) -> AnchoredContextMenu + 'static,
+    ) -> Self {
+        *self.menu_builder.borrow_mut() =
+            Some(Rc::new(move |window, cx| Some(builder(window, cx))));
+        self
+    }
+}
+
+impl RenderOnce for PopupRightClickMenu {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let child = self.child_builder.take().expect("right-click menus require a trigger")(
+            false, window, cx,
+        );
+        let builder = self.menu_builder;
+        div().id(self.id).child(child).on_mouse_down(
+            MouseButton::Right,
+            move |event, window, cx| {
+                cx.stop_propagation();
+                window.prevent_default();
+                let Some(builder) = builder.borrow().clone() else {
+                    return;
+                };
+                let Some(menu) = builder(window, cx) else {
+                    return;
+                };
+                open_popup(
+                    menu,
+                    Bounds::new(event.position, size(px(1.), px(1.))),
+                    Anchor::TopLeft,
+                    window,
+                    cx,
+                );
+            },
+        )
+    }
+}
+
+struct AnchoredMenuWindow {
+    menu: Entity<UiContextMenu>,
+}
+
+impl AnchoredMenuWindow {
+    fn new(menu: AnchoredContextMenu, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let target_window = menu.target_window;
+        let menu_height = menu.height;
+        let context_menu = UiContextMenu::build(window, cx, move |mut context_menu, _, _| {
+            context_menu = context_menu.max_height(menu_height.into());
+            for item in menu.items {
+                context_menu = match item {
+                    PopupItem::Entry(entry) => {
+                        let target = target_window;
+                        let handler = entry.handler;
+                        if let Some((position, toggled)) = entry.toggle {
+                            context_menu.toggleable_entry(
+                                entry.label,
+                                toggled,
+                                position,
+                                entry.action,
+                                move |_, cx| {
+                                    let _ = target.update(cx, |_, window, cx| handler(window, cx));
+                                },
+                            )
+                        } else {
+                            context_menu.entry(entry.label, entry.action, move |_, cx| {
+                                let _ = target.update(cx, |_, window, cx| handler(window, cx));
+                            })
+                        }
+                    }
+                    PopupItem::Gap => {
+                        context_menu.custom_row(|_, _| div().h_1().into_any_element())
+                    }
+                    PopupItem::Separator => context_menu.separator(),
+                    PopupItem::Header(label) => context_menu.header(label),
+                };
+            }
+            context_menu
+        });
+
+        window
+            .subscribe(&context_menu, cx, move |_, _: &DismissEvent, window, _| {
+                window.remove_window();
+            })
+            .detach();
+
+        let focus = context_menu.focus_handle(cx);
+        window.on_next_frame(move |window, _| {
+            window.on_next_frame(move |window, cx| window.focus(&focus, cx));
+        });
+        Self { menu: context_menu }
+    }
+}
+
+impl Render for AnchoredMenuWindow {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().p(POPUP_OUTSET).child(self.menu.clone())
+    }
+}
+
+fn open_popup(
+    mut menu: AnchoredContextMenu,
+    trigger_bounds: Bounds<Pixels>,
+    anchor: Anchor,
+    parent_window: &mut Window,
+    cx: &mut App,
+) {
+    let display = parent_window.display(cx);
+    let display_id = display.as_ref().map(|display| display.id());
+    let maximum_height = display
+        .as_ref()
+        .map(|display| display.visible_bounds().size.height)
+        .unwrap_or_else(|| parent_window.bounds().size.height);
+    let popup_height = clamp_pixels(menu.height + POPUP_OUTSET * 2., px(1.), maximum_height);
+    menu.height = (popup_height - POPUP_OUTSET * 2.).max(px(1.));
+    let popup_size = size(POPUP_CONTENT_WIDTH + POPUP_OUTSET * 2., popup_height);
+    let kind = anchored_popup_window_kind(parent_window, trigger_bounds, anchor);
+    let opened = cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                Default::default(),
+                popup_size,
+            ))),
+            titlebar: None,
+            focus: true,
+            show: true,
+            kind,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            display_id,
+            window_background: WindowBackgroundAppearance::Transparent,
+            window_min_size: Some(popup_size),
+            ..Default::default()
+        },
+        move |window, cx| cx.new(|cx| AnchoredMenuWindow::new(menu, window, cx)),
+    );
+
+    match opened {
+        Ok(_) => parent_window.refresh(),
+        Err(error) => eprintln!("Chartr could not open a menu: {error}"),
+    }
+}
+
+fn anchored_popup_window_kind(
+    parent: &Window,
+    trigger: Bounds<Pixels>,
+    anchor: Anchor,
+) -> WindowKind {
+    use gpui::popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupOptions};
+
+    let (anchor, gravity, offset) = match anchor {
+        Anchor::TopLeft => (
+            PopupAnchor::BottomLeft,
+            PopupGravity::BottomRight,
+            point(-POPUP_OUTSET, POPUP_GAP - POPUP_OUTSET),
+        ),
+        Anchor::TopCenter => {
+            (PopupAnchor::Bottom, PopupGravity::Bottom, point(px(0.), POPUP_GAP - POPUP_OUTSET))
+        }
+        Anchor::TopRight => (
+            PopupAnchor::BottomRight,
+            PopupGravity::BottomLeft,
+            point(POPUP_OUTSET, POPUP_GAP - POPUP_OUTSET),
+        ),
+        Anchor::BottomLeft => (
+            PopupAnchor::TopLeft,
+            PopupGravity::TopRight,
+            point(-POPUP_OUTSET, POPUP_OUTSET - POPUP_GAP),
+        ),
+        Anchor::BottomCenter => {
+            (PopupAnchor::Top, PopupGravity::Top, point(px(0.), POPUP_OUTSET - POPUP_GAP))
+        }
+        Anchor::BottomRight => (
+            PopupAnchor::TopRight,
+            PopupGravity::TopLeft,
+            point(POPUP_OUTSET, POPUP_OUTSET - POPUP_GAP),
+        ),
+        Anchor::LeftCenter => {
+            (PopupAnchor::Left, PopupGravity::Left, point(POPUP_OUTSET - POPUP_GAP, px(0.)))
+        }
+        Anchor::RightCenter => {
+            (PopupAnchor::Right, PopupGravity::Right, point(POPUP_GAP - POPUP_OUTSET, px(0.)))
+        }
+    };
+    WindowKind::AnchoredPopup(PopupOptions {
+        parent: parent.window_handle(),
+        anchor_rect: trigger,
+        anchor,
+        gravity,
+        constraint_adjustment: PopupConstraintAdjustment::SLIDE_X
+            | PopupConstraintAdjustment::SLIDE_Y
+            | PopupConstraintAdjustment::FLIP_X
+            | PopupConstraintAdjustment::FLIP_Y,
+        offset,
+        grab: true,
+    })
+}
+
+fn clamp_pixels(value: Pixels, minimum: Pixels, maximum: Pixels) -> Pixels {
+    px(value.as_f32().clamp(minimum.as_f32(), maximum.max(minimum).as_f32()))
+}
+
+#[cfg(test)]
+mod popup_menu_tests {
+    use super::*;
+    use gpui::{Modifiers, TestAppContext};
+
+    struct MenuHarness {
+        invoked: Rc<Cell<bool>>,
+    }
+
+    impl Render for MenuHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let invoked = self.invoked.clone();
+            PopupMenu::new("popup-test")
+                .trigger(ui::Button::new("popup-test-trigger", "Open"))
+                .menu(move |window, cx| {
+                    let invoked = invoked.clone();
+                    Some(ContextMenu::build_popup(window, cx, move |menu| {
+                        menu.entry("Run", None, move |_, _| invoked.set(true))
+                    }))
+                })
+        }
+    }
+
+    #[gpui::test]
+    fn anchored_menu_entries_receive_clicks_and_close(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let invoked = Rc::new(Cell::new(false));
+        let invoked_for_view = invoked.clone();
+        let (_, cx) = cx.add_window_view(|_, _| MenuHarness { invoked: invoked_for_view });
+        let parent = cx.window_handle();
+
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        let popup = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .expect("clicking the trigger should open an anchored menu window");
+
+        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+        popup.run_until_parked();
+        let entry = popup
+            .debug_bounds("MENU_ITEM-Run")
+            .expect("the stock context-menu entry should render in the popup");
+        popup.simulate_click(entry.center(), Modifiers::none());
+
+        assert!(invoked.get(), "clicking a popup entry should invoke its parent-window handler");
+        assert_eq!(popup.windows(), vec![parent], "confirming an entry should close the popup");
+    }
+}
 
 /// A vertical collection of selectable rows. The inter-row gap is part of the
 /// collection rather than any individual row, so adjacent state backgrounds

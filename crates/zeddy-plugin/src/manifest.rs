@@ -156,6 +156,14 @@ impl std::fmt::Display for Invalid {
 impl std::error::Error for Invalid {}
 
 impl Manifest {
+    /// Parse and validate an embedded or otherwise in-memory manifest.
+    pub fn parse(text: &str) -> Result<Self, Invalid> {
+        let manifest: Self =
+            toml::from_str(text).map_err(|err| Invalid::Malformed(err.to_string()))?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
     /// Read and validate the manifest in a plugin directory.
     ///
     /// Validation is total: a manifest that comes back `Ok` has everything its
@@ -164,10 +172,7 @@ impl Manifest {
         let path = dir.join("zeddy-plugin.toml");
         let text = std::fs::read_to_string(&path)
             .map_err(|err| Invalid::Unreadable(format!("{}: {err}", path.display())))?;
-        let manifest: Self =
-            toml::from_str(&text).map_err(|err| Invalid::Malformed(err.to_string()))?;
-        manifest.validate()?;
-        Ok(manifest)
+        Self::parse(&text)
     }
 
     fn validate(&self) -> Result<(), Invalid> {
@@ -221,9 +226,7 @@ mod tests {
     use super::*;
 
     fn parse(toml: &str) -> Result<Manifest, Invalid> {
-        let manifest: Manifest =
-            toml::from_str(toml).map_err(|e| Invalid::Malformed(e.to_string()))?;
-        manifest.validate().map(|()| manifest)
+        Manifest::parse(toml)
     }
 
     const NATIVE: &str = r#"

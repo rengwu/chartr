@@ -19,7 +19,7 @@ use gpui::{
 };
 use ui::{
     Banner, ButtonLike, ButtonSize, IconButtonShape, IconPosition, ListItem, ListItemSpacing,
-    PopoverMenu, Severity, TabBar, Tooltip, prelude::*,
+    Severity, TabBar, Tooltip, prelude::*,
 };
 use zeddy_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
 use zeddy_plugin::{InstanceContext, manifest::Multiplicity};
@@ -28,7 +28,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 use crate::{
     actions,
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
-    components::ContextMenu,
+    components::{ContextMenu, PopupMenu},
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::PluginItem,
     mode::Mode,
@@ -361,11 +361,7 @@ impl Zeddy {
             })
             .or_else(|| spaces.first().cloned());
 
-        let catalog = zeddy_plugin_host::load_all_where(
-            &plugin_paths(),
-            |id| settings.resolved().plugin(id).enabled,
-            cx,
-        );
+        let catalog = load_plugin_catalog(&settings, cx);
         let mut this = Self {
             client: Some(client),
             backend: Backend::Starting,
@@ -1112,6 +1108,13 @@ impl Zeddy {
                     && let Some(space) = self.active.clone()
                 {
                     space.update(cx, |space, cx| space.start_session(cx));
+                }
+            }
+            Action::NewPluginPane => {
+                if let Some(space) = self.active.clone() {
+                    space.update(cx, |space, cx| {
+                        space.open_plugin_launcher(cx);
+                    });
                 }
             }
             Action::NewInSpace { space } => {
@@ -1870,7 +1873,7 @@ impl Zeddy {
         }
     }
 
-    fn space_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self
             .active
             .as_ref()
@@ -1887,55 +1890,7 @@ impl Zeddy {
             })
             .collect();
 
-        let menu = ContextMenu::build(window, cx, move |menu, _, _| {
-            let add = weak.clone();
-            let mut menu = menu.entry("New Space…", None, move |window, cx| {
-                let _ = add.update(cx, |this, cx| this.pick_a_folder(window, cx));
-            });
-
-            let registered: Vec<_> =
-                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::Registered).collect();
-            if !registered.is_empty() {
-                menu = menu.separator().header("Project Spaces");
-            }
-            for (space, name, _) in registered {
-                let target = space.clone();
-                let select = weak.clone();
-                menu = menu.toggleable_entry(
-                    name.clone(),
-                    active_id == Some(space.entity_id()),
-                    IconPosition::End,
-                    None,
-                    move |window, cx| {
-                        let _ =
-                            select.update(cx, |this, cx| this.activate(target.clone(), window, cx));
-                    },
-                );
-            }
-
-            menu = menu.separator();
-            for (space, name, _kind) in
-                spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
-            {
-                let target = space.clone();
-                let select = weak.clone();
-                menu = menu.toggleable_entry(
-                    name.clone(),
-                    active_id == Some(space.entity_id()),
-                    IconPosition::End,
-                    None,
-                    move |window, cx| {
-                        let _ =
-                            select.update(cx, |this, cx| this.activate(target.clone(), window, cx));
-                    },
-                );
-            }
-            menu
-        });
-
-        let menu_for_open = menu.clone();
-        let menu_for_render = menu.clone();
-        PopoverMenu::new("space-switcher")
+        PopupMenu::new("space-switcher")
             .trigger(
                 ButtonLike::new("space-switcher-trigger")
                     .aria_label("Current space")
@@ -1949,12 +1904,59 @@ impl Zeddy {
                     ),
             )
             .anchor(Anchor::TopLeft)
-            .on_open(Rc::new(move |window, cx| {
-                menu_for_open.update(cx, |menu, cx| {
-                    menu.select_toggled_or_first(window, cx);
-                });
-            }))
-            .menu(move |_, _| Some(menu_for_render.clone()))
+            .menu(move |window, cx| {
+                let weak = weak.clone();
+                let spaces = spaces.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
+                    let add = weak.clone();
+                    let mut menu = menu.entry("New Space…", None, move |window, cx| {
+                        let _ = add.update(cx, |this, cx| this.pick_a_folder(window, cx));
+                    });
+
+                    let registered: Vec<_> = spaces
+                        .iter()
+                        .filter(|(_, _, kind)| *kind == SpaceKind::Registered)
+                        .collect();
+                    if !registered.is_empty() {
+                        menu = menu.separator().header("Project Spaces");
+                    }
+                    for (space, name, _) in registered {
+                        let target = space.clone();
+                        let select = weak.clone();
+                        menu = menu.toggleable_entry(
+                            name.clone(),
+                            active_id == Some(space.entity_id()),
+                            IconPosition::End,
+                            None,
+                            move |window, cx| {
+                                let _ = select.update(cx, |this, cx| {
+                                    this.activate(target.clone(), window, cx)
+                                });
+                            },
+                        );
+                    }
+
+                    menu = menu.separator();
+                    for (space, name, _kind) in
+                        spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
+                    {
+                        let target = space.clone();
+                        let select = weak.clone();
+                        menu = menu.toggleable_entry(
+                            name.clone(),
+                            active_id == Some(space.entity_id()),
+                            IconPosition::End,
+                            None,
+                            move |window, cx| {
+                                let _ = select.update(cx, |this, cx| {
+                                    this.activate(target.clone(), window, cx)
+                                });
+                            },
+                        );
+                    }
+                    menu
+                }))
+            })
             .into_any_element()
     }
 
@@ -1962,7 +1964,7 @@ impl Zeddy {
         match self.mode {
             Mode::Sidebar => {
                 let active_space_only = self.sidebar_scope == SidebarScope::ActiveSpace;
-                PopoverMenu::new("chrome-menu")
+                PopupMenu::new("chrome-menu")
                     .trigger_with_tooltip(
                         IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
                             .icon_size(IconSize::Small),
@@ -1973,7 +1975,7 @@ impl Zeddy {
                         let switch = on.clone();
                         let toggle_scope = on.clone();
                         let settings = on.clone();
-                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                        Some(ContextMenu::build_popup(window, cx, move |menu| {
                             menu.entry("Switch to Tabbed mode", None, move |window, cx| {
                                 switch(Action::SwitchToTabs, window, cx)
                             })
@@ -1996,7 +1998,7 @@ impl Zeddy {
                     })
                     .into_any_element()
             }
-            Mode::Tabs => PopoverMenu::new("chrome-menu")
+            Mode::Tabs => PopupMenu::new("chrome-menu")
                 .trigger_with_tooltip(
                     IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
                         .icon_size(IconSize::Small),
@@ -2006,7 +2008,7 @@ impl Zeddy {
                 .menu(move |window, cx| {
                     let switch = on.clone();
                     let settings = on.clone();
-                    Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                    Some(ContextMenu::build_popup(window, cx, move |menu| {
                         menu.entry("Switch to Sidebar mode", None, move |window, cx| {
                             switch(Action::SwitchToSidebar, window, cx)
                         })
@@ -2093,32 +2095,139 @@ impl Zeddy {
 
     fn new_item_menu(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
-        let panes: Vec<_> = self.catalog.panes().into_iter().cloned().collect();
-        PopoverMenu::new("new-item-menu")
+        PopupMenu::new("new-item-menu")
             .trigger_with_tooltip(chrome::new_item_button("new-item"), Tooltip::text("New…"))
             .anchor(Anchor::TopRight)
             .menu(move |window, cx| {
                 let weak = weak.clone();
-                let panes = panes.clone();
-                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
                     let start = weak.clone();
-                    let mut menu = menu.entry("New session", None, move |window, cx| {
+                    let plugin = weak.clone();
+                    menu.entry("New Terminal Session", None, move |window, cx| {
                         let _ = start.update(cx, |this, cx| this.act(Action::New, window, cx));
-                    });
-                    if !panes.is_empty() {
-                        menu = menu.separator();
-                    }
-                    for pane in &panes {
-                        let open = weak.clone();
-                        let key = pane.key.clone();
-                        menu = menu.entry(pane.title.clone(), None, move |window, cx| {
-                            let _ = open
-                                .update(cx, |this, cx| this.open_plugin(key.clone(), window, cx));
-                        });
-                    }
-                    menu
+                    })
+                    .entry("New Plugin Pane", None, move |window, cx| {
+                        let _ = plugin
+                            .update(cx, |this, cx| this.act(Action::NewPluginPane, window, cx));
+                    })
                 }))
             })
+            .into_any_element()
+    }
+
+    fn plugin_launcher(
+        &self,
+        launcher: crate::workspace::ItemId,
+        weak: &gpui::WeakEntity<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        let cards: Vec<_> = self
+            .catalog
+            .panes()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, pane)| {
+                let plugin = self.catalog.get(&pane.key.plugin)?;
+                let name = plugin.manifest.name.clone();
+                let version = plugin.manifest.version.clone();
+                let surface = pane.title.clone();
+                let kind = match plugin.kind() {
+                    zeddy_plugin::manifest::Kind::Native => "Native plugin",
+                    zeddy_plugin::manifest::Kind::Web => "Web plugin",
+                };
+                let key = pane.key.clone();
+                let open = weak.clone();
+                Some(
+                    ButtonLike::new(("plugin-launcher-card", index))
+                        .style(ButtonStyle::Outlined)
+                        .full_width()
+                        .height(px(132.).into())
+                        .tab_index(0isize)
+                        .aria_label(format!("Open {surface} from {name}"))
+                        .on_click(move |_, window, cx| {
+                            let _ = open.update(cx, |this, cx| {
+                                this.open_plugin_from_launcher(launcher, key.clone(), window, cx)
+                            });
+                        })
+                        .child(
+                            v_flex()
+                                .size_full()
+                                .text_left()
+                                .items_start()
+                                .justify_between()
+                                .py_2()
+                                .child(
+                                    v_flex()
+                                        .items_start()
+                                        .gap_1()
+                                        .child(
+                                            Label::new(name)
+                                                .size(UI_LABEL_LARGE)
+                                                .weight(gpui::FontWeight::SEMIBOLD),
+                                        )
+                                        .child(
+                                            Label::new(surface)
+                                                .size(UI_LABEL_DEFAULT)
+                                                .color(Color::Muted),
+                                        ),
+                                )
+                                .child(
+                                    Label::new(format!("{kind}  ·  v{version}"))
+                                        .size(UI_LABEL_SMALL)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                        .into_any_element(),
+                )
+            })
+            .collect();
+
+        let has_cards = !cards.is_empty();
+        div()
+            .id(format!("plugin-launcher-{}", launcher.get()))
+            .size_full()
+            .overflow_y_scroll()
+            .bg(cx.theme().colors().editor_background)
+            .child(
+                v_flex()
+                    .w_full()
+                    .max_w(px(960.))
+                    .mx_auto()
+                    .p_8()
+                    .gap_6()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                Label::new("New Plugin Pane")
+                                    .size(UI_LABEL_LARGE)
+                                    .weight(gpui::FontWeight::SEMIBOLD),
+                            )
+                            .child(
+                                Label::new("Choose a plugin surface to open in this tab.")
+                                    .size(UI_LABEL_DEFAULT)
+                                    .color(Color::Muted),
+                            ),
+                    )
+                    .when(has_cards, |launcher| {
+                        launcher.child(div().w_full().grid().grid_cols(3).gap_3().children(cards))
+                    })
+                    .when(!has_cards, |launcher| {
+                        launcher.child(
+                            div()
+                                .w_full()
+                                .p_6()
+                                .rounded_md()
+                                .border_1()
+                                .border_color(cx.theme().colors().border)
+                                .child(
+                                    Label::new("No plugin surfaces are available.")
+                                        .size(UI_LABEL_DEFAULT)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                    }),
+            )
             .into_any_element()
     }
 
@@ -2171,8 +2280,9 @@ impl Zeddy {
         })
     }
 
-    fn open_plugin(
+    fn open_plugin_from_launcher(
         &mut self,
+        launcher: crate::workspace::ItemId,
         key: zeddy_plugin::PaneKey,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -2195,10 +2305,13 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return;
         };
+        if !space.read(cx).is_plugin_launcher(launcher) {
+            return;
+        }
         let bound_session = if capabilities.session_binding {
-            let Some(session) = space.read(cx).active_session_id() else {
+            let Some(session) = space.read(cx).plugin_launcher_bound_session(launcher) else {
                 self.problem =
-                    Some("Select a terminal before opening this session-bound plugin.".to_owned());
+                    Some("Open this launcher from a terminal to use that plugin.".to_owned());
                 cx.notify();
                 return;
             };
@@ -2209,6 +2322,7 @@ impl Zeddy {
         if capabilities.multiplicity == Multiplicity::PerSpace
             && space.update(cx, |space, _| space.activate_plugin(&key))
         {
+            space.update(cx, |space, _| space.finish_bulk_close(&[launcher]));
             self.problem = None;
             cx.notify();
             return;
@@ -2255,7 +2369,8 @@ impl Zeddy {
             }
         };
         space.update(cx, |space, cx| {
-            space.open_plugin(
+            space.replace_plugin_launcher(
+                launcher,
                 PluginItem {
                     contribution: key,
                     title,
@@ -2830,6 +2945,7 @@ impl Zeddy {
                             .into_any_element()
                     }
                     crate::item::Item::Plugin(item) => item.view.clone().into_any_element(),
+                    crate::item::Item::PluginLauncher { .. } => self.plugin_launcher(id, weak, cx),
                 })
                 .unwrap_or_else(|| {
                     empty_pane_message("Drop a tab here or create a new item.", cx)
@@ -3804,12 +3920,88 @@ fn plugin_paths() -> Paths {
     Paths::under(root.join("chartr-zeddy"))
 }
 
+const BUNDLED_HELLO_ID: &str = "com.example.hello";
+const BUNDLED_CLOCK_ID: &str = "com.example.clock";
+
+fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
+    let paths = plugin_paths();
+    let mut catalog =
+        zeddy_plugin_host::load_all_where(&paths, |id| settings.resolved().plugin(id).enabled, cx);
+
+    if !catalog.contains(BUNDLED_HELLO_ID) {
+        let dir = paths.bundled.join(BUNDLED_HELLO_ID);
+        match materialize_bundled_hello(&dir) {
+            Ok(manifest) => catalog.add_bundled_native(
+                manifest,
+                dir,
+                &paths,
+                settings.resolved().plugin(BUNDLED_HELLO_ID).enabled,
+                crate::hello_plugin::bundled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected { dir, why }),
+        }
+    }
+
+    if !catalog.contains(BUNDLED_CLOCK_ID) {
+        let dir = paths.bundled.join(BUNDLED_CLOCK_ID);
+        match materialize_bundled_clock(&dir) {
+            Ok(()) => catalog.add_directory(
+                &dir,
+                &paths,
+                settings.resolved().plugin(BUNDLED_CLOCK_ID).enabled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected {
+                dir,
+                why: format!("cannot prepare the bundled Clock plugin: {why}"),
+            }),
+        }
+    }
+
+    catalog
+}
+
+fn materialize_bundled_hello(dir: &std::path::Path) -> Result<zeddy_plugin::Manifest, String> {
+    std::fs::create_dir_all(dir)
+        .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
+    write_bundled_file(
+        &dir.join("zeddy-plugin.toml"),
+        include_bytes!("../../../plugins/hello/zeddy-plugin.toml"),
+    )
+    .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
+    zeddy_plugin::Manifest::read(dir).map_err(|why| why.to_string())
+}
+
+fn materialize_bundled_clock(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    write_bundled_file(
+        &dir.join("zeddy-plugin.toml"),
+        include_bytes!("../../../plugins/clock/zeddy-plugin.toml"),
+    )?;
+    write_bundled_file(
+        &dir.join("index.html"),
+        include_bytes!("../../../plugins/clock/index.html"),
+    )?;
+    write_bundled_file(
+        &dir.join("settings.html"),
+        include_bytes!("../../../plugins/clock/settings.html"),
+    )
+}
+
+fn write_bundled_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    if std::fs::read(path).is_ok_and(|current| current == contents) {
+        return Ok(());
+    }
+    std::fs::write(path, contents)
+}
+
 #[cfg(test)]
 mod pane_drop_tests {
     use super::{
         PersistedSpaceKind, Registry, Snapshot, SplitDirection, cleanup_empty_implicit_root,
-        pane_drop_direction_for_position, regex_escape_literal, resolve_terminal_path,
-        split_direction_for_position,
+        materialize_bundled_clock, materialize_bundled_hello, pane_drop_direction_for_position,
+        regex_escape_literal, resolve_terminal_path, split_direction_for_position,
     };
     use crate::{persistence::PersistedSpace, workspace::WorkspaceTabs};
     use std::path::{Path, PathBuf};
@@ -3817,6 +4009,30 @@ mod pane_drop_tests {
     #[test]
     fn terminal_search_treats_user_text_as_a_literal() {
         assert_eq!(regex_escape_literal("a.b[c]+(d)?\\e"), "a\\.b\\[c\\]\\+\\(d\\)\\?\\\\e");
+    }
+
+    #[test]
+    fn the_bundled_web_example_materializes_as_a_valid_plugin_directory() {
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path().join("com.example.clock");
+
+        materialize_bundled_clock(&dir).unwrap();
+
+        let manifest = zeddy_plugin::Manifest::read(&dir).unwrap();
+        assert_eq!(manifest.id, "com.example.clock");
+        assert!(dir.join("index.html").is_file());
+        assert!(dir.join("settings.html").is_file());
+    }
+
+    #[test]
+    fn the_bundled_native_example_materializes_with_its_valid_manifest() {
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path().join("com.example.hello");
+
+        let manifest = materialize_bundled_hello(&dir).unwrap();
+
+        assert_eq!(manifest.id, "com.example.hello");
+        assert!(dir.join("zeddy-plugin.toml").is_file());
     }
 
     #[test]

@@ -6,13 +6,19 @@
 //! returns is an `AnyView` zeddy renders without a renderer in between.
 
 use zeddy_plugin::{
-    Host, PaneKey, Plugin, Registrar, gpui,
+    Host, PaneKey, Plugin, PluginObject, Registrar, gpui,
     gpui::{Context, IntoElement, Window, div, prelude::*, px, rgb},
     register,
 };
 
-struct Hello {
+pub struct Hello {
     host: Host,
+}
+
+/// Construct the same plugin object when the example is bundled with Chartr.
+/// Standalone installations continue to enter through `register!` below.
+pub fn bundled(host: Host, cx: &mut gpui::App) -> Box<dyn PluginObject> {
+    Box::new(Hello::new(host, cx))
 }
 
 impl Plugin for Hello {

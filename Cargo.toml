@@ -17,7 +17,12 @@ members = [
     "crates/zeddy-plugin",
     "crates/zeddy-plugin-host",
 ]
-exclude = ["vendor/zed-terminal-view"]
+exclude = [
+    "vendor/zed-platform/gpui_linux",
+    "vendor/zed-platform/gpui_macos",
+    "vendor/zed-platform/ui",
+    "vendor/zed-terminal-view",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -92,3 +97,12 @@ opt-level = 0
 async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
 async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
 tree-sitter-language = { git = "https://github.com/tree-sitter/tree-sitter", rev = "dff1fd868c750dbbae179fcd5c43ce987e4e0528" }
+
+# GPUI exposes anchored popup windows, but the pinned revision only implements
+# them on Wayland. These small platform forks complete the same contract on
+# macOS and X11 so menus can sit above native child surfaces without app-level
+# focus, z-order, or event-routing workarounds.
+[patch."https://github.com/zed-industries/zed.git"]
+gpui_linux = { path = "vendor/zed-platform/gpui_linux" }
+gpui_macos = { path = "vendor/zed-platform/gpui_macos" }
+ui = { path = "vendor/zed-platform/ui" }

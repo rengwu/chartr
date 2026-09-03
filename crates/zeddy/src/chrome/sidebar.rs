@@ -10,12 +10,13 @@ use std::{
 };
 
 use gpui::{
-    Anchor, Bounds, EntityId, MouseButton, Pixels, Point, Rems, Role, ScrollHandle, deferred,
-    point, px, transparent_black,
+    Bounds, EntityId, MouseButton, Pixels, Point, Rems, Role, ScrollHandle, deferred, point, px,
+    transparent_black,
 };
-use ui::{PopoverMenu, Tooltip, prelude::*, right_click_menu};
+use ui::{Tooltip, prelude::*};
 
 use super::Emit;
+use crate::components::popup_right_click_menu;
 
 use super::{
     Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, dragged_item_preview,
@@ -456,119 +457,71 @@ pub fn render(
         let space_drag = DraggedSpace(space.id);
         let begin_drag = on.clone();
         let dragging = cx.has_active_drag();
-        contents.push(
-            h_flex()
-                .group("space-heading")
-                .pl_1()
-                .pt_0()
-                .pb_1()
-                .justify_between()
-                .child(
-                    h_flex()
-                        .id(("space-drag", space_index))
-                        .min_w_0()
-                        .flex_1()
-                        .child(
-                            Label::new(space.name.clone())
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted)
-                                .truncate(),
-                        )
-                        .when(spaces.len() > 1, |handle| {
-                            handle
-                                .when(!dragging, |handle| handle.cursor_grab())
-                                .when(dragging, |handle| handle.cursor_grabbing())
-                                .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                                    begin_drag(
-                                        Action::BeginSpaceDrag { at: event.position.y },
-                                        window,
-                                        cx,
-                                    )
-                                })
-                                .on_drag(space_drag, |dragged, _, _, cx| {
-                                    let dragged = *dragged;
-                                    cx.new(move |_| dragged)
-                                })
-                        }),
-                )
-                .child(
-                    h_flex()
-                        .gap_px()
-                        .child(
-                            IconButton::new(("new-in-space", space_index), IconName::Plus)
-                                .icon_size(IconSize::XSmall)
-                                .tooltip(Tooltip::text("New session in this space"))
-                                .on_click(move |_, window, cx| {
-                                    add(Action::NewInSpace { space: space_id }, window, cx)
-                                }),
-                        )
-                        .when(removable || !available, |controls| {
-                            controls.child(
-                                PopoverMenu::new(format!("space-actions-{space_index}"))
-                                    .trigger_with_tooltip(
-                                        IconButton::new(
-                                            ("space-actions-trigger", space_index),
-                                            IconName::Ellipsis,
-                                        )
-                                        .icon_size(IconSize::XSmall),
-                                        Tooltip::text("Space Actions"),
-                                    )
-                                    .anchor(Anchor::TopRight)
-                                    .menu(move |window, cx| {
-                                        let rename = actions.clone();
-                                        let locate = actions.clone();
-                                        let close = actions.clone();
-                                        Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                                            let menu = menu.when(!available, |menu| {
-                                                menu.entry(
-                                                    "Locate Space Folder",
-                                                    None,
-                                                    move |window, cx| {
-                                                        locate(
-                                                            Action::LocateSpace {
-                                                                space: action_space,
-                                                            },
-                                                            window,
-                                                            cx,
-                                                        )
-                                                    },
-                                                )
-                                            });
-                                            menu.when(removable, |menu| {
-                                                let menu = menu.entry(
-                                                    "Rename Space",
-                                                    None,
-                                                    move |window, cx| {
-                                                        rename(
-                                                            Action::RenameSpace {
-                                                                space: action_space,
-                                                            },
-                                                            window,
-                                                            cx,
-                                                        )
-                                                    },
-                                                );
-                                                menu.separator().entry(
-                                                    "Close Space",
-                                                    None,
-                                                    move |window, cx| {
-                                                        close(
-                                                            Action::CloseSpace {
-                                                                space: action_space,
-                                                            },
-                                                            window,
-                                                            cx,
-                                                        )
-                                                    },
-                                                )
-                                            })
-                                        }))
-                                    }),
-                            )
-                        }),
-                )
-                .into_any_element(),
-        );
+        let title_bar = h_flex()
+            .id(("space-drag", space_index))
+            .group("space-heading")
+            .w_full()
+            .min_w_0()
+            .pl_1()
+            .pt_0()
+            .pb_1()
+            .justify_between()
+            .child(h_flex().min_w_0().flex_1().child(
+                Label::new(space.name.clone()).size(UI_LABEL_SMALL).color(Color::Muted).truncate(),
+            ))
+            .child(
+                h_flex()
+                    .gap_px()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        IconButton::new(("new-in-space", space_index), IconName::Plus)
+                            .icon_size(IconSize::XSmall)
+                            .tooltip(Tooltip::text("New session in this space"))
+                            .on_click(move |_, window, cx| {
+                                add(Action::NewInSpace { space: space_id }, window, cx)
+                            }),
+                    ),
+            )
+            .when(spaces.len() > 1, |handle| {
+                handle
+                    .when(!dragging, |handle| handle.cursor_grab())
+                    .when(dragging, |handle| handle.cursor_grabbing())
+                    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                        begin_drag(Action::BeginSpaceDrag { at: event.position.y }, window, cx)
+                    })
+                    .on_drag(space_drag, |dragged, _, _, cx| {
+                        let dragged = *dragged;
+                        cx.new(move |_| dragged)
+                    })
+            });
+        let title_bar = if removable || !available {
+            popup_right_click_menu(format!("space-actions-{space_index}"))
+                .trigger(move |_, _, _| title_bar)
+                .menu(move |window, cx| {
+                    let rename = actions.clone();
+                    let locate = actions.clone();
+                    let close = actions.clone();
+                    ContextMenu::build_popup(window, cx, move |menu| {
+                        let menu = menu.when(!available, |menu| {
+                            menu.entry("Locate Space Folder", None, move |window, cx| {
+                                locate(Action::LocateSpace { space: action_space }, window, cx)
+                            })
+                        });
+                        menu.when(removable, |menu| {
+                            let menu = menu.entry("Rename Space", None, move |window, cx| {
+                                rename(Action::RenameSpace { space: action_space }, window, cx)
+                            });
+                            menu.separator().entry("Close Space", None, move |window, cx| {
+                                close(Action::CloseSpace { space: action_space }, window, cx)
+                            })
+                        })
+                    })
+                })
+                .into_any_element()
+        } else {
+            title_bar.into_any_element()
+        };
+        contents.push(title_bar);
         for (target_index, entry) in space.entries.iter().enumerate() {
             contents.push(
                 row(
@@ -809,12 +762,12 @@ fn row(
         });
 
     if grouped {
-        right_click_menu(format!("group-row-menu-{space:?}-{}", close_tab.get()))
+        popup_right_click_menu(format!("group-row-menu-{space:?}-{}", close_tab.get()))
             .trigger(move |_, _, _| row)
             .menu(move |window, cx| {
                 let ungroup = ungroup.clone();
                 let rename = rename.clone();
-                ContextMenu::build(window, cx, move |menu, _, _| {
+                ContextMenu::build_popup(window, cx, move |menu| {
                     menu.entry("Rename", None, move |window, cx| {
                         rename(Action::RenameGroup { space, tab: close_tab }, window, cx)
                     })

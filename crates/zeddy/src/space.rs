@@ -276,7 +276,7 @@ impl Space {
                     state: None,
                     bound_session: item.bound_session.as_ref().map(|id| id.0.clone()),
                 }),
-                Item::Plugin(_) => None,
+                Item::Plugin(_) | Item::PluginLauncher { .. } => None,
             })
             .collect();
         items.extend(self.restoring_sessions.iter().map(|(backend_id, item)| {
@@ -575,6 +575,7 @@ impl Space {
             }
             Action::Close { item, .. } => self.close_item(item, cx),
             Action::New
+            | Action::NewPluginPane
             | Action::ActivateSpace { .. }
             | Action::NewInSpace { .. }
             | Action::MoveWorkspaceTab { .. }
@@ -593,10 +594,39 @@ impl Space {
         cx.notify();
     }
 
-    pub fn open_plugin(&mut self, plugin: PluginItem, cx: &mut Context<Self>) -> ItemId {
+    pub fn open_plugin_launcher(&mut self, cx: &mut Context<Self>) -> ItemId {
         let id = self.layout.alloc_item();
-        self.open_plugin_at(id, plugin, cx);
+        let bound_session = self.active_session_id();
+        self.items.insert(id, Item::PluginLauncher { bound_session });
+        if let Err(error) = self.layout.push_standalone(id) {
+            self.items.remove(&id);
+            self.problem = Some(error.to_string());
+        }
+        cx.notify();
         id
+    }
+
+    pub fn is_plugin_launcher(&self, id: ItemId) -> bool {
+        self.items.get(&id).is_some_and(Item::is_plugin_launcher)
+    }
+
+    pub fn plugin_launcher_bound_session(&self, id: ItemId) -> Option<PaneId> {
+        self.items.get(&id).and_then(Item::plugin_launcher_bound_session).cloned()
+    }
+
+    /// Turn the picker into a plugin without changing its workspace location.
+    pub fn replace_plugin_launcher(
+        &mut self,
+        id: ItemId,
+        plugin: PluginItem,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self.is_plugin_launcher(id) || self.layout.location(id).is_none() {
+            return false;
+        }
+        self.items.insert(id, Item::Plugin(plugin));
+        cx.notify();
+        true
     }
 
     pub fn open_plugin_in(
@@ -1002,9 +1032,70 @@ pub fn name_for(kind: Kind, path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::AppContext as _;
+
+    struct LauncherReplacementView;
+
+    impl gpui::Render for LauncherReplacementView {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            gpui::div()
+        }
+    }
 
     #[test]
     fn the_folderless_space_is_named_free_sessions() {
         assert_eq!(name_for(Kind::AdHoc, std::path::Path::new("/home/op")), "Free sessions");
+    }
+
+    #[gpui::test]
+    fn selecting_a_plugin_replaces_the_launcher_at_the_same_workspace_location(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let temporary = tempfile::tempdir().unwrap();
+        let sidecar = temporary.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            zeddy_herdr::Sidecar::at(sidecar).unwrap(),
+            zeddy_herdr::Namespace::rooted(temporary.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new(
+                "Free sessions".to_owned(),
+                temporary.path().to_owned(),
+                Kind::AdHoc,
+                client,
+                cx,
+            )
+        });
+        let launcher = space.update(cx, |space, cx| space.open_plugin_launcher(cx));
+        let before = cx.read(|cx| space.read(cx).workspace_tabs().location(launcher));
+        let view = cx.new(|_| LauncherReplacementView).into();
+
+        let replaced = space.update(cx, |space, cx| {
+            space.replace_plugin_launcher(
+                launcher,
+                PluginItem {
+                    contribution: zeddy_plugin::PaneKey::new("com.example.hello", "main"),
+                    title: "Hello".to_owned(),
+                    view,
+                    bound_session: None,
+                    can_clone: false,
+                    restorable: true,
+                },
+                cx,
+            )
+        });
+
+        cx.read(|cx| {
+            let space = space.read(cx);
+            assert!(replaced);
+            assert_eq!(space.workspace_tabs().location(launcher), before);
+            assert_eq!(space.item(launcher).unwrap().title(), "Hello");
+            assert!(!space.item(launcher).unwrap().is_plugin_launcher());
+        });
     }
 }
