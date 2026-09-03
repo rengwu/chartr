@@ -104,6 +104,11 @@ impl Loaded {
         &self.manifest.permissions
     }
 
+    /// The package-owned Hugeicons SVG used by Chartr's tab chrome.
+    pub fn icon_path(&self) -> PathBuf {
+        self.manifest.icon_path(&self.dir)
+    }
+
     /// How to build one of this plugin's panes.
     ///
     /// `None` for a pane this plugin did not declare — which is what a stale
@@ -495,6 +500,11 @@ fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, Lo
         });
     }
 
+    let icon = manifest.icon_path(dir);
+    if !icon.is_file() {
+        return Err(LoadError::MissingFile(icon));
+    }
+
     std::fs::create_dir_all(paths.data.join(&manifest.id)).ok();
 
     let (tier, panes, has_settings) = match manifest.kind {
@@ -551,6 +561,10 @@ fn load_builtin_native(
 ) -> Result<Loaded, LoadError> {
     if manifest.kind != Kind::Native {
         return Err(LoadError::BundledKind(manifest.kind));
+    }
+    let icon = manifest.icon_path(&dir);
+    if !icon.is_file() {
+        return Err(LoadError::MissingFile(icon));
     }
     let host = Host { data_dir: paths.data.join(&manifest.id), plugin_dir: dir.clone() };
     std::fs::create_dir_all(&host.data_dir).ok();
@@ -638,10 +652,12 @@ mod tests {
             dir.join("zeddy-plugin.toml"),
             format!(
                 "manifest_version = 2\nid = \"{id}\"\nname = \"Notes\"\n\
-                 version = \"0.1.0\"\nkind = \"web\"\nentry = \"index.html\"\n"
+                 version = \"0.1.0\"\nkind = \"web\"\nicon = \"NoteIcon\"\nentry = \"index.html\"\n"
             ),
         )
         .expect("manifest");
+        std::fs::create_dir_all(dir.join("icons")).expect("icons dir");
+        std::fs::write(dir.join("icons/NoteIcon.svg"), "<svg/>").expect("icon");
         std::fs::write(dir.join("index.html"), "<p>hi</p>").expect("entry");
         dir
     }
@@ -716,6 +732,17 @@ mod tests {
     }
 
     #[gpui::test]
+    fn a_plugin_with_no_declared_hugeicon_svg_is_rejected(cx: &mut gpui::TestAppContext) {
+        let (_tmp, paths) = paths();
+        let dir = write_web(&paths, "com.example.notes", "com.example.notes");
+        std::fs::remove_file(dir.join("icons/NoteIcon.svg")).expect("remove icon");
+
+        let catalog = cx.update(|cx| load_all(&paths, cx));
+        assert_eq!(catalog.rejected.len(), 1);
+        assert!(catalog.rejected[0].why.contains("icons/NoteIcon.svg"));
+    }
+
+    #[gpui::test]
     fn one_bad_plugin_does_not_stop_the_others_loading(cx: &mut gpui::TestAppContext) {
         let (_tmp, paths) = paths();
         write_web(&paths, "com.example.notes", "com.example.notes");
@@ -751,9 +778,11 @@ mod tests {
     fn a_bundled_native_plugin_can_be_disabled_and_enabled_again(cx: &mut gpui::TestAppContext) {
         let (_tmp, paths) = paths();
         let dir = paths.bundled.join(BundledPlugin::ID);
+        std::fs::create_dir_all(dir.join("icons")).unwrap();
+        std::fs::write(dir.join("icons/BundleIcon.svg"), "<svg/>").unwrap();
         let manifest = Manifest::parse(
             "manifest_version = 2\nid = \"com.example.bundled\"\nname = \"Bundled\"\n\
-            version = \"0.1.0\"\nkind = \"native\"\n",
+            version = \"0.1.0\"\nkind = \"native\"\nicon = \"BundleIcon\"\n",
         )
         .unwrap();
         let mut catalog = cx.update(|cx| {
@@ -775,9 +804,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.chartr.browser'\nname = 'Browser'\nversion = '1'\nkind = 'hosted'\nsurface = 'browser'\n",
+            "manifest_version = 2\nid = 'com.chartr.browser'\nname = 'Browser'\nversion = '1'\nkind = 'hosted'\nicon = 'InternetIcon'\nsurface = 'browser'\n",
         )
         .unwrap();
+        std::fs::create_dir_all(dir.join("icons")).unwrap();
+        std::fs::write(dir.join("icons/InternetIcon.svg"), "<svg/>").unwrap();
 
         let mut catalog = cx.update(|cx| load_all(&paths, cx));
         let browser = catalog.get_mut("com.chartr.browser").unwrap();
@@ -801,10 +832,12 @@ mod tests {
             std::fs::write(
                 dir.join("zeddy-plugin.toml"),
                 format!(
-                    "manifest_version = 2\nid = '{id}'\nname = 'Rejected'\nversion = '1'\n{kind}\n"
+                    "manifest_version = 2\nid = '{id}'\nname = 'Rejected'\nversion = '1'\nicon = 'TestIcon'\n{kind}\n"
                 ),
             )
             .unwrap();
+            std::fs::create_dir_all(dir.join("icons")).unwrap();
+            std::fs::write(dir.join("icons/TestIcon.svg"), "<svg/>").unwrap();
         }
 
         let catalog = cx.update(|cx| load_all(&paths, cx));

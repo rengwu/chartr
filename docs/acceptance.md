@@ -113,28 +113,41 @@ Repeat the input and scrolling checks in standalone, grouped, and split panes,
 including after detach/reattach and window resize. Reject any duplicate input,
 stale viewport, focus loss, or interaction that works only in one pane shape.
 
-Confirm the active-space picker sits in the macOS title bar immediately after
-the traffic lights, and the chevron menu sits at the far-right corner in both
+Confirm the space picker sits in the macOS title bar immediately after the
+traffic lights, and the chevron menu sits at the far-right corner in both
 chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a
-trailing-checkmarked `Show only active space` toggle, a separator, and
-`Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
-`Settings`. Switching presentation or sidebar scope updates immediately and
-survives relaunch. On platforms with a native system title bar, confirm both
-controls retain their in-app chrome positions.
+trailing-checkmarked `Show space picker` toggle, a separator, and `Settings`;
+turning the toggle off hides the picker without hiding any space cards. Tabbed
+mode offers `Switch to Sidebar mode`, a separator, and `Settings`. Switching
+presentation or picker visibility updates immediately and survives relaunch.
+On platforms with a native system title bar, confirm both controls retain
+their in-app chrome positions.
 
-In tabbed mode, the `+` control follows the last outer tab while they fit. When
-the tabs overflow, only the tabs scroll: `+` pins beside their right edge, while
-the title-bar chevron remains pinned at the window's far right. The padded `+`
-cell retains a left divider against the scrolling tabs. Every tab retains its
-minimum clickable width, including pane-local tabs within grouped workspaces.
+In tabbed mode, the `+` and adjacent plugin-pane controls follow the last outer tab
+while they fit. When the tabs overflow, only the tabs scroll: both controls pin
+beside their right edge, while the title-bar chevron remains pinned at the
+window's far right. The padded control cell retains a left divider against the
+scrolling tabs. Every tab retains its minimum clickable width, including
+pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
+a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Each pane-local `+` likewise follows its last tab on the left and stays pinned
-beside the scrolling pane tabs. Outer and pane-local `+` controls use the same
-icon size and padded divider cell; an empty outer strip keeps the `+` vertically
-centered at the normal tab-bar height. The muted tab-bar background continues
-after its compact cell and remains the append drop target without reserving width;
-when pane tabs overflow, `+` reaches the pane's right edge.
+Confirm Browser, Clock, and Hello show their manifest-selected Hugeicons in
+sidebar rows, standalone outer tabs, and pane-local tabs. Grouped outer tabs
+continue to show the split indicator instead of one representative plugin icon.
+Confirm a temporary **New Plugin Pane** tab shows the Blockchain 01 icon in
+each of those tab surfaces until a plugin replaces it in place.
+Open that picker and confirm every plugin card shows the same manifest-selected
+Hugeicon beside its plugin name.
+Each pane-local `+` and plugin-pane pair likewise follows its last tab on the left
+and stays pinned beside the scrolling pane tabs. Outer and pane-local controls
+use the same icon size and padded divider cell; an empty outer strip keeps the
+pair vertically centered at the normal tab-bar height. The muted tab-bar
+background continues after its compact cell and remains the append drop target
+without reserving width; when pane tabs overflow, the controls reach the pane's
+right edge. Confirm each plugin-pane control opens the plugin picker at its indicated
+location, including within the selected pane and within an inactive sidebar
+space card.
 
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,
@@ -149,7 +162,7 @@ a drag so neither the tab preview nor drop highlight is obscured.
 
 In the All Spaces sidebar, clicking anywhere on a space card activates that
 space and returns keyboard focus to its workspace. Its session rows still select
-their specific tabs, and its buttons retain their own actions.
+their specific tabs, and its `+` and plugin-pane buttons retain their own actions.
 
 Create five standalone tabs in one space. Move tabs 4 and 5 into tab 3, split
 tab 4 to the right, and leave tabs 1 and 2 standalone. Both sidebar and tabbed

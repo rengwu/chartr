@@ -24,7 +24,6 @@ use crate::{
     fonts::{self, Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
     mode::Mode,
-    persistence::SidebarScope,
     settings::{
         self, AppearanceContent, GeneralContent, ResolvedSettings, SettingsPage, SettingsStore,
         TerminalContent, ThemeMode,
@@ -592,10 +591,6 @@ impl SettingsWindow {
             .unwrap_or_else(|| "Workspace unavailable".to_owned())
     }
 
-    fn sidebar_scope(&self, cx: &App) -> Option<SidebarScope> {
-        self.original.upgrade().map(|origin| origin.read(cx).settings_sidebar_scope())
-    }
-
     fn mode(&self, cx: &App) -> Option<Mode> {
         self.original.upgrade().map(|origin| origin.read(cx).settings_mode())
     }
@@ -603,16 +598,6 @@ impl SettingsWindow {
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if let Some(origin) = self.original.upgrade() {
             origin.update(cx, |origin, cx| origin.settings_set_mode(mode, cx));
-            self.problem = None;
-        } else {
-            self.problem = Some("The originating Chartr window is no longer available.".into());
-        }
-        cx.notify();
-    }
-
-    fn set_sidebar_scope(&mut self, scope: SidebarScope, cx: &mut Context<Self>) {
-        if let Some(origin) = self.original.upgrade() {
-            origin.update(cx, |origin, cx| origin.settings_set_sidebar_scope(scope, cx));
             self.problem = None;
         } else {
             self.problem = Some("The originating Chartr window is no longer available.".into());
@@ -816,10 +801,8 @@ impl SettingsWindow {
         let middle_click_closes_tab = settings.middle_click_closes_tab;
         let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
         let mode = self.mode(cx);
-        let sidebar_scope = self.sidebar_scope(cx);
-        let runtime_available = mode.is_some() && sidebar_scope.is_some();
+        let runtime_available = mode.is_some();
         let mode = mode.unwrap_or_default();
-        let sidebar_scope = sidebar_scope.unwrap_or_default();
         let terminate_setting = cx.weak_entity();
         let middle_click_setting = cx.weak_entity();
         let sidebar_middle_click_setting = cx.weak_entity();
@@ -831,16 +814,6 @@ impl SettingsWindow {
         let use_tabs = cx.listener(move |this, _, _, cx| {
             if runtime_available {
                 this.set_mode(Mode::Tabs, cx);
-            }
-        });
-        let show_all = cx.listener(move |this, _, _, cx| {
-            if runtime_available {
-                this.set_sidebar_scope(SidebarScope::AllSpaces, cx);
-            }
-        });
-        let show_active = cx.listener(move |this, _, _, cx| {
-            if runtime_available {
-                this.set_sidebar_scope(SidebarScope::ActiveSpace, cx);
             }
         });
         let mut fields = vec![
@@ -896,52 +869,28 @@ impl SettingsWindow {
                 }),
             ));
         }
-        fields.extend([
-            setting_field(
-                "Session list",
-                "Choose where sessions appear in the workspace.",
-                SegmentedControl::new(
-                    "Session list presentation",
-                    [
-                        SegmentedControlOption::new(
-                            "presentation-sidebar",
-                            "Sidebar",
-                            mode == Mode::Sidebar,
-                            use_sidebar,
-                        ),
-                        SegmentedControlOption::new(
-                            "presentation-tabs",
-                            "Tabbed",
-                            mode == Mode::Tabs,
-                            use_tabs,
-                        ),
-                    ],
-                )
-                .disabled(!runtime_available),
-            ),
-            setting_field(
-                "Spaces shown",
-                "Show every space in the sidebar or only the active one.",
-                SegmentedControl::new(
-                    "Spaces shown in the sidebar",
-                    [
-                        SegmentedControlOption::new(
-                            "sidebar-all-spaces",
-                            "All spaces",
-                            sidebar_scope == SidebarScope::AllSpaces,
-                            show_all,
-                        ),
-                        SegmentedControlOption::new(
-                            "sidebar-active-space",
-                            "Active only",
-                            sidebar_scope == SidebarScope::ActiveSpace,
-                            show_active,
-                        ),
-                    ],
-                )
-                .disabled(!runtime_available),
-            ),
-        ]);
+        fields.push(setting_field(
+            "Session list",
+            "Choose where sessions appear in the workspace.",
+            SegmentedControl::new(
+                "Session list presentation",
+                [
+                    SegmentedControlOption::new(
+                        "presentation-sidebar",
+                        "Sidebar",
+                        mode == Mode::Sidebar,
+                        use_sidebar,
+                    ),
+                    SegmentedControlOption::new(
+                        "presentation-tabs",
+                        "Tabbed",
+                        mode == Mode::Tabs,
+                        use_tabs,
+                    ),
+                ],
+            )
+            .disabled(!runtime_available),
+        ));
         settings_fields(fields, cx.theme().colors().border_variant)
     }
 

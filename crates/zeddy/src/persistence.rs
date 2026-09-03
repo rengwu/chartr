@@ -19,18 +19,15 @@ pub const STATE_FILE: &str = "state.sqlite";
 const SCHEMA_VERSION: i64 = 1;
 const IMPLICIT_ROOT_CLEANUP: &str = "migration.implicit-root-space";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SidebarScope {
-    #[default]
-    AllSpaces,
-    ActiveSpace,
+const fn default_show_space_picker() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowState {
     pub chrome: Mode,
-    pub sidebar_scope: SidebarScope,
+    #[serde(default = "default_show_space_picker")]
+    pub show_space_picker: bool,
     pub sidebar_width: f32,
     pub active_space: Option<String>,
     pub bounds: Option<WindowBounds>,
@@ -40,7 +37,7 @@ impl Default for WindowState {
     fn default() -> Self {
         Self {
             chrome: Mode::Sidebar,
-            sidebar_scope: SidebarScope::AllSpaces,
+            show_space_picker: true,
             sidebar_width: 280.,
             active_space: Some("ad-hoc".to_owned()),
             bounds: None,
@@ -286,6 +283,7 @@ mod tests {
         let snapshot = Snapshot {
             window: WindowState {
                 chrome: Mode::Tabs,
+                show_space_picker: false,
                 sidebar_width: 312.,
                 active_space: Some("two".to_owned()),
                 ..WindowState::default()
@@ -296,6 +294,16 @@ mod tests {
         let restored = store.load().unwrap();
         assert_eq!(restored, snapshot);
         restored.spaces[0].layout.validate().unwrap();
+    }
+
+    #[test]
+    fn older_window_state_keeps_the_space_picker_visible() {
+        let restored: WindowState = serde_json::from_str(
+            r#"{"chrome":"sidebar","sidebar_scope":"all_spaces","sidebar_width":280.0,"active_space":null,"bounds":null}"#,
+        )
+        .unwrap();
+
+        assert!(restored.show_space_picker);
     }
 
     #[test]

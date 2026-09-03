@@ -20,6 +20,7 @@ pub fn render(
     entries: &[Entry],
     controls: Option<(AnyElement, AnyElement)>,
     new_item: AnyElement,
+    new_plugin_pane: AnyElement,
     on: Emit,
     cx: &App,
 ) -> impl IntoElement {
@@ -39,7 +40,7 @@ pub fn render(
                     tab(index, entries.len(), active_index, entry, on.clone(), cx)
                 })),
         )
-        .child(new_item_cell(new_item, cx));
+        .child(new_item_cell(h_flex().gap_px().child(new_item).child(new_plugin_pane), cx));
 
     let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
     let tab_bar = match controls {
@@ -127,6 +128,7 @@ fn tab(
     )
     .aria_label(aria_label)
     .activity(entry.activity())
+    .icon_path(entry.icon_path.clone())
     .grouped(entry.grouped)
     .close_slot(close_slot)
     .build(cx)

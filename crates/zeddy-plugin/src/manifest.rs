@@ -86,6 +86,10 @@ pub struct Manifest {
     pub name: String,
     pub version: String,
     pub kind: Kind,
+    /// The canonical Hugeicons export name for this plugin's tab icon. The
+    /// package supplies its Stroke Rounded SVG at `icons/<name>.svg`.
+    #[serde(default)]
+    pub icon: String,
     #[serde(default)]
     pub capabilities: Capabilities,
     #[serde(default)]
@@ -116,6 +120,7 @@ pub enum Invalid {
         kind: Kind,
     },
     BadId(String),
+    BadIcon(String),
 }
 
 impl std::fmt::Display for Invalid {
@@ -130,6 +135,10 @@ impl std::fmt::Display for Invalid {
                 write!(f, "a {kind:?} plugin must declare `{field}`")
             }
             Self::BadId(id) => write!(f, "`{id}` is not a usable plugin id"),
+            Self::BadIcon(icon) => write!(
+                f,
+                "`{icon}` is not a usable Hugeicons name; expected an ASCII name ending in `Icon`"
+            ),
         }
     }
 }
@@ -156,12 +165,28 @@ impl Manifest {
         Self::parse(&text)
     }
 
+    /// Resolve the package-owned SVG for the manifest's Hugeicon.
+    pub fn icon_path(&self, package: &Path) -> std::path::PathBuf {
+        package.join(self.icon_relative_path())
+    }
+
+    /// The Hugeicon's path within a plugin package.
+    pub fn icon_relative_path(&self) -> std::path::PathBuf {
+        Path::new("icons").join(format!("{}.svg", self.icon))
+    }
+
     fn validate(&self) -> Result<(), Invalid> {
         if self.manifest_version != MANIFEST_VERSION {
             return Err(Invalid::ManifestVersion { found: self.manifest_version });
         }
         if !is_usable_id(&self.id) {
             return Err(Invalid::BadId(self.id.clone()));
+        }
+        if self.icon.is_empty() {
+            return Err(Invalid::Missing { field: "icon", kind: self.kind });
+        }
+        if !is_usable_icon(&self.icon) {
+            return Err(Invalid::BadIcon(self.icon.clone()));
         }
         match self.kind {
             Kind::Native => {}
@@ -178,6 +203,16 @@ impl Manifest {
         }
         Ok(())
     }
+}
+
+/// Hugeicons' exported names are ASCII identifiers such as `Clock01Icon`.
+/// Restricting the value to that shape also makes the derived package path
+/// incapable of escaping the plugin directory.
+fn is_usable_icon(icon: &str) -> bool {
+    icon.len() > "Icon".len()
+        && icon.len() <= 128
+        && icon.ends_with("Icon")
+        && icon.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
 /// An id has to be safe to use as a directory name, because it is used as one.
@@ -202,6 +237,7 @@ mod tests {
         name = "Star map"
         version = "0.1.0"
         kind = "native"
+        icon = "StarIcon"
     "#;
 
     const WEB: &str = r#"
@@ -210,6 +246,7 @@ mod tests {
         name = "Notes"
         version = "0.1.0"
         kind = "web"
+        icon = "NoteIcon"
         entry = "index.html"
     "#;
 
@@ -219,6 +256,7 @@ mod tests {
         name = "Browser"
         version = "0.1.0"
         kind = "hosted"
+        icon = "InternetIcon"
         surface = "browser"
     "#;
 
@@ -268,6 +306,24 @@ mod tests {
         for bad in ["", ".", "../etc", "a/b", ".hidden"] {
             let toml = NATIVE.replace("com.example.starmap", bad);
             assert!(matches!(parse(&toml), Err(Invalid::BadId(_))), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn icon_names_are_canonical_and_cannot_form_paths() {
+        let manifest = parse(WEB).expect("web");
+        assert_eq!(manifest.icon, "NoteIcon");
+        assert_eq!(
+            manifest.icon_path(Path::new("/plugins/notes")),
+            Path::new("/plugins/notes/icons/NoteIcon.svg")
+        );
+        assert_eq!(
+            parse(&WEB.replace("        icon = \"NoteIcon\"\n", "")),
+            Err(Invalid::Missing { field: "icon", kind: Kind::Web })
+        );
+        for bad in ["clock", "../ClockIcon", "Clock_Icon", "ClockIcon.svg"] {
+            let toml = WEB.replace("NoteIcon", bad);
+            assert!(matches!(parse(&toml), Err(Invalid::BadIcon(_))), "accepted {bad:?}");
         }
     }
 }

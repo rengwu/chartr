@@ -1,10 +1,12 @@
 # Hugeicons notice
 
-The browser icons `arrow_left.svg` (`ArrowLeft02Icon`), `arrow_right.svg`
-(`ArrowRight02Icon`), `rotate_cw.svg` (`RefreshIcon`), `stop.svg` (`StopIcon`),
-`lock.svg` (`SquareLock02Icon`), and `public.svg` (`InternetIcon`) are adapted
-from `@hugeicons/core-free-icons` 4.2.1 (Stroke Rounded), published by
-Hugeicons under the MIT License.
+The icon `blockchain_01.svg` (`Blockchain01Icon`) and the browser icons `arrow_left.svg`
+(`ArrowLeft02Icon`), `arrow_right.svg` (`ArrowRight02Icon`), `rotate_cw.svg`
+(`RefreshIcon`), `stop.svg` (`StopIcon`), `lock.svg` (`SquareLock02Icon`), and
+`public.svg` (`InternetIcon`) are adapted from `@hugeicons/core-free-icons`
+4.2.1 (Stroke Rounded), as are the package-owned `InternetIcon.svg`,
+`Clock01Icon.svg`, and `WavingHand01Icon.svg` plugin tab icons under `plugins/`.
+Hugeicons publishes these assets under the MIT License.
 
 Copyright (c) Hugeicons
 

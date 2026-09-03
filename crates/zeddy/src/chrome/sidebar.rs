@@ -13,14 +13,14 @@ use gpui::{
     Bounds, EntityId, MouseButton, Pixels, Point, Rems, Role, ScrollHandle, deferred, point, px,
     transparent_black,
 };
-use ui::{Tooltip, prelude::*};
+use ui::{IconButtonShape, Tooltip, prelude::*};
 
 use super::Emit;
 use crate::components::popup_right_click_menu;
 
 use super::{
     Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, dragged_item_preview,
-    status_indicator,
+    item_indicator, new_plugin_pane_button,
 };
 use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
@@ -440,6 +440,26 @@ pub fn render(
         selected: sidebar_colors.session_active,
     };
     let mut cards = Vec::with_capacity(spaces.len());
+    let mut free_sessions = None;
+    let movable_space_count = spaces.iter().filter(|space| !space.is_free).count();
+    let add_space = on.clone();
+    let spaces_header = h_flex()
+        .id("spaces-header")
+        .w_full()
+        .px_2()
+        .pb_2()
+        .justify_between()
+        .child(Label::new("Spaces").size(UI_LABEL_SMALL).color(Color::Muted))
+        .child(
+            IconButton::new("new-space", IconName::FolderAdd)
+                .shape(IconButtonShape::Square)
+                .size(ButtonSize::None)
+                .icon_size(IconSize::Small)
+                .icon_color(Color::Muted)
+                .aria_label("New Space")
+                .tooltip(Tooltip::text("New Space"))
+                .on_click(move |_, window, cx| add_space(Action::NewSpace, window, cx)),
+        );
     let header = controls
         .map(|(space_switcher, view_menu)| header(space_switcher, view_menu).into_any_element());
     let mut index = 0;
@@ -449,6 +469,7 @@ pub fn render(
         let mut contents = Vec::with_capacity(space.entries.len() + 1);
         let activate = on.clone();
         let add = on.clone();
+        let add_plugin = on.clone();
         let actions = on.clone();
         let space_id = space.id;
         let action_space = space.id;
@@ -480,9 +501,18 @@ pub fn render(
                             .on_click(move |_, window, cx| {
                                 add(Action::NewInSpace { space: space_id }, window, cx)
                             }),
+                    )
+                    .child(
+                        new_plugin_pane_button(
+                            ("new-plugin-pane-in-space", space_index),
+                            IconSize::XSmall,
+                        )
+                        .on_click(move |_, window, cx| {
+                            add_plugin(Action::NewPluginPaneInSpace { space: space_id }, window, cx)
+                        }),
                     ),
             )
-            .when(spaces.len() > 1, |handle| {
+            .when(!space.is_free && movable_space_count > 1, |handle| {
                 handle
                     .when(!dragging, |handle| handle.cursor_grab())
                     .when(dragging, |handle| handle.cursor_grabbing())
@@ -539,6 +569,29 @@ pub fn render(
             index += 1;
         }
 
+        if space.is_free {
+            // Free sessions is a permanent footer, not a space card. Its top
+            // border belongs to the sidebar itself and remains visible while
+            // the folder-backed cards above it scroll independently.
+            free_sessions = Some(
+                selection_list()
+                    .id("free-sessions")
+                    .w_full()
+                    .flex_none()
+                    .px_1p5()
+                    .py_1()
+                    .border_t_1()
+                    .border_color(colors.border)
+                    .cursor_pointer()
+                    .on_click(move |_, window, cx| {
+                        activate(Action::ActivateSpace { space: space_id }, window, cx)
+                    })
+                    .children(contents)
+                    .into_any_element(),
+            );
+            continue;
+        }
+
         // A space and its sessions are one object in the sidebar. Keep the
         // plate restrained so it separates neighbouring spaces without
         // turning every session into a nested card; the stronger row fill is
@@ -592,10 +645,12 @@ pub fn render(
         .border_r_1()
         .border_color(colors.border)
         .children(header)
+        .child(spaces_header)
         .child(
             v_flex()
                 .id("sessions")
                 .flex_1()
+                .min_h_0()
                 .overflow_y_scroll()
                 .track_scroll(sorter.scroll_handle())
                 .pb_2()
@@ -603,6 +658,7 @@ pub fn render(
                 .gap(CARD_GAP)
                 .children(cards),
         )
+        .children(free_sessions)
         .child(deferred(
             div()
                 .id("sidebar-resize-handle")
@@ -739,8 +795,9 @@ fn row(
                 .on_click(move |_, window, cx| {
                     on(Action::Select { space: Some(space), item: select }, window, cx)
                 })
-                .start_slot(status_indicator(
+                .start_slot(item_indicator(
                     entry.activity(),
+                    entry.icon_path.clone(),
                     entry.grouped,
                     &entry.space_key,
                     entry.key,

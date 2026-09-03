@@ -15,13 +15,20 @@ use crate::{
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
 use gpui::{ElementId, EntityId, Pixels, Role, SharedString};
-use ui::{CommonAnimationExt, IconButton, Tab, TabPosition, prelude::*};
+use ui::{ButtonLike, CommonAnimationExt, IconButton, Tab, TabPosition, Tooltip, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
 const TAB_LABEL_MIN_WIDTH: f32 = 24.;
 
 pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
     IconButton::new(id, IconName::Plus).icon_size(IconSize::Small)
+}
+
+pub(crate) fn new_plugin_pane_button(id: impl Into<ElementId>, icon_size: IconSize) -> ButtonLike {
+    ButtonLike::new(id)
+        .aria_label("New plugin pane")
+        .tooltip(Tooltip::text("New plugin pane"))
+        .child(Icon::from_path("icons/blockchain_01.svg").size(icon_size))
 }
 
 pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {
@@ -71,6 +78,7 @@ pub(crate) struct ItemTab<'a> {
     selected: bool,
     position: TabPosition,
     activity: Activity,
+    icon_path: Option<SharedString>,
     grouped: bool,
     space: &'a str,
     key: ItemId,
@@ -94,6 +102,7 @@ impl<'a> ItemTab<'a> {
             selected,
             position,
             activity: Activity::default(),
+            icon_path: None,
             grouped: false,
             space,
             key,
@@ -108,6 +117,11 @@ impl<'a> ItemTab<'a> {
 
     pub(crate) fn activity(mut self, activity: Activity) -> Self {
         self.activity = activity;
+        self
+    }
+
+    pub(crate) fn icon_path(mut self, icon_path: Option<SharedString>) -> Self {
+        self.icon_path = icon_path;
         self
     }
 
@@ -128,7 +142,14 @@ impl<'a> ItemTab<'a> {
             .aria_selected(self.selected)
             .position(self.position)
             .toggle_state(self.selected)
-            .start_slot(status_indicator(self.activity, self.grouped, self.space, self.key, cx))
+            .start_slot(item_indicator(
+                self.activity,
+                self.icon_path,
+                self.grouped,
+                self.space,
+                self.key,
+                cx,
+            ))
             .end_slot::<AnyElement>(self.close_slot)
             .child(tab_label(self.title, self.selected))
     }
@@ -144,6 +165,9 @@ pub struct Entry {
     pub pane: PaneId,
     pub index: usize,
     pub title: String,
+    /// A plugin's package-owned Hugeicons SVG, or the embedded plugin-launcher
+    /// icon. Sessions and groups use their live status indicator instead.
+    pub icon_path: Option<SharedString>,
     /// Herdr's agent state. Plugins and grouped outer tabs have no aggregate
     /// session state of their own.
     pub status: Option<SessionStatus>,
@@ -182,6 +206,9 @@ pub(crate) struct Activity {
 pub struct SpaceEntries {
     pub id: EntityId,
     pub name: String,
+    /// The synthetic folderless space is a fixed sidebar section rather than
+    /// one of the sortable space cards.
+    pub is_free: bool,
     pub active: bool,
     pub removable: bool,
     pub available: bool,
@@ -204,8 +231,10 @@ pub enum Action {
     LocateSpace { space: EntityId },
     SwitchToTabs,
     SwitchToSidebar,
-    ToggleActiveSpaceOnly,
+    ToggleSpacePicker,
+    NewSpace,
     NewInSpace { space: EntityId },
+    NewPluginPaneInSpace { space: EntityId },
     New,
     NewPluginPane,
     OpenSettings,
@@ -317,14 +346,14 @@ impl Render for DraggedItemPreview {
     }
 }
 
-/// The fixed status mark used by sidebar rows, outer tabs, and pane-local tabs.
+/// The fixed leading mark used by sidebar rows, outer tabs, and pane-local tabs.
 ///
-/// Herdr owns agent detection and state. Chartr only maps those states to the
-/// same visual language the earlier clients used, using Zed's own icons and
-/// animation primitive. A plain foreground process gets a slower neutral
-/// spinner so it cannot be mistaken for an agent actively working.
-pub fn status_indicator(
+/// Sessions show live Herdr/process state and plugins show the Hugeicon named
+/// by their manifest. A plain foreground process gets a slower neutral spinner
+/// so it cannot be mistaken for an agent actively working.
+pub fn item_indicator(
     activity: Activity,
+    icon_path: Option<SharedString>,
     grouped: bool,
     space: &str,
     key: ItemId,
@@ -371,6 +400,16 @@ pub fn status_indicator(
                 div().size(px(5.)).rounded_full().bg(cx.theme().colors().text_muted.opacity(0.28)),
             )
             .into_any_element(),
-        None => slot().into_any_element(),
+        None => match icon_path {
+            Some(path) => {
+                let icon = if path.starts_with("icons/") {
+                    Icon::from_path(path)
+                } else {
+                    Icon::from_external_svg(path)
+                };
+                slot().child(icon.size(IconSize::XSmall).color(Color::Muted)).into_any_element()
+            }
+            None => slot().into_any_element(),
+        },
     }
 }

@@ -137,7 +137,9 @@ restart before entering a stable crash-loop state with Retry.
 
 Plugins are directories under
 `$XDG_DATA_HOME/chartr-zeddy/plugins/<reverse-dns-id>/` containing
-`zeddy-plugin.toml`.
+`zeddy-plugin.toml`. Every manifest names a Hugeicons Stroke Rounded icon, and
+the package carries its SVG at `icons/<IconName>.svg`; Chartr uses it in outer,
+sidebar, and pane-local tabs.
 
 Settings → Plugins installs a plugin from a Git repository whose default-branch
 root contains that manifest, or from a folder selected with the native picker.
@@ -152,9 +154,11 @@ Later leaves an in-app restart reminder.
 The full package and release naming contract is in
 [`docs/plugins.md`](docs/plugins.md).
 
-In Tabbed mode, the trailing plus menu offers **New Terminal Session** and
-**New Plugin Pane**. The latter opens a picker as its own tab; choosing a
-surface replaces the picker in place, so the plugin opens in that same tab.
+In Tabbed mode, the trailing plus button opens a new terminal session directly;
+it has no context menu. A dedicated plugin-pane button beside it opens the plugin
+picker. Pane-local tab bars and sidebar space cards use the same direct plus and
+plugin-pane actions, so the picker opens in that pane or space. Choosing a surface
+replaces the picker in place, so the plugin opens in that same tab.
 
 Build-time native modules receive an `InstanceContext` and return ordinary GPUI
 views:

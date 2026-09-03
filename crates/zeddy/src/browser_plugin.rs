@@ -12,9 +12,9 @@ use std::{
 
 use futures::{StreamExt as _, channel::mpsc};
 use gpui::{
-    App, AppContext as _, Bounds, Context, Element, ElementId, Focusable as _, GlobalElementId,
-    InspectorElementId, IntoElement, KeyBinding, LayoutId, ParentElement as _, Pixels, Render,
-    Size, Style, Styled as _, Window, actions, div, px,
+    App, AppContext as _, Bounds, Context, Element, ElementId, FocusHandle, Focusable as _,
+    GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
+    ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, actions, div, px,
 };
 use serde::Serialize;
 use theme::ActiveTheme as _;
@@ -34,7 +34,7 @@ use crate::{
 
 actions!(
     chartr_browser,
-    [SubmitAddress, FocusAddressBar, ReloadPage, GoBack, GoForward, StopLoading]
+    [SubmitAddress, FocusAddressBar, SelectPageContent, ReloadPage, GoBack, GoForward, StopLoading]
 );
 
 const TOOLBAR_HEIGHT: f32 = 40.;
@@ -44,6 +44,7 @@ pub fn init(cx: &mut App) {
     #[cfg(target_os = "macos")]
     cx.bind_keys([
         KeyBinding::new("cmd-l", FocusAddressBar, Some("ChartrBrowser")),
+        KeyBinding::new("cmd-a", SelectPageContent, Some("ChartrBrowserContent")),
         KeyBinding::new("cmd-r", ReloadPage, Some("ChartrBrowser")),
         KeyBinding::new("cmd-[", GoBack, Some("ChartrBrowser")),
         KeyBinding::new("cmd-]", GoForward, Some("ChartrBrowser")),
@@ -103,6 +104,7 @@ enum BrowserEvent {
 struct BrowserView {
     content: NativeWebViewHandle,
     content_visibility: NativeViewLeaseOwner,
+    content_focus: FocusHandle,
     address_input: gpui::Entity<TextInput>,
     runtime: BrowserRuntime,
     on_focus: Option<FocusHandler>,
@@ -137,7 +139,8 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) -> Self {
         let content_visibility = NativeViewLeaseOwner::default();
-        let theme = BrowserTheme::from_pane(pane_theme);
+        let content_focus = cx.focus_handle();
+        let theme = BrowserTheme::from_pane(pane_theme, theme::theme_settings(cx).ui_font_size(cx));
         let state_path = state_path(&data_dir, &space, instance_id);
         let restored = read_saved_url(&state_path);
         let address_input = cx.new(|cx| {
@@ -171,6 +174,7 @@ impl BrowserView {
             return Self {
                 content,
                 content_visibility,
+                content_focus,
                 address_input,
                 runtime,
                 on_focus,
@@ -233,6 +237,7 @@ impl BrowserView {
         Self {
             content,
             content_visibility,
+            content_focus,
             address_input,
             runtime,
             on_focus,
@@ -250,6 +255,10 @@ impl BrowserView {
         match event {
             BrowserEvent::FocusAddress => self.focus_address(window, cx),
             BrowserEvent::FocusPane => {
+                // The webview already owns native keyboard focus. Move GPUI's
+                // logical focus off the address input as well so its keymap
+                // cannot consume webpage shortcuts such as Cmd+A.
+                window.focus(&self.content_focus, cx);
                 if let Some(on_focus) = &self.on_focus {
                     on_focus(cx.entity_id(), cx);
                 }
@@ -273,12 +282,23 @@ impl BrowserView {
     }
 
     fn focus_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(content) = self.content.get() {
-            let _ = content.focus_parent();
-        }
+        self.relinquish_content_focus();
         let address = self.runtime.address().to_owned();
         self.address_input.update(cx, |input, cx| input.set_text(address, true, cx));
         self.address_input.focus_handle(cx).focus(window, cx);
+    }
+
+    fn focus_address_from_click(&self, window: &mut Window, cx: &mut Context<Self>) {
+        // GPUI focus alone does not replace WKWebView as AppKit's first
+        // responder, so transfer both focus systems for an address-bar click.
+        self.relinquish_content_focus();
+        self.address_input.focus_handle(cx).focus(window, cx);
+    }
+
+    fn relinquish_content_focus(&self) {
+        if let Some(content) = self.content.get() {
+            let _ = content.focus_parent();
+        }
     }
 
     fn submit_address(&mut self, _: &SubmitAddress, window: &mut Window, cx: &mut Context<Self>) {
@@ -295,6 +315,17 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) {
         self.focus_address(window, cx);
+    }
+
+    fn select_page_content(
+        &mut self,
+        _: &SelectPageContent,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        if let Some(content) = self.content.get() {
+            let _ = content.evaluate_script(SELECT_PAGE_CONTENT);
+        }
     }
 
     fn reload(&mut self, _: &ReloadPage, _: &mut Window, cx: &mut Context<Self>) {
@@ -432,7 +463,7 @@ impl BrowserView {
 impl Render for BrowserView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let pane_theme = active_pane_theme(cx);
-        let theme = BrowserTheme::from_pane(pane_theme);
+        let theme = BrowserTheme::from_pane(pane_theme, theme::theme_settings(cx).ui_font_size(cx));
         if self.theme != theme {
             self.apply_theme(&theme);
             self.runtime.theme = theme.clone();
@@ -495,6 +526,12 @@ impl Render for BrowserView {
             .bg(self.pane_theme.field)
             .track_focus(&address_focus)
             .in_focus(|field| field.border_color(self.pane_theme.focus))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.focus_address_from_click(window, cx);
+                }),
+            )
             .child(
                 Icon::new(if secure { IconName::Lock } else { IconName::Public })
                     .size(IconSize::XSmall)
@@ -528,11 +565,20 @@ impl Render for BrowserView {
             .on_action(cx.listener(Self::stop_loading))
             .child(toolbar);
         if let Some(content) = self.content.get() {
-            root = root.child(div().w_full().flex_1().min_h_0().child(NativeWebViewElement::new(
-                content,
-                format!("{}-content", self.element_key),
-                self.content_visibility.clone(),
-            )));
+            root = root.child(
+                div()
+                    .key_context("ChartrBrowserContent")
+                    .track_focus(&self.content_focus)
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .on_action(cx.listener(Self::select_page_content))
+                    .child(NativeWebViewElement::new(
+                        content,
+                        format!("{}-content", self.element_key),
+                        self.content_visibility.clone(),
+                    )),
+            );
         }
         if let Some(error) = &self.error {
             root = root.child(
@@ -709,10 +755,11 @@ struct BrowserTheme {
     focus: String,
     text: String,
     muted: String,
+    ui_font_size: String,
 }
 
 impl BrowserTheme {
-    fn from_pane(colors: PaneTheme) -> Self {
+    fn from_pane(colors: PaneTheme, ui_font_size: Pixels) -> Self {
         Self {
             page: css_color(colors.page),
             field: css_color(colors.field),
@@ -720,6 +767,7 @@ impl BrowserTheme {
             focus: css_color(colors.focus),
             text: css_color(colors.text),
             muted: css_color(colors.muted),
+            ui_font_size: format!("{}px", ui_font_size.as_f32()),
         }
     }
 }
@@ -790,12 +838,45 @@ const CONTENT_BRIDGE: &str = r#"
 })();
 "#;
 
+// Wry's child WKWebView intentionally declines macOS key equivalents so the
+// host can handle menu shortcuts. That also keeps Cmd+A out of webpage
+// JavaScript, so the browser-content key context performs the equivalent DOM
+// selection explicitly.
+const SELECT_PAGE_CONTENT: &str = r#"
+(() => {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+    try {
+      active.select();
+      return;
+    } catch (_) {}
+  }
+
+  if (active instanceof HTMLElement && active.isContentEditable) {
+    const range = document.createRange();
+    range.selectNodeContents(active);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+
+  const range = document.createRange();
+  range.selectNodeContents(document.body);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+})();
+"#;
+
 const LOCAL_HTML: &str = r#"<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <style>
-  :root { --page:#181818;--field:#202020;--border:#393939;--text:#ddd;--muted:#888;--focus:#d97757; }
-  html,body { height:100%;margin:0; } body { display:grid;place-items:center;background:var(--page);color:var(--text);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-  main { max-width:560px;padding:32px;text-align:center; } .globe { color:var(--muted);font-size:50px;line-height:1;margin-bottom:28px; } h1 { margin:0 0 14px;font-size:28px;font-weight:600; } p { margin:0;color:var(--muted);font-size:17px; } button { margin-top:24px;padding:9px 16px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--text);font:inherit;cursor:pointer; }
+  :root { --page:#181818;--field:#202020;--border:#393939;--text:#ddd;--muted:#888;--focus:#d97757;--uiFontSize:14px; }
+  html { font-size:var(--uiFontSize); } html,body { height:100%;margin:0; } body { display:grid;place-items:center;background:var(--page);color:var(--text);font:.857142857rem/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:560px;padding:32px;text-align:center; } .globe { color:var(--muted);font-size:2rem;line-height:1;margin-bottom:1rem; } h1 { margin:0 0 .5rem;font-size:1rem;font-weight:600; } p { margin:0;color:var(--muted); } button { margin-top:24px;padding:9px 16px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--text);font:inherit;cursor:pointer; }
 </style><main>__BODY__</main>
 <script>window.setChartrTheme=t=>{for(const [key,value] of Object.entries(t))document.documentElement.style.setProperty('--'+key,value)};window.setChartrTheme(__THEME__);const retry=document.querySelector('#retry');if(retry)retry.onclick=()=>window.ipc.postMessage(JSON.stringify({action:'navigate',value:retry.dataset.address}));</script>"#;
 
@@ -967,5 +1048,28 @@ mod tests {
         let root = Path::new("/data");
         assert_eq!(state_path(root, "folder:a", 7), state_path(root, "folder:a", 7));
         assert_ne!(state_path(root, "folder:a", 7), state_path(root, "folder:b", 7));
+    }
+
+    #[test]
+    fn local_pages_follow_the_host_interface_font_size() {
+        let color = gpui::black();
+        let pane = PaneTheme {
+            toolbar: color,
+            page: color,
+            field: color,
+            border: color,
+            focus: color,
+            text: color,
+            muted: color,
+        };
+        let theme = BrowserTheme::from_pane(pane, px(18.));
+        let page = local_page(&theme, LocalPage::Start);
+
+        assert_eq!(theme.ui_font_size, "18px");
+        assert!(page.contains(r#""uiFontSize":"18px""#));
+        assert!(page.contains("html { font-size:var(--uiFontSize); }"));
+        assert!(page.contains("font:.857142857rem/1.45"));
+        assert!(page.contains(".globe { color:var(--muted);font-size:2rem"));
+        assert!(page.contains("h1 { margin:0 0 .5rem;font-size:1rem"));
     }
 }

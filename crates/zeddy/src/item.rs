@@ -5,7 +5,7 @@
 //! items. Opening a plugin creates one `PluginItem`, just as attaching a Herdr
 //! session creates one `SessionItem`.
 
-use gpui::{AnyView, Entity};
+use gpui::{AnyView, Entity, SharedString};
 use zeddy_plugin::PaneKey;
 
 use crate::session::Session;
@@ -103,6 +103,14 @@ impl Item {
         }
     }
 
+    pub fn icon_path(&self) -> Option<SharedString> {
+        match self {
+            Self::Plugin(item) => Some(item.icon_path.clone()),
+            Self::PluginLauncher { .. } => Some("icons/blockchain_01.svg".into()),
+            Self::Session(_) => None,
+        }
+    }
+
     pub fn is_plugin_launcher(&self) -> bool {
         matches!(self, Self::PluginLauncher { .. })
     }
@@ -155,6 +163,7 @@ impl SessionItem {
 pub struct PluginItem {
     pub contribution: PaneKey,
     pub title: String,
+    pub icon_path: SharedString,
     pub view: PluginView,
     /// A session-specific plugin closes when this Herdr session ends.
     pub bound_session: Option<zeddy_herdr::PaneId>,

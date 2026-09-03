@@ -193,22 +193,22 @@ fn clone_git(url: &str, destination: &Path) -> Result<()> {
 }
 
 fn validate_declared_files(root: &Path, manifest: &Manifest) -> Result<()> {
+    require_relative_file(root, &manifest.icon_relative_path(), "Hugeicon")?;
     match manifest.kind {
         Kind::Native => {}
         Kind::Hosted => {}
         Kind::Web => {
             let entry = manifest.entry.as_deref().context("missing web entry")?;
-            require_relative_file(root, entry, "web entry")?;
+            require_relative_file(root, Path::new(entry), "web entry")?;
             if let Some(settings) = &manifest.settings_entry {
-                require_relative_file(root, settings, "settings entry")?;
+                require_relative_file(root, Path::new(settings), "settings entry")?;
             }
         }
     }
     Ok(())
 }
 
-fn require_relative_file(root: &Path, relative: &str, label: &str) -> Result<()> {
-    let relative = Path::new(relative);
+fn require_relative_file(root: &Path, relative: &Path, label: &str) -> Result<()> {
     if relative.is_absolute()
         || relative.components().any(|part| {
             matches!(
@@ -285,8 +285,9 @@ mod tests {
         let source = temp.path().join("notes-source");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '1'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '1'\nkind = 'web'\nicon = 'NoteIcon'\nentry = 'index.html'\n",
         );
+        write(source.join("icons/NoteIcon.svg"), "<svg/>");
         write(source.join("index.html"), "<h1>Notes</h1>");
         let paths = paths(&temp);
 
@@ -296,6 +297,7 @@ mod tests {
 
         assert_eq!(installed.id, "com.example.notes");
         assert!(paths.installed.join("com.example.notes/index.html").is_file());
+        assert!(paths.installed.join("com.example.notes/icons/NoteIcon.svg").is_file());
     }
 
     #[test]
@@ -304,8 +306,9 @@ mod tests {
         let source = temp.path().join("notes-source");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '1'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '1'\nkind = 'web'\nicon = 'NoteIcon'\nentry = 'index.html'\n",
         );
+        write(source.join("icons/NoteIcon.svg"), "<svg/>");
         write(source.join("index.html"), "confirmed");
         let paths = paths(&temp);
 
@@ -329,8 +332,9 @@ mod tests {
         let source = temp.path().join("new-source");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '2'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.notes'\nname = 'Notes'\nversion = '2'\nkind = 'web'\nicon = 'NoteIcon'\nentry = 'index.html'\n",
         );
+        write(source.join("icons/NoteIcon.svg"), "<svg/>");
         write(source.join("index.html"), "new");
 
         let prepared = prepare(Source::Local(source), &paths).unwrap();
@@ -351,11 +355,26 @@ mod tests {
         let source = temp.path().join("bad");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.bad'\nname = 'Bad'\nversion = '1'\nkind = 'web'\nentry = '../outside.html'\n",
+            "manifest_version = 2\nid = 'com.example.bad'\nname = 'Bad'\nversion = '1'\nkind = 'web'\nicon = 'TestIcon'\nentry = '../outside.html'\n",
         );
+        write(source.join("icons/TestIcon.svg"), "<svg/>");
         write(temp.path().join("outside.html"), "outside");
         let error = prepare(Source::Local(source), &paths(&temp)).unwrap_err();
         assert!(error.to_string().contains("escapes"));
+    }
+
+    #[test]
+    fn a_manifest_selected_hugeicon_must_be_packaged() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("missing-icon");
+        write(
+            source.join("zeddy-plugin.toml"),
+            "manifest_version = 2\nid = 'com.example.icon'\nname = 'Icon'\nversion = '1'\nkind = 'web'\nicon = 'MissingIcon'\nentry = 'index.html'\n",
+        );
+        write(source.join("index.html"), "ok");
+
+        let error = prepare(Source::Local(source), &paths(&temp)).unwrap_err();
+        assert!(error.to_string().contains("icons/MissingIcon.svg"));
     }
 
     #[test]
@@ -365,8 +384,9 @@ mod tests {
         fs::create_dir_all(&source).unwrap();
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.git'\nname = 'Git plugin'\nversion = '1'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.git'\nname = 'Git plugin'\nversion = '1'\nkind = 'web'\nicon = 'TestIcon'\nentry = 'index.html'\n",
         );
+        write(source.join("icons/TestIcon.svg"), "<svg/>");
         write(source.join("index.html"), "from git");
         let run_git = |args: &[&str]| {
             let output = Command::new("git").args(args).current_dir(&source).output().unwrap();
@@ -401,7 +421,7 @@ mod tests {
         let source = temp.path().join("native");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.native'\nname = 'Native'\nversion = '1'\nkind = 'native'\n",
+            "manifest_version = 2\nid = 'com.example.native'\nname = 'Native'\nversion = '1'\nkind = 'native'\nicon = 'TestIcon'\n",
         );
         write(source.join("libexample.dylib"), "precompiled artifact");
         let error = prepare(Source::Local(source), &paths(&temp)).unwrap_err();
@@ -441,8 +461,9 @@ mod tests {
         let marker = temp.path().join("script-ran");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.script'\nname = 'Script'\nversion = '1'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.script'\nname = 'Script'\nversion = '1'\nkind = 'web'\nicon = 'TestIcon'\nentry = 'index.html'\n",
         );
+        write(source.join("icons/TestIcon.svg"), "<svg/>");
         write(source.join("index.html"), "ok");
         write(source.join("install.sh"), &format!("touch '{}'", marker.display()));
         let paths = paths(&temp);
@@ -459,8 +480,9 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         write(
             temp.path().join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.recursive'\nname = 'Recursive'\nversion = '1'\nkind = 'web'\nentry = 'index.html'\n",
+            "manifest_version = 2\nid = 'com.example.recursive'\nname = 'Recursive'\nversion = '1'\nkind = 'web'\nicon = 'TestIcon'\nentry = 'index.html'\n",
         );
+        write(temp.path().join("icons/TestIcon.svg"), "<svg/>");
         write(temp.path().join("index.html"), "ok");
         let error = prepare(Source::Local(temp.path().to_owned()), &paths(&temp)).unwrap_err();
 
@@ -473,7 +495,7 @@ mod tests {
         let source = temp.path().join("unknown");
         write(
             source.join("zeddy-plugin.toml"),
-            "manifest_version = 2\nid = 'com.example.unknown'\nname = 'Unknown'\nversion = '1'\nkind = 'hosted'\nsurface = 'unknown'\n",
+            "manifest_version = 2\nid = 'com.example.unknown'\nname = 'Unknown'\nversion = '1'\nkind = 'hosted'\nicon = 'TestIcon'\nsurface = 'unknown'\n",
         );
 
         let error = prepare(Source::Local(source), &paths(&temp)).unwrap_err();

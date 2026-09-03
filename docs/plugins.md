@@ -6,6 +6,11 @@ scripts, hooks, package manager, compiler, or Rust-toolchain dependency.
 Every package is a directory with `zeddy-plugin.toml` at its root. A web
 package includes the declared HTML entry and its assets.
 
+Every manifest also declares one free Hugeicons Stroke Rounded export by its
+canonical name, for example `icon = "Clock01Icon"`. The matching SVG must be
+packaged at `icons/Clock01Icon.svg`. Chartr validates that file before install
+or load and uses it in sidebar, outer, and pane-local tabs.
+
 A hosted package contains only declarative files and names a surface already
 implemented by Chartr. Hosted surfaces are intended for first-party plugins
 that need deep operating-system integration without crossing the GPUI dynamic

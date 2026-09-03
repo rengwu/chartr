@@ -487,6 +487,7 @@ impl Space {
                     } else {
                         item.title()
                     },
+                    icon_path: (!grouped).then(|| item.icon_path()).flatten(),
                     status: (!grouped).then(|| item.status()).flatten(),
                     process_running: !grouped && item.process_running(),
                     ended: !grouped && item.ended(),
@@ -575,7 +576,9 @@ impl Space {
             }
             Action::Close { item, .. } => self.close_item(item, cx),
             Action::New
+            | Action::NewSpace
             | Action::NewPluginPane
+            | Action::NewPluginPaneInSpace { .. }
             | Action::ActivateSpace { .. }
             | Action::NewInSpace { .. }
             | Action::MoveWorkspaceTab { .. }
@@ -587,7 +590,7 @@ impl Space {
             | Action::LocateSpace { .. }
             | Action::SwitchToTabs
             | Action::SwitchToSidebar
-            | Action::ToggleActiveSpaceOnly
+            | Action::ToggleSpacePicker
             | Action::BeginSpaceDrag { .. }
             | Action::OpenSettings => {}
         }
@@ -601,6 +604,37 @@ impl Space {
         if let Err(error) = self.layout.push_standalone(id) {
             self.items.remove(&id);
             self.problem = Some(error.to_string());
+        }
+        cx.notify();
+        id
+    }
+
+    pub fn open_plugin_launcher_in(
+        &mut self,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+        cx: &mut Context<Self>,
+    ) -> ItemId {
+        let bound_session = self
+            .layout
+            .workspace(tab)
+            .and_then(|layout| layout.pane(pane))
+            .and_then(|pane| pane.active())
+            .and_then(|item| self.items.get(&item))
+            .and_then(Item::as_session)
+            .map(|item| item.session.id().clone());
+        let id = self.layout.alloc_item();
+        self.items.insert(id, Item::PluginLauncher { bound_session });
+        let result = self
+            .layout
+            .workspace_mut(tab)
+            .ok_or(crate::workspace::ModelError::WorkspaceTabNotFound(tab))
+            .and_then(|layout| layout.add_item(id, Some(pane), None));
+        if let Err(error) = result {
+            self.items.remove(&id);
+            self.problem = Some(error.to_string());
+        } else {
+            let _ = self.layout.activate_tab(tab);
         }
         cx.notify();
         id
@@ -1059,6 +1093,43 @@ mod tests {
     }
 
     #[gpui::test]
+    fn plugin_launcher_opens_in_the_requested_existing_pane(cx: &mut gpui::TestAppContext) {
+        let temporary = tempfile::tempdir().unwrap();
+        let sidecar = temporary.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            zeddy_herdr::Sidecar::at(sidecar).unwrap(),
+            zeddy_herdr::Namespace::rooted(temporary.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new(
+                "Free sessions".to_owned(),
+                temporary.path().to_owned(),
+                Kind::AdHoc,
+                client,
+                cx,
+            )
+        });
+        let first = space.update(cx, |space, cx| space.open_plugin_launcher(cx));
+        let (tab, pane) = cx.read(|cx| space.read(cx).workspace_tabs().location(first).unwrap());
+
+        let second = space.update(cx, |space, cx| space.open_plugin_launcher_in(tab, pane, cx));
+
+        cx.read(|cx| {
+            let space = space.read(cx);
+            let target = space.workspace_tabs().workspace(tab).unwrap().pane(pane).unwrap();
+            assert_eq!(space.workspace_tabs().location(second), Some((tab, pane)));
+            assert_eq!(target.items(), &[first, second]);
+            assert_eq!(target.active(), Some(second));
+            assert!(space.item(second).unwrap().is_plugin_launcher());
+            assert_eq!(
+                space.item(second).unwrap().icon_path().as_deref(),
+                Some("icons/blockchain_01.svg")
+            );
+        });
+    }
+
+    #[gpui::test]
     fn selecting_a_plugin_replaces_the_launcher_and_close_tears_it_down_immediately(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -1093,6 +1164,7 @@ mod tests {
                 PluginItem {
                     contribution: zeddy_plugin::PaneKey::new("com.example.hello", "main"),
                     title: "Hello".to_owned(),
+                    icon_path: "/plugins/hello/icons/WavingHand01Icon.svg".into(),
                     view,
                     bound_session: None,
                     can_clone: false,
@@ -1102,11 +1174,20 @@ mod tests {
             )
         });
 
+        let space_entity = space.entity_id();
         cx.read(|cx| {
             let space = space.read(cx);
             assert!(replaced);
             assert_eq!(space.workspace_tabs().location(launcher), before);
             assert_eq!(space.item(launcher).unwrap().title(), "Hello");
+            assert_eq!(
+                space.item(launcher).unwrap().icon_path().as_deref(),
+                Some("/plugins/hello/icons/WavingHand01Icon.svg")
+            );
+            assert_eq!(
+                space.entries(space_entity)[0].icon_path.as_deref(),
+                Some("/plugins/hello/icons/WavingHand01Icon.svg")
+            );
             assert!(!space.item(launcher).unwrap().is_plugin_launcher());
         });
 

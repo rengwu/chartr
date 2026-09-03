@@ -13,6 +13,7 @@ pub struct Assets;
 /// Icons zeddy draws, by the path `IconName::path` derives.
 const ICONS: &[(&str, &str)] = &[
     ("icons/plus.svg", include_str!("../assets/icons/plus.svg")),
+    ("icons/blockchain_01.svg", include_str!("../assets/icons/blockchain_01.svg")),
     ("icons/close.svg", include_str!("../assets/icons/close.svg")),
     ("icons/tab.svg", include_str!("../assets/icons/tab.svg")),
     ("icons/menu.svg", include_str!("../assets/icons/menu.svg")),
@@ -51,6 +52,7 @@ mod tests {
 
     #[test]
     fn every_icon_zeddy_draws_is_embedded() {
+        assert!(Assets.load("icons/blockchain_01.svg").expect("load").is_some());
         for icon in [
             IconName::Plus,
             IconName::Close,
