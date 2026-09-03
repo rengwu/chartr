@@ -212,7 +212,7 @@ type PopupBuilder = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnchoredContextMe
 #[derive(IntoElement)]
 pub struct PopupMenu {
     id: ElementId,
-    trigger: Option<AnyElement>,
+    trigger_builder: Option<Box<dyn FnOnce(bool, &mut Window, &mut App) -> AnyElement>>,
     trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
     anchor: Rc<Cell<Anchor>>,
     builder: Rc<RefCell<Option<PopupBuilder>>>,
@@ -222,7 +222,7 @@ impl PopupMenu {
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
-            trigger: None,
+            trigger_builder: None,
             trigger_bounds: Rc::default(),
             anchor: Rc::new(Cell::new(Anchor::TopLeft)),
             builder: Rc::default(),
@@ -230,7 +230,8 @@ impl PopupMenu {
     }
 
     pub fn trigger<T: ui::PopoverTrigger>(mut self, trigger: T) -> Self {
-        self.trigger = Some(trigger.toggle_state(false).into_any_element());
+        self.trigger_builder =
+            Some(Box::new(move |_, _, _| trigger.toggle_state(false).into_any_element()));
         self
     }
 
@@ -239,7 +240,14 @@ impl PopupMenu {
         trigger: T,
         tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
     ) -> Self {
-        self.trigger = Some(trigger.toggle_state(false).tooltip(tooltip).into_any_element());
+        self.trigger_builder = Some(Box::new(move |window_active, _, _| {
+            let trigger = trigger.toggle_state(false);
+            if window_active {
+                trigger.tooltip(tooltip).into_any_element()
+            } else {
+                trigger.into_any_element()
+            }
+        }));
         self
     }
 
@@ -258,7 +266,12 @@ impl PopupMenu {
 }
 
 impl RenderOnce for PopupMenu {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let trigger = self.trigger_builder.take().expect("popup menus require a trigger")(
+            window.is_window_active(),
+            window,
+            cx,
+        );
         let bounds = self.trigger_bounds;
         let measured_bounds = bounds.clone();
         let anchor = self.anchor;
@@ -266,7 +279,7 @@ impl RenderOnce for PopupMenu {
         div()
             .id(self.id)
             .relative()
-            .child(self.trigger.expect("popup menus require a trigger"))
+            .child(trigger)
             .child(
                 canvas(move |measured, _, _| measured_bounds.set(Some(measured)), |_, _, _, _| {})
                     .absolute()
@@ -519,6 +532,7 @@ fn clamp_pixels(value: Pixels, minimum: Pixels, maximum: Pixels) -> Pixels {
 mod popup_menu_tests {
     use super::*;
     use gpui::{Modifiers, TestAppContext};
+    use std::time::Duration;
 
     struct MenuHarness {
         invoked: Rc<Cell<bool>>,
@@ -533,6 +547,37 @@ mod popup_menu_tests {
                     let invoked = invoked.clone();
                     Some(ContextMenu::build_popup(window, cx, move |menu| {
                         menu.entry("Run", None, move |_, _| invoked.set(true))
+                    }))
+                })
+        }
+    }
+
+    struct TooltipMenuHarness {
+        tooltip_built: Rc<Cell<bool>>,
+    }
+
+    struct TestTooltip;
+
+    impl Render for TestTooltip {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().child("Open menu")
+        }
+    }
+
+    impl Render for TooltipMenuHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let tooltip_built = self.tooltip_built.clone();
+            PopupMenu::new("tooltip-popup-test")
+                .trigger_with_tooltip(
+                    ui::Button::new("tooltip-popup-test-trigger", "Open"),
+                    move |_, cx| {
+                        tooltip_built.set(true);
+                        cx.new(|_| TestTooltip).into()
+                    },
+                )
+                .menu(|window, cx| {
+                    Some(ContextMenu::build_popup(window, cx, |menu| {
+                        menu.entry("Run", None, |_, _| {})
                     }))
                 })
         }
@@ -567,6 +612,33 @@ mod popup_menu_tests {
 
         assert!(invoked.get(), "clicking a popup entry should invoke its parent-window handler");
         assert_eq!(popup.windows(), vec![parent], "confirming an entry should close the popup");
+    }
+
+    #[gpui::test]
+    fn opening_a_popup_cancels_its_pending_trigger_tooltip(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let tooltip_built = Rc::new(Cell::new(false));
+        let tooltip_built_for_view = tooltip_built.clone();
+        let (_, cx) =
+            cx.add_window_view(|_, _| TooltipMenuHarness { tooltip_built: tooltip_built_for_view });
+
+        cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_mouse_move(point(px(11.), px(10.)), None, Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.run_until_parked();
+
+        assert!(
+            !tooltip_built.get(),
+            "the trigger tooltip must stay hidden while its menu is open"
+        );
     }
 }
 
