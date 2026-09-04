@@ -37,7 +37,7 @@ impl Default for WindowState {
     fn default() -> Self {
         Self {
             chrome: Mode::Sidebar,
-            show_space_picker: true,
+            show_space_picker: false,
             sidebar_width: 280.,
             active_space: Some("ad-hoc".to_owned()),
             bounds: None,
@@ -274,6 +274,13 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_new_window_uses_the_shipped_chrome_defaults() {
+        let window = WindowState::default();
+        assert_eq!(window.chrome, Mode::Sidebar);
+        assert!(!window.show_space_picker);
     }
 
     #[test]

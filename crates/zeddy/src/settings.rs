@@ -90,8 +90,8 @@ impl Default for ResolvedSettings {
     fn default() -> Self {
         Self {
             terminate_sessions_on_exit: false,
-            middle_click_closes_tab: false,
-            middle_click_closes_sidebar_tab: false,
+            middle_click_closes_tab: true,
+            middle_click_closes_sidebar_tab: true,
             reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: CHARTR_DARK.to_owned(),
@@ -1070,9 +1070,12 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_file_resolves_to_fixed_chartr_dark() {
+    fn a_missing_file_resolves_to_shipped_defaults() {
         let scratch = tempfile::tempdir().unwrap();
         let store = SettingsStore::load(scratch.path().join(SETTINGS_FILE));
+        assert!(!store.resolved().terminate_sessions_on_exit);
+        assert!(store.resolved().middle_click_closes_tab);
+        assert!(store.resolved().middle_click_closes_sidebar_tab);
         assert_eq!(store.resolved().theme_mode, ThemeMode::Fixed);
         assert_eq!(store.resolved().fixed_theme, CHARTR_DARK);
         assert!(!scratch.path().join(SETTINGS_FILE).exists());
@@ -1090,8 +1093,8 @@ mod tests {
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, CHARTR_DARK);
         assert!(!resolved.reduce_motion);
-        assert!(!resolved.middle_click_closes_tab);
-        assert!(!resolved.middle_click_closes_sidebar_tab);
+        assert!(resolved.middle_click_closes_tab);
+        assert!(resolved.middle_click_closes_sidebar_tab);
     }
 
     #[test]
