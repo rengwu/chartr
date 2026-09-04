@@ -28,6 +28,7 @@ struct PopupMetrics {
     inter_item_gaps: usize,
     separators: usize,
     headers: usize,
+    custom_rows_height: Pixels,
 }
 
 impl PopupMetrics {
@@ -42,7 +43,8 @@ impl PopupMetrics {
             + entry * self.entries
             + inter_item_gap * self.inter_item_gaps
             + separator * self.separators
-            + header * self.headers;
+            + header * self.headers
+            + self.custom_rows_height;
         px(height.as_f32().ceil().max(1.))
     }
 }
@@ -52,9 +54,11 @@ pub struct AnchoredContextMenu {
     items: Vec<PopupItem>,
     target_window: AnyWindowHandle,
     height: Pixels,
+    width: Pixels,
 }
 
 type PopupHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+type PopupRowRenderer = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 
 struct PopupEntry {
     label: SharedString,
@@ -65,6 +69,7 @@ struct PopupEntry {
 
 enum PopupItem {
     Entry(PopupEntry),
+    CustomRow(PopupRowRenderer),
     Gap,
     Separator,
     Header(SharedString),
@@ -80,6 +85,7 @@ pub struct ContextMenu {
     popup_items: Vec<PopupItem>,
     has_item_in_group: bool,
     metrics: PopupMetrics,
+    popup_width: Pixels,
 }
 
 impl ContextMenu {
@@ -95,6 +101,7 @@ impl ContextMenu {
                     popup_items: Vec::new(),
                     has_item_in_group: false,
                     metrics: PopupMetrics::default(),
+                    popup_width: POPUP_CONTENT_WIDTH,
                 },
                 window,
                 cx,
@@ -117,11 +124,13 @@ impl ContextMenu {
             popup_items: Vec::new(),
             has_item_in_group: false,
             metrics: PopupMetrics::default(),
+            popup_width: POPUP_CONTENT_WIDTH,
         });
         AnchoredContextMenu {
             items: built.popup_items,
             target_window,
             height: built.metrics.height(cx),
+            width: built.popup_width,
         }
     }
 
@@ -179,6 +188,33 @@ impl ContextMenu {
             }));
         }
         this
+    }
+
+    /// Add a non-selectable row with arbitrary layout to either menu host.
+    /// `height` lets the native popup size itself before that row is rendered.
+    pub fn custom_row(
+        mut self,
+        height: Pixels,
+        render: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    ) -> Self {
+        let render: PopupRowRenderer = Rc::new(render);
+        if let Some(inner) = self.inner.take() {
+            let render = render.clone();
+            self.inner = Some(inner.custom_row(move |window, cx| render(window, cx)));
+        } else {
+            self.popup_items.push(PopupItem::CustomRow(render));
+        }
+        self.metrics.custom_rows_height += height;
+        self
+    }
+
+    /// Set the content width of an anchored native popup.
+    pub fn popup_width(mut self, width: Pixels) -> Self {
+        self.popup_width = width.max(px(1.));
+        if let Some(inner) = self.inner.take() {
+            self.inner = Some(inner.fixed_width(self.popup_width.into()));
+        }
+        self
     }
 
     pub fn separator(mut self) -> Self {
@@ -372,8 +408,10 @@ impl AnchoredMenuWindow {
     fn new(menu: AnchoredContextMenu, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let target_window = menu.target_window;
         let menu_height = menu.height;
+        let menu_width = menu.width;
         let context_menu = UiContextMenu::build(window, cx, move |mut context_menu, _, _| {
-            context_menu = context_menu.max_height(menu_height.into());
+            context_menu =
+                context_menu.max_height(menu_height.into()).fixed_width(menu_width.into());
             for item in menu.items {
                 context_menu = match item {
                     PopupItem::Entry(entry) => {
@@ -394,6 +432,9 @@ impl AnchoredMenuWindow {
                                 let _ = target.update(cx, |_, window, cx| handler(window, cx));
                             })
                         }
+                    }
+                    PopupItem::CustomRow(render) => {
+                        context_menu.custom_row(move |window, cx| render(window, cx))
                     }
                     PopupItem::Gap => {
                         context_menu.custom_row(|_, _| div().h_1().into_any_element())
@@ -438,9 +479,15 @@ fn open_popup(
         .as_ref()
         .map(|display| display.visible_bounds().size.height)
         .unwrap_or_else(|| parent_window.bounds().size.height);
+    let maximum_width = display
+        .as_ref()
+        .map(|display| display.visible_bounds().size.width)
+        .unwrap_or_else(|| parent_window.bounds().size.width);
     let popup_height = clamp_pixels(menu.height + POPUP_OUTSET * 2., px(1.), maximum_height);
+    let popup_width = clamp_pixels(menu.width + POPUP_OUTSET * 2., px(1.), maximum_width);
     menu.height = (popup_height - POPUP_OUTSET * 2.).max(px(1.));
-    let popup_size = size(POPUP_CONTENT_WIDTH + POPUP_OUTSET * 2., popup_height);
+    menu.width = (popup_width - POPUP_OUTSET * 2.).max(px(1.));
+    let popup_size = size(popup_width, popup_height);
     let kind = anchored_popup_window_kind(parent_window, trigger_bounds, anchor);
     let opened = cx.open_window(
         WindowOptions {

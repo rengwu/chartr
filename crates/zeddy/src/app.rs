@@ -55,6 +55,25 @@ enum Backend {
     Failed(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ErrorSeverity {
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ErrorNoticeKey {
+    source: String,
+    message: String,
+    severity: ErrorSeverity,
+}
+
+#[derive(Debug, Clone)]
+struct ErrorNotice {
+    key: ErrorNoticeKey,
+    first_seen: Instant,
+}
+
 #[derive(Clone)]
 pub(crate) struct SettingsPluginDescriptor {
     pub manifest: zeddy_plugin::manifest::Manifest,
@@ -154,6 +173,7 @@ pub struct Zeddy {
     title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
     problem: Option<String>,
+    error_seen_at: HashMap<ErrorNoticeKey, Instant>,
 }
 
 impl Zeddy {
@@ -246,6 +266,7 @@ impl Zeddy {
                     title_bar,
                     focus,
                     problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
+                    error_seen_at: HashMap::new(),
                 };
             }
         };
@@ -397,6 +418,7 @@ impl Zeddy {
             title_bar,
             focus,
             problem: state_problem.or(registry_problem),
+            error_seen_at: HashMap::new(),
         };
         this.connect(cx);
         this
@@ -2003,6 +2025,123 @@ impl Zeddy {
         }
     }
 
+    fn current_error_keys(&self, cx: &App) -> Vec<ErrorNoticeKey> {
+        let mut errors = Vec::new();
+        match &self.backend {
+            Backend::Recovering(message) => errors.push(ErrorNoticeKey {
+                source: "Terminal backend".to_owned(),
+                message: message.clone(),
+                severity: ErrorSeverity::Warning,
+            }),
+            Backend::Failed(message) => errors.push(ErrorNoticeKey {
+                source: "Terminal backend".to_owned(),
+                message: message.clone(),
+                severity: ErrorSeverity::Error,
+            }),
+            Backend::Starting | Backend::Ready => {}
+        }
+        if let Some(message) = &self.problem {
+            errors.push(ErrorNoticeKey {
+                source: "Chartr".to_owned(),
+                message: message.clone(),
+                severity: ErrorSeverity::Warning,
+            });
+        }
+        for space in &self.spaces {
+            let space = space.read(cx);
+            if let Some(message) = space.problem() {
+                errors.push(ErrorNoticeKey {
+                    source: format!("Space · {}", space.name()),
+                    message: message.to_owned(),
+                    severity: ErrorSeverity::Warning,
+                });
+            }
+        }
+        errors
+    }
+
+    fn error_notices(&mut self, cx: &App) -> Vec<ErrorNotice> {
+        let current = self.current_error_keys(cx);
+        self.error_seen_at.retain(|key, _| current.contains(key));
+        let now = cx.background_executor().now();
+        for key in &current {
+            self.error_seen_at.entry(key.clone()).or_insert(now);
+        }
+        let mut notices = current
+            .into_iter()
+            .map(|key| ErrorNotice { first_seen: self.error_seen_at[&key], key })
+            .collect::<Vec<_>>();
+        notices.sort_by(|a, b| b.first_seen.cmp(&a.first_seen));
+        notices
+    }
+
+    fn error_menu(&self, notices: Vec<ErrorNotice>, cx: &Context<Self>) -> AnyElement {
+        let count = notices.len();
+        let has_error = notices.iter().any(|notice| notice.key.severity == ErrorSeverity::Error);
+        let backend_failed = matches!(self.backend, Backend::Failed(_));
+        let weak = cx.weak_entity();
+        let label = match count {
+            0 => "No problems".to_owned(),
+            1 => "1 problem".to_owned(),
+            count => format!("{count} problems"),
+        };
+        PopupMenu::new("error-menu")
+            .trigger_with_tooltip(
+                IconButton::new("error-menu-trigger", IconName::BellRing)
+                    .icon_size(IconSize::Small)
+                    .icon_color(if has_error { Color::Error } else { Color::Warning })
+                    .aria_label(label.clone())
+                    .disabled(notices.is_empty()),
+                Tooltip::text(label),
+            )
+            .anchor(Anchor::TopRight)
+            .menu(move |window, cx| {
+                if notices.is_empty() {
+                    return None;
+                }
+                let now = cx.background_executor().now();
+                let retry = weak.clone();
+                let restart = weak.clone();
+                Some(ContextMenu::build_popup(window, cx, |menu| {
+                    let mut menu =
+                        menu.popup_width(px(520.)).header(format!("Problems ({})", notices.len()));
+                    for (index, notice) in notices.iter().cloned().enumerate() {
+                        if index > 0 {
+                            menu = menu.separator();
+                        }
+                        menu = menu.custom_row(px(68.), move |_, _| error_notice_row(&notice, now));
+                    }
+                    if backend_failed {
+                        menu = menu
+                            .separator()
+                            .entry("Retry terminal backend", None, move |_, cx| {
+                                let _ = retry.update(cx, |this, cx| this.retry_backend(false, cx));
+                            })
+                            .entry("Restart terminal backend", None, move |window, cx| {
+                                let _ = restart.update(cx, |this, cx| {
+                                    this.request_backend_restart(window, cx)
+                                });
+                            });
+                    }
+                    menu
+                }))
+            })
+            .into_any_element()
+    }
+
+    fn chrome_end_controls(
+        &self,
+        on: chrome::Emit,
+        notices: Vec<ErrorNotice>,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        h_flex()
+            .gap_px()
+            .child(self.error_menu(notices, cx))
+            .child(self.view_menu(on))
+            .into_any_element()
+    }
+
     fn view_menu(&self, on: chrome::Emit) -> AnyElement {
         match self.mode {
             Mode::Sidebar => {
@@ -2754,8 +2893,7 @@ impl Zeddy {
         let Some(space) = self.active.clone() else {
             return message("No space. Add a folder to begin.", cx).into_any_element();
         };
-        let (problem, active) =
-            space.update(cx, |space, _| (space.problem().map(str::to_owned), space.active()));
+        let active = space.read(cx).active();
         let on_action =
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
@@ -2782,76 +2920,14 @@ impl Zeddy {
         } else {
             message("No tabs. Create a new item to begin.", cx).into_any_element()
         };
-        let notices = self.workspace_notices(problem, cx);
         let terminal_search = self.terminal_search_overlay(cx);
         v_flex()
             .relative()
             .size_full()
             .min_h_0()
-            .children(notices)
             .child(div().flex_1().min_h_0().child(workspace))
             .children(terminal_search)
             .into_any_element()
-    }
-
-    fn workspace_notices(
-        &mut self,
-        space_problem: Option<String>,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        let mut notices = Vec::new();
-        match self.backend.clone() {
-            Backend::Ready => {}
-            Backend::Starting => notices.push(
-                Banner::new()
-                    .child(Label::new("Starting the terminal backend…").size(UI_LABEL_DEFAULT))
-                    .into_any_element(),
-            ),
-            Backend::Recovering(detail) => notices.push(
-                Banner::new()
-                    .severity(Severity::Warning)
-                    .child(Label::new(detail).size(UI_LABEL_DEFAULT))
-                    .into_any_element(),
-            ),
-            Backend::Failed(detail) => {
-                let retry = cx.listener(|this, _, _, cx| this.retry_backend(false, cx));
-                let restart =
-                    cx.listener(|this, _, window, cx| this.request_backend_restart(window, cx));
-                notices.push(
-                    Banner::new()
-                        .severity(Severity::Error)
-                        .wrap_content(true)
-                        .child(Label::new(detail).size(UI_LABEL_DEFAULT))
-                        .action_slot(
-                            h_flex()
-                                .gap_1()
-                                .child(Button::new("retry-backend", "Retry").on_click(retry))
-                                .child(
-                                    Button::new("restart-backend", "Restart Backend")
-                                        .on_click(restart),
-                                ),
-                        )
-                        .into_any_element(),
-                );
-            }
-        }
-        if let Some(problem) = self.problem.clone() {
-            notices.push(
-                Banner::new()
-                    .severity(Severity::Warning)
-                    .child(Label::new(problem).size(UI_LABEL_DEFAULT))
-                    .into_any_element(),
-            );
-        }
-        if let Some(problem) = space_problem {
-            notices.push(
-                Banner::new()
-                    .severity(Severity::Warning)
-                    .child(Label::new(problem).size(UI_LABEL_DEFAULT))
-                    .into_any_element(),
-            );
-        }
-        notices
     }
 
     fn render_member(
@@ -3642,6 +3718,7 @@ impl Render for Zeddy {
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
             window.request_animation_frame();
         }
+        let error_notices = self.error_notices(cx);
         let mut sidebar_spaces = self.sidebar_spaces(cx);
         self.space_sorter.arrange(&mut sidebar_spaces, |space| space.id);
         let chrome_entries: &[Entry] = &entries;
@@ -3655,8 +3732,12 @@ impl Render for Zeddy {
         let on_action =
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
-        let title_controls = cfg!(target_os = "macos")
-            .then(|| (self.visible_space_switcher(window, cx), self.view_menu(emit.clone())));
+        let title_controls = cfg!(target_os = "macos").then(|| {
+            (
+                self.visible_space_switcher(window, cx),
+                self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+            )
+        });
         let title_bar = self.workspace_title_bar(title_controls, window, cx);
 
         let workspace = v_flex()
@@ -3669,7 +3750,10 @@ impl Render for Zeddy {
         let body = match self.mode {
             Mode::Sidebar => {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
-                    (self.visible_space_switcher(window, cx), self.view_menu(emit.clone()))
+                    (
+                        self.visible_space_switcher(window, cx),
+                        self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+                    )
                 });
                 h_flex()
                     .w_full()
@@ -3688,7 +3772,10 @@ impl Render for Zeddy {
             }
             Mode::Tabs => {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
-                    (self.visible_space_switcher(window, cx), self.view_menu(emit.clone()))
+                    (
+                        self.visible_space_switcher(window, cx),
+                        self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+                    )
                 });
                 v_flex()
                     .w_full()
@@ -3832,6 +3919,54 @@ impl Render for Zeddy {
             .children(command_palette)
             .children(rename_space)
             .children(rename_group)
+    }
+}
+
+fn error_notice_row(notice: &ErrorNotice, now: Instant) -> AnyElement {
+    let (icon, color) = match notice.key.severity {
+        ErrorSeverity::Warning => (IconName::Warning, Color::Warning),
+        ErrorSeverity::Error => (IconName::XCircle, Color::Error),
+    };
+    h_flex()
+        .w_full()
+        .min_w_0()
+        .items_start()
+        .gap_2()
+        .py_1()
+        .child(div().flex_none().child(Icon::new(icon).size(IconSize::Small).color(color)))
+        .child(
+            v_flex()
+                .min_w_0()
+                .flex_1()
+                .gap_1()
+                .child(
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .gap_2()
+                        .child(
+                            Label::new(notice.key.source.clone())
+                                .size(UI_LABEL_SMALL)
+                                .weight(gpui::FontWeight::MEDIUM),
+                        )
+                        .child(
+                            Label::new(relative_error_time(notice.first_seen, now))
+                                .size(UI_LABEL_SMALL)
+                                .color(Color::Muted),
+                        ),
+                )
+                .child(Label::new(notice.key.message.clone()).size(UI_LABEL_DEFAULT).line_clamp(3)),
+        )
+        .into_any_element()
+}
+
+fn relative_error_time(first_seen: Instant, now: Instant) -> String {
+    let elapsed = now.saturating_duration_since(first_seen).as_secs();
+    match elapsed {
+        0..60 => "now".to_owned(),
+        60..3600 => format!("{}m ago", elapsed / 60),
+        3600..86400 => format!("{}h ago", elapsed / 3600),
+        _ => format!("{}d ago", elapsed / 86400),
     }
 }
 
@@ -4174,14 +4309,33 @@ mod pane_drop_tests {
     use super::{
         PersistedSpaceKind, Registry, Snapshot, SplitDirection, cleanup_empty_implicit_root,
         materialize_bundled_clock, materialize_bundled_hello, pane_drop_direction_for_position,
-        regex_escape_literal, resolve_terminal_path, split_direction_for_position,
+        regex_escape_literal, relative_error_time, resolve_terminal_path,
+        split_direction_for_position,
     };
     use crate::{persistence::PersistedSpace, workspace::WorkspaceTabs};
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn terminal_search_treats_user_text_as_a_literal() {
         assert_eq!(regex_escape_literal("a.b[c]+(d)?\\e"), "a\\.b\\[c\\]\\+\\(d\\)\\?\\\\e");
+    }
+
+    #[test]
+    fn error_times_stay_compact_as_they_age() {
+        let first_seen = Instant::now();
+        assert_eq!(relative_error_time(first_seen, first_seen), "now");
+        assert_eq!(relative_error_time(first_seen, first_seen + Duration::from_secs(90)), "1m ago");
+        assert_eq!(
+            relative_error_time(first_seen, first_seen + Duration::from_secs(7_200)),
+            "2h ago"
+        );
+        assert_eq!(
+            relative_error_time(first_seen, first_seen + Duration::from_secs(172_800)),
+            "2d ago"
+        );
     }
 
     #[test]

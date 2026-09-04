@@ -43,8 +43,9 @@ Chartr Light. Capture and compare:
   corner resolution and no split target over a pane's tab bar;
 - one native, application-wide Settings window with General, Appearance,
   Terminal, Hotkeys, Plugins, and a contributed plugin Settings view;
-- command palette, unavailable-folder recovery, closed-attach recovery, backend
-  crash-loop banner, rejected plugin, and visible web permissions;
+- command palette, unavailable-folder recovery, closed-attach recovery, rejected
+  plugin, visible web permissions, and the top-right Problems menu—including
+  timestamps plus retry and restart actions for a backend crash loop;
 - the native Hello pane and real Clock web pane, including its persisted format.
 
 Install a web plugin from both a local folder and a Git repository in Settings →
