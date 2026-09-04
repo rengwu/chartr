@@ -18,6 +18,8 @@ use gpui::{ElementId, EntityId, Pixels, Role, SharedString};
 use ui::{ButtonLike, CommonAnimationExt, IconButton, Tab, TabPosition, Tooltip, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
+use crate::assets::PLUGIN_LAUNCHER_ICON_PATH;
+
 const TAB_LABEL_MIN_WIDTH: f32 = 24.;
 
 pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
@@ -28,7 +30,7 @@ pub(crate) fn new_plugin_pane_button(id: impl Into<ElementId>, icon_size: IconSi
     ButtonLike::new(id)
         .aria_label("New plugin pane")
         .tooltip(Tooltip::text("New plugin pane"))
-        .child(Icon::from_path("icons/blockchain_01.svg").size(icon_size))
+        .child(Icon::from_path(PLUGIN_LAUNCHER_ICON_PATH).size(icon_size))
 }
 
 pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {

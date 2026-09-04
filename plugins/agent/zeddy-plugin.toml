@@ -3,7 +3,7 @@ id = "com.chartr.agent"
 name = "Agent"
 version = "0.1.0"
 kind = "native"
-icon = "Blockchain01Icon"
+icon = "ChipIcon"
 
 [capabilities]
 multiplicity = "per_space"

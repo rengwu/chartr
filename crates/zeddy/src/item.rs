@@ -113,7 +113,7 @@ impl Item {
     pub fn icon_path(&self) -> Option<SharedString> {
         match self {
             Self::Plugin(item) => Some(item.icon_path.clone()),
-            Self::PluginLauncher { .. } => Some("icons/blockchain_01.svg".into()),
+            Self::PluginLauncher { .. } => Some(crate::assets::PLUGIN_LAUNCHER_ICON_PATH.into()),
             Self::Session(_) => None,
         }
     }

@@ -139,7 +139,7 @@ and trailing controls remain stationary without a one-pixel shift.
 Confirm Browser, Clock, and Hello show their manifest-selected Hugeicons in
 sidebar rows, standalone outer tabs, and pane-local tabs. Grouped outer tabs
 continue to show the split indicator instead of one representative plugin icon.
-Confirm a temporary **New Plugin Pane** tab shows the Blockchain 01 icon in
+Confirm a temporary **New Plugin Pane** tab shows the Full Screen icon in
 each of those tab surfaces until a plugin replaces it in place.
 Open that picker and confirm every plugin card shows the same manifest-selected
 Hugeicon beside its plugin name.
@@ -192,8 +192,9 @@ FLIP settle remains continuous. Enable Appearance / Reduce Motion and repeat:
 direct pointer carrying and sorting remain, while displaced-card and release
 settle animations are absent.
 
-Open the bundled native Agent plugin in a folder space and in Free sessions. With an
-empty registry, confirm the composer, picker, and launch action are disabled;
+Open the bundled native Agent plugin in a folder space and in Free sessions. Confirm
+its plugin card and tabs show the Chip icon. With an empty registry, confirm the
+composer, picker, and launch action are disabled;
 the space and Git branch sit above rather than inside the composer; and the prompt
 placeholder uses muted text. Register agents named for Claude, Codex, Grok,
 OpenCode, and Pi, then confirm both the picker trigger and menu infer the matching

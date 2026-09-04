@@ -12,8 +12,8 @@ use gpui::{
     Action, Anchor, AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Bounds, ClickEvent,
     Context, DismissEvent, Div, ElementId, Entity, Focusable, Hsla, IntoElement, MouseButton,
     ParentElement, Pixels, Render, RenderOnce, Role, SharedString, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, px,
-    relative, size,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, canvas, div,
+    point, px, relative, size,
 };
 use ui::{
     ButtonSize, ContextMenu as UiContextMenu, ContextMenuEntry as UiContextMenuEntry,
@@ -24,6 +24,58 @@ use ui::{
 const POPUP_CONTENT_WIDTH: Pixels = px(200.);
 const POPUP_OUTSET: Pixels = px(8.);
 const POPUP_GAP: Pixels = px(4.);
+
+/// Open a window-sized modal surface above every native child view in `parent_window`.
+///
+/// Native webviews are composited above their parent window's GPUI scene, so an in-window modal
+/// can never cover them regardless of its elevation. A parent-anchored native popup establishes
+/// the correct platform stacking order while still letting GPUI render the scrim and dialog.
+pub fn open_native_modal<V: Render + 'static>(
+    parent_window: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut App) -> Entity<V> + 'static,
+) -> Result<WindowHandle<V>, String> {
+    use gpui::popup::{PopupAnchor, PopupConstraintAdjustment, PopupGravity, PopupOptions};
+
+    let parent = parent_window.window_handle();
+    let modal_size = parent_window.viewport_size();
+    let rem_size = parent_window.rem_size();
+    let display_id = parent_window.display(cx).map(|display| display.id());
+
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                Default::default(),
+                modal_size,
+            ))),
+            titlebar: None,
+            focus: true,
+            show: true,
+            kind: WindowKind::AnchoredPopup(PopupOptions {
+                parent,
+                anchor_rect: Bounds::new(Default::default(), size(px(1.), px(1.))),
+                anchor: PopupAnchor::TopLeft,
+                gravity: PopupGravity::BottomRight,
+                constraint_adjustment: PopupConstraintAdjustment::empty(),
+                offset: Default::default(),
+                // A modal covers the complete parent and owns its input without relying on a
+                // menu-style grab. This also permits opening it from an active context menu.
+                grab: false,
+            }),
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            display_id,
+            window_background: WindowBackgroundAppearance::Transparent,
+            ..Default::default()
+        },
+        move |window, cx| {
+            window.set_rem_size(rem_size);
+            build(window, cx)
+        },
+    )
+    .map_err(|error| error.to_string())
+}
 
 #[derive(Clone, Copy, Default)]
 struct PopupMetrics {
@@ -796,6 +848,10 @@ mod popup_menu_tests {
 
     struct NativeTooltipHarness;
 
+    struct NativeModalHarness;
+
+    struct NativeModalBody;
+
     impl Render for NativeTooltipHarness {
         fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             window.set_rem_size(px(14.));
@@ -803,6 +859,23 @@ mod popup_menu_tests {
                 ui::Button::new("native-tooltip-trigger", "Hover")
                     .tooltip(ui::Tooltip::text("Native tooltip")),
             )
+        }
+    }
+
+    impl Render for NativeModalHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().id("native-modal-trigger").size_full().on_mouse_down(
+                MouseButton::Left,
+                |_, window, cx| {
+                    open_native_modal(window, cx, |_, cx| cx.new(|_| NativeModalBody)).unwrap();
+                },
+            )
+        }
+    }
+
+    impl Render for NativeModalBody {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().debug_selector(|| "NATIVE_MODAL_BODY".into())
         }
     }
 
@@ -1038,6 +1111,35 @@ mod popup_menu_tests {
         cx.simulate_mouse_move(point(px(300.), px(300.)), None, Modifiers::none());
         cx.run_until_parked();
         assert_eq!(cx.windows(), vec![parent], "the tooltip window should close on mouse exit");
+    }
+
+    #[gpui::test]
+    fn native_modal_uses_a_parent_sized_window(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let (_, cx) = cx.add_window_view(|_, _| NativeModalHarness);
+        let parent = cx.window_handle();
+        let parent_size = cx.update(|window, _| window.viewport_size());
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+
+        let popup = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .expect("opening a modal should create a native child window");
+        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+        popup.run_until_parked();
+
+        assert_eq!(popup.update(|window, _| window.viewport_size()), parent_size);
+        assert_eq!(
+            popup.debug_bounds("NATIVE_MODAL_BODY"),
+            Some(Bounds::new(Default::default(), parent_size)),
+            "the modal surface should cover the complete parent viewport"
+        );
     }
 }
 

@@ -14,8 +14,8 @@ use std::{
 };
 
 use gpui::{
-    Anchor, AnyView, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, MouseButton,
-    PathPromptOptions, Role,
+    Anchor, AnyView, AnyWindowHandle, ClickEvent, DragMoveEvent, Entity, EntityId, FocusHandle,
+    Focusable, MouseButton, PathPromptOptions, Role, WeakEntity,
 };
 use ui::{
     Banner, ButtonLike, ButtonSize, IconButtonShape, IconPosition, ListItem, ListItemSpacing,
@@ -111,6 +111,12 @@ enum PaletteCommand {
     OpenSettings,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RenameKind {
+    Space,
+    Group,
+}
+
 impl PaletteCommand {
     const ALL: [(Self, &'static str, &'static str); 13] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
@@ -163,6 +169,7 @@ pub struct Zeddy {
     terminal_search_target: Option<Entity<terminal::Terminal>>,
     rename_space: Option<EntityId>,
     rename_group: Option<(EntityId, WorkspaceTabId)>,
+    rename_window: Option<AnyWindowHandle>,
     rename_input: Entity<TextInput>,
     rename_query: String,
     show_space_picker: bool,
@@ -187,6 +194,13 @@ impl Zeddy {
         let focus = cx.focus_handle();
         cx.on_focus_in(&focus, window, |this, window, cx| {
             this.focus_active_terminal(window, cx);
+        })
+        .detach();
+        cx.observe_window_bounds(window, |this, window, cx| {
+            if let Some(rename_window) = this.rename_window {
+                let modal_size = window.viewport_size();
+                let _ = rename_window.update(cx, |_, window, _| window.resize(modal_size));
+            }
         })
         .detach();
         let settings = cx.global::<SettingsStore>().clone();
@@ -257,6 +271,7 @@ impl Zeddy {
                     terminal_search_target: None,
                     rename_space: None,
                     rename_group: None,
+                    rename_window: None,
                     rename_input,
                     rename_query: String::new(),
                     show_space_picker: saved.window.show_space_picker,
@@ -410,6 +425,7 @@ impl Zeddy {
             terminal_search_target: None,
             rename_space: None,
             rename_group: None,
+            rename_window: None,
             rename_input,
             rename_query: String::new(),
             show_space_picker: saved.window.show_space_picker,
@@ -488,7 +504,7 @@ impl Zeddy {
         .detach();
     }
 
-    fn focus_active_terminal(&self, window: &mut Window, cx: &mut App) {
+    fn focus_active_terminal(&self, window: &mut Window, cx: &mut App) -> bool {
         let Some(view) = self
             .active
             .as_ref()
@@ -499,9 +515,10 @@ impl Zeddy {
             .and_then(crate::item::Item::as_session)
             .and_then(crate::item::SessionItem::terminal_view)
         else {
-            return;
+            return false;
         };
         window.focus(&view.read(cx).focus_handle(cx), cx);
+        true
     }
 
     fn active_terminal(&self, cx: &App) -> Option<Entity<terminal::Terminal>> {
@@ -1176,7 +1193,7 @@ impl Zeddy {
                     self.rename_input.update(cx, |input, cx| {
                         input.set_text(self.rename_query.clone(), true, cx)
                     });
-                    window.focus(&self.rename_input.focus_handle(cx), cx);
+                    self.open_rename_window(RenameKind::Group, window, cx);
                 }
             }
             Action::MoveWorkspaceTab { space, tab, target_index } => {
@@ -1197,7 +1214,7 @@ impl Zeddy {
                     self.rename_input.update(cx, |input, cx| {
                         input.set_text(self.rename_query.clone(), true, cx)
                     });
-                    window.focus(&self.rename_input.focus_handle(cx), cx);
+                    self.open_rename_window(RenameKind::Space, window, cx);
                 }
             }
             Action::LocateSpace { space } => self.locate_space(space, cx),
@@ -1507,6 +1524,64 @@ impl Zeddy {
         }
     }
 
+    fn open_rename_window(
+        &mut self,
+        kind: RenameKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let owner = cx.weak_entity();
+        let parent = window.window_handle();
+        let input = self.rename_input.clone();
+        let popup_input = input.clone();
+        match crate::components::open_native_modal(window, cx, move |window, cx| {
+            let modal_window = window.window_handle();
+            let view =
+                cx.new(|cx| RenameWindow::new(kind, owner, parent, modal_window, popup_input, cx));
+            window.focus(&input.focus_handle(cx), cx);
+            view
+        }) {
+            Ok(popup) => self.rename_window = Some(popup.into()),
+            Err(error) => {
+                eprintln!("Chartr could not open the rename dialog above native content: {error}");
+                self.rename_window = None;
+                window.focus(&self.rename_input.focus_handle(cx), cx);
+            }
+        }
+    }
+
+    fn cancel_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.rename_space = None;
+        self.rename_group = None;
+        self.rename_query.clear();
+        self.rename_input.update(cx, |input, cx| input.clear(cx));
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
+    fn rename_window_closed(
+        &mut self,
+        kind: RenameKind,
+        modal_window: AnyWindowHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.rename_window != Some(modal_window) {
+            return;
+        }
+        self.rename_window = None;
+        let rename_still_open = match kind {
+            RenameKind::Space => self.rename_space.is_some(),
+            RenameKind::Group => self.rename_group.is_some(),
+        };
+        if rename_still_open {
+            self.cancel_rename(window, cx);
+        } else {
+            window.focus(&self.focus, cx);
+            cx.notify();
+        }
+    }
+
     fn commit_space_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.rename_space.take() else {
             return;
@@ -1794,9 +1869,15 @@ impl Zeddy {
         cx: &mut Context<Self>,
     ) {
         if let Some(space) = self.active.clone() {
-            space.update(cx, |space, _| space.activate_pane_in_direction(direction));
-            window.focus(&self.focus, cx);
-            cx.notify();
+            let moved = space.update(cx, |space, _| space.activate_pane_in_direction(direction));
+            if moved {
+                // Focus the destination directly. Focusing the workspace root first relies on a
+                // re-entrant focus callback, which can leave the terminal without keyboard focus.
+                if !self.focus_active_terminal(window, cx) {
+                    window.focus(&self.focus, cx);
+                }
+                cx.notify();
+            }
         }
     }
 
@@ -2444,7 +2525,7 @@ impl Zeddy {
                                     .border_color(cx.theme().colors().border_variant)
                                     .bg(cx.theme().colors().element_background)
                                     .child(
-                                        Icon::from_path("icons/blockchain_01.svg")
+                                        Icon::from_path(crate::assets::PLUGIN_LAUNCHER_ICON_PATH)
                                             .size(IconSize::Medium),
                                     ),
                             )
@@ -2487,9 +2568,11 @@ impl Zeddy {
                                         .rounded_md()
                                         .bg(cx.theme().colors().editor_background)
                                         .child(
-                                            Icon::from_path("icons/blockchain_01.svg")
-                                                .size(IconSize::Medium)
-                                                .color(Color::Muted),
+                                            Icon::from_path(
+                                                crate::assets::PLUGIN_LAUNCHER_ICON_PATH,
+                                            )
+                                            .size(IconSize::Medium)
+                                            .color(Color::Muted),
                                         ),
                                 )
                                 .child(
@@ -3674,20 +3757,8 @@ impl Zeddy {
 
     fn rename_space_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.rename_space?;
-        let cancel_scrim = cx.listener(|this, _, window, cx| {
-            this.rename_space = None;
-            this.rename_query.clear();
-            this.rename_input.update(cx, |input, cx| input.clear(cx));
-            window.focus(&this.focus, cx);
-            cx.notify();
-        });
-        let cancel_button = cx.listener(|this, _, window, cx| {
-            this.rename_space = None;
-            this.rename_query.clear();
-            this.rename_input.update(cx, |input, cx| input.clear(cx));
-            window.focus(&this.focus, cx);
-            cx.notify();
-        });
+        let cancel_scrim = cx.listener(|this, _, window, cx| this.cancel_rename(window, cx));
+        let cancel_button = cx.listener(|this, _, window, cx| this.cancel_rename(window, cx));
         let save = cx.listener(|this, _, window, cx| this.commit_space_rename(window, cx));
         Some(
             div()
@@ -3699,64 +3770,21 @@ impl Zeddy {
                 .left_0()
                 .bg(gpui::black().opacity(0.35))
                 .on_mouse_down(gpui::MouseButton::Left, cancel_scrim)
-                .child(
-                    v_flex()
-                        .id("rename-space-dialog")
-                        .absolute()
-                        .top(px(96.))
-                        .left(relative(0.5))
-                        .ml(px(-220.))
-                        .w(px(440.))
-                        .p_4()
-                        .gap_3()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(cx.theme().colors().border)
-                        .bg(cx.theme().colors().elevated_surface_background)
-                        .shadow_lg()
-                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(Label::new("Rename Space").size(UI_LABEL_LARGE))
-                        .child(
-                            h_flex()
-                                .h(px(36.))
-                                .px_2()
-                                .rounded_md()
-                                .border_1()
-                                .border_color(cx.theme().colors().border_focused)
-                                .bg(cx.theme().colors().editor_background)
-                                .child(self.rename_input.clone()),
-                        )
-                        .child(
-                            h_flex()
-                                .justify_end()
-                                .gap_1()
-                                .child(
-                                    Button::new("cancel-space-rename", "Cancel")
-                                        .on_click(cancel_button),
-                                )
-                                .child(Button::new("save-space-rename", "Rename").on_click(save)),
-                        ),
-                )
+                .child(rename_dialog(
+                    RenameKind::Space,
+                    self.rename_input.clone(),
+                    cancel_button,
+                    save,
+                    cx,
+                ))
                 .into_any_element(),
         )
     }
 
     fn rename_group_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.rename_group?;
-        let cancel_scrim = cx.listener(|this, _, window, cx| {
-            this.rename_group = None;
-            this.rename_query.clear();
-            this.rename_input.update(cx, |input, cx| input.clear(cx));
-            window.focus(&this.focus, cx);
-            cx.notify();
-        });
-        let cancel_button = cx.listener(|this, _, window, cx| {
-            this.rename_group = None;
-            this.rename_query.clear();
-            this.rename_input.update(cx, |input, cx| input.clear(cx));
-            window.focus(&this.focus, cx);
-            cx.notify();
-        });
+        let cancel_scrim = cx.listener(|this, _, window, cx| this.cancel_rename(window, cx));
+        let cancel_button = cx.listener(|this, _, window, cx| this.cancel_rename(window, cx));
         let save = cx.listener(|this, _, window, cx| this.commit_group_rename(window, cx));
         Some(
             div()
@@ -3768,55 +3796,170 @@ impl Zeddy {
                 .left_0()
                 .bg(gpui::black().opacity(0.35))
                 .on_mouse_down(gpui::MouseButton::Left, cancel_scrim)
-                .child(
-                    v_flex()
-                        .id("rename-group-dialog")
-                        .absolute()
-                        .top(px(96.))
-                        .left(relative(0.5))
-                        .ml(px(-220.))
-                        .w(px(440.))
-                        .p_4()
-                        .gap_3()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(cx.theme().colors().border)
-                        .bg(cx.theme().colors().elevated_surface_background)
-                        .shadow_lg()
-                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(Label::new("Rename Group").size(UI_LABEL_LARGE))
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    h_flex()
-                                        .h(px(36.))
-                                        .px_2()
-                                        .rounded_md()
-                                        .border_1()
-                                        .border_color(cx.theme().colors().border_focused)
-                                        .bg(cx.theme().colors().editor_background)
-                                        .child(self.rename_input.clone()),
-                                )
-                                .child(
-                                    Label::new("Leave blank to use the tab count.")
-                                        .size(UI_LABEL_SMALL)
-                                        .color(Color::Muted),
-                                ),
-                        )
-                        .child(
-                            h_flex()
-                                .justify_end()
-                                .gap_1()
-                                .child(
-                                    Button::new("cancel-group-rename", "Cancel")
-                                        .on_click(cancel_button),
-                                )
-                                .child(Button::new("save-group-rename", "Rename").on_click(save)),
-                        ),
-                )
+                .child(rename_dialog(
+                    RenameKind::Group,
+                    self.rename_input.clone(),
+                    cancel_button,
+                    save,
+                    cx,
+                ))
                 .into_any_element(),
         )
+    }
+}
+
+fn rename_dialog(
+    kind: RenameKind,
+    input: Entity<TextInput>,
+    cancel: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    save: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
+    let (title, help, dialog_id, cancel_id, save_id) = match kind {
+        RenameKind::Space => (
+            "Rename Space",
+            None,
+            "rename-space-dialog",
+            "cancel-space-rename",
+            "save-space-rename",
+        ),
+        RenameKind::Group => (
+            "Rename Group",
+            Some("Leave blank to use the tab count."),
+            "rename-group-dialog",
+            "cancel-group-rename",
+            "save-group-rename",
+        ),
+    };
+
+    v_flex()
+        .id(dialog_id)
+        .absolute()
+        .top(px(96.))
+        .left(relative(0.5))
+        .ml(px(-220.))
+        .w(px(440.))
+        .p_4()
+        .gap_3()
+        .rounded_lg()
+        .border_1()
+        .border_color(cx.theme().colors().border)
+        .bg(cx.theme().colors().elevated_surface_background)
+        .shadow_lg()
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(Label::new(title).size(UI_LABEL_LARGE))
+        .child(
+            v_flex()
+                .gap_1()
+                .child(
+                    h_flex()
+                        .h(px(36.))
+                        .px_2()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(cx.theme().colors().border_focused)
+                        .bg(cx.theme().colors().editor_background)
+                        .child(input),
+                )
+                .children(help.map(|help| {
+                    Label::new(help).size(UI_LABEL_SMALL).color(Color::Muted).into_any_element()
+                })),
+        )
+        .child(
+            h_flex()
+                .justify_end()
+                .gap_1()
+                .child(Button::new(cancel_id, "Cancel").on_click(cancel))
+                .child(Button::new(save_id, "Rename").on_click(save)),
+        )
+}
+
+/// Rename dialogs are hosted in their own parent-anchored window so their scrim and content are
+/// composited above native browser/plugin views. `Zeddy` remains the state owner; this view only
+/// routes popup input back to the originating workspace window.
+struct RenameWindow {
+    kind: RenameKind,
+    owner: WeakEntity<Zeddy>,
+    parent: AnyWindowHandle,
+    input: Entity<TextInput>,
+}
+
+impl RenameWindow {
+    fn new(
+        kind: RenameKind,
+        owner: WeakEntity<Zeddy>,
+        parent: AnyWindowHandle,
+        modal_window: AnyWindowHandle,
+        input: Entity<TextInput>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let release_owner = owner.clone();
+        cx.on_release(move |_, cx| {
+            let _ = parent.update(cx, |_, window, cx| {
+                let _ = release_owner.update(cx, |owner, cx| {
+                    owner.rename_window_closed(kind, modal_window, window, cx)
+                });
+            });
+        })
+        .detach();
+        Self { kind, owner, parent, input }
+    }
+
+    fn finish(&self, save: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let owner = self.owner.clone();
+        let kind = self.kind;
+        let _ = self.parent.update(cx, |_, parent_window, cx| {
+            let _ = owner.update(cx, |owner, cx| {
+                if save {
+                    match kind {
+                        RenameKind::Space => owner.commit_space_rename(parent_window, cx),
+                        RenameKind::Group => owner.commit_group_rename(parent_window, cx),
+                    }
+                } else {
+                    owner.cancel_rename(parent_window, cx);
+                }
+            });
+        });
+        window.remove_window();
+    }
+}
+
+impl Render for RenameWindow {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ui_font = Fonts::setup_ui(window, cx);
+        let cancel_scrim = cx.listener(|this, _, window, cx| this.finish(false, window, cx));
+        let cancel_button = cx.listener(|this, _, window, cx| this.finish(false, window, cx));
+        let save = cx.listener(|this, _, window, cx| this.finish(true, window, cx));
+        let on_key = cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+            match event.keystroke.key.as_str() {
+                "escape" => {
+                    cx.stop_propagation();
+                    this.finish(false, window, cx);
+                }
+                "enter" => {
+                    cx.stop_propagation();
+                    this.finish(true, window, cx);
+                }
+                _ => {}
+            }
+        });
+        let key_context = match self.kind {
+            RenameKind::Space => "RenameSpace",
+            RenameKind::Group => "RenameGroup",
+        };
+
+        div()
+            .id("native-rename-scrim")
+            .relative()
+            .key_context(key_context)
+            .size_full()
+            .font(ui_font)
+            .text_size(UI_TEXT_DEFAULT)
+            .text_color(cx.theme().colors().text)
+            .bg(gpui::black().opacity(0.35))
+            .on_key_down(on_key)
+            .on_mouse_down(MouseButton::Left, cancel_scrim)
+            .child(rename_dialog(self.kind, self.input.clone(), cancel_button, save, cx))
     }
 }
 
@@ -3924,8 +4067,14 @@ impl Render for Zeddy {
         };
 
         let command_palette = self.command_palette(cx);
-        let rename_space = self.rename_space_overlay(cx);
-        let rename_group = self.rename_group_overlay(cx);
+        // Native child webviews sit above their parent window's GPUI scene. Rename dialogs use a
+        // window-sized native popup when possible; these in-window overlays are the platform
+        // fallback only.
+        let (rename_space, rename_group) = if self.rename_window.is_none() {
+            (self.rename_space_overlay(cx), self.rename_group_overlay(cx))
+        } else {
+            (None, None)
+        };
 
         div()
             .relative()
@@ -4502,10 +4651,19 @@ fn materialize_bundled_agent(dir: &std::path::Path) -> Result<zeddy_plugin::Mani
     std::fs::create_dir_all(dir.join("icons"))
         .map_err(|why| format!("cannot prepare the bundled Agent plugin: {why}"))?;
     write_bundled_file(
-        &dir.join("icons/Blockchain01Icon.svg"),
-        include_bytes!("../../../plugins/agent/icons/Blockchain01Icon.svg"),
+        &dir.join("icons/ChipIcon.svg"),
+        include_bytes!("../../../plugins/agent/icons/ChipIcon.svg"),
     )
     .map_err(|why| format!("cannot prepare the bundled Agent plugin: {why}"))?;
+    match std::fs::remove_file(dir.join("icons/Blockchain01Icon.svg")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "cannot remove the bundled Agent plugin's legacy Blockchain01Icon.svg: {error}"
+            ));
+        }
+    }
     for legacy_web_asset in ["index.html", "styles.css", "app.js"] {
         match std::fs::remove_file(dir.join(legacy_web_asset)) {
             Ok(()) => {}
@@ -4632,7 +4790,9 @@ mod pane_drop_tests {
         let manifest = materialize_bundled_agent(&dir).unwrap();
         assert_eq!(manifest.id, "com.chartr.agent");
         assert_eq!(manifest.kind, zeddy_plugin::manifest::Kind::Native);
+        assert_eq!(manifest.icon, "ChipIcon");
         assert!(manifest.icon_path(&dir).is_file());
+        assert!(!dir.join("icons/Blockchain01Icon.svg").exists());
         assert!(!dir.join("index.html").exists());
         assert!(!dir.join("styles.css").exists());
         assert!(!dir.join("app.js").exists());

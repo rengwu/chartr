@@ -10,10 +10,13 @@ use gpui::{AssetSource, SharedString};
 
 pub struct Assets;
 
+/// The shared icon for every entry point and placeholder associated with opening a plugin pane.
+pub const PLUGIN_LAUNCHER_ICON_PATH: &str = "icons/full_screen.svg";
+
 /// Icons zeddy draws, by the path `IconName::path` derives.
 const ICONS: &[(&str, &str)] = &[
     ("icons/plus.svg", include_str!("../assets/icons/plus.svg")),
-    ("icons/blockchain_01.svg", include_str!("../assets/icons/blockchain_01.svg")),
+    (PLUGIN_LAUNCHER_ICON_PATH, include_str!("../assets/icons/full_screen.svg")),
     ("icons/close.svg", include_str!("../assets/icons/close.svg")),
     ("icons/tab.svg", include_str!("../assets/icons/tab.svg")),
     ("icons/menu.svg", include_str!("../assets/icons/menu.svg")),
@@ -62,7 +65,7 @@ mod tests {
 
     #[test]
     fn chartrs_plugin_launcher_icon_is_embedded() {
-        assert!(Assets.load("icons/blockchain_01.svg").expect("load").is_some());
+        assert!(Assets.load(PLUGIN_LAUNCHER_ICON_PATH).expect("load").is_some());
     }
 
     #[test]

@@ -319,10 +319,11 @@ impl Space {
         }
     }
 
-    pub fn activate_pane_in_direction(&mut self, direction: SplitDirection) {
-        if let Some(layout) = self.layout.active_workspace_mut() {
-            layout.activate_pane_in_direction(direction);
-        }
+    pub fn activate_pane_in_direction(&mut self, direction: SplitDirection) -> bool {
+        self.layout
+            .active_workspace_mut()
+            .and_then(|layout| layout.activate_pane_in_direction(direction))
+            .is_some()
     }
 
     pub fn activate_pane(&mut self, tab: WorkspaceTabId, pane: crate::workspace::PaneId) {
@@ -1277,7 +1278,7 @@ mod tests {
             assert!(space.item(second).unwrap().is_plugin_launcher());
             assert_eq!(
                 space.item(second).unwrap().icon_path().as_deref(),
-                Some("icons/blockchain_01.svg")
+                Some(crate::assets::PLUGIN_LAUNCHER_ICON_PATH)
             );
         });
     }

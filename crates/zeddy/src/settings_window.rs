@@ -796,7 +796,7 @@ impl SettingsWindow {
             });
             return v_flex()
                 .gap_3()
-                .child(Button::new("plugin-settings-back", "Back to plugins").on_click(back))
+                .child(settings_button("plugin-settings-back", "Back to plugins").on_click(back))
                 .child(Label::new(plugin.clone()).size(UI_LABEL_SMALL).color(Color::Muted))
                 .child(div().min_h(px(320.)).child(view.clone()))
                 .into_any_element();
@@ -1038,7 +1038,7 @@ impl SettingsWindow {
         );
         let font_picker = PopoverMenu::new("ui-font-menu")
             .trigger(
-                Button::new("ui-font-family", settings.ui_font_family)
+                settings_button("ui-font-family", settings.ui_font_family)
                     .end_icon(Icon::new(IconName::ChevronDown)),
             )
             .anchor(Anchor::BottomLeft)
@@ -1143,7 +1143,7 @@ impl SettingsWindow {
         let runtime_available = self.original.upgrade().is_some();
         let font_picker = PopoverMenu::new("terminal-font-menu")
             .trigger(
-                Button::new("terminal-font-family", settings.terminal_font_family)
+                settings_button("terminal-font-family", settings.terminal_font_family)
                     .end_icon(Icon::new(IconName::ChevronDown)),
             )
             .anchor(Anchor::BottomLeft)
@@ -1185,7 +1185,7 @@ impl SettingsWindow {
                 setting_field(
                     "Free sessions directory",
                     "Choose the working directory used when a Free session starts.",
-                    Button::new("choose-free-sessions-directory", directory)
+                    settings_button("choose-free-sessions-directory", directory)
                         .start_icon(Icon::new(IconName::FolderOpen).color(Color::Muted))
                         .end_icon(Icon::new(IconName::ChevronRight).color(Color::Muted))
                         .truncate(true)
@@ -1200,14 +1200,14 @@ impl SettingsWindow {
                 setting_field(
                     "Retry connection",
                     "Try to reconnect after a backend connection failure.",
-                    Button::new("settings-retry-backend", "Retry")
+                    settings_button("settings-retry-backend", "Retry")
                         .disabled(!runtime_available)
                         .on_click(retry),
                 ),
                 setting_field(
                     "Restart backend",
                     "Stop and start the backend process for this workspace.",
-                    Button::new("settings-restart-backend", "Restart")
+                    settings_button("settings-restart-backend", "Restart")
                         .disabled(!runtime_available)
                         .on_click(restart),
                 ),
@@ -1232,7 +1232,7 @@ impl SettingsWindow {
                 });
                 table.row(vec![
                     Label::new(action.title()).size(UI_LABEL_DEFAULT).into_any_element(),
-                    Button::new(
+                    settings_button(
                         format!("record-hotkey-{}", action.id()),
                         if recording == Some(action) {
                             "Press shortcut…".to_owned()
@@ -1296,12 +1296,12 @@ impl SettingsWindow {
         let install_actions = h_flex()
             .gap_2()
             .child(
-                Button::new("install-plugin-git", "Install from Git…")
+                settings_button("install-plugin-git", "Install from Git…")
                     .disabled(busy)
                     .on_click(open_git),
             )
             .child(
-                Button::new("install-plugin-folder", "Install from Folder…")
+                settings_button("install-plugin-folder", "Install from Folder…")
                     .disabled(busy)
                     .on_click(pick_folder),
             );
@@ -1327,9 +1327,12 @@ impl SettingsWindow {
                 h_flex()
                     .gap_2()
                     .child(
-                        Button::new("confirm-install-plugin-git", "Install").on_click(install_git),
+                        settings_button("confirm-install-plugin-git", "Install")
+                            .on_click(install_git),
                     )
-                    .child(Button::new("cancel-install-plugin-git", "Cancel").on_click(cancel_git)),
+                    .child(
+                        settings_button("cancel-install-plugin-git", "Cancel").on_click(cancel_git),
+                    ),
             );
         let (descriptors, rejected) = self
             .original
@@ -1401,7 +1404,7 @@ impl SettingsWindow {
                 fields.push(setting_field(
                     format!("{name} — Configuration"),
                     "Open this plugin's own settings.",
-                    Button::new(format!("plugin-settings-{id}"), "Configure")
+                    settings_button(format!("plugin-settings-{id}"), "Configure")
                         .disabled(!origin_available)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_plugin_settings(settings_id.clone(), window, cx)
@@ -1457,7 +1460,7 @@ impl SettingsWindow {
                             .gap_3()
                             .child(Label::new("Restart Chartr to enable installed plugins."))
                             .child(
-                                Button::new("restart-after-plugin-install", "Restart")
+                                settings_button("restart-after-plugin-install", "Restart")
                                     .on_click(restart),
                             ),
                     ),
@@ -1595,6 +1598,11 @@ impl Render for SettingsWindow {
 
 fn format_number(value: f32) -> String {
     value.to_string()
+}
+
+/// Settings actions keep a visible boundary at rest so they cannot be mistaken for labels.
+fn settings_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
+    Button::new(id, label).style(ButtonStyle::Outlined)
 }
 
 fn sync_number_text(input: &Entity<TextInput>, value: f32, cx: &mut Context<SettingsWindow>) {
