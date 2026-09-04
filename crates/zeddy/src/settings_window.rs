@@ -34,6 +34,7 @@ use crate::{
 actions!(chartr_settings_window, [Close]);
 
 const SETTINGS_WINDOW_MIN_WIDTH: f32 = 720.;
+const SETTINGS_SIDEBAR_WIDTH: f32 = 200.;
 const SETTINGS_CONTROL_COLUMN_WIDTH: f32 = 200.;
 const SETTINGS_FIELD_VERTICAL_PADDING: f32 = 16.;
 
@@ -1541,7 +1542,7 @@ impl Render for SettingsWindow {
                     .min_h_0()
                     .child(
                         v_flex()
-                            .w(px(240.))
+                            .w(px(SETTINGS_SIDEBAR_WIDTH))
                             .h_full()
                             .py_3()
                             .px_1()

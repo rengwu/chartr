@@ -11,14 +11,14 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use ui::{
-    Button, ButtonSize, ButtonStyle, Color, Icon, IconButton, IconName, IconPosition, IconSize,
-    Label, TintColor, prelude::*,
+    Button, ButtonSize, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName,
+    IconPosition, IconSize, Label, Table, TintColor, prelude::*,
 };
 use zeddy_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, TerminalLauncher, gpui,
     gpui::{
         Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
-        Role, SharedString, Window, div, px, relative,
+        SharedString, Window, div, px, relative,
     },
 };
 
@@ -641,35 +641,36 @@ impl AgentView {
         let agents = self.registry.read(cx).agents.clone();
         let back = cx.listener(Self::show_launcher);
         let add = cx.listener(|this, _, window, cx| this.open_editor(None, window, cx));
-        let rows: Vec<AnyElement> = agents
+        let table = agents
             .iter()
             .enumerate()
-            .map(|(index, agent)| {
-                let name = agent.name.clone();
-                let edit_name = name.clone();
-                let edit =
-                    cx.listener(move |this, _, window, cx| this.edit_named(&edit_name, window, cx));
-                let delete_name = name.clone();
-                let delete =
-                    cx.listener(move |this, _, _, cx| this.ask_delete(delete_name.clone(), cx));
-                h_flex()
-                    .id(("registered-agent-row", index))
-                    .role(Role::ListBoxOption)
-                    .w_full()
-                    .min_h(px(46.))
-                    .px_3()
-                    .gap_3()
-                    .border_b_1()
-                    .border_color(cx.theme().colors().border_variant)
-                    .child(div().w(relative(0.34)).min_w_0().child(Label::new(name).truncate()))
-                    .child(
-                        div().flex_1().min_w_0().child(
-                            Label::new(agent.adapter.clone()).color(Color::Muted).truncate(),
-                        ),
-                    )
-                    .child(
+            .fold(
+                Table::new(3)
+                    .striped()
+                    .width_config(ColumnWidthConfig::explicit(vec![
+                        relative(0.34),
+                        relative(0.51),
+                        relative(0.15),
+                    ]))
+                    .header(vec!["Name", "Adapter", ""]),
+                |table, (index, agent)| {
+                    let name = agent.name.clone();
+                    let edit_name = name.clone();
+                    let edit = cx.listener(move |this, _, window, cx| {
+                        this.edit_named(&edit_name, window, cx)
+                    });
+                    let delete_name = name.clone();
+                    let delete =
+                        cx.listener(move |this, _, _, cx| this.ask_delete(delete_name.clone(), cx));
+                    table.row(vec![
+                        Label::new(name).truncate().into_any_element(),
+                        Label::new(agent.adapter.clone())
+                            .color(Color::Muted)
+                            .truncate()
+                            .into_any_element(),
                         h_flex()
-                            .flex_none()
+                            .w_full()
+                            .justify_end()
                             .gap_1()
                             .child(Button::new(("edit-agent", index), "Edit").on_click(edit))
                             .child(
@@ -677,11 +678,14 @@ impl AgentView {
                                     .icon_size(IconSize::Small)
                                     .aria_label(format!("Delete {}", agent.name))
                                     .on_click(delete),
-                            ),
-                    )
-                    .into_any_element()
-            })
-            .collect();
+                            )
+                            .into_any_element(),
+                    ])
+                },
+            )
+            .empty_table_callback(|_, _| {
+                Label::new("No registered agents.").color(Color::Muted).into_any_element()
+            });
         let problem = self.registry.read(cx).problem.clone();
         let notice = self.notice.clone();
 
@@ -698,35 +702,37 @@ impl AgentView {
                     .p_6()
                     .gap_5()
                     .child(
-                        h_flex()
+                        v_flex()
                             .w_full()
-                            .items_start()
-                            .justify_between()
-                            .gap_4()
+                            .gap_2()
                             .child(
-                                v_flex()
-                                    .min_w_0()
-                                    .gap_2()
-                                    .child(
-                                        Button::new("back-to-agent-launcher", "Back")
-                                            .style(ButtonStyle::Transparent)
-                                            .start_icon(Icon::new(IconName::ArrowLeft))
-                                            .on_click(back),
-                                    )
+                                Button::new("back-to-agent-launcher", "Back")
+                                    .style(ButtonStyle::Transparent)
+                                    .start_icon(Icon::new(IconName::ArrowLeft))
+                                    .on_click(back),
+                            )
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .items_center()
+                                    .justify_between()
+                                    .gap_4()
                                     .child(Label::new("Agent management").size(UI_LABEL_LARGE))
                                     .child(
-                                        Label::new(
-                                            "Configure the command, flags, and prompt delivery for each agent.",
-                                        )
-                                        .size(UI_LABEL_DEFAULT)
-                                        .color(Color::Muted),
+                                        Button::new("new-agent", "New agent")
+                                            .style(ButtonStyle::Outlined)
+                                            .start_icon(Icon::new(IconName::Plus))
+                                            .on_click(add),
                                     ),
                             )
                             .child(
-                                Button::new("new-agent", "New agent")
-                                    .style(ButtonStyle::Outlined)
-                                    .start_icon(Icon::new(IconName::Plus))
-                                    .on_click(add),
+                                div().w_full().child(
+                                    Label::new(
+                                        "Configure the command, flags, and prompt delivery for each agent.",
+                                    )
+                                    .size(UI_LABEL_DEFAULT)
+                                    .color(Color::Muted),
+                                ),
                             ),
                     )
                     .when_some(problem, |page, problem| {
@@ -735,35 +741,7 @@ impl AgentView {
                     .when_some(notice, |page, (message, error)| {
                         page.child(notice_banner(message, error, cx))
                     })
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .rounded_lg()
-                            .border_1()
-                            .border_color(cx.theme().colors().border)
-                            .overflow_hidden()
-                            .child(
-                                h_flex()
-                                    .min_h(px(34.))
-                                    .px_3()
-                                    .gap_3()
-                                    .border_b_1()
-                                    .border_color(cx.theme().colors().border)
-                                    .bg(cx.theme().colors().surface_background)
-                                    .child(div().w(relative(0.34)).child(Label::new("Name").color(Color::Muted)))
-                                    .child(div().flex_1().child(Label::new("Adapter").color(Color::Muted)))
-                                    .child(div().w(px(96.))),
-                            )
-                            .when(agents.is_empty(), |table| {
-                                table.child(
-                                    div()
-                                        .w_full()
-                                        .p_5()
-                                        .child(Label::new("No registered agents.").color(Color::Muted)),
-                                )
-                            })
-                            .children(rows),
-                    ),
+                    .child(table),
             )
             .into_any_element()
     }

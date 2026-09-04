@@ -119,17 +119,17 @@ including after detach/reattach and window resize. Reject any duplicate input,
 stale viewport, focus loss, or interaction that works only in one pane shape.
 
 Confirm the space picker sits in the macOS title bar immediately after the
-traffic lights, and the chevron menu sits at the far-right corner in both
-chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a separator, and
-`Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
-`Settings`. Switching presentation or picker visibility updates immediately
+traffic lights. At the far-right corner in both chrome modes, confirm the
+`Sidebar` / `Tabbed` segmented control reflects and changes the presentation,
+and the adjacent gear button opens Settings without the workspace reclaiming
+window focus. Switching presentation or picker visibility updates immediately
 and survives relaunch.
 On platforms with a native system title bar, confirm both controls retain
 their in-app chrome positions.
 
 In tabbed mode, the `+` and adjacent plugin-pane controls follow the last outer tab
 while they fit. When the tabs overflow, only the tabs scroll: both controls pin
-beside their right edge, while the title-bar chevron remains pinned at the
+beside their right edge, while the title-bar controls remain pinned at the
 window's far right. The padded control cell retains a left divider against the
 scrolling tabs. Every tab retains its minimum clickable width, including
 pane-local tabs within grouped workspaces. Confirm every `+` immediately opens

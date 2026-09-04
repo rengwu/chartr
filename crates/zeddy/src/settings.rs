@@ -848,7 +848,7 @@ fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
     colors.border_selected = ring;
     colors.text = text;
     colors.text_muted = muted;
-    colors.text_placeholder = muted;
+    colors.text_placeholder = quiet;
     colors.text_disabled = quiet;
     // Selected controls should read through surface contrast, not a saturated
     // blue foreground. Semantic accents remain available to links, focus
@@ -1017,6 +1017,12 @@ mod tests {
                     registered.styles.colors.elevated_surface_background,
                     registered.styles.colors.ghost_element_hover,
                     "{} must retain a visible context-menu hover state",
+                    palette.name,
+                );
+                assert_eq!(
+                    registered.styles.colors.text_placeholder,
+                    gpui::rgb(palette.quiet).into(),
+                    "{} must render placeholders with the lower-emphasis quiet tone",
                     palette.name,
                 );
             }

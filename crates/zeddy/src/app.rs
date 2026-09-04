@@ -28,7 +28,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, HostedSurface, PaneSource, Paths, S
 use crate::{
     actions,
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
-    components::{ContextMenu, PopupMenu},
+    components::{ContextMenu, PopupMenu, SegmentedControl, SegmentedControlOption},
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::{PluginItem, PluginView},
     mode::Mode,
@@ -2134,11 +2134,8 @@ impl Zeddy {
                         error_menu_header(notice_count, clear_button)
                     });
                     for (index, notice) in menu_notices.iter().cloned().enumerate() {
-                        if index > 0 {
-                            menu = menu.separator();
-                        }
                         let dismiss = dismiss.clone();
-                        menu = menu.custom_row(move |_, _| {
+                        menu = menu.custom_row(move |_, cx| {
                             let dismiss = dismiss.clone();
                             let key = notice.key.clone();
                             let dismiss_button =
@@ -2154,7 +2151,7 @@ impl Zeddy {
                                         window.remove_window();
                                     })
                                     .into_any_element();
-                            error_notice_row(&notice, now, dismiss_button)
+                            error_notice_row(&notice, now, dismiss_button, cx)
                         });
                     }
                     if backend_failed {
@@ -2183,57 +2180,43 @@ impl Zeddy {
     ) -> AnyElement {
         let has_notices = !notices.is_empty();
         h_flex()
-            .gap_px()
+            .gap_1()
+            .child(self.presentation_toggle(on.clone()))
             .when(has_notices, |controls| controls.child(self.error_menu(notices, cx)))
-            .child(self.view_menu(on))
+            .child(self.settings_button(on))
             .into_any_element()
     }
 
-    fn view_menu(&self, on: chrome::Emit) -> AnyElement {
-        match self.mode {
-            Mode::Sidebar => PopupMenu::new("chrome-menu")
-                .trigger_with_tooltip(
-                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
-                        .icon_size(IconSize::Small),
-                    Tooltip::text("View options"),
-                )
-                .anchor(Anchor::TopRight)
-                .menu(move |window, cx| {
-                    let switch = on.clone();
-                    let settings = on.clone();
-                    Some(ContextMenu::build_popup(window, cx, move |menu| {
-                        menu.entry("Switch to Tabbed mode", None, move |window, cx| {
-                            switch(Action::SwitchToTabs, window, cx)
-                        })
-                        .separator()
-                        .entry("Settings", None, move |window, cx| {
-                            settings(Action::OpenSettings, window, cx)
-                        })
-                    }))
-                })
-                .into_any_element(),
-            Mode::Tabs => PopupMenu::new("chrome-menu")
-                .trigger_with_tooltip(
-                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
-                        .icon_size(IconSize::Small),
-                    Tooltip::text("View options"),
-                )
-                .anchor(Anchor::TopRight)
-                .menu(move |window, cx| {
-                    let switch = on.clone();
-                    let settings = on.clone();
-                    Some(ContextMenu::build_popup(window, cx, move |menu| {
-                        menu.entry("Switch to Sidebar mode", None, move |window, cx| {
-                            switch(Action::SwitchToSidebar, window, cx)
-                        })
-                        .separator()
-                        .entry("Settings", None, move |window, cx| {
-                            settings(Action::OpenSettings, window, cx)
-                        })
-                    }))
-                })
-                .into_any_element(),
-        }
+    fn presentation_toggle(&self, on: chrome::Emit) -> AnyElement {
+        let use_sidebar = on.clone();
+        let use_tabs = on;
+        SegmentedControl::new(
+            "Session list presentation",
+            [
+                SegmentedControlOption::new(
+                    "presentation-sidebar",
+                    "Sidebar",
+                    self.mode == Mode::Sidebar,
+                    move |_, window, cx| use_sidebar(Action::SwitchToSidebar, window, cx),
+                ),
+                SegmentedControlOption::new(
+                    "presentation-tabs",
+                    "Tabbed",
+                    self.mode == Mode::Tabs,
+                    move |_, window, cx| use_tabs(Action::SwitchToTabs, window, cx),
+                ),
+            ],
+        )
+        .into_any_element()
+    }
+
+    fn settings_button(&self, on: chrome::Emit) -> AnyElement {
+        IconButton::new("open-settings", IconName::Settings)
+            .icon_size(IconSize::Small)
+            .aria_label("Settings")
+            .tooltip(Tooltip::text("Settings"))
+            .on_click(move |_, window, cx| on(Action::OpenSettings, window, cx))
+            .into_any_element()
     }
 
     fn workspace_title_bar(
@@ -2281,6 +2264,7 @@ impl Zeddy {
                     .h(px(crate::title_bar::HEIGHT))
                     .max_w(px(200.))
                     .when(!window_active, |controls| controls.opacity(0.65))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(space_switcher)
                     .into_any_element(),
             );
@@ -2291,6 +2275,7 @@ impl Zeddy {
                     .top_0()
                     .h(px(crate::title_bar::HEIGHT))
                     .when(!window_active, |controls| controls.opacity(0.65))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(view_menu)
                     .into_any_element(),
             );
@@ -2348,17 +2333,19 @@ impl Zeddy {
                     gpui::SharedString::from(plugin.icon_path().to_string_lossy().into_owned());
                 let surface = pane.title.clone();
                 let kind = match plugin.kind() {
-                    zeddy_plugin::manifest::Kind::Native => "Native plugin",
-                    zeddy_plugin::manifest::Kind::Hosted => "Hosted plugin",
-                    zeddy_plugin::manifest::Kind::Web => "Web plugin",
+                    zeddy_plugin::manifest::Kind::Native => "Native",
+                    zeddy_plugin::manifest::Kind::Hosted => "Hosted",
+                    zeddy_plugin::manifest::Kind::Web => "Web",
                 };
+                let surface_label = (surface != name).then(|| surface.clone());
                 let key = pane.key.clone();
                 let open = weak.clone();
                 Some(
                     ButtonLike::new(("plugin-launcher-card", index))
                         .style(ButtonStyle::Outlined)
+                        .size(ButtonSize::None)
                         .full_width()
-                        .height(px(132.).into())
+                        .height(px(88.).into())
                         .tab_index(0isize)
                         .aria_label(format!("Open {surface} from {name}"))
                         .on_click(move |_, window, cx| {
@@ -2367,39 +2354,57 @@ impl Zeddy {
                             });
                         })
                         .child(
-                            v_flex()
+                            h_flex()
                                 .size_full()
                                 .text_left()
-                                .items_start()
-                                .justify_between()
-                                .py_2()
+                                .items_center()
+                                .gap_3()
+                                .px_3()
+                                .child(
+                                    div()
+                                        .size(px(36.))
+                                        .flex_none()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded_md()
+                                        .border_1()
+                                        .border_color(cx.theme().colors().border_variant)
+                                        .bg(cx.theme().colors().editor_background)
+                                        .child(
+                                            Icon::from_external_svg(icon_path)
+                                                .size(IconSize::Medium),
+                                        ),
+                                )
                                 .child(
                                     v_flex()
+                                        .min_w_0()
+                                        .flex_1()
                                         .items_start()
-                                        .gap_1()
+                                        .gap_0p5()
                                         .child(
-                                            h_flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    Icon::from_external_svg(icon_path)
-                                                        .size(IconSize::Medium),
-                                                )
-                                                .child(
-                                                    Label::new(name)
-                                                        .size(UI_LABEL_LARGE)
-                                                        .weight(gpui::FontWeight::SEMIBOLD),
-                                                ),
+                                            Label::new(name)
+                                                .size(UI_LABEL_LARGE)
+                                                .weight(gpui::FontWeight::SEMIBOLD)
+                                                .truncate(),
                                         )
+                                        .when_some(surface_label, |details, surface| {
+                                            details.child(
+                                                Label::new(surface)
+                                                    .size(UI_LABEL_DEFAULT)
+                                                    .color(Color::Muted)
+                                                    .truncate(),
+                                            )
+                                        })
                                         .child(
-                                            Label::new(surface)
-                                                .size(UI_LABEL_DEFAULT)
+                                            Label::new(format!("{kind} plugin  ·  v{version}"))
+                                                .size(UI_LABEL_SMALL)
                                                 .color(Color::Muted),
                                         ),
                                 )
                                 .child(
-                                    Label::new(format!("{kind}  ·  v{version}"))
-                                        .size(UI_LABEL_SMALL)
+                                    Icon::new(IconName::ChevronRight)
+                                        .size(IconSize::Small)
                                         .color(Color::Muted),
                                 ),
                         )
@@ -2417,39 +2422,91 @@ impl Zeddy {
             .child(
                 v_flex()
                     .w_full()
-                    .max_w(px(960.))
+                    .max_w(px(760.))
                     .mx_auto()
-                    .p_8()
-                    .gap_6()
+                    .px_8()
+                    .pt_8()
+                    .pb_8()
+                    .gap_5()
                     .child(
-                        v_flex()
-                            .gap_1()
+                        h_flex()
+                            .items_center()
+                            .gap_3()
                             .child(
-                                Label::new("New Plugin Pane")
-                                    .size(UI_LABEL_LARGE)
-                                    .weight(gpui::FontWeight::SEMIBOLD),
+                                div()
+                                    .size(px(40.))
+                                    .flex_none()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_lg()
+                                    .border_1()
+                                    .border_color(cx.theme().colors().border_variant)
+                                    .bg(cx.theme().colors().element_background)
+                                    .child(
+                                        Icon::from_path("icons/blockchain_01.svg")
+                                            .size(IconSize::Medium),
+                                    ),
                             )
                             .child(
-                                Label::new("Choose a plugin surface to open in this tab.")
-                                    .size(UI_LABEL_DEFAULT)
-                                    .color(Color::Muted),
+                                v_flex()
+                                    .gap_0p5()
+                                    .child(
+                                        Label::new("Open a plugin")
+                                            .size(UI_LABEL_LARGE)
+                                            .weight(gpui::FontWeight::SEMIBOLD),
+                                    )
+                                    .child(
+                                        Label::new("Choose a tool to open in this pane.")
+                                            .size(UI_LABEL_DEFAULT)
+                                            .color(Color::Muted),
+                                    ),
                             ),
                     )
                     .when(has_cards, |launcher| {
-                        launcher.child(div().w_full().grid().grid_cols(3).gap_3().children(cards))
+                        launcher.child(div().w_full().grid().grid_cols(2).gap_2().children(cards))
                     })
                     .when(!has_cards, |launcher| {
                         launcher.child(
-                            div()
+                            h_flex()
                                 .w_full()
-                                .p_6()
+                                .h(px(88.))
+                                .px_3()
+                                .gap_3()
                                 .rounded_md()
                                 .border_1()
-                                .border_color(cx.theme().colors().border)
+                                .border_color(cx.theme().colors().border_variant)
+                                .bg(cx.theme().colors().element_background)
                                 .child(
-                                    Label::new("No plugin surfaces are available.")
-                                        .size(UI_LABEL_DEFAULT)
-                                        .color(Color::Muted),
+                                    div()
+                                        .size(px(36.))
+                                        .flex_none()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .rounded_md()
+                                        .bg(cx.theme().colors().editor_background)
+                                        .child(
+                                            Icon::from_path("icons/blockchain_01.svg")
+                                                .size(IconSize::Medium)
+                                                .color(Color::Muted),
+                                        ),
+                                )
+                                .child(
+                                    v_flex()
+                                        .gap_0p5()
+                                        .child(
+                                            Label::new("No plugins available")
+                                                .size(UI_LABEL_DEFAULT)
+                                                .weight(gpui::FontWeight::SEMIBOLD),
+                                        )
+                                        .child(
+                                            Label::new(
+                                                "Enable a plugin in Settings to see it here.",
+                                            )
+                                            .size(UI_LABEL_SMALL)
+                                            .color(Color::Muted),
+                                        ),
                                 ),
                         )
                     }),
@@ -3997,6 +4054,7 @@ impl Render for Zeddy {
 fn error_menu_header(notice_count: usize, clear_button: AnyElement) -> AnyElement {
     h_flex()
         .w_full()
+        .py_1()
         .justify_between()
         .gap_2()
         .child(
@@ -4008,7 +4066,12 @@ fn error_menu_header(notice_count: usize, clear_button: AnyElement) -> AnyElemen
         .into_any_element()
 }
 
-fn error_notice_row(notice: &ErrorNotice, now: Instant, dismiss_button: AnyElement) -> AnyElement {
+fn error_notice_row(
+    notice: &ErrorNotice,
+    now: Instant,
+    dismiss_button: AnyElement,
+    cx: &App,
+) -> AnyElement {
     let (icon, color) = match notice.key.severity {
         ErrorSeverity::Warning => (IconName::Warning, Color::Warning),
         ErrorSeverity::Error => (IconName::XCircle, Color::Error),
@@ -4018,7 +4081,10 @@ fn error_notice_row(notice: &ErrorNotice, now: Instant, dismiss_button: AnyEleme
         .min_w_0()
         .items_start()
         .gap_2()
-        .py_1()
+        .mb_1()
+        .p_2()
+        .rounded_md()
+        .bg(crate::settings::sidebar_theme_colors(cx.theme()).card_inactive)
         .child(div().flex_none().child(Icon::new(icon).size(IconSize::Small).color(color)))
         .child(
             v_flex()
