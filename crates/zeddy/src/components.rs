@@ -63,6 +63,7 @@ type PopupRowRenderer = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 struct PopupEntry {
     label: SharedString,
     toggle: Option<(IconPosition, bool)>,
+    label_color: Option<Color>,
     action: Option<Box<dyn Action>>,
     handler: PopupHandler,
 }
@@ -161,7 +162,35 @@ impl ContextMenu {
             this.popup_items.push(PopupItem::Entry(PopupEntry {
                 label: label.into(),
                 toggle: None,
+                label_color: None,
                 action,
+                handler: Rc::new(handler),
+            }));
+        }
+        this
+    }
+
+    /// Add a destructive action using the theme's danger text color.
+    pub fn danger_entry(
+        self,
+        label: impl Into<SharedString>,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        let mut this = self.before_item();
+        let label = label.into();
+        if let Some(inner) = this.inner.take() {
+            this.inner = Some(inner.custom_entry(
+                move |_, _| {
+                    Label::new(label.clone()).color(Color::Error).truncate().into_any_element()
+                },
+                handler,
+            ));
+        } else {
+            this.popup_items.push(PopupItem::Entry(PopupEntry {
+                label,
+                toggle: None,
+                label_color: Some(Color::Error),
+                action: None,
                 handler: Rc::new(handler),
             }));
         }
@@ -183,6 +212,7 @@ impl ContextMenu {
             this.popup_items.push(PopupItem::Entry(PopupEntry {
                 label: label.into(),
                 toggle: Some((position, toggled)),
+                label_color: None,
                 action,
                 handler: Rc::new(handler),
             }));
@@ -417,7 +447,20 @@ impl AnchoredMenuWindow {
                     PopupItem::Entry(entry) => {
                         let target = target_window;
                         let handler = entry.handler;
-                        if let Some((position, toggled)) = entry.toggle {
+                        if let Some(label_color) = entry.label_color {
+                            let label = entry.label;
+                            context_menu.custom_entry(
+                                move |_, _| {
+                                    Label::new(label.clone())
+                                        .color(label_color)
+                                        .truncate()
+                                        .into_any_element()
+                                },
+                                move |_, cx| {
+                                    let _ = target.update(cx, |_, window, cx| handler(window, cx));
+                                },
+                            )
+                        } else if let Some((position, toggled)) = entry.toggle {
                             context_menu.toggleable_entry(
                                 entry.label,
                                 toggled,

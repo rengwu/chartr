@@ -541,7 +541,7 @@ pub fn render(
                             let menu = menu.entry("Rename Space", None, move |window, cx| {
                                 rename(Action::RenameSpace { space: action_space }, window, cx)
                             });
-                            menu.separator().entry("Close Space", None, move |window, cx| {
+                            menu.danger_entry("Close Space", move |window, cx| {
                                 close(Action::CloseSpace { space: action_space }, window, cx)
                             })
                         })
