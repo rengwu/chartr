@@ -2135,9 +2135,10 @@ impl Zeddy {
         notices: Vec<ErrorNotice>,
         cx: &Context<Self>,
     ) -> AnyElement {
+        let has_notices = !notices.is_empty();
         h_flex()
             .gap_px()
-            .child(self.error_menu(notices, cx))
+            .when(has_notices, |controls| controls.child(self.error_menu(notices, cx)))
             .child(self.view_menu(on))
             .into_any_element()
     }

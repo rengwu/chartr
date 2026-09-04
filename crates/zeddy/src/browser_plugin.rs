@@ -793,7 +793,7 @@ fn local_page(theme: &BrowserTheme, page: LocalPage<'_>) -> String {
         LocalPage::Start => {
             let shortcut = if cfg!(target_os = "macos") { "⌘L" } else { "Ctrl+L" };
             format!(
-                "<div class='globe'>◎</div><h1>Browse the web</h1><p>Enter a URL or search above — {shortcut} focuses the address bar</p>"
+                "<div class='globe'>🌏</div><h1>Browse the web</h1><p>Enter a URL or search above"
             )
         }
         LocalPage::Error { message, retry } => format!(

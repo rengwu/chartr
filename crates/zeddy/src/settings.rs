@@ -827,12 +827,11 @@ fn catalog_theme(source: &Theme, palette: ThemePalette) -> Theme {
     let colors = &mut theme.styles.colors;
     colors.background = surface;
     colors.surface_background = sidebar;
-    // `card_open` is the palette's active/selected card color. Using it for
-    // the whole elevated surface makes context-menu borders disappear in
-    // palettes where `card_open` intentionally matches `border` (notably the
-    // Catppuccin themes). Keep the menu on the normal card surface so both its
-    // outline and its selected row retain contrast.
-    colors.elevated_surface_background = card;
+    // Context menus use `ghost_element_hover` for their rows. Several palettes
+    // intentionally give cards and hovered rows the same color, so using
+    // `card` here makes pointer hover invisible. The sidebar surface keeps the
+    // menu distinct from both its hover/selected rows and its outline.
+    colors.elevated_surface_background = sidebar;
     colors.element_background = card;
     colors.element_hover = hover;
     colors.element_active = card_open;
@@ -1012,6 +1011,12 @@ mod tests {
                     registered.styles.colors.elevated_surface_background,
                     registered.styles.colors.border_variant,
                     "{} must retain a visible elevated-surface border",
+                    palette.name,
+                );
+                assert_ne!(
+                    registered.styles.colors.elevated_surface_background,
+                    registered.styles.colors.ghost_element_hover,
+                    "{} must retain a visible context-menu hover state",
                     palette.name,
                 );
             }
