@@ -158,6 +158,17 @@ impl Space {
             .is_some_and(|item| item.set_bell(bell))
     }
 
+    pub fn set_plugin_title(&mut self, id: ItemId, title: String) -> bool {
+        let Some(item) = self.items.get_mut(&id).and_then(Item::as_plugin_mut) else {
+            return false;
+        };
+        if item.title == title {
+            return false;
+        }
+        item.title = title;
+        true
+    }
+
     pub fn reattaching(&self, id: ItemId) -> bool {
         self.reattaching.contains(&id)
     }
@@ -1331,6 +1342,15 @@ mod tests {
                 Some("/plugins/hello/icons/WavingHand01Icon.svg")
             );
             assert!(!space.item(launcher).unwrap().is_plugin_launcher());
+        });
+
+        assert!(space.update(cx, |space, _| {
+            space.set_plugin_title(launcher, "Example Page".to_owned())
+        }));
+        cx.read(|cx| {
+            let space = space.read(cx);
+            assert_eq!(space.item(launcher).unwrap().title(), "Example Page");
+            assert_eq!(space.entries(space_entity)[0].title, "Example Page");
         });
 
         space.update(cx, |space, cx| space.act(Action::Close { space: None, item: launcher }, cx));

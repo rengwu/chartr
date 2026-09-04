@@ -103,6 +103,13 @@ impl Item {
         }
     }
 
+    pub fn as_plugin_mut(&mut self) -> Option<&mut PluginItem> {
+        match self {
+            Self::Plugin(item) => Some(item),
+            Self::Session(_) | Self::PluginLauncher { .. } => None,
+        }
+    }
+
     pub fn icon_path(&self) -> Option<SharedString> {
         match self {
             Self::Plugin(item) => Some(item.icon_path.clone()),

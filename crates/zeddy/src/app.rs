@@ -2534,6 +2534,19 @@ impl Zeddy {
         })
     }
 
+    fn browser_title_handler(
+        space: Entity<Space>,
+        item: crate::workspace::ItemId,
+    ) -> crate::browser_plugin::TitleHandler {
+        Rc::new(move |title, cx| {
+            space.update(cx, |space, cx| {
+                if space.set_plugin_title(item, title) {
+                    cx.notify();
+                }
+            });
+        })
+    }
+
     fn plugin_terminal_launcher(space: Entity<Space>) -> zeddy_plugin::TerminalLauncher {
         zeddy_plugin::TerminalLauncher::new(move |input, cx| {
             space.update(cx, |space, cx| space.start_session_with_input(input, cx));
@@ -2594,6 +2607,7 @@ impl Zeddy {
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
+        let on_title_change = Some(Self::browser_title_handler(space.clone(), launcher));
         let instance = InstanceContext {
             instance_id: launcher.get(),
             space: space.read(cx).key(),
@@ -2618,6 +2632,7 @@ impl Zeddy {
                 plugin_paths().data.join(&key.plugin),
                 &instance,
                 on_focus,
+                on_title_change,
                 window,
                 cx,
             ),
@@ -2721,6 +2736,16 @@ impl Zeddy {
                     bound_session: bound_session.clone(),
                     terminal: Self::plugin_terminal_launcher(space.clone()),
                 };
+                let Some(item_id) = space
+                    .read(cx)
+                    .workspace_tabs()
+                    .item_ids()
+                    .find(|item| item.get() == record.item_id())
+                else {
+                    failures.push(format!("{plugin}:{pane} had no saved layout item"));
+                    continue;
+                };
+                let on_title_change = Some(Self::browser_title_handler(space.clone(), item_id));
                 let Some(loaded) = self.catalog.get_mut(plugin) else {
                     failures.push(format!("{plugin}:{pane} is disabled"));
                     continue;
@@ -2734,6 +2759,7 @@ impl Zeddy {
                             plugin_paths().data.join(plugin),
                             &instance,
                             on_focus,
+                            on_title_change,
                             window,
                             cx,
                         )
@@ -2812,6 +2838,7 @@ impl Zeddy {
             return true;
         };
         let item = space.update(cx, |space, _| space.reserve_plugin_item());
+        let on_title_change = Some(Self::browser_title_handler(space.clone(), item));
         let instance = InstanceContext {
             instance_id: item.get(),
             space: space.read(cx).key(),
@@ -2831,6 +2858,7 @@ impl Zeddy {
                 plugin_paths().data.join(&key.plugin),
                 &instance,
                 on_focus,
+                on_title_change,
                 window,
                 cx,
             ),

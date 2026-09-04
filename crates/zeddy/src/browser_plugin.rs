@@ -32,6 +32,8 @@ use crate::{
     web_plugin::{FocusHandler, NativeViewLease, NativeViewLeaseOwner, NativeWebViewHandle},
 };
 
+pub type TitleHandler = Rc<dyn Fn(String, &mut App)>;
+
 actions!(
     chartr_browser,
     [SubmitAddress, FocusAddressBar, SelectPageContent, ReloadPage, GoBack, GoForward, StopLoading]
@@ -63,6 +65,7 @@ pub fn view(
     data_dir: PathBuf,
     instance: &InstanceContext,
     on_focus: Option<FocusHandler>,
+    on_title_change: Option<TitleHandler>,
     window: &mut Window,
     cx: &mut App,
 ) -> PluginView {
@@ -71,7 +74,17 @@ pub fn view(
     let theme = active_pane_theme(cx);
     let content = NativeWebViewHandle::default();
     let view = cx.new(|cx| {
-        BrowserView::new(data_dir, space, instance_id, theme, on_focus, content.clone(), window, cx)
+        BrowserView::new(
+            data_dir,
+            space,
+            instance_id,
+            theme,
+            on_focus,
+            on_title_change,
+            content.clone(),
+            window,
+            cx,
+        )
     });
     let close = content.clone();
     PluginView::with_close(view.into(), move || close.shutdown())
@@ -97,6 +110,7 @@ enum BrowserEvent {
     Stop,
     FocusAddress,
     FocusPane,
+    TitleChanged(String),
     LoadStarted(String),
     LoadFinished(String),
 }
@@ -108,6 +122,7 @@ struct BrowserView {
     address_input: gpui::Entity<TextInput>,
     runtime: BrowserRuntime,
     on_focus: Option<FocusHandler>,
+    on_title_change: Option<TitleHandler>,
     pane_theme: PaneTheme,
     theme: BrowserTheme,
     _event_task: gpui::Task<()>,
@@ -134,6 +149,7 @@ impl BrowserView {
         instance_id: u64,
         pane_theme: PaneTheme,
         on_focus: Option<FocusHandler>,
+        on_title_change: Option<TitleHandler>,
         content: NativeWebViewHandle,
         window: &Window,
         cx: &mut Context<Self>,
@@ -178,6 +194,7 @@ impl BrowserView {
                 address_input,
                 runtime,
                 on_focus,
+                on_title_change,
                 pane_theme,
                 theme,
                 _event_task: event_task,
@@ -189,6 +206,7 @@ impl BrowserView {
 
         let content_events = event_tx.clone();
         let window_events = event_tx.clone();
+        let title_events = event_tx.clone();
         let load_events = event_tx;
         let builder = WebViewBuilder::new_with_web_context(&mut web_context);
         let builder = builder
@@ -208,6 +226,9 @@ impl BrowserView {
             .with_download_started_handler(move |url, _| {
                 open_external(&url);
                 false
+            })
+            .with_document_title_changed_handler(move |title| {
+                let _ = title_events.unbounded_send(BrowserEvent::TitleChanged(title));
             })
             .with_on_page_load_handler(move |event, url| {
                 let event = match event {
@@ -241,6 +262,7 @@ impl BrowserView {
             address_input,
             runtime,
             on_focus,
+            on_title_change,
             pane_theme,
             theme,
             _event_task: event_task,
@@ -261,6 +283,11 @@ impl BrowserView {
                 window.focus(&self.content_focus, cx);
                 if let Some(on_focus) = &self.on_focus {
                     on_focus(cx.entity_id(), cx);
+                }
+            }
+            BrowserEvent::TitleChanged(title) => {
+                if let Some(on_title_change) = &self.on_title_change {
+                    on_title_change(display_title(&title), cx);
                 }
             }
             event => {
@@ -360,7 +387,9 @@ impl BrowserRuntime {
                 self.control(|webview| webview.evaluate_script("window.stop()"));
                 self.loading = false;
             }
-            BrowserEvent::FocusAddress | BrowserEvent::FocusPane => {}
+            BrowserEvent::FocusAddress
+            | BrowserEvent::FocusPane
+            | BrowserEvent::TitleChanged(_) => {}
             BrowserEvent::LoadStarted(url) if is_http_url(&url) => {
                 self.current_url = Some(url.clone());
                 self.last_attempt = Some(url);
@@ -722,6 +751,11 @@ fn is_allowed_navigation(url: &str) -> bool {
     is_http_url(url) || url == "about:blank"
 }
 
+fn display_title(title: &str) -> String {
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title.is_empty() { "Browser".to_owned() } else { title }
+}
+
 fn state_path(data: &Path, space: &str, instance: u64) -> PathBuf {
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in space.as_bytes() {
@@ -1039,6 +1073,12 @@ mod tests {
         for input in ["file:///tmp/secret", "mailto:user@example.com", "tel:123"] {
             assert!(resolve_input(input).is_err(), "{input}");
         }
+    }
+
+    #[test]
+    fn document_titles_are_normalized_for_tabs() {
+        assert_eq!(display_title("  Example\n  Page  "), "Example Page");
+        assert_eq!(display_title(" \n\t "), "Browser");
     }
 
     #[test]
