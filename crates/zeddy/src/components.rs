@@ -381,6 +381,7 @@ impl RenderOnce for PopupMenu {
             window,
             cx,
         );
+        let trigger_id = self.id.clone();
         let bounds = self.trigger_bounds;
         let measured_bounds = bounds.clone();
         let anchor = self.anchor;
@@ -396,6 +397,9 @@ impl RenderOnce for PopupMenu {
             )
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                 cx.stop_propagation();
+                if dismiss_popup_for_trigger(&trigger_id, window.window_handle(), cx) {
+                    return;
+                }
                 let Some(bounds) = bounds.get() else {
                     return;
                 };
@@ -405,7 +409,7 @@ impl RenderOnce for PopupMenu {
                 let Some(menu) = builder(window, cx) else {
                     return;
                 };
-                open_popup(menu, bounds, anchor.get(), window, cx);
+                open_popup(menu, bounds, anchor.get(), Some(trigger_id.clone()), window, cx);
             })
     }
 }
@@ -465,6 +469,7 @@ impl RenderOnce for PopupRightClickMenu {
                     menu,
                     Bounds::new(event.position, size(px(1.), px(1.))),
                     Anchor::TopLeft,
+                    None,
                     window,
                     cx,
                 );
@@ -475,6 +480,8 @@ impl RenderOnce for PopupRightClickMenu {
 
 struct AnchoredMenuWindow {
     menu: Entity<UiContextMenu>,
+    target_window: AnyWindowHandle,
+    trigger_id: Option<ElementId>,
     popup_width: Pixels,
     maximum_height: Pixels,
     fitted_height: Rc<Cell<Option<Pixels>>>,
@@ -483,6 +490,7 @@ struct AnchoredMenuWindow {
 impl AnchoredMenuWindow {
     fn new(
         menu: AnchoredContextMenu,
+        trigger_id: Option<ElementId>,
         maximum_height: Pixels,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -567,6 +575,8 @@ impl AnchoredMenuWindow {
         });
         Self {
             menu: context_menu,
+            target_window,
+            trigger_id,
             popup_width: menu_width + POPUP_OUTSET * 2.,
             maximum_height,
             fitted_height: Rc::default(),
@@ -604,10 +614,45 @@ impl Render for AnchoredMenuWindow {
     }
 }
 
+/// Close any button-triggered menu owned by `parent`. Returning `true` for the same trigger
+/// gives native popups toggle behavior and prevents their dismissing click from opening a second
+/// popup before the first child window has finished closing.
+fn dismiss_popup_for_trigger(
+    trigger_id: &ElementId,
+    parent: AnyWindowHandle,
+    cx: &mut App,
+) -> bool {
+    let mut matched_trigger = false;
+    let open_menus = cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<AnchoredMenuWindow>())
+        .collect::<Vec<_>>();
+
+    for popup in open_menus {
+        let (owned_by_parent, matches_trigger) = popup
+            .read(cx)
+            .map(|menu| {
+                (
+                    menu.target_window == parent && menu.trigger_id.is_some(),
+                    menu.target_window == parent && menu.trigger_id.as_ref() == Some(trigger_id),
+                )
+            })
+            .unwrap_or_default();
+        if owned_by_parent {
+            matched_trigger |= matches_trigger;
+            let _ = popup.update(cx, |_, window, _| window.remove_window());
+        }
+    }
+
+    matched_trigger
+}
+
 fn open_popup(
     mut menu: AnchoredContextMenu,
     trigger_bounds: Bounds<Pixels>,
     anchor: Anchor,
+    trigger_id: Option<ElementId>,
     parent_window: &mut Window,
     cx: &mut App,
 ) {
@@ -651,7 +696,9 @@ fn open_popup(
             window_min_size: Some(size(popup_width, px(1.))),
             ..Default::default()
         },
-        move |window, cx| cx.new(|cx| AnchoredMenuWindow::new(menu, maximum_height, window, cx)),
+        move |window, cx| {
+            cx.new(|cx| AnchoredMenuWindow::new(menu, trigger_id, maximum_height, window, cx))
+        },
     );
 
     match opened {
@@ -838,6 +885,30 @@ mod popup_menu_tests {
 
         assert!(invoked.get(), "clicking a popup entry should invoke its parent-window handler");
         assert_eq!(popup.windows(), vec![parent], "confirming an entry should close the popup");
+    }
+
+    #[gpui::test]
+    fn clicking_an_open_popup_trigger_does_not_reopen_it(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let invoked = Rc::new(Cell::new(false));
+        let invoked_for_view = invoked.clone();
+        let (_, cx) = cx.add_window_view(|_, _| MenuHarness { invoked: invoked_for_view });
+        let parent = cx.window_handle();
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        assert_eq!(cx.windows().len(), 2, "the first click should open the popup");
+
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        cx.run_until_parked();
+
+        assert_eq!(cx.windows(), vec![parent], "the second click should only close the popup");
     }
 
     #[gpui::test]
