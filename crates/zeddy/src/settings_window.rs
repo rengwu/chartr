@@ -122,7 +122,6 @@ pub struct SettingsWindow {
     plugin_installing: Option<String>,
     plugin_restart_required: bool,
     recording_keymap: Option<KeymapAction>,
-    keymap_restart_required: bool,
     ui_font_size_input: Entity<TextInput>,
     terminal_font_size_input: Entity<TextInput>,
     hotkey_widths: Entity<RedistributableColumnsState>,
@@ -205,7 +204,6 @@ impl SettingsWindow {
             plugin_installing: None,
             plugin_restart_required: false,
             recording_keymap: None,
-            keymap_restart_required: false,
             ui_font_size_input,
             terminal_font_size_input,
             hotkey_widths: cx.new(|_| {
@@ -508,10 +506,12 @@ impl SettingsWindow {
                 return;
             }
             let key = event.keystroke.unparse();
+            let previous_key = cx.global::<KeymapStore>().key(action).to_owned();
             match cx.update_global::<KeymapStore, _>(|keymap, _| keymap.set(action, key)) {
                 Ok(()) => {
+                    let new_key = cx.global::<KeymapStore>().key(action).to_owned();
+                    crate::actions::rebind(action, &previous_key, &new_key, cx);
                     self.recording_keymap = None;
-                    self.keymap_restart_required = true;
                     self.problem = None;
                 }
                 Err(error) => self.problem = Some(error.to_string()),
@@ -1257,17 +1257,9 @@ impl SettingsWindow {
                         .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
                 )
             })
-            .when(self.keymap_restart_required, |view| {
-                view.child(Banner::new().child(
-                    Label::new(
-                        "Shortcut changes are saved. Restart Chartr to rebuild the application keymap.",
-                    )
-                    .size(UI_LABEL_DEFAULT),
-                ))
-            })
             .child(
                 Label::new(
-                    "Click a shortcut, then press one key chord. Conflicts in the Chartr context are rejected.",
+                    "Click a shortcut, then press one key chord. Changes apply immediately; conflicts in the Chartr context are rejected.",
                 )
                 .size(UI_LABEL_SMALL)
                 .color(Color::Muted),

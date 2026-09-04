@@ -2,9 +2,8 @@
 //!
 //! The editable file is sparse, like Zed's keymap: omitted actions keep their
 //! platform default. Settings records one chord at a time, rejects conflicts
-//! in the shared `Chartr` context, and writes atomically. Bindings are loaded at
-//! launch; Settings says so rather than pretending GPUI can remove one binding
-//! without rebuilding the application keymap.
+//! in the shared `Chartr` context, writes atomically, and updates GPUI's live
+//! keymap after each successful edit.
 
 use std::{
     collections::BTreeMap,

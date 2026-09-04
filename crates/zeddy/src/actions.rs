@@ -4,7 +4,7 @@
 //! for keymaps, buttons, menus, and the command palette.
 
 use ::settings::{DEFAULT_KEYMAP_PATH, KeymapFile};
-use gpui::{App, KeyBinding};
+use gpui::{App, KeyBinding, Unbind};
 
 use crate::keymap::{KeymapAction, KeymapStore};
 
@@ -76,6 +76,56 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
     cx.bind_keys([KeyBinding::new("ctrl-k", terminal_send_keystroke("ctrl-k"), Some("Terminal"))]);
 }
 
+/// Replace one user-editable binding in GPUI's live keymap.
+///
+/// GPUI bindings are append-only, with later entries taking precedence. A
+/// targeted `Unbind` disables the prior action/chord without disturbing any
+/// terminal, browser, or text-input bindings installed by other modules.
+pub fn rebind(action: KeymapAction, previous_key: &str, new_key: &str, cx: &mut App) {
+    let context = Some("Chartr");
+    match action {
+        KeymapAction::CloseItem => {
+            replace_binding(previous_key, new_key, pane::CloseActiveItem, context, cx)
+        }
+        KeymapAction::NewTerminal => {
+            replace_binding(previous_key, new_key, workspace::NewTerminal, context, cx)
+        }
+        KeymapAction::FocusLeft => {
+            replace_binding(previous_key, new_key, workspace::ActivatePaneLeft, context, cx)
+        }
+        KeymapAction::FocusRight => {
+            replace_binding(previous_key, new_key, workspace::ActivatePaneRight, context, cx)
+        }
+        KeymapAction::FocusUp => {
+            replace_binding(previous_key, new_key, workspace::ActivatePaneUp, context, cx)
+        }
+        KeymapAction::FocusDown => {
+            replace_binding(previous_key, new_key, workspace::ActivatePaneDown, context, cx)
+        }
+        KeymapAction::CommandPalette => {
+            replace_binding(previous_key, new_key, command_palette::Toggle, context, cx)
+        }
+        KeymapAction::OpenSettings => {
+            replace_binding(previous_key, new_key, settings::Open, context, cx);
+            replace_binding(previous_key, new_key, settings::Open, Some("ChartrSettings"), cx);
+        }
+    }
+}
+
+fn replace_binding(
+    previous_key: &str,
+    new_key: &str,
+    action: impl gpui::Action,
+    context: Option<&str>,
+    cx: &mut App,
+) {
+    let action_name = action.name();
+    cx.bind_keys([
+        KeyBinding::new(previous_key, Unbind(action_name.into()), context),
+        KeyBinding::new(new_key, action, context),
+    ]);
+}
+
 fn upstream_terminal_bindings(cx: &App) -> Vec<KeyBinding> {
     KeymapFile::load_asset_allow_partial_failure(DEFAULT_KEYMAP_PATH, cx)
         .expect("the pinned Zed terminal keymap must remain loadable")
@@ -97,7 +147,7 @@ fn terminal_send_keystroke(keystroke: &str) -> terminal_view::SendKeystroke {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::TestAppContext;
+    use gpui::{KeyContext, Keystroke, TestAppContext};
 
     #[gpui::test]
     fn imports_the_pinned_zed_terminal_keymap(cx: &mut TestAppContext) {
@@ -124,6 +174,54 @@ mod tests {
             assert!(has_binding("cmd-v", "terminal::Paste"));
             #[cfg(not(target_os = "macos"))]
             assert!(has_binding("ctrl-shift-v", "terminal::Paste"));
+        });
+    }
+
+    #[gpui::test]
+    fn live_rebind_disables_the_previous_shortcut(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let previous_key = KeymapAction::CloseItem.default_key();
+            cx.bind_keys([KeyBinding::new(previous_key, pane::CloseActiveItem, Some("Chartr"))]);
+
+            rebind(KeymapAction::CloseItem, previous_key, "ctrl-alt-w", cx);
+
+            let keymap = cx.key_bindings();
+            let keymap = keymap.borrow();
+            let active = keymap.bindings_for_action(&pane::CloseActiveItem).collect::<Vec<_>>();
+            let previous = Keystroke::parse(previous_key).unwrap();
+            let replacement = Keystroke::parse("ctrl-alt-w").unwrap();
+            assert_eq!(active.len(), 1);
+            assert_eq!(active[0].match_keystrokes(&[replacement]), Some(false));
+            assert!(
+                active
+                    .iter()
+                    .all(|binding| binding.match_keystrokes(std::slice::from_ref(&previous))
+                        != Some(false))
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn open_settings_rebinds_in_both_application_contexts(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let previous_key = KeymapAction::OpenSettings.default_key();
+            cx.bind_keys([
+                KeyBinding::new(previous_key, settings::Open, Some("Chartr")),
+                KeyBinding::new(previous_key, settings::Open, Some("ChartrSettings")),
+            ]);
+
+            rebind(KeymapAction::OpenSettings, previous_key, "ctrl-alt-s", cx);
+
+            let keymap = cx.key_bindings();
+            let keymap = keymap.borrow();
+            let replacement = Keystroke::parse("ctrl-alt-s").unwrap();
+            for context in ["Chartr", "ChartrSettings"] {
+                let contexts = [KeyContext::parse(context).unwrap()];
+                let (matches, pending) =
+                    keymap.bindings_for_input(std::slice::from_ref(&replacement), &contexts);
+                assert!(!pending);
+                assert!(matches.iter().any(|binding| binding.action().partial_eq(&settings::Open)));
+            }
         });
     }
 }
