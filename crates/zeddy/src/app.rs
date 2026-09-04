@@ -1762,6 +1762,8 @@ impl Zeddy {
                 permissions,
                 None,
                 None,
+                None,
+                None,
                 window,
                 cx,
             ),
@@ -2535,6 +2537,25 @@ impl Zeddy {
         })
     }
 
+    fn web_plugin_terminal_launch_handler(
+        space: Entity<Space>,
+    ) -> crate::web_plugin::TerminalLaunchHandler {
+        Rc::new(move |input, cx| {
+            space.update(cx, |space, cx| space.start_session_with_input(input, cx));
+        })
+    }
+
+    fn web_plugin_space_metadata(
+        space: &Entity<Space>,
+        cx: &App,
+    ) -> crate::web_plugin::SpaceMetadata {
+        let space = space.read(cx);
+        crate::web_plugin::SpaceMetadata {
+            name: space.name().to_owned(),
+            project: (space.kind() == SpaceKind::Registered).then(|| space.path().clone()),
+        }
+    }
+
     fn open_plugin_from_launcher(
         &mut self,
         launcher: crate::workspace::ItemId,
@@ -2588,6 +2609,8 @@ impl Zeddy {
         }
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let space_metadata = Some(Self::web_plugin_space_metadata(&space, cx));
+        let on_terminal_launch = Some(Self::web_plugin_terminal_launch_handler(space.clone()));
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
         let instance = InstanceContext {
             instance_id: launcher.get(),
@@ -2626,6 +2649,8 @@ impl Zeddy {
                     broker,
                     permissions.clone(),
                     session_access,
+                    space_metadata,
+                    on_terminal_launch,
                     on_focus,
                     window,
                     cx,
@@ -2697,6 +2722,9 @@ impl Zeddy {
                 }
                 let project = (space.read(cx).kind() == SpaceKind::Registered)
                     .then(|| space.read(cx).path().clone());
+                let space_metadata = Some(Self::web_plugin_space_metadata(&space, cx));
+                let on_terminal_launch =
+                    Some(Self::web_plugin_terminal_launch_handler(space.clone()));
                 let unsafe_filesystem = self.settings.resolved().plugin(plugin).unsafe_filesystem;
                 let bound = bound_session.clone().map(zeddy_herdr::PaneId);
                 let session_access =
@@ -2741,6 +2769,8 @@ impl Zeddy {
                             broker,
                             permissions.clone(),
                             session_access,
+                            space_metadata,
+                            on_terminal_launch,
                             on_focus,
                             window,
                             cx,
@@ -2793,6 +2823,8 @@ impl Zeddy {
         let icon_path = gpui::SharedString::from(loaded.icon_path().to_string_lossy().into_owned());
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let space_metadata = Some(Self::web_plugin_space_metadata(&space, cx));
+        let on_terminal_launch = Some(Self::web_plugin_terminal_launch_handler(space.clone()));
         let session_access =
             bound_session.as_ref().and_then(|session| space.read(cx).session_access(session));
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
@@ -2833,6 +2865,8 @@ impl Zeddy {
                 ),
                 permissions,
                 session_access,
+                space_metadata,
+                on_terminal_launch,
                 on_focus,
                 window,
                 cx,
@@ -4288,6 +4322,7 @@ pub(crate) fn plugin_paths() -> Paths {
 
 const BUNDLED_HELLO_ID: &str = "com.example.hello";
 const BUNDLED_CLOCK_ID: &str = "com.example.clock";
+const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
 
 fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
     let paths = plugin_paths();
@@ -4324,6 +4359,22 @@ fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
             Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected {
                 dir,
                 why: format!("cannot prepare the bundled Clock plugin: {why}"),
+            }),
+        }
+    }
+
+    if !catalog.contains(BUNDLED_AGENT_ID) {
+        let dir = paths.bundled.join(BUNDLED_AGENT_ID);
+        match materialize_bundled_agent(&dir) {
+            Ok(()) => catalog.add_directory(
+                &dir,
+                &paths,
+                settings.resolved().plugin(BUNDLED_AGENT_ID).enabled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected {
+                dir,
+                why: format!("cannot prepare the bundled Agent plugin: {why}"),
             }),
         }
     }
@@ -4370,6 +4421,28 @@ fn materialize_bundled_clock(dir: &std::path::Path) -> std::io::Result<()> {
     )
 }
 
+fn materialize_bundled_agent(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    write_bundled_file(
+        &dir.join("zeddy-plugin.toml"),
+        include_bytes!("../../../plugins/agent/zeddy-plugin.toml"),
+    )?;
+    std::fs::create_dir_all(dir.join("icons"))?;
+    write_bundled_file(
+        &dir.join("icons/Blockchain01Icon.svg"),
+        include_bytes!("../../../plugins/agent/icons/Blockchain01Icon.svg"),
+    )?;
+    write_bundled_file(
+        &dir.join("index.html"),
+        include_bytes!("../../../plugins/agent/index.html"),
+    )?;
+    write_bundled_file(
+        &dir.join("styles.css"),
+        include_bytes!("../../../plugins/agent/styles.css"),
+    )?;
+    write_bundled_file(&dir.join("app.js"), include_bytes!("../../../plugins/agent/app.js"))
+}
+
 fn write_bundled_file(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
     if std::fs::read(path).is_ok_and(|current| current == contents) {
         return Ok(());
@@ -4381,9 +4454,10 @@ fn write_bundled_file(path: &std::path::Path, contents: &[u8]) -> std::io::Resul
 mod pane_drop_tests {
     use super::{
         ErrorNoticeKey, ErrorSeverity, PersistedSpaceKind, Registry, Snapshot, SplitDirection,
-        cleanup_empty_implicit_root, materialize_bundled_clock, materialize_bundled_hello,
-        pane_drop_direction_for_position, reconcile_error_notices, regex_escape_literal,
-        relative_error_time, resolve_terminal_path, split_direction_for_position,
+        cleanup_empty_implicit_root, materialize_bundled_agent, materialize_bundled_clock,
+        materialize_bundled_hello, pane_drop_direction_for_position, reconcile_error_notices,
+        regex_escape_literal, relative_error_time, resolve_terminal_path,
+        split_direction_for_position,
     };
     use crate::{persistence::PersistedSpace, workspace::WorkspaceTabs};
     use std::{
@@ -4467,6 +4541,23 @@ mod pane_drop_tests {
         assert!(manifest.icon_path(&dir).is_file());
         assert!(dir.join("index.html").is_file());
         assert!(dir.join("settings.html").is_file());
+    }
+
+    #[test]
+    fn the_bundled_agent_materializes_as_a_terminal_launch_plugin() {
+        let temporary = tempfile::tempdir().unwrap();
+        let dir = temporary.path().join("com.chartr.agent");
+
+        materialize_bundled_agent(&dir).unwrap();
+
+        let manifest = zeddy_plugin::Manifest::read(&dir).unwrap();
+        assert_eq!(manifest.id, "com.chartr.agent");
+        assert!(manifest.permissions.terminal);
+        assert!(!manifest.permissions.process);
+        assert!(manifest.icon_path(&dir).is_file());
+        assert!(dir.join("index.html").is_file());
+        assert!(dir.join("styles.css").is_file());
+        assert!(dir.join("app.js").is_file());
     }
 
     #[test]

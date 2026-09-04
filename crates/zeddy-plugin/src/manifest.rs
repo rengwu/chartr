@@ -38,6 +38,11 @@ pub struct Permissions {
     pub network: Vec<String>,
     #[serde(default)]
     pub process: bool,
+    /// May ask Chartr to create an owned terminal and start a command in it.
+    /// This is deliberately separate from `process`: a terminal launch stays
+    /// visible in the owning space and follows the ordinary session lifecycle.
+    #[serde(default)]
+    pub terminal: bool,
     #[serde(default)]
     pub session: bool,
 }
@@ -274,16 +279,21 @@ mod tests {
         assert!(!defaults.capabilities.cloneable);
         assert_eq!(defaults.permissions.project_files, ProjectAccess::None);
         assert!(defaults.permissions.network.is_empty());
+        assert!(!defaults.permissions.terminal);
 
         let declared = parse(&format!(
             "{WEB}\n[capabilities]\nmultiplicity = 'multiple'\ncloneable = true\nrestorable = true\nsession_binding = true\n\
-             [permissions]\nproject_files = 'read_write'\nnetwork = ['https://api.example.com']\nprocess = true\nsession = true\n"
+             [permissions]\nproject_files = 'read_write'\nnetwork = ['https://api.example.com']\nprocess = true\nterminal = true\nsession = true\n"
         ))
         .expect("declared contract");
         assert_eq!(declared.capabilities.multiplicity, Multiplicity::Multiple);
         assert!(declared.capabilities.cloneable && declared.capabilities.restorable);
         assert_eq!(declared.permissions.project_files, ProjectAccess::ReadWrite);
-        assert!(declared.permissions.process && declared.permissions.session);
+        assert!(
+            declared.permissions.process
+                && declared.permissions.terminal
+                && declared.permissions.session
+        );
     }
 
     #[test]

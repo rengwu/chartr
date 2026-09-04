@@ -192,7 +192,10 @@ objects inside the host process's single framework copy.
 
 `plugins/hello` and `plugins/clock` are complete build-time native and web
 examples. Chartr bundles them as the **Hello** and **Clock** launcher entries;
-the Clock directory remains a reference for portable plugin authors.
+the Clock directory remains a reference for portable plugin authors. The
+bundled **Agent** web plugin in `plugins/agent` keeps a private registry of
+agent launch definitions and uses the terminal-launch host action to open the
+selected adapter and prompt as an ordinary Chartr-owned session.
 
 `plugins/browser` is the code-free package for the separately released,
 first-party **Browser** plugin. It is deliberately absent from the bundled

@@ -1371,6 +1371,9 @@ impl SettingsWindow {
                     if manifest.permissions.process {
                         grants.push("process actions".to_owned());
                     }
+                    if manifest.permissions.terminal {
+                        grants.push("terminal launches".to_owned());
+                    }
                     if manifest.permissions.session {
                         grants.push("bound-session actions".to_owned());
                     }
@@ -1658,7 +1661,6 @@ fn number_field(
         .aria_label(label)
         .aria_description(description)
         .h(ButtonSize::Default.rems())
-        .gap_1()
         .child(decrement)
         .child(
             h_flex()

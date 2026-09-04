@@ -835,7 +835,14 @@ impl Space {
     }
 
     pub fn start_session(&mut self, cx: &mut Context<Self>) {
-        self.start_session_at(None, cx);
+        self.start_session_at(None, Vec::new(), cx);
+    }
+
+    /// Create an ordinary Chartr-owned terminal and queue its first shell/TUI
+    /// input before publishing the new tab. Web plugins use this path rather
+    /// than starting a detached process of their own.
+    pub fn start_session_with_input(&mut self, input: Vec<u8>, cx: &mut Context<Self>) {
+        self.start_session_at(None, input, cx);
     }
 
     pub fn start_session_in(
@@ -844,12 +851,13 @@ impl Space {
         pane: crate::workspace::PaneId,
         cx: &mut Context<Self>,
     ) {
-        self.start_session_at(Some((tab, pane)), cx);
+        self.start_session_at(Some((tab, pane)), Vec::new(), cx);
     }
 
     fn start_session_at(
         &mut self,
         destination: Option<(WorkspaceTabId, crate::workspace::PaneId)>,
+        initial_input: Vec<u8>,
         cx: &mut Context<Self>,
     ) {
         if self.starting {
@@ -906,16 +914,20 @@ impl Space {
                 match result {
                     Ok(builder) => {
                         let session = this.session_from_builder(info, builder, cx);
-                        if let Some((tab, pane)) = destination {
-                            if let Some(id) = this.insert_session_in(session, tab, pane) {
-                                cx.emit(SpaceEvent::TerminalReady(id));
-                            }
+                        let input = session.access();
+                        let inserted = if let Some((tab, pane)) = destination {
+                            this.insert_session_in(session, tab, pane)
                         } else {
-                            if let Some(id) = this.insert_session(session) {
-                                cx.emit(SpaceEvent::TerminalReady(id));
+                            this.insert_session(session)
+                        };
+                        if let Some(id) = inserted {
+                            if !initial_input.is_empty()
+                                && let Err(error) = input.send(&initial_input)
+                            {
+                                this.problem = Some(error.to_string());
                             }
+                            cx.emit(SpaceEvent::TerminalReady(id));
                         }
-                        this.problem = None;
                     }
                     Err(error) => this.problem = Some(error.to_string()),
                 }

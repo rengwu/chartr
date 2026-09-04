@@ -192,6 +192,17 @@ FLIP settle remains continuous. Enable Appearance / Reduce Motion and repeat:
 direct pointer carrying and sorting remain, while displaced-card and release
 settle animations are absent.
 
+Open the bundled Agent plugin in a folder space and in Free sessions. With an
+empty registry, confirm the composer, picker, and launch action are disabled;
+**Register your first agent** must navigate to **Agent management** and open the
+registration dialog immediately. Register an adapter with arguments and each
+prompt-delivery mode, edit it through the same dialog, and confirm deletion is
+guarded by a confirmation. Return through both Back and the pane chevron's
+**Manage agents** item, launch a non-empty prompt, and confirm the resulting
+Chartr-owned terminal opens in the pane's owning space with the registered
+environment, arguments, and prompt delivery. Relaunch Chartr and confirm the
+agent registry remains available in every space.
+
 ## Persistence and lifecycle
 
 Relaunch after changing window bounds, sidebar width/scope, mode, full space
