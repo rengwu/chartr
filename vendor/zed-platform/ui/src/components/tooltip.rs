@@ -287,6 +287,7 @@ impl Render for Tooltip {
         let tooltip = cx.weak_entity();
         let parent = window.window_handle();
         let mouse_position = window.mouse_position();
+        let rem_size = window.rem_size();
         let display_id = window.display(cx).map(|display| display.id());
         let title = self.title.clone();
         let meta = self.meta.clone();
@@ -317,6 +318,7 @@ impl Render for Tooltip {
                                 parent,
                                 mouse_position,
                                 bounds.size,
+                                rem_size,
                                 display_id,
                                 title,
                                 meta,
@@ -408,6 +410,7 @@ fn open_native_tooltip(
     parent: AnyWindowHandle,
     mouse_position: Point<Pixels>,
     tooltip_size: Size<Pixels>,
+    rem_size: Pixels,
     display_id: Option<DisplayId>,
     title: Title,
     meta: Option<SharedString>,
@@ -452,7 +455,11 @@ fn open_native_tooltip(
             window_min_size: Some(popup_size),
             ..Default::default()
         },
-        move |_, cx| {
+        move |window, cx| {
+            // The tooltip was measured in its parent window. Native windows start with GPUI's
+            // default rem size, so preserve the parent's scale before laying the content out
+            // again or the text can grow beyond the measured popup bounds.
+            window.set_rem_size(rem_size);
             cx.new(|_| NativeTooltipWindow {
                 title,
                 meta,

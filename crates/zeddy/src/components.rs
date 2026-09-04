@@ -750,7 +750,8 @@ mod popup_menu_tests {
     struct NativeTooltipHarness;
 
     impl Render for NativeTooltipHarness {
-        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            window.set_rem_size(px(14.));
             div().size_full().child(
                 ui::Button::new("native-tooltip-trigger", "Hover")
                     .tooltip(ui::Tooltip::text("Native tooltip")),
@@ -937,6 +938,7 @@ mod popup_menu_tests {
 
         let (_, cx) = cx.add_window_view(|_, _| NativeTooltipHarness);
         let parent = cx.window_handle();
+        let parent_rem_size = cx.update(|window, _| window.rem_size());
         cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
         cx.run_until_parked();
         cx.executor().advance_clock(Duration::from_millis(600));
@@ -955,6 +957,8 @@ mod popup_menu_tests {
                 .debug_bounds("NATIVE_TOOLTIP_BODY")
                 .expect("the native popup should render the tooltip body");
             let popup_size = popup.update(|window, _| window.viewport_size());
+            let popup_rem_size = popup.update(|window, _| window.rem_size());
+            assert_eq!(popup_rem_size, parent_rem_size);
             assert_eq!(body.origin, point(px(8.), px(8.)));
             assert_eq!(popup_size.width, body.size.width + px(16.));
             assert_eq!(popup_size.height, body.size.height + px(16.));
