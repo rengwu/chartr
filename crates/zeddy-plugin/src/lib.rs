@@ -59,7 +59,44 @@ pub mod manifest;
 pub use gpui;
 pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, ProjectAccess};
 
-use std::path::PathBuf;
+use std::{path::PathBuf, rc::Rc};
+
+type TerminalLaunchHandler = dyn Fn(Vec<u8>, &mut gpui::App);
+
+/// A space-scoped capability for opening a Chartr-owned terminal.
+///
+/// Native plugins are linked into Chartr and trusted, but creating a terminal
+/// still belongs to the host: it must be inserted into the pane's owning space
+/// and follow the same persistence and close lifecycle as a user-created one.
+#[derive(Clone)]
+pub struct TerminalLauncher {
+    launch: Rc<TerminalLaunchHandler>,
+}
+
+impl TerminalLauncher {
+    pub fn new(launch: impl Fn(Vec<u8>, &mut gpui::App) + 'static) -> Self {
+        Self { launch: Rc::new(launch) }
+    }
+
+    /// Open a terminal and queue the bytes it should receive first.
+    pub fn launch(&self, initial_input: Vec<u8>, cx: &mut gpui::App) {
+        (self.launch)(initial_input, cx);
+    }
+}
+
+impl std::fmt::Debug for TerminalLauncher {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("TerminalLauncher(..)")
+    }
+}
+
+impl PartialEq for TerminalLauncher {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.launch, &other.launch)
+    }
+}
+
+impl Eq for TerminalLauncher {}
 
 /// A pane a plugin contributes, addressed by the plugin's id and its own key.
 ///
@@ -89,9 +126,14 @@ pub struct PaneSpec {
 pub struct InstanceContext {
     /// Stable within the owning space and retained when this item is restored.
     pub instance_id: u64,
+    /// Stable persistence key for the owning space.
     pub space: String,
+    /// User-visible name of the owning space.
+    pub space_name: String,
     pub project_dir: Option<PathBuf>,
     pub bound_session: Option<String>,
+    /// Host capability available to trusted native panes.
+    pub terminal: TerminalLauncher,
 }
 
 /// What a plugin declares during [`Plugin::activate`].

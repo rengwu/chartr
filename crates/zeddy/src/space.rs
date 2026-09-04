@@ -47,6 +47,15 @@ pub struct Space {
     sessions: HashMap<PaneId, ItemId>,
     starting: bool,
     closing: HashSet<ItemId>,
+    /// Pane ids successfully closed during this daemon lifetime. A backend
+    /// snapshot is assembled through several requests and can therefore arrive
+    /// after a close while still containing the pane it observed beforehand.
+    /// Never let such a snapshot resurrect the local item.
+    retired_sessions: HashSet<PaneId>,
+    /// Ended local attachments absent from consecutive backend snapshots.
+    /// Requiring confirmation avoids treating a snapshot concurrent with
+    /// session creation as authoritative evidence of deletion.
+    missing_sessions: HashMap<PaneId, u8>,
     reattaching: HashSet<ItemId>,
     restoring_sessions: HashMap<String, ItemId>,
     restoring_plugins: Vec<PersistedItem>,
@@ -73,6 +82,8 @@ impl Space {
             sessions: HashMap::new(),
             starting: false,
             closing: HashSet::new(),
+            retired_sessions: HashSet::new(),
+            missing_sessions: HashMap::new(),
             reattaching: HashSet::new(),
             restoring_sessions: HashMap::new(),
             restoring_plugins: Vec::new(),
@@ -563,7 +574,7 @@ impl Space {
 
     pub fn finish_bulk_close(&mut self, ids: &[ItemId]) {
         for id in ids {
-            self.remove_item(*id);
+            self.retire_item(*id);
         }
     }
 
@@ -771,8 +782,24 @@ impl Space {
     /// Attach sessions discovered by the parent's one backend snapshot.
     /// Local PTY creation stays off the frame thread.
     pub fn adopt(&mut self, infos: Vec<zeddy_herdr::control::Session>, cx: &mut Context<Self>) {
+        let snapshot_ids: HashSet<_> = infos.iter().map(|info| info.id.clone()).collect();
+        let local = self
+            .sessions
+            .iter()
+            .map(|(backend, item)| (backend.clone(), self.items.get(item).is_some_and(Item::ended)))
+            .collect::<Vec<_>>();
+        for backend in confirmed_missing_sessions(local, &snapshot_ids, &mut self.missing_sessions)
+        {
+            if let Some(item) = self.sessions.get(&backend).copied() {
+                self.retire_item(item);
+            }
+        }
+
         let mut discovered = Vec::new();
         for info in infos {
+            if self.retired_sessions.contains(&info.id) {
+                continue;
+            }
             if let Some(item) = self.sessions.get(&info.id).copied() {
                 if let Some(session) = self.items.get_mut(&item).and_then(Item::as_session_mut) {
                     session.session.info = info;
@@ -782,10 +809,6 @@ impl Space {
             }
         }
         let infos = discovered;
-        if infos.is_empty() {
-            return;
-        }
-
         let restored_ids: HashMap<_, _> = infos
             .iter()
             .filter_map(|info| {
@@ -795,6 +818,9 @@ impl Space {
         let stale: Vec<_> = self.restoring_sessions.drain().map(|(_, item)| item).collect();
         for item in stale {
             let _ = self.layout.remove_item(item);
+        }
+        if infos.is_empty() {
+            return;
         }
         let client = self.client.clone();
         let window_id = cx.entity_id().as_u64();
@@ -813,6 +839,9 @@ impl Space {
             }
             let _ = this.update(cx, |this, cx| {
                 for (restored, info, result) in attached {
+                    if this.retired_sessions.contains(&info.id) {
+                        continue;
+                    }
                     match result {
                         Ok(builder) => {
                             let session = this.session_from_builder(info, builder, cx);
@@ -839,8 +868,8 @@ impl Space {
     }
 
     /// Create an ordinary Chartr-owned terminal and queue its first shell/TUI
-    /// input before publishing the new tab. Web plugins use this path rather
-    /// than starting a detached process of their own.
+    /// input before publishing the new tab. Native plugins use this path so
+    /// launched tools remain part of the owning space's normal lifecycle.
     pub fn start_session_with_input(&mut self, input: Vec<u8>, cx: &mut Context<Self>) {
         self.start_session_at(None, input, cx);
     }
@@ -949,7 +978,7 @@ impl Space {
     ) -> Option<ItemId> {
         self.workspace = Some(session.info.workspace.clone());
         let backend_id = session.id().clone();
-        if self.sessions.contains_key(&backend_id) {
+        if self.sessions.contains_key(&backend_id) || self.retired_sessions.contains(&backend_id) {
             return None;
         }
 
@@ -978,7 +1007,7 @@ impl Space {
     ) -> Option<ItemId> {
         self.workspace = Some(session.info.workspace.clone());
         let backend_id = session.id().clone();
-        if self.sessions.contains_key(&backend_id) {
+        if self.sessions.contains_key(&backend_id) || self.retired_sessions.contains(&backend_id) {
             return None;
         }
         let id = restored.unwrap_or_else(|| self.layout.alloc_item());
@@ -1014,7 +1043,10 @@ impl Space {
             let _ = this.update(cx, |this, cx| {
                 this.closing.remove(&id);
                 match result {
-                    Ok(()) => this.remove_item(id),
+                    Ok(()) => {
+                        this.retired_sessions.insert(backend_id);
+                        this.remove_item(id);
+                    }
                     Err(error) => this.problem = Some(error.to_string()),
                 }
                 cx.notify();
@@ -1051,6 +1083,16 @@ impl Space {
         }
     }
 
+    fn retire_item(&mut self, id: ItemId) {
+        if let Some(backend) =
+            self.items.get(&id).and_then(Item::as_session).map(|item| item.session.id().clone())
+        {
+            self.missing_sessions.remove(&backend);
+            self.retired_sessions.insert(backend);
+        }
+        self.remove_item(id);
+    }
+
     /// Remove terminal items after the daemon that owned their PTYs died.
     /// Plugin items and the space itself survive; no shell is recreated under
     /// a dead tab's identity.
@@ -1068,7 +1110,36 @@ impl Space {
         self.workspace = None;
         self.starting = false;
         self.closing.clear();
+        self.retired_sessions.clear();
+        self.missing_sessions.clear();
     }
+}
+
+const MISSING_SNAPSHOT_CONFIRMATIONS: u8 = 2;
+
+/// Return ended local sessions absent from enough consecutive full snapshots
+/// to establish that Herdr no longer owns them.
+fn confirmed_missing_sessions(
+    local: Vec<(PaneId, bool)>,
+    snapshot: &HashSet<PaneId>,
+    misses: &mut HashMap<PaneId, u8>,
+) -> Vec<PaneId> {
+    let local_ids: HashSet<_> = local.iter().map(|(backend, _)| backend.clone()).collect();
+    misses.retain(|backend, _| local_ids.contains(backend) && !snapshot.contains(backend));
+
+    let mut confirmed = Vec::new();
+    for (backend, ended) in local {
+        if snapshot.contains(&backend) || !ended {
+            misses.remove(&backend);
+            continue;
+        }
+        let count = misses.entry(backend.clone()).or_default();
+        *count = count.saturating_add(1);
+        if *count >= MISSING_SNAPSHOT_CONFIRMATIONS {
+            confirmed.push(backend);
+        }
+    }
+    confirmed
 }
 
 impl EventEmitter<SpaceEvent> for Space {}
@@ -1086,6 +1157,19 @@ mod tests {
     use gpui::AppContext as _;
     use std::{cell::Cell, rc::Rc};
 
+    fn backend_session(id: &str, path: &std::path::Path) -> zeddy_herdr::control::Session {
+        zeddy_herdr::control::Session {
+            id: PaneId(id.to_owned()),
+            terminal: zeddy_herdr::TerminalId(format!("terminal-{id}")),
+            workspace: WorkspaceId("w1".to_owned()),
+            label: "1".to_owned(),
+            running: None,
+            status: zeddy_herdr::control::SessionStatus::Unknown,
+            agent: None,
+            cwd: Some(path.to_owned()),
+        }
+    }
+
     struct LauncherReplacementView;
 
     impl gpui::Render for LauncherReplacementView {
@@ -1096,6 +1180,58 @@ mod tests {
         ) -> impl gpui::IntoElement {
             gpui::div()
         }
+    }
+
+    #[gpui::test]
+    fn a_snapshot_cannot_resurrect_a_retired_backend_pane(cx: &mut gpui::TestAppContext) {
+        let temporary = tempfile::tempdir().unwrap();
+        let sidecar = temporary.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            zeddy_herdr::Sidecar::at(sidecar).unwrap(),
+            zeddy_herdr::Namespace::rooted(temporary.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new(
+                "example".to_owned(),
+                temporary.path().to_owned(),
+                Kind::Registered,
+                client,
+                cx,
+            )
+        });
+        let retired = PaneId("w1:p1".to_owned());
+
+        space.update(cx, |space, cx| {
+            space.retired_sessions.insert(retired.clone());
+            space.adopt(vec![backend_session(&retired.0, temporary.path())], cx);
+        });
+
+        cx.read(|cx| {
+            let space = space.read(cx);
+            assert!(space.sessions.is_empty());
+            assert!(space.items.is_empty());
+            assert!(space.workspace_tabs().tabs().is_empty());
+        });
+    }
+
+    #[test]
+    fn an_ended_session_needs_two_missing_snapshots_before_removal() {
+        let missing = PaneId("w1:p1".to_owned());
+        let present = PaneId("w1:p2".to_owned());
+        let live = PaneId("w1:p3".to_owned());
+        let snapshot = HashSet::from([present.clone()]);
+        let local = vec![(missing.clone(), true), (present.clone(), true), (live.clone(), false)];
+        let mut misses = HashMap::new();
+
+        assert!(
+            confirmed_missing_sessions(local.clone(), &snapshot, &mut misses).is_empty(),
+            "one possibly concurrent snapshot is not conclusive"
+        );
+        assert_eq!(misses.get(&missing), Some(&1));
+        assert!(!misses.contains_key(&present));
+        assert!(!misses.contains_key(&live));
+        assert_eq!(confirmed_missing_sessions(local, &snapshot, &mut misses), vec![missing]);
     }
 
     #[gpui::test]

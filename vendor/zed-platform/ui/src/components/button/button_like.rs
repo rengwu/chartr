@@ -744,6 +744,7 @@ impl ParentElement for ButtonLike {
 
 impl RenderOnce for ButtonLike {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let has_tooltip = self.tooltip.is_some();
         let style = self
             .selected_style
             .filter(|_| self.selected)
@@ -833,6 +834,7 @@ impl RenderOnce for ButtonLike {
                 self.on_right_click.filter(|_| !self.disabled),
                 |this, on_right_click| {
                     this.on_mouse_down(MouseButton::Right, |_event, window, cx| {
+                        crate::dismiss_native_tooltip(cx);
                         window.prevent_default();
                         cx.stop_propagation();
                     })
@@ -863,7 +865,10 @@ impl RenderOnce for ButtonLike {
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
                 |this, on_click| {
-                    this.on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+                    this.on_mouse_down(MouseButton::Left, |_, window, cx| {
+                        crate::dismiss_native_tooltip(cx);
+                        window.prevent_default();
+                    })
                         .on_click(move |event, window, cx| {
                             cx.stop_propagation();
                             (on_click)(event, window, cx)
@@ -871,7 +876,18 @@ impl RenderOnce for ButtonLike {
                 },
             )
             .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip(move |window, cx| tooltip(window, cx))
+                this.tooltip(move |window, cx| {
+                    let tooltip = tooltip(window, cx);
+                    crate::enable_native_tooltip(&tooltip, cx);
+                    tooltip
+                })
+            })
+            .when(has_tooltip, |this| {
+                this.on_hover(|hovered, _, cx| {
+                    if !*hovered {
+                        crate::dismiss_native_tooltip(cx);
+                    }
+                })
             })
             .when_some(self.hoverable_tooltip, |this, tooltip| {
                 this.hoverable_tooltip(move |window, cx| tooltip(window, cx))

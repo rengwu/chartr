@@ -192,8 +192,12 @@ FLIP settle remains continuous. Enable Appearance / Reduce Motion and repeat:
 direct pointer carrying and sorting remain, while displaced-card and release
 settle animations are absent.
 
-Open the bundled Agent plugin in a folder space and in Free sessions. With an
+Open the bundled native Agent plugin in a folder space and in Free sessions. With an
 empty registry, confirm the composer, picker, and launch action are disabled;
+the space and Git branch sit above rather than inside the composer; and the prompt
+placeholder uses muted text. Register agents named for Claude, Codex, Grok,
+OpenCode, and Pi, then confirm both the picker trigger and menu infer the matching
+Hugeicons glyph (with the generic AI-programming glyph for OpenCode).
 **Register your first agent** must navigate to **Agent management** and open the
 registration dialog immediately. Register an adapter with arguments and each
 prompt-delivery mode, edit it through the same dialog, and confirm deletion is

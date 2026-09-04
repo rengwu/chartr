@@ -94,7 +94,7 @@ pub enum Error {
     /// A private daemon answered but is not the exact build this client ships.
     IncompatibleDaemon { version: String, protocol: u32 },
     /// herdr answered, and the answer was a failure.
-    Backend { method: &'static str, message: String },
+    Backend { method: &'static str, code: String, message: String },
     /// herdr answered with something this client cannot read.
     Protocol(String),
 }
@@ -111,9 +111,24 @@ impl fmt::Display for Error {
                 "daemon is herdr {version} (protocol {protocol}); zeddy ships \
                  {SUPPORTED_HERDR_VERSION} (protocol {SUPPORTED_PROTOCOL})"
             ),
-            Self::Backend { method, message } => write!(f, "herdr rejected {method}: {message}"),
+            Self::Backend { method, code, message } if !code.is_empty() => {
+                write!(f, "herdr rejected {method}: {message} ({code})")
+            }
+            Self::Backend { method, message, .. } => {
+                write!(f, "herdr rejected {method}: {message}")
+            }
             Self::Protocol(why) => write!(f, "herdr sent something unreadable: {why}"),
         }
+    }
+}
+
+impl Error {
+    /// Whether Herdr rejected an API request with this machine-readable code.
+    ///
+    /// Keep callers off the human-readable message: Herdr may improve that
+    /// text without changing the condition clients need to handle.
+    pub fn is_backend_code(&self, expected: &str) -> bool {
+        matches!(self, Self::Backend { code, .. } if code == expected)
     }
 }
 

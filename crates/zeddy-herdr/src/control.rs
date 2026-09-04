@@ -238,6 +238,7 @@ impl Client {
         if !status.success() && self.answers() {
             return Err(Error::Backend {
                 method: "server stop",
+                code: String::new(),
                 message: format!("herdr exited with {status}"),
             });
         }
@@ -248,6 +249,7 @@ impl Client {
         if self.answers() {
             return Err(Error::Backend {
                 method: "server stop",
+                code: String::new(),
                 message: "the private socket is still accepting connections".to_owned(),
             });
         }
@@ -405,9 +407,14 @@ impl Client {
 
     /// End a session. The pane and whatever is running in it both go.
     pub fn close_session(&self, pane: &PaneId) -> Result<()> {
-        let _: serde_json::Value =
-            self.call("pane.close", &PaneCloseParams { pane_id: &pane.0 })?;
-        Ok(())
+        match self.call::<_, serde_json::Value>("pane.close", &PaneCloseParams { pane_id: &pane.0 })
+        {
+            Ok(_) => Ok(()),
+            // Closing is a desired-state operation. If another request or the
+            // pane's process won the race, the requested state already holds.
+            Err(error) if error.is_backend_code("pane_not_found") => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Complete launch specification for Herdr's native interactive terminal
@@ -475,14 +482,9 @@ impl Client {
             .map_err(|err| Error::Protocol(format!("cannot read the answer to {method}: {err}")))?;
         match (response.result, response.error) {
             (Some(result), _) => Ok(result),
-            (None, Some(error)) => Err(Error::Backend {
-                method,
-                message: if error.code.is_empty() {
-                    error.message
-                } else {
-                    format!("{} ({})", error.message, error.code)
-                },
-            }),
+            (None, Some(error)) => {
+                Err(Error::Backend { method, code: error.code, message: error.message })
+            }
             (None, None) => {
                 Err(Error::Protocol(format!("{method} answered with neither result nor error")))
             }
@@ -674,6 +676,58 @@ mod tests {
 
         let err = client.handshake().expect_err("nothing is listening");
         assert!(err.to_string().contains(&namespace.socket().display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn closing_an_already_absent_pane_is_successful() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let namespace = Namespace::rooted(tmp.path().join("private"));
+        namespace.prepare().expect("prepare namespace");
+        let herdr = tmp.path().join("herdr");
+        std::fs::write(&herdr, b"sidecar fixture").expect("sidecar fixture");
+        let listener = UnixListener::bind(namespace.socket()).expect("test daemon socket");
+        let server = std::thread::spawn(move || {
+            let (mut request, _) = listener.accept().expect("close request");
+            let payload = read_test_request(&mut request);
+            assert_eq!(payload["method"], "pane.close");
+            assert_eq!(payload["params"]["pane_id"], "w1:p1");
+            writeln!(
+                request,
+                r#"{{"id":"1","error":{{"code":"pane_not_found","message":"pane w1:p1 not found"}}}}"#
+            )
+            .expect("not-found response");
+        });
+
+        let client = Client::new(Sidecar::at(&herdr).expect("sidecar"), namespace);
+        client.close_session(&PaneId("w1:p1".to_owned())).expect("absence is the desired state");
+        server.join().expect("test daemon");
+    }
+
+    #[test]
+    fn closing_preserves_other_backend_failures() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let namespace = Namespace::rooted(tmp.path().join("private"));
+        namespace.prepare().expect("prepare namespace");
+        let herdr = tmp.path().join("herdr");
+        std::fs::write(&herdr, b"sidecar fixture").expect("sidecar fixture");
+        let listener = UnixListener::bind(namespace.socket()).expect("test daemon socket");
+        let server = std::thread::spawn(move || {
+            let (mut request, _) = listener.accept().expect("close request");
+            let _ = read_test_request(&mut request);
+            writeln!(
+                request,
+                r#"{{"id":"1","error":{{"code":"permission_denied","message":"not allowed"}}}}"#
+            )
+            .expect("failure response");
+        });
+
+        let client = Client::new(Sidecar::at(&herdr).expect("sidecar"), namespace);
+        let error = client
+            .close_session(&PaneId("w1:p1".to_owned()))
+            .expect_err("a real rejection must remain visible");
+        assert!(error.is_backend_code("permission_denied"));
+        assert_eq!(error.to_string(), "herdr rejected pane.close: not allowed (permission_denied)");
+        server.join().expect("test daemon");
     }
 
     #[test]

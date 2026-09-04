@@ -23,6 +23,16 @@ const ICONS: &[(&str, &str)] = &[
     ("icons/stop.svg", include_str!("../assets/icons/stop.svg")),
     ("icons/lock.svg", include_str!("../assets/icons/lock.svg")),
     ("icons/public.svg", include_str!("../assets/icons/public.svg")),
+    ("icons/agent_ai_programming.svg", include_str!("../assets/icons/agent_ai_programming.svg")),
+    ("icons/agent_chat_gpt.svg", include_str!("../assets/icons/agent_chat_gpt.svg")),
+    ("icons/agent_claude.svg", include_str!("../assets/icons/agent_claude.svg")),
+    ("icons/agent_copilot.svg", include_str!("../assets/icons/agent_copilot.svg")),
+    ("icons/agent_deepseek.svg", include_str!("../assets/icons/agent_deepseek.svg")),
+    ("icons/agent_google_gemini.svg", include_str!("../assets/icons/agent_google_gemini.svg")),
+    ("icons/agent_grok.svg", include_str!("../assets/icons/agent_grok.svg")),
+    ("icons/agent_mistral.svg", include_str!("../assets/icons/agent_mistral.svg")),
+    ("icons/agent_pi.svg", include_str!("../assets/icons/agent_pi.svg")),
+    ("icons/agent_qwen.svg", include_str!("../assets/icons/agent_qwen.svg")),
 ];
 
 impl AssetSource for Assets {
@@ -53,6 +63,24 @@ mod tests {
     #[test]
     fn chartrs_plugin_launcher_icon_is_embedded() {
         assert!(Assets.load("icons/blockchain_01.svg").expect("load").is_some());
+    }
+
+    #[test]
+    fn agent_brand_icons_are_embedded() {
+        for path in [
+            "icons/agent_ai_programming.svg",
+            "icons/agent_chat_gpt.svg",
+            "icons/agent_claude.svg",
+            "icons/agent_copilot.svg",
+            "icons/agent_deepseek.svg",
+            "icons/agent_google_gemini.svg",
+            "icons/agent_grok.svg",
+            "icons/agent_mistral.svg",
+            "icons/agent_pi.svg",
+            "icons/agent_qwen.svg",
+        ] {
+            assert!(Assets.load(path).expect("load").is_some(), "missing {path}");
+        }
     }
 
     #[test]

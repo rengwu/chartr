@@ -15,7 +15,10 @@ use gpui::{
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div, point, px,
     relative, size,
 };
-use ui::{ButtonSize, ContextMenu as UiContextMenu, DynamicSpacing, IconPosition, prelude::*};
+use ui::{
+    ButtonSize, ContextMenu as UiContextMenu, ContextMenuEntry as UiContextMenuEntry,
+    DynamicSpacing, IconPosition, prelude::*,
+};
 
 // Matches ui::ContextMenu's default minimum width.
 const POPUP_CONTENT_WIDTH: Pixels = px(200.);
@@ -62,6 +65,7 @@ type PopupRowRenderer = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 struct PopupEntry {
     label: SharedString,
     toggle: Option<(IconPosition, bool)>,
+    icon_path: Option<SharedString>,
     label_color: Option<Color>,
     action: Option<Box<dyn Action>>,
     handler: PopupHandler,
@@ -165,6 +169,7 @@ impl ContextMenu {
             this.popup_items.push(PopupItem::Entry(PopupEntry {
                 label: label.into(),
                 toggle: None,
+                icon_path: None,
                 label_color: None,
                 action,
                 handler: Rc::new(handler),
@@ -192,6 +197,7 @@ impl ContextMenu {
             this.popup_items.push(PopupItem::Entry(PopupEntry {
                 label,
                 toggle: None,
+                icon_path: None,
                 label_color: Some(Color::Error),
                 action: None,
                 handler: Rc::new(handler),
@@ -215,8 +221,44 @@ impl ContextMenu {
             this.popup_items.push(PopupItem::Entry(PopupEntry {
                 label: label.into(),
                 toggle: Some((position, toggled)),
+                icon_path: None,
                 label_color: None,
                 action,
+                handler: Rc::new(handler),
+            }));
+        }
+        this
+    }
+
+    /// Add a selectable row with an embedded icon at the start and its check at the end.
+    pub fn toggleable_entry_with_icon_path(
+        self,
+        label: impl Into<SharedString>,
+        icon_path: impl Into<SharedString>,
+        toggled: bool,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        let mut this = self.before_item();
+        let label = label.into();
+        let icon_path = icon_path.into();
+        if let Some(inner) = this.inner.take() {
+            this.inner = Some(
+                inner.item(
+                    UiContextMenuEntry::new(label)
+                        .custom_icon_path(icon_path)
+                        .icon_position(IconPosition::Start)
+                        .icon_size(IconSize::Small)
+                        .toggle(IconPosition::End, toggled)
+                        .handler(handler),
+                ),
+            );
+        } else {
+            this.popup_items.push(PopupItem::Entry(PopupEntry {
+                label,
+                toggle: Some((IconPosition::End, toggled)),
+                icon_path: Some(icon_path),
+                label_color: None,
+                action: None,
                 handler: Rc::new(handler),
             }));
         }
@@ -456,7 +498,22 @@ impl AnchoredMenuWindow {
                     PopupItem::Entry(entry) => {
                         let target = target_window;
                         let handler = entry.handler;
-                        if let Some(label_color) = entry.label_color {
+                        if let Some(icon_path) = entry.icon_path {
+                            let mut menu_entry = UiContextMenuEntry::new(entry.label)
+                                .custom_icon_path(icon_path)
+                                .icon_position(IconPosition::Start)
+                                .icon_size(IconSize::Small)
+                                .handler(move |_, cx| {
+                                    let _ = target.update(cx, |_, window, cx| handler(window, cx));
+                                });
+                            if let Some((position, toggled)) = entry.toggle {
+                                menu_entry = menu_entry.toggle(position, toggled);
+                            }
+                            if let Some(action) = entry.action {
+                                menu_entry = menu_entry.action(action);
+                            }
+                            context_menu.item(menu_entry)
+                        } else if let Some(label_color) = entry.label_color {
                             let label = entry.label;
                             context_menu.custom_entry(
                                 move |_, _| {
@@ -690,6 +747,17 @@ mod popup_menu_tests {
         tooltip_built: Rc<Cell<bool>>,
     }
 
+    struct NativeTooltipHarness;
+
+    impl Render for NativeTooltipHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                ui::Button::new("native-tooltip-trigger", "Hover")
+                    .tooltip(ui::Tooltip::text("Native tooltip")),
+            )
+        }
+    }
+
     struct ContentSizedMenuHarness {
         rows: usize,
     }
@@ -857,6 +925,44 @@ mod popup_menu_tests {
             !tooltip_built.get(),
             "the trigger tooltip must stay hidden while its menu is open"
         );
+    }
+
+    #[gpui::test]
+    fn tooltip_uses_a_native_popup_and_closes_on_mouse_exit(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let (_, cx) = cx.add_window_view(|_, _| NativeTooltipHarness);
+        let parent = cx.window_handle();
+        cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.run_until_parked();
+
+        assert_eq!(cx.windows().len(), 2, "the tooltip should open a native window");
+        let popup = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .expect("the tooltip popup should exist");
+        {
+            let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+            popup.run_until_parked();
+            let body = popup
+                .debug_bounds("NATIVE_TOOLTIP_BODY")
+                .expect("the native popup should render the tooltip body");
+            let popup_size = popup.update(|window, _| window.viewport_size());
+            assert_eq!(body.origin, point(px(8.), px(8.)));
+            assert_eq!(popup_size.width, body.size.width + px(16.));
+            assert_eq!(popup_size.height, body.size.height + px(16.));
+        }
+
+        cx.simulate_mouse_move(point(px(300.), px(300.)), None, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(cx.windows(), vec![parent], "the tooltip window should close on mouse exit");
     }
 }
 

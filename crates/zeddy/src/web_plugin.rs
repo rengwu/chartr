@@ -27,17 +27,6 @@ use crate::item::PluginView;
 use crate::session::SessionAccess;
 
 pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
-pub type TerminalLaunchHandler = Rc<dyn Fn(Vec<u8>, &mut App)>;
-
-/// Read-only facts about the space that owns one web-plugin instance.
-/// The project path stays host-side: a plugin that did not ask for project
-/// filesystem access still gets a useful display name and Git branch without
-/// learning an absolute path.
-#[derive(Debug, Clone)]
-pub struct SpaceMetadata {
-    pub name: String,
-    pub project: Option<PathBuf>,
-}
 
 /// Arbitrates ownership when one native child view moves between GPUI element paths.
 ///
@@ -123,24 +112,11 @@ pub fn view(
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
-    space: Option<SpaceMetadata>,
-    on_terminal_launch: Option<TerminalLaunchHandler>,
     on_focus: Option<FocusHandler>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    create_view(
-        entry,
-        broker,
-        permissions,
-        session,
-        space,
-        on_terminal_launch,
-        on_focus,
-        window,
-        cx,
-    )
-    .0
+    create_view(entry, broker, permissions, session, on_focus, window, cx).0
 }
 
 pub fn pane(
@@ -148,23 +124,11 @@ pub fn pane(
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
-    space: Option<SpaceMetadata>,
-    on_terminal_launch: Option<TerminalLaunchHandler>,
     on_focus: Option<FocusHandler>,
     window: &mut Window,
     cx: &mut App,
 ) -> PluginView {
-    let (view, webview) = create_view(
-        entry,
-        broker,
-        permissions,
-        session,
-        space,
-        on_terminal_launch,
-        on_focus,
-        window,
-        cx,
-    );
+    let (view, webview) = create_view(entry, broker, permissions, session, on_focus, window, cx);
     let close = webview.clone();
     PluginView::with_close(view, move || close.shutdown())
 }
@@ -174,8 +138,6 @@ fn create_view(
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
-    space: Option<SpaceMetadata>,
-    on_terminal_launch: Option<TerminalLaunchHandler>,
     on_focus: Option<FocusHandler>,
     window: &mut Window,
     cx: &mut App,
@@ -187,8 +149,6 @@ fn create_view(
             broker,
             permissions,
             session,
-            space,
-            on_terminal_launch,
             on_focus,
             webview.clone(),
             window,
@@ -206,7 +166,6 @@ struct WebPluginView {
     _gtk_pump: gpui::Task<()>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     _focus_task: gpui::Task<()>,
-    _terminal_launch_task: gpui::Task<()>,
     error: Option<String>,
 }
 
@@ -216,28 +175,16 @@ impl WebPluginView {
         broker: FileBroker,
         permissions: Permissions,
         session: Option<SessionAccess>,
-        space: Option<SpaceMetadata>,
-        on_terminal_launch: Option<TerminalLaunchHandler>,
         on_focus: Option<FocusHandler>,
         webview_handle: NativeWebViewHandle,
         window: &Window,
         _cx: &mut Context<Self>,
     ) -> Self {
-        let (terminal_launch_tx, mut terminal_launch_rx) = mpsc::unbounded::<Vec<u8>>();
-        let has_terminal_launch = on_terminal_launch.is_some();
-        let terminal_launch_task = _cx.spawn(async move |_, cx| {
-            while let Some(input) = terminal_launch_rx.next().await {
-                if let Some(handler) = &on_terminal_launch {
-                    let _ = cx.update(|cx| handler(input, cx));
-                }
-            }
-        });
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (entry, broker, permissions, session, space, on_focus, window, _cx);
+            let _ = (entry, broker, permissions, session, on_focus, window, _cx);
             return Self {
                 webview: webview_handle,
-                _terminal_launch_task: terminal_launch_task,
                 error: Some("Web plugins are supported on macOS and Linux.".into()),
             };
         }
@@ -263,7 +210,6 @@ impl WebPluginView {
                     visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
-                    _terminal_launch_task: terminal_launch_task,
                     error: Some(format!("Could not initialize GTK: {error}")),
                 };
             }
@@ -275,7 +221,6 @@ impl WebPluginView {
                     #[cfg(target_os = "linux")]
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
-                    _terminal_launch_task: terminal_launch_task,
                     error: Some(format!("Plugin entry is unavailable: {}", entry.display())),
                 };
             };
@@ -294,17 +239,8 @@ impl WebPluginView {
                         let _ = focus_tx.unbounded_send(());
                         return;
                     }
-                    let services = HostServices {
-                        space: space.as_ref(),
-                        terminal_launch: has_terminal_launch.then_some(&terminal_launch_tx),
-                    };
-                    let response = handle_request(
-                        &broker,
-                        &permissions,
-                        session.as_ref(),
-                        services,
-                        request.body(),
-                    );
+                    let response =
+                        handle_request(&broker, &permissions, session.as_ref(), request.body());
                     if let Some(webview) = responder.borrow().as_ref().and_then(Weak::upgrade)
                         && let Ok(response) = serde_json::to_string(&response)
                     {
@@ -331,7 +267,6 @@ impl WebPluginView {
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
                         _focus_task: focus_task,
-                        _terminal_launch_task: terminal_launch_task,
                         error: Some(format!("Could not create the plugin webview: {error}")),
                     };
                 }
@@ -344,7 +279,6 @@ impl WebPluginView {
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
                 _focus_task: focus_task,
-                _terminal_launch_task: terminal_launch_task,
                 error: None,
             }
         }
@@ -481,12 +415,6 @@ struct HostRequest {
     command: String,
     #[serde(default)]
     args: Vec<String>,
-    #[serde(default)]
-    env: Vec<String>,
-    #[serde(default)]
-    prompt: String,
-    #[serde(default)]
-    delivery: String,
 }
 
 #[derive(Serialize)]
@@ -497,17 +425,10 @@ struct HostResponse {
     error: String,
 }
 
-#[derive(Default)]
-struct HostServices<'a> {
-    space: Option<&'a SpaceMetadata>,
-    terminal_launch: Option<&'a mpsc::UnboundedSender<Vec<u8>>>,
-}
-
 fn handle_request(
     broker: &FileBroker,
     permissions: &Permissions,
     session: Option<&SessionAccess>,
-    services: HostServices<'_>,
     encoded: &str,
 ) -> HostResponse {
     let request: HostRequest = match serde_json::from_str(encoded) {
@@ -565,21 +486,6 @@ fn handle_request(
             })
             .map_err(|error| error.to_string()),
         "process.run" => Err("the plugin did not declare process access".to_owned()),
-        "space.metadata" => services
-            .space
-            .map(space_metadata_value)
-            .ok_or_else(|| "this plugin view has no owning space".to_owned()),
-        "terminal.launch" if permissions.terminal => services
-            .terminal_launch
-            .ok_or_else(|| "this plugin view cannot launch a terminal".to_owned())
-            .and_then(|launch| {
-                let input = opening_input(&request)?;
-                launch
-                    .unbounded_send(input)
-                    .map_err(|_| "the owning Chartr window has closed".to_owned())?;
-                Ok(serde_json::Value::Bool(true))
-            }),
-        "terminal.launch" => Err("the plugin did not declare terminal launch access".to_owned()),
         "session.metadata" if permissions.session => session
             .map(|session| {
                 serde_json::json!({
@@ -610,157 +516,6 @@ fn handle_request(
             HostResponse { id: request.id, ok: false, value: serde_json::Value::Null, error }
         }
     }
-}
-
-fn space_metadata_value(space: &SpaceMetadata) -> serde_json::Value {
-    serde_json::json!({
-        "name": space.name,
-        "kind": if space.project.is_some() { "folder" } else { "ad_hoc" },
-        "branch": space.project.as_deref().and_then(git_branch),
-    })
-}
-
-/// Turn one registered-agent launch into exactly what the new shell receives.
-/// Every word is quoted independently; args and environment are data rather
-/// than a shell fragment, so a plugin cannot smuggle an extra command through
-/// a name containing spaces or punctuation.
-fn opening_input(request: &HostRequest) -> Result<Vec<u8>, String> {
-    let program = request.command.trim();
-    if program.is_empty() {
-        return Err("an agent launch needs an adapter".to_owned());
-    }
-    reject_nul("adapter", program)?;
-    for argument in &request.args {
-        reject_nul("argument", argument)?;
-    }
-    reject_nul("prompt", &request.prompt)?;
-
-    let delivery = resolved_delivery(program, &request.delivery)?;
-    let mut line = String::new();
-    for entry in &request.env {
-        let (name, value) = environment_entry(entry)?;
-        line.push_str(name);
-        line.push('=');
-        line.push_str(&shell_quoted(&expand_home(value)));
-        line.push(' ');
-    }
-    line.push_str(&shell_quoted(program));
-
-    if let PromptDelivery::Flag(flag) = &delivery
-        && !request.prompt.is_empty()
-    {
-        line.push(' ');
-        line.push_str(&shell_quoted(flag));
-        line.push(' ');
-        line.push_str(&shell_quoted(&request.prompt));
-    }
-    for argument in &request.args {
-        line.push(' ');
-        line.push_str(&shell_quoted(argument));
-    }
-    if delivery == PromptDelivery::Argument && !request.prompt.is_empty() {
-        line.push(' ');
-        line.push_str(&shell_quoted(&request.prompt));
-    }
-
-    let mut input = line.into_bytes();
-    input.push(b'\r');
-    if delivery == PromptDelivery::Typed && !request.prompt.is_empty() {
-        input.extend_from_slice(request.prompt.as_bytes());
-        input.push(b'\r');
-    }
-    Ok(input)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PromptDelivery {
-    Argument,
-    Typed,
-    Flag(String),
-}
-
-fn resolved_delivery(program: &str, configured: &str) -> Result<PromptDelivery, String> {
-    let configured = configured.trim();
-    match configured {
-        "" | "default" => {
-            let name =
-                Path::new(program).file_name().and_then(|name| name.to_str()).unwrap_or(program);
-            Ok(if matches!(name, "claude" | "codex") {
-                PromptDelivery::Argument
-            } else {
-                PromptDelivery::Typed
-            })
-        }
-        "argv" => Ok(PromptDelivery::Argument),
-        "type" => Ok(PromptDelivery::Typed),
-        flag if flag.starts_with('-') && !flag.chars().any(char::is_whitespace) => {
-            Ok(PromptDelivery::Flag(flag.to_owned()))
-        }
-        _ => {
-            Err("prompt delivery must be default, argv, type, or a flag such as --prompt"
-                .to_owned())
-        }
-    }
-}
-
-fn environment_entry(entry: &str) -> Result<(&str, &str), String> {
-    reject_nul("environment entry", entry)?;
-    let Some((name, value)) = entry.split_once('=') else {
-        return Err(format!("environment entry `{entry}` must be KEY=VALUE"));
-    };
-    let mut chars = name.chars();
-    let first = chars.next();
-    if !first.is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
-        || !chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
-    {
-        return Err(format!("`{name}` is not a valid environment variable name"));
-    }
-    Ok((name, value))
-}
-
-fn reject_nul(label: &str, value: &str) -> Result<(), String> {
-    if value.contains('\0') { Err(format!("the {label} contains a NUL byte")) } else { Ok(()) }
-}
-
-fn expand_home(value: &str) -> Cow<'_, str> {
-    let Some(rest) = value.strip_prefix("~/") else {
-        return Cow::Borrowed(value);
-    };
-    let Some(home) = std::env::var_os("HOME") else {
-        return Cow::Borrowed(value);
-    };
-    Cow::Owned(PathBuf::from(home).join(rest).to_string_lossy().into_owned())
-}
-
-fn shell_quoted(word: &str) -> String {
-    format!("'{}'", word.replace('\'', "'\\''"))
-}
-
-/// Read the branch from Git's own HEAD file. Linked worktrees use a `.git`
-/// pointer file, so resolve that form as well as the ordinary directory.
-fn git_branch(project: &Path) -> Option<String> {
-    let mut looking = Some(project);
-    while let Some(folder) = looking {
-        let dot_git = folder.join(".git");
-        let directory = if dot_git.is_dir() {
-            Some(dot_git)
-        } else if dot_git.is_file() {
-            let pointer = std::fs::read_to_string(&dot_git).ok()?;
-            let named =
-                pointer.lines().find_map(|line| line.strip_prefix("gitdir:").map(str::trim))?;
-            let named = PathBuf::from(named);
-            Some(if named.is_absolute() { named } else { folder.join(named) })
-        } else {
-            None
-        };
-        if let Some(directory) = directory {
-            let head = std::fs::read_to_string(directory.join("HEAD")).ok()?;
-            let named = head.trim().strip_prefix("ref:")?.trim();
-            return named.strip_prefix("refs/heads/").map(str::to_owned);
-        }
-        looking = folder.parent();
-    }
-    None
 }
 
 fn fetch(requested: &str, allowed: &[String]) -> Result<serde_json::Value, String> {
@@ -973,7 +728,6 @@ mod tests {
             &broker,
             &permissions,
             None,
-            HostServices::default(),
             &request(1, "project.write", serde_json::json!({ "path": "note.txt", "data": "safe" })),
         );
         assert!(write.ok, "{}", write.error);
@@ -982,7 +736,6 @@ mod tests {
             &broker,
             &permissions,
             None,
-            HostServices::default(),
             &request(2, "project.read", serde_json::json!({ "path": "../outside" })),
         );
         assert!(!escape.ok);
@@ -999,102 +752,10 @@ mod tests {
             "process.run",
             serde_json::json!({ "command": "printf", "args": ["hello"] }),
         );
-        assert!(
-            !handle_request(
-                &broker,
-                &Permissions::default(),
-                None,
-                HostServices::default(),
-                &encoded,
-            )
-            .ok
-        );
+        assert!(!handle_request(&broker, &Permissions::default(), None, &encoded).ok);
         let allowed = Permissions { process: true, ..Permissions::default() };
-        let response = handle_request(&broker, &allowed, None, HostServices::default(), &encoded);
+        let response = handle_request(&broker, &allowed, None, &encoded);
         assert!(response.ok, "{}", response.error);
         assert_eq!(response.value["stdout"], "hello");
-    }
-
-    #[test]
-    fn terminal_launches_are_gated_and_queued_as_shell_safe_input() {
-        let scratch = tempfile::tempdir().unwrap();
-        let data = scratch.path().join("data");
-        std::fs::create_dir_all(&data).unwrap();
-        let broker = FileBroker::new(None, data, ProjectAccess::None, false);
-        let (tx, mut rx) = mpsc::unbounded();
-        let encoded = request(
-            1,
-            "terminal.launch",
-            serde_json::json!({
-                "command": "codex",
-                "args": ["--model", "a model", "it's-safe"],
-                "env": ["AGENT_HOME=~/agent data"],
-                "prompt": "fix the 'quoted' test",
-                "delivery": "argv",
-            }),
-        );
-        let services = HostServices { space: None, terminal_launch: Some(&tx) };
-        assert!(!handle_request(&broker, &Permissions::default(), None, services, &encoded).ok);
-
-        let allowed = Permissions { terminal: true, ..Permissions::default() };
-        let services = HostServices { space: None, terminal_launch: Some(&tx) };
-        let response = handle_request(&broker, &allowed, None, services, &encoded);
-        assert!(response.ok, "{}", response.error);
-        let input = rx.try_recv().unwrap();
-        let input = String::from_utf8(input).unwrap();
-        assert!(input.starts_with("AGENT_HOME='"));
-        assert!(input.contains("'codex' '--model' 'a model' 'it'\\''s-safe'"));
-        assert!(input.ends_with("'fix the '\\''quoted'\\'' test'\r"));
-    }
-
-    #[test]
-    fn typed_delivery_puts_the_prompt_after_the_command() {
-        let request: HostRequest = serde_json::from_str(&request(
-            1,
-            "terminal.launch",
-            serde_json::json!({
-                "command": "opencode",
-                "args": ["--fast"],
-                "prompt": "inspect this",
-                "delivery": "type",
-            }),
-        ))
-        .unwrap();
-        assert_eq!(
-            String::from_utf8(opening_input(&request).unwrap()).unwrap(),
-            "'opencode' '--fast'\rinspect this\r"
-        );
-    }
-
-    #[test]
-    fn a_named_prompt_flag_precedes_the_registered_arguments() {
-        let request: HostRequest = serde_json::from_str(&request(
-            1,
-            "terminal.launch",
-            serde_json::json!({
-                "command": "agent-cli",
-                "args": ["--model", "large"],
-                "prompt": "inspect this",
-                "delivery": "--prompt",
-            }),
-        ))
-        .unwrap();
-        assert_eq!(
-            String::from_utf8(opening_input(&request).unwrap()).unwrap(),
-            "'agent-cli' '--prompt' 'inspect this' '--model' 'large'\r"
-        );
-    }
-
-    #[test]
-    fn space_metadata_reports_a_branch_without_exposing_the_project_path() {
-        let scratch = tempfile::tempdir().unwrap();
-        let project = scratch.path().join("project");
-        std::fs::create_dir_all(project.join(".git")).unwrap();
-        std::fs::write(project.join(".git/HEAD"), "ref: refs/heads/feature/agents\n").unwrap();
-        let metadata = SpaceMetadata { name: "Project".to_owned(), project: Some(project.clone()) };
-        let value = space_metadata_value(&metadata);
-        assert_eq!(value["name"], "Project");
-        assert_eq!(value["branch"], "feature/agents");
-        assert!(!value.to_string().contains(project.to_string_lossy().as_ref()));
     }
 }

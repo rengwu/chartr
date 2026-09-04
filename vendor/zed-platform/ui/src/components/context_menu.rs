@@ -1882,22 +1882,22 @@ impl ContextMenu {
         } else {
             Color::Default
         };
+        let icon_overlaps_toggle = toggle
+            .as_ref()
+            .is_some_and(|(toggle_position, _)| toggle_position == icon_position);
 
         let label_element = if let Some(custom_path) = custom_icon_path {
             h_flex()
                 .gap_1p5()
-                .when(
-                    *icon_position == IconPosition::Start && toggle.is_none(),
-                    |flex| {
+                .when(*icon_position == IconPosition::Start && !icon_overlaps_toggle, |flex| {
                         flex.child(
                             Icon::from_path(custom_path.clone())
                                 .size(*icon_size)
                                 .color(icon_color),
                         )
-                    },
-                )
+                    })
                 .child(Label::new(label.clone()).color(label_color).truncate())
-                .when(*icon_position == IconPosition::End, |flex| {
+                .when(*icon_position == IconPosition::End && !icon_overlaps_toggle, |flex| {
                     flex.child(
                         Icon::from_path(custom_path.clone())
                             .size(*icon_size)
@@ -1908,18 +1908,15 @@ impl ContextMenu {
         } else if let Some(custom_icon_svg) = custom_icon_svg {
             h_flex()
                 .gap_1p5()
-                .when(
-                    *icon_position == IconPosition::Start && toggle.is_none(),
-                    |flex| {
+                .when(*icon_position == IconPosition::Start && !icon_overlaps_toggle, |flex| {
                         flex.child(
                             Icon::from_external_svg(custom_icon_svg.clone())
                                 .size(*icon_size)
                                 .color(icon_color),
                         )
-                    },
-                )
+                    })
                 .child(Label::new(label.clone()).color(label_color).truncate())
-                .when(*icon_position == IconPosition::End, |flex| {
+                .when(*icon_position == IconPosition::End && !icon_overlaps_toggle, |flex| {
                     flex.child(
                         Icon::from_external_svg(custom_icon_svg.clone())
                             .size(*icon_size)
@@ -1930,12 +1927,11 @@ impl ContextMenu {
         } else if let Some(icon_name) = icon {
             h_flex()
                 .gap_1p5()
-                .when(
-                    *icon_position == IconPosition::Start && toggle.is_none(),
-                    |flex| flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color)),
-                )
+                .when(*icon_position == IconPosition::Start && !icon_overlaps_toggle, |flex| {
+                    flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color))
+                })
                 .child(Label::new(label.clone()).color(label_color).truncate())
-                .when(*icon_position == IconPosition::End, |flex| {
+                .when(*icon_position == IconPosition::End && !icon_overlaps_toggle, |flex| {
                     flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color))
                 })
                 .into_any_element()

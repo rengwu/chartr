@@ -822,7 +822,7 @@ impl Element for TextElement {
         ) = {
             let input = self.input.read(cx);
             let display = if input.content.is_empty() {
-                (input.placeholder.clone(), colors.text_muted)
+                (input.placeholder.clone(), colors.text_placeholder)
             } else {
                 (input.content.clone(), style.color)
             };

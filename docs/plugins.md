@@ -36,32 +36,16 @@ binary. Installing Chartr Browser is therefore only a shallow clone or folder
 copy, manifest validation, confirmation, and atomic rename. Browser uses
 ephemeral web-engine storage and persists only each pane's last URL.
 
-Web manifests may separately declare `process = true` for short-lived host
-process actions and `terminal = true` for visible, Chartr-owned terminal
-launches. A terminal launch always belongs to the plugin pane's owning space;
-it is not a detached child process and follows the same persistence and close
-lifecycle as a terminal opened by the user.
-
-The terminal bridge takes structured data rather than a shell fragment:
-
-```js
-await window.chartr.invoke("terminal.launch", {
-  command: "codex",
-  args: ["--model", "gpt-5"],
-  env: ["AGENT_PROFILE=~/.agent-work"],
-  prompt: "Inspect the failing tests",
-  delivery: "argv",
-});
-```
-
-`delivery` is `default`, `argv`, `type`, or a prompt flag such as `--prompt`.
-Chartr quotes each command, argument, environment value, and argv prompt as a
-separate shell word. `space.metadata` exposes the owning space's display name
-and current Git branch without disclosing its absolute project path.
-
 Chartr may link native plugin modules at application build time, but it rejects
 separately installed GPUI dynamic libraries. Precompiling does not make Rust
 GUI objects or crate-global state ABI-safe across two independently linked
 copies of GPUI. Plugins that need native operating-system integration should
 use a reviewed hosted surface; portable third-party plugins should use the web
 tier.
+
+The bundled Agent plugin is one such native module. Its GPUI pane receives the
+owning space's display context and a host capability that opens a normal
+Chartr-owned terminal. Agent commands, arguments, environment, and prompt
+delivery remain structured until the native plugin quotes each shell word; the
+resulting session belongs to the pane's space and follows the same persistence
+and close lifecycle as a terminal opened by the user.

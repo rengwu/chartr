@@ -11,6 +11,8 @@ use gpui::{
 use gpui_platform::application;
 
 mod actions;
+#[path = "../../../plugins/agent/src/lib.rs"]
+mod agent_plugin;
 mod app;
 mod assets;
 mod browser_plugin;

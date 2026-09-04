@@ -2,14 +2,9 @@ manifest_version = 2
 id = "com.chartr.agent"
 name = "Agent"
 version = "0.1.0"
-kind = "web"
+kind = "native"
 icon = "Blockchain01Icon"
-entry = "index.html"
 
 [capabilities]
 multiplicity = "per_space"
 restorable = true
-
-[permissions]
-project_files = "none"
-terminal = true
