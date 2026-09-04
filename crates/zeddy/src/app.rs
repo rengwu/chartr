@@ -7,7 +7,7 @@
 //! recreates a session.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
@@ -174,6 +174,7 @@ pub struct Zeddy {
     focus: FocusHandle,
     problem: Option<String>,
     error_seen_at: HashMap<ErrorNoticeKey, Instant>,
+    dismissed_errors: HashSet<ErrorNoticeKey>,
 }
 
 impl Zeddy {
@@ -267,6 +268,7 @@ impl Zeddy {
                     focus,
                     problem: Some(state_problem.unwrap_or_else(|| error.to_string())),
                     error_seen_at: HashMap::new(),
+                    dismissed_errors: HashSet::new(),
                 };
             }
         };
@@ -419,6 +421,7 @@ impl Zeddy {
             focus,
             problem: state_problem.or(registry_problem),
             error_seen_at: HashMap::new(),
+            dismissed_errors: HashSet::new(),
         };
         this.connect(cx);
         this
@@ -1112,9 +1115,6 @@ impl Zeddy {
             }
             Action::SwitchToTabs => self.settings_set_mode(Mode::Tabs, cx),
             Action::SwitchToSidebar => self.settings_set_mode(Mode::Sidebar, cx),
-            Action::ToggleSpacePicker => {
-                self.show_space_picker = !self.show_space_picker;
-            }
             Action::OpenSettings => self.open_settings(window, cx),
             Action::NewSpace => self.pick_a_folder(window, cx),
             Action::New => {
@@ -1633,6 +1633,15 @@ impl Zeddy {
         cx.notify();
     }
 
+    pub(crate) fn settings_show_space_picker(&self) -> bool {
+        self.show_space_picker
+    }
+
+    pub(crate) fn settings_set_show_space_picker(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.show_space_picker = show;
+        cx.notify();
+    }
+
     pub(crate) fn settings_retry_backend(&mut self, cx: &mut Context<Self>) {
         self.retry_backend(false, cx);
     }
@@ -2062,17 +2071,17 @@ impl Zeddy {
 
     fn error_notices(&mut self, cx: &App) -> Vec<ErrorNotice> {
         let current = self.current_error_keys(cx);
-        self.error_seen_at.retain(|key, _| current.contains(key));
         let now = cx.background_executor().now();
-        for key in &current {
-            self.error_seen_at.entry(key.clone()).or_insert(now);
-        }
-        let mut notices = current
-            .into_iter()
-            .map(|key| ErrorNotice { first_seen: self.error_seen_at[&key], key })
-            .collect::<Vec<_>>();
-        notices.sort_by(|a, b| b.first_seen.cmp(&a.first_seen));
-        notices
+        reconcile_error_notices(current, &mut self.error_seen_at, &mut self.dismissed_errors, now)
+    }
+
+    fn dismiss_errors(
+        &mut self,
+        errors: impl IntoIterator<Item = ErrorNoticeKey>,
+        cx: &mut Context<Self>,
+    ) {
+        self.dismissed_errors.extend(errors);
+        cx.notify();
     }
 
     fn error_menu(&self, notices: Vec<ErrorNotice>, cx: &Context<Self>) -> AnyElement {
@@ -2102,14 +2111,52 @@ impl Zeddy {
                 let now = cx.background_executor().now();
                 let retry = weak.clone();
                 let restart = weak.clone();
-                Some(ContextMenu::build_popup(window, cx, |menu| {
-                    let mut menu =
-                        menu.popup_width(px(520.)).header(format!("Problems ({})", notices.len()));
-                    for (index, notice) in notices.iter().cloned().enumerate() {
+                let clear = weak.clone();
+                let dismiss = weak.clone();
+                let menu_notices = notices.clone();
+                let clear_keys =
+                    menu_notices.iter().map(|notice| notice.key.clone()).collect::<Vec<_>>();
+                let notice_count = menu_notices.len();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
+                    let mut menu = menu.popup_width(px(520.)).custom_row(move |_, _| {
+                        let clear = clear.clone();
+                        let clear_keys = clear_keys.clone();
+                        let clear_button = Button::new("clear-all-problems", "Clear all")
+                            .size(ButtonSize::Compact)
+                            .label_size(UI_LABEL_SMALL)
+                            .on_click(move |_, window, cx| {
+                                cx.stop_propagation();
+                                let _ = clear.update(cx, |this, cx| {
+                                    this.dismiss_errors(clear_keys.clone(), cx)
+                                });
+                                window.remove_window();
+                            })
+                            .into_any_element();
+                        error_menu_header(notice_count, clear_button)
+                    });
+                    for (index, notice) in menu_notices.iter().cloned().enumerate() {
                         if index > 0 {
                             menu = menu.separator();
                         }
-                        menu = menu.custom_row(px(68.), move |_, _| error_notice_row(&notice, now));
+                        let dismiss = dismiss.clone();
+                        menu = menu.custom_row(move |_, _| {
+                            let dismiss = dismiss.clone();
+                            let key = notice.key.clone();
+                            let dismiss_button =
+                                IconButton::new(("dismiss-problem", index), IconName::Close)
+                                    .icon_size(IconSize::XSmall)
+                                    .aria_label("Dismiss problem")
+                                    .tooltip(Tooltip::text("Dismiss problem"))
+                                    .on_click(move |_, window, cx| {
+                                        cx.stop_propagation();
+                                        let _ = dismiss.update(cx, |this, cx| {
+                                            this.dismiss_errors([key.clone()], cx)
+                                        });
+                                        window.remove_window();
+                                    })
+                                    .into_any_element();
+                            error_notice_row(&notice, now, dismiss_button)
+                        });
                     }
                     if backend_failed {
                         menu = menu
@@ -2145,42 +2192,27 @@ impl Zeddy {
 
     fn view_menu(&self, on: chrome::Emit) -> AnyElement {
         match self.mode {
-            Mode::Sidebar => {
-                let show_space_picker = self.show_space_picker;
-                PopupMenu::new("chrome-menu")
-                    .trigger_with_tooltip(
-                        IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
-                            .icon_size(IconSize::Small),
-                        Tooltip::text("View options"),
-                    )
-                    .anchor(Anchor::TopRight)
-                    .menu(move |window, cx| {
-                        let switch = on.clone();
-                        let toggle_picker = on.clone();
-                        let settings = on.clone();
-                        Some(ContextMenu::build_popup(window, cx, move |menu| {
-                            menu.entry("Switch to Tabbed mode", None, move |window, cx| {
-                                switch(Action::SwitchToTabs, window, cx)
-                            })
-                            .toggleable_entry(
-                                "Show space picker",
-                                show_space_picker,
-                                IconPosition::End,
-                                None,
-                                move |window, cx| {
-                                    toggle_picker(Action::ToggleSpacePicker, window, cx)
-                                },
-                            )
-                            .separator()
-                            .entry(
-                                "Settings",
-                                None,
-                                move |window, cx| settings(Action::OpenSettings, window, cx),
-                            )
-                        }))
-                    })
-                    .into_any_element()
-            }
+            Mode::Sidebar => PopupMenu::new("chrome-menu")
+                .trigger_with_tooltip(
+                    IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
+                        .icon_size(IconSize::Small),
+                    Tooltip::text("View options"),
+                )
+                .anchor(Anchor::TopRight)
+                .menu(move |window, cx| {
+                    let switch = on.clone();
+                    let settings = on.clone();
+                    Some(ContextMenu::build_popup(window, cx, move |menu| {
+                        menu.entry("Switch to Tabbed mode", None, move |window, cx| {
+                            switch(Action::SwitchToTabs, window, cx)
+                        })
+                        .separator()
+                        .entry("Settings", None, move |window, cx| {
+                            settings(Action::OpenSettings, window, cx)
+                        })
+                    }))
+                })
+                .into_any_element(),
             Mode::Tabs => PopupMenu::new("chrome-menu")
                 .trigger_with_tooltip(
                     IconButton::new("chrome-menu-trigger", IconName::ChevronDown)
@@ -3923,7 +3955,21 @@ impl Render for Zeddy {
     }
 }
 
-fn error_notice_row(notice: &ErrorNotice, now: Instant) -> AnyElement {
+fn error_menu_header(notice_count: usize, clear_button: AnyElement) -> AnyElement {
+    h_flex()
+        .w_full()
+        .justify_between()
+        .gap_2()
+        .child(
+            Label::new(format!("Problems ({notice_count})"))
+                .size(UI_LABEL_SMALL)
+                .color(Color::Muted),
+        )
+        .child(clear_button)
+        .into_any_element()
+}
+
+fn error_notice_row(notice: &ErrorNotice, now: Instant, dismiss_button: AnyElement) -> AnyElement {
     let (icon, color) = match notice.key.severity {
         ErrorSeverity::Warning => (IconName::Warning, Color::Warning),
         ErrorSeverity::Error => (IconName::XCircle, Color::Error),
@@ -3951,14 +3997,40 @@ fn error_notice_row(notice: &ErrorNotice, now: Instant) -> AnyElement {
                                 .weight(gpui::FontWeight::MEDIUM),
                         )
                         .child(
-                            Label::new(relative_error_time(notice.first_seen, now))
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted),
+                            h_flex()
+                                .flex_none()
+                                .gap_1()
+                                .child(
+                                    Label::new(relative_error_time(notice.first_seen, now))
+                                        .size(UI_LABEL_SMALL)
+                                        .color(Color::Muted),
+                                )
+                                .child(dismiss_button),
                         ),
                 )
-                .child(Label::new(notice.key.message.clone()).size(UI_LABEL_DEFAULT).line_clamp(3)),
+                .child(Label::new(notice.key.message.clone()).size(UI_LABEL_DEFAULT)),
         )
         .into_any_element()
+}
+
+fn reconcile_error_notices(
+    current: Vec<ErrorNoticeKey>,
+    seen_at: &mut HashMap<ErrorNoticeKey, Instant>,
+    dismissed: &mut HashSet<ErrorNoticeKey>,
+    now: Instant,
+) -> Vec<ErrorNotice> {
+    seen_at.retain(|key, _| current.contains(key));
+    dismissed.retain(|key| current.contains(key));
+    for key in &current {
+        seen_at.entry(key.clone()).or_insert(now);
+    }
+    let mut notices = current
+        .into_iter()
+        .filter(|key| !dismissed.contains(key))
+        .map(|key| ErrorNotice { first_seen: seen_at[&key], key })
+        .collect::<Vec<_>>();
+    notices.sort_by(|a, b| b.first_seen.cmp(&a.first_seen));
+    notices
 }
 
 fn relative_error_time(first_seen: Instant, now: Instant) -> String {
@@ -4308,13 +4380,14 @@ fn write_bundled_file(path: &std::path::Path, contents: &[u8]) -> std::io::Resul
 #[cfg(test)]
 mod pane_drop_tests {
     use super::{
-        PersistedSpaceKind, Registry, Snapshot, SplitDirection, cleanup_empty_implicit_root,
-        materialize_bundled_clock, materialize_bundled_hello, pane_drop_direction_for_position,
-        regex_escape_literal, relative_error_time, resolve_terminal_path,
-        split_direction_for_position,
+        ErrorNoticeKey, ErrorSeverity, PersistedSpaceKind, Registry, Snapshot, SplitDirection,
+        cleanup_empty_implicit_root, materialize_bundled_clock, materialize_bundled_hello,
+        pane_drop_direction_for_position, reconcile_error_notices, regex_escape_literal,
+        relative_error_time, resolve_terminal_path, split_direction_for_position,
     };
     use crate::{persistence::PersistedSpace, workspace::WorkspaceTabs};
     use std::{
+        collections::{HashMap, HashSet},
         path::{Path, PathBuf},
         time::{Duration, Instant},
     };
@@ -4337,6 +4410,49 @@ mod pane_drop_tests {
             relative_error_time(first_seen, first_seen + Duration::from_secs(172_800)),
             "2d ago"
         );
+    }
+
+    #[test]
+    fn dismissed_errors_return_only_after_the_condition_clears() {
+        let key = ErrorNoticeKey {
+            source: "Space · example".to_owned(),
+            message: "attach failed".to_owned(),
+            severity: ErrorSeverity::Warning,
+        };
+        let first_seen = Instant::now();
+        let mut seen_at = HashMap::new();
+        let mut dismissed = HashSet::new();
+
+        assert_eq!(
+            reconcile_error_notices(vec![key.clone()], &mut seen_at, &mut dismissed, first_seen,)
+                .len(),
+            1
+        );
+        dismissed.insert(key.clone());
+        assert!(
+            reconcile_error_notices(
+                vec![key.clone()],
+                &mut seen_at,
+                &mut dismissed,
+                first_seen + Duration::from_secs(1),
+            )
+            .is_empty()
+        );
+
+        reconcile_error_notices(
+            Vec::new(),
+            &mut seen_at,
+            &mut dismissed,
+            first_seen + Duration::from_secs(2),
+        );
+        let recurring = reconcile_error_notices(
+            vec![key],
+            &mut seen_at,
+            &mut dismissed,
+            first_seen + Duration::from_secs(3),
+        );
+        assert_eq!(recurring.len(), 1);
+        assert_eq!(recurring[0].first_seen, first_seen + Duration::from_secs(3));
     }
 
     #[test]

@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn a_directory_is_not_an_executable() {
+    fn a_directory_is_not_a_sidecar() {
         let tmp = tempfile::tempdir().expect("tempdir");
         assert!(Sidecar::at(tmp.path()).is_err());
     }

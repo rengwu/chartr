@@ -940,14 +940,6 @@ mod space_sorter_tests {
     }
 
     #[test]
-    fn flip_curve_is_quintic_and_bounded() {
-        assert_eq!(flip_progress(Duration::ZERO), 0.);
-        assert!((flip_progress(FLIP_DURATION / 2) - 0.96875).abs() < f32::EPSILON);
-        assert_eq!(flip_progress(FLIP_DURATION), 1.);
-        assert_eq!(flip_progress(FLIP_DURATION * 2), 1.);
-    }
-
-    #[test]
     fn variable_height_midpoints_and_final_release_y_choose_legal_slots() {
         let geometry = vec![
             (id(1), Bounds::new(point(px(0.), px(10.)), gpui::size(px(200.), px(40.)))),

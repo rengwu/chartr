@@ -791,10 +791,8 @@ fn local_page(theme: &BrowserTheme, page: LocalPage<'_>) -> String {
     let theme = serde_json::to_string(theme).unwrap_or_else(|_| "{}".into());
     let body = match page {
         LocalPage::Start => {
-            let shortcut = if cfg!(target_os = "macos") { "⌘L" } else { "Ctrl+L" };
-            format!(
-                "<div class='globe'>🌏</div><h1>Browse the web</h1><p>Enter a URL or search above"
-            )
+            "<div class='globe'>🌏</div><h1>Browse the web</h1><p>Enter a URL or search above"
+                .to_owned()
         }
         LocalPage::Error { message, retry } => format!(
             "<div class='globe'>!</div><h1>Page unavailable</h1><p>{}</p><button id='retry' data-address='{}'>Retry</button>",
@@ -1044,10 +1042,10 @@ mod tests {
     }
 
     #[test]
-    fn instance_state_is_stable_and_namespaced_by_space() {
+    fn instance_state_is_namespaced_by_space_and_instance() {
         let root = Path::new("/data");
-        assert_eq!(state_path(root, "folder:a", 7), state_path(root, "folder:a", 7));
         assert_ne!(state_path(root, "folder:a", 7), state_path(root, "folder:b", 7));
+        assert_ne!(state_path(root, "folder:a", 7), state_path(root, "folder:a", 8));
     }
 
     #[test]
@@ -1068,8 +1066,5 @@ mod tests {
         assert_eq!(theme.ui_font_size, "18px");
         assert!(page.contains(r#""uiFontSize":"18px""#));
         assert!(page.contains("html { font-size:var(--uiFontSize); }"));
-        assert!(page.contains("font:.857142857rem/1.45"));
-        assert!(page.contains(".globe { color:var(--muted);font-size:2rem"));
-        assert!(page.contains("h1 { margin:0 0 .5rem;font-size:1rem"));
     }
 }

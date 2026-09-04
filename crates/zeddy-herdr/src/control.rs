@@ -573,7 +573,7 @@ mod tests {
 
     #[test]
     fn a_blank_title_is_not_a_title() {
-        assert_eq!(Session::from(pane("p1", Some("   "), Some("codex"))).title(), "codex");
+        assert_eq!(Session::from(pane("p1", Some("   "), None)).title(), "p1");
     }
 
     #[test]

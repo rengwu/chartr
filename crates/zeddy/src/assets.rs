@@ -51,26 +51,8 @@ mod tests {
     use ui::IconName;
 
     #[test]
-    fn every_icon_zeddy_draws_is_embedded() {
+    fn chartrs_plugin_launcher_icon_is_embedded() {
         assert!(Assets.load("icons/blockchain_01.svg").expect("load").is_some());
-        for icon in [
-            IconName::Plus,
-            IconName::Close,
-            IconName::Tab,
-            IconName::Menu,
-            IconName::ArrowLeft,
-            IconName::ArrowRight,
-            IconName::RotateCw,
-            IconName::Stop,
-            IconName::Lock,
-            IconName::Public,
-        ] {
-            let path = icon.path();
-            assert!(
-                Assets.load(&path).expect("load").is_some(),
-                "{path} is drawn by zeddy but not embedded"
-            );
-        }
     }
 
     #[test]

@@ -85,6 +85,10 @@ while sidebar rows do not. Enable the sidebar checkbox and confirm its standalon
 and grouped rows close as well. Disable the parent and confirm none of these
 surfaces close from a middle click.
 
+Confirm "Show space picker in sidebar mode" appears in General settings. Turning
+it off hides the title-bar picker in sidebar mode without hiding any space cards;
+turning it on restores the picker, and the choice survives relaunch.
+
 Exercise the terminal as a terminal, not only as a shell prompt:
 
 - paste single-line and multiline text with the platform shortcut and context
@@ -116,11 +120,10 @@ stale viewport, focus loss, or interaction that works only in one pane shape.
 
 Confirm the space picker sits in the macOS title bar immediately after the
 traffic lights, and the chevron menu sits at the far-right corner in both
-chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a
-trailing-checkmarked `Show space picker` toggle, a separator, and `Settings`;
-turning the toggle off hides the picker without hiding any space cards. Tabbed
-mode offers `Switch to Sidebar mode`, a separator, and `Settings`. Switching
-presentation or picker visibility updates immediately and survives relaunch.
+chrome modes. Sidebar mode offers `Switch to Tabbed mode`, a separator, and
+`Settings`; tabbed mode offers `Switch to Sidebar mode`, a separator, and
+`Settings`. Switching presentation or picker visibility updates immediately
+and survives relaunch.
 On platforms with a native system title bar, confirm both controls retain
 their in-app chrome positions.
 

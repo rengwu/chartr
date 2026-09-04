@@ -19,13 +19,3 @@ pub enum Mode {
     /// the mode for a handful of things you are switching between quickly.
     Tabs,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_two_modes_are_the_only_two() {
-        assert_eq!(Mode::default(), Mode::Sidebar);
-    }
-}

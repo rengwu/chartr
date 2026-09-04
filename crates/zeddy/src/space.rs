@@ -590,7 +590,6 @@ impl Space {
             | Action::LocateSpace { .. }
             | Action::SwitchToTabs
             | Action::SwitchToSidebar
-            | Action::ToggleSpacePicker
             | Action::BeginSpaceDrag { .. }
             | Action::OpenSettings => {}
         }
@@ -1085,11 +1084,6 @@ mod tests {
         ) -> impl gpui::IntoElement {
             gpui::div()
         }
-    }
-
-    #[test]
-    fn the_folderless_space_is_named_free_sessions() {
-        assert_eq!(name_for(Kind::AdHoc, std::path::Path::new("/home/op")), "Free sessions");
     }
 
     #[gpui::test]

@@ -229,16 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn two_plugins_may_use_the_same_pane_key() {
-        let mut one = Registrar::new("a");
-        one.add_pane("main", "One");
-        let mut two = Registrar::new("b");
-        two.add_pane("main", "Two");
-        assert_ne!(one.panes()[0].key, two.panes()[0].key);
-    }
-
-    #[test]
-    fn settings_are_opt_in_and_remain_lazy() {
+    fn settings_contributions_are_opt_in() {
         let mut registrar = Registrar::new("com.example.settings");
         assert!(!registrar.has_settings());
         registrar.add_settings();

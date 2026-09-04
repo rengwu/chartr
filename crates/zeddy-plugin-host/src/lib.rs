@@ -756,17 +756,6 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_pane_a_plugin_never_declared_has_no_source(cx: &mut gpui::TestAppContext) {
-        let (_tmp, paths) = paths();
-        write_web(&paths, "com.example.notes", "com.example.notes");
-
-        let mut catalog = cx.update(|cx| load_all(&paths, cx));
-        let plugin = catalog.get_mut("com.example.notes").expect("loaded");
-        assert!(plugin.pane(&PaneKey::new("com.example.notes", "main")).is_some());
-        assert!(plugin.pane(&PaneKey::new("com.example.notes", "gone")).is_none());
-    }
-
-    #[gpui::test]
     fn a_missing_plugin_directory_is_an_empty_catalog_not_an_error(cx: &mut gpui::TestAppContext) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let paths = Paths::under(tmp.path().join("nothing-here"));

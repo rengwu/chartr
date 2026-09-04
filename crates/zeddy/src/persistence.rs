@@ -220,11 +220,6 @@ impl StateStore {
         )?;
         Ok(())
     }
-
-    #[cfg(test)]
-    fn schema_version(&self) -> Result<i64> {
-        Ok(self.connection.pragma_query_value(None, "user_version", |row| row.get(0))?)
-    }
 }
 
 pub fn state_file() -> Result<PathBuf> {
@@ -274,7 +269,11 @@ mod tests {
     #[test]
     fn a_new_database_runs_the_versioned_schema() {
         let store = StateStore::memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+        let version = store
+            .connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
     }
 
     #[test]

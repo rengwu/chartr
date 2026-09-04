@@ -595,9 +595,23 @@ impl SettingsWindow {
         self.original.upgrade().map(|origin| origin.read(cx).settings_mode())
     }
 
+    fn show_space_picker(&self, cx: &App) -> Option<bool> {
+        self.original.upgrade().map(|origin| origin.read(cx).settings_show_space_picker())
+    }
+
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if let Some(origin) = self.original.upgrade() {
             origin.update(cx, |origin, cx| origin.settings_set_mode(mode, cx));
+            self.problem = None;
+        } else {
+            self.problem = Some("The originating Chartr window is no longer available.".into());
+        }
+        cx.notify();
+    }
+
+    fn set_show_space_picker(&mut self, show: bool, cx: &mut Context<Self>) {
+        if let Some(origin) = self.original.upgrade() {
+            origin.update(cx, |origin, cx| origin.settings_set_show_space_picker(show, cx));
             self.problem = None;
         } else {
             self.problem = Some("The originating Chartr window is no longer available.".into());
@@ -801,11 +815,13 @@ impl SettingsWindow {
         let middle_click_closes_tab = settings.middle_click_closes_tab;
         let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
         let mode = self.mode(cx);
+        let show_space_picker = self.show_space_picker(cx).unwrap_or(true);
         let runtime_available = mode.is_some();
         let mode = mode.unwrap_or_default();
         let terminate_setting = cx.weak_entity();
         let middle_click_setting = cx.weak_entity();
         let sidebar_middle_click_setting = cx.weak_entity();
+        let space_picker_setting = cx.weak_entity();
         let use_sidebar = cx.listener(move |this, _, _, cx| {
             if runtime_available {
                 this.set_mode(Mode::Sidebar, cx);
@@ -869,6 +885,22 @@ impl SettingsWindow {
                 }),
             ));
         }
+        fields.push(setting_field(
+            "Show space picker in sidebar mode",
+            "Show the current space selector in the title bar while using the sidebar.",
+            Switch::new("show-space-picker-in-sidebar-mode", show_space_picker.into())
+                .tab_index(0isize)
+                .disabled(!runtime_available)
+                .aria_label("Show space picker in sidebar mode")
+                .aria_description(
+                    "Show the current space selector in the title bar while using the sidebar.",
+                )
+                .on_click(move |state, _, cx| {
+                    let show = state.selected();
+                    let _ = space_picker_setting
+                        .update(cx, |this, cx| this.set_show_space_picker(show, cx));
+                }),
+        ));
         fields.push(setting_field(
             "Session list",
             "Choose where sessions appear in the workspace.",

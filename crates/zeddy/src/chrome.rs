@@ -231,7 +231,6 @@ pub enum Action {
     LocateSpace { space: EntityId },
     SwitchToTabs,
     SwitchToSidebar,
-    ToggleSpacePicker,
     NewSpace,
     NewInSpace { space: EntityId },
     NewPluginPaneInSpace { space: EntityId },

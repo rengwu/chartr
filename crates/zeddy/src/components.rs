@@ -28,7 +28,6 @@ struct PopupMetrics {
     inter_item_gaps: usize,
     separators: usize,
     headers: usize,
-    custom_rows_height: Pixels,
 }
 
 impl PopupMetrics {
@@ -43,8 +42,7 @@ impl PopupMetrics {
             + entry * self.entries
             + inter_item_gap * self.inter_item_gaps
             + separator * self.separators
-            + header * self.headers
-            + self.custom_rows_height;
+            + header * self.headers;
         px(height.as_f32().ceil().max(1.))
     }
 }
@@ -55,6 +53,7 @@ pub struct AnchoredContextMenu {
     target_window: AnyWindowHandle,
     height: Pixels,
     width: Pixels,
+    has_custom_rows: bool,
 }
 
 type PopupHandler = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -87,6 +86,7 @@ pub struct ContextMenu {
     has_item_in_group: bool,
     metrics: PopupMetrics,
     popup_width: Pixels,
+    has_custom_rows: bool,
 }
 
 impl ContextMenu {
@@ -103,6 +103,7 @@ impl ContextMenu {
                     has_item_in_group: false,
                     metrics: PopupMetrics::default(),
                     popup_width: POPUP_CONTENT_WIDTH,
+                    has_custom_rows: false,
                 },
                 window,
                 cx,
@@ -126,12 +127,14 @@ impl ContextMenu {
             has_item_in_group: false,
             metrics: PopupMetrics::default(),
             popup_width: POPUP_CONTENT_WIDTH,
+            has_custom_rows: false,
         });
         AnchoredContextMenu {
             items: built.popup_items,
             target_window,
             height: built.metrics.height(cx),
             width: built.popup_width,
+            has_custom_rows: built.has_custom_rows,
         }
     }
 
@@ -220,11 +223,9 @@ impl ContextMenu {
         this
     }
 
-    /// Add a non-selectable row with arbitrary layout to either menu host.
-    /// `height` lets the native popup size itself before that row is rendered.
+    /// Add a non-selectable row whose rendered content determines its height.
     pub fn custom_row(
         mut self,
-        height: Pixels,
         render: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
     ) -> Self {
         let render: PopupRowRenderer = Rc::new(render);
@@ -234,7 +235,7 @@ impl ContextMenu {
         } else {
             self.popup_items.push(PopupItem::CustomRow(render));
         }
-        self.metrics.custom_rows_height += height;
+        self.has_custom_rows = true;
         self
     }
 
@@ -432,10 +433,18 @@ impl RenderOnce for PopupRightClickMenu {
 
 struct AnchoredMenuWindow {
     menu: Entity<UiContextMenu>,
+    popup_width: Pixels,
+    maximum_height: Pixels,
+    fitted_height: Rc<Cell<Option<Pixels>>>,
 }
 
 impl AnchoredMenuWindow {
-    fn new(menu: AnchoredContextMenu, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(
+        menu: AnchoredContextMenu,
+        maximum_height: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let target_window = menu.target_window;
         let menu_height = menu.height;
         let menu_width = menu.width;
@@ -499,13 +508,42 @@ impl AnchoredMenuWindow {
         window.on_next_frame(move |window, _| {
             window.on_next_frame(move |window, cx| window.focus(&focus, cx));
         });
-        Self { menu: context_menu }
+        Self {
+            menu: context_menu,
+            popup_width: menu_width + POPUP_OUTSET * 2.,
+            maximum_height,
+            fitted_height: Rc::default(),
+        }
     }
 }
 
 impl Render for AnchoredMenuWindow {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().p(POPUP_OUTSET).child(self.menu.clone())
+        let fitted_height = self.fitted_height.clone();
+        let popup_width = self.popup_width;
+        let maximum_height = self.maximum_height;
+        div().size_full().p(POPUP_OUTSET).child(
+            div().id("anchored-menu-content").relative().w_full().child(self.menu.clone()).child(
+                canvas(
+                    move |bounds, window, _| {
+                        if bounds.size.height <= px(1.) {
+                            return;
+                        }
+                        let height = clamp_pixels(
+                            bounds.size.height + POPUP_OUTSET * 2.,
+                            px(1.),
+                            maximum_height,
+                        );
+                        if fitted_height.replace(Some(height)) != Some(height) {
+                            window.resize(size(popup_width, height));
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            ),
+        )
     }
 }
 
@@ -518,17 +556,23 @@ fn open_popup(
 ) {
     let display = parent_window.display(cx);
     let display_id = display.as_ref().map(|display| display.id());
-    let maximum_height = display
+    let display_height = display
         .as_ref()
         .map(|display| display.visible_bounds().size.height)
         .unwrap_or_else(|| parent_window.bounds().size.height);
+    let maximum_height =
+        (parent_window.viewport_size().height - POPUP_GAP).max(px(1.)).min(display_height);
     let maximum_width = display
         .as_ref()
         .map(|display| display.visible_bounds().size.width)
         .unwrap_or_else(|| parent_window.bounds().size.width);
-    let popup_height = clamp_pixels(menu.height + POPUP_OUTSET * 2., px(1.), maximum_height);
+    let popup_height = if menu.has_custom_rows {
+        maximum_height
+    } else {
+        clamp_pixels(menu.height + POPUP_OUTSET * 2., px(1.), maximum_height)
+    };
     let popup_width = clamp_pixels(menu.width + POPUP_OUTSET * 2., px(1.), maximum_width);
-    menu.height = (popup_height - POPUP_OUTSET * 2.).max(px(1.));
+    menu.height = (maximum_height - POPUP_OUTSET * 2.).max(px(1.));
     menu.width = (popup_width - POPUP_OUTSET * 2.).max(px(1.));
     let popup_size = size(popup_width, popup_height);
     let kind = anchored_popup_window_kind(parent_window, trigger_bounds, anchor);
@@ -547,10 +591,10 @@ fn open_popup(
             is_minimizable: false,
             display_id,
             window_background: WindowBackgroundAppearance::Transparent,
-            window_min_size: Some(popup_size),
+            window_min_size: Some(size(popup_width, px(1.))),
             ..Default::default()
         },
-        move |window, cx| cx.new(|cx| AnchoredMenuWindow::new(menu, window, cx)),
+        move |window, cx| cx.new(|cx| AnchoredMenuWindow::new(menu, maximum_height, window, cx)),
     );
 
     match opened {
@@ -646,6 +690,29 @@ mod popup_menu_tests {
         tooltip_built: Rc<Cell<bool>>,
     }
 
+    struct ContentSizedMenuHarness {
+        rows: usize,
+    }
+
+    impl Render for ContentSizedMenuHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let rows = self.rows;
+            PopupMenu::new("content-sized-popup-test")
+                .trigger(ui::Button::new("content-sized-popup-trigger", "Open"))
+                .menu(move |window, cx| {
+                    Some(ContextMenu::build_popup(window, cx, move |menu| {
+                        let mut menu = menu.popup_width(px(320.));
+                        for _ in 0..rows {
+                            menu = menu.custom_row(|_, _| {
+                                div().h(px(120.)).child("Tall").into_any_element()
+                            });
+                        }
+                        menu
+                    }))
+                })
+        }
+    }
+
     struct TestTooltip;
 
     impl Render for TestTooltip {
@@ -702,6 +769,67 @@ mod popup_menu_tests {
 
         assert!(invoked.get(), "clicking a popup entry should invoke its parent-window handler");
         assert_eq!(popup.windows(), vec![parent], "confirming an entry should close the popup");
+    }
+
+    #[gpui::test]
+    fn anchored_custom_rows_size_the_popup_from_rendered_content(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let (_, cx) = cx.add_window_view(|_, _| ContentSizedMenuHarness { rows: 1 });
+        let parent = cx.window_handle();
+        let parent_height = cx.update(|window, _| window.viewport_size().height);
+
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        let popup = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .expect("clicking the trigger should open an anchored menu window");
+
+        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+        popup.run_until_parked();
+        let popup_height = popup.update(|window, _| match window.window_bounds() {
+            WindowBounds::Windowed(bounds) => bounds.size.height,
+            WindowBounds::Maximized(bounds) => bounds.size.height,
+            WindowBounds::Fullscreen(bounds) => bounds.size.height,
+        });
+
+        assert!(popup_height > px(120.), "the popup should contain the complete custom row");
+        assert!(
+            popup_height < parent_height,
+            "a short menu should shrink instead of occupying all available height"
+        );
+    }
+
+    #[gpui::test]
+    fn anchored_custom_rows_scroll_only_at_the_parent_window_limit(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+
+        let (_, cx) = cx.add_window_view(|_, _| ContentSizedMenuHarness { rows: 20 });
+        let parent = cx.window_handle();
+        let parent_height = cx.update(|window, _| window.viewport_size().height);
+
+        cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+        let popup = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .expect("clicking the trigger should open an anchored menu window");
+
+        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+        popup.run_until_parked();
+        let popup_height =
+            popup.update(|window, _| window.window_bounds().get_bounds().size.height);
+
+        assert_eq!(popup_height, parent_height - POPUP_GAP);
     }
 
     #[gpui::test]

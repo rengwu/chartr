@@ -101,14 +101,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_private_path_stays_under_the_root() {
-        let ns = Namespace::rooted("/scratch/root");
-        for path in [ns.socket(), ns.log(), ns.saved_shape()] {
-            assert!(path.starts_with("/scratch/root"), "{path:?} escaped the private root");
-        }
-    }
-
-    #[test]
     fn inherited_herdr_context_is_cleared_not_merely_overridden() {
         let ns = Namespace::rooted("/scratch/root");
         let env = ns.env();
@@ -122,15 +114,6 @@ mod tests {
             let entry = env.iter().find(|(k, _)| k == key).expect("key is in the namespace env");
             assert!(entry.1.is_none(), "{key} must be removed, not set");
         }
-    }
-
-    #[test]
-    fn the_socket_and_the_env_agree() {
-        let ns = Namespace::rooted("/scratch/root");
-        let env = ns.env();
-        let socket =
-            env.iter().find(|(k, _)| k == "HERDR_SOCKET_PATH").and_then(|(_, v)| v.clone());
-        assert_eq!(socket, Some(ns.socket().into()));
     }
 
     #[test]

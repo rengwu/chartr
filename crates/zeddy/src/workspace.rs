@@ -178,12 +178,6 @@ impl PaneAxis {
         Self { axis, members, flexes }
     }
 
-    #[cfg(test)]
-    fn valid_flexes(&self) -> bool {
-        self.flexes.len() == self.members.len()
-            && self.flexes.iter().all(|flex| flex.is_finite() && *flex > 0.)
-    }
-
     fn reset_flexes(&mut self) {
         self.flexes = vec![1.; self.members.len()];
     }
@@ -337,26 +331,6 @@ impl PaneGroup {
         }
     }
 
-    #[cfg(test)]
-    pub fn set_flexes(&mut self, axis_path: &[usize], flexes: Vec<f32>) -> Result<(), ModelError> {
-        let mut member = &mut self.root;
-        for &index in axis_path {
-            member = match member {
-                Member::Axis(axis) => axis.members.get_mut(index).ok_or(ModelError::BadAxisPath)?,
-                Member::Pane { .. } => return Err(ModelError::BadAxisPath),
-            };
-        }
-        let Member::Axis(axis) = member else {
-            return Err(ModelError::BadAxisPath);
-        };
-        let old = std::mem::replace(&mut axis.flexes, flexes);
-        if !axis.valid_flexes() {
-            axis.flexes = old;
-            return Err(ModelError::InvalidFlexes);
-        }
-        Ok(())
-    }
-
     pub fn resize_divider(
         &mut self,
         axis_path: &[usize],
@@ -462,7 +436,6 @@ pub struct Workspace {
     panes_by_item: HashMap<ItemId, PaneId>,
     active_pane: PaneId,
     next_pane_id: u64,
-    next_item_id: u64,
 }
 
 impl Default for Workspace {
@@ -480,7 +453,6 @@ impl Workspace {
             panes_by_item: HashMap::new(),
             active_pane: root,
             next_pane_id: 2,
-            next_item_id: 1,
         }
     }
 
@@ -528,13 +500,6 @@ impl Workspace {
 
     pub fn pane_in_direction(&self, direction: SplitDirection) -> Option<PaneId> {
         self.center.pane_in_direction(self.active_pane, direction)
-    }
-
-    #[cfg(test)]
-    pub fn alloc_item(&mut self) -> ItemId {
-        let id = ItemId(self.next_item_id);
-        self.next_item_id += 1;
-        id
     }
 
     pub fn add_item(
@@ -831,7 +796,6 @@ impl<'de> Deserialize<'de> for WorkspaceTabs {
                 panes_by_item: fields.panes_by_item,
                 active_pane: fields.active_pane.unwrap_or(PaneId(1)),
                 next_pane_id: fields.next_pane_id,
-                next_item_id: fields.next_item_id,
             };
             if layout.is_empty() {
                 Self::new()
@@ -1203,6 +1167,10 @@ impl std::error::Error for ModelError {}
 mod tests {
     use super::*;
 
+    fn item(id: u64) -> ItemId {
+        ItemId(id)
+    }
+
     #[test]
     fn workspace_tabs_mix_standalone_items_with_one_pane_group() {
         let mut tabs = WorkspaceTabs::new();
@@ -1366,11 +1334,12 @@ mod tests {
     #[test]
     fn legacy_single_workspace_state_becomes_one_outer_workspace_tab() {
         let mut legacy = Workspace::new();
-        let item = legacy.alloc_item();
+        let item = item(1);
         legacy.add_item(item, None, None).unwrap();
-        let json = serde_json::to_string(&legacy).unwrap();
+        let mut json = serde_json::to_value(&legacy).unwrap();
+        json.as_object_mut().unwrap().insert("next_item_id".to_owned(), serde_json::json!(2));
 
-        let restored: WorkspaceTabs = serde_json::from_str(&json).unwrap();
+        let restored: WorkspaceTabs = serde_json::from_value(json).unwrap();
 
         assert_eq!(restored.tabs().len(), 1);
         assert_eq!(restored.active_item(), Some(item));
@@ -1382,7 +1351,7 @@ mod tests {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
         let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
-        let item = workspace.alloc_item();
+        let item = item(1);
 
         workspace.add_item(item, Some(left), None).unwrap();
         workspace.add_item(item, Some(right), None).unwrap();
@@ -1400,8 +1369,8 @@ mod tests {
         let mut workspace = Workspace::new();
         let root = workspace.active_pane();
         let split = workspace.split_pane(root, SplitDirection::Right).unwrap();
-        let root_item = workspace.alloc_item();
-        let split_item = workspace.alloc_item();
+        let root_item = item(1);
+        let split_item = item(2);
         workspace.add_item(root_item, Some(root), None).unwrap();
         workspace.add_item(split_item, Some(split), None).unwrap();
 
@@ -1422,7 +1391,7 @@ mod tests {
         let root = workspace.active_pane();
         let useful = workspace.split_pane(root, SplitDirection::Right).unwrap();
         let empty = workspace.split_pane(useful, SplitDirection::Down).unwrap();
-        let item = workspace.alloc_item();
+        let item = item(1);
         workspace.add_item(item, Some(useful), None).unwrap();
         workspace.activate_pane(empty).unwrap();
 
@@ -1454,7 +1423,7 @@ mod tests {
     fn closing_an_empty_active_pane_focuses_its_neighbor() {
         let mut workspace = Workspace::new();
         let occupied = workspace.active_pane();
-        let item = workspace.alloc_item();
+        let item = item(1);
         workspace.add_item(item, Some(occupied), None).unwrap();
         let empty = workspace.split_pane(occupied, SplitDirection::Right).unwrap();
 
@@ -1490,8 +1459,8 @@ mod tests {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
         let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
-        let first = workspace.alloc_item();
-        let second = workspace.alloc_item();
+        let first = item(1);
+        let second = item(2);
         workspace.add_item(first, Some(left), None).unwrap();
         workspace.add_item(second, Some(right), None).unwrap();
 
@@ -1507,9 +1476,9 @@ mod tests {
     fn closing_uses_activation_history_before_position() {
         let mut workspace = Workspace::new();
         let pane = workspace.active_pane();
-        let a = workspace.alloc_item();
-        let b = workspace.alloc_item();
-        let c = workspace.alloc_item();
+        let a = item(1);
+        let b = item(2);
+        let c = item(3);
         workspace.add_item(a, Some(pane), None).unwrap();
         workspace.add_item(b, Some(pane), None).unwrap();
         workspace.add_item(c, Some(pane), None).unwrap();
@@ -1534,9 +1503,9 @@ mod tests {
         let mut workspace = Workspace::new();
         let root = workspace.active_pane();
         let down = workspace.split_pane(root, SplitDirection::Down).unwrap();
-        let item = workspace.alloc_item();
+        let item = item(1);
         workspace.add_item(item, Some(down), None).unwrap();
-        workspace.center.set_flexes(&[], vec![1.5, 0.5]).unwrap();
+        workspace.center.resize_divider(&[], 0, 0.75).unwrap();
 
         let encoded = serde_json::to_string(&workspace).unwrap();
         let restored: Workspace = serde_json::from_str(&encoded).unwrap();
@@ -1546,33 +1515,19 @@ mod tests {
     }
 
     #[test]
-    fn invalid_flexes_do_not_replace_a_working_layout() {
-        let mut workspace = Workspace::new();
-        let root = workspace.active_pane();
-        workspace.split_pane(root, SplitDirection::Right).unwrap();
-        assert_eq!(workspace.center.set_flexes(&[], vec![0., 2.]), Err(ModelError::InvalidFlexes));
-        let Member::Axis(axis) = &workspace.center.root else {
-            panic!("split root");
-        };
-        assert_eq!(axis.flexes, vec![1., 1.]);
-    }
-
-    #[test]
     fn divider_resizing_changes_only_the_adjacent_pair() {
         let mut workspace = Workspace::new();
         let first = workspace.active_pane();
         let second = workspace.split_pane(first, SplitDirection::Right).unwrap();
         workspace.split_pane(second, SplitDirection::Right).unwrap();
-        workspace.center.set_flexes(&[], vec![1., 1., 2.]).unwrap();
-
         workspace.center.resize_divider(&[], 0, 0.4).unwrap();
 
         let Member::Axis(axis) = &workspace.center.root else {
             panic!("axis");
         };
-        assert_eq!(axis.flexes[2], 2.);
-        assert!((axis.flexes[0] - 1.6).abs() < 0.001);
-        assert!((axis.flexes[1] - 0.4).abs() < 0.001);
+        assert_eq!(axis.flexes[2], 1.);
+        assert!((axis.flexes[0] - 1.2).abs() < 0.001);
+        assert!((axis.flexes[1] - 0.8).abs() < 0.001);
     }
 
     #[test]
@@ -1604,10 +1559,10 @@ mod tests {
     fn tab_drop_indices_match_zeds_before_and_after_target_semantics() {
         let mut workspace = Workspace::new();
         let pane = workspace.active_pane();
-        let a = workspace.alloc_item();
-        let b = workspace.alloc_item();
-        let c = workspace.alloc_item();
-        let d = workspace.alloc_item();
+        let a = item(1);
+        let b = item(2);
+        let c = item(3);
+        let d = item(4);
         for item in [a, b, c, d] {
             workspace.add_item(item, Some(pane), None).unwrap();
         }
@@ -1628,9 +1583,9 @@ mod tests {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
         let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
-        let left_a = workspace.alloc_item();
-        let left_b = workspace.alloc_item();
-        let right_a = workspace.alloc_item();
+        let left_a = item(1);
+        let left_b = item(2);
+        let right_a = item(3);
         workspace.add_item(left_a, Some(left), None).unwrap();
         workspace.add_item(left_b, Some(left), None).unwrap();
         workspace.add_item(right_a, Some(right), None).unwrap();
@@ -1651,8 +1606,8 @@ mod tests {
         let mut workspace = Workspace::new();
         let left = workspace.active_pane();
         let right = workspace.split_pane(left, SplitDirection::Right).unwrap();
-        let left_item = workspace.alloc_item();
-        let right_item = workspace.alloc_item();
+        let left_item = item(1);
+        let right_item = item(2);
         workspace.add_item(left_item, Some(left), None).unwrap();
         workspace.add_item(right_item, Some(right), None).unwrap();
 
@@ -1670,7 +1625,7 @@ mod tests {
         let root = workspace.active_pane();
         let right = workspace.split_pane(root, SplitDirection::Right).unwrap();
         let down = workspace.split_pane(right, SplitDirection::Down).unwrap();
-        let items: Vec<_> = (0..12).map(|_| workspace.alloc_item()).collect();
+        let items: Vec<_> = (1..=12).map(item).collect();
         for (index, item) in items.iter().copied().enumerate() {
             let pane = [root, right, down][index % 3];
             workspace.add_item(item, Some(pane), None).unwrap();

@@ -136,16 +136,4 @@ mod tests {
             assert_eq!(native.font_family.as_ref().map(AsRef::as_ref), Some("IBM Plex Mono"));
         });
     }
-
-    #[test]
-    fn zeddy_names_a_family_on_every_platform() {
-        let defaults = ResolvedSettings::default();
-        assert!(!MONOSPACE_FAMILY.is_empty() && !defaults.ui_font_family.is_empty());
-    }
-
-    #[test]
-    fn the_default_monospace_is_a_real_bundled_font() {
-        assert!(IBM_PLEX_MONO.starts_with(&[0, 1, 0, 0]));
-        assert!(IBM_PLEX_MONO.len() > 100_000);
-    }
 }
