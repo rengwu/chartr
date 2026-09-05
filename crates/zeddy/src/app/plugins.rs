@@ -441,6 +441,7 @@ impl Zeddy {
             self.problem =
                 Some(format!("Some plugin items could not be restored: {}.", failures.join(", ")));
         }
+        self.schedule_persistence(cx);
     }
 
     pub(super) fn clone_plugin_drop(

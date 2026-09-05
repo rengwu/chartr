@@ -5,8 +5,10 @@
 //! identities, chrome state, and window geometry.
 
 use std::{
+    collections::HashSet,
     ffi::OsString,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use anyhow::{Context as _, Result};
@@ -105,6 +107,53 @@ pub struct StateStore {
     connection: Connection,
 }
 
+/// Serializes database access off-thread. Revisions also protect the final
+/// synchronous shutdown flush from older work still queued on the executor.
+pub struct StateWriter {
+    state: Arc<Mutex<WriterState>>,
+    revision: u64,
+}
+
+struct WriterState {
+    store: StateStore,
+    saved: Snapshot,
+    revision: u64,
+}
+
+pub struct SaveRequest {
+    state: Arc<Mutex<WriterState>>,
+    snapshot: Snapshot,
+    revision: u64,
+}
+
+impl StateWriter {
+    pub fn new(store: StateStore, saved: Snapshot) -> Self {
+        Self { state: Arc::new(Mutex::new(WriterState { store, saved, revision: 0 })), revision: 0 }
+    }
+
+    pub fn request(&mut self, snapshot: Snapshot) -> SaveRequest {
+        self.revision += 1;
+        SaveRequest { state: self.state.clone(), snapshot, revision: self.revision }
+    }
+}
+
+impl SaveRequest {
+    pub fn save(self) -> Result<()> {
+        let mut state =
+            self.state.lock().map_err(|_| anyhow::anyhow!("state writer lock poisoned"))?;
+        if self.revision <= state.revision {
+            return Ok(());
+        }
+        state.revision = self.revision;
+        if self.snapshot != state.saved {
+            state.store.save(&self.snapshot)?;
+            // Failed saves must remain retryable; publish only after commit.
+            state.saved = self.snapshot;
+        }
+        Ok(())
+    }
+}
+
 impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -179,13 +228,25 @@ impl StateStore {
         let transaction = self.connection.transaction()?;
         transaction.execute(
             "INSERT INTO app_state (key, value_json) VALUES ('window', ?1)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
+             WHERE app_state.value_json != excluded.value_json",
             [serde_json::to_string(&snapshot.window)?],
         )?;
-        transaction.execute("DELETE FROM spaces", [])?;
+        let keys: HashSet<_> = snapshot.spaces.iter().map(|space| space.key.as_str()).collect();
+        let stored_keys = transaction
+            .prepare("SELECT space_key FROM spaces")?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for key in stored_keys {
+            if !keys.contains(key.as_str()) {
+                transaction.execute("DELETE FROM spaces WHERE space_key = ?1", [key])?;
+            }
+        }
         {
             let mut insert = transaction.prepare(
-                "INSERT INTO spaces (space_key, ordinal, value_json) VALUES (?1, ?2, ?3)",
+                "INSERT INTO spaces (space_key, ordinal, value_json) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(space_key) DO UPDATE SET ordinal = excluded.ordinal, value_json = excluded.value_json
+                 WHERE spaces.ordinal != excluded.ordinal OR spaces.value_json != excluded.value_json",
             )?;
             for (ordinal, space) in snapshot.spaces.iter().enumerate() {
                 insert.execute(params![
@@ -300,6 +361,86 @@ mod tests {
         let restored = store.load().unwrap();
         assert_eq!(restored, snapshot);
         restored.spaces[0].layout.validate().unwrap();
+    }
+
+    #[test]
+    fn saves_touch_only_changed_rows() {
+        let mut store = StateStore::memory().unwrap();
+        let mut snapshot =
+            Snapshot { spaces: vec![space("one"), space("two")], ..Snapshot::default() };
+        store.save(&snapshot).unwrap();
+        let mut changes = store.connection.total_changes();
+        store.save(&snapshot).unwrap();
+        assert_eq!(store.connection.total_changes(), changes);
+        snapshot.window.sidebar_width += 10.;
+        store.save(&snapshot).unwrap();
+        assert_eq!(
+            store.connection.total_changes() - changes,
+            1,
+            "geometry updates only the window row"
+        );
+        changes = store.connection.total_changes();
+        snapshot.spaces[0].name = "renamed".into();
+        store.save(&snapshot).unwrap();
+        assert_eq!(
+            store.connection.total_changes() - changes,
+            1,
+            "renaming updates only that space"
+        );
+        changes = store.connection.total_changes();
+        snapshot.spaces.swap(0, 1);
+        store.save(&snapshot).unwrap();
+        assert_eq!(
+            store.connection.total_changes() - changes,
+            2,
+            "reordering updates the ordinals"
+        );
+        assert_eq!(store.load().unwrap(), snapshot);
+        snapshot.spaces.pop();
+        store.save(&snapshot).unwrap();
+        assert_eq!(store.load().unwrap(), snapshot, "removed spaces do not reappear");
+    }
+
+    #[test]
+    fn delayed_background_requests_cannot_overwrite_a_final_flush() {
+        let store = StateStore::memory().unwrap();
+        let mut writer = StateWriter::new(store, Snapshot::default());
+        let mut snapshot = Snapshot { spaces: vec![space("one")], ..Snapshot::default() };
+        let queued = writer.request(snapshot.clone());
+        snapshot.window.sidebar_width = 444.;
+        writer.request(snapshot.clone()).save().unwrap();
+        std::thread::spawn(move || queued.save()).join().unwrap().unwrap();
+        assert_eq!(writer.state.lock().unwrap().store.load().unwrap(), snapshot);
+        let changes = writer.state.lock().unwrap().store.connection.total_changes();
+        writer.request(snapshot).save().unwrap();
+        assert_eq!(writer.state.lock().unwrap().store.connection.total_changes(), changes);
+    }
+
+    #[test]
+    fn failed_transactions_roll_back_and_the_same_snapshot_can_be_retried() {
+        let mut store = StateStore::memory().unwrap();
+        let initial = Snapshot { spaces: vec![space("one")], ..Snapshot::default() };
+        store.save(&initial).unwrap();
+        store
+            .connection
+            .execute_batch(
+                "CREATE TRIGGER reject_space BEFORE UPDATE ON spaces
+            BEGIN SELECT RAISE(ABORT, 'test write failure'); END;",
+            )
+            .unwrap();
+        let mut writer = StateWriter::new(store, initial.clone());
+        let mut changed = initial.clone();
+        changed.window.sidebar_width = 555.;
+        changed.spaces[0].name = "new name".into();
+        assert!(writer.request(changed.clone()).save().is_err());
+        {
+            let state = writer.state.lock().unwrap();
+            assert_eq!(state.store.load().unwrap(), initial, "window changes roll back too");
+            assert_eq!(state.saved, initial, "failed saves do not poison the comparison cache");
+            state.store.connection.execute_batch("DROP TRIGGER reject_space").unwrap();
+        }
+        writer.request(changed.clone()).save().unwrap();
+        assert_eq!(writer.state.lock().unwrap().store.load().unwrap(), changed);
     }
 
     #[test]

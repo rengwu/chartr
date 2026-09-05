@@ -5,19 +5,7 @@ use super::*;
 impl Render for Zeddy {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ui_font = Fonts::setup_ui(window, cx);
-        let bounds = match window.window_bounds() {
-            gpui::WindowBounds::Windowed(bounds)
-            | gpui::WindowBounds::Maximized(bounds)
-            | gpui::WindowBounds::Fullscreen(bounds) => bounds,
-        };
-        self.window_bounds = Some(crate::persistence::WindowBounds {
-            x: bounds.origin.x / px(1.),
-            y: bounds.origin.y / px(1.),
-            width: bounds.size.width / px(1.),
-            height: bounds.size.height / px(1.),
-        });
         self.restore_plugins_once(window, cx);
-        self.persist_if_changed(cx);
         let entries = self.entries(cx);
         let now = cx.background_executor().now();
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {

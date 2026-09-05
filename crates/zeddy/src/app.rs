@@ -10,6 +10,7 @@ mod backend;
 mod bundled_plugins;
 mod command_palette;
 mod panes;
+mod persistence;
 mod plugins;
 mod rename;
 mod settings_bridge;
@@ -190,8 +191,9 @@ pub struct Zeddy {
     show_space_picker: bool,
     sidebar_width: f32,
     window_bounds: Option<crate::persistence::WindowBounds>,
-    state: Option<StateStore>,
-    last_persisted: Option<String>,
+    state: Option<crate::persistence::StateWriter>,
+    persistence_dirty: bool,
+    persistence_task: Option<gpui::Task<()>>,
     title_bar: Entity<crate::title_bar::TitleBar>,
     focus: FocusHandle,
     problem: Option<String>,
@@ -212,6 +214,8 @@ impl Zeddy {
         })
         .detach();
         cx.observe_window_bounds(window, |this, window, cx| {
+            this.capture_window_bounds(window);
+            this.schedule_persistence(cx);
             if let Some(rename_window) = this.rename_window {
                 let modal_size = window.viewport_size();
                 let _ = rename_window.update(cx, |_, window, _| window.resize(modal_size));
@@ -253,7 +257,7 @@ impl Zeddy {
                 },
                 Err(error) => (None, Snapshot::default(), Some(error.to_string())),
             };
-        let saved_json = serde_json::to_string(&saved).ok();
+        let persisted = saved.clone();
         let mut this = Self {
             client: None,
             backend: Backend::Starting,
@@ -288,7 +292,8 @@ impl Zeddy {
             sidebar_width: saved.window.sidebar_width,
             window_bounds: saved.window.bounds,
             state: None,
-            last_persisted: saved_json,
+            persistence_dirty: false,
+            persistence_task: None,
             title_bar,
             focus,
             problem: state_problem.clone(),
@@ -302,7 +307,7 @@ impl Zeddy {
             Err(error) => {
                 this.backend = Backend::Failed(error.to_string());
                 this.plugins_restored = true;
-                this.state = state;
+                // No spaces were restored: keep the saved workspace intact.
                 this.problem = Some(state_problem.unwrap_or_else(|| error.to_string()));
                 return this;
             }
@@ -417,7 +422,11 @@ impl Zeddy {
         this.active = active;
         this.mode = saved.window.chrome;
         this.catalog = catalog;
-        this.state = state;
+        this.state = state.map(|state| crate::persistence::StateWriter::new(state, persisted));
+        this.capture_window_bounds(window);
+        cx.observe_self(|this, cx| this.schedule_persistence(cx)).detach();
+        cx.on_release(|this, cx| this.flush_state(cx)).detach();
+        this.schedule_persistence(cx);
         this.problem = state_problem.or(registry_problem);
         this.connect(cx);
         this
@@ -511,28 +520,11 @@ impl Zeddy {
                 chrome: self.mode,
                 show_space_picker: self.show_space_picker,
                 sidebar_width: self.sidebar_width,
-                active_space: self.active.as_ref().map(|space| space.read(cx).persisted().key),
+                active_space: self.active.as_ref().map(|space| space.read(cx).key()),
                 bounds: self.window_bounds,
                 ..WindowState::default()
             },
             spaces: self.spaces.iter().map(|space| space.read(cx).persisted()).collect(),
-        }
-    }
-
-    fn persist_if_changed(&mut self, cx: &mut Context<Self>) {
-        let snapshot = self.snapshot(cx);
-        let Ok(encoded) = serde_json::to_string(&snapshot) else {
-            return;
-        };
-        if self.last_persisted.as_deref() == Some(encoded.as_str()) {
-            return;
-        }
-        let Some(state) = self.state.as_mut() else {
-            return;
-        };
-        match state.save(&snapshot) {
-            Ok(()) => self.last_persisted = Some(encoded),
-            Err(error) => self.problem = Some(error.to_string()),
         }
     }
 

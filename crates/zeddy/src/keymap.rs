@@ -160,15 +160,18 @@ impl KeymapStore {
         {
             return Err(Error::Conflict { key, action: conflict });
         }
+        let mut candidate = self.content.clone();
         if key == action.default_key() {
-            self.content.bindings.remove(action.id());
+            candidate.bindings.remove(action.id());
         } else {
-            self.content.bindings.insert(action.id().to_owned(), key);
+            candidate.bindings.insert(action.id().to_owned(), key);
         }
-        self.save().map_err(Error::Write)
+        self.save(&candidate).map_err(Error::Write)?;
+        self.content = candidate;
+        Ok(())
     }
 
-    fn save(&self) -> io::Result<()> {
+    fn save(&self, content: &Content) -> io::Result<()> {
         let Some(file) = &self.file else {
             return Ok(());
         };
@@ -180,9 +183,7 @@ impl KeymapStore {
         let parent = file.parent().unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent)?;
         let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-        staged.write_all(
-            toml::to_string_pretty(&self.content).map_err(io::Error::other)?.as_bytes(),
-        )?;
+        staged.write_all(toml::to_string_pretty(content).map_err(io::Error::other)?.as_bytes())?;
         staged.flush()?;
         staged.as_file().sync_all()?;
         staged.persist(file).map_err(|error| error.error)?;
@@ -246,5 +247,45 @@ mod tests {
         let key = store.key(KeymapAction::CloseItem).to_owned();
         let error = store.set(KeymapAction::NewTerminal, key).unwrap_err();
         assert!(matches!(error, Error::Conflict { action: KeymapAction::CloseItem, .. }));
+    }
+
+    #[test]
+    fn failed_writes_preserve_overrides_and_do_not_reserve_rejected_keys() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join(KEYMAP_FILE);
+        let mut store = KeymapStore::load(&file);
+        store.set(KeymapAction::CloseItem, "ctrl-alt-w".into()).unwrap();
+        let original = fs::read_to_string(&file).unwrap();
+        // A directory at the destination forces atomic replacement to fail,
+        // including when the tests run as a privileged user.
+        let backup = temp.path().join("original.toml");
+        fs::rename(&file, &backup).unwrap();
+        fs::create_dir(&file).unwrap();
+        for key in ["ctrl-alt-z", KeymapAction::CloseItem.default_key()] {
+            assert!(matches!(store.set(KeymapAction::CloseItem, key.into()), Err(Error::Write(_))));
+            assert_eq!(store.key(KeymapAction::CloseItem), "ctrl-alt-w");
+        }
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
+        fs::remove_dir(&file).unwrap();
+        fs::rename(backup, &file).unwrap();
+        store.set(KeymapAction::NewTerminal, "ctrl-alt-z".into()).unwrap();
+        let loaded = KeymapStore::load(&file);
+        assert_eq!(loaded.key(KeymapAction::CloseItem), "ctrl-alt-w");
+        assert_eq!(loaded.key(KeymapAction::NewTerminal), "ctrl-alt-z");
+        store.set(KeymapAction::CloseItem, KeymapAction::CloseItem.default_key().into()).unwrap();
+        assert!(
+            !KeymapStore::load(file).content.bindings.contains_key(KeymapAction::CloseItem.id())
+        );
+    }
+
+    #[test]
+    fn unreadable_keymaps_keep_defaults_and_are_never_overwritten() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join(KEYMAP_FILE);
+        fs::write(&file, "[invalid").unwrap();
+        let mut store = KeymapStore::load(&file);
+        assert!(store.set(KeymapAction::CloseItem, "ctrl-alt-w".into()).is_err());
+        assert_eq!(store.key(KeymapAction::CloseItem), KeymapAction::CloseItem.default_key());
+        assert_eq!(fs::read_to_string(file).unwrap(), "[invalid");
     }
 }

@@ -132,7 +132,10 @@ fn main() {
             }
         };
         cx.on_app_quit(move |cx| {
-            let _ = window.update(cx, |zeddy, _, cx| zeddy.apply_exit_policy(cx));
+            let _ = window.update(cx, |zeddy, _, cx| {
+                zeddy.apply_exit_policy(cx);
+                zeddy.flush_state(cx);
+            });
             async {}
         })
         .detach();
