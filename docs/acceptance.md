@@ -122,7 +122,12 @@ Confirm the space picker sits in the macOS title bar immediately after the
 traffic lights. At the far-right corner in both chrome modes, confirm the
 `Sidebar` / `Tabbed` segmented control reflects and changes the presentation,
 and the adjacent gear button opens Settings without the workspace reclaiming
-window focus. Switching presentation or picker visibility updates immediately
+window focus. With a web plugin or browser pane visible, test clicking the gear
+both before its tooltip appears and while the tooltip is already visible. Leave
+the pointer over the gear and wait at least one second: Settings must stay in
+front and no workspace tooltip should appear over it. Repeat with `Cmd/Ctrl+,`
+while the gear is hovered, including when Settings is already open. Switching
+presentation or picker visibility updates immediately
 and survives relaunch.
 On platforms with a native system title bar, confirm both controls retain
 their in-app chrome positions.

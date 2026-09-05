@@ -255,6 +255,8 @@ fn tooltip_uses_a_native_popup_and_closes_on_mouse_exit(cx: &mut TestAppContext)
 
     let (_, cx) = cx.add_window_view(|_, _| NativeTooltipHarness);
     let parent = cx.window_handle();
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
     let parent_rem_size = cx.update(|window, _| window.rem_size());
     cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
     cx.run_until_parked();
@@ -284,6 +286,92 @@ fn tooltip_uses_a_native_popup_and_closes_on_mouse_exit(cx: &mut TestAppContext)
     cx.simulate_mouse_move(point(px(300.), px(300.)), None, Modifiers::none());
     cx.run_until_parked();
     assert_eq!(cx.windows(), vec![parent], "the tooltip window should close on mouse exit");
+}
+
+#[gpui::test]
+fn pending_native_tooltip_does_not_open_after_another_window_activates(cx: &mut TestAppContext) {
+    native_tooltip_window_handoff(cx, false);
+}
+
+#[gpui::test]
+fn visible_native_tooltip_closes_when_another_window_activates(cx: &mut TestAppContext) {
+    native_tooltip_window_handoff(cx, true);
+}
+
+#[gpui::test]
+fn measured_native_tooltip_rechecks_focus_before_opening_its_window(cx: &mut TestAppContext) {
+    struct HandoffDuringTooltipLayout;
+
+    impl Render for HandoffDuringTooltipLayout {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let opened = Cell::new(false);
+            ui::Button::new("tooltip-handoff", "Hover").tooltip(ui::Tooltip::element(
+                move |_, cx| {
+                    if !opened.replace(true) {
+                        // Run after tooltip measurement, ahead of the deferred
+                        // native popup creation queued by that measurement.
+                        cx.defer(|cx| {
+                            cx.open_window(WindowOptions::default(), |window, cx| {
+                                window.activate_window();
+                                cx.new(|_| NativeModalBody)
+                            })
+                            .unwrap();
+                        });
+                    }
+                    div().child("Tooltip interrupted by Settings").into_any_element()
+                },
+            ))
+        }
+    }
+
+    cx.update(|cx| {
+        ::settings::init(cx);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+    });
+    let (_, cx) = cx.add_window_view(|_, _| HandoffDuringTooltipLayout);
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
+    cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_millis(600));
+    cx.run_until_parked();
+    assert_eq!(cx.windows().len(), 2, "the measured tooltip must not create a third window");
+}
+
+fn native_tooltip_window_handoff(cx: &mut TestAppContext, show_before_handoff: bool) {
+    cx.update(|cx| {
+        ::settings::init(cx);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+    });
+    let (_, cx) = cx.add_window_view(|_, _| NativeTooltipHarness);
+    let parent = cx.window_handle();
+    cx.update(|window, _| window.activate_window());
+    cx.run_until_parked();
+    cx.simulate_mouse_move(point(px(10.), px(10.)), None, Modifiers::none());
+    cx.run_until_parked();
+    if show_before_handoff {
+        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.run_until_parked();
+        assert_eq!(cx.windows().len(), 2, "the tooltip should be visible before switching");
+    }
+
+    let other = cx.update(|_, cx| {
+        cx.open_window(WindowOptions::default(), |window, cx| {
+            window.activate_window();
+            cx.new(|_| NativeModalBody)
+        })
+        .unwrap()
+    });
+    cx.run_until_parked();
+    cx.executor().advance_clock(Duration::from_millis(600));
+    cx.run_until_parked();
+
+    let windows = cx.windows();
+    assert!(windows.contains(&parent));
+    assert!(windows.contains(&other.into()));
+    assert_eq!(windows.len(), 2, "an inactive workspace must not keep or open a tooltip window");
 }
 
 #[gpui::test]

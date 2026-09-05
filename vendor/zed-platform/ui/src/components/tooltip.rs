@@ -29,6 +29,7 @@ pub struct Tooltip {
 #[derive(Default)]
 struct NativeTooltipRegistry {
     current: Option<NativeTooltipRegistration>,
+    generation: u64,
 }
 
 impl Global for NativeTooltipRegistry {}
@@ -39,7 +40,11 @@ struct NativeTooltipRegistration {
 }
 
 pub(crate) fn dismiss_native_tooltip(cx: &mut App) {
-    let Some(registration) = cx.default_global::<NativeTooltipRegistry>().current.take() else {
+    let registry = cx.default_global::<NativeTooltipRegistry>();
+    // A click or mouse exit must also cancel a measured tooltip whose deferred
+    // native window has not been created yet.
+    registry.generation = registry.generation.wrapping_add(1);
+    let Some(registration) = registry.current.take() else {
         return;
     };
     let _ = registration.window.update(cx, |_, window, _| window.remove_window());
@@ -254,7 +259,27 @@ impl Render for Tooltip {
             .into_any_element();
         }
 
+        // Showing an AppKit child window can raise its parent even with
+        // `focus: false`. A hover timer may finish after Settings (or another
+        // application) has taken focus, so do not create a background tooltip.
+        if !window.is_window_active() || cx.active_window() != Some(window.window_handle()) {
+            return div().into_any_element();
+        }
+
         if !self.release_registered {
+            cx.observe_window_activation(window, |this, window, cx| {
+                if !window.is_window_active() {
+                    this.native_popup_requested = false;
+                    if let Some(popup) = this.native_popup.take() {
+                        let _ = popup.update(cx, |_, window, _| window.remove_window());
+                        let registry = cx.default_global::<NativeTooltipRegistry>();
+                        if registry.current.as_ref().is_some_and(|current| current.window == popup) {
+                            registry.current = None;
+                        }
+                    }
+                }
+            })
+            .detach();
             cx.on_release(|this, cx| {
                 if let Some(popup) = this.native_popup.take() {
                     let _ = popup.update(cx, |_, window, _| window.remove_window());
@@ -284,6 +309,7 @@ impl Render for Tooltip {
         }
 
         self.native_popup_requested = true;
+        let generation = cx.default_global::<NativeTooltipRegistry>().generation;
         let tooltip = cx.weak_entity();
         let parent = window.window_handle();
         let mouse_position = window.mouse_position();
@@ -311,6 +337,19 @@ impl Render for Tooltip {
                                 return;
                             };
                             if tooltip.read(cx).native_popup.is_some() {
+                                return;
+                            }
+                            // Recheck at execution time: the click that opened
+                            // Settings can run between measurement and creation.
+                            if cx.active_window() != Some(parent)
+                                || cx.default_global::<NativeTooltipRegistry>().generation
+                                    != generation
+                                || !tooltip.read(cx).native_popup_requested
+                                || !parent
+                                    .update(cx, |_, window, _| window.is_window_active())
+                                    .unwrap_or(false)
+                            {
+                                tooltip.update(cx, |this, _| this.native_popup_requested = false);
                                 return;
                             }
 
