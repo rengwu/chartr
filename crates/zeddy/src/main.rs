@@ -30,6 +30,8 @@ mod process;
 mod session;
 mod settings;
 mod settings_window;
+#[path = "../../../plugins/skills/src/lib.rs"]
+mod skills_plugin;
 mod space;
 mod spaces;
 mod terminal_host;

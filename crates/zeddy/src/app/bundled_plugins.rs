@@ -5,6 +5,7 @@ use super::*;
 const BUNDLED_HELLO_ID: &str = "com.example.hello";
 const BUNDLED_CLOCK_ID: &str = "com.example.clock";
 const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
+const BUNDLED_SKILLS_ID: &str = "com.chartr.skills";
 
 pub(super) fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
     let paths = plugin_paths();
@@ -60,7 +61,37 @@ pub(super) fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Cat
         }
     }
 
+    if !catalog.contains(BUNDLED_SKILLS_ID) {
+        let dir = paths.bundled.join(BUNDLED_SKILLS_ID);
+        match materialize_bundled_skills(&dir) {
+            Ok(manifest) => catalog.add_bundled_native(
+                manifest,
+                dir,
+                &paths,
+                settings.resolved().plugin(BUNDLED_SKILLS_ID).enabled,
+                crate::skills_plugin::bundled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected { dir, why }),
+        }
+    }
     catalog
+}
+
+fn materialize_bundled_skills(dir: &std::path::Path) -> Result<zeddy_plugin::Manifest, String> {
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(dir.join("icons"))?;
+        write_bundled_file(
+            &dir.join("zeddy-plugin.toml"),
+            include_bytes!("../../../../plugins/skills/zeddy-plugin.toml"),
+        )?;
+        write_bundled_file(
+            &dir.join("icons/BookOpen01Icon.svg"),
+            include_bytes!("../../../../plugins/skills/icons/BookOpen01Icon.svg"),
+        )
+    };
+    write().map_err(|why| format!("cannot prepare the bundled Skills plugin: {why}"))?;
+    zeddy_plugin::Manifest::read(dir).map_err(|why| why.to_string())
 }
 
 pub(super) fn materialize_bundled_hello(

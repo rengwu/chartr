@@ -2,6 +2,9 @@
 
 Chartr installs packages; it does not build projects. Installation has no
 scripts, hooks, package manager, compiler, or Rust-toolchain dependency.
+Packages are user-selected code, with no marketplace or audit requirement.
+Install sources you trust; manifest permissions describe the host APIs a plugin
+can use, not a guarantee that its overall behavior is confined to those APIs.
 
 Every package is a directory with `zeddy-plugin.toml` at its root. A web
 package includes the declared HTML entry and its assets. Entries may live in
@@ -12,6 +15,10 @@ Every manifest also declares one free Hugeicons Stroke Rounded export by its
 canonical name, for example `icon = "Clock01Icon"`. The matching SVG must be
 packaged at `icons/Clock01Icon.svg`. Chartr validates that file before install
 or load and uses it in sidebar, outer, and pane-local tabs.
+Installation and discovery share the same package validator, including for
+disabled plugins. Declared assets must be regular files inside the package;
+absolute paths, parent traversal, and symlinks escaping the package are rejected.
+Installation rejects source symlinks and omits `.git` and `target` directories.
 
 A hosted package contains only declarative files and names a surface already
 implemented by Chartr. Hosted surfaces are intended for first-party plugins
@@ -39,6 +46,23 @@ activation can safely reapply the same package. Persistent plugin data lives
 outside both directories and survives replacement. **Restart** performs that
 startup immediately.
 
+Each new installation records its source and, for Git, the checked-out commit in
+`.chartr-install.json` inside the managed package. Settings shows this alongside
+the manifest version. Activation preserves the original record; package-supplied
+records are overwritten on installation. Older or manually copied packages may
+have no record. This record is for display, not verification of
+the author or package contents. Updating means installing the source again;
+there is no automatic update or version-history service.
+
+**Uninstall** in Settings closes the plugin's panes and configuration view,
+disables it, and removes its installed package and any pending update. Source
+repositories, plugin data, and preferences are kept. Reinstallation stays
+disabled until the user enables it. If removal fails, Settings reports the error
+and leaves the plugin disabled for retry. Bundled plugins can be disabled; an
+installed override can be removed, after which the bundled copy is available
+again, disabled, on the next startup. A newly queued plugin appears in the
+catalog after restart.
+
 Hosted and web packages are architecture-independent and need no release
 binary. Installing Chartr Browser is therefore only a shallow clone or folder
 copy, manifest validation, confirmation, and atomic rename. Browser uses
@@ -48,7 +72,7 @@ Chartr may link native plugin modules at application build time, but it rejects
 separately installed GPUI dynamic libraries. Precompiling does not make Rust
 GUI objects or crate-global state ABI-safe across two independently linked
 copies of GPUI. Plugins that need native operating-system integration should
-use a reviewed hosted surface; portable third-party plugins should use the web
+use a Chartr-implemented hosted surface; portable third-party plugins should use the web
 tier.
 
 The bundled Agent plugin is one such native module. Its GPUI pane receives the
@@ -57,6 +81,61 @@ Chartr-owned terminal. Agent commands, arguments, environment, and prompt
 delivery remain structured until the native plugin quotes each shell word; the
 resulting session belongs to the pane's space and follows the same persistence
 and close lifecycle as a terminal opened by the user.
+
+## Manifest
+
+A complete web example (optional fields shown with their defaults):
+
+```toml
+manifest_version = 2
+id = "com.example.notes"
+name = "Notes"
+version = "0.1.0"
+kind = "web"
+icon = "NoteIcon"             # package includes icons/NoteIcon.svg
+entry = "index.html"
+# settings_entry = "settings.html"
+
+[capabilities]
+multiplicity = "per_space"    # or "multiple"
+cloneable = false
+restorable = false
+session_binding = false
+
+[permissions]
+project_files = "none"        # or "read", "read_write"
+network = []                  # e.g. ["api.example.com", "*.example.org"]
+process = false
+session = false
+```
+
+The ID is the package identity used for replacement, data, preferences, and
+saved panes. Use a stable reverse-DNS name. IDs accept ASCII letters, digits,
+`.`, `-`, and `_`, up to 128 characters, and cannot start with `.`. Installed
+directory names must match the ID. `version` is a display string; Chartr does
+not compare versions or prevent downgrades. This build accepts only manifest
+version 2; unknown TOML fields are ignored.
+
+Web and hosted packages contribute one `main` pane. `per_space` focuses an
+existing matching pane when opened again; `multiple` permits additional panes.
+`cloneable` enables opening another instance, and `restorable` enables reopening
+saved panes. Web cloning and restoration create a fresh document; there is no
+host API for serializing per-pane web state. `session_binding` lets a pane bind
+to the terminal from which its launcher was opened (required for this capability);
+`permissions.session` separately grants
+access to that binding. A Settings document has no project or terminal binding.
+
+The `data.*` API always accesses
+`$XDG_DATA_HOME/chartr-zeddy/plugin-data/<plugin id>/`. This storage is shared
+across the plugin's panes, spaces, and Settings document, not allocated per
+instance. File APIs do not create parent directories.
+
+The project-file and network grants constrain their respective APIs.
+**`process = true` grants execution with the user's account authority**, including
+filesystem and network access outside those brokers. **`session = true` allows
+terminal input**, which can execute commands with the bound terminal's authority.
+Neither is a sandboxed form of execution. The explicit unsafe-filesystem setting
+overrides project-file API restrictions; it does not change the private data root.
 
 ## Web host operations
 
@@ -69,6 +148,38 @@ reply to a new page. Invalid calls reject their own promise. Navigation clears
 pending promises; a ten-minute reply deadline also covers time spent waiting in
 the ordered queue.
 
+`invoke` returns a Promise for the result below and rejects with an `Error` on
+failure. All path, data, command, argument, and URL values are strings; optional
+fields are marked `?`.
+
+| Action | Options | Result | Required grant |
+| --- | --- | --- | --- |
+| `project.read` | `{ path }` | UTF-8 string | `project_files = "read"` or `"read_write"` |
+| `project.write` | `{ path, data }` | `true` | `project_files = "read_write"` |
+| `data.read` | `{ path }` | UTF-8 string | Always available |
+| `data.write` | `{ path, data }` | `true` | Always available |
+| `network.fetch` | `{ url }` | `{ status: number, body: string }` | Host in `network` |
+| `process.run` | `{ command, args?: string[], cwd? }` | `{ status: number \| null, stdout: string, stderr: string }` | `process = true` |
+| `session.metadata` | Omit options | `{ id: string, workspace: string, title: string, agent: string \| null, cwd: string \| null }` | `session = true` and a live binding |
+| `session.send` | `{ data }` | `true` | `session = true` and a live binding |
+
+```js
+const text = await window.chartr.invoke("project.read", { path: "README.md" });
+await window.chartr.invoke("data.write", { path: "notes.txt", data: text });
+```
+
+`network.fetch` performs an HTTP(S) GET without custom headers or a request body;
+HTTP 4xx/5xx responses reject. Allowlist entries match hostnames, not paths or
+ports. A URL entry contributes its hostname; `*.example.org` includes the base
+domain and its subdomains. Packaged web documents cannot make direct network
+connections under Chartr's content security policy; use the host API.
+
+`process.run` launches a command directly, without a shell unless the plugin
+explicitly invokes one. Arguments default to an empty array. A nonzero exit code
+is returned as `status`, not a rejection; termination by signal returns `null`.
+Output is decoded as UTF-8 with replacement for invalid bytes. `session.send`
+writes the supplied terminal input as-is; it does not add a newline.
+
 Requests are limited to 1 MiB of encoded JSON. File reads and HTTP response bodies
 are limited to 8 MiB; process stdout and stderr share an 8 MiB limit. HTTP fetches
 (including all redirects) and processes have a 30-second execution deadline.
@@ -78,7 +189,7 @@ their process group.
 
 Each HTTP redirect must pass the manifest's network-host allowlist, just like the
 initial URL. At most ten redirects are followed. Safe filesystem operations open
-regular files beneath the project's or instance's data root; dangling links and
+regular files beneath the project root or the plugin's shared data root; dangling links and
 symlinks swapped into a validated path are rejected. Existing links to files
 inside the allowed root continue to work. Explicit unsafe filesystem permission
 still bypasses the project-root restriction, but not the private data-root check.

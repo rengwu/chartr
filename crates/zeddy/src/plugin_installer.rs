@@ -20,7 +20,7 @@ use std::{
 use anyhow::{Context as _, Result, anyhow, bail};
 use tempfile::TempDir;
 use zeddy_plugin::{Kind, Manifest};
-use zeddy_plugin_host::{HostedSurface, Paths};
+use zeddy_plugin_host::{Installation, Paths, validate_package};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
@@ -43,6 +43,7 @@ impl Source {
 pub struct Prepared {
     temp: TempDir,
     pub source: Source,
+    pub commit: Option<String>,
     pub manifest: Manifest,
     pub replacing: bool,
 }
@@ -63,26 +64,10 @@ impl Prepared {
                 replacement
             ),
             Kind::Web => {
-                let permissions = &self.manifest.permissions;
-                let project = match permissions.project_files {
-                    zeddy_plugin::ProjectAccess::None => "no project files",
-                    zeddy_plugin::ProjectAccess::Read => "read project files",
-                    zeddy_plugin::ProjectAccess::ReadWrite => "read and write project files",
-                };
-                let mut grants = vec![project.to_owned()];
-                if !permissions.network.is_empty() {
-                    grants.push(format!("network: {}", permissions.network.join(", ")));
-                }
-                if permissions.process {
-                    grants.push("process execution".into());
-                }
-                if permissions.session {
-                    grants.push("bound-session access".into());
-                }
                 format!(
-                    "Source: {}. Declared access: {}.{}",
+                    "Source: {}. Declared host access: {}.{}",
                     self.source.label(),
-                    grants.join("; "),
+                    self.manifest.permissions.summary(),
                     replacement
                 )
             }
@@ -119,10 +104,11 @@ pub fn prepare_cancellable(source: Source, paths: &Paths, cancel: &AtomicBool) -
         .tempdir_in(staging_root)
         .context("creating plugin staging directory")?;
     let package = temp.path().join("package");
+    let mut commit = None;
     match &source {
         Source::Git(url) => {
             let checkout = temp.path().join("checkout");
-            clone_git(url, &checkout, cancel)?;
+            commit = Some(clone_git(url, &checkout, cancel)?);
             copy_tree(&checkout, &package, cancel)?;
         }
         Source::Local(path) => {
@@ -142,32 +128,28 @@ pub fn prepare_cancellable(source: Source, paths: &Paths, cancel: &AtomicBool) -
 
     check_cancelled(cancel)?;
     let manifest = Manifest::read(&package).map_err(|error| anyhow!(error))?;
-    if manifest.kind == Kind::Native {
-        bail!(
-            "separately installed native GPUI libraries are not supported because Rust GUI objects are not safe across a dynamic-library boundary. Use a web package or a Chartr-hosted surface; installation never compiles plugin source"
-        );
-    }
-    if manifest.kind == Kind::Hosted {
-        HostedSurface::named(manifest.surface.as_deref().unwrap_or_default())
-            .map_err(|error| anyhow!(error))?;
-    }
-    validate_declared_files(&package, &manifest)?;
+    validate_package(&package, &manifest)?;
     let replacing = paths.installed.join(&manifest.id).exists()
         || pending_root(paths).join(&manifest.id).exists();
-    Ok(Prepared { temp, source, manifest, replacing })
+    Ok(Prepared { temp, source, commit, manifest, replacing })
 }
 
 /// Validate and atomically queue a prepared plugin for the next startup without
 /// changing any package used by the running catalog.
 pub fn install(prepared: Prepared, paths: &Paths) -> Result<Installed> {
-    let Prepared { temp, source: _, manifest, replacing } = prepared;
+    let Prepared { temp, source, commit, manifest, replacing } = prepared;
     let package = temp.path().join("package");
     let packaged_manifest = Manifest::read(&package).map_err(|error| anyhow!(error))?;
     if packaged_manifest != manifest {
         bail!("the plugin manifest changed after the install confirmation");
     }
 
-    validate_declared_files(&package, &manifest)?;
+    validate_package(&package, &manifest)?;
+    // Always overwrite package-supplied metadata. Activation copies this record
+    // unchanged, rather than recording the pending directory as a new source.
+    let installation = Installation { source: source.label(), commit };
+    fs::write(package.join(Installation::FILE), serde_json::to_vec_pretty(&installation)?)
+        .context("recording the plugin installation source")?;
 
     // The live catalog and all of its assets remain untouched until startup.
     let pending = pending_root(paths);
@@ -178,6 +160,32 @@ pub fn install(prepared: Prepared, paths: &Paths) -> Result<Installed> {
 
 fn pending_root(paths: &Paths) -> PathBuf {
     paths.installed.with_file_name("plugin-pending")
+}
+
+pub fn has_pending(paths: &Paths) -> bool {
+    fs::read_dir(pending_root(paths)).is_ok_and(|mut entries| entries.next().is_some())
+}
+
+/// The caller closes and disables the plugin before removing its managed copies.
+/// Remove pending updates first so a later startup cannot resurrect the plugin.
+/// Source repositories, plugin data, and preferences are preserved.
+pub fn uninstall(id: &str, paths: &Paths) -> Result<()> {
+    let mut components = Path::new(id).components();
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+    {
+        bail!("invalid plugin directory name");
+    }
+    for directory in [pending_root(paths).join(id), paths.installed.join(id)] {
+        match fs::remove_dir_all(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("removing {}", directory.display()));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Activate only at process startup, before constructing any catalog or pane.
@@ -230,7 +238,7 @@ fn check_cancelled(cancel: &AtomicBool) -> Result<()> {
     Ok(())
 }
 
-fn clone_git(url: &str, destination: &Path, cancel: &AtomicBool) -> Result<()> {
+fn clone_git(url: &str, destination: &Path, cancel: &AtomicBool) -> Result<String> {
     let url = url.trim();
     if url.is_empty() {
         bail!("enter a Git repository URL");
@@ -252,43 +260,17 @@ fn clone_git(url: &str, destination: &Path, cancel: &AtomicBool) -> Result<()> {
             command_detail(&output)
         );
     }
-    Ok(())
-}
-
-fn validate_declared_files(root: &Path, manifest: &Manifest) -> Result<()> {
-    require_relative_file(root, &manifest.icon_relative_path(), "Hugeicon")?;
-    match manifest.kind {
-        Kind::Native => {}
-        Kind::Hosted => {}
-        Kind::Web => {
-            let entry = manifest.entry.as_deref().context("missing web entry")?;
-            require_relative_file(root, Path::new(entry), "web entry")?;
-            if let Some(settings) = &manifest.settings_entry {
-                require_relative_file(root, Path::new(settings), "settings entry")?;
-            }
-        }
+    let revision = crate::process::output(
+        Command::new("git").arg("-C").arg(destination).args(["rev-parse", "HEAD"]),
+        Duration::from_secs(10),
+        4096,
+        cancel,
+    )
+    .context("reading the installed Git commit")?;
+    if !revision.status.success() {
+        bail!("reading the installed Git commit: {}", command_detail(&revision));
     }
-    Ok(())
-}
-
-fn require_relative_file(root: &Path, relative: &Path, label: &str) -> Result<()> {
-    if relative.is_absolute()
-        || relative.components().any(|part| {
-            matches!(
-                part,
-                std::path::Component::ParentDir
-                    | std::path::Component::RootDir
-                    | std::path::Component::Prefix(_)
-            )
-        })
-    {
-        bail!("{label} escapes the plugin directory");
-    }
-    let file = root.join(relative);
-    if !file.is_file() {
-        bail!("{label} `{}` is missing", relative.display());
-    }
-    Ok(())
+    Ok(String::from_utf8(revision.stdout)?.trim().to_owned())
 }
 
 fn copy_tree(source: &Path, destination: &Path, cancel: &AtomicBool) -> Result<()> {
@@ -476,8 +458,19 @@ mod tests {
         let paths = paths(&temp);
 
         let prepared = prepare(Source::Git(source.to_string_lossy().into_owned()), &paths).unwrap();
+        let head =
+            Command::new("git").args(["rev-parse", "HEAD"]).current_dir(&source).output().unwrap();
+        let commit = String::from_utf8(head.stdout).unwrap().trim().to_owned();
+        assert_eq!(prepared.commit.as_deref(), Some(commit.as_str()));
         install(prepared, &paths).unwrap();
         assert!(activate_pending(&paths).is_empty());
+
+        let record: Installation = serde_json::from_slice(
+            &fs::read(paths.installed.join("com.example.git").join(Installation::FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(record.source, source.to_string_lossy());
+        assert_eq!(record.commit, Some(commit));
 
         assert_eq!(
             fs::read_to_string(paths.installed.join("com.example.git/index.html")).unwrap(),
@@ -582,6 +575,70 @@ mod tests {
         );
         write(root.join("icons/TestIcon.svg"), "<svg/>");
         write(root.join("index.html"), version);
+    }
+
+    #[gpui::test]
+    fn recorded_source_survives_activation_and_enable_cycles(cx: &mut gpui::TestAppContext) {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let source = temp.path().join("source");
+        package(&source, "1");
+        write(
+            source.join(Installation::FILE),
+            r#"{"source":"not the real source","commit":"fake"}"#,
+        );
+        install(prepare(Source::Local(source.clone()), &paths).unwrap(), &paths).unwrap();
+        assert!(has_pending(&paths));
+        assert!(activate_pending(&paths).is_empty());
+        assert!(!has_pending(&paths));
+        let expected = Some(Installation { source: source.display().to_string(), commit: None });
+        let mut catalog = cx.update(|cx| zeddy_plugin_host::load_all_where(&paths, |_| false, cx));
+        let id = "com.example.upgrade";
+        assert_eq!(catalog.disabled[id].installation, expected);
+        cx.update(|cx| catalog.enable(&paths, id, cx)).unwrap();
+        assert_eq!(catalog.get(id).unwrap().installation, expected);
+        catalog.disable(id);
+        assert_eq!(catalog.disabled[id].installation, expected);
+    }
+
+    #[test]
+    fn uninstall_removes_installed_and_pending_packages_but_keeps_data_and_sources() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let id = "com.example.upgrade";
+        let source = temp.path().join("source");
+        package(&source, "old");
+        install(prepare(Source::Local(source.clone()), &paths).unwrap(), &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
+        package(&source, "new");
+        install(prepare(Source::Local(source.clone()), &paths).unwrap(), &paths).unwrap();
+        let data = paths.data.join(id).join("state.json");
+        write(&data, "saved state");
+        package(&paths.bundled.join(id), "bundled");
+
+        uninstall(id, &paths).unwrap();
+        assert!(!paths.installed.join(id).exists());
+        assert!(!pending_root(&paths).join(id).exists());
+        assert!(activate_pending(&paths).is_empty());
+        assert_eq!(fs::read_to_string(data).unwrap(), "saved state");
+        assert_eq!(fs::read_to_string(source.join("index.html")).unwrap(), "new");
+        assert!(paths.bundled.join(id).exists());
+        uninstall(id, &paths).unwrap();
+    }
+
+    #[test]
+    fn failed_pending_removal_keeps_the_installed_package_and_invalid_ids_are_refused() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let id = "com.example.upgrade";
+        let live = paths.installed.join(id);
+        package(&live, "old");
+        write(pending_root(&paths).join(id), "not a package directory");
+        assert!(uninstall(id, &paths).is_err());
+        for id in ["", ".", "..", "../plugin-data", "/tmp", "a/b"] {
+            assert!(uninstall(id, &paths).is_err(), "accepted {id:?}");
+        }
+        assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "old");
     }
 
     #[gpui::test]

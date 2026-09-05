@@ -13,5 +13,6 @@ A file under `.plan/maps/` is read by chartr only where it follows the format st
 The skills chartr can resolve, in the order it resolves them.
 
 - `chartr-skills` at `.chartr/skills/chartr-skills` — grill, implement, prototype, research, to-spec, to-tickets, wayfinder
+- `bag-of-skills` at `.chartr/skills/bag-of-skills` — arch-review, design-audit, design-brief, design-init, design-polish, generate-commit-message, plan-then-build, resume-session, save-session, spec-gen
 
 Where two of them carry a skill of the same name, the earlier one is what a bare name reaches, and the later one is reached as `source/skill`.

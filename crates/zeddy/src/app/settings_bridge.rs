@@ -58,17 +58,22 @@ impl Zeddy {
     pub(crate) fn settings_plugins(
         &self,
     ) -> (Vec<SettingsPluginDescriptor>, Vec<SettingsPluginRejection>) {
+        let paths = plugin_paths();
         let mut descriptors: Vec<_> = self
             .catalog
             .loaded
             .values()
             .map(|loaded| SettingsPluginDescriptor {
                 manifest: loaded.manifest.clone(),
+                installation: loaded.installation.clone(),
+                removable: loaded.dir == paths.installed.join(&loaded.manifest.id),
                 enabled: true,
                 has_settings: loaded.has_settings,
             })
             .chain(self.catalog.disabled.values().map(|disabled| SettingsPluginDescriptor {
                 manifest: disabled.manifest.clone(),
+                installation: disabled.installation.clone(),
+                removable: disabled.dir == paths.installed.join(&disabled.manifest.id),
                 enabled: false,
                 has_settings: false,
             }))
@@ -84,6 +89,62 @@ impl Zeddy {
             })
             .collect();
         (descriptors, rejected)
+    }
+
+    pub(crate) fn settings_uninstall_plugin(
+        &mut self,
+        plugin: String,
+        cx: &mut Context<Self>,
+    ) -> Result<gpui::Task<Result<(), String>>, String> {
+        let paths = plugin_paths();
+        let installed = paths.installed.join(&plugin);
+        let directory = self
+            .catalog
+            .get(&plugin)
+            .map(|loaded| &loaded.dir)
+            .or_else(|| self.catalog.disabled.get(&plugin).map(|disabled| &disabled.dir))
+            .or_else(|| {
+                self.catalog
+                    .rejected
+                    .iter()
+                    .find(|rejected| rejected.dir == installed)
+                    .map(|rejected| &rejected.dir)
+            });
+        if directory != Some(&installed) {
+            return Err(
+                "Only installed packages can be uninstalled; bundled plugins can be disabled."
+                    .into(),
+            );
+        }
+        self.settings_set_plugin_enabled(plugin.clone(), false, cx)?;
+        // Do not leave an Enable control for a package being removed.
+        let disabled = self.catalog.disabled.remove(&plugin);
+        let rejected = self
+            .catalog
+            .rejected
+            .iter()
+            .position(|rejected| rejected.dir == installed)
+            .map(|index| self.catalog.rejected.remove(index));
+        let id = plugin.clone();
+        let remove = cx.background_executor().spawn(async move {
+            crate::plugin_installer::uninstall(&id, &paths).map_err(|error| format!("{error:#}"))
+        });
+        // Finish the catalog update even if the Settings window closes meanwhile.
+        Ok(cx.spawn(async move |this, cx| {
+            let result = remove.await;
+            let _ = this.update(cx, |this, cx| {
+                if result.is_err() {
+                    if let Some(disabled) = disabled {
+                        this.catalog.disabled.insert(plugin, disabled);
+                    }
+                    if let Some(rejected) = rejected {
+                        this.catalog.rejected.push(rejected);
+                    }
+                }
+                cx.notify();
+            });
+            result
+        }))
     }
 
     pub(crate) fn settings_set_plugin_enabled(

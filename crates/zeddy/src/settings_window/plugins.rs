@@ -3,6 +3,61 @@
 use super::*;
 
 impl SettingsWindow {
+    fn uninstall_plugin(
+        &mut self,
+        plugin: String,
+        name: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.plugin_operation.is_some() {
+            return;
+        }
+        let Some(origin) = self.original.upgrade() else {
+            return;
+        };
+        self.plugin_operation = Some(format!("Confirm removal of {name}…"));
+        self.problem = None;
+        cx.notify();
+        let confirmation = window.prompt(
+            gpui::PromptLevel::Warning,
+            &format!("Uninstall {name}?"),
+            Some("Its panes will close and its installed copy and pending update will be removed. Plugin data and preferences are kept. Reinstalling leaves it disabled until you enable it."),
+            &["Uninstall", "Cancel"],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if confirmation.await != Ok(0) {
+                let _ = this.update_in(cx, |this, _, cx| {
+                    this.plugin_operation = None;
+                    cx.notify();
+                });
+                return;
+            }
+            let removal = this.update_in(cx, |this, _, cx| {
+                if this.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
+                    this.plugin_settings = None;
+                }
+                this.plugin_operation = Some(format!("Uninstalling {name}…"));
+                cx.notify();
+                origin.update(cx, |origin, cx| origin.settings_uninstall_plugin(plugin, cx))
+            });
+            let result = match removal {
+                Ok(Ok(task)) => task.await,
+                Ok(Err(error)) => Err(error),
+                Err(_) => return,
+            };
+            let _ = this.update_in(cx, |this, _, cx| {
+                this.plugin_operation = None;
+                this.problem = result.err();
+                this.plugin_restart_required =
+                    crate::plugin_installer::has_pending(&crate::app::plugin_paths());
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn set_plugin_enabled(&mut self, plugin: String, enabled: bool, cx: &mut Context<Self>) {
         let Some(origin) = self.original.upgrade() else {
             self.problem = Some("The originating Chartr window is no longer available.".into());
@@ -63,7 +118,7 @@ impl SettingsWindow {
     }
 
     fn pick_plugin_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.plugin_installing.is_some() {
+        if self.plugin_operation.is_some() {
             return;
         }
         let chosen = cx.prompt_for_paths(PathPromptOptions {
@@ -110,12 +165,12 @@ impl SettingsWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.plugin_installing.is_some() {
+        if self.plugin_operation.is_some() {
             return;
         }
         let source_label = source.label();
         self.problem = None;
-        self.plugin_installing = Some(format!("Inspecting {source_label}…"));
+        self.plugin_operation = Some(format!("Inspecting {source_label}…"));
         cx.notify();
 
         let paths = crate::app::plugin_paths();
@@ -130,7 +185,7 @@ impl SettingsWindow {
                 Ok(prepared) => prepared,
                 Err(error) => {
                     let _ = this.update_in(cx, |this, _, cx| {
-                        this.plugin_installing = None;
+                        this.plugin_operation = None;
                         this.plugin_cancel = None;
                         this.problem = Some(format!("{error:#}"));
                         cx.notify();
@@ -146,11 +201,11 @@ impl SettingsWindow {
                     .take()
                     .is_some_and(|cancel| cancel.load(std::sync::atomic::Ordering::Relaxed));
                 if cancelled {
-                    this.plugin_installing = None;
+                    this.plugin_operation = None;
                     cx.notify();
                     return None;
                 }
-                this.plugin_installing = Some(format!("Confirm installation of {name}…"));
+                this.plugin_operation = Some(format!("Confirm installation of {name}…"));
                 cx.notify();
                 Some(window.prompt(
                     gpui::PromptLevel::Info,
@@ -165,14 +220,14 @@ impl SettingsWindow {
             };
             if confirmation.await != Ok(0) {
                 let _ = this.update_in(cx, |this, _, cx| {
-                    this.plugin_installing = None;
+                    this.plugin_operation = None;
                     cx.notify();
                 });
                 return;
             }
 
             let _ = this.update_in(cx, |this, _, cx| {
-                this.plugin_installing = Some(format!("Installing {name}…"));
+                this.plugin_operation = Some(format!("Installing {name}…"));
                 this.problem = None;
                 cx.notify();
             });
@@ -183,7 +238,7 @@ impl SettingsWindow {
                 Ok(installed) => installed,
                 Err(error) => {
                     let _ = this.update_in(cx, |this, _, cx| {
-                        this.plugin_installing = None;
+                        this.plugin_operation = None;
                         this.plugin_cancel = None;
                         this.problem = Some(format!("{error:#}"));
                         cx.notify();
@@ -192,7 +247,7 @@ impl SettingsWindow {
                 }
             };
             let restart = this.update_in(cx, |this, window, cx| {
-                this.plugin_installing = None;
+                this.plugin_operation = None;
                 this.plugin_restart_required = true;
                 this.git_install_open = false;
                 this.git_url_input.update(cx, |input, cx| input.clear(cx));
@@ -221,7 +276,7 @@ impl SettingsWindow {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let origin_available = self.original.upgrade().is_some();
-        let busy = self.plugin_installing.is_some();
+        let busy = self.plugin_operation.is_some();
         let show_git = self.git_install_open;
         let open_git = cx.listener(|this, _, window, cx| {
             this.git_install_open = true;
@@ -307,37 +362,32 @@ impl SettingsWindow {
                     "Identifier: {id}. Uses Chartr's built-in {} surface.",
                     manifest.surface.as_deref().unwrap_or("hosted")
                 ),
-                zeddy_plugin::manifest::Kind::Web => {
-                    let project = match manifest.permissions.project_files {
-                        zeddy_plugin::manifest::ProjectAccess::None => "no project files",
-                        zeddy_plugin::manifest::ProjectAccess::Read => "read project files",
-                        zeddy_plugin::manifest::ProjectAccess::ReadWrite => {
-                            "read and write project files"
-                        }
-                    };
-                    let mut grants = vec![project.to_owned()];
-                    if !manifest.permissions.network.is_empty() {
-                        grants.push(format!(
-                            "network access to {}",
-                            manifest.permissions.network.join(", ")
-                        ));
-                    }
-                    if manifest.permissions.process {
-                        grants.push("process actions".to_owned());
-                    }
-                    if manifest.permissions.session {
-                        grants.push("bound-session actions".to_owned());
-                    }
-                    format!("Identifier: {id}. Access: {}.", grants.join(", "))
-                }
+                zeddy_plugin::manifest::Kind::Web => format!(
+                    "Identifier: {id}. Declared host access: {}.",
+                    manifest.permissions.summary()
+                ),
             };
 
             let enabled_name = format!("{name} — Enabled");
-            let enabled_description = access;
+            let source = match &descriptor.installation {
+                Some(installation) => {
+                    let commit = installation
+                        .commit
+                        .as_ref()
+                        .map(|commit| format!(" Commit: {commit}."))
+                        .unwrap_or_default();
+                    format!("Source: {}.{commit}", installation.source)
+                }
+                None if descriptor.removable => {
+                    "Source: not recorded for this installation.".into()
+                }
+                None => "Bundled with Chartr.".into(),
+            };
+            let enabled_description = format!("{access} Version: {}. {source}", manifest.version);
             let enabled_id = id.clone();
             let enabled_setting = cx.weak_entity();
             let enabled_control = Switch::new(format!("plugin-enabled-{id}"), enabled.into())
-                .disabled(!origin_available)
+                .disabled(!origin_available || busy)
                 .tab_index(0isize)
                 .aria_label(enabled_name.clone())
                 .aria_description(enabled_description.clone())
@@ -349,13 +399,27 @@ impl SettingsWindow {
                 });
             fields.push(setting_field(enabled_name, enabled_description, enabled_control));
 
+            if descriptor.removable {
+                let remove_id = id.clone();
+                let remove_name = name.clone();
+                fields.push(setting_field(
+                    format!("{name} — Installation"),
+                    "Remove this package and its pending update. Keeps plugin data and preferences.",
+                    settings_button(format!("plugin-uninstall-{id}"), "Uninstall…")
+                        .disabled(!origin_available || busy)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.uninstall_plugin(remove_id.clone(), remove_name.clone(), window, cx)
+                        })),
+                ));
+            }
+
             if has_settings {
                 let settings_id = id.clone();
                 fields.push(setting_field(
                     format!("{name} — Configuration"),
                     "Open this plugin's own settings.",
                     settings_button(format!("plugin-settings-{id}"), "Configure")
-                        .disabled(!origin_available)
+                        .disabled(!origin_available || busy)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_plugin_settings(settings_id.clone(), window, cx)
                         })),
@@ -364,13 +428,12 @@ impl SettingsWindow {
 
             if is_web {
                 let unsafe_name = format!("{name} — Unsafe filesystem access");
-                let unsafe_description =
-                    "Allow access to files outside the plugin's declared project permissions.";
+                let unsafe_description = "Allow the project-file API to read and write outside the project, overriding its declared file permissions.";
                 let unsafe_id = id.clone();
                 let unsafe_setting = cx.weak_entity();
                 let unsafe_control =
                     Switch::new(format!("plugin-unsafe-{id}"), unsafe_filesystem.into())
-                        .disabled(!origin_available)
+                        .disabled(!origin_available || busy)
                         .tab_index(0isize)
                         .aria_label(unsafe_name.clone())
                         .aria_description(unsafe_description)
@@ -384,13 +447,35 @@ impl SettingsWindow {
             }
         }
         let has_fields = !fields.is_empty();
+        let installed_root = crate::app::plugin_paths().installed;
         let rejected: Vec<_> = rejected
             .into_iter()
             .map(|rejected| {
-                Banner::new().severity(Severity::Error).child(
-                    Label::new(format!("{}: {}", rejected.dir.display(), rejected.why))
-                        .size(UI_LABEL_SMALL),
-                )
+                let id = rejected.dir.file_name().and_then(|name| name.to_str()).map(str::to_owned);
+                let removable = rejected.dir.parent() == Some(installed_root.as_path());
+                let row = h_flex()
+                    .gap_3()
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            Label::new(format!("{}: {}", rejected.dir.display(), rejected.why))
+                                .size(UI_LABEL_SMALL),
+                        ),
+                    )
+                    .when_some(id.filter(|_| removable), |row, id| {
+                        row.child(
+                            settings_button(
+                                format!("plugin-uninstall-rejected-{id}"),
+                                "Uninstall…",
+                            )
+                            .disabled(!origin_available || busy)
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.uninstall_plugin(id.clone(), id.clone(), window, cx)
+                                },
+                            )),
+                        )
+                    });
+                Banner::new().severity(Severity::Error).child(row)
             })
             .collect();
         let _ = window;
@@ -398,7 +483,7 @@ impl SettingsWindow {
             .gap_4()
             .child(install_actions)
             .when(show_git, |view| view.child(git_form))
-            .when_some(self.plugin_installing.clone(), |view, status| {
+            .when_some(self.plugin_operation.clone(), |view, status| {
                 view.child(Banner::new().child(
                     h_flex().gap_3().child(Label::new(status).size(UI_LABEL_DEFAULT)).when(
                         self.plugin_cancel.is_some(),
@@ -407,7 +492,7 @@ impl SettingsWindow {
                                 cx.listener(|this, _, _, cx| {
                                     if let Some(cancel) = &this.plugin_cancel {
                                         cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                                        this.plugin_installing =
+                                        this.plugin_operation =
                                             Some("Cancelling installation…".into());
                                         cx.notify();
                                     }
@@ -427,6 +512,7 @@ impl SettingsWindow {
                             .child(Label::new("Restart Chartr to enable installed plugins."))
                             .child(
                                 settings_button("restart-after-plugin-install", "Restart")
+                                    .disabled(busy)
                                     .on_click(restart),
                             ),
                     ),

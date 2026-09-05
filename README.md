@@ -152,7 +152,10 @@ compiled GPUI dynamic libraries are rejected because precompilation does not
 make Rust GUI objects ABI-safe. Plugin data is kept separately and survives
 replacement. A successful install offers **Restart** and **Later**; choosing
 Later leaves an in-app restart reminder.
-The full package and release naming contract is in
+Settings shows the recorded source and Git commit for new installations.
+**Uninstall** closes the plugin and removes its installed copy and pending
+update while preserving data and preferences. Bundled plugins can be disabled.
+The full package and host API contract is in
 [`docs/plugins.md`](docs/plugins.md).
 
 In Tabbed mode, the trailing plus button opens a new terminal session directly;
@@ -180,13 +183,15 @@ through their registrar.
 
 Web plugins are real Wry panes with local assets and a restrictive CSP. Their
 manifest declares project-file, domain-scoped network, process, and optional
-bound-session host actions. Safe filesystem paths are canonicalized beneath the
-owning project, while folderless plugins receive only plugin data. Unrestricted
-filesystem access is an explicit per-plugin grant; there is no global unsafe
-switch. Revoking a grant or disabling a plugin destroys its live brokers and
+bound-session host actions. The file APIs constrain project access to the owning
+project by default; folderless views have only the shared plugin-data API.
+Process execution carries the user's account authority, and terminal input can
+execute commands; file and network API restrictions do not constrain those grants.
+Unrestricted project-file API access is an explicit per-plugin setting.
+Revoking that setting or disabling a plugin destroys its live brokers and
 views immediately. A web plugin may name a lazy `settings_entry` document.
 
-Hosted plugins are small declarative packages that activate a reviewed surface
+Hosted plugins are small declarative packages that activate a surface
 implemented inside Chartr. They are reserved for integrations—such as
 Browser—that need native operating-system facilities while keeping all GPUI
 objects inside the host process's single framework copy.
@@ -197,6 +202,12 @@ the Clock directory remains a reference for portable plugin authors. The
 bundled **Agent** native plugin in `plugins/agent` keeps a private registry of
 agent launch definitions and opens the selected adapter and prompt as an
 ordinary Chartr-owned session in the pane's space.
+
+The bundled **Skills** plugin in `plugins/skills` provides ordered local and
+remote skill-source registration, editing, enablement, refresh, and confirmed
+removal. Its otherwise empty pane opens source settings through the chevron
+menu. See [its package documentation](plugins/skills/README.md) for discovery
+rules and storage; agent context integration is a later step.
 
 `plugins/browser` is the code-free package for the separately released,
 first-party **Browser** plugin. It is deliberately absent from the bundled

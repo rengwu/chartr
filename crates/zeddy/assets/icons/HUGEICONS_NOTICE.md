@@ -7,7 +7,7 @@ The browser icons `arrow_left.svg` (`ArrowLeft02Icon`), `arrow_right.svg`
 4.2.1 (Stroke Rounded). The `full_screen.svg` (`FullScreenIcon`) and `agent_*.svg`
 selector icons are adapted from `@hugeicons/core-free-icons` 4.3.0 (Stroke
 Rounded), as are the package-owned `InternetIcon.svg`, `Clock01Icon.svg`, and
-`WavingHand01Icon.svg`, and `ChipIcon.svg` plugin tab icons under `plugins/`.
+`WavingHand01Icon.svg`, `ChipIcon.svg`, and `BookOpen01Icon.svg` plugin tab icons under `plugins/`.
 Hugeicons publishes these assets under the MIT License.
 
 Copyright (c) Hugeicons

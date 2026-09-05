@@ -30,10 +30,26 @@ use zeddy_plugin::{
 pub struct Loaded {
     pub manifest: Manifest,
     pub dir: PathBuf,
+    pub installation: Option<Installation>,
     pub panes: Vec<PaneSpec>,
     pub has_settings: bool,
     tier: Tier,
     source: LoadSource,
+}
+
+/// Recorded by the installer, for display only; this is not an authenticity check.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Installation {
+    pub source: String,
+    pub commit: Option<String>,
+}
+
+impl Installation {
+    pub const FILE: &str = ".chartr-install.json";
+
+    fn read(dir: &Path) -> Option<Self> {
+        serde_json::from_slice(&std::fs::read(dir.join(Self::FILE)).ok()?).ok()
+    }
 }
 
 /// A statically bundled native example still exercises the native plugin
@@ -152,6 +168,7 @@ pub struct Rejected {
 pub struct Disabled {
     pub manifest: Manifest,
     pub dir: PathBuf,
+    pub installation: Option<Installation>,
     source: LoadSource,
 }
 
@@ -189,7 +206,12 @@ impl Catalog {
         };
         self.disabled.insert(
             plugin.to_owned(),
-            Disabled { manifest: loaded.manifest, dir: loaded.dir, source: loaded.source },
+            Disabled {
+                manifest: loaded.manifest,
+                dir: loaded.dir,
+                installation: loaded.installation,
+                source: loaded.source,
+            },
         );
         true
     }
@@ -232,8 +254,8 @@ impl Catalog {
     /// Add one plugin from a directory outside the user installation root.
     /// Bundled web examples use the exact same loader and sandbox as installed
     /// web plugins; only their source directory differs.
-    pub fn add_directory(&mut self, dir: &Path, paths: &Paths, enabled: bool, cx: &mut gpui::App) {
-        let manifest = match Manifest::read(dir) {
+    pub fn add_directory(&mut self, dir: &Path, paths: &Paths, enabled: bool, _cx: &mut gpui::App) {
+        let manifest = match read_directory_manifest(dir) {
             Ok(manifest) => manifest,
             Err(why) => {
                 self.rejected.push(Rejected { dir: dir.to_owned(), why: why.to_string() });
@@ -246,11 +268,16 @@ impl Catalog {
         if !enabled {
             self.disabled.insert(
                 manifest.id.clone(),
-                Disabled { manifest, dir: dir.to_owned(), source: LoadSource::Directory },
+                Disabled {
+                    manifest,
+                    dir: dir.to_owned(),
+                    installation: Installation::read(dir),
+                    source: LoadSource::Directory,
+                },
             );
             return;
         }
-        match load_one(dir, paths, cx) {
+        match load_validated(dir, paths, manifest) {
             Ok(plugin) => {
                 self.loaded.insert(plugin.manifest.id.clone(), plugin);
             }
@@ -276,7 +303,12 @@ impl Catalog {
         if !enabled {
             self.disabled.insert(
                 manifest.id.clone(),
-                Disabled { manifest, dir, source: LoadSource::BundledNative(factory) },
+                Disabled {
+                    manifest,
+                    dir,
+                    installation: None,
+                    source: LoadSource::BundledNative(factory),
+                },
             );
             return;
         }
@@ -573,21 +605,8 @@ pub fn load_all_where(
     dirs.sort();
 
     for dir in dirs {
-        if let Ok(manifest) = Manifest::read(&dir)
-            && !enabled(&manifest.id)
-        {
-            catalog.disabled.insert(
-                manifest.id.clone(),
-                Disabled { manifest, dir, source: LoadSource::Directory },
-            );
-            continue;
-        }
-        match load_one(&dir, paths, cx) {
-            Ok(plugin) => {
-                catalog.loaded.insert(plugin.manifest.id.clone(), plugin);
-            }
-            Err(why) => catalog.rejected.push(Rejected { dir, why: why.to_string() }),
-        }
+        let enabled = Manifest::read(&dir).map(|manifest| enabled(&manifest.id)).unwrap_or(true);
+        catalog.add_directory(&dir, paths, enabled, cx);
     }
     catalog
 }
@@ -604,6 +623,7 @@ pub enum LoadError {
         manifest: String,
     },
     MissingFile(PathBuf),
+    EscapingFile(PathBuf),
     ExternalNative,
     UnsupportedSurface(String),
     BundledKind(Kind),
@@ -617,9 +637,12 @@ impl std::fmt::Display for LoadError {
                 write!(f, "directory `{dir}` holds a plugin with id `{manifest}`")
             }
             Self::MissingFile(path) => write!(f, "{} is missing", path.display()),
+            Self::EscapingFile(path) => {
+                write!(f, "{} escapes the plugin directory", path.display())
+            }
             Self::ExternalNative => write!(
                 f,
-                "separately compiled native GPUI plugins are unsupported; use a web package or a Chartr-hosted surface"
+                "separately compiled native GPUI libraries are not supported because Rust GUI objects are not safe across a dynamic-library boundary. Use a web package or a Chartr-hosted surface; installation never compiles plugin source"
             ),
             Self::UnsupportedSurface(surface) => {
                 write!(f, "Chartr does not support the hosted surface `{surface}`")
@@ -633,7 +656,49 @@ impl std::fmt::Display for LoadError {
 
 impl std::error::Error for LoadError {}
 
-fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, LoadError> {
+/// Validate an external package identically during installation and discovery.
+/// Staging directories need not have the plugin's id as their name.
+pub fn validate_package(dir: &Path, manifest: &Manifest) -> Result<(), LoadError> {
+    match manifest.kind {
+        Kind::Native => return Err(LoadError::ExternalNative),
+        Kind::Hosted => {
+            HostedSurface::named(manifest.surface.as_deref().unwrap_or_default())?;
+        }
+        Kind::Web => {}
+    }
+    require_package_file(dir, &manifest.icon_relative_path())?;
+    if manifest.kind == Kind::Web {
+        let entry = manifest
+            .entry
+            .as_deref()
+            .ok_or(LoadError::Manifest(Invalid::Missing { field: "entry", kind: Kind::Web }))?;
+        require_package_file(dir, Path::new(entry))?;
+        if let Some(settings) = &manifest.settings_entry {
+            require_package_file(dir, Path::new(settings))?;
+        }
+    }
+    Ok(())
+}
+
+fn require_package_file(dir: &Path, relative: &Path) -> Result<(), LoadError> {
+    if relative.is_absolute()
+        || relative.components().any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(LoadError::EscapingFile(relative.to_owned()));
+    }
+    let file = dir.join(relative);
+    let root = dir.canonicalize().map_err(|_| LoadError::MissingFile(dir.to_owned()))?;
+    let resolved = file.canonicalize().map_err(|_| LoadError::MissingFile(file.clone()))?;
+    if !resolved.starts_with(root) {
+        return Err(LoadError::EscapingFile(relative.to_owned()));
+    }
+    if !resolved.is_file() {
+        return Err(LoadError::MissingFile(file));
+    }
+    Ok(())
+}
+
+fn read_directory_manifest(dir: &Path) -> Result<Manifest, LoadError> {
     let manifest = Manifest::read(dir).map_err(LoadError::Manifest)?;
 
     let dir_name = dir.file_name().unwrap_or_default().to_string_lossy();
@@ -644,11 +709,15 @@ fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, Lo
         });
     }
 
-    let icon = manifest.icon_path(dir);
-    if !icon.is_file() {
-        return Err(LoadError::MissingFile(icon));
-    }
+    validate_package(dir, &manifest)?;
+    Ok(manifest)
+}
 
+fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, LoadError> {
+    load_validated(dir, paths, read_directory_manifest(dir)?)
+}
+
+fn load_validated(dir: &Path, paths: &Paths, manifest: Manifest) -> Result<Loaded, LoadError> {
     std::fs::create_dir_all(paths.data.join(&manifest.id)).ok();
 
     let (tier, panes, has_settings) = match manifest.kind {
@@ -665,9 +734,6 @@ fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, Lo
         }
         Kind::Web => {
             let entry = dir.join(manifest.entry.as_deref().unwrap_or("index.html"));
-            if !entry.is_file() {
-                return Err(LoadError::MissingFile(entry));
-            }
             // A web plugin's panes come from its manifest rather than from
             // running its code: zeddy must be able to list them without
             // starting a webview.
@@ -676,11 +742,6 @@ fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, Lo
                 title: manifest.name.clone(),
             }];
             let settings_entry = manifest.settings_entry.as_ref().map(|entry| dir.join(entry));
-            if let Some(settings_entry) = &settings_entry
-                && !settings_entry.is_file()
-            {
-                return Err(LoadError::MissingFile(settings_entry.clone()));
-            }
             let has_settings = settings_entry.is_some();
             (Tier::Web { entry, settings_entry }, panes, has_settings)
         }
@@ -689,6 +750,7 @@ fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, Lo
     Ok(Loaded {
         manifest,
         dir: dir.to_owned(),
+        installation: Installation::read(dir),
         panes,
         has_settings,
         tier,
@@ -706,10 +768,7 @@ fn load_builtin_native(
     if manifest.kind != Kind::Native {
         return Err(LoadError::BundledKind(manifest.kind));
     }
-    let icon = manifest.icon_path(&dir);
-    if !icon.is_file() {
-        return Err(LoadError::MissingFile(icon));
-    }
+    require_package_file(&dir, &manifest.icon_relative_path())?;
     let host = Host { data_dir: paths.data.join(&manifest.id), plugin_dir: dir.clone() };
     std::fs::create_dir_all(&host.data_dir).ok();
     let mut plugin = factory(host, cx);
@@ -726,6 +785,7 @@ fn load_builtin_native(
     Ok(Loaded {
         manifest,
         dir,
+        installation: None,
         panes,
         has_settings,
         tier: Tier::Native(Native { plugin }),
@@ -815,6 +875,56 @@ mod tests {
         assert_eq!(catalog.loaded.len(), 1);
         assert_eq!(catalog.panes().len(), 1);
         assert_eq!(catalog.panes()[0].title, "Notes");
+        assert!(catalog.get("com.example.notes").unwrap().installation.is_none());
+    }
+
+    #[gpui::test]
+    fn disabled_packages_receive_the_same_validation_as_enabled_packages(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_temp, paths) = paths();
+        write_web(&paths, "com.example.mismatch", "wrong-directory");
+        let missing = write_web(&paths, "com.example.missing", "com.example.missing");
+        std::fs::remove_file(missing.join("index.html")).unwrap();
+        for enabled in [false, true] {
+            let catalog = cx.update(|cx| load_all_where(&paths, |_| enabled, cx));
+            assert!(catalog.loaded.is_empty() && catalog.disabled.is_empty());
+            assert_eq!(catalog.rejected.len(), 2);
+        }
+    }
+
+    #[gpui::test]
+    fn package_entries_and_icons_must_stay_inside_the_package(cx: &mut gpui::TestAppContext) {
+        let (temp, paths) = paths();
+        let id = "com.example.notes";
+        let dir = write_web(&paths, id, id);
+        let original = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
+        let outside = temp.path().join("outside.html");
+        std::fs::write(&outside, "outside").unwrap();
+        for entry in ["../outside.html".to_owned(), outside.display().to_string()] {
+            std::fs::write(dir.join("zeddy-plugin.toml"), original.replace("index.html", &entry))
+                .unwrap();
+            let manifest = Manifest::read(&dir).unwrap();
+            assert!(matches!(validate_package(&dir, &manifest), Err(LoadError::EscapingFile(_))));
+            let catalog = cx.update(|cx| load_all_where(&paths, |_| false, cx));
+            assert_eq!(catalog.rejected.len(), 1);
+        }
+        std::fs::write(dir.join("zeddy-plugin.toml"), &original).unwrap();
+        for asset in ["index.html", "icons/NoteIcon.svg"] {
+            let path = dir.join(asset);
+            std::fs::remove_file(&path).unwrap();
+            std::os::unix::fs::symlink(&outside, &path).unwrap();
+            let catalog = cx.update(|cx| load_all(&paths, cx));
+            assert!(catalog.rejected[0].why.contains("escapes"));
+            std::fs::remove_file(&path).unwrap();
+            std::fs::write(&path, "restored").unwrap();
+        }
+        std::fs::write(
+            dir.join("zeddy-plugin.toml"),
+            format!("{original}settings_entry = '../outside.html'\n"),
+        )
+        .unwrap();
+        assert_eq!(cx.update(|cx| load_all(&paths, cx)).rejected.len(), 1);
     }
 
     #[gpui::test]

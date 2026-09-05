@@ -42,6 +42,29 @@ pub struct Permissions {
     pub session: bool,
 }
 
+impl Permissions {
+    /// Describe the API grants without implying that process or terminal access
+    /// is constrained by the file and network brokers.
+    pub fn summary(&self) -> String {
+        let project = match self.project_files {
+            ProjectAccess::None => "none",
+            ProjectAccess::Read => "read",
+            ProjectAccess::ReadWrite => "read and write",
+        };
+        let mut grants = vec![format!("project-file API: {project}")];
+        if !self.network.is_empty() {
+            grants.push(format!("network API: {}", self.network.join(", ")));
+        }
+        if self.process {
+            grants.push("process execution with your user account's authority".into());
+        }
+        if self.session {
+            grants.push("bound-terminal metadata and input (can run commands as you)".into());
+        }
+        grants.join("; ")
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct Capabilities {
     #[serde(default)]
@@ -66,12 +89,10 @@ pub enum Kind {
     /// time. Separately compiled GPUI libraries are rejected by the installer.
     Native,
     /// A separately installed package that activates a surface implemented by
-    /// Chartr. This is the safest option for first-party integrations that need
-    /// operating-system UI facilities such as a child browser webview.
+    /// Chartr, such as a child browser webview.
     Hosted,
-    /// HTML and JavaScript in an OS webview. Sandboxed, hot-reloadable,
-    /// authorable by anyone who has written a web page — and a frame behind
-    /// native, because it is composited rather than painted.
+    /// HTML and JavaScript in an OS webview, with declared host API grants.
+    /// Process and terminal grants carry user-level execution authority.
     Web,
 }
 

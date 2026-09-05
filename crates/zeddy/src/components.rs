@@ -1,9 +1,11 @@
 //! Shared Chartr controls, organized by interaction and presentation.
 
+mod list_sorter;
 mod modal;
 mod popup;
 mod selection;
 
+pub use list_sorter::ListSorter;
 pub use modal::open_native_modal;
 pub use popup::{ContextMenu, PopupMenu, popup_right_click_menu};
 pub use selection::{

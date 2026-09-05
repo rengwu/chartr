@@ -93,6 +93,8 @@ struct ErrorNotice {
 #[derive(Clone)]
 pub(crate) struct SettingsPluginDescriptor {
     pub manifest: zeddy_plugin::manifest::Manifest,
+    pub installation: Option<zeddy_plugin_host::Installation>,
+    pub removable: bool,
     pub enabled: bool,
     pub has_settings: bool,
 }
@@ -266,7 +268,7 @@ impl Zeddy {
             supervision_started: false,
             registry: None,
             spaces: Vec::new(),
-            space_sorter: chrome::sidebar::SpaceSorter::default(),
+            space_sorter: chrome::sidebar::SpaceSorter::new(chrome::sidebar::CARD_GAP),
             active: None,
             mode: Mode::default(),
             catalog: Catalog::default(),
