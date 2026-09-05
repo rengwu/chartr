@@ -35,21 +35,7 @@ pub mod terminal_search {
 }
 
 pub fn init(keymap: &KeymapStore, cx: &mut App) {
-    let context = Some("Chartr");
-    cx.bind_keys([
-        KeyBinding::new(keymap.key(KeymapAction::CloseItem), pane::CloseActiveItem, context),
-        KeyBinding::new(keymap.key(KeymapAction::NewTerminal), workspace::NewTerminal, context),
-        KeyBinding::new(keymap.key(KeymapAction::FocusLeft), workspace::ActivatePaneLeft, context),
-        KeyBinding::new(
-            keymap.key(KeymapAction::FocusRight),
-            workspace::ActivatePaneRight,
-            context,
-        ),
-        KeyBinding::new(keymap.key(KeymapAction::FocusUp), workspace::ActivatePaneUp, context),
-        KeyBinding::new(keymap.key(KeymapAction::FocusDown), workspace::ActivatePaneDown, context),
-        KeyBinding::new(keymap.key(KeymapAction::CommandPalette), command_palette::Toggle, context),
-        KeyBinding::new(keymap.key(KeymapAction::OpenSettings), settings::Open, context),
-    ]);
+    cx.bind_keys(KeymapAction::ALL.map(|action| binding(action, keymap.key(action), "Chartr")));
 
     // Keep terminal behavior aligned with the exact pinned Zed revision. The
     // full default keymap also contains editor/workspace bindings Chartr does
@@ -82,48 +68,37 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
 /// targeted `Unbind` disables the prior action/chord without disturbing any
 /// terminal, browser, or text-input bindings installed by other modules.
 pub fn rebind(action: KeymapAction, previous_key: &str, new_key: &str, cx: &mut App) {
-    let context = Some("Chartr");
-    match action {
-        KeymapAction::CloseItem => {
-            replace_binding(previous_key, new_key, pane::CloseActiveItem, context, cx)
-        }
-        KeymapAction::NewTerminal => {
-            replace_binding(previous_key, new_key, workspace::NewTerminal, context, cx)
-        }
-        KeymapAction::FocusLeft => {
-            replace_binding(previous_key, new_key, workspace::ActivatePaneLeft, context, cx)
-        }
-        KeymapAction::FocusRight => {
-            replace_binding(previous_key, new_key, workspace::ActivatePaneRight, context, cx)
-        }
-        KeymapAction::FocusUp => {
-            replace_binding(previous_key, new_key, workspace::ActivatePaneUp, context, cx)
-        }
-        KeymapAction::FocusDown => {
-            replace_binding(previous_key, new_key, workspace::ActivatePaneDown, context, cx)
-        }
-        KeymapAction::CommandPalette => {
-            replace_binding(previous_key, new_key, command_palette::Toggle, context, cx)
-        }
-        KeymapAction::OpenSettings => {
-            replace_binding(previous_key, new_key, settings::Open, context, cx);
-            replace_binding(previous_key, new_key, settings::Open, Some("ChartrSettings"), cx);
-        }
+    let contexts: &[&str] = if action == KeymapAction::OpenSettings {
+        &["Chartr", "ChartrSettings"]
+    } else {
+        &["Chartr"]
+    };
+    for context in contexts {
+        let replacement = binding(action, new_key, context);
+        cx.bind_keys([
+            KeyBinding::new(
+                previous_key,
+                Unbind(replacement.action().name().into()),
+                Some(context),
+            ),
+            replacement,
+        ]);
     }
 }
 
-fn replace_binding(
-    previous_key: &str,
-    new_key: &str,
-    action: impl gpui::Action,
-    context: Option<&str>,
-    cx: &mut App,
-) {
-    let action_name = action.name();
-    cx.bind_keys([
-        KeyBinding::new(previous_key, Unbind(action_name.into()), context),
-        KeyBinding::new(new_key, action, context),
-    ]);
+/// Keep startup and live rebinding on the same semantic action mapping.
+fn binding(action: KeymapAction, key: &str, context: &str) -> KeyBinding {
+    let context = Some(context);
+    match action {
+        KeymapAction::CloseItem => KeyBinding::new(key, pane::CloseActiveItem, context),
+        KeymapAction::NewTerminal => KeyBinding::new(key, workspace::NewTerminal, context),
+        KeymapAction::FocusLeft => KeyBinding::new(key, workspace::ActivatePaneLeft, context),
+        KeymapAction::FocusRight => KeyBinding::new(key, workspace::ActivatePaneRight, context),
+        KeymapAction::FocusUp => KeyBinding::new(key, workspace::ActivatePaneUp, context),
+        KeymapAction::FocusDown => KeyBinding::new(key, workspace::ActivatePaneDown, context),
+        KeymapAction::CommandPalette => KeyBinding::new(key, command_palette::Toggle, context),
+        KeymapAction::OpenSettings => KeyBinding::new(key, settings::Open, context),
+    }
 }
 
 fn upstream_terminal_bindings(cx: &App) -> Vec<KeyBinding> {
