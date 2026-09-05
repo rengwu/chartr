@@ -30,6 +30,10 @@ pub struct SkillsPlugin {
     registry: Entity<Registry>,
 }
 
+#[derive(Default)]
+struct SharedRegistries(std::collections::HashMap<PathBuf, gpui::WeakEntity<Registry>>);
+impl gpui::Global for SharedRegistries {}
+
 pub fn bundled(host: Host, cx: &mut App) -> Box<dyn PluginObject> {
     Box::new(SkillsPlugin::new(host, cx))
 }
@@ -37,10 +41,41 @@ pub fn bundled(host: Host, cx: &mut App) -> Box<dyn PluginObject> {
 impl Plugin for SkillsPlugin {
     const ID: &'static str = "com.chartr.skills";
     fn new(host: Host, cx: &mut App) -> Self {
-        Self { registry: cx.new(|_| Registry::load(host.data_dir)) }
+        let existing = cx
+            .default_global::<SharedRegistries>()
+            .0
+            .get(&host.data_dir)
+            .and_then(gpui::WeakEntity::upgrade);
+        let registry = existing.unwrap_or_else(|| {
+            let registry = cx.new(|_| Registry::load(host.data_dir.clone()));
+            cx.default_global::<SharedRegistries>().0.insert(host.data_dir, registry.downgrade());
+            registry
+        });
+        Self { registry }
     }
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
         registrar.add_pane("main", "Skills").add_settings();
+    }
+    fn services(&self) -> Vec<zeddy_plugin::services::ServiceExport> {
+        use zeddy_plugin::services::{ServiceExport, Skills};
+        let registry = self.registry.downgrade();
+        vec![ServiceExport::new(Skills::new(move |cx| {
+            let Some(registry) = registry.upgrade() else {
+                return gpui::Task::ready(Err("Skills is unavailable.".into()));
+            };
+            let registry = registry.read(cx);
+            if registry.load_failed {
+                return gpui::Task::ready(Err(registry.problem.clone().unwrap_or_default()));
+            }
+            if registry.busy.is_some() {
+                return gpui::Task::ready(Err(
+                    "Skill sources are being updated. Try again shortly.".into(),
+                ));
+            }
+            let store = registry.store.clone();
+            cx.background_executor()
+                .spawn(async move { store.catalog().map_err(|error| format!("{error:#}")) })
+        }))]
     }
     fn view(
         &mut self,
@@ -1008,6 +1043,17 @@ mod tests {
             ::settings::init(cx);
             theme::init(theme::LoadThemes::JustBase, cx);
             crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+    }
+
+    #[gpui::test]
+    fn provider_registries_are_shared_across_window_catalogs(cx: &mut TestAppContext) {
+        let root = tempfile::tempdir().unwrap();
+        let host = Host { data_dir: root.path().into(), plugin_dir: root.path().into() };
+        cx.update(|cx| {
+            let first = SkillsPlugin::new(host.clone(), cx);
+            let second = SkillsPlugin::new(host, cx);
+            assert_eq!(first.registry, second.registry);
         });
     }
 

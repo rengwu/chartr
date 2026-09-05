@@ -55,6 +55,7 @@
 #![forbid(unsafe_code)]
 
 pub mod manifest;
+pub mod services;
 
 pub use gpui;
 pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, ProjectAccess};
@@ -62,6 +63,26 @@ pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, Proj
 use std::{path::PathBuf, rc::Rc};
 
 type TerminalLaunchHandler = dyn Fn(Vec<u8>, &mut gpui::App);
+type TerminalPrepareHandler =
+    dyn Fn(&mut gpui::App) -> gpui::Task<Result<PreparedTerminal, String>>;
+type TerminalSendHandler = dyn Fn(&[u8]) -> Result<(), String>;
+type TerminalFocusHandler = dyn Fn(&str, &mut gpui::Window, &mut gpui::App) -> bool;
+
+/// An attached shell with no agent input yet. A plugin may record a claim using
+/// its real session id before starting an agent, and can report delivery errors.
+pub struct PreparedTerminal {
+    pub id: String,
+    send: Box<TerminalSendHandler>,
+}
+
+impl PreparedTerminal {
+    pub fn new(id: String, send: impl Fn(&[u8]) -> Result<(), String> + 'static) -> Self {
+        Self { id, send: Box::new(send) }
+    }
+    pub fn send(&self, input: &[u8]) -> Result<(), String> {
+        (self.send)(input)
+    }
+}
 
 /// A space-scoped capability for opening a Chartr-owned terminal.
 ///
@@ -71,11 +92,41 @@ type TerminalLaunchHandler = dyn Fn(Vec<u8>, &mut gpui::App);
 #[derive(Clone)]
 pub struct TerminalLauncher {
     launch: Rc<TerminalLaunchHandler>,
+    prepare: Option<Rc<TerminalPrepareHandler>>,
+    focus: Option<Rc<TerminalFocusHandler>>,
 }
 
 impl TerminalLauncher {
     pub fn new(launch: impl Fn(Vec<u8>, &mut gpui::App) + 'static) -> Self {
-        Self { launch: Rc::new(launch) }
+        Self { launch: Rc::new(launch), prepare: None, focus: None }
+    }
+
+    pub fn with_prepare(
+        mut self,
+        prepare: impl Fn(&mut gpui::App) -> gpui::Task<Result<PreparedTerminal, String>> + 'static,
+    ) -> Self {
+        self.prepare = Some(Rc::new(prepare));
+        self
+    }
+
+    pub fn prepare(&self, cx: &mut gpui::App) -> gpui::Task<Result<PreparedTerminal, String>> {
+        match &self.prepare {
+            Some(prepare) => prepare(cx),
+            None => gpui::Task::ready(Err("This view cannot create a terminal.".into())),
+        }
+    }
+
+    /// Add navigation to a session already owned by this space.
+    pub fn with_focus(
+        mut self,
+        focus: impl Fn(&str, &mut gpui::Window, &mut gpui::App) -> bool + 'static,
+    ) -> Self {
+        self.focus = Some(Rc::new(focus));
+        self
+    }
+
+    pub fn focus(&self, session: &str, window: &mut gpui::Window, cx: &mut gpui::App) -> bool {
+        self.focus.as_ref().is_some_and(|focus| focus(session, window, cx))
     }
 
     /// Open a terminal and queue the bytes it should receive first.
@@ -134,6 +185,9 @@ pub struct InstanceContext {
     pub bound_session: Option<String>,
     /// Host capability available to trusted native panes.
     pub terminal: TerminalLauncher,
+    /// Live services exported by enabled native plugins in this catalog.
+    pub services: services::Services,
+    pub plugin_settings: services::PluginSettings,
 }
 
 /// What a plugin declares during [`Plugin::activate`].
@@ -199,6 +253,10 @@ pub trait Plugin: Sized + 'static {
     /// Declare what this plugin contributes. Called once, at load.
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
 
+    fn services(&self) -> Vec<services::ServiceExport> {
+        Vec::new()
+    }
+
     /// Build the view for one of the panes declared in [`Plugin::activate`].
     ///
     /// Called when the pane is first shown, and again after a reload.
@@ -223,6 +281,7 @@ pub trait Plugin: Sized + 'static {
 /// The object-safe face of [`Plugin`] used by Chartr's build-time registry.
 pub trait PluginObject {
     fn id(&self) -> &str;
+    fn services(&self) -> Vec<services::ServiceExport>;
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
     fn view(
         &mut self,
@@ -235,6 +294,10 @@ pub trait PluginObject {
 }
 
 impl<P: Plugin> PluginObject for P {
+    fn services(&self) -> Vec<services::ServiceExport> {
+        Plugin::services(self)
+    }
+
     fn id(&self) -> &str {
         P::ID
     }

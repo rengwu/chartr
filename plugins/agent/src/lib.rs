@@ -34,6 +34,10 @@ pub struct AgentPlugin {
     registry: Entity<AgentRegistry>,
 }
 
+#[derive(Default)]
+struct SharedRegistries(std::collections::HashMap<PathBuf, gpui::WeakEntity<AgentRegistry>>);
+impl gpui::Global for SharedRegistries {}
+
 /// Construct the plugin object linked into Chartr.
 pub fn bundled(host: Host, cx: &mut App) -> Box<dyn PluginObject> {
     Box::new(AgentPlugin::new(host, cx))
@@ -44,12 +48,72 @@ impl Plugin for AgentPlugin {
 
     fn new(host: Host, cx: &mut App) -> Self {
         let path = host.data_dir.join(STORAGE_FILE);
-        let registry = cx.new(|_| AgentRegistry::load(path));
+        let existing = cx
+            .default_global::<SharedRegistries>()
+            .0
+            .get(&path)
+            .and_then(gpui::WeakEntity::upgrade);
+        let registry = existing.unwrap_or_else(|| {
+            let registry = cx.new(|_| AgentRegistry::load(path.clone()));
+            cx.default_global::<SharedRegistries>().0.insert(path, registry.downgrade());
+            registry
+        });
         Self { registry }
     }
 
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
-        registrar.add_pane("main", "Agent");
+        registrar.add_pane("main", "Agent").add_settings();
+    }
+
+    fn services(&self) -> Vec<zeddy_plugin::services::ServiceExport> {
+        use zeddy_plugin::services::{Agents, ServiceExport};
+        let listing = self.registry.downgrade();
+        let preparing = listing.clone();
+        vec![ServiceExport::new(Agents::new(
+            move |cx| {
+                let registry = listing.upgrade().ok_or("Agent is unavailable.")?;
+                let registry = registry.read(cx);
+                if let Some(error) = &registry.problem {
+                    return Err(error.clone());
+                }
+                Ok(registry.agents.iter().map(|agent| agent.name.clone()).collect())
+            },
+            move |name, prompt, cx| {
+                let registry = preparing.upgrade().ok_or("Agent is unavailable.")?;
+                let registry = registry.read(cx);
+                if let Some(error) = &registry.problem {
+                    return Err(error.clone());
+                }
+                let agent = registry
+                    .agents
+                    .iter()
+                    .find(|agent| agent.name == name)
+                    .ok_or("The selected agent is no longer registered.")?;
+                opening_input(agent, prompt)
+            },
+        ))]
+    }
+
+    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<gpui::AnyView> {
+        let context = InstanceContext {
+            instance_id: 0,
+            space: String::new(),
+            space_name: String::new(),
+            project_dir: None,
+            bound_session: None,
+            terminal: TerminalLauncher::new(|_, _| {}),
+            services: Default::default(),
+            plugin_settings: zeddy_plugin::services::PluginSettings::new(|_, _, _| {}),
+        };
+        Some(
+            cx.new(|cx| {
+                let mut view = AgentView::new(self.registry.clone(), context, cx);
+                view.page = Page::Management;
+                view.settings_only = true;
+                view
+            })
+            .into(),
+        )
     }
 
     fn view(
@@ -192,6 +256,7 @@ impl DeliveryMode {
 }
 
 struct AgentView {
+    settings_only: bool,
     registry: Entity<AgentRegistry>,
     terminal: TerminalLauncher,
     space_name: String,
@@ -241,6 +306,7 @@ impl AgentView {
         .detach();
         Self {
             registry,
+            settings_only: false,
             terminal: context.terminal,
             space_name: context.space_name,
             branch,
@@ -705,12 +771,12 @@ impl AgentView {
                         v_flex()
                             .w_full()
                             .gap_2()
-                            .child(
+                            .when(!self.settings_only, |column| column.child(
                                 Button::new("back-to-agent-launcher", "Back")
                                     .style(ButtonStyle::Transparent)
                                     .start_icon(Icon::new(IconName::ArrowLeft))
                                     .on_click(back),
-                            )
+                            ))
                             .child(
                                 h_flex()
                                     .w_full()
@@ -1286,6 +1352,17 @@ fn git_branch(project: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn provider_registries_are_shared_across_window_catalogs(cx: &mut gpui::TestAppContext) {
+        let root = tempfile::tempdir().unwrap();
+        let host = Host { data_dir: root.path().into(), plugin_dir: root.path().into() };
+        cx.update(|cx| {
+            let first = AgentPlugin::new(host.clone(), cx);
+            let second = AgentPlugin::new(host, cx);
+            assert_eq!(first.registry, second.registry);
+        });
+    }
 
     fn record(adapter: &str, args: &[&str], env: &[&str], delivery: &str) -> AgentRecord {
         AgentRecord {

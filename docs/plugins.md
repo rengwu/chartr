@@ -107,6 +107,7 @@ project_files = "none"        # or "read", "read_write"
 network = []                  # e.g. ["api.example.com", "*.example.org"]
 process = false
 session = false
+wayfinder = false            # map workflow and registered-agent launching
 ```
 
 The ID is the package identity used for replacement, data, preferences, and
@@ -136,6 +137,48 @@ filesystem and network access outside those brokers. **`session = true` allows
 terminal input**, which can execute commands with the bound terminal's authority.
 Neither is a sandboxed form of execution. The explicit unsafe-filesystem setting
 overrides project-file API restrictions; it does not change the private data root.
+**`wayfinder = true` grants map and source reads, ticket-claim updates, and launches
+through registered agents with the user's account authority.** It does not grant
+arbitrary project writes, raw terminal input, process execution, or unrestricted
+access to native services. It is still an execution capability: a registered
+agent can carry out the workflow's prompt with its normal permissions.
+
+## Feature prerequisites and native services
+
+A plugin can declare feature dependencies without hiding its independent panes:
+
+```toml
+[[dependencies]]
+plugin = "com.chartr.agent"
+feature = "Agent launching"
+
+[[dependencies]]
+plugin = "com.chartr.skills"
+feature = "Ticket methods"
+```
+
+Settings displays the provider and feature; missing providers are never
+automatically installed or enabled. Consumers check configuration as well as
+availability and explain how to finish setup. This metadata is descriptive,
+not package-version resolution or automatic startup ordering.
+
+Trusted native plugins can return `ServiceExport::new(service)` from their
+optional `Plugin::services` method. `InstanceContext.services.get::<T>(plugin_id)`
+resolves a live export in the owning catalog. Disablement removes its entries;
+reenablement publishes fresh exports. Resolve services again before acting.
+Native code is already trusted; these are shared typed contracts, not a sandbox.
+
+The initial contracts are `services::Agents` (registered names and input
+preparation) and `services::Skills` (asynchronous enabled-source scanning,
+method text, directories and commit provenance). Agent and Skills own their
+registries. `InstanceContext.plugin_settings` navigates to setup.
+
+`InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
+`PreparedTerminal` with a real session `id`; `send` delivers the validated input
+and reports errors. This lets a consumer claim a ticket before the agent starts.
+`terminal.focus(id, window, cx)` selects that session in its owning space.
+These Rust capabilities stay host-side. The narrow Wayfinder web API below
+uses them without exposing arbitrary service calls or shell input to JavaScript.
 
 ## Web host operations
 
@@ -209,3 +252,34 @@ Process execution remains subject to the manifest's process permission.
 Bound-session metadata reflects current session information. Terminal
 reattachment retains the capability and redirects input to the new attachment;
 closing the session makes its capabilities unavailable.
+
+### Wayfinder workflow
+
+These actions require `permissions.wayfinder = true` and an owning space pane;
+they are unavailable to Settings documents. No identity-based exemption is used:
+an installed web package must declare the same grant as bundled Wayfinder.
+All actions use the existing ordered queue and document-scoped replies.
+
+| Action | Options | Result |
+| --- | --- | --- |
+| `wayfinder.snapshot` | Omit | Space/folder, discovered maps/tickets with safe rendered Markdown, agent names, qualified skill names and setup diagnostics |
+| `wayfinder.preview` | `{ slug: string, ticket: number, method?: string, note?: string }` | `{ preview: number, text: string, sources: string[] }` |
+| `wayfinder.launch` | `{ preview: number, agent: string }` | `{ session: string }` |
+| `wayfinder.release` | `{ slug: string, ticket: number, session: string }` | `true` |
+| `wayfinder.focus` | `{ slug: string, ticket: number }` | `true` |
+| `wayfinder.open` | `{ slug: string, ticket?: number, target?: string }` | `true` |
+| `wayfinder.settings` | `{ provider: "agent" \| "skills" }` | `true` |
+
+Preview requires an existing map slug and a ready ticket.
+The optional method pins an exact `source/skill`; omission selects by ticket type.
+Notes are bounded to 16 KiB and the composed prompt to 192 KiB. A preview ID is
+one-shot, document-bound and replaced by the next preview. Launch rechecks the
+source content and on-disk map, prepares a real terminal, writes its claim, then
+delivers adapter-correct input. Closing or navigating before delivery cancels the
+launch and releases its own claim. An already delivered launch is not terminated.
+
+Release must supply the current claim's session ID; it never stops the terminal.
+The UI asks for a second confirmation. Open without a target opens the map/ticket
+file; relative targets resolve beside that file and must remain inside the space.
+HTTP(S) targets open through the OS. Raw HTML is escaped, images render as links,
+and no project Markdown executes in the web document.

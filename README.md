@@ -207,7 +207,14 @@ The bundled **Skills** plugin in `plugins/skills` provides ordered local and
 remote skill-source registration, editing, enablement, refresh, and confirmed
 removal. Its otherwise empty pane opens source settings through the chevron
 menu. See [its package documentation](plugins/skills/README.md) for discovery
-rules and storage; agent context integration is a later step.
+rules and storage. It exports ordered source content to dependent native plugins.
+
+The bundled **Wayfinder** plugin reads `.plan/maps/` in a folder space as a live
+web-based star map. Select a ticket to read its Markdown, dependencies and claim;
+launch it using a registered Agent and a method resolved by Skills. A single
+dispatcher follows the ticket type, with an optional source/skill override and
+full prompt preview. Missing prerequisites leave the map available and link to
+setup. See [Wayfinder](plugins/wayfinder/README.md) for the workflow and claim rules.
 
 `plugins/browser` is the code-free package for the separately released,
 first-party **Browser** plugin. It is deliberately absent from the bundled

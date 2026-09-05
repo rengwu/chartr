@@ -185,6 +185,17 @@ impl Space {
             .map(|item| item.session.id().clone())
     }
 
+    pub fn activate_session(&mut self, backend: &PaneId, cx: &mut Context<Self>) -> bool {
+        let Some(item) = self.sessions.get(backend).copied() else {
+            return false;
+        };
+        let activated = self.layout.activate_item(item).is_ok();
+        if activated {
+            cx.notify();
+        }
+        activated
+    }
+
     fn session_from_builder(
         &mut self,
         info: zeddy_herdr::control::Session,
@@ -877,14 +888,21 @@ impl Space {
     }
 
     pub fn start_session(&mut self, cx: &mut Context<Self>) {
-        self.start_session_at(None, Vec::new(), cx);
+        self.start_session_at(None, Vec::new(), cx).detach();
     }
 
     /// Create an ordinary Chartr-owned terminal and queue its first shell/TUI
     /// input before publishing the new tab. Native plugins use this path so
     /// launched tools remain part of the owning space's normal lifecycle.
     pub fn start_session_with_input(&mut self, input: Vec<u8>, cx: &mut Context<Self>) {
-        self.start_session_at(None, input, cx);
+        self.start_session_at(None, input, cx).detach();
+    }
+
+    pub fn prepare_plugin_session(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> gpui::Task<Result<zeddy_plugin::PreparedTerminal, String>> {
+        self.start_session_at(None, Vec::new(), cx)
     }
 
     pub fn start_session_in(
@@ -893,7 +911,7 @@ impl Space {
         pane: crate::workspace::PaneId,
         cx: &mut Context<Self>,
     ) {
-        self.start_session_at(Some((tab, pane)), Vec::new(), cx);
+        self.start_session_at(Some((tab, pane)), Vec::new(), cx).detach();
     }
 
     fn start_session_at(
@@ -901,9 +919,11 @@ impl Space {
         destination: Option<(WorkspaceTabId, crate::workspace::PaneId)>,
         initial_input: Vec<u8>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> gpui::Task<Result<zeddy_plugin::PreparedTerminal, String>> {
         if self.starting {
-            return;
+            return gpui::Task::ready(Err(
+                "Another terminal is still starting in this space.".into()
+            ));
         }
         if !self.path.is_dir() {
             self.problem = Some(format!(
@@ -911,7 +931,7 @@ impl Space {
                 self.path.display()
             ));
             cx.notify();
-            return;
+            return gpui::Task::ready(Err(self.problem.clone().unwrap()));
         }
         self.starting = true;
         self.problem = None;
@@ -937,25 +957,27 @@ impl Space {
             let info = match info {
                 Ok(info) => info,
                 Err(error) => {
+                    let message = error.to_string();
                     let _ = this.update(cx, |this, cx| {
                         this.starting = false;
                         this.problem = Some(error.to_string());
                         cx.notify();
                     });
-                    return;
+                    return Err(message);
                 }
             };
             let Ok(attach) =
                 this.update(cx, |_, cx| Session::attach_builder(&client, &info, window_id, cx))
             else {
-                return;
+                return Err("The owning space was closed.".into());
             };
             let result = attach.await;
-            let _ = this.update(cx, |this, cx| {
+            this.update(cx, |this, cx| {
                 this.starting = false;
-                match result {
+                let result = match result {
                     Ok(builder) => {
                         let session = this.session_from_builder(info, builder, cx);
+                        let session_id = session.id().0.clone();
                         let input = session.access();
                         let inserted = if let Some((tab, pane)) = destination {
                             this.insert_session_in(session, tab, pane)
@@ -969,14 +991,23 @@ impl Space {
                                 this.problem = Some(error.to_string());
                             }
                             cx.emit(SpaceEvent::TerminalReady(id));
+                            Ok(zeddy_plugin::PreparedTerminal::new(session_id, move |bytes| {
+                                input.send(bytes).map_err(|error| error.to_string())
+                            }))
+                        } else {
+                            Err("The new terminal could not be inserted into its space.".into())
                         }
                     }
-                    Err(error) => this.problem = Some(error.to_string()),
-                }
+                    Err(error) => {
+                        this.problem = Some(error.to_string());
+                        Err(error.to_string())
+                    }
+                };
                 cx.notify();
-            });
+                result
+            })
+            .map_err(|_| "The owning space was closed.".to_owned())?
         })
-        .detach();
     }
 
     fn insert_session(&mut self, session: Session) -> Option<ItemId> {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
-    io::Write as _,
+    io::{Read as _, Write as _},
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicBool, Ordering},
@@ -73,6 +73,49 @@ pub(super) enum Operation {
 }
 
 impl Store {
+    pub fn catalog(&self) -> Result<zeddy_plugin::services::SkillCatalog> {
+        use zeddy_plugin::services::{Skill as ResolvedSkill, SkillCatalog};
+        let mut catalog = SkillCatalog::default();
+        for (source, state) in self.sources.iter().zip(self.states()) {
+            if !source.enabled {
+                continue;
+            }
+            if state.unavailable {
+                catalog.warnings.push(format!("{} is unavailable.", source.name));
+            }
+            catalog
+                .warnings
+                .extend(state.warnings.iter().map(|warning| format!("{}: {warning}", source.name)));
+            for skill in state.skills {
+                let path = skill.dir.join("SKILL.md");
+                let read = (|| -> std::io::Result<String> {
+                    let file = fs::File::open(&path)?;
+                    if !file.metadata()?.is_file() {
+                        return Err(std::io::Error::other("Not a regular skill file"));
+                    }
+                    let mut body = String::new();
+                    file.take(256 * 1024 + 1).read_to_string(&mut body)?;
+                    Ok(body)
+                })();
+                match read {
+                    Ok(body) if body.len() <= 256 * 1024 => catalog.skills.push(ResolvedSkill {
+                        source: source.name.clone(),
+                        name: skill.name,
+                        directory: skill.dir,
+                        commit: source.commit.clone(),
+                        body,
+                        shadowed: skill.shadowed,
+                    }),
+                    Ok(_) => catalog
+                        .warnings
+                        .push(format!("{} is too large to include in a prompt.", path.display())),
+                    Err(error) => catalog.warnings.push(format!("{}: {error}", path.display())),
+                }
+            }
+        }
+        Ok(catalog)
+    }
+
     pub fn load(root: PathBuf) -> Result<Self> {
         let sources: Vec<Source> = match fs::read(root.join("sources.json")) {
             Ok(bytes) => {

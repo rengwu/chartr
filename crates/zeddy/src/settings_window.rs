@@ -70,6 +70,29 @@ pub fn open(original_window: WindowHandle<Zeddy>, original: WeakEntity<Zeddy>, c
     open_with_origin(Some(original_window), original, cx);
 }
 
+pub fn open_plugin(
+    original_window: WindowHandle<Zeddy>,
+    original: WeakEntity<Zeddy>,
+    plugin: Option<String>,
+    cx: &mut App,
+) {
+    open(original_window, original, cx);
+    cx.defer(move |cx| {
+        let existing =
+            cx.windows().into_iter().find_map(|window| window.downcast::<SettingsWindow>());
+        if let Some(existing) = existing {
+            let _ = existing.update(cx, |settings, window, cx| {
+                settings.page = SettingsPage::Plugins;
+                settings.plugin_settings = None;
+                if let Some(plugin) = plugin {
+                    settings.open_plugin_settings(plugin, window, cx);
+                }
+                cx.notify();
+            });
+        }
+    });
+}
+
 fn open_with_origin(
     original_window: Option<WindowHandle<Zeddy>>,
     original: WeakEntity<Zeddy>,

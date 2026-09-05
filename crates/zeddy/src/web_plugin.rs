@@ -125,7 +125,7 @@ pub fn view(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    create_view(document, broker, permissions, session, on_focus, window, cx).0
+    create_view(document, broker, permissions, session, on_focus, None, window, cx).0
 }
 
 pub fn pane(
@@ -134,10 +134,12 @@ pub fn pane(
     permissions: Permissions,
     session: Option<SessionAccess>,
     on_focus: Option<FocusHandler>,
+    context: zeddy_plugin::InstanceContext,
     window: &mut Window,
     cx: &mut App,
 ) -> PluginView {
-    let (view, webview) = create_view(document, broker, permissions, session, on_focus, window, cx);
+    let (view, webview) =
+        create_view(document, broker, permissions, session, on_focus, Some(context), window, cx);
     let close = webview.clone();
     PluginView::with_close(view, move || close.shutdown())
 }
@@ -148,6 +150,7 @@ fn create_view(
     permissions: Permissions,
     session: Option<SessionAccess>,
     on_focus: Option<FocusHandler>,
+    context: Option<zeddy_plugin::InstanceContext>,
     window: &mut Window,
     cx: &mut App,
 ) -> (AnyView, NativeWebViewHandle) {
@@ -159,6 +162,7 @@ fn create_view(
             permissions,
             session,
             on_focus,
+            context,
             webview.clone(),
             window,
             cx,
@@ -175,8 +179,6 @@ struct WebPluginView {
     _gtk_pump: gpui::Task<()>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     _focus_task: gpui::Task<()>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    _request_task: Option<gpui::Task<()>>,
     error: Option<String>,
 }
 
@@ -187,13 +189,14 @@ impl WebPluginView {
         permissions: Permissions,
         session: Option<SessionAccess>,
         on_focus: Option<FocusHandler>,
+        context: Option<zeddy_plugin::InstanceContext>,
         webview_handle: NativeWebViewHandle,
         window: &Window,
         _cx: &mut Context<Self>,
     ) -> Self {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (document, broker, permissions, session, on_focus, window, _cx);
+            let _ = (document, broker, permissions, session, on_focus, context, window, _cx);
             return Self {
                 webview: webview_handle,
                 error: Some("Web plugins are supported on macOS and Linux.".into()),
@@ -221,7 +224,6 @@ impl WebPluginView {
                     visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
-                    _request_task: None,
                     error: Some(format!("Could not initialize GTK: {error}")),
                 };
             }
@@ -235,7 +237,6 @@ impl WebPluginView {
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
                         _focus_task: focus_task,
-                        _request_task: None,
                         error: Some(error),
                     };
                 }
@@ -244,11 +245,19 @@ impl WebPluginView {
             let responder = webview_slot.clone();
             // One bounded worker per instance preserves request ordering without
             // making native WebKit callbacks wait for filesystem/network/process I/O.
-            let (request_tx, mut request_rx) = mpsc::channel::<String>(16);
+            let (request_tx, mut request_rx) = mpsc::channel::<(String, u64)>(16);
             let request_tx = RefCell::new(request_tx);
             let executor = _cx.background_executor().clone();
-            let request_task = _cx.spawn(async move |this, cx| {
-                while let Some(encoded) = request_rx.next().await {
+            let mut wayfinder = crate::wayfinder_plugin::Bridge::for_web(context, &permissions);
+            let window_handle = window.window_handle();
+            let navigation = Rc::new(Cell::new(0_u64));
+            let worker_navigation = navigation.clone();
+            let ipc_navigation = navigation.clone();
+            let life = Rc::downgrade(&webview_handle.0);
+            // Detached so closing during a prepared launch can finish claim rollback.
+            // Neither the queue nor this worker retains the pane or native webview.
+            _cx.spawn(async move |this, cx| {
+                while let Some((encoded, generation)) = request_rx.next().await {
                     if !this.read_with(cx, |this, _| this.webview.get().is_some()).unwrap_or(false)
                     {
                         break;
@@ -256,7 +265,19 @@ impl WebPluginView {
                     let broker = broker.clone();
                     let permissions = permissions.clone();
                     let session = session.clone();
-                    let response = executor
+                    let alive = || worker_navigation.get() == generation && life.upgrade().is_some_and(|slot| slot.borrow().is_some());
+                    if !alive() { continue; }
+                    let response = if is_wayfinder_request(&encoded) {
+                        let (id, document) = reply_address(&encoded);
+                        let result = match serde_json::from_str::<crate::wayfinder_plugin::Action>(&encoded) {
+                            Ok(action) => match &mut wayfinder {
+                                Some(bridge) => bridge.handle(action, &document, window_handle, alive, cx).await,
+                                None => Err("Wayfinder access requires the wayfinder permission and a space pane.".into()),
+                            },
+                            Err(error) => Err(format!("Invalid Wayfinder request: {error}")),
+                        };
+                        serde_json::to_string(&HostResponse::from_result(id, document, result))
+                    } else { executor
                         .spawn(async move {
                             serde_json::to_string(&handle_request(
                                 &broker,
@@ -265,7 +286,7 @@ impl WebPluginView {
                                 &encoded,
                             ))
                         })
-                        .await;
+                        .await };
                     let _ = this.update(cx, |this, _| {
                         if let Some(webview) = this.webview.get()
                             && let Ok(response) = response
@@ -275,7 +296,7 @@ impl WebPluginView {
                         }
                     });
                 }
-            });
+            }).detach();
             let builder = WebViewBuilder::new()
                 .with_custom_protocol("chartr-plugin".into(), move |_, request| {
                     asset_response(&root_for_protocol, request.uri().path())
@@ -290,7 +311,11 @@ impl WebPluginView {
                     }
                     let error = if request.body().len() > host::MAX_REQUEST_BYTES {
                         Some("host request exceeds 1 MiB")
-                    } else if request_tx.borrow_mut().try_send(request.body().clone()).is_err() {
+                    } else if request_tx
+                        .borrow_mut()
+                        .try_send((request.body().clone(), ipc_navigation.get()))
+                        .is_err()
+                    {
                         Some("plugin request queue is full or closed")
                     } else {
                         None
@@ -312,7 +337,13 @@ impl WebPluginView {
                         }
                     }
                 })
-                .with_navigation_handler(|url| url.starts_with("chartr-plugin://plugin/"))
+                .with_navigation_handler(move |url| {
+                    let allowed = url.starts_with("chartr-plugin://plugin/");
+                    if allowed {
+                        navigation.set(navigation.get().wrapping_add(1));
+                    }
+                    allowed
+                })
                 .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
                 .with_bounds(Rect {
                     position: Position::Logical(LogicalPosition::new(0.0, 0.0)),
@@ -331,7 +362,6 @@ impl WebPluginView {
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
                         _focus_task: focus_task,
-                        _request_task: None,
                         error: Some(format!("Could not create the plugin webview: {error}")),
                     };
                 }
@@ -344,7 +374,6 @@ impl WebPluginView {
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
                 _focus_task: focus_task,
-                _request_task: Some(request_task),
                 error: None,
             }
         }
@@ -509,6 +538,24 @@ struct HostResponse {
     ok: bool,
     value: serde_json::Value,
     error: String,
+}
+
+impl HostResponse {
+    fn from_result(id: u64, document: String, result: Result<serde_json::Value, String>) -> Self {
+        match result {
+            Ok(value) => Self { id, document, ok: true, value, error: String::new() },
+            Err(error) => Self { id, document, ok: false, value: serde_json::Value::Null, error },
+        }
+    }
+}
+
+fn is_wayfinder_request(encoded: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(encoded)
+        .ok()
+        .and_then(|value| {
+            value.get("action").and_then(|a| a.as_str()).map(|a| a.starts_with("wayfinder."))
+        })
+        .unwrap_or(false)
 }
 
 /// Decode only the reply address, even when an action's fields are invalid.

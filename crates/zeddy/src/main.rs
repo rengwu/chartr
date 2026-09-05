@@ -37,6 +37,8 @@ mod spaces;
 mod terminal_host;
 mod text_input;
 mod title_bar;
+#[path = "../../../plugins/wayfinder/src/lib.rs"]
+mod wayfinder_plugin;
 mod web_plugin;
 mod workspace;
 

@@ -13,6 +13,8 @@ pane layout. Keep behavior with its owner and reusable visual controls in
 | Pane layout UI | `app/panes.rs` | Pane headers, layout rendering, drag/drop, and resizing. |
 | Plugin instances | `app/plugins.rs` | Launcher, shared view construction, restoration, and cloning. |
 | Bundled plugins | `app/bundled_plugins.rs` | Catalog setup and packaged asset materialization. |
+| Native plugin services | `crates/zeddy-plugin/src/services.rs` | Catalog-scoped Agent and Skills exports, with live provider availability. |
+| Wayfinder | `plugins/wayfinder/app.js` | Web canvas in `starmap.js`; the permission-gated bridge in `src/lib.rs` owns source-aware prompts and file-derived claims. |
 | Window controls | `app/window_chrome.rs` | Space switcher, problems menu, title bar, and action buttons. |
 | Dialogs and commands | `app/rename.rs`, `app/command_palette.rs` | Rename lifecycle and command palette. |
 | Settings integration | `app/settings_bridge.rs` | Workspace operations exposed to Settings. |

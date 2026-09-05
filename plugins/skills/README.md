@@ -5,8 +5,8 @@ empty except for a chevron menu leading to **Skill source settings**. The same
 page is available through **Settings → Plugins → Skills → Configure**.
 
 The plugin owns its ordered source registry and managed Git checkouts under
-`plugin-data/com.chartr.skills/`. No new host capability or source registry is
-added to the Chartr core. This build-time native package is not independently
+`plugin-data/com.chartr.skills/`. Its typed service exposes source content while
+the registry remains plugin-owned. This build-time native package is not independently
 installable through the Git plugin installer.
 
 - Register local folders with an absolute path or `~/`, including through the
@@ -42,6 +42,8 @@ Git has a two-minute limit per command and can be cancelled. Failed preparation
 or persistence preserves the registered source and its previous checkout.
 Registration and refresh do not execute skill scripts.
 
-This step provides source management only. It does not generate `CHARTR.md`,
-mirror skills into projects, inject skills into Agent sessions, or implement
-Wayfinder. Those integrations can build on the source registry later.
+The native Skills service now exposes ordered, enabled source content to
+dependent plugins. Wayfinder consumes it to compose its agent prompts, respecting
+source precedence and exact `source/skill` pins. This plugin does not generate
+`CHARTR.md` or mirror skills into projects; supporting resources are read from
+the resolved source directory. Standalone Agent sessions are unchanged.

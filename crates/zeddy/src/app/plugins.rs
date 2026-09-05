@@ -15,13 +15,27 @@ impl Zeddy {
     ) -> Option<PluginView> {
         let project =
             (space.read(cx).kind() == SpaceKind::Registered).then(|| space.read(cx).path().clone());
+        let origin = cx.weak_entity();
         let instance = InstanceContext {
             instance_id: item.get(),
             space: space.read(cx).key(),
             space_name: space.read(cx).name().to_owned(),
             project_dir: project.clone(),
             bound_session: bound_session.map(|session| session.0.clone()),
-            terminal: Self::plugin_terminal_launcher(space.clone()),
+            terminal: Self::plugin_terminal_launcher(space.clone(), cx),
+            services: self.catalog.services.clone(),
+            plugin_settings: zeddy_plugin::services::PluginSettings::new(
+                move |plugin, window, cx| {
+                    if let Some(handle) = window.window_handle().downcast::<Self>() {
+                        crate::settings_window::open_plugin(
+                            handle,
+                            origin.clone(),
+                            plugin.map(str::to_owned),
+                            cx,
+                        );
+                    }
+                },
+            ),
         };
         let session_access =
             bound_session.and_then(|session| space.read(cx).session_access(session));
@@ -43,6 +57,7 @@ impl Zeddy {
                 permissions,
                 session_access,
                 on_focus,
+                instance,
                 window,
                 cx,
             ),
@@ -280,9 +295,41 @@ impl Zeddy {
         })
     }
 
-    fn plugin_terminal_launcher(space: Entity<Space>) -> zeddy_plugin::TerminalLauncher {
+    fn plugin_terminal_launcher(
+        space: Entity<Space>,
+        cx: &Context<Self>,
+    ) -> zeddy_plugin::TerminalLauncher {
+        let prepare_space = space.downgrade();
+        let launch_space = space.downgrade();
+        let focus_space = space.downgrade();
+        let owner = cx.weak_entity();
         zeddy_plugin::TerminalLauncher::new(move |input, cx| {
-            space.update(cx, |space, cx| space.start_session_with_input(input, cx));
+            if let Some(space) = launch_space.upgrade() {
+                space.update(cx, |space, cx| space.start_session_with_input(input, cx));
+            }
+        })
+        .with_prepare(move |cx| {
+            let Some(space) = prepare_space.upgrade() else {
+                return gpui::Task::ready(Err("The owning space was closed.".into()));
+            };
+            space.update(cx, |space, cx| space.prepare_plugin_session(cx))
+        })
+        .with_focus(move |session, window, cx| {
+            let Some(space) = focus_space.upgrade() else {
+                return false;
+            };
+            owner
+                .update(cx, |this, cx| {
+                    if !space.update(cx, |space, cx| {
+                        space.activate_session(&zeddy_herdr::PaneId(session.into()), cx)
+                    }) {
+                        return false;
+                    }
+                    this.activate(space, window, cx);
+                    this.focus_active_terminal(window, cx);
+                    true
+                })
+                .unwrap_or(false)
         })
     }
 

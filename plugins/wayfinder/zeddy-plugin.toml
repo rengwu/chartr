@@ -1,0 +1,22 @@
+manifest_version = 2
+id = "com.chartr.wayfinder"
+name = "Wayfinder"
+version = "0.1.0"
+kind = "web"
+entry = "index.html"
+icon = "Orbit01Icon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true
+
+[[dependencies]]
+plugin = "com.chartr.agent"
+feature = "Agent launching"
+
+[[dependencies]]
+plugin = "com.chartr.skills"
+feature = "Ticket methods"
+
+[permissions]
+wayfinder = true

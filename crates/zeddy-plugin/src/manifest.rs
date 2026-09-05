@@ -40,6 +40,9 @@ pub struct Permissions {
     pub process: bool,
     #[serde(default)]
     pub session: bool,
+    /// Wayfinder tracker operations and registered-agent launching in this space.
+    #[serde(default)]
+    pub wayfinder: bool,
 }
 
 impl Permissions {
@@ -60,6 +63,9 @@ impl Permissions {
         }
         if self.session {
             grants.push("bound-terminal metadata and input (can run commands as you)".into());
+        }
+        if self.wayfinder {
+            grants.push("Wayfinder maps, skill sources, ticket claims and registered-agent launching (can run commands as you)".into());
         }
         grants.join("; ")
     }
@@ -97,6 +103,14 @@ pub enum Kind {
 }
 
 /// A parsed `zeddy-plugin.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Dependency {
+    pub plugin: String,
+    /// The feature needing this provider. Other features remain usable.
+    pub feature: String,
+}
+
+/// A parsed `zeddy-plugin.toml`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Manifest {
     pub manifest_version: u32,
@@ -115,6 +129,9 @@ pub struct Manifest {
     pub capabilities: Capabilities,
     #[serde(default)]
     pub permissions: Permissions,
+    /// Feature prerequisites, never an instruction to install or enable packages.
+    #[serde(default)]
+    pub dependencies: Vec<Dependency>,
     /// Hosted only: the Chartr-provided surface to activate.
     #[serde(default)]
     pub surface: Option<String>,
@@ -202,6 +219,14 @@ impl Manifest {
         }
         if !is_usable_id(&self.id) {
             return Err(Invalid::BadId(self.id.clone()));
+        }
+        for dependency in &self.dependencies {
+            if !is_usable_id(&dependency.plugin) || dependency.plugin == self.id {
+                return Err(Invalid::BadId(dependency.plugin.clone()));
+            }
+            if dependency.feature.trim().is_empty() {
+                return Err(Invalid::Malformed("a dependency must name its feature".into()));
+            }
         }
         if self.icon.is_empty() {
             return Err(Invalid::Missing { field: "icon", kind: self.kind });

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wayfinder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div id="map" hidden></div>
+      <section id="picker" aria-label="Choose a map">
+        <header class="picker-heading">
+          <span class="eyebrow">WAYFINDER</span>
+          <h1>Your maps</h1>
+          <p>Choose a constellation to explore.</p>
+        </header>
+        <div id="map-grid"></div>
+      </section>
+      <header class="toolbar" hidden>
+        <button id="back" title="Back to all maps">
+          <span aria-hidden="true">‹</span> Back
+        </button>
+        <button
+          id="overview"
+          aria-pressed="false"
+          title="Open map material — destination, notes, decisions, fog"
+        >
+          <span id="map-title"></span>
+        </button>
+      </header>
+      <div id="notice" role="status" hidden>
+        <span></span><button aria-label="Dismiss message">×</button>
+      </div>
+      <section id="empty" hidden>
+        <span class="empty-star" aria-hidden="true">✧</span>
+        <h1>A route through the unknown.</h1>
+        <p id="empty-copy">
+          No maps found. Add an existing map under .plan/maps/ to explore its
+          tickets.
+        </p>
+      </section>
+      <aside id="detail" aria-label="Map and ticket details" hidden>
+        <div
+          id="detail-resize"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize the detail pane"
+          aria-orientation="vertical"
+          aria-controls="detail"
+        ></div>
+        <header class="detail-header">
+          <div class="identity">
+            <span id="ticket-number" class="coin"></span>
+            <h1 id="detail-title"></h1>
+            <button
+              id="close-detail"
+              title="Close details (Escape)"
+              aria-label="Close details"
+            >
+              ×
+            </button>
+          </div>
+          <div class="metadata">
+            <span id="ticket-kind"></span
+            ><span id="ticket-state" class="badge"></span
+            ><span class="spacer"></span
+            ><button id="open-file" class="text-button">Open file ↗</button>
+          </div>
+        </header>
+        <div id="reading" class="reading">
+          <div id="body" class="prose"></div>
+          <section id="blockers-section" hidden>
+            <h2>Blockers</h2>
+            <div id="blockers"></div>
+          </section>
+          <section id="assets-section" hidden>
+            <h2>Assets</h2>
+            <div id="assets"></div>
+          </section>
+          <section id="frontier-section" hidden>
+            <h2>Ready to explore</h2>
+            <div id="frontier"></div>
+          </section>
+          <div id="warnings" class="warnings"></div>
+        </div>
+        <form id="launcher" hidden>
+          <div id="setup" class="setup"></div>
+          <textarea
+            id="note"
+            rows="2"
+            aria-label="Additional direction"
+            placeholder="Additional direction (optional)"
+          ></textarea>
+          <div class="launch-options">
+            <label>Agent<select id="agents" required></select></label
+            ><label
+              >Method<select id="methods">
+                <option value="">Automatic</option>
+              </select></label
+            >
+          </div>
+          <div class="launch-actions">
+            <button type="button" id="agent-setup" class="text-button">
+              Agents…</button
+            ><button type="button" id="skill-setup" class="text-button">
+              Skill sources…</button
+            ><span class="spacer"></span
+            ><button id="preview" type="submit" class="primary">
+              Review & launch ↗
+            </button>
+          </div>
+        </form>
+        <footer id="claim" hidden>
+          <p id="claim-label"></p>
+        </footer>
+      </aside>
+      <footer class="map-footer" hidden>
+        <button id="fit" title="Fit map (F)" aria-label="Fit map">⌖</button>
+        <div id="legend" aria-label="Star status legend">
+          <span data-state="Ready">Ready</span
+          ><span data-state="Claimed">Claimed</span
+          ><span data-state="Resolved">Resolved</span
+          ><span data-state="Blocked">Blocked</span
+          ><span data-state="Out of scope">Ruled out</span>
+        </div>
+        <span id="map-count"></span>
+      </footer>
+      <dialog id="prompt-dialog" aria-labelledby="prompt-title">
+        <header>
+          <div>
+            <h2 id="prompt-title">Ready to launch?</h2>
+            <p id="prompt-sources"></p>
+          </div>
+          <button id="close-preview" aria-label="Close prompt preview">
+            ×
+          </button>
+        </header>
+        <pre id="prompt-text" tabindex="0"></pre>
+        <footer>
+          <span id="preview-status" role="status"></span
+          ><button id="cancel-preview">Cancel</button
+          ><button id="launch" class="primary">Launch agent ↗</button>
+        </footer>
+      </dialog>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

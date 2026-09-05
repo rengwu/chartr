@@ -58,12 +58,14 @@ zed_assets = { package = "assets", git = "https://github.com/zed-industries/zed.
 terminal = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 terminal_view = { path = "vendor/zed-terminal-view" }
 editor = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 settings = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 task = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 collections = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 util = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
 # --- everything else -----------------------------------------------------
 anyhow = "1"
+chrono = "0.4"
 # Background tasks deliver terminal and backend events without polling the
 # window thread. This is already part of GPUI's dependency graph.
 futures = "0.3"

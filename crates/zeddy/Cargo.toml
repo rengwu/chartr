@@ -20,12 +20,14 @@ zed_assets.workspace = true
 terminal.workspace = true
 terminal_view.workspace = true
 editor.workspace = true
+pulldown-cmark.workspace = true
 settings.workspace = true
 task.workspace = true
 collections.workspace = true
 util.workspace = true
 
 anyhow.workspace = true
+chrono.workspace = true
 futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true

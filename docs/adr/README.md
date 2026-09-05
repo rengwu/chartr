@@ -10,3 +10,4 @@ have to change for it to be worth revisiting.
 - [0003 — Two plugin tiers](0003-two-plugin-tiers.md)
 - [0004 — Zed's complete terminal stack](0004-the-zed-terminal-stack.md)
 - [0005 — Spaces follow Zed's multi-workspace ownership](0005-spaces-follow-zed-multi-workspace.md)
+- [0006 — Native provider services and a web Wayfinder launcher](0006-native-plugin-services-and-wayfinder.md)

@@ -98,7 +98,7 @@ impl SettingsWindow {
         cx.notify();
     }
 
-    fn open_plugin_settings(
+    pub(super) fn open_plugin_settings(
         &mut self,
         plugin: String,
         window: &mut Window,
@@ -345,6 +345,11 @@ impl SettingsWindow {
             .map(|origin| origin.read(cx).settings_plugins())
             .unwrap_or_default();
         let settings = self.settings(cx);
+        let enabled_plugins: std::collections::HashSet<_> = descriptors
+            .iter()
+            .filter(|descriptor| descriptor.enabled)
+            .map(|descriptor| descriptor.manifest.id.clone())
+            .collect();
         let mut fields = Vec::new();
         for descriptor in descriptors {
             let manifest = descriptor.manifest;
@@ -398,6 +403,31 @@ impl SettingsWindow {
                     });
                 });
             fields.push(setting_field(enabled_name, enabled_description, enabled_control));
+
+            for dependency in &manifest.dependencies {
+                let available = enabled_plugins.contains(&dependency.plugin);
+                let provider = dependency.plugin.clone();
+                fields.push(setting_field(
+                    format!("{name} — {}", dependency.feature),
+                    format!(
+                        "Requires {}. {}",
+                        provider,
+                        if available {
+                            "Provider enabled; configure it to finish setup."
+                        } else {
+                            "Provider is missing or disabled. Other features remain available."
+                        }
+                    ),
+                    settings_button(
+                        format!("dependency-{id}-{provider}"),
+                        if available { "Configure" } else { "Unavailable" },
+                    )
+                    .disabled(!available || busy)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_plugin_settings(provider.clone(), window, cx)
+                    })),
+                ));
+            }
 
             if descriptor.removable {
                 let remove_id = id.clone();

@@ -1,0 +1,177 @@
+//! Typed, catalog-scoped services between trusted native plugins.
+//!
+//! Providers own their exports. Consumers discover them on demand; disabling a
+//! provider removes it from the directory without closing unrelated panes.
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    path::PathBuf,
+    rc::Rc,
+};
+
+use crate::gpui;
+
+#[derive(Clone)]
+pub struct ServiceExport(Rc<dyn Any>);
+
+impl ServiceExport {
+    pub fn new<T: 'static>(service: T) -> Self {
+        Self(Rc::new(service))
+    }
+}
+
+type Directory = HashMap<(String, TypeId), Rc<dyn Any>>;
+
+#[derive(Clone, Default)]
+pub struct Services(Rc<RefCell<Directory>>);
+
+impl Services {
+    pub fn publish(&self, plugin: &str, exports: Vec<ServiceExport>) {
+        self.remove(plugin);
+        for ServiceExport(service) in exports {
+            self.0.borrow_mut().insert((plugin.to_owned(), service.as_ref().type_id()), service);
+        }
+    }
+
+    pub fn remove(&self, plugin: &str) {
+        self.0.borrow_mut().retain(|(id, _), _| id != plugin);
+    }
+
+    pub fn get<T: 'static>(&self, plugin: &str) -> Option<Rc<T>> {
+        self.0.borrow().get(&(plugin.to_owned(), TypeId::of::<T>()))?.clone().downcast().ok()
+    }
+}
+
+impl std::fmt::Debug for Services {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Services(..)")
+    }
+}
+impl PartialEq for Services {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for Services {}
+
+pub const AGENT_SERVICE: &str = "com.chartr.agent";
+pub const SKILLS_SERVICE: &str = "com.chartr.skills";
+
+type Configure = dyn Fn(Option<&str>, &mut gpui::Window, &mut gpui::App);
+
+/// Navigate to a provider's settings, or the plugin list when it is disabled.
+#[derive(Clone)]
+pub struct PluginSettings(Rc<Configure>);
+impl PluginSettings {
+    pub fn new(open: impl Fn(Option<&str>, &mut gpui::Window, &mut gpui::App) + 'static) -> Self {
+        Self(Rc::new(open))
+    }
+    pub fn open(&self, plugin: Option<&str>, window: &mut gpui::Window, cx: &mut gpui::App) {
+        (self.0)(plugin, window, cx)
+    }
+}
+impl std::fmt::Debug for PluginSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PluginSettings(..)")
+    }
+}
+impl PartialEq for PluginSettings {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for PluginSettings {}
+
+type AgentList = dyn Fn(&gpui::App) -> Result<Vec<String>, String>;
+type AgentInput = dyn Fn(&str, &str, &gpui::App) -> Result<Vec<u8>, String>;
+
+/// Agent owns validation, adapters, quoting and prompt delivery.
+pub struct Agents {
+    list: Box<AgentList>,
+    prepare: Box<AgentInput>,
+}
+
+impl Agents {
+    pub fn new(
+        list: impl Fn(&gpui::App) -> Result<Vec<String>, String> + 'static,
+        prepare: impl Fn(&str, &str, &gpui::App) -> Result<Vec<u8>, String> + 'static,
+    ) -> Self {
+        Self { list: Box::new(list), prepare: Box::new(prepare) }
+    }
+
+    pub fn list(&self, cx: &gpui::App) -> Result<Vec<String>, String> {
+        (self.list)(cx)
+    }
+    pub fn prepare(&self, name: &str, prompt: &str, cx: &gpui::App) -> Result<Vec<u8>, String> {
+        (self.prepare)(name, prompt, cx)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Skill {
+    pub source: String,
+    pub name: String,
+    pub directory: PathBuf,
+    pub commit: String,
+    pub body: String,
+    pub shadowed: bool,
+}
+
+impl Skill {
+    pub fn reference(&self) -> String {
+        format!("{}/{}", self.source, self.name)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SkillCatalog {
+    pub skills: Vec<Skill>,
+    pub warnings: Vec<String>,
+}
+
+impl SkillCatalog {
+    /// Qualified references are exact pins; bare names follow enabled source order.
+    pub fn resolve(&self, reference: &str) -> Option<&Skill> {
+        self.skills.iter().find(|skill| {
+            if reference.contains('/') {
+                skill.reference().eq_ignore_ascii_case(reference)
+            } else {
+                !skill.shadowed && skill.name.eq_ignore_ascii_case(reference)
+            }
+        })
+    }
+}
+
+type SkillScan = dyn Fn(&mut gpui::App) -> gpui::Task<Result<SkillCatalog, String>>;
+
+/// Skills owns source order, enablement, discovery and reading registered sources.
+pub struct Skills(Box<SkillScan>);
+
+impl Skills {
+    pub fn new(
+        scan: impl Fn(&mut gpui::App) -> gpui::Task<Result<SkillCatalog, String>> + 'static,
+    ) -> Self {
+        Self(Box::new(scan))
+    }
+    pub fn scan(&self, cx: &mut gpui::App) -> gpui::Task<Result<SkillCatalog, String>> {
+        (self.0)(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_removal_and_replacement_reach_existing_consumers() {
+        let directory = Services::default();
+        let consumer = directory.clone();
+        directory.publish("provider", vec![ServiceExport::new(7u32)]);
+        assert_eq!(*consumer.get::<u32>("provider").unwrap(), 7);
+        directory.publish("provider", vec![ServiceExport::new(9u32)]);
+        assert_eq!(*consumer.get::<u32>("provider").unwrap(), 9);
+        directory.remove("provider");
+        assert!(consumer.get::<u32>("provider").is_none());
+    }
+}

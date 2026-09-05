@@ -175,6 +175,7 @@ pub struct Disabled {
 /// Everything found in one scan.
 #[derive(Default)]
 pub struct Catalog {
+    pub services: zeddy_plugin::services::Services,
     /// Loaded plugins, by id. A `BTreeMap` so the sidebar's order is the same
     /// on every launch rather than the order the filesystem happened to answer.
     pub loaded: BTreeMap<String, Loaded>,
@@ -204,6 +205,7 @@ impl Catalog {
         let Some(loaded) = self.loaded.remove(plugin) else {
             return false;
         };
+        self.services.remove(plugin);
         self.disabled.insert(
             plugin.to_owned(),
             Disabled {
@@ -217,7 +219,14 @@ impl Catalog {
     }
 
     pub fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) {
-        self.loaded.retain(|id, _| keep(id));
+        self.loaded.retain(|id, _| {
+            if keep(id) {
+                true
+            } else {
+                self.services.remove(id);
+                false
+            }
+        });
     }
 
     pub fn enable(
@@ -241,6 +250,7 @@ impl Catalog {
         };
         match result {
             Ok(loaded) => {
+                self.publish_services(&loaded);
                 self.loaded.insert(plugin.to_owned(), loaded);
                 Ok(())
             }
@@ -314,9 +324,16 @@ impl Catalog {
         }
         match load_builtin_native(manifest, dir.clone(), paths, factory, cx) {
             Ok(plugin) => {
+                self.publish_services(&plugin);
                 self.loaded.insert(plugin.manifest.id.clone(), plugin);
             }
             Err(why) => self.rejected.push(Rejected { dir, why: why.to_string() }),
+        }
+    }
+
+    fn publish_services(&self, loaded: &Loaded) {
+        if let Tier::Native(native) = &loaded.tier {
+            self.services.publish(loaded.id(), native.plugin.services());
         }
     }
 }
@@ -815,6 +832,10 @@ mod tests {
             registrar.add_pane("main", "Bundled");
         }
 
+        fn services(&self) -> Vec<zeddy_plugin::services::ServiceExport> {
+            vec![zeddy_plugin::services::ServiceExport::new(42u32)]
+        }
+
         fn view(
             &mut self,
             _: &PaneKey,
@@ -1035,8 +1056,12 @@ mod tests {
         });
 
         assert_eq!(catalog.panes()[0].title, "Bundled");
+        let consumer = catalog.services.clone();
+        assert_eq!(*consumer.get::<u32>(BundledPlugin::ID).unwrap(), 42);
         assert!(catalog.disable(BundledPlugin::ID));
+        assert!(consumer.get::<u32>(BundledPlugin::ID).is_none());
         cx.update(|cx| catalog.enable(&paths, BundledPlugin::ID, cx)).unwrap();
+        assert_eq!(*consumer.get::<u32>(BundledPlugin::ID).unwrap(), 42);
         assert_eq!(catalog.panes()[0].key.plugin, BundledPlugin::ID);
     }
 
