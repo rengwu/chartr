@@ -2,8 +2,8 @@
 
 use std::{
     io::{self, Read},
-    os::unix::process::CommandExt as _,
-    process::{Child, Command, Stdio},
+    path::Path,
+    process::Command,
     time::{Duration, Instant},
 };
 
@@ -92,93 +92,27 @@ fn fetch_with_timeout(
     unreachable!("the last redirect returns an error")
 }
 
-pub(super) fn run_process(command: &str, args: &[String]) -> Result<Value, String> {
-    run_process_with_limits(command, args, OPERATION_TIMEOUT, MAX_OUTPUT_BYTES)
+pub(super) fn run_process(command: &str, args: &[String], cwd: &Path) -> Result<Value, String> {
+    run_process_with_limits(command, args, cwd, OPERATION_TIMEOUT, MAX_OUTPUT_BYTES)
         .map_err(|error| error.to_string())
 }
 
 fn run_process_with_limits(
     command: &str,
     args: &[String],
+    cwd: &Path,
     timeout: Duration,
     limit: usize,
 ) -> io::Result<Value> {
-    let deadline = Instant::now() + timeout;
-    let mut child = ProcessGuard {
-        child: Command::new(command)
-            .args(args)
-            .process_group(0)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?,
-        reaped: false,
-    };
-    let mut stdout = child.child.stdout.take().expect("piped stdout");
-    let mut stderr = child.child.stderr.take().expect("piped stderr");
-    rustix::fs::fcntl_setfl(&stdout, rustix::fs::OFlags::NONBLOCK)?;
-    rustix::fs::fcntl_setfl(&stderr, rustix::fs::OFlags::NONBLOCK)?;
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    loop {
-        if Instant::now() >= deadline {
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "plugin process timed out"));
-        }
-        let previous_len = out.len() + err.len();
-        let out_closed = drain_pipe(&mut stdout, &mut out, limit.saturating_sub(err.len()))?;
-        let err_closed = drain_pipe(&mut stderr, &mut err, limit.saturating_sub(out.len()))?;
-        // Do not reap the group leader while descendants still own the pipes:
-        // retain its PID until cleanup, avoiding signalling a recycled PID.
-        if out_closed
-            && err_closed
-            && let Some(status) = child.child.try_wait()?
-        {
-            child.reaped = true;
-            return Ok(json!({ "status": status.code(),
-                "stdout": String::from_utf8_lossy(&out), "stderr": String::from_utf8_lossy(&err) }));
-        }
-        if previous_len == out.len() + err.len() {
-            std::thread::sleep(Duration::from_millis(5));
-        }
-    }
-}
-
-/// Read one bounded chunk per turn so continuously producing stdout cannot
-/// starve stderr or the deadline check.
-fn drain_pipe(pipe: &mut impl Read, bytes: &mut Vec<u8>, limit: usize) -> io::Result<bool> {
-    let mut buffer = [0; 16 * 1024];
-    match pipe.read(&mut buffer) {
-        Ok(0) => Ok(true),
-        Ok(count) => {
-            if bytes.len() + count > limit {
-                return Err(io::Error::other("plugin process output limit exceeded"));
-            }
-            bytes.extend_from_slice(&buffer[..count]);
-            Ok(false)
-        }
-        Err(error)
-            if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) =>
-        {
-            Ok(false)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-struct ProcessGuard {
-    child: Child,
-    reaped: bool,
-}
-
-impl Drop for ProcessGuard {
-    fn drop(&mut self) {
-        if !self.reaped {
-            if let Some(pid) = rustix::process::Pid::from_raw(self.child.id() as i32) {
-                let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
-            }
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
-    }
+    let output = crate::process::output(
+        Command::new(command).args(args).current_dir(cwd),
+        timeout,
+        limit,
+        &std::sync::atomic::AtomicBool::new(false),
+    )?;
+    Ok(json!({ "status": output.status.code(),
+        "stdout": String::from_utf8_lossy(&output.stdout),
+        "stderr": String::from_utf8_lossy(&output.stderr) }))
 }
 
 #[cfg(test)]
@@ -278,8 +212,12 @@ mod tests {
 
     #[test]
     fn process_results_preserve_exit_status_and_both_streams() {
-        let value =
-            run_process("sh", &["-c".into(), "printf out; printf err >&2; exit 7".into()]).unwrap();
+        let value = run_process(
+            "sh",
+            &["-c".into(), "printf out; printf err >&2; exit 7".into()],
+            Path::new("."),
+        )
+        .unwrap();
         assert_eq!(value, json!({ "status": 7, "stdout": "out", "stderr": "err" }));
     }
 
@@ -290,6 +228,7 @@ mod tests {
             let error = run_process_with_limits(
                 "sh",
                 &["-c".into(), script.into()],
+                Path::new("."),
                 Duration::from_millis(50),
                 1024,
             )
@@ -304,6 +243,7 @@ mod tests {
         let error = run_process_with_limits(
             "sh",
             &["-c".into(), "while :; do printf lots-of-output; done".into()],
+            Path::new("."),
             Duration::from_secs(2),
             1024,
         )

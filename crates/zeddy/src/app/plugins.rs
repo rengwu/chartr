@@ -30,6 +30,7 @@ impl Zeddy {
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
         let loaded = self.catalog.get_mut(&key.plugin)?;
         let permissions = loaded.permissions().clone();
+        let package = loaded.dir.clone();
         let data = plugin_paths().data.join(&key.plugin);
         Some(match loaded.pane(key)? {
             PaneSource::Native(plugin) => PluginView::new(plugin.view(key, &instance, window, cx)),
@@ -37,7 +38,7 @@ impl Zeddy {
                 crate::browser_plugin::view(data, &instance, on_focus, on_title_change, window, cx)
             }
             PaneSource::Web(entry) => crate::web_plugin::pane(
-                entry.to_path_buf(),
+                crate::web_plugin::Document { package, entry: entry.to_path_buf() },
                 FileBroker::new(project, data, permissions.project_files, unsafe_filesystem),
                 permissions,
                 session_access,

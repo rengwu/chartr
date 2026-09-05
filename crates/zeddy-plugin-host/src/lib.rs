@@ -332,67 +332,143 @@ impl FileBroker {
         contained(&self.data, requested, write)
     }
 
-    /// Open the validated file without following links introduced after validation.
-    pub fn open_project(
-        &self,
-        requested: &Path,
-        write: bool,
-    ) -> Result<std::fs::File, BrokerError> {
-        let path = self.project_path(requested, write)?;
-        if self.unsafe_filesystem {
-            return std::fs::OpenOptions::new()
-                .read(!write)
-                .write(write)
-                .create(write)
-                .truncate(write)
-                .open(path)
-                .map_err(BrokerError::Io);
+    pub fn process_directory(&self, requested: Option<&Path>) -> Result<PathBuf, BrokerError> {
+        // Process permission already grants user-level execution. Relative
+        // working directories are rooted in the owning project (or plugin data).
+        let base = self.project.as_ref().unwrap_or(&self.data);
+        let path = requested.map_or_else(|| base.clone(), |path| base.join(path));
+        let path = path.canonicalize().map_err(BrokerError::Io)?;
+        if !path.is_dir() {
+            return Err(BrokerError::Denied);
         }
-        open_contained(self.project.as_ref().ok_or(BrokerError::Folderless)?, &path, write)
+        Ok(path)
     }
 
-    pub fn open_data(&self, requested: &Path, write: bool) -> Result<std::fs::File, BrokerError> {
-        let path = self.data_path(requested, write)?;
-        open_contained(&self.data, &path, write)
+    pub fn open_project(&self, requested: &Path) -> Result<std::fs::File, BrokerError> {
+        let path = self.project_path(requested, false)?;
+        if self.unsafe_filesystem {
+            return std::fs::File::open(path).map_err(BrokerError::Io);
+        }
+        open_contained(self.project.as_ref().ok_or(BrokerError::Folderless)?, &path)
+    }
+
+    pub fn open_data(&self, requested: &Path) -> Result<std::fs::File, BrokerError> {
+        open_contained(&self.data, &self.data_path(requested, false)?)
+    }
+
+    pub fn write_project(&self, requested: &Path, bytes: &[u8]) -> Result<(), BrokerError> {
+        let path = self.project_path(requested, true)?;
+        if self.unsafe_filesystem {
+            let path = match path.canonicalize() {
+                Ok(path) => path,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => path
+                    .parent()
+                    .ok_or(BrokerError::Escape)?
+                    .canonicalize()
+                    .map_err(BrokerError::Io)?
+                    .join(path.file_name().ok_or(BrokerError::Escape)?),
+                Err(error) => return Err(BrokerError::Io(error)),
+            };
+            return write_contained(path.parent().ok_or(BrokerError::Escape)?, &path, bytes);
+        }
+        write_contained(self.project.as_ref().ok_or(BrokerError::Folderless)?, &path, bytes)
+    }
+
+    pub fn write_data(&self, requested: &Path, bytes: &[u8]) -> Result<(), BrokerError> {
+        write_contained(&self.data, &self.data_path(requested, true)?, bytes)
     }
 }
 
-fn open_contained(root: &Path, resolved: &Path, write: bool) -> Result<std::fs::File, BrokerError> {
+/// Walk directories through descriptors so a path cannot be redirected by a
+/// symlink introduced between validation and the actual operation.
+fn open_parent(
+    root: &Path,
+    resolved: &Path,
+) -> Result<(std::os::fd::OwnedFd, std::ffi::OsString), BrokerError> {
     use rustix::fs::{Mode, OFlags, open, openat};
     let root = root.canonicalize().map_err(BrokerError::Io)?;
     let relative = resolved.strip_prefix(&root).map_err(|_| BrokerError::Escape)?;
     let mut parts = relative.components().peekable();
-    let directory_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
-    let mut directory = open(&root, directory_flags, Mode::empty())
-        .map_err(|error| BrokerError::Io(error.into()))?;
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mut directory = open(&root, flags, Mode::empty()).map_err(|e| BrokerError::Io(e.into()))?;
     while let Some(part) = parts.next() {
         if !matches!(part, std::path::Component::Normal(_)) {
             return Err(BrokerError::Escape);
         }
-        let last = parts.peek().is_none();
-        let flags = if last {
-            OFlags::NOFOLLOW
-                | OFlags::CLOEXEC
-                | OFlags::NONBLOCK
-                | if write { OFlags::WRONLY | OFlags::CREATE } else { OFlags::RDONLY }
-        } else {
-            directory_flags
-        };
-        let fd = openat(&directory, part.as_os_str(), flags, Mode::from_raw_mode(0o666))
-            .map_err(|error| BrokerError::Io(error.into()))?;
-        if last {
-            let file = std::fs::File::from(fd);
-            if !file.metadata().map_err(BrokerError::Io)?.is_file() {
-                return Err(BrokerError::Denied);
-            }
-            if write {
-                file.set_len(0).map_err(BrokerError::Io)?;
-            }
-            return Ok(file);
+        if parts.peek().is_none() {
+            return Ok((directory, part.as_os_str().to_owned()));
         }
-        directory = fd;
+        directory = openat(&directory, part.as_os_str(), flags, Mode::empty())
+            .map_err(|e| BrokerError::Io(e.into()))?;
     }
     Err(BrokerError::Denied)
+}
+
+fn open_contained(root: &Path, resolved: &Path) -> Result<std::fs::File, BrokerError> {
+    use rustix::fs::{Mode, OFlags, openat};
+    let (directory, name) = open_parent(root, resolved)?;
+    let fd = openat(
+        &directory,
+        &name,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|e| BrokerError::Io(e.into()))?;
+    let file = std::fs::File::from(fd);
+    if !file.metadata().map_err(BrokerError::Io)?.is_file() {
+        return Err(BrokerError::Denied);
+    }
+    Ok(file)
+}
+
+fn write_contained(root: &Path, resolved: &Path, bytes: &[u8]) -> Result<(), BrokerError> {
+    use rustix::fs::{AtFlags, Mode, OFlags, openat, renameat, unlinkat};
+    use std::{
+        io::Write as _,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    let (directory, name) = open_parent(root, resolved)?;
+    // Validate existing destinations without truncating them and retain their
+    // permissions. Never replace directories, devices, or newly introduced links.
+    let permissions = match openat(
+        &directory,
+        &name,
+        OFlags::WRONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+    ) {
+        Ok(fd) => {
+            let metadata = std::fs::File::from(fd).metadata().map_err(BrokerError::Io)?;
+            if !metadata.is_file() {
+                return Err(BrokerError::Denied);
+            }
+            Some(metadata.permissions())
+        }
+        Err(rustix::io::Errno::NOENT) => None,
+        Err(e) => return Err(BrokerError::Io(e.into())),
+    };
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let temporary =
+        format!(".chartr-write-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
+    let fd = openat(
+        &directory,
+        &temporary,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o600),
+    )
+    .map_err(|e| BrokerError::Io(e.into()))?;
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::from(fd);
+        file.write_all(bytes)?;
+        if let Some(permissions) = permissions {
+            file.set_permissions(permissions)?;
+        }
+        file.sync_all()?;
+        renameat(&directory, &temporary, &directory, &name)?;
+        Ok(())
+    })();
+    // Both success and failure leave no partial file under the public name.
+    let _ = unlinkat(&directory, &temporary, AtFlags::empty());
+    result.map_err(BrokerError::Io)
 }
 
 fn contained(root: &Path, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
@@ -982,8 +1058,8 @@ mod tests {
         let broker = FileBroker::new(Some(root.clone()), root, ProjectAccess::ReadWrite, false);
         assert!(broker.project_path(Path::new("escape"), true).is_err());
         assert!(broker.data_path(Path::new("escape"), true).is_err());
-        assert!(broker.open_project(Path::new("escape"), true).is_err());
-        assert!(broker.open_data(Path::new("escape"), true).is_err());
+        assert!(broker.write_project(Path::new("escape"), b"bad").is_err());
+        assert!(broker.write_data(Path::new("escape"), b"bad").is_err());
         assert!(!outside.exists());
     }
 
@@ -999,34 +1075,89 @@ mod tests {
         std::fs::write(&target, "untouched").unwrap();
         let validated = contained(&root, Path::new("nested/note"), true).unwrap();
         std::os::unix::fs::symlink(&target, &validated).unwrap();
-        assert!(open_contained(&root, &validated, true).is_err());
+        assert!(write_contained(&root, &validated, b"bad").is_err());
         std::fs::rename(root.join("nested"), root.join("old")).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("nested")).unwrap();
-        assert!(open_contained(&root, &validated, true).is_err());
+        assert!(write_contained(&root, &validated, b"bad").is_err());
         assert_eq!(std::fs::read_to_string(target).unwrap(), "untouched");
     }
 
     #[cfg(unix)]
     #[test]
     fn contained_links_and_normal_file_operations_still_work() {
-        use std::io::{Read as _, Write as _};
+        use std::io::Read as _;
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("root");
         std::fs::create_dir_all(root.join("nested")).unwrap();
         let broker =
             FileBroker::new(Some(root.clone()), root.clone(), ProjectAccess::ReadWrite, false);
-        broker
-            .open_project(Path::new("nested/note"), true)
-            .unwrap()
-            .write_all(b"long original")
-            .unwrap();
+        broker.write_project(Path::new("nested/note"), b"long original").unwrap();
         std::os::unix::fs::symlink(root.join("nested/note"), root.join("link")).unwrap();
-        broker.open_data(Path::new("link"), true).unwrap().write_all(b"new").unwrap();
+        broker.write_data(Path::new("link"), b"new").unwrap();
         let mut text = String::new();
-        broker.open_project(Path::new("link"), false).unwrap().read_to_string(&mut text).unwrap();
+        broker.open_project(Path::new("link")).unwrap().read_to_string(&mut text).unwrap();
         assert_eq!(text, "new");
-        assert!(broker.open_project(Path::new("nested"), true).is_err());
+        assert!(broker.write_project(Path::new("nested"), b"bad").is_err());
         let read_only = FileBroker::new(Some(root.clone()), root, ProjectAccess::Read, false);
-        assert!(read_only.open_project(Path::new("link"), true).is_err());
+        assert!(read_only.write_project(Path::new("link"), b"bad").is_err());
+    }
+    #[test]
+    fn whole_file_writes_are_atomic_for_readers_and_concurrent_instances() {
+        use std::sync::{Arc, Barrier};
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().to_owned();
+        let broker =
+            FileBroker::new(Some(root.clone()), root.clone(), ProjectAccess::ReadWrite, false);
+        let first = vec![b'a'; 64 * 1024];
+        let second = vec![b'b'; 17 * 1024];
+        broker.write_data(Path::new("state"), &first).unwrap();
+        // An already-open reader must retain the old complete file after replacement.
+        let mut reader = broker.open_data(Path::new("state")).unwrap();
+        broker.write_data(Path::new("state"), &second).unwrap();
+        let mut old = Vec::new();
+        std::io::Read::read_to_end(&mut reader, &mut old).unwrap();
+        assert_eq!(old, first);
+        let barrier = Arc::new(Barrier::new(3));
+        std::thread::scope(|scope| {
+            for value in [&first, &second] {
+                let broker = broker.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    barrier.wait();
+                    for _ in 0..20 {
+                        broker.write_data(Path::new("state"), value).unwrap();
+                    }
+                });
+            }
+            barrier.wait();
+            for _ in 0..100 {
+                let bytes = std::fs::read(root.join("state")).unwrap();
+                assert!(
+                    bytes == first || bytes == second,
+                    "reader observed a partial/interleaved write"
+                );
+            }
+        });
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_atomic_writes_leave_existing_destinations_untouched() {
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path();
+        std::fs::create_dir(root.join("directory")).unwrap();
+        std::fs::write(root.join("directory/keep"), "keep").unwrap();
+        let broker = FileBroker::new(
+            Some(root.to_owned()),
+            root.to_owned(),
+            ProjectAccess::ReadWrite,
+            false,
+        );
+        assert!(broker.write_project(Path::new("directory"), b"replacement").is_err());
+        assert_eq!(std::fs::read_to_string(root.join("directory/keep")).unwrap(), "keep");
+        let read_only =
+            FileBroker::new(Some(root.to_owned()), root.to_owned(), ProjectAccess::Read, false);
+        assert!(read_only.write_project(Path::new("directory/keep"), b"replacement").is_err());
+        assert_eq!(std::fs::read_to_string(root.join("directory/keep")).unwrap(), "keep");
     }
 }

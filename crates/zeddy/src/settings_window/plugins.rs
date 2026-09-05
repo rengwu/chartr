@@ -120,15 +120,19 @@ impl SettingsWindow {
 
         let paths = crate::app::plugin_paths();
         let executor = cx.background_executor().clone();
-        let prepare =
-            executor.spawn(async move { crate::plugin_installer::prepare(source, &paths) });
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.plugin_cancel = Some(cancel.clone());
+        let prepare = executor.spawn(async move {
+            crate::plugin_installer::prepare_cancellable(source, &paths, &cancel)
+        });
         cx.spawn_in(window, async move |this, cx| {
             let prepared = match prepare.await {
                 Ok(prepared) => prepared,
                 Err(error) => {
                     let _ = this.update_in(cx, |this, _, cx| {
                         this.plugin_installing = None;
-                        this.problem = Some(error.to_string());
+                        this.plugin_cancel = None;
+                        this.problem = Some(format!("{error:#}"));
                         cx.notify();
                     });
                     return;
@@ -137,20 +141,33 @@ impl SettingsWindow {
             let name = prepared.manifest.name.clone();
             let detail = prepared.trust_detail();
             let confirmation = this.update_in(cx, |this, window, cx| {
-                this.plugin_installing = None;
+                let cancelled = this
+                    .plugin_cancel
+                    .take()
+                    .is_some_and(|cancel| cancel.load(std::sync::atomic::Ordering::Relaxed));
+                if cancelled {
+                    this.plugin_installing = None;
+                    cx.notify();
+                    return None;
+                }
+                this.plugin_installing = Some(format!("Confirm installation of {name}…"));
                 cx.notify();
-                window.prompt(
+                Some(window.prompt(
                     gpui::PromptLevel::Info,
                     &format!("Install {name}?"),
                     Some(&detail),
                     &["Install", "Cancel"],
                     cx,
-                )
+                ))
             });
-            let Ok(confirmation) = confirmation else {
+            let Ok(Some(confirmation)) = confirmation else {
                 return;
             };
             if confirmation.await != Ok(0) {
+                let _ = this.update_in(cx, |this, _, cx| {
+                    this.plugin_installing = None;
+                    cx.notify();
+                });
                 return;
             }
 
@@ -167,7 +184,8 @@ impl SettingsWindow {
                 Err(error) => {
                     let _ = this.update_in(cx, |this, _, cx| {
                         this.plugin_installing = None;
-                        this.problem = Some(error.to_string());
+                        this.plugin_cancel = None;
+                        this.problem = Some(format!("{error:#}"));
                         cx.notify();
                     });
                     return;
@@ -381,7 +399,23 @@ impl SettingsWindow {
             .child(install_actions)
             .when(show_git, |view| view.child(git_form))
             .when_some(self.plugin_installing.clone(), |view, status| {
-                view.child(Banner::new().child(Label::new(status).size(UI_LABEL_DEFAULT)))
+                view.child(Banner::new().child(
+                    h_flex().gap_3().child(Label::new(status).size(UI_LABEL_DEFAULT)).when(
+                        self.plugin_cancel.is_some(),
+                        |row| {
+                            row.child(settings_button("cancel-plugin-install", "Cancel").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    if let Some(cancel) = &this.plugin_cancel {
+                                        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        this.plugin_installing =
+                                            Some("Cancelling installation…".into());
+                                        cx.notify();
+                                    }
+                                }),
+                            ))
+                        },
+                    ),
+                ))
             })
             .when(self.plugin_restart_required, |view| {
                 view.child(

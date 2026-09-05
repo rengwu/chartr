@@ -235,7 +235,7 @@ impl Space {
                     Ok(builder) => {
                         let session = this.session_from_builder(info, builder, cx);
                         if let Some(item) = this.items.get_mut(&id).and_then(Item::as_session_mut) {
-                            item.session = session;
+                            item.session.replace_attachment(session);
                             item.clear_terminal_view();
                             this.problem = None;
                             cx.emit(SpaceEvent::TerminalReady(id));
@@ -814,7 +814,7 @@ impl Space {
             }
             if let Some(item) = self.sessions.get(&info.id).copied() {
                 if let Some(session) = self.items.get_mut(&item).and_then(Item::as_session_mut) {
-                    session.session.info = info;
+                    session.session.update_info(info);
                 }
             } else {
                 discovered.push(info);

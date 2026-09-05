@@ -29,6 +29,12 @@ use crate::session::SessionAccess;
 mod host;
 use host::{fetch, read_file, run_process};
 
+#[derive(Clone)]
+pub struct Document {
+    pub package: PathBuf,
+    pub entry: PathBuf,
+}
+
 pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
 
 /// Arbitrates ownership when one native child view moves between GPUI element paths.
@@ -111,7 +117,7 @@ use wry::{
 };
 
 pub fn view(
-    entry: PathBuf,
+    document: Document,
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
@@ -119,11 +125,11 @@ pub fn view(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    create_view(entry, broker, permissions, session, on_focus, window, cx).0
+    create_view(document, broker, permissions, session, on_focus, window, cx).0
 }
 
 pub fn pane(
-    entry: PathBuf,
+    document: Document,
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
@@ -131,13 +137,13 @@ pub fn pane(
     window: &mut Window,
     cx: &mut App,
 ) -> PluginView {
-    let (view, webview) = create_view(entry, broker, permissions, session, on_focus, window, cx);
+    let (view, webview) = create_view(document, broker, permissions, session, on_focus, window, cx);
     let close = webview.clone();
     PluginView::with_close(view, move || close.shutdown())
 }
 
 fn create_view(
-    entry: PathBuf,
+    document: Document,
     broker: FileBroker,
     permissions: Permissions,
     session: Option<SessionAccess>,
@@ -148,7 +154,7 @@ fn create_view(
     let webview = NativeWebViewHandle::default();
     let view = cx.new(|cx| {
         WebPluginView::new(
-            entry,
+            document,
             broker,
             permissions,
             session,
@@ -176,7 +182,7 @@ struct WebPluginView {
 
 impl WebPluginView {
     fn new(
-        entry: PathBuf,
+        document: Document,
         broker: FileBroker,
         permissions: Permissions,
         session: Option<SessionAccess>,
@@ -187,7 +193,7 @@ impl WebPluginView {
     ) -> Self {
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
-            let _ = (entry, broker, permissions, session, on_focus, window, _cx);
+            let _ = (document, broker, permissions, session, on_focus, window, _cx);
             return Self {
                 webview: webview_handle,
                 error: Some("Web plugins are supported on macOS and Linux.".into()),
@@ -220,20 +226,20 @@ impl WebPluginView {
                 };
             }
 
-            let Some(root) = entry.parent().and_then(|path| path.canonicalize().ok()) else {
-                return Self {
-                    webview: webview_handle,
-                    visibility,
-                    #[cfg(target_os = "linux")]
-                    _gtk_pump: gtk_pump,
-                    _focus_task: focus_task,
-                    _request_task: None,
-                    error: Some(format!("Plugin entry is unavailable: {}", entry.display())),
-                };
+            let (root_for_protocol, entry_url) = match document_location(&document) {
+                Ok(location) => location,
+                Err(error) => {
+                    return Self {
+                        webview: webview_handle,
+                        visibility,
+                        #[cfg(target_os = "linux")]
+                        _gtk_pump: gtk_pump,
+                        _focus_task: focus_task,
+                        _request_task: None,
+                        error: Some(error),
+                    };
+                }
             };
-            let entry_name =
-                entry.file_name().and_then(|name| name.to_str()).unwrap_or("index.html");
-            let root_for_protocol = root.clone();
             let webview_slot = Rc::new(RefCell::new(None::<Weak<wry::WebView>>));
             let responder = webview_slot.clone();
             // One bounded worker per instance preserves request ordering without
@@ -290,10 +296,10 @@ impl WebPluginView {
                         None
                     };
                     if let Some(error) = error {
-                        let id = serde_json::from_str::<HostEnvelope>(request.body())
-                            .map_or(0, |request| request.id);
+                        let (id, document) = reply_address(request.body());
                         let response = HostResponse {
                             id,
+                            document,
                             ok: false,
                             value: serde_json::Value::Null,
                             error: error.into(),
@@ -314,7 +320,7 @@ impl WebPluginView {
                 })
                 .with_visible(false)
                 .with_focused(false)
-                .with_url(format!("chartr-plugin://plugin/{entry_name}"));
+                .with_url(entry_url);
 
             let webview = match builder.build_as_child(window) {
                 Ok(webview) => Rc::new(webview),
@@ -385,11 +391,25 @@ impl Render for WebPluginView {
     }
 }
 
+fn document_location(document: &Document) -> Result<(PathBuf, String), String> {
+    let root = document.package.canonicalize().map_err(|e| e.to_string())?;
+    let entry = document.entry.canonicalize().map_err(|e| e.to_string())?;
+    let relative = entry.strip_prefix(&root).map_err(|_| "entry escapes the plugin package")?;
+    let mut url = url::Url::parse("chartr-plugin://plugin/").unwrap();
+    url.path_segments_mut()
+        .unwrap()
+        .clear()
+        .extend(relative.iter().map(|part| part.to_str().unwrap_or_default()));
+    Ok((root, url.into()))
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn asset_response(root: &Path, uri_path: &str) -> Response<Cow<'static, [u8]>> {
-    let relative = uri_path.trim_start_matches('/');
-    let relative = relative.strip_prefix("plugin/").unwrap_or(relative);
     let result = (|| {
+        let decoded = percent_encoding::percent_decode_str(uri_path)
+            .decode_utf8()
+            .map_err(|error| error.to_string())?;
+        let relative = decoded.trim_start_matches('/');
         let path = root.join(relative).canonicalize().map_err(|error| error.to_string())?;
         if !path.starts_with(root) || !path.is_file() {
             return Err("asset escapes the plugin directory".to_owned());
@@ -432,33 +452,7 @@ fn content_type(path: &Path) -> &'static str {
 // The API exists from the first script tick. Host actions are intentionally
 // denied until an instance receives an explicit broker; web content cannot
 // silently fall back to direct network access because the CSP blocks it.
-const BRIDGE: &str = r#"
-(() => {
-  let next = 1;
-  const pending = new Map();
-  window.__chartrReply = response => {
-    const pair = pending.get(response.id);
-    if (!pair) return;
-    pending.delete(response.id);
-    response.ok ? pair[0](response.value) : pair[1](new Error(response.error));
-  };
-  const invoke = (action, options = {}) => new Promise((resolve, reject) => {
-    const id = next++;
-    const encoded = JSON.stringify({ ...options, id, action });
-    if (new TextEncoder().encode(encoded).length > 1024 * 1024) {
-      reject(new Error("host request exceeds 1 MiB"));
-      return;
-    }
-    pending.set(id, [resolve, reject]);
-    try { window.ipc.postMessage(encoded); }
-    catch (error) { pending.delete(id); reject(error); }
-  });
-  window.addEventListener("pointerdown", () => {
-    window.ipc.postMessage(JSON.stringify({ id: 0, action: "chartr.focus" }));
-  }, true);
-  Object.defineProperty(window, "chartr", { value: Object.freeze({ invoke }) });
-})();
-"#;
+const BRIDGE: &str = include_str!("web_plugin/bridge.js");
 
 fn is_focus_request(encoded: &str) -> bool {
     serde_json::from_str::<HostEnvelope>(encoded)
@@ -469,8 +463,6 @@ fn is_focus_request(encoded: &str) -> bool {
 // the UI thread. Full request decoding happens in the background worker.
 #[derive(Deserialize)]
 struct HostEnvelope<'a> {
-    #[serde(default)]
-    id: u64,
     #[serde(borrow, default)]
     action: Cow<'a, str>,
 }
@@ -478,25 +470,58 @@ struct HostEnvelope<'a> {
 #[derive(Deserialize)]
 struct HostRequest {
     id: u64,
-    action: String,
     #[serde(default)]
-    path: String,
-    #[serde(default)]
-    data: String,
-    #[serde(default)]
-    url: String,
-    #[serde(default)]
-    command: String,
-    #[serde(default)]
-    args: Vec<String>,
+    document: String,
+    #[serde(flatten)]
+    action: HostAction,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action")]
+enum HostAction {
+    #[serde(rename = "project.read")]
+    ProjectRead { path: PathBuf },
+    #[serde(rename = "project.write")]
+    ProjectWrite { path: PathBuf, data: String },
+    #[serde(rename = "data.read")]
+    DataRead { path: PathBuf },
+    #[serde(rename = "data.write")]
+    DataWrite { path: PathBuf, data: String },
+    #[serde(rename = "network.fetch")]
+    Fetch { url: String },
+    #[serde(rename = "process.run")]
+    Process {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+    },
+    #[serde(rename = "session.metadata")]
+    Metadata,
+    #[serde(rename = "session.send")]
+    Send { data: String },
 }
 
 #[derive(Serialize)]
 struct HostResponse {
     id: u64,
+    document: String,
     ok: bool,
     value: serde_json::Value,
     error: String,
+}
+
+/// Decode only the reply address, even when an action's fields are invalid.
+fn reply_address(encoded: &str) -> (u64, String) {
+    #[derive(Deserialize, Default)]
+    struct Address {
+        #[serde(default)]
+        id: u64,
+        #[serde(default)]
+        document: String,
+    }
+    let address = serde_json::from_str::<Address>(encoded).unwrap_or_default();
+    (address.id, address.document)
 }
 
 fn handle_request(
@@ -508,73 +533,77 @@ fn handle_request(
     let request: HostRequest = match serde_json::from_str(encoded) {
         Ok(request) => request,
         Err(error) => {
+            let (id, document) = reply_address(encoded);
             return HostResponse {
-                id: 0,
+                id,
+                document,
                 ok: false,
                 value: serde_json::Value::Null,
                 error: format!("Invalid host request: {error}"),
             };
         }
     };
-    let result = match request.action.as_str() {
-        "project.read" => broker
-            .open_project(Path::new(&request.path), false)
+    let result = match request.action {
+        HostAction::ProjectRead { path } => broker
+            .open_project(&path)
             .and_then(|file| read_file(file).map_err(zeddy_plugin_host::BrokerError::Io))
             .map(serde_json::Value::String)
-            .map_err(|error| error.to_string()),
-        "project.write" => broker
-            .open_project(Path::new(&request.path), true)
-            .and_then(|mut file| {
-                std::io::Write::write_all(&mut file, request.data.as_bytes())
-                    .map_err(zeddy_plugin_host::BrokerError::Io)
-            })
-            .map(|_| serde_json::Value::Bool(true))
-            .map_err(|error| error.to_string()),
-        "data.read" => broker
-            .open_data(Path::new(&request.path), false)
+            .map_err(|e| e.to_string()),
+        HostAction::DataRead { path } => broker
+            .open_data(&path)
             .and_then(|file| read_file(file).map_err(zeddy_plugin_host::BrokerError::Io))
             .map(serde_json::Value::String)
-            .map_err(|error| error.to_string()),
-        "data.write" => broker
-            .open_data(Path::new(&request.path), true)
-            .and_then(|mut file| {
-                std::io::Write::write_all(&mut file, request.data.as_bytes())
-                    .map_err(zeddy_plugin_host::BrokerError::Io)
-            })
+            .map_err(|e| e.to_string()),
+        HostAction::ProjectWrite { path, data } => broker
+            .write_project(&path, data.as_bytes())
             .map(|_| serde_json::Value::Bool(true))
-            .map_err(|error| error.to_string()),
-        "network.fetch" => fetch(&request.url, &permissions.network),
-        "process.run" if permissions.process => run_process(&request.command, &request.args),
-        "process.run" => Err("the plugin did not declare process access".to_owned()),
-        "session.metadata" if permissions.session => session
-            .map(|session| {
+            .map_err(|e| e.to_string()),
+        HostAction::DataWrite { path, data } => broker
+            .write_data(&path, data.as_bytes())
+            .map(|_| serde_json::Value::Bool(true))
+            .map_err(|e| e.to_string()),
+        HostAction::Fetch { url } => fetch(&url, &permissions.network),
+        HostAction::Process { command, args, cwd } if permissions.process => broker
+            .process_directory(cwd.as_deref())
+            .map_err(|e| e.to_string())
+            .and_then(|cwd| run_process(&command, &args, &cwd)),
+        HostAction::Process { .. } => Err("the plugin did not declare process access".to_owned()),
+        HostAction::Metadata if permissions.session => session
+            .ok_or_else(|| "this plugin instance is not bound to a session".to_owned())
+            .and_then(|session| session.info().map_err(|e| e.to_string()))
+            .map(|info| {
                 serde_json::json!({
-                    "id": session.info.id.0,
-                    "workspace": session.info.workspace.0,
-                    "title": session.info.title(),
-                    "agent": session.info.agent,
-                    "cwd": session.info.cwd,
+                    "id": info.id.0, "workspace": info.workspace.0, "title": info.title(),
+                    "agent": info.agent, "cwd": info.cwd,
                 })
-            })
-            .ok_or_else(|| "this plugin instance is not bound to a session".to_owned()),
-        "session.send" if permissions.session => session
+            }),
+        HostAction::Send { data } if permissions.session => session
             .ok_or_else(|| "this plugin instance is not bound to a session".to_owned())
             .and_then(|session| {
                 session
-                    .send(request.data.as_bytes())
+                    .send(data.as_bytes())
                     .map(|_| serde_json::Value::Bool(true))
-                    .map_err(|error| error.to_string())
+                    .map_err(|e| e.to_string())
             }),
-        "session.metadata" | "session.send" => {
+        HostAction::Metadata | HostAction::Send { .. } => {
             Err("the plugin did not declare session access".to_owned())
         }
-        _ => Err(format!("unknown host action `{}`", request.action)),
     };
     match result {
-        Ok(value) => HostResponse { id: request.id, ok: true, value, error: String::new() },
-        Err(error) => {
-            HostResponse { id: request.id, ok: false, value: serde_json::Value::Null, error }
-        }
+        Ok(value) => HostResponse {
+            id: request.id,
+            document: request.document,
+            ok: true,
+            value,
+            error: String::new(),
+        },
+        Err(error) => HostResponse {
+            id: request.id,
+            document: request.document,
+            ok: false,
+            value: serde_json::Value::Null,
+            error,
+        },
     }
 }
 
@@ -795,5 +824,92 @@ mod tests {
         let response = handle_request(&broker, &allowed, None, &encoded);
         assert!(response.ok, "{}", response.error);
         assert_eq!(response.value["stdout"], "hello");
+    }
+    #[test]
+    fn malformed_writes_preserve_contents_and_reply_address() {
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path();
+        std::fs::write(root.join("note"), "keep me").unwrap();
+        let broker = FileBroker::new(
+            Some(root.to_owned()),
+            root.to_owned(),
+            ProjectAccess::ReadWrite,
+            false,
+        );
+        for action in ["project.write", "data.write"] {
+            for fields in [
+                serde_json::json!({ "path": "note", "content": "typo" }),
+                serde_json::json!({ "path": "note", "data": null }),
+                serde_json::json!({ "path": null, "data": "wrong path type" }),
+            ] {
+                let mut fields = fields;
+                fields["document"] = "current-page".into();
+                let response = handle_request(
+                    &broker,
+                    &Permissions::default(),
+                    None,
+                    &request(42, action, fields),
+                );
+                assert!(!response.ok);
+                assert_eq!((response.id, response.document.as_str()), (42, "current-page"));
+                assert_eq!(std::fs::read_to_string(root.join("note")).unwrap(), "keep me");
+            }
+        }
+        let empty = handle_request(
+            &broker,
+            &Permissions::default(),
+            None,
+            &request(43, "data.write", serde_json::json!({ "path": "note", "data": "" })),
+        );
+        assert!(empty.ok, "an explicit empty payload remains valid");
+        assert_eq!(std::fs::read(root.join("note")).unwrap(), b"");
+    }
+
+    #[test]
+    fn nested_documents_and_encoded_assets_use_the_package_root() {
+        let scratch = tempfile::tempdir().unwrap();
+        let package = scratch.path().join("package");
+        std::fs::create_dir_all(package.join("ui")).unwrap();
+        std::fs::create_dir_all(package.join("assets")).unwrap();
+        let entry = package.join("ui/my #page.html");
+        std::fs::write(&entry, "<script src='../assets/my file.js'></script>").unwrap();
+        std::fs::write(package.join("assets/my file.js"), "asset").unwrap();
+        std::fs::write(package.join("assets/百分号%.js"), "unicode").unwrap();
+        std::fs::write(scratch.path().join("outside"), "private").unwrap();
+        let (root, entry_url) = document_location(&Document { package, entry }).unwrap();
+        assert_eq!(entry_url, "chartr-plugin://plugin/ui/my%20%23page.html");
+        let url = url::Url::parse(&entry_url).unwrap();
+        assert_eq!(asset_response(&root, url.path()).status(), 200);
+        let asset = url.join("../assets/my%20file.js").unwrap();
+        assert_eq!(asset_response(&root, asset.path()).body().as_ref(), b"asset");
+        let unicode = url.join("../assets/百分号%25.js").unwrap();
+        assert_eq!(asset_response(&root, unicode.path()).body().as_ref(), b"unicode");
+        assert_eq!(asset_response(&root, "/%2e%2e/outside").status(), 404);
+        std::os::unix::fs::symlink(scratch.path().join("outside"), root.join("escape")).unwrap();
+        assert_eq!(asset_response(&root, "/escape").status(), 404);
+    }
+
+    #[test]
+    fn processes_use_the_project_or_explicit_directory() {
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().canonicalize().unwrap();
+        std::fs::create_dir(root.join("sub")).unwrap();
+        let broker = FileBroker::new(Some(root.clone()), root.clone(), ProjectAccess::None, false);
+        let allowed = Permissions { process: true, ..Permissions::default() };
+        for (cwd, expected) in [(None, root.clone()), (Some("sub"), root.join("sub"))] {
+            let response = handle_request(
+                &broker,
+                &allowed,
+                None,
+                &request(1, "process.run", serde_json::json!({ "command": "pwd", "cwd": cwd })),
+            );
+            assert!(response.ok, "{}", response.error);
+            assert_eq!(
+                response.value["stdout"].as_str().unwrap().trim(),
+                expected.to_str().unwrap()
+            );
+        }
+        let folderless = FileBroker::new(None, root.clone(), ProjectAccess::None, false);
+        assert_eq!(folderless.process_directory(None).unwrap(), root);
     }
 }

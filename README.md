@@ -144,8 +144,9 @@ sidebar, and pane-local tabs.
 Settings → Plugins installs a plugin from a Git repository whose default-branch
 root contains that manifest, or from a folder selected with the native picker.
 Chartr inspects the manifest, shows the package details and declared web
-permissions, and stages the result before atomically replacing the managed
-directory. Installation never invokes a compiler or package script. Web and
+permissions, and queues the result for activation at the next startup. Running
+plugins retain their existing package files; startup atomically replaces the
+managed directory. Installation never invokes a compiler or package script. Web and
 hosted packages are architecture-independent and copied directly; separately
 compiled GPUI dynamic libraries are rejected because precompilation does not
 make Rust GUI objects ABI-safe. Plugin data is kept separately and survives
@@ -222,6 +223,7 @@ docs/adr/                  architectural decisions
 ```sh
 cargo fmt --all --check
 cargo test --workspace --locked --no-fail-fast
+node --test crates/zeddy/tests/plugin_bridge.cjs
 cargo check --manifest-path plugins/hello/Cargo.toml --locked
 cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```

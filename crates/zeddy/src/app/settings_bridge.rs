@@ -151,13 +151,14 @@ impl Zeddy {
     ) -> Option<AnyView> {
         let loaded = self.catalog.get(plugin)?;
         let permissions = loaded.permissions().clone();
+        let package = loaded.dir.clone();
         let unsafe_filesystem =
             cx.global::<SettingsStore>().resolved().plugin(plugin).unsafe_filesystem;
         let source = self.catalog.get_mut(plugin)?.settings(window, cx)?;
         Some(match source {
             SettingsSource::Native(view) => view,
             SettingsSource::Web(entry) => crate::web_plugin::view(
-                entry,
+                crate::web_plugin::Document { package, entry },
                 FileBroker::new(
                     None,
                     plugin_paths().data.join(plugin),

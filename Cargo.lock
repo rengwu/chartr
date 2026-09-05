@@ -12784,6 +12784,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "gtk",
+ "percent-encoding",
  "rusqlite",
  "rustix 1.1.4",
  "serde",

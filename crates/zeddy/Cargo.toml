@@ -33,6 +33,7 @@ toml.workspace = true
 tempfile.workspace = true
 rusqlite.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 ureq.workspace = true
 rustix.workspace = true
 unicode-segmentation.workspace = true

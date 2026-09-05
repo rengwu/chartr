@@ -5,7 +5,10 @@
 //! ordinary terminal bytes and owns emulation, rendering, resizing, keyboard,
 //! paste, selection, and mouse reporting as one coherent implementation.
 
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex, Weak},
+    time::Duration,
+};
 
 use collections::HashMap;
 use futures::{StreamExt as _, channel::mpsc};
@@ -29,7 +32,7 @@ pub struct Session {
     pub info: control::Session,
     terminal: Entity<Terminal>,
     ended: Option<Ended>,
-    input_tx: mpsc::UnboundedSender<Vec<u8>>,
+    endpoint: Arc<Mutex<SessionEndpoint>>,
     _input_task: Task<()>,
 }
 
@@ -86,7 +89,8 @@ impl Session {
             }
         });
 
-        Self { info, terminal, ended: None, input_tx, _input_task: input_task }
+        let endpoint = Arc::new(Mutex::new(SessionEndpoint { info: info.clone(), input_tx }));
+        Self { info, terminal, ended: None, endpoint, _input_task: input_task }
     }
 
     pub fn id(&self) -> &PaneId {
@@ -112,27 +116,114 @@ impl Session {
     }
 
     pub fn access(&self) -> SessionAccess {
-        SessionAccess { info: self.info.clone(), input_tx: self.input_tx.clone() }
+        SessionAccess(Arc::downgrade(&self.endpoint))
+    }
+
+    pub fn update_info(&mut self, info: control::Session) {
+        self.endpoint.lock().unwrap().info = info.clone();
+        self.info = info;
+    }
+
+    /// Keep plugin capabilities attached to the same persistent session when
+    /// its local terminal and input task are replaced.
+    pub fn replace_attachment(&mut self, mut replacement: Self) {
+        *self.endpoint.lock().unwrap() = replacement.endpoint.lock().unwrap().clone();
+        replacement.endpoint = self.endpoint.clone();
+        *self = replacement;
     }
 }
 
 /// Thread-safe capability passed to session-bound web plugins.
 #[derive(Clone)]
-pub struct SessionAccess {
-    pub info: control::Session,
+pub struct SessionAccess(Weak<Mutex<SessionEndpoint>>);
+
+#[derive(Clone)]
+struct SessionEndpoint {
+    info: control::Session,
     input_tx: mpsc::UnboundedSender<Vec<u8>>,
 }
 
 impl SessionAccess {
-    pub fn send(&self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
-        self.input_tx
-            .unbounded_send(bytes.to_vec())
-            .map_err(|_| zeddy_herdr::Error::Protocol("terminal is no longer available".to_owned()))
+    pub fn info(&self) -> zeddy_herdr::Result<control::Session> {
+        let endpoint = self.0.upgrade().ok_or_else(session_unavailable)?;
+        Ok(endpoint.lock().unwrap().info.clone())
     }
+
+    pub fn send(&self, bytes: &[u8]) -> zeddy_herdr::Result<()> {
+        let endpoint = self.0.upgrade().ok_or_else(session_unavailable)?;
+        endpoint
+            .lock()
+            .unwrap()
+            .input_tx
+            .unbounded_send(bytes.to_vec())
+            .map_err(|_| session_unavailable())
+    }
+}
+
+fn session_unavailable() -> zeddy_herdr::Error {
+    zeddy_herdr::Error::Protocol("terminal is no longer available".to_owned())
 }
 
 impl std::fmt::Debug for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Session").field("id", &self.info.id).finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    fn plugin_access_observes_updates_replacement_input_and_session_close(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let info = control::Session {
+            id: PaneId("session".into()),
+            terminal: zeddy_herdr::TerminalId("terminal".into()),
+            workspace: zeddy_herdr::WorkspaceId("workspace".into()),
+            label: "before".into(),
+            running: None,
+            status: control::SessionStatus::Unknown,
+            agent: None,
+            cwd: None,
+        };
+        let mut attachment = |info: control::Session| {
+            let terminal = cx.new(|cx| {
+                TerminalBuilder::new_display_only(
+                    terminal::terminal_settings::CursorShape::default(),
+                    terminal::terminal_settings::AlternateScroll::On,
+                    None,
+                    0,
+                    cx.background_executor(),
+                    PathStyle::local(),
+                )
+                .subscribe(cx)
+            });
+            let (input_tx, input_rx) = mpsc::unbounded();
+            let endpoint = Arc::new(Mutex::new(SessionEndpoint { info: info.clone(), input_tx }));
+            (
+                Session { info, terminal, ended: None, endpoint, _input_task: Task::ready(()) },
+                input_rx,
+            )
+        };
+        let (mut session, mut original_rx) = attachment(info.clone());
+        let access = session.access();
+        access.send(b"first").unwrap();
+        assert_eq!(futures::executor::block_on(original_rx.next()).unwrap(), b"first");
+        let mut info = info;
+        info.label = "after".into();
+        session.update_info(info.clone());
+        assert_eq!(access.info().unwrap().title(), "after");
+        let (replacement, mut replacement_rx) = attachment(info);
+        let replacement_terminal = replacement.terminal().entity_id();
+        session.replace_attachment(replacement);
+        assert_eq!(session.terminal().entity_id(), replacement_terminal);
+        access.send(b"replacement").unwrap();
+        assert_eq!(futures::executor::block_on(replacement_rx.next()).unwrap(), b"replacement");
+        assert_eq!(futures::executor::block_on(original_rx.next()), None);
+        drop(session);
+        assert!(access.send(b"closed").is_err());
+        assert!(access.info().is_err());
     }
 }

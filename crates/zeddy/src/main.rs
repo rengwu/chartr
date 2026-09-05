@@ -26,6 +26,7 @@ mod keymap;
 mod mode;
 mod persistence;
 mod plugin_installer;
+mod process;
 mod session;
 mod settings;
 mod settings_window;
@@ -38,6 +39,9 @@ mod web_plugin;
 mod workspace;
 
 fn main() {
+    for error in plugin_installer::activate_pending(&app::plugin_paths()) {
+        eprintln!("Could not activate plugin update: {error:#}");
+    }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let opened_path = opened_path_from_args(std::env::args_os(), &cwd);
 

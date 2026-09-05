@@ -3,7 +3,8 @@
 //! Discovery remains in `zeddy-plugin-host`: this module performs the
 //! deliberately separate, user-initiated mutation. Packages are copied into a
 //! same-filesystem staging directory, validated, and only then renamed into
-//! the managed plugin root. Installation never compiles or executes package
+//! pending plugin root. Startup activates them before any catalog is loaded.
+//! Installation never compiles or executes package
 //! code. Separately installed packages are web content or explicit
 //! Chartr-hosted surfaces; Rust/GPUI dylibs are rejected at this boundary.
 
@@ -12,6 +13,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -97,6 +100,11 @@ pub struct Installed {
 /// Fetch or copy a package and inspect its manifest before the trust prompt.
 /// No source compilation or package script occurs.
 pub fn prepare(source: Source, paths: &Paths) -> Result<Prepared> {
+    prepare_cancellable(source, paths, &AtomicBool::new(false))
+}
+
+pub fn prepare_cancellable(source: Source, paths: &Paths, cancel: &AtomicBool) -> Result<Prepared> {
+    check_cancelled(cancel)?;
     fs::create_dir_all(&paths.installed)
         .with_context(|| format!("creating {}", paths.installed.display()))?;
     let staging_root = paths
@@ -114,8 +122,8 @@ pub fn prepare(source: Source, paths: &Paths) -> Result<Prepared> {
     match &source {
         Source::Git(url) => {
             let checkout = temp.path().join("checkout");
-            clone_git(url, &checkout)?;
-            copy_tree(&checkout, &package)?;
+            clone_git(url, &checkout, cancel)?;
+            copy_tree(&checkout, &package, cancel)?;
         }
         Source::Local(path) => {
             let path =
@@ -128,10 +136,11 @@ pub fn prepare(source: Source, paths: &Paths) -> Result<Prepared> {
             if staging.starts_with(&path) {
                 bail!("the selected folder contains Chartr's managed plugin staging directory");
             }
-            copy_tree(&path, &package)?;
+            copy_tree(&path, &package, cancel)?;
         }
     }
 
+    check_cancelled(cancel)?;
     let manifest = Manifest::read(&package).map_err(|error| anyhow!(error))?;
     if manifest.kind == Kind::Native {
         bail!(
@@ -143,12 +152,13 @@ pub fn prepare(source: Source, paths: &Paths) -> Result<Prepared> {
             .map_err(|error| anyhow!(error))?;
     }
     validate_declared_files(&package, &manifest)?;
-    let replacing = paths.installed.join(&manifest.id).exists();
+    let replacing = paths.installed.join(&manifest.id).exists()
+        || pending_root(paths).join(&manifest.id).exists();
     Ok(Prepared { temp, source, manifest, replacing })
 }
 
-/// Validate and atomically place a prepared plugin without executing build
-/// tools or plugin code.
+/// Validate and atomically queue a prepared plugin for the next startup without
+/// changing any package used by the running catalog.
 pub fn install(prepared: Prepared, paths: &Paths) -> Result<Installed> {
     let Prepared { temp, source: _, manifest, replacing } = prepared;
     let package = temp.path().join("package");
@@ -159,35 +169,88 @@ pub fn install(prepared: Prepared, paths: &Paths) -> Result<Installed> {
 
     validate_declared_files(&package, &manifest)?;
 
-    let destination = paths.installed.join(&manifest.id);
-    let backup = temp.path().join("previous");
-    if destination.exists() {
-        fs::rename(&destination, &backup)
-            .with_context(|| format!("staging the previous {}", manifest.name))?;
-    }
-    if let Err(error) = fs::rename(&package, &destination) {
-        if backup.exists() {
-            let _ = fs::rename(&backup, &destination);
-        }
-        return Err(error).with_context(|| format!("installing {}", manifest.name));
-    }
-
+    // The live catalog and all of its assets remain untouched until startup.
+    let pending = pending_root(paths);
+    fs::create_dir_all(&pending)?;
+    replace_directory(&package, &pending.join(&manifest.id))?;
     Ok(Installed { id: manifest.id, name: manifest.name, replaced: replacing })
 }
 
-fn clone_git(url: &str, destination: &Path) -> Result<()> {
+fn pending_root(paths: &Paths) -> PathBuf {
+    paths.installed.with_file_name("plugin-pending")
+}
+
+/// Activate only at process startup, before constructing any catalog or pane.
+/// Pending packages remain intact until success, so interruption is retryable.
+/// Reapplying the same package after a crash is harmless.
+pub fn activate_pending(paths: &Paths) -> Vec<anyhow::Error> {
+    let entries = match fs::read_dir(pending_root(paths)) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(error) => return vec![error.into()],
+    };
+    let mut errors = Vec::new();
+    for entry in entries {
+        let result = (|| -> Result<()> {
+            let source = entry?.path();
+            let prepared = prepare(Source::Local(source.clone()), paths)?;
+            if source.file_name() != Some(OsStr::new(&prepared.manifest.id)) {
+                bail!("pending package directory does not match its plugin id");
+            }
+            let destination = paths.installed.join(&prepared.manifest.id);
+            replace_directory(&prepared.temp.path().join("package"), &destination)?;
+            fs::remove_dir_all(source).context("removing the activated pending package")?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            errors.push(error);
+        }
+    }
+    errors
+}
+
+/// On the supported macOS/Linux targets a directory exchange is one atomic
+/// operation. Failure leaves both directories intact; no rollback is needed.
+fn replace_directory(package: &Path, destination: &Path) -> Result<()> {
+    if destination.exists() {
+        use rustix::fs::{CWD, RenameFlags, renameat_with};
+        renameat_with(CWD, package, CWD, destination, RenameFlags::EXCHANGE)
+            .with_context(|| format!("atomically replacing {}", destination.display()))?;
+    } else {
+        fs::rename(package, destination)
+            .with_context(|| format!("installing {}", destination.display()))?;
+    }
+    Ok(())
+}
+
+fn check_cancelled(cancel: &AtomicBool) -> Result<()> {
+    if cancel.load(Ordering::Relaxed) {
+        bail!("Plugin installation cancelled");
+    }
+    Ok(())
+}
+
+fn clone_git(url: &str, destination: &Path, cancel: &AtomicBool) -> Result<()> {
     let url = url.trim();
     if url.is_empty() {
         bail!("enter a Git repository URL");
     }
-    let output = Command::new("git")
-        .args([OsStr::new("clone"), OsStr::new("--depth"), OsStr::new("1"), OsStr::new("--")])
-        .arg(url)
-        .arg(destination)
-        .output()
-        .context("starting Git; install Git and make sure it is available in PATH")?;
+    let output = crate::process::output(
+        Command::new("git")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .args([OsStr::new("clone"), OsStr::new("--depth"), OsStr::new("1"), OsStr::new("--")])
+            .arg(url)
+            .arg(destination),
+        Duration::from_secs(120),
+        1024 * 1024,
+        cancel,
+    )
+    .context("running Git (2 minute limit, interactive terminal prompts disabled)")?;
     if !output.status.success() {
-        bail!("Git clone failed: {}", command_detail(&output));
+        bail!(
+            "Git clone failed: {}. Check the repository URL and your Git credentials.",
+            command_detail(&output)
+        );
     }
     Ok(())
 }
@@ -228,10 +291,12 @@ fn require_relative_file(root: &Path, relative: &Path, label: &str) -> Result<()
     Ok(())
 }
 
-fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
+fn copy_tree(source: &Path, destination: &Path, cancel: &AtomicBool) -> Result<()> {
+    check_cancelled(cancel)?;
     fs::create_dir_all(destination)
         .with_context(|| format!("creating {}", destination.display()))?;
     for entry in fs::read_dir(source).with_context(|| format!("reading {}", source.display()))? {
+        check_cancelled(cancel)?;
         let entry = entry?;
         let name = entry.file_name();
         if name == ".git" || name == "target" {
@@ -243,7 +308,7 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
         if kind.is_symlink() {
             bail!("plugin source contains unsupported symbolic link {}", from.display());
         } else if kind.is_dir() {
-            copy_tree(&from, &to)?;
+            copy_tree(&from, &to, cancel)?;
         } else if kind.is_file() {
             fs::copy(&from, &to).with_context(|| format!("copying {}", from.display()))?;
         }
@@ -294,6 +359,7 @@ mod tests {
         let prepared = prepare(Source::Local(source), &paths).unwrap();
         assert!(!prepared.replacing);
         let installed = install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
 
         assert_eq!(installed.id, "com.example.notes");
         assert!(paths.installed.join("com.example.notes/index.html").is_file());
@@ -315,6 +381,7 @@ mod tests {
         let prepared = prepare(Source::Local(source.clone()), &paths).unwrap();
         write(source.join("index.html"), "changed after confirmation");
         install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
 
         assert_eq!(
             fs::read_to_string(paths.installed.join("com.example.notes/index.html")).unwrap(),
@@ -340,6 +407,8 @@ mod tests {
         let prepared = prepare(Source::Local(source), &paths).unwrap();
         assert!(prepared.replacing);
         assert!(install(prepared, &paths).unwrap().replaced);
+        assert!(old.join("old.txt").exists(), "upgrade must wait for restart");
+        assert!(activate_pending(&paths).is_empty());
 
         assert!(!old.join("old.txt").exists());
         assert_eq!(fs::read_to_string(old.join("index.html")).unwrap(), "new");
@@ -408,6 +477,7 @@ mod tests {
 
         let prepared = prepare(Source::Git(source.to_string_lossy().into_owned()), &paths).unwrap();
         install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
 
         assert_eq!(
             fs::read_to_string(paths.installed.join("com.example.git/index.html")).unwrap(),
@@ -442,6 +512,7 @@ mod tests {
         assert_eq!(prepared.manifest.kind, Kind::Hosted);
         assert!(prepared.trust_detail().contains("no executable plugin code"));
         let installed = install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
         let manifest = Manifest::read(&paths.installed.join(&installed.id)).unwrap();
 
         assert_eq!(installed.id, "com.chartr.browser");
@@ -470,6 +541,7 @@ mod tests {
 
         let prepared = prepare(Source::Local(source), &paths).unwrap();
         install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
 
         assert!(!marker.exists());
         assert!(paths.installed.join("com.example.script/install.sh").is_file());
@@ -500,5 +572,83 @@ mod tests {
 
         let error = prepare(Source::Local(source), &paths(&temp)).unwrap_err();
         assert!(error.to_string().contains("does not support"));
+    }
+    fn package(root: &Path, version: &str) {
+        write(
+            root.join("zeddy-plugin.toml"),
+            &format!(
+                "manifest_version = 2\nid = 'com.example.upgrade'\nname = 'Upgrade'\nversion = '{version}'\nkind = 'web'\nicon = 'TestIcon'\nentry = 'index.html'\n"
+            ),
+        );
+        write(root.join("icons/TestIcon.svg"), "<svg/>");
+        write(root.join("index.html"), version);
+    }
+
+    #[gpui::test]
+    fn upgrades_and_reenable_keep_live_code_until_the_next_startup(cx: &mut gpui::TestAppContext) {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let id = "com.example.upgrade";
+        let live = paths.installed.join(id);
+        package(&live, "old");
+        let mut catalog = cx.update(|cx| zeddy_plugin_host::load_all(&paths, cx));
+        let source = temp.path().join("source");
+        for version in ["new", "newest"] {
+            package(&source, version);
+            install(prepare(Source::Local(source.clone()), &paths).unwrap(), &paths).unwrap();
+            assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "old");
+            assert!(catalog.disable(id));
+            cx.update(|cx| catalog.enable(&paths, id, cx)).unwrap();
+            assert_eq!(catalog.get(id).unwrap().manifest.version, "old");
+        }
+        assert!(activate_pending(&paths).is_empty());
+        assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "newest");
+        assert!(!pending_root(&paths).join(id).exists());
+        assert!(activate_pending(&paths).is_empty());
+    }
+
+    #[test]
+    fn interrupted_activation_can_be_retried_without_reverting_the_upgrade() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let live = paths.installed.join("com.example.upgrade");
+        package(&live, "old");
+        let pending = pending_root(&paths).join("com.example.upgrade");
+        package(&pending, "new");
+        // Model interruption immediately after exchange, before pending cleanup.
+        let prepared = prepare(Source::Local(pending.clone()), &paths).unwrap();
+        replace_directory(&prepared.temp.path().join("package"), &live).unwrap();
+        assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "new");
+        assert!(pending.exists());
+        assert!(activate_pending(&paths).is_empty());
+        assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "new");
+    }
+
+    #[test]
+    fn failed_exchange_and_invalid_pending_packages_preserve_the_installed_copy() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let live = paths.installed.join("com.example.upgrade");
+        package(&live, "old");
+        assert!(replace_directory(&temp.path().join("missing"), &live).is_err());
+        let pending = pending_root(&paths).join("com.example.upgrade");
+        package(&pending, "new");
+        fs::remove_file(pending.join("index.html")).unwrap();
+        assert_eq!(activate_pending(&paths).len(), 1);
+        assert!(pending.exists(), "failed updates must remain available for recovery");
+        assert_eq!(fs::read_to_string(live.join("index.html")).unwrap(), "old");
+    }
+
+    #[test]
+    fn cancelled_preparation_never_creates_an_install() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let source = temp.path().join("source");
+        package(&source, "new");
+        let error =
+            prepare_cancellable(Source::Local(source), &paths, &AtomicBool::new(true)).unwrap_err();
+        assert!(error.to_string().contains("cancelled"));
+        assert!(!paths.installed.exists());
+        assert!(!pending_root(&paths).exists());
     }
 }

@@ -125,6 +125,7 @@ pub struct SettingsWindow {
     git_install_open: bool,
     git_url_input: Entity<TextInput>,
     plugin_installing: Option<String>,
+    plugin_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     plugin_restart_required: bool,
     recording_keymap: Option<KeymapAction>,
     ui_font_size_input: Entity<TextInput>,
@@ -158,6 +159,12 @@ impl SettingsWindow {
             input
         });
         let git_url_input = cx.new(|cx| TextInput::new("https://github.com/owner/plugin.git", cx));
+        cx.on_release(|this, _| {
+            if let Some(cancel) = &this.plugin_cancel {
+                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        })
+        .detach();
         cx.observe_global_in::<SettingsStore>(window, |this, window, cx| {
             this.sync_font_size_inputs(window, cx);
             cx.notify();
@@ -207,6 +214,7 @@ impl SettingsWindow {
             git_install_open: false,
             git_url_input,
             plugin_installing: None,
+            plugin_cancel: None,
             plugin_restart_required: false,
             recording_keymap: None,
             ui_font_size_input,
@@ -989,5 +997,27 @@ mod tests {
                 Some(px(16.))
             );
         });
+    }
+    #[gpui::test]
+    fn closing_settings_cancels_plugin_preparation(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| open_with_origin(None, WeakEntity::new_invalid(), cx));
+        cx.run_until_parked();
+        let settings = cx
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SettingsWindow>())
+            .unwrap();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        cx.update(|cx| {
+            settings
+                .update(cx, |settings, window, _| {
+                    settings.plugin_cancel = Some(cancel.clone());
+                    window.remove_window();
+                })
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert!(cancel.load(std::sync::atomic::Ordering::Relaxed));
     }
 }
