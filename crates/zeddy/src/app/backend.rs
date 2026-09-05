@@ -89,7 +89,7 @@ impl Zeddy {
                     true
                 } else {
                     let probe = client.clone();
-                    executor.spawn(async move { probe.answers() }).await
+                    executor.spawn(async move { probe.handshake().is_ok() }).await
                 };
                 if answers {
                     let _ = this.update(cx, |this, cx| {

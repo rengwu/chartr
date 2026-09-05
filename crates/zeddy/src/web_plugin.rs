@@ -26,6 +26,9 @@ use zeddy_plugin_host::FileBroker;
 use crate::item::PluginView;
 use crate::session::SessionAccess;
 
+mod host;
+use host::{fetch, read_file, run_process};
+
 pub type FocusHandler = Rc<dyn Fn(EntityId, &mut App)>;
 
 /// Arbitrates ownership when one native child view moves between GPUI element paths.
@@ -166,6 +169,8 @@ struct WebPluginView {
     _gtk_pump: gpui::Task<()>,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     _focus_task: gpui::Task<()>,
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    _request_task: Option<gpui::Task<()>>,
     error: Option<String>,
 }
 
@@ -210,6 +215,7 @@ impl WebPluginView {
                     visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
+                    _request_task: None,
                     error: Some(format!("Could not initialize GTK: {error}")),
                 };
             }
@@ -221,6 +227,7 @@ impl WebPluginView {
                     #[cfg(target_os = "linux")]
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
+                    _request_task: None,
                     error: Some(format!("Plugin entry is unavailable: {}", entry.display())),
                 };
             };
@@ -229,23 +236,74 @@ impl WebPluginView {
             let root_for_protocol = root.clone();
             let webview_slot = Rc::new(RefCell::new(None::<Weak<wry::WebView>>));
             let responder = webview_slot.clone();
+            // One bounded worker per instance preserves request ordering without
+            // making native WebKit callbacks wait for filesystem/network/process I/O.
+            let (request_tx, mut request_rx) = mpsc::channel::<String>(16);
+            let request_tx = RefCell::new(request_tx);
+            let executor = _cx.background_executor().clone();
+            let request_task = _cx.spawn(async move |this, cx| {
+                while let Some(encoded) = request_rx.next().await {
+                    if !this.read_with(cx, |this, _| this.webview.get().is_some()).unwrap_or(false)
+                    {
+                        break;
+                    }
+                    let broker = broker.clone();
+                    let permissions = permissions.clone();
+                    let session = session.clone();
+                    let response = executor
+                        .spawn(async move {
+                            serde_json::to_string(&handle_request(
+                                &broker,
+                                &permissions,
+                                session.as_ref(),
+                                &encoded,
+                            ))
+                        })
+                        .await;
+                    let _ = this.update(cx, |this, _| {
+                        if let Some(webview) = this.webview.get()
+                            && let Ok(response) = response
+                        {
+                            let _ = webview
+                                .evaluate_script(&format!("window.__chartrReply({response})"));
+                        }
+                    });
+                }
+            });
             let builder = WebViewBuilder::new()
                 .with_custom_protocol("chartr-plugin".into(), move |_, request| {
                     asset_response(&root_for_protocol, request.uri().path())
                 })
                 .with_initialization_script(BRIDGE)
                 .with_ipc_handler(move |request| {
-                    if is_focus_request(request.body()) {
+                    if request.body().len() <= host::MAX_REQUEST_BYTES
+                        && is_focus_request(request.body())
+                    {
                         let _ = focus_tx.unbounded_send(());
                         return;
                     }
-                    let response =
-                        handle_request(&broker, &permissions, session.as_ref(), request.body());
-                    if let Some(webview) = responder.borrow().as_ref().and_then(Weak::upgrade)
-                        && let Ok(response) = serde_json::to_string(&response)
-                    {
-                        let _ =
-                            webview.evaluate_script(&format!("window.__chartrReply({response})"));
+                    let error = if request.body().len() > host::MAX_REQUEST_BYTES {
+                        Some("host request exceeds 1 MiB")
+                    } else if request_tx.borrow_mut().try_send(request.body().clone()).is_err() {
+                        Some("plugin request queue is full or closed")
+                    } else {
+                        None
+                    };
+                    if let Some(error) = error {
+                        let id = serde_json::from_str::<HostEnvelope>(request.body())
+                            .map_or(0, |request| request.id);
+                        let response = HostResponse {
+                            id,
+                            ok: false,
+                            value: serde_json::Value::Null,
+                            error: error.into(),
+                        };
+                        if let Some(webview) = responder.borrow().as_ref().and_then(Weak::upgrade)
+                            && let Ok(response) = serde_json::to_string(&response)
+                        {
+                            let _ = webview
+                                .evaluate_script(&format!("window.__chartrReply({response})"));
+                        }
                     }
                 })
                 .with_navigation_handler(|url| url.starts_with("chartr-plugin://plugin/"))
@@ -267,6 +325,7 @@ impl WebPluginView {
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
                         _focus_task: focus_task,
+                        _request_task: None,
                         error: Some(format!("Could not create the plugin webview: {error}")),
                     };
                 }
@@ -279,6 +338,7 @@ impl WebPluginView {
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
                 _focus_task: focus_task,
+                _request_task: Some(request_task),
                 error: None,
             }
         }
@@ -384,8 +444,14 @@ const BRIDGE: &str = r#"
   };
   const invoke = (action, options = {}) => new Promise((resolve, reject) => {
     const id = next++;
+    const encoded = JSON.stringify({ ...options, id, action });
+    if (new TextEncoder().encode(encoded).length > 1024 * 1024) {
+      reject(new Error("host request exceeds 1 MiB"));
+      return;
+    }
     pending.set(id, [resolve, reject]);
-    window.ipc.postMessage(JSON.stringify({ id, action, ...options }));
+    try { window.ipc.postMessage(encoded); }
+    catch (error) { pending.delete(id); reject(error); }
   });
   window.addEventListener("pointerdown", () => {
     window.ipc.postMessage(JSON.stringify({ id: 0, action: "chartr.focus" }));
@@ -395,10 +461,18 @@ const BRIDGE: &str = r#"
 "#;
 
 fn is_focus_request(encoded: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(encoded)
-        .ok()
-        .and_then(|request| request.get("action")?.as_str().map(str::to_owned))
-        .is_some_and(|action| action == "chartr.focus")
+    serde_json::from_str::<HostEnvelope>(encoded)
+        .is_ok_and(|request| request.action == "chartr.focus")
+}
+
+// Inspect routing fields without allocating copies of file/process payloads on
+// the UI thread. Full request decoding happens in the background worker.
+#[derive(Deserialize)]
+struct HostEnvelope<'a> {
+    #[serde(default)]
+    id: u64,
+    #[serde(borrow, default)]
+    action: Cow<'a, str>,
 }
 
 #[derive(Deserialize)]
@@ -444,47 +518,33 @@ fn handle_request(
     };
     let result = match request.action.as_str() {
         "project.read" => broker
-            .project_path(Path::new(&request.path), false)
-            .and_then(|path| {
-                std::fs::read_to_string(path).map_err(zeddy_plugin_host::BrokerError::Io)
-            })
+            .open_project(Path::new(&request.path), false)
+            .and_then(|file| read_file(file).map_err(zeddy_plugin_host::BrokerError::Io))
             .map(serde_json::Value::String)
             .map_err(|error| error.to_string()),
         "project.write" => broker
-            .project_path(Path::new(&request.path), true)
-            .and_then(|path| {
-                std::fs::write(path, request.data.as_bytes())
+            .open_project(Path::new(&request.path), true)
+            .and_then(|mut file| {
+                std::io::Write::write_all(&mut file, request.data.as_bytes())
                     .map_err(zeddy_plugin_host::BrokerError::Io)
             })
             .map(|_| serde_json::Value::Bool(true))
             .map_err(|error| error.to_string()),
         "data.read" => broker
-            .data_path(Path::new(&request.path), false)
-            .and_then(|path| {
-                std::fs::read_to_string(path).map_err(zeddy_plugin_host::BrokerError::Io)
-            })
+            .open_data(Path::new(&request.path), false)
+            .and_then(|file| read_file(file).map_err(zeddy_plugin_host::BrokerError::Io))
             .map(serde_json::Value::String)
             .map_err(|error| error.to_string()),
         "data.write" => broker
-            .data_path(Path::new(&request.path), true)
-            .and_then(|path| {
-                std::fs::write(path, request.data.as_bytes())
+            .open_data(Path::new(&request.path), true)
+            .and_then(|mut file| {
+                std::io::Write::write_all(&mut file, request.data.as_bytes())
                     .map_err(zeddy_plugin_host::BrokerError::Io)
             })
             .map(|_| serde_json::Value::Bool(true))
             .map_err(|error| error.to_string()),
         "network.fetch" => fetch(&request.url, &permissions.network),
-        "process.run" if permissions.process => std::process::Command::new(&request.command)
-            .args(&request.args)
-            .output()
-            .map(|output| {
-                serde_json::json!({
-                    "status": output.status.code(),
-                    "stdout": String::from_utf8_lossy(&output.stdout),
-                    "stderr": String::from_utf8_lossy(&output.stderr),
-                })
-            })
-            .map_err(|error| error.to_string()),
+        "process.run" if permissions.process => run_process(&request.command, &request.args),
         "process.run" => Err("the plugin did not declare process access".to_owned()),
         "session.metadata" if permissions.session => session
             .map(|session| {
@@ -516,28 +576,6 @@ fn handle_request(
             HostResponse { id: request.id, ok: false, value: serde_json::Value::Null, error }
         }
     }
-}
-
-fn fetch(requested: &str, allowed: &[String]) -> Result<serde_json::Value, String> {
-    let url = url::Url::parse(requested).map_err(|error| error.to_string())?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err("only HTTP and HTTPS network actions are allowed".to_owned());
-    }
-    let host = url.host_str().ok_or_else(|| "the URL has no host".to_owned())?;
-    if !allowed.iter().any(|entry| {
-        let allowed_host = url::Url::parse(entry)
-            .ok()
-            .and_then(|url| url.host_str().map(str::to_owned))
-            .unwrap_or_else(|| entry.trim_start_matches("*.").to_owned());
-        host == allowed_host
-            || (entry.starts_with("*.") && host.ends_with(&format!(".{allowed_host}")))
-    }) {
-        return Err(format!("network access to `{host}` is not declared"));
-    }
-    let mut response = ureq::get(requested).call().map_err(|error| error.to_string())?;
-    let status = response.status().as_u16();
-    let body = response.body_mut().read_to_string().map_err(|error| error.to_string())?;
-    Ok(serde_json::json!({ "status": status, "body": body }))
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]

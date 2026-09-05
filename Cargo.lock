@@ -12785,6 +12785,7 @@ dependencies = [
  "gpui_platform",
  "gtk",
  "rusqlite",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "settings",
@@ -12809,8 +12810,10 @@ dependencies = [
 name = "zeddy-herdr"
 version = "0.1.0"
 dependencies = [
+ "rustix 1.1.4",
  "serde",
  "serde_json",
+ "socket2",
  "tempfile",
 ]
 
@@ -12828,6 +12831,7 @@ name = "zeddy-plugin-host"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "rustix 1.1.4",
  "tempfile",
  "zeddy-plugin",
 ]

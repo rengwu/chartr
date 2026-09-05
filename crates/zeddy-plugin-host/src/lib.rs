@@ -331,6 +331,68 @@ impl FileBroker {
     pub fn data_path(&self, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
         contained(&self.data, requested, write)
     }
+
+    /// Open the validated file without following links introduced after validation.
+    pub fn open_project(
+        &self,
+        requested: &Path,
+        write: bool,
+    ) -> Result<std::fs::File, BrokerError> {
+        let path = self.project_path(requested, write)?;
+        if self.unsafe_filesystem {
+            return std::fs::OpenOptions::new()
+                .read(!write)
+                .write(write)
+                .create(write)
+                .truncate(write)
+                .open(path)
+                .map_err(BrokerError::Io);
+        }
+        open_contained(self.project.as_ref().ok_or(BrokerError::Folderless)?, &path, write)
+    }
+
+    pub fn open_data(&self, requested: &Path, write: bool) -> Result<std::fs::File, BrokerError> {
+        let path = self.data_path(requested, write)?;
+        open_contained(&self.data, &path, write)
+    }
+}
+
+fn open_contained(root: &Path, resolved: &Path, write: bool) -> Result<std::fs::File, BrokerError> {
+    use rustix::fs::{Mode, OFlags, open, openat};
+    let root = root.canonicalize().map_err(BrokerError::Io)?;
+    let relative = resolved.strip_prefix(&root).map_err(|_| BrokerError::Escape)?;
+    let mut parts = relative.components().peekable();
+    let directory_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mut directory = open(&root, directory_flags, Mode::empty())
+        .map_err(|error| BrokerError::Io(error.into()))?;
+    while let Some(part) = parts.next() {
+        if !matches!(part, std::path::Component::Normal(_)) {
+            return Err(BrokerError::Escape);
+        }
+        let last = parts.peek().is_none();
+        let flags = if last {
+            OFlags::NOFOLLOW
+                | OFlags::CLOEXEC
+                | OFlags::NONBLOCK
+                | if write { OFlags::WRONLY | OFlags::CREATE } else { OFlags::RDONLY }
+        } else {
+            directory_flags
+        };
+        let fd = openat(&directory, part.as_os_str(), flags, Mode::from_raw_mode(0o666))
+            .map_err(|error| BrokerError::Io(error.into()))?;
+        if last {
+            let file = std::fs::File::from(fd);
+            if !file.metadata().map_err(BrokerError::Io)?.is_file() {
+                return Err(BrokerError::Denied);
+            }
+            if write {
+                file.set_len(0).map_err(BrokerError::Io)?;
+            }
+            return Ok(file);
+        }
+        directory = fd;
+    }
+    Err(BrokerError::Denied)
 }
 
 fn contained(root: &Path, requested: &Path, write: bool) -> Result<PathBuf, BrokerError> {
@@ -348,7 +410,13 @@ fn contained(root: &Path, requested: &Path, write: bool) -> Result<PathBuf, Brok
     }
     let root = root.canonicalize().map_err(BrokerError::Io)?;
     let candidate = root.join(requested);
-    let resolved = if write && !candidate.exists() {
+    // `exists` follows symlinks: a dangling link is not a new, safe filename.
+    let missing = match candidate.symlink_metadata() {
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => return Err(BrokerError::Io(error)),
+    };
+    let resolved = if write && missing {
         let parent = candidate.parent().ok_or(BrokerError::Escape)?;
         let parent = parent.canonicalize().map_err(BrokerError::Io)?;
         parent.join(candidate.file_name().ok_or(BrokerError::Escape)?)
@@ -901,5 +969,64 @@ mod tests {
             broker.project_path(Path::new("escape/file.txt"), true),
             Err(BrokerError::Escape)
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_symlinks_cannot_create_files_outside_either_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let outside = temp.path().join("outside.txt");
+        std::fs::create_dir(&root).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+        let broker = FileBroker::new(Some(root.clone()), root, ProjectAccess::ReadWrite, false);
+        assert!(broker.project_path(Path::new("escape"), true).is_err());
+        assert!(broker.data_path(Path::new("escape"), true).is_err());
+        assert!(broker.open_project(Path::new("escape"), true).is_err());
+        assert!(broker.open_data(Path::new("escape"), true).is_err());
+        assert!(!outside.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_rejects_symlinks_swapped_in_after_validation() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let target = outside.join("note");
+        std::fs::write(&target, "untouched").unwrap();
+        let validated = contained(&root, Path::new("nested/note"), true).unwrap();
+        std::os::unix::fs::symlink(&target, &validated).unwrap();
+        assert!(open_contained(&root, &validated, true).is_err());
+        std::fs::rename(root.join("nested"), root.join("old")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("nested")).unwrap();
+        assert!(open_contained(&root, &validated, true).is_err());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "untouched");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn contained_links_and_normal_file_operations_still_work() {
+        use std::io::{Read as _, Write as _};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        let broker =
+            FileBroker::new(Some(root.clone()), root.clone(), ProjectAccess::ReadWrite, false);
+        broker
+            .open_project(Path::new("nested/note"), true)
+            .unwrap()
+            .write_all(b"long original")
+            .unwrap();
+        std::os::unix::fs::symlink(root.join("nested/note"), root.join("link")).unwrap();
+        broker.open_data(Path::new("link"), true).unwrap().write_all(b"new").unwrap();
+        let mut text = String::new();
+        broker.open_project(Path::new("link"), false).unwrap().read_to_string(&mut text).unwrap();
+        assert_eq!(text, "new");
+        assert!(broker.open_project(Path::new("nested"), true).is_err());
+        let read_only = FileBroker::new(Some(root.clone()), root, ProjectAccess::Read, false);
+        assert!(read_only.open_project(Path::new("link"), true).is_err());
     }
 }

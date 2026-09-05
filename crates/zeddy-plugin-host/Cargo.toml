@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 zeddy-plugin = { path = "../zeddy-plugin" }
 gpui.workspace = true
+rustix.workspace = true
 
 [dev-dependencies]
 # `#[gpui::test]` needs an app context to run the loader against.

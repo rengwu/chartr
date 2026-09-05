@@ -137,11 +137,12 @@ impl From<protocol::Pane> for Session {
 pub struct Client {
     sidecar: Sidecar,
     namespace: Namespace,
+    deadline: Option<Instant>,
 }
 
 impl Client {
     pub fn new(sidecar: Sidecar, namespace: Namespace) -> Self {
-        Self { sidecar, namespace }
+        Self { sidecar, namespace, deadline: None }
     }
 
     pub fn namespace(&self) -> &Namespace {
@@ -154,6 +155,18 @@ impl Client {
     /// "is it running" question worth asking separately: the answer it acts on
     /// is "can I talk to it", and that is a `ping`.
     pub fn connect(&self, timeout: Duration) -> Result<()> {
+        self.until(timeout).connect_inner(timeout)
+    }
+
+    fn until(&self, timeout: Duration) -> Self {
+        let deadline = Instant::now() + timeout;
+        Self {
+            deadline: Some(self.deadline.map_or(deadline, |old| old.min(deadline))),
+            ..self.clone()
+        }
+    }
+
+    fn connect_inner(&self, timeout: Duration) -> Result<()> {
         self.namespace.prepare()?;
         match self.handshake() {
             Ok(()) => return Ok(()),
@@ -168,9 +181,10 @@ impl Client {
             Err(_) => {}
         }
 
+        remaining(self.deadline.expect("connect has a deadline"))?;
         self.spawn_daemon()?;
 
-        let deadline = Instant::now() + timeout;
+        let deadline = self.deadline.expect("connect has a deadline");
         let mut backoff = Duration::from_millis(10);
         loop {
             match self.handshake() {
@@ -204,11 +218,10 @@ impl Client {
 
     /// Whether anything is accepting connections at this private socket.
     ///
-    /// Supervision deliberately asks the operating system rather than pinging
-    /// the daemon: a crashed daemon cannot answer a health check, while both a
-    /// removed socket and a stale one refuse this connect.
+    /// This is a socket-presence probe, not a daemon health check.
     pub fn answers(&self) -> bool {
-        UnixStream::connect(self.namespace.socket()).is_ok()
+        connect_socket(&self.namespace.socket(), self.until(REQUEST_TIMEOUT).deadline.unwrap())
+            .is_ok()
     }
 
     /// Start exactly one clean replacement for a daemon that has already died.
@@ -234,7 +247,23 @@ impl Client {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         apply(&mut command, &self.namespace);
-        let status = command.status()?;
+        let mut child = command.spawn()?;
+        let stop_deadline = Instant::now() + REQUEST_TIMEOUT;
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if Instant::now() >= stop_deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "backend stop command timed out",
+                )
+                .into());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
         if !status.success() && self.answers() {
             return Err(Error::Backend {
                 method: "server stop",
@@ -258,10 +287,11 @@ impl Client {
 
     /// Wait for an already-started daemon to answer, without starting another.
     pub fn reconnect(&self, timeout: Duration) -> Result<()> {
-        let deadline = Instant::now() + timeout;
+        let bounded = self.until(timeout);
+        let deadline = bounded.deadline.expect("reconnect has a deadline");
         let mut backoff = Duration::from_millis(25);
         loop {
-            match self.handshake() {
+            match bounded.handshake() {
                 Ok(()) => return Ok(()),
                 Err(err) if Instant::now() + backoff >= deadline => return Err(err),
                 Err(_) => {
@@ -303,9 +333,10 @@ impl Client {
 
     /// Every pane the private daemon is running, or every pane in one workspace.
     pub fn sessions(&self, workspace: Option<&WorkspaceId>) -> Result<Vec<Session>> {
+        let bounded = self.until(REQUEST_TIMEOUT);
         let params = PaneListParams { workspace_id: workspace.map(|w| w.0.as_str()) };
-        let list: PaneList = self.call("pane.list", &params)?;
-        Ok(self.describe(list.panes))
+        let list: PaneList = bounded.call("pane.list", &params)?;
+        Ok(bounded.describe(list.panes))
     }
 
     /// Decorate Herdr panes with the same live titles used by Chartr-rs:
@@ -458,22 +489,37 @@ impl Client {
         params: &P,
     ) -> Result<R> {
         let socket = self.namespace.socket();
-        let mut stream = UnixStream::connect(&socket).map_err(|err| {
+        let deadline = self
+            .deadline
+            .unwrap_or(Instant::now() + REQUEST_TIMEOUT)
+            .min(Instant::now() + REQUEST_TIMEOUT);
+        let mut stream = connect_socket(&socket, deadline).map_err(|err| {
             Error::Transport(std::io::Error::new(
                 err.kind(),
                 format!("{}: {err}", socket.display()),
             ))
         })?;
+        stream.set_nonblocking(true)?;
 
         let request = Request { id: next_id(), method, params };
         let mut line = serde_json::to_vec(&request)
             .map_err(|err| Error::Protocol(format!("cannot encode {method}: {err}")))?;
         line.push(b'\n');
-        stream.write_all(&line)?;
-        stream.flush()?;
+        let mut pending = line.as_slice();
+        while !pending.is_empty() {
+            remaining(deadline)?;
+            match stream.write(pending) {
+                Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero).into()),
+                Ok(n) => pending = &pending[n..],
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    wait_socket(&stream, rustix::event::PollFlags::OUT, deadline)?;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
 
-        let mut reply = String::new();
-        BufReader::new(&stream).read_line(&mut reply)?;
+        let reply = read_reply(&stream, deadline)?;
         if reply.trim().is_empty() {
             return Err(Error::Protocol(format!("{method} got no answer")));
         }
@@ -504,6 +550,85 @@ impl Client {
         command.spawn()?;
         Ok(())
     }
+}
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
+
+fn remaining(deadline: Instant) -> std::io::Result<Duration> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "backend request timed out")
+        })
+}
+
+fn connect_socket(path: &Path, deadline: Instant) -> std::io::Result<UnixStream> {
+    let socket = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None)?;
+    socket.connect_timeout(&socket2::SockAddr::unix(path)?, remaining(deadline)?)?;
+    Ok(std::os::fd::OwnedFd::from(socket).into())
+}
+
+fn wait_socket(
+    stream: &UnixStream,
+    flags: rustix::event::PollFlags,
+    deadline: Instant,
+) -> std::io::Result<()> {
+    loop {
+        let timeout = rustix::event::Timespec::try_from(remaining(deadline)?)
+            .map_err(std::io::Error::other)?;
+        let mut fds = [rustix::event::PollFd::new(stream, flags)];
+        match rustix::event::poll(&mut fds, Some(&timeout)) {
+            Ok(0) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "backend request timed out",
+                ));
+            }
+            Ok(_) => return Ok(()),
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+/// Wait against one absolute deadline, so partial replies cannot keep a request
+/// alive forever. Polling avoids changing socket options after a peer closes
+/// (which can fail with EINVAL on macOS). Also bound replies without a newline.
+fn read_reply(stream: &UnixStream, deadline: Instant) -> std::io::Result<String> {
+    stream.set_nonblocking(true)?;
+    let mut reader = BufReader::new(stream);
+    let mut reply = Vec::new();
+    loop {
+        remaining(deadline)?;
+        let buffer = match reader.fill_buf() {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                wait_socket(stream, rustix::event::PollFlags::IN, deadline)?;
+                continue;
+            }
+            result => result?,
+        };
+        if buffer.is_empty() {
+            break;
+        }
+        let newline = buffer.iter().position(|byte| *byte == b'\n');
+        let count = newline.map_or(buffer.len(), |at| at + 1);
+        if reply.len() + count > MAX_REPLY_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "backend reply exceeds 8 MiB",
+            ));
+        }
+        reply.extend_from_slice(&buffer[..count]);
+        reader.consume(count);
+        if newline.is_some() {
+            break;
+        }
+    }
+    String::from_utf8(reply)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
 }
 
 /// Place a command in a namespace: set what it pins, remove what it must not
@@ -550,6 +675,82 @@ mod tests {
     use std::os::unix::net::UnixListener;
 
     use super::*;
+
+    #[test]
+    fn stalled_daemons_cannot_exceed_connect_or_reconnect_deadlines() {
+        for connect in [Client::connect, Client::reconnect] {
+            let temp = tempfile::tempdir().unwrap();
+            let namespace = Namespace::rooted(temp.path().join("private"));
+            namespace.prepare().unwrap();
+            let sidecar = temp.path().join("herdr");
+            std::fs::write(&sidecar, "fixture").unwrap();
+            let listener = UnixListener::bind(namespace.socket()).unwrap();
+            let (release, wait) = std::sync::mpsc::channel::<()>();
+            let server = std::thread::spawn(move || {
+                let (_stream, _) = listener.accept().unwrap();
+                let _ = wait.recv_timeout(Duration::from_secs(2));
+            });
+            let client = Client::new(Sidecar::at(&sidecar).unwrap(), namespace);
+            let start = Instant::now();
+            assert!(connect(&client, Duration::from_millis(50)).is_err());
+            assert!(start.elapsed() < Duration::from_secs(1));
+            let _ = release.send(());
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn stalled_request_writes_are_bounded_too() {
+        let temp = tempfile::tempdir().unwrap();
+        let namespace = Namespace::rooted(temp.path().join("private"));
+        namespace.prepare().unwrap();
+        let sidecar = temp.path().join("herdr");
+        std::fs::write(&sidecar, "fixture").unwrap();
+        let listener = UnixListener::bind(namespace.socket()).unwrap();
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            let _ = wait.recv_timeout(Duration::from_secs(2));
+        });
+        let client = Client::new(Sidecar::at(&sidecar).unwrap(), namespace);
+        let start = Instant::now();
+        let result: Result<Empty> =
+            client.until(Duration::from_millis(100)).call("test", &"x".repeat(2 * 1024 * 1024));
+        assert!(result.is_err());
+        assert!(start.elapsed() < Duration::from_secs(1));
+        let _ = release.send(());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn partial_replies_do_not_extend_the_absolute_deadline() {
+        let (reader, mut writer) = UnixStream::pair().unwrap();
+        let server = std::thread::spawn(move || {
+            for _ in 0..200 {
+                if writer.write_all(b" ").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+        let start = Instant::now();
+        assert!(read_reply(&reader, start + Duration::from_millis(50)).is_err());
+        assert!(start.elapsed() < Duration::from_secs(1));
+        drop(reader);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn oversized_replies_are_rejected() {
+        let (reader, mut writer) = UnixStream::pair().unwrap();
+        let server = std::thread::spawn(move || {
+            let _ = writer.write_all(&vec![b' '; MAX_REPLY_BYTES + 1]);
+        });
+        let error = read_reply(&reader, Instant::now() + Duration::from_secs(2)).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData, "{error:?}");
+        drop(reader);
+        server.join().unwrap();
+    }
 
     fn pane(id: &str, title: Option<&str>, agent: Option<&str>) -> protocol::Pane {
         protocol::Pane {

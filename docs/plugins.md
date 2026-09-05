@@ -49,3 +49,24 @@ Chartr-owned terminal. Agent commands, arguments, environment, and prompt
 delivery remain structured until the native plugin quotes each shell word; the
 resulting session belongs to the pane's space and follows the same persistence
 and close lifecycle as a terminal opened by the user.
+
+## Web host operations
+
+`window.chartr.invoke(action, options)` runs host operations through a bounded,
+ordered background queue for each pane. A full queue rejects new requests instead
+of blocking the UI. Closing the pane suppresses replies and queued work; an
+already-running operation may finish in the background.
+
+Requests are limited to 1 MiB of encoded JSON. File reads and HTTP response bodies
+are limited to 8 MiB; process stdout and stderr share an 8 MiB limit. HTTP fetches
+(including all redirects) and processes have a 30-second execution deadline.
+Timeouts, permission failures, and exceeded limits reject the returned promise.
+Processes that time out or exceed the output limit are terminated along with
+their process group.
+
+Each HTTP redirect must pass the manifest's network-host allowlist, just like the
+initial URL. At most ten redirects are followed. Safe filesystem operations open
+regular files beneath the project's or instance's data root; dangling links and
+symlinks swapped into a validated path are rejected. Existing links to files
+inside the allowed root continue to work. Explicit unsafe filesystem permission
+still bypasses the project-root restriction, but not the private data-root check.
