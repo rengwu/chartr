@@ -230,6 +230,7 @@ pub enum Action {
     BeginSpaceDrag { at: Pixels },
     CloseSpace { space: EntityId },
     RenameSpace { space: EntityId },
+    OpenSpaceFolder { space: EntityId },
     LocateSpace { space: EntityId },
     SwitchToTabs,
     SwitchToSidebar,

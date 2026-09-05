@@ -132,14 +132,25 @@ pub fn render(
                 .trigger(move |_, _, _| title_bar)
                 .menu(move |window, cx| {
                     let rename = actions.clone();
+                    let open = actions.clone();
                     let locate = actions.clone();
                     let close = actions.clone();
                     ContextMenu::build_popup(window, cx, move |menu| {
-                        let menu = menu.when(!available, |menu| {
-                            menu.entry("Locate Space Folder", None, move |window, cx| {
-                                locate(Action::LocateSpace { space: action_space }, window, cx)
+                        let menu = menu
+                            .when(available, |menu| {
+                                menu.entry("Open Folder", None, move |window, cx| {
+                                    open(
+                                        Action::OpenSpaceFolder { space: action_space },
+                                        window,
+                                        cx,
+                                    )
+                                })
                             })
-                        });
+                            .when(!available, |menu| {
+                                menu.entry("Locate Space Folder", None, move |window, cx| {
+                                    locate(Action::LocateSpace { space: action_space }, window, cx)
+                                })
+                            });
                         menu.when(removable, |menu| {
                             let menu = menu.entry("Rename Space", None, move |window, cx| {
                                 rename(Action::RenameSpace { space: action_space }, window, cx)

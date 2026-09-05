@@ -610,6 +610,7 @@ impl Space {
             | Action::RenameGroup { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
+            | Action::OpenSpaceFolder { .. }
             | Action::LocateSpace { .. }
             | Action::SwitchToTabs
             | Action::SwitchToSidebar

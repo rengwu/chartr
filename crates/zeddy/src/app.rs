@@ -756,6 +756,7 @@ impl Zeddy {
                     self.open_rename_window(RenameKind::Space, window, cx);
                 }
             }
+            Action::OpenSpaceFolder { space } => self.open_space_folder(space, cx),
             Action::LocateSpace { space } => self.locate_space(space, cx),
             action @ (Action::Select { .. } | Action::Close { .. }) => {
                 let selecting = matches!(action, Action::Select { .. });
@@ -1104,6 +1105,24 @@ impl Zeddy {
             });
         })
         .detach();
+    }
+
+    fn open_space_folder(&mut self, id: EntityId, cx: &mut Context<Self>) {
+        let Some(path) = self
+            .spaces
+            .iter()
+            .find(|space| space.entity_id() == id)
+            .map(|space| space.read(cx).path().clone())
+        else {
+            return;
+        };
+        match url::Url::from_directory_path(&path) {
+            Ok(url) => cx.open_url(url.as_str()),
+            Err(()) => {
+                self.problem = Some(format!("Could not open the folder {}.", path.display()));
+                cx.notify();
+            }
+        }
     }
 
     fn move_active_to_pane(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
