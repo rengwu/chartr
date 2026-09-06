@@ -6,6 +6,7 @@
 //! Neither owns workspace state: both take [`Entry`] values and emit stable ids.
 
 pub mod sidebar;
+pub(crate) mod tab_sorter;
 pub mod tabs;
 
 use std::rc::Rc;
@@ -456,24 +457,35 @@ fn dragged_item_pill(grouped: bool, cx: &App) -> impl IntoElement {
 pub(crate) fn dragged_item_preview(
     dragged: &DraggedItem,
     source_offset: gpui::Point<gpui::Pixels>,
+    sorter: Option<gpui::WeakEntity<crate::components::ListSorter<u64>>>,
     cx: &mut App,
 ) -> gpui::Entity<DraggedItemPreview> {
     let dragged = dragged.clone();
-    cx.new(|_| DraggedItemPreview { dragged, source_offset })
+    cx.new(|_| DraggedItemPreview { dragged, source_offset, sorter })
 }
 
 pub(crate) struct DraggedItemPreview {
     dragged: DraggedItem,
     source_offset: gpui::Point<gpui::Pixels>,
+    sorter: Option<gpui::WeakEntity<crate::components::ListSorter<u64>>>,
 }
 
 impl Render for DraggedItemPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self
+            .sorter
+            .as_ref()
+            .and_then(|sorter| sorter.upgrade())
+            .is_some_and(|sorter| sorter.read(cx).is_dragging())
+        {
+            return div().into_any_element();
+        }
         let width = dragged_item_pill_width(self.dragged.grouped);
         div()
             .pl(self.source_offset.x - px(width / 2.))
             .pt(self.source_offset.y - px(DRAGGED_ITEM_PILL_HEIGHT / 2.))
             .child(dragged_item_pill(self.dragged.grouped, cx))
+            .into_any_element()
     }
 }
 

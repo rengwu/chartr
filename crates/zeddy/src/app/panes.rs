@@ -1,6 +1,8 @@
 //! Pane layout, headers, drag and drop, and resize rendering.
 
 use super::*;
+use crate::chrome::tab_sorter::{SortableTab, SortableTabList};
+use crate::components::SortAxis;
 
 impl Zeddy {
     fn pane_new_item_button(
@@ -586,45 +588,48 @@ impl Zeddy {
             pane.active().and_then(|active| pane.items().iter().position(|item| *item == active));
         let space_key = space.key();
         let middle_click_closes_tab = self.settings.resolved().middle_click_closes_tab;
-        let tabs = pane.items().iter().enumerate().filter_map(|(index, id)| {
-            let item = space.item(*id)?;
-            let selected = pane.active() == Some(*id);
-            let status = item.status();
-            let process_running = item.process_running();
-            let ended = item.ended();
-            let bell = item.as_session().is_some_and(crate::item::SessionItem::bell);
-            let position = chrome::tab_position(index, pane.items().len(), active_index);
-            let select = *id;
-            let close = *id;
-            let select_item = on.clone();
-            let close_item = on.clone();
-            let middle_close_item = on.clone();
-            let drop_item = weak.clone();
-            let drop_space = space_key.clone();
-            let dragged = DraggedItem {
-                space: space_key.clone(),
-                tab: tab_id,
-                pane: pane_id,
-                index,
-                item: *id,
-                top_level: false,
-                grouped: false,
-            };
-            let close_slot = IconButton::new(
-                format!("close-pane-{}-item-{}", pane_id.get(), id.get()),
-                IconName::Close,
-            )
-            .shape(IconButtonShape::Square)
-            .size(ButtonSize::None)
-            .icon_size(IconSize::XSmall)
-            .tooltip(Tooltip::text("Close"))
-            .on_click(move |_, window, cx| {
-                cx.stop_propagation();
-                close_item(Action::Close { space: None, item: close }, window, cx)
-            })
-            .into_any_element();
-            Some(
-                chrome::ItemTab::new(
+        let tabs = pane
+            .items()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, id)| {
+                let item = space.item(*id)?;
+                let selected = pane.active() == Some(*id);
+                let status = item.status();
+                let process_running = item.process_running();
+                let ended = item.ended();
+                let bell = item.as_session().is_some_and(crate::item::SessionItem::bell);
+                let position = chrome::tab_position(index, pane.items().len(), active_index);
+                let select = *id;
+                let close = *id;
+                let select_item = on.clone();
+                let close_item = on.clone();
+                let middle_close_item = on.clone();
+                let drop_item = weak.clone();
+                let drop_space = space_key.clone();
+                let dragged = DraggedItem {
+                    space: space_key.clone(),
+                    tab: tab_id,
+                    pane: pane_id,
+                    index,
+                    item: *id,
+                    top_level: false,
+                    grouped: false,
+                };
+                let close_slot = IconButton::new(
+                    format!("close-pane-{}-item-{}", pane_id.get(), id.get()),
+                    IconName::Close,
+                )
+                .shape(IconButtonShape::Square)
+                .size(ButtonSize::None)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text("Close"))
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    close_item(Action::Close { space: None, item: close }, window, cx)
+                })
+                .into_any_element();
+                let tab = chrome::ItemTab::new(
                     format!("pane-{}-item-{}", pane_id.get(), id.get()),
                     item.title(),
                     selected,
@@ -651,15 +656,15 @@ impl Zeddy {
                         }
                     })
                 })
-                .on_drag(dragged, |dragged, offset, _, cx| {
-                    dragged_item_preview(dragged, offset, cx)
-                })
                 .can_drop(move |value, _, _| {
                     value
                         .downcast_ref::<DraggedItem>()
                         .is_some_and(|dragged| !dragged.grouped && dragged.space == drop_space)
                 })
                 .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
+                    if !dragged.top_level && dragged.tab == tab_id && dragged.pane == pane_id {
+                        return tab;
+                    }
                     let mut tab = tab
                         .bg(cx.theme().colors().drop_target_background)
                         .border_color(cx.theme().colors().drop_target_border)
@@ -676,13 +681,37 @@ impl Zeddy {
                     let _ = drop_item.update(cx, |this, cx| {
                         this.handle_item_drop(&dragged, tab_id, pane_id, index, false, window, cx);
                     });
-                })
-                .into_any_element(),
-            )
-        });
+                });
+                Some(SortableTab::new(dragged, selected, move |placement, _| {
+                    tab.position(chrome::tab_position(
+                        placement.index,
+                        placement.count,
+                        placement.active_index,
+                    ))
+                    .into_any_element()
+                }))
+            })
+            .collect();
         let append_drop = weak.clone();
         let append_index = pane.items().len();
         let append_space = space_key.clone();
+        let sort_drop = weak.clone();
+        let sorted_tabs = SortableTabList::new(
+            format!("pane-tab-sorter-{space_key}-{}-{}", tab_id.get(), pane_id.get()),
+            h_flex()
+                .id(format!("pane-{}-tab-list", pane_id.get()))
+                .min_w_0()
+                .flex_shrink_1()
+                .overflow_x_scroll(),
+            SortAxis::Horizontal,
+            gpui::rems(0.),
+            tabs,
+            move |dragged, index, window, cx| {
+                let _ = sort_drop.update(cx, |this, cx| {
+                    this.handle_item_drop(dragged, tab_id, pane_id, index, false, window, cx);
+                });
+            },
+        );
         let tabs_with_pinned_new_item = h_flex()
             .id(format!("pane-{}-tab-bar-drop-target", pane_id.get()))
             .w_full()
@@ -693,8 +722,12 @@ impl Zeddy {
                     .downcast_ref::<DraggedItem>()
                     .is_some_and(|dragged| !dragged.grouped && dragged.space == append_space)
             })
-            .drag_over::<DraggedItem>(|bar, _, _, cx| {
-                bar.bg(cx.theme().colors().drop_target_background)
+            .drag_over::<DraggedItem>(move |bar, dragged, _, cx| {
+                if !dragged.top_level && dragged.tab == tab_id && dragged.pane == pane_id {
+                    bar
+                } else {
+                    bar.bg(cx.theme().colors().drop_target_background)
+                }
             })
             .on_drop(move |dragged: &DraggedItem, window, cx| {
                 let dragged = dragged.clone();
@@ -710,14 +743,7 @@ impl Zeddy {
                     );
                 });
             })
-            .child(
-                h_flex()
-                    .id(format!("pane-{}-tab-list", pane_id.get()))
-                    .min_w_0()
-                    .flex_shrink_1()
-                    .overflow_x_scroll()
-                    .children(tabs),
-            )
+            .child(sorted_tabs)
             .child(self.pane_new_item_cell(tab_id, pane_id, weak, cx));
         TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
             .child(tabs_with_pinned_new_item)

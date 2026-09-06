@@ -8,11 +8,13 @@ use gpui::{EntityId, MouseButton, Rems, Role, canvas, deferred, fill, px, transp
 use ui::{IconButtonShape, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*};
 
 use super::Emit;
+use super::tab_sorter::{SortableTab, SortableTabList};
+use crate::components::SortAxis;
 use crate::components::popup_right_click_menu;
 
 use super::{
-    Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, dragged_item_preview,
-    item_indicator, new_plugin_pane_button,
+    Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, item_indicator,
+    new_plugin_pane_button,
 };
 use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
@@ -175,22 +177,52 @@ pub fn render(
             title_bar.into_any_element()
         };
         contents.push(title_bar);
+        let mut tabs = Vec::with_capacity(space.entries.len());
         for (target_index, entry) in space.entries.iter().enumerate() {
-            contents.push(
-                row(
-                    index,
-                    target_index,
-                    entry,
-                    space.active && entry.selected,
-                    entry.grouped,
-                    session_backgrounds,
-                    on.clone(),
-                    cx,
-                )
-                .into_any_element(),
+            let dragged = DraggedItem {
+                space: entry.space_key.clone(),
+                tab: entry.tab,
+                pane: entry.pane,
+                index: target_index,
+                item: entry.key,
+                top_level: true,
+                grouped: entry.grouped,
+            };
+            let row = row(
+                index,
+                target_index,
+                entry,
+                space.active && entry.selected,
+                entry.grouped,
+                session_backgrounds,
+                on.clone(),
+                cx,
             );
+            tabs.push(SortableTab::new(dragged, entry.selected, move |_, _| row));
             index += 1;
         }
+        let move_tab = on.clone();
+        contents.push(
+            SortableTabList::new(
+                format!("sidebar-tab-sorter-{space_id:?}"),
+                v_flex().id(format!("sidebar-tab-list-{space_id:?}")).w_full().flex_none(),
+                SortAxis::Vertical,
+                gpui::rems(1. / f32::from(window.rem_size())),
+                tabs,
+                move |dragged, target_index, window, cx| {
+                    move_tab(
+                        Action::MoveWorkspaceTab {
+                            space: space_id,
+                            tab: dragged.tab,
+                            target_index,
+                        },
+                        window,
+                        cx,
+                    );
+                },
+            )
+            .into_any_element(),
+        );
 
         if space.is_free {
             // Free sessions is a permanent footer, not a space card. Its top
@@ -368,18 +400,6 @@ fn row(
     let middle_click_closes_tab = settings.middle_click_closes_tab
         && settings.middle_click_closes_sidebar_tab
         && entry.closable;
-    let dragged = DraggedItem {
-        space: entry.space_key.clone(),
-        tab: entry.tab,
-        pane: entry.pane,
-        // A sidebar row is an outer workspace tab. Its drag index therefore
-        // belongs to the space's outer list, not to the representative item's
-        // position inside its pane.
-        index: target_index,
-        item: entry.key,
-        top_level: true,
-        grouped,
-    };
     let close_button_width = IconSize::XSmall.rems() + DynamicSpacing::Base04.rems(cx) * 2.;
     let close_slot_width = close_button_width - DynamicSpacing::Base06.rems(cx);
     let end_slot = h_flex().when(entry.closable, |slot| {
@@ -405,15 +425,14 @@ fn row(
         )
     });
 
-    // `ListItem` deliberately owns row visuals and click semantics. This thin
-    // wrapper owns sidebar-tab dragging, which Zed's generic row does not.
+    // `ListItem` owns row visuals and click semantics. This wrapper supplies
+    // the close overlay and fallback drop target; SortableTabList owns sorting.
     let row = div()
-        .id(("session-drag", index))
+        .id(format!("session-drag-{space:?}-{}", entry.tab.get()))
         .relative()
         .group("session")
         .w_full()
         .flex_none()
-        .on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
         // Like both earlier Chartr clients, sorting stays within the card/space
         // where the drag began. Pane-local tab drags are rejected as well: this
         // surface only reorders top-level workspace tabs.
@@ -422,23 +441,11 @@ fn row(
                 .downcast_ref::<DraggedItem>()
                 .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
         })
-        .drag_over::<DraggedItem>(move |wrapper, dragged, _, cx| {
-            let mut wrapper = wrapper
-                .bg(cx.theme().colors().drop_target_background)
-                .border_color(cx.theme().colors().drop_target_border)
-                .border_0();
-            if target_index < dragged.index {
-                wrapper = wrapper.border_t_2();
-            } else if target_index > dragged.index {
-                wrapper = wrapper.border_b_2();
-            }
-            wrapper
-        })
         .on_drop(move |dragged: &DraggedItem, window, cx| {
             move_tab(Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index }, window, cx)
         })
         .child(
-            selection_row(("session", index), selected)
+            selection_row(format!("session-{space:?}-{}", entry.tab.get()), selected)
                 .backgrounds(backgrounds)
                 .aria_role(Role::Tab)
                 .aria_label(if grouped {

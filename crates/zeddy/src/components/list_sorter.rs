@@ -54,10 +54,12 @@ fn closest_index<K: Eq>(item: K, geometry: &[(K, Bounds<Pixels>)], pointer: Pixe
 struct HeldItem<K> {
     item: K,
     order: Vec<K>,
+    original_order: Vec<K>,
     anchor: Pixels,
     pointer: Pixels,
     slot_moved: Pixels,
-    scroll_y: Pixels,
+    scroll_offset: Pixels,
+    initial_scroll_offset: Pixels,
 }
 
 impl<K> HeldItem<K> {
@@ -71,14 +73,42 @@ struct Slide {
     at: Instant,
 }
 
-/// Window-only state for sorting variable-height rows and cards.
+/// The layout direction used for pointer, size, and scrolling measurements.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum SortAxis {
+    Horizontal,
+    #[default]
+    Vertical,
+}
+
+impl SortAxis {
+    pub fn coordinate(self, point: Point<Pixels>) -> Pixels {
+        match self {
+            Self::Horizontal => point.x,
+            Self::Vertical => point.y,
+        }
+    }
+
+    // The sorting arithmetic uses a vertical coordinate system internally.
+    fn normalize(self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        match self {
+            Self::Vertical => bounds,
+            Self::Horizontal => Bounds::new(
+                point(bounds.origin.y, bounds.origin.x),
+                gpui::size(bounds.size.height, bounds.size.width),
+            ),
+        }
+    }
+}
+
+/// Window-only state for sorting variable-size rows, cards, and tabs.
 ///
 /// The model order is not changed until release. While a drag is active this
-/// owns the temporary id order, measured card heights, interruptible FLIP
-/// offsets, and the tracked scroll geometry needed to keep sorting alive after
-/// the pointer leaves the list horizontally.
+/// owns the temporary id order, measured item sizes, interruptible FLIP
+/// offsets, and the tracked scroll geometry used by edge autoscroll.
 pub struct ListSorter<K> {
     gap: Rems,
+    axis: SortAxis,
     sizes: HashMap<K, Pixels>,
     slides: HashMap<K, Slide>,
     held: Option<HeldItem<K>>,
@@ -91,6 +121,7 @@ impl<K: Clone + Eq + std::hash::Hash> Default for ListSorter<K> {
     fn default() -> Self {
         Self {
             gap: Rems(0.5),
+            axis: SortAxis::Vertical,
             sizes: HashMap::new(),
             slides: HashMap::new(),
             held: None,
@@ -104,6 +135,19 @@ impl<K: Clone + Eq + std::hash::Hash> Default for ListSorter<K> {
 impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
     pub fn new(gap: Rems) -> Self {
         Self { gap, ..Self::default() }
+    }
+
+    pub fn with_axis(gap: Rems, axis: SortAxis) -> Self {
+        Self { gap, axis, ..Self::default() }
+    }
+
+    /// External changes invalidate a drag's snapshot, even when only the order changes.
+    pub fn reconcile(&mut self, model_order: &[K]) {
+        if self.held.as_ref().is_some_and(|held| held.original_order != model_order) {
+            self.cancel();
+        }
+        self.sizes.retain(|id, _| model_order.contains(id));
+        self.slides.retain(|id, _| model_order.contains(id));
     }
 
     pub fn scroll_handle(&self) -> &ScrollHandle {
@@ -156,17 +200,21 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         now: Instant,
         reduce_motion: bool,
     ) -> bool {
-        if self.held.is_none() {
+        let pointer = self.axis.coordinate(pointer);
+        let starting = self.held.is_none();
+        if starting {
             if !model_order.contains(&dragged) {
                 return false;
             }
             self.held = Some(HeldItem {
                 item: dragged.clone(),
+                original_order: model_order.clone(),
                 order: model_order,
-                anchor: self.pressed_at.take().unwrap_or(pointer.y),
-                pointer: pointer.y,
+                anchor: self.pressed_at.take().unwrap_or(pointer),
+                pointer,
                 slot_moved: px(0.),
-                scroll_y: self.scroll.offset().y,
+                scroll_offset: self.axis.coordinate(self.scroll.offset()),
+                initial_scroll_offset: self.axis.coordinate(self.scroll.offset()),
             });
             self.last_tick = Some(now);
         }
@@ -176,10 +224,10 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         if held.item != dragged {
             return false;
         }
-        let changed = held.pointer != pointer.y;
-        held.pointer = pointer.y;
+        let changed = held.pointer != pointer;
+        held.pointer = pointer;
         self.sync_scroll();
-        self.cross_midpoint(rem, now, reduce_motion) || changed
+        self.cross_midpoint(rem, now, reduce_motion) || changed || starting
     }
 
     /// Advances both FLIP and edge autoscroll. Returns whether the window owes
@@ -205,19 +253,19 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         scrolling || !self.slides.is_empty()
     }
 
-    /// Resolves the release's final Y even if no last drag-move event reached
-    /// the sidebar, then returns the model move that should be committed.
+    /// Resolves the release's final coordinate even if no last drag-move event reached
+    /// the list, then returns the model move that should be committed.
     pub fn drop_at(
         &mut self,
-        pointer_y: Pixels,
+        pointer_coordinate: Pixels,
         rem: Pixels,
         now: Instant,
         reduce_motion: bool,
     ) -> Option<(K, usize)> {
         let held = self.held.as_mut()?;
-        held.pointer = pointer_y;
+        held.pointer = pointer_coordinate;
         self.sync_scroll();
-        if let Some(to) = self.nearest_index(pointer_y) {
+        if let Some(to) = self.nearest_index(pointer_coordinate) {
             self.reorder_held(to, rem, now, reduce_motion);
         }
         let held = self.held.as_ref()?;
@@ -237,6 +285,15 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         self.last_tick = None;
     }
 
+    /// Restore the source list while retaining the grab point for re-entry.
+    pub fn suspend(&mut self) {
+        let anchor = self.held.as_ref().map(|held| {
+            held.anchor + self.axis.coordinate(self.scroll.offset()) - held.initial_scroll_offset
+        });
+        self.cancel();
+        self.pressed_at = anchor;
+    }
+
     pub fn cancel(&mut self) {
         self.held = None;
         self.pressed_at = None;
@@ -248,10 +305,10 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         let Some(held) = self.held.as_mut() else {
             return;
         };
-        let scroll_y = self.scroll.offset().y;
-        if scroll_y != held.scroll_y {
-            held.slot_moved += scroll_y - held.scroll_y;
-            held.scroll_y = scroll_y;
+        let scroll_offset = self.axis.coordinate(self.scroll.offset());
+        if scroll_offset != held.scroll_offset {
+            held.slot_moved += scroll_offset - held.scroll_offset;
+            held.scroll_offset = scroll_offset;
         }
     }
 
@@ -260,11 +317,11 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         if self.scroll.children_count() != order.len() {
             return None;
         }
-        let scroll_y = self.scroll.offset().y;
+        let scroll_offset = self.axis.coordinate(self.scroll.offset());
         let mut geometry = Vec::with_capacity(order.len());
         for (index, id) in order.into_iter().enumerate() {
-            let mut bounds = self.scroll.bounds_for_item(index)?;
-            bounds.origin.y += scroll_y;
+            let mut bounds = self.axis.normalize(self.scroll.bounds_for_item(index)?);
+            bounds.origin.y += scroll_offset;
             self.sizes.insert(id.clone(), bounds.size.height);
             geometry.push((id, bounds));
         }
@@ -369,7 +426,7 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
         let Some(held) = self.held.as_ref() else {
             return false;
         };
-        let viewport = self.scroll.bounds();
+        let viewport = self.axis.normalize(self.scroll.bounds());
         if viewport.size.height <= px(0.) {
             return false;
         }
@@ -397,12 +454,16 @@ impl<K: Clone + Eq + std::hash::Hash> ListSorter<K> {
             .unwrap_or_default();
         let frame_scale = (elapsed * 60.).clamp(0., 3.);
         let offset = self.scroll.offset();
-        let max = self.scroll.max_offset().y;
-        let next = (offset.y + px(direction * speed * frame_scale)).clamp(-max, px(0.));
-        if next == offset.y {
+        let max = self.axis.coordinate(self.scroll.max_offset());
+        let current = self.axis.coordinate(offset);
+        let next = (current + px(direction * speed * frame_scale)).clamp(-max, px(0.));
+        if next == current {
             return false;
         }
-        self.scroll.set_offset(point(offset.x, next));
+        self.scroll.set_offset(match self.axis {
+            SortAxis::Vertical => point(offset.x, next),
+            SortAxis::Horizontal => point(next, offset.y),
+        });
         true
     }
 }
@@ -426,10 +487,12 @@ mod space_sorter_tests {
         sorter.held = Some(HeldItem {
             item: id(2),
             order: vec![id(1), id(2), id(3)],
+            original_order: vec![id(1), id(2), id(3)],
             anchor: px(100.),
             pointer: px(100.),
             slot_moved: px(0.),
-            scroll_y: px(0.),
+            scroll_offset: px(0.),
+            initial_scroll_offset: px(0.),
         });
         assert!(sorter.reorder_held(0, px(16.), now, reduce_motion));
         (sorter, now)
@@ -519,17 +582,19 @@ mod space_sorter_tests {
 
     impl Render for ScrollHarness {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            v_flex()
+            let horizontal = self.sorter.axis == SortAxis::Horizontal;
+            (if horizontal { h_flex() } else { v_flex() })
                 .id("sorter-scroll-harness")
                 .w(px(200.))
                 .h(px(100.))
-                .overflow_y_scroll()
+                .when(horizontal, |list| list.overflow_x_scroll())
+                .when(!horizontal, |list| list.overflow_y_scroll())
                 .track_scroll(self.sorter.scroll_handle())
                 .gap(CARD_GAP)
                 .children([
-                    div().h(px(80.)).flex_none(),
-                    div().h(px(80.)).flex_none(),
-                    div().h(px(80.)).flex_none(),
+                    div().w(px(80.)).h(px(if horizontal { 40. } else { 80. })).flex_none(),
+                    div().w(px(80.)).h(px(if horizontal { 40. } else { 80. })).flex_none(),
+                    div().w(px(80.)).h(px(if horizontal { 40. } else { 80. })).flex_none(),
                 ])
         }
     }
@@ -550,19 +615,85 @@ mod space_sorter_tests {
                 harness.sorter.held = Some(HeldItem {
                     item: id(1),
                     order: vec![id(1), id(2), id(3)],
+                    original_order: vec![id(1), id(2), id(3)],
                     anchor: pointer,
                     pointer,
                     slot_moved: px(0.),
-                    scroll_y: px(0.),
+                    scroll_offset: px(0.),
+                    initial_scroll_offset: px(0.),
                 });
                 harness.sorter.last_tick = Some(started);
 
                 assert!(harness.sorter.tick(started + Duration::from_millis(16), px(16.), false));
-                let scroll_y = harness.sorter.scroll.offset().y;
-                assert!(scroll_y < px(0.), "a pointer below the viewport scrolls down");
+                let scroll_offset = harness.sorter.scroll.offset().y;
+                assert!(scroll_offset < px(0.), "a pointer below the viewport scrolls down");
                 let held = harness.sorter.held.as_ref().unwrap();
-                assert_eq!(held.carried(), -scroll_y);
+                assert_eq!(held.carried(), -scroll_offset);
             })
             .unwrap();
+    }
+    #[gpui::test]
+    fn horizontal_sorting_measures_width_and_autoscrolls_without_drift(cx: &mut TestAppContext) {
+        let window = cx.open_window(size(px(240.), px(140.)), |_, _| ScrollHarness {
+            sorter: SpaceSorter::with_axis(CARD_GAP, SortAxis::Horizontal),
+        });
+        cx.run_until_parked();
+        window
+            .update(cx, |harness, _, _| {
+                let sorter = &mut harness.sorter;
+                let viewport = sorter.scroll.bounds();
+                assert!(sorter.scroll.max_offset().x > px(0.));
+                let now = Instant::now();
+                let pointer = point(viewport.right() - px(1.), viewport.center().y);
+                sorter.press(viewport.left() + px(40.));
+                sorter.drag_move(
+                    id(1),
+                    vec![id(1), id(2), id(3)],
+                    point(viewport.left() + px(150.), pointer.y),
+                    px(16.),
+                    now,
+                    false,
+                );
+                assert!(sorter.drag_move(
+                    id(1),
+                    vec![id(1), id(2), id(3)],
+                    pointer,
+                    px(16.),
+                    now,
+                    false
+                ));
+                assert_eq!(sorter.held.as_ref().unwrap().order, vec![id(2), id(1), id(3)]);
+                assert_eq!(sorter.sizes[&id(1)], px(80.));
+                let carried = sorter.offset_of(id(1), now, false);
+                assert!(sorter.tick(now + Duration::from_millis(16), px(16.), false));
+                let offset = sorter.scroll.offset();
+                assert!(offset.x < px(0.));
+                assert_eq!(offset.y, px(0.));
+                assert_eq!(sorter.offset_of(id(1), now, false), carried - offset.x);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn source_changes_cancel_a_preview_and_reentry_preserves_the_grab_point() {
+        let (mut sorter, now) = reordered_sorter(false);
+        sorter.reconcile(&[id(1), id(2), id(3)]);
+        assert!(sorter.is_dragging());
+        sorter.suspend();
+        assert!(!sorter.is_dragging());
+        assert!(sorter.slides.is_empty());
+        sorter.drag_move(
+            id(2),
+            vec![id(1), id(2), id(3)],
+            point(px(0.), px(110.)),
+            px(16.),
+            now,
+            false,
+        );
+        assert_eq!(sorter.offset_of(id(2), now, false), px(10.));
+        // Even a reorder with the same IDs invalidates the source snapshot.
+        sorter.reconcile(&[id(3), id(2), id(1)]);
+        assert!(!sorter.is_dragging());
+        assert_eq!(sorter.offset_of(id(2), now, false), px(0.));
     }
 }

@@ -43,7 +43,7 @@ use zeddy_plugin_host::{Catalog, FileBroker, HostedSurface, PaneSource, Paths, S
 
 use crate::{
     actions,
-    chrome::{self, Action, DraggedItem, Entry, SpaceEntries, dragged_item_preview},
+    chrome::{self, Action, DraggedItem, Entry, SpaceEntries},
     components::{ContextMenu, PopupMenu, SegmentedControl, SegmentedControlOption},
     fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::{PluginItem, PluginView},

@@ -10,7 +10,9 @@ use ui::{ButtonSize, IconButtonShape, Tab, TabBar, Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{Action, DraggedItem, Entry, ItemTab, dragged_item_preview, tab_position};
+use super::tab_sorter::{SortableTab, SortableTabList};
+use super::{Action, DraggedItem, Entry, ItemTab, tab_position};
+use crate::components::SortAxis;
 use crate::components::{ContextMenu, popup_right_click_menu};
 use crate::settings::SettingsStore;
 use crate::workspace::WorkspaceTabId;
@@ -31,61 +33,91 @@ pub fn render(
     // tab when entries are reordered, closed, or the current space changes.
     let hovered_tab = window.use_keyed_state("workspace-tab-hover", cx, |_, _| HoveredTab::None);
     let hovered = *hovered_tab.read(cx);
-    let active_index = entries.iter().position(|entry| entry.selected);
-    let tabs_with_pinned_new_item = h_flex()
-        .w_full()
-        .min_w_0()
-        .h_full()
-        .child(
-            h_flex()
-                .id("workspace-tab-list")
-                .min_w_0()
-                .h(Tab::container_height(cx))
-                .px_1()
-                .flex_shrink_1()
-                .overflow_x_scroll()
-                .children(entries.iter().enumerate().flat_map(|(index, entry)| {
-                    let separator = index.checked_sub(1).map(|previous| {
-                        let previous = &entries[previous];
-                        let visible = !previous.selected
-                            && !entry.selected
-                            && hovered != Some((previous.space, previous.tab))
-                            && hovered != Some((entry.space, entry.tab));
-                        // Reserve the gap even when hidden, keeping tab hit
-                        // targets stationary as either neighbor is hovered.
-                        h_flex()
-                            .flex_none()
-                            .w_1()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .w(px(1.))
-                                    .h(px(12.))
-                                    .bg(cx.theme().colors().border)
-                                    .opacity(if visible { 1. } else { 0. }),
-                            )
-                            .into_any_element()
-                    });
-                    separator.into_iter().chain(std::iter::once(tab(
-                        index,
-                        entries.len(),
-                        active_index,
-                        entry,
+    let move_tab = on.clone();
+    let space = entries.first().map(|entry| entry.space);
+    let space_key = entries.first().map(|entry| entry.space_key.as_str()).unwrap_or_default();
+    let tabs = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let dragged = DraggedItem {
+                space: entry.space_key.clone(),
+                tab: entry.tab,
+                pane: entry.pane,
+                index,
+                item: entry.key,
+                top_level: true,
+                grouped: entry.grouped,
+            };
+            let entry = entry.clone();
+            let on = on.clone();
+            let hovered_tab = hovered_tab.clone();
+            SortableTab::new(dragged, entry.selected, move |placement, cx| {
+                let previous_selected = placement.index.checked_sub(1) == placement.active_index;
+                let previous_hovered = placement.previous.is_some_and(|previous| {
+                    hovered
+                        .is_some_and(|(space, tab)| space == entry.space && tab.get() == previous)
+                });
+                let separator_visible = placement.previous.is_some()
+                    && !previous_selected
+                    && !entry.selected
+                    && !previous_hovered
+                    && hovered != Some((entry.space, entry.tab));
+                h_flex()
+                    .relative()
+                    .child(tab(
+                        placement.index,
+                        placement.count,
+                        placement.active_index,
+                        &entry,
                         &hovered_tab,
-                        on.clone(),
+                        on,
                         cx,
-                    )))
-                })),
-        )
-        .child(
-            h_flex()
-                .h(Tab::container_height(cx))
-                .flex_none()
-                .px(DynamicSpacing::Base04.rems(cx))
-                .gap_px()
-                .child(new_item)
-                .child(new_plugin_pane),
-        );
+                    ))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(gpui::rems(-0.125))
+                            .w(px(1.))
+                            .h(px(12.))
+                            .bg(cx.theme().colors().border)
+                            .opacity(if separator_visible { 1. } else { 0. }),
+                    )
+                    .into_any_element()
+            })
+        })
+        .collect();
+    let list = SortableTabList::new(
+        format!("workspace-tab-sorter-{space_key}"),
+        h_flex()
+            .id("workspace-tab-list")
+            .min_w_0()
+            .h(Tab::container_height(cx))
+            .px_1()
+            .flex_shrink_1()
+            .overflow_x_scroll(),
+        SortAxis::Horizontal,
+        gpui::rems(0.25),
+        tabs,
+        move |dragged, target_index, window, cx| {
+            if let Some(space) = space {
+                move_tab(
+                    Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index },
+                    window,
+                    cx,
+                );
+            }
+        },
+    );
+    let tabs_with_pinned_new_item = h_flex().w_full().min_w_0().h_full().child(list).child(
+        h_flex()
+            .h(Tab::container_height(cx))
+            .flex_none()
+            .px(DynamicSpacing::Base04.rems(cx))
+            .gap_px()
+            .child(new_item)
+            .child(new_plugin_pane),
+    );
 
     let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
     let tab_bar = match controls {
@@ -131,15 +163,6 @@ fn tab(
     let hover_key = (entry.space, entry.tab);
     let hovered = *hovered_tab.read(cx) == Some(hover_key);
     let hovered_tab = hovered_tab.clone();
-    let dragged = DraggedItem {
-        space: entry.space_key.clone(),
-        tab: entry.tab,
-        pane: entry.pane,
-        index,
-        item: entry.key,
-        top_level: true,
-        grouped: entry.grouped,
-    };
     let close_slot: Option<AnyElement> = entry.closable.then(|| {
         IconButton::new(("close", index), IconName::Close)
             .shape(IconButtonShape::Square)
@@ -210,23 +233,10 @@ fn tab(
             }
         })
     })
-    .on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
     .can_drop(move |value, _, _| {
         value
             .downcast_ref::<DraggedItem>()
             .is_some_and(|dragged| dragged.space == target_space_key && dragged.top_level)
-    })
-    .drag_over::<DraggedItem>(move |tab, dragged, _, cx| {
-        let mut tab = tab
-            .bg(cx.theme().colors().drop_target_background)
-            .border_color(cx.theme().colors().drop_target_border)
-            .border_0();
-        if target_index < dragged.index {
-            tab = tab.border_l_2();
-        } else if target_index > dragged.index {
-            tab = tab.border_r_2();
-        }
-        tab
     })
     .on_drop(move |dragged: &DraggedItem, window, cx| {
         move_tab(Action::MoveWorkspaceTab { space, tab: dragged.tab, target_index }, window, cx);
