@@ -202,12 +202,12 @@ impl Zeddy {
                                 v_flex()
                                     .gap_0p5()
                                     .child(
-                                        Label::new("Open a plugin")
+                                        Label::new("Open a surface")
                                             .size(UI_LABEL_LARGE)
                                             .weight(gpui::FontWeight::SEMIBOLD),
                                     )
                                     .child(
-                                        Label::new("Choose a tool to open in this pane.")
+                                        Label::new("Choose a surface to open in this pane.")
                                             .size(UI_LABEL_DEFAULT)
                                             .color(Color::Muted),
                                     ),
@@ -248,7 +248,7 @@ impl Zeddy {
                                     v_flex()
                                         .gap_0p5()
                                         .child(
-                                            Label::new("No plugins available")
+                                            Label::new("No surfaces available")
                                                 .size(UI_LABEL_DEFAULT)
                                                 .weight(gpui::FontWeight::SEMIBOLD),
                                         )

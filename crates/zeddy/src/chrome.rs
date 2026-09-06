@@ -29,8 +29,8 @@ pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
 
 pub(crate) fn new_plugin_pane_button(id: impl Into<ElementId>, icon_size: IconSize) -> ButtonLike {
     ButtonLike::new(id)
-        .aria_label("New plugin pane")
-        .tooltip(Tooltip::text("New plugin pane"))
+        .aria_label("New surface")
+        .tooltip(Tooltip::text("New surface"))
         .child(Icon::from_path(PLUGIN_LAUNCHER_ICON_PATH).size(icon_size))
 }
 
@@ -59,7 +59,7 @@ impl Render for DraggedNewItem {
             .child(
                 Label::new(match self.kind {
                     NewItemKind::Terminal => "New terminal",
-                    NewItemKind::Plugin => "New plugin",
+                    NewItemKind::Plugin => "New surface",
                 })
                 .size(UI_LABEL_DEFAULT),
             )

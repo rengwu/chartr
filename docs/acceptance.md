@@ -132,7 +132,7 @@ and survives relaunch.
 On platforms with a native system title bar, confirm both controls retain
 their in-app chrome positions.
 
-In tabbed mode, the `+` and adjacent plugin-pane controls follow the last outer tab
+In tabbed mode, the `+` and adjacent surface controls follow the last outer tab
 while they fit. When the tabs overflow, only the tabs scroll: both controls pin
 beside their right edge, while the title-bar controls remain pinned at the
 window's far right. The padded control cell retains a left divider against the
@@ -144,19 +144,23 @@ and trailing controls remain stationary without a one-pixel shift.
 Confirm Browser, Clock, and Hello show their manifest-selected Hugeicons in
 sidebar rows, standalone outer tabs, and pane-local tabs. Grouped outer tabs
 continue to show the split indicator instead of one representative plugin icon.
-Confirm a temporary **New Plugin Pane** tab shows the Full Screen icon in
+Confirm a temporary **New Surface** tab shows the Full Screen icon in
 each of those tab surfaces until a plugin replaces it in place.
 Open that picker and confirm every plugin card shows the same manifest-selected
 Hugeicon beside its plugin name.
-Each pane-local `+` and plugin-pane pair likewise follows its last tab on the left
+Each pane-local `+` and surface pair likewise follows its last tab on the left
 and stays pinned beside the scrolling pane tabs. Outer and pane-local controls
 use the same icon size and padded divider cell; an empty outer strip keeps the
 pair vertically centered at the normal tab-bar height. The muted tab-bar
 background continues after its compact cell and remains the append drop target
 without reserving width; when pane tabs overflow, the controls reach the pane's
-right edge. Confirm each plugin-pane control opens the plugin picker at its indicated
+right edge. Confirm each surface control opens the surface picker at its indicated
 location, including within the selected pane and within an inactive sidebar
 space card.
+Confirm these controls use the **New surface** tooltip, and the picker shows
+**Open a surface** with **Choose a surface to open in this pane.** beneath it.
+With no surfaces available, confirm the picker shows **No surfaces available**.
+The **Plugins** category and plugin management labels in Settings retain their names.
 
 For tab dragging, exercise each pane-body center and edge target, both corner
 choices, before and after insertion on existing tabs, trailing-strip append,
