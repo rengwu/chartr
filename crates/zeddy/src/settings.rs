@@ -396,11 +396,9 @@ pub fn init_themes(settings: &ResolvedSettings, cx: &mut gpui::App) {
     apply_theme(settings, cx);
 }
 
-/// The same operator-facing catalog Chartr-rs exposes. Its palette values are
-/// copied from that implementation: Ayu, Gruvbox, and One follow Zed's bundled
-/// themes; Catppuccin follows its official semantic palette; VS Code follows
-/// the workbench colors. Chartr only adapts those established values into
-/// Zed's richer semantic token model.
+/// Familiar theme families adapted to Chartr's workspace. Foundations, text,
+/// controls, and focus colors are tuned together; sidebar layering has its own
+/// table below so space cards and selected sessions remain distinguishable.
 #[derive(Clone, Copy)]
 struct ThemePalette {
     name: &'static str,
@@ -428,61 +426,61 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         "Ayu Dark",
         Appearance::Dark,
         0x0d1016,
-        0x1f2127,
-        0x3f4043,
-        0xbfbdb6,
-        0x8a8986,
-        0x1f2127,
-        0x3e4043,
-        0x1b4a6e,
-        0x3e4043,
-        0x2d2f34,
-        0xef7177,
-        0x5ac1fe,
-        0xaad84c,
-        0xfeb454,
-        0x696a6a,
-        0xbfbdb6,
+        0x131820,
+        0x36404e,
+        0xd8d5cd,
+        0xa9adb5,
+        0x202731,
+        0x374352,
+        0xe6b450,
+        0x374352,
+        0x2c3541,
+        0xf08080,
+        0xe6b450,
+        0xaacb73,
+        0xe6b450,
+        0x7d8795,
+        0xd8d5cd,
     ),
     ThemePalette::new(
         "Ayu Light",
         Appearance::Light,
-        0xfcfcfc,
-        0xececed,
-        0xcfd1d2,
-        0x5c6166,
-        0x8b8e92,
-        0xececed,
-        0xcfd0d2,
-        0xc4daf6,
-        0xcfd0d2,
-        0xdfe0e1,
-        0xef7271,
-        0x3b9ee5,
-        0x85b304,
-        0xf1ad49,
-        0xa9acae,
-        0x5c6166,
+        0xfcfcfa,
+        0xeceef0,
+        0xbfc5cb,
+        0x343b43,
+        0x59636e,
+        0xf5f6f7,
+        0xdce2e7,
+        0xa66316,
+        0xdce2e7,
+        0xe5e9ed,
+        0xc44545,
+        0xa66316,
+        0x527c23,
+        0x936115,
+        0x717b86,
+        0x343b43,
     ),
     ThemePalette::new(
         "Ayu Mirage",
         Appearance::Dark,
-        0x242835,
-        0x353944,
-        0x53565d,
-        0xcccac2,
-        0x9a9a98,
-        0x353944,
-        0x53565d,
-        0x24556f,
-        0x53565d,
-        0x43464f,
-        0xf18779,
-        0x72cffe,
-        0xd5fe80,
-        0xfecf72,
-        0x7b7d7f,
-        0xcccac2,
+        0x242936,
+        0x1c212c,
+        0x475266,
+        0xd9d7ce,
+        0xb0b7c4,
+        0x2b3342,
+        0x465369,
+        0xeac080,
+        0x465369,
+        0x354154,
+        0xef9385,
+        0xeac080,
+        0xb9d68a,
+        0xeac080,
+        0x8995a8,
+        0xd9d7ce,
     ),
     ThemePalette::new(
         "Catppuccin Frappé",
@@ -511,17 +509,17 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0xe6e9ef,
         0xbcc0cc,
         0x4c4f69,
-        0x6c6f85,
-        0xccd0da,
-        0xbcc0cc,
+        0x606379,
+        0xe9eaf1,
+        0xd8d5e8,
         0x8839ef,
-        0xbcc0cc,
-        0xccd0da,
+        0xd8d5e8,
+        0xe3e1ee,
         0xd20f39,
         0x8839ef,
-        0x40a02b,
-        0xdf8e1d,
-        0x9ca0b0,
+        0x397d27,
+        0x94620f,
+        0x74788d,
         0x4c4f69,
     ),
     ThemePalette::new(
@@ -567,22 +565,22 @@ const THEME_PALETTES: [ThemePalette; 13] = [
     ThemePalette::new(
         "Gruvbox Dark",
         Appearance::Dark,
-        0x282828,
-        0x3a3735,
-        0x5b534d,
-        0xfbf1c7,
-        0xc5b597,
-        0x3a3735,
-        0x5b524c,
-        0x303a36,
-        0x5b524c,
-        0x494340,
-        0xfb4a35,
-        0x83a598,
-        0xb7bb26,
-        0xf9bd2f,
-        0x998b78,
-        0xebdbb2,
+        0x242321,
+        0x1b1b1a,
+        0x494740,
+        0xe3dccb,
+        0xb6afa0,
+        0x2b2a27,
+        0x46443c,
+        0xd8a657,
+        0x46443c,
+        0x35342f,
+        0xe0786c,
+        0xd8a657,
+        0xa9b783,
+        0xd8a657,
+        0x8c887c,
+        0xe3dccb,
     ),
     ThemePalette::new(
         "Gruvbox Light",
@@ -607,42 +605,42 @@ const THEME_PALETTES: [ThemePalette; 13] = [
     ThemePalette::new(
         "One Dark",
         Appearance::Dark,
-        0x282c33,
-        0x2f343e,
-        0x464b57,
-        0xdce0e5,
-        0xa9afbc,
-        0x2e343e,
-        0x454a56,
-        0x47679e,
-        0x454a56,
-        0x363c46,
-        0xd07277,
-        0x74ade8,
-        0xa1c181,
-        0xdec184,
-        0x878a98,
-        0xabb2bf,
+        0x242730,
+        0x1c1f27,
+        0x454b5b,
+        0xdce1ed,
+        0xacb5c8,
+        0x2b303c,
+        0x434c60,
+        0xb5a0e8,
+        0x434c60,
+        0x343c4c,
+        0xe58a94,
+        0xb5a0e8,
+        0xa2c98c,
+        0xe5c286,
+        0x8290a6,
+        0xd0d7e5,
     ),
     ThemePalette::new(
         "One Light",
         Appearance::Light,
-        0xfafafa,
-        0xebebec,
-        0xc9c9ca,
-        0x242529,
-        0x58585a,
-        0xebebec,
-        0xcacaca,
-        0x7d82e8,
-        0xcacaca,
-        0xdfdfe0,
-        0xd36151,
-        0x5c78e2,
-        0x669f59,
-        0xa48819,
-        0x7e8086,
-        0x2a2c33,
+        0xfafbfc,
+        0xe9edf2,
+        0xbcc4d0,
+        0x2c313c,
+        0x555f70,
+        0xf0f2f6,
+        0xd7deeb,
+        0x5264ba,
+        0xd7deeb,
+        0xe3e8f1,
+        0xbd4c49,
+        0x5264ba,
+        0x467b3f,
+        0x866915,
+        0x727d90,
+        0x2c313c,
     ),
     ThemePalette::new(
         "VSCode Dark Modern",
@@ -731,21 +729,21 @@ impl SidebarThemePalette {
 //                                          card       card       session    session
 // Theme                                    inactive   active     hover      active
 const SIDEBAR_THEME_PALETTES: [SidebarThemePalette; 15] = [
-    SidebarThemePalette::new("Ayu Dark", 0x23252a, 0x26282e, 0x27292f, 0x2d2f34),
-    SidebarThemePalette::new("Ayu Light", 0xe9e9ea, 0xe6e6e7, 0xe4e5e6, 0xdfe0e1),
-    SidebarThemePalette::new("Ayu Mirage", 0x393c47, 0x3c404a, 0x3d414b, 0x43464f),
+    SidebarThemePalette::new("Ayu Dark", 0x1d242e, 0x242e3a, 0x2a3542, 0x313e4e),
+    SidebarThemePalette::new("Ayu Light", 0xfafbfc, 0xf3f5f7, 0xe5e9ed, 0xd5dde5),
+    SidebarThemePalette::new("Ayu Mirage", 0x293141, 0x303b4d, 0x374357, 0x404e64),
     SidebarThemePalette::new("Catppuccin Frappé", 0x2f3243, 0x35394b, 0x373b4d, 0x414559),
-    SidebarThemePalette::new("Catppuccin Latte", 0xe0e3ea, 0xd9dde5, 0xd6dae2, 0xccd0da),
+    SidebarThemePalette::new("Catppuccin Latte", 0xf5f6fa, 0xeef0f6, 0xe2e2ed, 0xd9d5e9),
     SidebarThemePalette::new("Catppuccin Macchiato", 0x242738, 0x2a2d40, 0x2c3043, 0x363a4f),
     SidebarThemePalette::new("Catppuccin Mocha", 0x1e1f2d, 0x252535, 0x272838, 0x313244),
-    SidebarThemePalette::new("Gruvbox Dark", 0x3e3a38, 0x423d3b, 0x433e3c, 0x494340),
+    SidebarThemePalette::new("Gruvbox Dark", 0x282724, 0x302f2a, 0x37362f, 0x403e36),
     SidebarThemePalette::new("Gruvbox Light", 0xf0e6c9, 0xf0e6c9, 0xe3d3ac, 0xddcca7),
-    SidebarThemePalette::new("One Dark", 0x313640, 0x333842, 0x333943, 0x363c46),
-    SidebarThemePalette::new("One Light", 0xe8e8e9, 0xe5e5e6, 0xe4e4e5, 0xdfdfe0),
+    SidebarThemePalette::new("One Dark", 0x282e3a, 0x303949, 0x374356, 0x3e4c62),
+    SidebarThemePalette::new("One Light", 0xf9fafc, 0xf0f3f8, 0xe3e8f1, 0xd3dced),
     SidebarThemePalette::new("VSCode Dark Modern", 0x1d1d1d, 0x222222, 0x232323, 0x2b2b2b),
-    SidebarThemePalette::new("VSCode Dark Plus", 0x262728, 0x28292a, 0x282a2b, 0x2a2d2e),
-    SidebarThemePalette::new(CHARTR_DARK, 0x313640, 0x333842, 0x333943, 0x363c46),
-    SidebarThemePalette::new(CHARTR_LIGHT, 0xf9fafb, 0xf4f5f7, 0xf1f3f5, 0xe8ebef),
+    SidebarThemePalette::new("VSCode Dark Plus", 0x2c2c2f, 0x323235, 0x38383c, 0x3f3f44),
+    SidebarThemePalette::new(CHARTR_DARK, 0x353c47, 0x39414e, 0x3e4857, 0x444f61),
+    SidebarThemePalette::new(CHARTR_LIGHT, 0xedf0f4, 0xe5eaf2, 0xd6deea, 0xc6d3e6),
 ];
 
 pub fn sidebar_theme_colors(theme: &Theme) -> SidebarThemeColors {
@@ -939,12 +937,14 @@ fn chartr_light(dark: &Theme) -> Theme {
     let colors = &mut light.styles.colors;
     let canvas = gpui::rgb(0xf7f8fa).into();
     let surface = gpui::rgb(0xffffff).into();
-    let raised = gpui::rgb(0xf1f3f5).into();
-    let hover = gpui::rgb(0xe8ebef).into();
-    let selected = gpui::rgb(0xdfe3e8).into();
-    let border = gpui::rgb(0xd4d8de).into();
+    let raised = gpui::rgb(0xeef1f5).into();
+    let hover = gpui::rgb(0xe3e8f0).into();
+    let selected = gpui::rgb(0xd6dfed).into();
+    let border = gpui::rgb(0xbcc6d4).into();
     let text = gpui::rgb(0x24272d).into();
-    let muted = gpui::rgb(0x66707d).into();
+    let muted = gpui::rgb(0x505d70).into();
+
+    let accent = gpui::rgb(0x4263c7).into();
 
     colors.background = canvas;
     colors.surface_background = surface;
@@ -956,6 +956,14 @@ fn chartr_light(dark: &Theme) -> Theme {
     colors.ghost_element_hover = hover;
     colors.ghost_element_active = selected;
     colors.ghost_element_selected = selected;
+    colors.element_selection_background = selected;
+    colors.drop_target_background = selected;
+    colors.drop_target_border = accent;
+    colors.border_focused = accent;
+    colors.border_selected = accent;
+    colors.panel_focused_border = accent;
+    colors.panel_indent_guide_active = accent;
+    colors.link_text_hover = accent;
     colors.border = border;
     colors.border_variant = border;
     colors.pane_group_border = border;
@@ -987,6 +995,24 @@ fn chartr_light(dark: &Theme) -> Theme {
     colors.terminal_foreground = text;
     colors.terminal_bright_foreground = text;
     colors.terminal_dim_foreground = muted;
+    // The dark source's pastel status colors disappear on a light canvas.
+    let error = gpui::rgb(0xbd4c49).into();
+    let success = gpui::rgb(0x467b3f).into();
+    let warning = gpui::rgb(0x866915).into();
+    colors.version_control_deleted = error;
+    colors.version_control_added = success;
+    colors.version_control_modified = warning;
+    let status = &mut light.styles.status;
+    status.info = accent;
+    status.info_border = accent;
+    status.error = error;
+    status.error_border = error;
+    status.success = success;
+    status.success_border = success;
+    status.warning = warning;
+    status.warning_border = warning;
+    status.hidden = muted;
+    status.ignored = muted;
     light
 }
 

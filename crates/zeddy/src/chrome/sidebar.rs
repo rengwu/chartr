@@ -92,6 +92,8 @@ pub fn render(
             .w_full()
             .min_w_0()
             .pl_1()
+            // Keep card actions clear of the overlaid scrollbar's hit target.
+            .when(!space.is_free, |heading| heading.pr_2())
             .pt_0()
             .pb_1()
             .justify_between()
@@ -303,6 +305,7 @@ pub fn render(
         .child(spaces_header)
         .child(
             v_flex()
+                .group("spaces-scroll-container")
                 .relative()
                 .flex_1()
                 .min_h_0()
@@ -335,13 +338,19 @@ pub fn render(
                     .w_full()
                     .h(px(1.)),
                 )
-                .custom_scrollbars(
-                    Scrollbars::always_visible(ScrollAxes::Vertical)
-                        .id("spaces-scrollbar")
-                        .tracked_scroll_handle(sorter.scroll_handle())
-                        .notify_content(),
-                    window,
-                    cx,
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .visible_on_hover("spaces-scroll-container")
+                        .custom_scrollbars(
+                            Scrollbars::always_visible(ScrollAxes::Vertical)
+                                .id("spaces-scrollbar")
+                                .tracked_scroll_handle(sorter.scroll_handle())
+                                .notify_content(),
+                            window,
+                            cx,
+                        ),
                 ),
         )
         .children(free_sessions)
