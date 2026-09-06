@@ -29,6 +29,9 @@ pub fn render(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
+    let strip_height = Tab::container_height(cx) + px(4.);
+    // Center tabs above the strip's one-pixel bottom border.
+    let content_height = strip_height - px(1.);
     // Use stable workspace identities so hover cannot move to an unrelated
     // tab when entries are reordered, closed, or the current space changes.
     let hovered_tab = window.use_keyed_state("workspace-tab-hover", cx, |_, _| HoveredTab::None);
@@ -105,8 +108,9 @@ pub fn render(
         h_flex()
             .id("workspace-tab-list")
             .min_w_0()
-            .h(Tab::container_height(cx))
+            .h(content_height)
             .px_1()
+            .py(px(2.))
             .flex_shrink_1()
             .overflow_x_scroll(),
         SortAxis::Horizontal,
@@ -122,17 +126,19 @@ pub fn render(
             }
         },
     );
-    let tabs_with_pinned_new_item = h_flex().w_full().min_w_0().h_full().child(list).child(
-        h_flex()
-            .h(Tab::container_height(cx))
-            .flex_none()
-            .px(DynamicSpacing::Base04.rems(cx))
-            .gap_px()
-            .child(new_item)
-            .child(new_plugin_pane),
-    );
+    let tabs_with_pinned_new_item =
+        h_flex().w_full().min_w_0().h(content_height).child(list).child(
+            h_flex()
+                .h(content_height)
+                .flex_none()
+                .px(DynamicSpacing::Base04.rems(cx))
+                .gap_px()
+                .child(new_item)
+                .child(new_plugin_pane),
+        );
 
-    let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
+    let tab_bar =
+        TabBar::new("workspace-tabs").height(strip_height).child(tabs_with_pinned_new_item);
     let tab_bar = match controls {
         Some((space_switcher, view_menu)) => tab_bar
             .start_child(
