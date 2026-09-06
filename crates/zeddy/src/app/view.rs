@@ -58,6 +58,7 @@ impl Render for Zeddy {
                         emit.clone(),
                         &self.space_sorter,
                         self.sidebar_width,
+                        window,
                         cx,
                     ))
                     .child(workspace)
@@ -80,6 +81,7 @@ impl Render for Zeddy {
                         new_item,
                         new_plugin_pane,
                         emit,
+                        window,
                         cx,
                     ))
                     .child(workspace)

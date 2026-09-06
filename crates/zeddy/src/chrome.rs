@@ -14,7 +14,7 @@ use crate::{
     fonts::UI_LABEL_DEFAULT,
     workspace::{ItemId, PaneId, WorkspaceTabId},
 };
-use gpui::{ElementId, EntityId, Pixels, Role, SharedString};
+use gpui::{ElementId, EntityId, Pixels, Role, SharedString, Stateful, transparent_black};
 use ui::{ButtonLike, CommonAnimationExt, IconButton, Tab, TabPosition, Tooltip, prelude::*};
 use zeddy_herdr::control::SessionStatus;
 
@@ -238,6 +238,51 @@ impl<'a> ItemTab<'a> {
             ))
             .end_slot::<AnyElement>(self.close_slot)
             .child(tab_label(self.title, self.selected))
+    }
+
+    /// Inset, rounded variant for the outer strip in Tabbed mode only.
+    /// Keep the same slots and semantics as pane tabs, with a constant border
+    /// and label width so selection never shifts neighboring tabs.
+    pub(crate) fn build_rounded(self, hovered: bool, cx: &App) -> Stateful<Div> {
+        let colors = cx.theme().colors();
+        h_flex()
+            .id(self.id)
+            .group("")
+            .role(Role::Tab)
+            .aria_label(self.aria_label)
+            .aria_selected(self.selected)
+            .flex_none()
+            .h(Tab::container_height(cx) - px(6.))
+            .px(DynamicSpacing::Base06.px(cx))
+            .gap(DynamicSpacing::Base04.rems(cx))
+            .rounded_full()
+            .border_1()
+            .border_color(if hovered {
+                if self.selected { colors.text_muted } else { colors.border_variant }
+            } else if self.selected {
+                colors.border
+            } else {
+                transparent_black()
+            })
+            .bg(if self.selected {
+                colors.element_selected
+            } else if hovered {
+                colors.element_hover
+            } else {
+                transparent_black()
+            })
+            .text_color(if self.selected { colors.text } else { colors.text_muted })
+            .cursor_pointer()
+            .child(h_flex().size(px(12.)).justify_center().child(item_indicator(
+                self.activity,
+                self.icon_path,
+                self.grouped,
+                self.space,
+                self.key,
+                cx,
+            )))
+            .child(tab_label(self.title, false))
+            .child(h_flex().size(px(14.)).justify_center().children(self.close_slot))
     }
 }
 

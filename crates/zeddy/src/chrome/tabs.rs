@@ -5,16 +5,18 @@
 //! squeezed in — the dot still carries the state, and the title carries the
 //! identity.
 
-use ui::{ButtonSize, IconButtonShape, TabBar, Tooltip, prelude::*};
+use gpui::Entity;
+use ui::{ButtonSize, IconButtonShape, Tab, TabBar, Tooltip, prelude::*};
 
 use super::Emit;
 
-use super::{
-    Action, DraggedItem, Entry, ItemTab, dragged_item_preview, new_item_cell, tab_position,
-};
+use super::{Action, DraggedItem, Entry, ItemTab, dragged_item_preview, tab_position};
 use crate::components::{ContextMenu, popup_right_click_menu};
 use crate::settings::SettingsStore;
+use crate::workspace::WorkspaceTabId;
 const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
+
+type HoveredTab = Option<(gpui::EntityId, WorkspaceTabId)>;
 
 pub fn render(
     entries: &[Entry],
@@ -22,10 +24,14 @@ pub fn render(
     new_item: AnyElement,
     new_plugin_pane: AnyElement,
     on: Emit,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> impl IntoElement {
+    // Use stable workspace identities so hover cannot move to an unrelated
+    // tab when entries are reordered, closed, or the current space changes.
+    let hovered_tab = window.use_keyed_state("workspace-tab-hover", cx, |_, _| HoveredTab::None);
+    let hovered = *hovered_tab.read(cx);
     let active_index = entries.iter().position(|entry| entry.selected);
-    let selected_is_grouped = entries.iter().any(|entry| entry.selected && entry.grouped);
     let tabs_with_pinned_new_item = h_flex()
         .w_full()
         .min_w_0()
@@ -34,13 +40,52 @@ pub fn render(
             h_flex()
                 .id("workspace-tab-list")
                 .min_w_0()
+                .h(Tab::container_height(cx))
+                .px_1()
                 .flex_shrink_1()
                 .overflow_x_scroll()
-                .children(entries.iter().enumerate().map(|(index, entry)| {
-                    tab(index, entries.len(), active_index, entry, on.clone(), cx)
+                .children(entries.iter().enumerate().flat_map(|(index, entry)| {
+                    let separator = index.checked_sub(1).map(|previous| {
+                        let previous = &entries[previous];
+                        let visible = !previous.selected
+                            && !entry.selected
+                            && hovered != Some((previous.space, previous.tab))
+                            && hovered != Some((entry.space, entry.tab));
+                        // Reserve the gap even when hidden, keeping tab hit
+                        // targets stationary as either neighbor is hovered.
+                        h_flex()
+                            .flex_none()
+                            .w_1()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .w(px(1.))
+                                    .h(px(12.))
+                                    .bg(cx.theme().colors().border)
+                                    .opacity(if visible { 1. } else { 0. }),
+                            )
+                            .into_any_element()
+                    });
+                    separator.into_iter().chain(std::iter::once(tab(
+                        index,
+                        entries.len(),
+                        active_index,
+                        entry,
+                        &hovered_tab,
+                        on.clone(),
+                        cx,
+                    )))
                 })),
         )
-        .child(new_item_cell(h_flex().gap_px().child(new_item).child(new_plugin_pane), cx));
+        .child(
+            h_flex()
+                .h(Tab::container_height(cx))
+                .flex_none()
+                .px(DynamicSpacing::Base04.rems(cx))
+                .gap_px()
+                .child(new_item)
+                .child(new_plugin_pane),
+        );
 
     let tab_bar = TabBar::new("workspace-tabs").child(tabs_with_pinned_new_item);
     let tab_bar = match controls {
@@ -53,14 +98,9 @@ pub fn render(
         None => tab_bar.into_any_element(),
     };
 
-    div().relative().w_full().flex_none().child(tab_bar).when(selected_is_grouped, |tab_bar| {
-        // Selected Zed tabs omit their bottom border to join their content.
-        // A group opens onto another tab strip instead, so paint over that
-        // gap after the tabs while sharing the existing strip border's edge.
-        tab_bar.child(
-            div().absolute().left_0().right_0().bottom_0().h(px(1.)).bg(cx.theme().colors().border),
-        )
-    })
+    // Inset tabs leave the strip's bottom border continuous for standalone
+    // items and pane groups alike.
+    div().relative().w_full().flex_none().child(tab_bar)
 }
 
 fn tab(
@@ -68,6 +108,7 @@ fn tab(
     count: usize,
     active_index: Option<usize>,
     entry: &Entry,
+    hovered_tab: &Entity<HoveredTab>,
     on: Emit,
     cx: &App,
 ) -> AnyElement {
@@ -87,6 +128,9 @@ fn tab(
     let close_space = entry.space;
     let target_index = index;
     let target_space_key = entry.space_key.clone();
+    let hover_key = (entry.space, entry.tab);
+    let hovered = *hovered_tab.read(cx) == Some(hover_key);
+    let hovered_tab = hovered_tab.clone();
     let dragged = DraggedItem {
         space: entry.space_key.clone(),
         tab: entry.tab,
@@ -119,7 +163,7 @@ fn tab(
     let aria_label =
         if entry.grouped { format!("Pane group: {}", entry.title) } else { entry.title.clone() };
     let tab = ItemTab::new(
-        ("tab", index),
+        format!("workspace-tab-{space:?}-{}", entry.tab.get()),
         entry.title.clone(),
         entry.selected,
         position,
@@ -131,7 +175,22 @@ fn tab(
     .icon_path(entry.icon_path.clone())
     .grouped(entry.grouped)
     .close_slot(close_slot)
-    .build(cx)
+    .build_rounded(hovered, cx)
+    .on_hover(move |is_hovered, window, cx| {
+        hovered_tab.update(cx, |hovered, _| {
+            let next = if *is_hovered {
+                Some(hover_key)
+            } else if *hovered == Some(hover_key) {
+                None
+            } else {
+                *hovered
+            };
+            if *hovered != next {
+                *hovered = next;
+                window.refresh();
+            }
+        });
+    })
     .on_click(move |_, window, cx| {
         select_item(Action::Select { space: Some(space), item: select }, window, cx)
     })

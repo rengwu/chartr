@@ -4,8 +4,8 @@
 //! tab cannot hold — the agent's name under the title, and a close button that
 //! is not fighting the title for space — so this chrome shows them.
 
-use gpui::{EntityId, MouseButton, Rems, Role, deferred, px, transparent_black};
-use ui::{IconButtonShape, Tooltip, prelude::*};
+use gpui::{EntityId, MouseButton, Rems, Role, canvas, deferred, fill, px, transparent_black};
+use ui::{IconButtonShape, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*};
 
 use super::Emit;
 use crate::components::popup_right_click_menu;
@@ -34,7 +34,8 @@ pub fn render(
     on: Emit,
     sorter: &SpaceSorter,
     width: f32,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> impl IntoElement {
     let colors = cx.theme().colors();
     let sidebar_colors = sidebar_theme_colors(cx.theme());
@@ -65,6 +66,8 @@ pub fn render(
         );
     let header = controls
         .map(|(space_switcher, view_menu)| header(space_switcher, view_menu).into_any_element());
+    let scroll_handle = sorter.scroll_handle().clone();
+    let scroll_border = colors.border;
     let mut index = 0;
     let now = cx.background_executor().now();
     let reduce_motion = cx.reduce_motion();
@@ -268,15 +271,46 @@ pub fn render(
         .child(spaces_header)
         .child(
             v_flex()
-                .id("sessions")
+                .relative()
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scroll()
-                .track_scroll(sorter.scroll_handle())
-                .pb_2()
-                .px_1p5()
-                .gap(CARD_GAP)
-                .children(cards),
+                .child(
+                    v_flex()
+                        .id("sessions")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .track_scroll(sorter.scroll_handle())
+                        .pb_2()
+                        .px_1p5()
+                        .gap(CARD_GAP)
+                        .children(cards),
+                )
+                .child(
+                    // Read the offset at paint time, after scrolling and layout
+                    // have clamped it. The overlay never changes card geometry.
+                    canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            if scroll_handle.offset().y < px(0.) {
+                                window.paint_quad(fill(bounds, scroll_border));
+                            }
+                        },
+                    )
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(1.)),
+                )
+                .custom_scrollbars(
+                    Scrollbars::always_visible(ScrollAxes::Vertical)
+                        .id("spaces-scrollbar")
+                        .tracked_scroll_handle(sorter.scroll_handle())
+                        .notify_content(),
+                    window,
+                    cx,
+                ),
         )
         .children(free_sessions)
         .child(deferred(
