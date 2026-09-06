@@ -78,6 +78,7 @@ const WINDOW_STATE_IVAR: &str = "windowState";
 
 static mut WINDOW_CLASS: *const Class = ptr::null();
 static mut PANEL_CLASS: *const Class = ptr::null();
+static mut PASSIVE_PANEL_CLASS: *const Class = ptr::null();
 static mut VIEW_CLASS: *const Class = ptr::null();
 static mut BLURRED_VIEW_CLASS: *const Class = ptr::null();
 
@@ -131,6 +132,18 @@ unsafe fn build_classes() {
     unsafe {
         WINDOW_CLASS = build_window_class("GPUIWindow", class!(NSWindow));
         PANEL_CLASS = build_window_class("GPUIPanel", class!(NSPanel));
+        PASSIVE_PANEL_CLASS = {
+            let mut decl = ClassDecl::new("GPUIPassivePanel", &*PANEL_CLASS).unwrap();
+            decl.add_method(
+                sel!(canBecomeMainWindow),
+                no as extern "C" fn(&Object, Sel) -> BOOL,
+            );
+            decl.add_method(
+                sel!(canBecomeKeyWindow),
+                no as extern "C" fn(&Object, Sel) -> BOOL,
+            );
+            decl.register()
+        };
         VIEW_CLASS = {
             let mut decl = ClassDecl::new("GPUIView", class!(NSView)).unwrap();
             decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
@@ -1106,6 +1119,8 @@ impl MacWindow {
             }
 
             let is_anchored_popup = matches!(kind, WindowKind::AnchoredPopup(_));
+            let is_passive_popup = !focus
+                && matches!(&kind, WindowKind::AnchoredPopup(options) if !options.grab);
             let mut style_mask;
             if is_anchored_popup {
                 style_mask = NSWindowStyleMask::NSBorderlessWindowMask;
@@ -1135,7 +1150,11 @@ impl MacWindow {
                 }
                 WindowKind::PopUp | WindowKind::AnchoredPopup(_) => {
                     style_mask |= NSWindowStyleMaskNonactivatingPanel;
-                    msg_send![PANEL_CLASS, alloc]
+                    if is_passive_popup {
+                        msg_send![PASSIVE_PANEL_CLASS, alloc]
+                    } else {
+                        msg_send![PANEL_CLASS, alloc]
+                    }
                 }
                 WindowKind::Floating | WindowKind::Dialog => {
                     msg_send![PANEL_CLASS, alloc]
@@ -1269,7 +1288,7 @@ impl MacWindow {
                 accesskit_adapter: None,
                 sheet_parent: None,
                 popup_parent: None,
-                close_on_resign_key: is_anchored_popup,
+                close_on_resign_key: is_anchored_popup && !is_passive_popup,
             })));
 
             (*native_window).set_ivar(
@@ -1368,6 +1387,11 @@ impl MacWindow {
 
                     if is_anchored_popup {
                         let _: () = msg_send![native_window, setHasShadow: NO];
+                    }
+                    if is_passive_popup {
+                        // `focus: false` only controls initial presentation. Tooltips must also
+                        // pass through clicks in their transparent outset and never become key.
+                        let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
                     }
                 }
                 WindowKind::Dialog => {
@@ -2495,6 +2519,10 @@ unsafe fn drop_window_state(object: &Object) {
 
 extern "C" fn yes(_: &Object, _: Sel) -> BOOL {
     YES
+}
+
+extern "C" fn no(_: &Object, _: Sel) -> BOOL {
+    NO
 }
 
 extern "C" fn dealloc_window(this: &Object, _: Sel) {
