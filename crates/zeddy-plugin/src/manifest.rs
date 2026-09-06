@@ -106,7 +106,7 @@ pub enum Kind {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Dependency {
     pub plugin: String,
-    /// The feature needing this provider. Other features remain usable.
+    /// A short explanation of why this required provider is needed.
     pub feature: String,
 }
 
@@ -119,6 +119,9 @@ pub struct Manifest {
     /// id are the same plugin at different versions.
     pub id: String,
     pub name: String,
+    /// Short user-facing summary shown in the plugin list.
+    #[serde(default)]
+    pub description: String,
     pub version: String,
     pub kind: Kind,
     /// The canonical Hugeicons export name for this plugin's tab icon. The
@@ -129,7 +132,7 @@ pub struct Manifest {
     pub capabilities: Capabilities,
     #[serde(default)]
     pub permissions: Permissions,
-    /// Feature prerequisites, never an instruction to install or enable packages.
+    /// Required plugins, never an instruction to install or enable packages.
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
     /// Hosted only: the Chartr-provided surface to activate.

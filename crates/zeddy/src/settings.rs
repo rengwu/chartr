@@ -126,6 +126,8 @@ pub struct PluginSettingsContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub uninstalled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unsafe_filesystem: Option<bool>,
     #[serde(flatten)]
     extra: toml::Table,
@@ -134,12 +136,13 @@ pub struct PluginSettingsContent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PluginSettings {
     pub enabled: bool,
+    pub uninstalled: bool,
     pub unsafe_filesystem: bool,
 }
 
 impl Default for PluginSettings {
     fn default() -> Self {
-        Self { enabled: true, unsafe_filesystem: false }
+        Self { enabled: true, uninstalled: false, unsafe_filesystem: false }
     }
 }
 
@@ -241,6 +244,7 @@ impl SettingsContent {
                         id.clone(),
                         PluginSettings {
                             enabled: content.enabled.unwrap_or(true),
+                            uninstalled: content.uninstalled.unwrap_or(false),
                             unsafe_filesystem: content.unsafe_filesystem.unwrap_or(false),
                         },
                     )
@@ -1174,6 +1178,7 @@ mod tests {
                     "com.example.notes".to_owned(),
                     PluginSettingsContent {
                         enabled: Some(false),
+                        uninstalled: Some(true),
                         unsafe_filesystem: Some(true),
                         ..PluginSettingsContent::default()
                     },
@@ -1183,6 +1188,7 @@ mod tests {
         let relaunched = SettingsStore::load(file);
         let notes = relaunched.resolved().plugin("com.example.notes");
         assert!(!notes.enabled);
+        assert!(notes.uninstalled);
         assert!(notes.unsafe_filesystem);
         assert_eq!(
             relaunched.resolved().plugin("com.example.other"),

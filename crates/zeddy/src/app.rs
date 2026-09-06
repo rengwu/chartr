@@ -94,9 +94,9 @@ struct ErrorNotice {
 pub(crate) struct SettingsPluginDescriptor {
     pub manifest: zeddy_plugin::manifest::Manifest,
     pub installation: Option<zeddy_plugin_host::Installation>,
-    pub removable: bool,
+    pub prerequisite_error: Option<String>,
+    pub bundled: bool,
     pub enabled: bool,
-    pub has_settings: bool,
 }
 
 #[derive(Clone)]
@@ -226,7 +226,9 @@ impl Zeddy {
         .detach();
         let settings = cx.global::<SettingsStore>().clone();
         cx.observe_global::<SettingsStore>(|this, cx| {
+            let previous = this.settings.resolved().clone();
             this.settings = cx.global::<SettingsStore>().clone();
+            this.sync_plugin_settings(&previous, cx);
             cx.set_reduce_motion(this.settings.resolved().reduce_motion);
             cx.notify();
         })

@@ -1,6 +1,7 @@
 manifest_version = 2
 id = "com.example.clock"
 name = "Clock"
+description = "Keep track of the time in your workspace."
 version = "0.1.0"
 kind = "web"
 icon = "Clock01Icon"

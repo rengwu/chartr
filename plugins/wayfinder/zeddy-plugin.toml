@@ -1,6 +1,7 @@
 manifest_version = 2
 id = "com.chartr.wayfinder"
 name = "Wayfinder"
+description = "Plan work, track tickets, and launch agents with shared skills."
 version = "0.1.0"
 kind = "web"
 entry = "index.html"

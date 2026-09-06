@@ -54,14 +54,28 @@ have no record. This record is for display, not verification of
 the author or package contents. Updating means installing the source again;
 there is no automatic update or version-history service.
 
-**Uninstall** in Settings closes the plugin's panes and configuration view,
-disables it, and removes its installed package and any pending update. Source
-repositories, plugin data, and preferences are kept. Reinstallation stays
-disabled until the user enables it. If removal fails, Settings reports the error
-and leaves the plugin disabled for retry. Bundled plugins can be disabled; an
-installed override can be removed, after which the bundled copy is available
-again, disabled, on the next startup. A newly queued plugin appears in the
-catalog after restart.
+Each plugin has exactly one entry in Settings: its name and trash, gear, and
+enable controls on the first line, then a short `description` that wraps across
+the full width. Prerequisite errors appear below the description. The host owns
+this layout; plugins cannot add extra rows. The gear opens the plugin's single
+configuration page, combining its optional native settings view or web
+`settings_entry` with package details, prerequisite setup links and host permissions.
+
+**Uninstall** confirms removal, closes the plugin's panes and configuration view,
+and removes its installed and bundled packages and any pending update. Source
+repositories, plugin data, and preferences are kept. Bundled removals are saved
+as `uninstalled = true` in that plugin's settings so they stay removed on restart.
+To restore a compiled-in bundle, clear that marker and restart; it remains disabled
+until enabled. Reinstalling a hosted or web package also leaves it disabled.
+If removal fails, Settings reports the error and leaves the plugin disabled for
+retry. A newly queued plugin appears in the catalog after restart.
+
+Disabling or uninstalling a prerequisite first prompts with the complete list of
+dependent plugins, including indirect dependents. Confirmation disables that
+entire cascade, closes its panes, and persists the disabled state; cancellation
+changes nothing. Dependents remain installed and are never enabled implicitly
+when their provider returns. Missing, disabled, or cyclic prerequisites block
+enabling, including during startup. These rules apply to all plugin tiers.
 
 Hosted and web packages are architecture-independent and need no release
 binary. Installing Chartr Browser is therefore only a shallow clone or folder
@@ -90,6 +104,7 @@ A complete web example (optional fields shown with their defaults):
 manifest_version = 2
 id = "com.example.notes"
 name = "Notes"
+description = "Keep notes alongside your work."
 version = "0.1.0"
 kind = "web"
 icon = "NoteIcon"             # package includes icons/NoteIcon.svg
@@ -143,9 +158,9 @@ arbitrary project writes, raw terminal input, process execution, or unrestricted
 access to native services. It is still an execution capability: a registered
 agent can carry out the workflow's prompt with its normal permissions.
 
-## Feature prerequisites and native services
+## Plugin prerequisites and native services
 
-A plugin can declare feature dependencies without hiding its independent panes:
+A plugin declares required providers with a short explanation of each prerequisite:
 
 ```toml
 [[dependencies]]
@@ -159,8 +174,8 @@ feature = "Ticket methods"
 
 Settings displays the provider and feature; missing providers are never
 automatically installed or enabled. Consumers check configuration as well as
-availability and explain how to finish setup. This metadata is descriptive,
-not package-version resolution or automatic startup ordering.
+availability and explain how to finish setup. The host enforces these prerequisites
+and activates providers first at startup; it does not resolve package versions.
 
 Trusted native plugins can return `ServiceExport::new(service)` from their
 optional `Plugin::services` method. `InstanceContext.services.get::<T>(plugin_id)`

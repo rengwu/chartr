@@ -176,7 +176,9 @@ pub fn uninstall(id: &str, paths: &Paths) -> Result<()> {
     {
         bail!("invalid plugin directory name");
     }
-    for directory in [pending_root(paths).join(id), paths.installed.join(id)] {
+    for directory in
+        [pending_root(paths).join(id), paths.installed.join(id), paths.bundled.join(id)]
+    {
         match fs::remove_dir_all(&directory) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -622,7 +624,7 @@ mod tests {
         assert!(activate_pending(&paths).is_empty());
         assert_eq!(fs::read_to_string(data).unwrap(), "saved state");
         assert_eq!(fs::read_to_string(source.join("index.html")).unwrap(), "new");
-        assert!(paths.bundled.join(id).exists());
+        assert!(!paths.bundled.join(id).exists());
         uninstall(id, &paths).unwrap();
     }
 

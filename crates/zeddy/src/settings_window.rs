@@ -16,8 +16,9 @@ use gpui::{
     actions, px, size,
 };
 use ui::{
-    Banner, Button, ButtonSize, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, PopoverMenu,
-    RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
+    Banner, Button, ButtonSize, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton,
+    PopoverMenu, RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior,
+    Tooltip, prelude::*,
 };
 
 use crate::{
@@ -144,7 +145,7 @@ pub struct SettingsWindow {
     original_window: Option<WindowHandle<Zeddy>>,
     original: WeakEntity<Zeddy>,
     page: SettingsPage,
-    plugin_settings: Option<(String, AnyView)>,
+    plugin_settings: Option<(String, Option<AnyView>)>,
     git_install_open: bool,
     git_url_input: Entity<TextInput>,
     plugin_operation: Option<String>,
@@ -190,6 +191,12 @@ impl SettingsWindow {
         .detach();
         cx.observe_global_in::<SettingsStore>(window, |this, window, cx| {
             this.sync_font_size_inputs(window, cx);
+            if this.plugin_settings.as_ref().is_some_and(|(id, _)| {
+                let settings = cx.global::<SettingsStore>().resolved().plugin(id);
+                !settings.enabled || settings.uninstalled
+            }) {
+                this.plugin_settings = None;
+            }
             cx.notify();
         })
         .detach();
@@ -630,19 +637,8 @@ impl SettingsWindow {
     }
 
     fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.page == SettingsPage::Plugins
-            && let Some((plugin, view)) = self.plugin_settings.as_ref()
-        {
-            let back = cx.listener(|this, _, _, cx| {
-                this.plugin_settings = None;
-                cx.notify();
-            });
-            return v_flex()
-                .gap_3()
-                .child(settings_button("plugin-settings-back", "Back to plugins").on_click(back))
-                .child(Label::new(plugin.clone()).size(UI_LABEL_SMALL).color(Color::Muted))
-                .child(div().min_h(px(320.)).child(view.clone()))
-                .into_any_element();
+        if self.page == SettingsPage::Plugins && self.plugin_settings.is_some() {
+            return self.plugin_configuration_page(window, cx);
         }
         match self.page {
             SettingsPage::General => self.general_page(cx),
@@ -686,6 +682,7 @@ impl Render for SettingsWindow {
             .collect();
         let unreadable = cx.global::<SettingsStore>().unreadable().map(str::to_owned);
         let page_title = self.page.title();
+        let show_page_title = self.page != SettingsPage::Plugins || self.plugin_settings.is_none();
         let content = self.content(window, cx);
 
         div()
@@ -741,7 +738,9 @@ impl Render for SettingsWindow {
                                     .max_w(px(720.))
                                     .p_6()
                                     .gap_4()
-                                    .child(Label::new(page_title).size(UI_LABEL_LARGE))
+                                    .when(show_page_title, |view| {
+                                        view.child(Label::new(page_title).size(UI_LABEL_LARGE))
+                                    })
                                     .when_some(unreadable, |view, problem| {
                                         view.child(
                                             Banner::new()

@@ -55,10 +55,47 @@ impl Zeddy {
         self.request_backend_restart(window, cx);
     }
 
+    /// Apply global plugin changes to every workspace catalog and close stale views.
+    pub(super) fn sync_plugin_settings(
+        &mut self,
+        previous: &crate::settings::ResolvedSettings,
+        cx: &mut Context<Self>,
+    ) {
+        let current = self.settings.resolved().clone();
+        let ids: Vec<_> =
+            self.catalog.loaded.keys().chain(self.catalog.disabled.keys()).cloned().collect();
+        for id in &ids {
+            let old = previous.plugin(id);
+            let new = current.plugin(id);
+            if !new.enabled || (new.uninstalled && !old.uninstalled) {
+                for dependent in self.catalog.dependents(id) {
+                    self.close_plugin_instances(&dependent, cx);
+                }
+                self.close_plugin_instances(id, cx);
+                self.catalog.disable(id);
+            } else if new.unsafe_filesystem != old.unsafe_filesystem {
+                self.close_plugin_instances(id, cx);
+            }
+            if new.uninstalled && !old.uninstalled {
+                self.catalog.disabled.remove(id);
+            }
+        }
+        self.catalog.rejected.retain(|rejected| {
+            let Some(id) = rejected.dir.file_name().and_then(|name| name.to_str()) else {
+                return true;
+            };
+            !current.plugin(id).uninstalled || previous.plugin(id).uninstalled
+        });
+        self.catalog.enable_requested(
+            &plugin_paths(),
+            |id| current.plugin(id).enabled && !previous.plugin(id).enabled,
+            cx,
+        );
+    }
+
     pub(crate) fn settings_plugins(
         &self,
     ) -> (Vec<SettingsPluginDescriptor>, Vec<SettingsPluginRejection>) {
-        let paths = plugin_paths();
         let mut descriptors: Vec<_> = self
             .catalog
             .loaded
@@ -66,16 +103,16 @@ impl Zeddy {
             .map(|loaded| SettingsPluginDescriptor {
                 manifest: loaded.manifest.clone(),
                 installation: loaded.installation.clone(),
-                removable: loaded.dir == paths.installed.join(&loaded.manifest.id),
+                prerequisite_error: self.catalog.prerequisite_error(&loaded.manifest.id),
                 enabled: true,
-                has_settings: loaded.has_settings,
+                bundled: loaded.dir == plugin_paths().bundled.join(&loaded.manifest.id),
             })
             .chain(self.catalog.disabled.values().map(|disabled| SettingsPluginDescriptor {
                 manifest: disabled.manifest.clone(),
                 installation: disabled.installation.clone(),
-                removable: disabled.dir == paths.installed.join(&disabled.manifest.id),
+                prerequisite_error: self.catalog.prerequisite_error(&disabled.manifest.id),
                 enabled: false,
-                has_settings: false,
+                bundled: disabled.dir == plugin_paths().bundled.join(&disabled.manifest.id),
             }))
             .collect();
         descriptors.sort_by(|left, right| left.manifest.name.cmp(&right.manifest.name));
@@ -98,6 +135,7 @@ impl Zeddy {
     ) -> Result<gpui::Task<Result<(), String>>, String> {
         let paths = plugin_paths();
         let installed = paths.installed.join(&plugin);
+        let bundled = paths.bundled.join(&plugin);
         let directory = self
             .catalog
             .get(&plugin)
@@ -107,23 +145,25 @@ impl Zeddy {
                 self.catalog
                     .rejected
                     .iter()
-                    .find(|rejected| rejected.dir == installed)
+                    .find(|rejected| rejected.dir == installed || rejected.dir == bundled)
                     .map(|rejected| &rejected.dir)
             });
-        if directory != Some(&installed) {
-            return Err(
-                "Only installed packages can be uninstalled; bundled plugins can be disabled."
-                    .into(),
-            );
+        if directory != Some(&installed) && directory != Some(&bundled) {
+            return Err("That plugin is no longer installed.".into());
         }
+        let was_uninstalled = self.settings.resolved().plugin(&plugin).uninstalled;
         self.settings_set_plugin_enabled(plugin.clone(), false, cx)?;
+        crate::settings::update_global(cx, |content| {
+            content.plugins.entry(plugin.clone()).or_default().uninstalled = Some(true);
+        })
+        .map_err(|error| error.to_string())?;
         // Do not leave an Enable control for a package being removed.
         let disabled = self.catalog.disabled.remove(&plugin);
         let rejected = self
             .catalog
             .rejected
             .iter()
-            .position(|rejected| rejected.dir == installed)
+            .position(|rejected| rejected.dir == installed || rejected.dir == bundled)
             .map(|index| self.catalog.rejected.remove(index));
         let id = plugin.clone();
         let remove = cx.background_executor().spawn(async move {
@@ -134,6 +174,13 @@ impl Zeddy {
             let result = remove.await;
             let _ = this.update(cx, |this, cx| {
                 if result.is_err() {
+                    if let Err(error) = crate::settings::update_global(cx, |content| {
+                        content.plugins.entry(plugin.clone()).or_default().uninstalled =
+                            Some(was_uninstalled);
+                    }) {
+                        this.problem =
+                            Some(format!("Could not restore plugin preferences: {error}"));
+                    }
                     if let Some(disabled) = disabled {
                         this.catalog.disabled.insert(plugin, disabled);
                     }
@@ -153,20 +200,23 @@ impl Zeddy {
         enabled: bool,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        let was_enabled = self.catalog.get(&plugin).is_some();
         if enabled {
             self.catalog.enable(&plugin_paths(), &plugin, cx).map_err(|error| error.to_string())?;
         }
+        let mut affected = if enabled { Vec::new() } else { self.catalog.dependents(&plugin) };
+        affected.push(plugin.clone());
         let result = crate::settings::update_global(cx, |content| {
-            content
-                .plugins
-                .entry(plugin.clone())
-                .or_insert_with(PluginSettingsContent::default)
-                .enabled = Some(enabled);
+            for id in &affected {
+                content.plugins.entry(id.clone()).or_default().enabled = Some(enabled);
+            }
         });
         match result {
             Ok(_) => {
                 if !enabled {
-                    self.close_plugin_instances(&plugin, cx);
+                    for id in &affected {
+                        self.close_plugin_instances(id, cx);
+                    }
                     self.catalog.disable(&plugin);
                 }
                 self.problem = None;
@@ -174,12 +224,20 @@ impl Zeddy {
                 Ok(())
             }
             Err(error) => {
-                if enabled {
+                if enabled && !was_enabled {
                     self.catalog.disable(&plugin);
                 }
                 Err(error.to_string())
             }
         }
+    }
+
+    pub(crate) fn settings_plugin_dependents(&self, plugin: &str) -> Vec<String> {
+        self.catalog
+            .dependents(plugin)
+            .into_iter()
+            .filter_map(|id| self.catalog.manifest(&id).map(|manifest| manifest.name.clone()))
+            .collect()
     }
 
     pub(crate) fn settings_set_plugin_unsafe(

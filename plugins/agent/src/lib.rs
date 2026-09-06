@@ -763,9 +763,7 @@ impl AgentView {
             .child(
                 v_flex()
                     .w_full()
-                    .max_w(px(920.))
-                    .mx_auto()
-                    .p_6()
+                    .when(!self.settings_only, |view| view.max_w(px(920.)).mx_auto().p_6())
                     .gap_5()
                     .child(
                         v_flex()

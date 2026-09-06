@@ -667,7 +667,7 @@ impl SkillsView {
             })
             .collect();
         v_flex().id("skill-source-settings").size_full().min_h_0().bg(cx.theme().colors().editor_background)
-            .child(v_flex().w_full().h_full().min_h_0().max_w(px(1040.)).mx_auto().p_6().gap_5()
+            .child(v_flex().w_full().h_full().min_h_0().when(!self.settings_only, |view| view.max_w(px(1040.)).mx_auto().p_6()).gap_5()
                 .when(!self.settings_only, |view| view.child(Button::new("back-to-skills", "Back").style(ButtonStyle::Transparent).start_icon(Icon::new(IconName::ArrowLeft)).on_click(cx.listener(|this, _, _, cx| { this.management = false; cx.notify(); }))))
                 .child(h_flex().w_full().justify_between().gap_3()
                     .child(Label::new("Skill sources").size(UI_LABEL_LARGE))

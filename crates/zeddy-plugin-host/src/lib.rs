@@ -198,10 +198,97 @@ impl Catalog {
     }
 
     pub fn contains(&self, plugin: &str) -> bool {
-        self.loaded.contains_key(plugin) || self.disabled.contains_key(plugin)
+        self.loaded.contains_key(plugin)
+            || self.disabled.contains_key(plugin)
+            || self
+                .rejected
+                .iter()
+                .any(|rejected| rejected.dir.file_name().is_some_and(|name| name == plugin))
+    }
+
+    pub fn manifest(&self, plugin: &str) -> Option<&Manifest> {
+        self.loaded
+            .get(plugin)
+            .map(|loaded| &loaded.manifest)
+            .or_else(|| self.disabled.get(plugin).map(|disabled| &disabled.manifest))
+    }
+
+    /// The complete dependent closure, including disabled dependents, in stable order.
+    pub fn dependents(&self, plugin: &str) -> Vec<String> {
+        let mut affected = std::collections::BTreeSet::from([plugin.to_owned()]);
+        loop {
+            let before = affected.len();
+            for manifest in self
+                .loaded
+                .values()
+                .map(|p| &p.manifest)
+                .chain(self.disabled.values().map(|p| &p.manifest))
+            {
+                if manifest.dependencies.iter().any(|d| affected.contains(&d.plugin)) {
+                    affected.insert(manifest.id.clone());
+                }
+            }
+            if affected.len() == before {
+                break;
+            }
+        }
+        affected.remove(plugin);
+        affected.into_iter().collect()
+    }
+
+    pub fn prerequisite_error(&self, plugin: &str) -> Option<String> {
+        let manifest = self.manifest(plugin)?;
+        let missing: Vec<_> = manifest
+            .dependencies
+            .iter()
+            .filter(|dependency| !self.loaded.contains_key(&dependency.plugin))
+            .map(|dependency| {
+                self.manifest(&dependency.plugin)
+                    .map(|provider| provider.name.clone())
+                    .unwrap_or_else(|| dependency.plugin.clone())
+            })
+            .collect();
+        (!missing.is_empty())
+            .then(|| format!("Requires {} to be installed and enabled.", missing.join(", ")))
+    }
+
+    /// Discover first, then activate providers before their consumers. Missing,
+    /// disabled, failed and cyclic prerequisites leave consumers disabled.
+    pub fn enable_requested(
+        &mut self,
+        paths: &Paths,
+        mut requested: impl FnMut(&str) -> bool,
+        cx: &mut gpui::App,
+    ) {
+        let mut pending: std::collections::BTreeSet<_> =
+            self.disabled.keys().filter(|id| requested(id)).cloned().collect();
+        loop {
+            let ready: Vec<_> = pending
+                .iter()
+                .filter(|id| self.prerequisite_error(id).is_none())
+                .cloned()
+                .collect();
+            if ready.is_empty() {
+                break;
+            }
+            for id in ready {
+                pending.remove(&id);
+                if let Err(error) = self.enable(paths, &id, cx) {
+                    // Preserve the entry so the user can inspect/retry the package.
+                    eprintln!("Cannot enable plugin {id}: {error}");
+                }
+            }
+        }
     }
 
     pub fn disable(&mut self, plugin: &str) -> bool {
+        for dependent in self.dependents(plugin) {
+            self.disable_one(&dependent);
+        }
+        self.disable_one(plugin)
+    }
+
+    fn disable_one(&mut self, plugin: &str) -> bool {
         let Some(loaded) = self.loaded.remove(plugin) else {
             return false;
         };
@@ -219,14 +306,11 @@ impl Catalog {
     }
 
     pub fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) {
-        self.loaded.retain(|id, _| {
-            if keep(id) {
-                true
-            } else {
-                self.services.remove(id);
-                false
-            }
-        });
+        let removed: Vec<_> = self.loaded.keys().filter(|id| !keep(id)).cloned().collect();
+        for id in removed {
+            self.disable(&id);
+            self.disabled.remove(&id);
+        }
     }
 
     pub fn enable(
@@ -235,11 +319,32 @@ impl Catalog {
         plugin: &str,
         cx: &mut gpui::App,
     ) -> Result<(), LoadError> {
+        if let Some(error) = self.prerequisite_error(plugin) {
+            return Err(LoadError::Prerequisites(error));
+        }
         let Some(disabled) = self.disabled.remove(plugin) else {
-            return Ok(());
+            return if self.loaded.contains_key(plugin) {
+                Ok(())
+            } else {
+                Err(LoadError::NotInstalled(plugin.to_owned()))
+            };
         };
         let result = match disabled.source {
-            LoadSource::Directory => load_one(&disabled.dir, paths, cx),
+            LoadSource::Directory => read_directory_manifest(&disabled.dir).and_then(|manifest| {
+                let missing: Vec<_> = manifest
+                    .dependencies
+                    .iter()
+                    .filter(|d| !self.loaded.contains_key(&d.plugin))
+                    .map(|d| d.plugin.clone())
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(LoadError::Prerequisites(format!(
+                        "Requires {} to be installed and enabled.",
+                        missing.join(", ")
+                    )));
+                }
+                load_validated(&disabled.dir, paths, manifest)
+            }),
             LoadSource::BundledNative(factory) => load_builtin_native(
                 disabled.manifest.clone(),
                 disabled.dir.clone(),
@@ -275,7 +380,7 @@ impl Catalog {
         if self.loaded.contains_key(&manifest.id) || self.disabled.contains_key(&manifest.id) {
             return;
         }
-        if !enabled {
+        if !enabled || manifest.dependencies.iter().any(|d| !self.loaded.contains_key(&d.plugin)) {
             self.disabled.insert(
                 manifest.id.clone(),
                 Disabled {
@@ -310,7 +415,7 @@ impl Catalog {
         if self.loaded.contains_key(&manifest.id) || self.disabled.contains_key(&manifest.id) {
             return;
         }
-        if !enabled {
+        if !enabled || manifest.dependencies.iter().any(|d| !self.loaded.contains_key(&d.plugin)) {
             self.disabled.insert(
                 manifest.id.clone(),
                 Disabled {
@@ -622,9 +727,9 @@ pub fn load_all_where(
     dirs.sort();
 
     for dir in dirs {
-        let enabled = Manifest::read(&dir).map(|manifest| enabled(&manifest.id)).unwrap_or(true);
-        catalog.add_directory(&dir, paths, enabled, cx);
+        catalog.add_directory(&dir, paths, false, cx);
     }
+    catalog.enable_requested(paths, |id| enabled(id), cx);
     catalog
 }
 
@@ -632,6 +737,8 @@ pub fn load_all_where(
 #[derive(Debug)]
 pub enum LoadError {
     Manifest(Invalid),
+    Prerequisites(String),
+    NotInstalled(String),
     /// The directory's name is not the manifest's id. They must agree, because
     /// the directory name is how a saved layout finds a plugin without parsing
     /// every manifest.
@@ -649,6 +756,8 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::NotInstalled(plugin) => write!(f, "Plugin {plugin} is not installed."),
+            Self::Prerequisites(detail) => write!(f, "{detail}"),
             Self::Manifest(invalid) => write!(f, "{invalid}"),
             Self::IdMismatch { dir, manifest } => {
                 write!(f, "directory `{dir}` holds a plugin with id `{manifest}`")
@@ -728,10 +837,6 @@ fn read_directory_manifest(dir: &Path) -> Result<Manifest, LoadError> {
 
     validate_package(dir, &manifest)?;
     Ok(manifest)
-}
-
-fn load_one(dir: &Path, paths: &Paths, _cx: &mut gpui::App) -> Result<Loaded, LoadError> {
-    load_validated(dir, paths, read_directory_manifest(dir)?)
 }
 
 fn load_validated(dir: &Path, paths: &Paths, manifest: Manifest) -> Result<Loaded, LoadError> {
@@ -885,6 +990,73 @@ mod tests {
         std::fs::write(dir.join("icons/NoteIcon.svg"), "<svg/>").expect("icon");
         std::fs::write(dir.join("index.html"), "<p>hi</p>").expect("entry");
         dir
+    }
+
+    fn write_dependent(paths: &Paths, id: &str, providers: &[&str]) {
+        let dir = write_web(paths, id, id);
+        let mut manifest = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
+        for provider in providers {
+            manifest.push_str(&format!(
+                "\n[[dependencies]]\nplugin = '{provider}'\nfeature = 'Required feature'\n"
+            ));
+        }
+        std::fs::write(dir.join("zeddy-plugin.toml"), manifest).unwrap();
+    }
+
+    #[gpui::test]
+    fn prerequisites_load_in_order_and_disabling_cascades_through_a_diamond(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_temp, paths) = paths();
+        // Consumers sort before providers, exercising discovery order independence.
+        write_dependent(&paths, "com.test.a", &["com.test.b", "com.test.c"]);
+        write_dependent(&paths, "com.test.b", &["com.test.z"]);
+        write_dependent(&paths, "com.test.c", &["com.test.z"]);
+        write_dependent(&paths, "com.test.z", &[]);
+        write_dependent(&paths, "com.test.unrelated", &[]);
+        let mut catalog = cx.update(|cx| load_all(&paths, cx));
+        assert_eq!(catalog.loaded.len(), 5);
+        assert_eq!(catalog.dependents("com.test.z"), ["com.test.a", "com.test.b", "com.test.c"]);
+        assert!(catalog.disable("com.test.z"));
+        assert_eq!(catalog.loaded.len(), 1);
+        assert!(catalog.get("com.test.unrelated").is_some());
+        assert!(cx.update(|cx| catalog.enable(&paths, "com.test.a", cx)).is_err());
+        assert!(catalog.disabled.contains_key("com.test.a"));
+        cx.update(|cx| catalog.enable(&paths, "com.test.z", cx)).unwrap();
+        assert_eq!(catalog.loaded.len(), 2, "consumers must not be enabled implicitly");
+        cx.update(|cx| catalog.enable(&paths, "com.test.b", cx)).unwrap();
+        assert!(cx.update(|cx| catalog.enable(&paths, "com.test.a", cx)).is_err());
+        cx.update(|cx| catalog.enable(&paths, "com.test.c", cx)).unwrap();
+        cx.update(|cx| catalog.enable(&paths, "com.test.a", cx)).unwrap();
+        assert_eq!(catalog.loaded.len(), 5);
+    }
+
+    #[gpui::test]
+    fn missing_disabled_and_cyclic_prerequisites_block_startup_and_enable(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_temp, paths) = paths();
+        write_dependent(&paths, "com.test.missing", &["com.test.absent"]);
+        write_dependent(&paths, "com.test.consumer", &["com.test.provider"]);
+        write_dependent(&paths, "com.test.provider", &[]);
+        write_dependent(&paths, "com.test.cycle_a", &["com.test.cycle_b"]);
+        write_dependent(&paths, "com.test.cycle_b", &["com.test.cycle_a"]);
+        let mut catalog =
+            cx.update(|cx| load_all_where(&paths, |id| id != "com.test.provider", cx));
+        assert!(catalog.loaded.is_empty());
+        assert_eq!(catalog.disabled.len(), 5);
+        assert!(catalog.rejected.is_empty(), "blocked plugins retain their single list entry");
+        for id in ["com.test.missing", "com.test.consumer", "com.test.cycle_a", "com.test.cycle_b"]
+        {
+            assert!(catalog.prerequisite_error(id).is_some());
+            assert!(cx.update(|cx| catalog.enable(&paths, id, cx)).is_err());
+        }
+        catalog.disabled.remove("com.test.provider");
+        assert!(cx.update(|cx| catalog.enable(&paths, "com.test.provider", cx)).is_err());
+        assert!(
+            catalog.prerequisite_error("com.test.consumer").unwrap().contains("com.test.provider")
+        );
+        assert!(cx.update(|cx| catalog.enable(&paths, "com.test.consumer", cx)).is_err());
     }
 
     #[gpui::test]
