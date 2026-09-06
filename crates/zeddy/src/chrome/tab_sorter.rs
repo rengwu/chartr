@@ -514,14 +514,70 @@ mod tests {
                         tab.size.width
                     );
                     if width >= 450. {
+                        cx.simulate_mouse_move(point(px(750.), px(100.)), None, Modifiers::none());
+                        cx.run_until_parked();
+                        assert!(cx.debug_bounds(close_selector).is_none());
+                        cx.simulate_mouse_move(tab.center(), None, Modifiers::none());
+                        cx.run_until_parked();
                         let close = cx.debug_bounds(close_selector).unwrap();
                         assert_eq!(close.size.width, px(14.));
                         assert!(close.right() <= tab.right());
+                        assert_eq!(cx.debug_bounds(tab_selector).unwrap(), tab);
+                        cx.simulate_mouse_move(close.center(), None, Modifiers::none());
+                        cx.run_until_parked();
+                        assert!(cx.debug_bounds(close_selector).is_some());
                     }
                 }
                 let controls = cx.debug_bounds("SIZING_CONTROLS").unwrap();
                 assert_eq!(controls.size.width, px(60.));
                 assert!(controls.right() <= px(width));
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn overflowing_titles_fade_and_hover_widens_the_fade(cx: &mut TestAppContext) {
+        init(cx);
+        for rounded in [false, true] {
+            let (_, cx) = cx.add_window_view(|_, _| SizingHarness { width: 800., rounded });
+            cx.simulate_mouse_move(point(px(750.), px(100.)), None, Modifiers::none());
+            cx.run_until_parked();
+            for hovered in [false, true, false] {
+                let target = if hovered {
+                    cx.debug_bounds("SIZING_TAB_2").unwrap().center()
+                } else {
+                    point(px(750.), px(100.))
+                };
+                cx.simulate_mouse_move(target, None, Modifiers::none());
+                cx.run_until_parked();
+                cx.update(|window, cx| {
+                    let colors = cx.theme().colors();
+                    let background = if rounded {
+                        let panel = colors.background.blend(colors.panel_background);
+                        if hovered { panel.blend(colors.ghost_element_hover) } else { panel }
+                    } else {
+                        colors
+                            .background
+                            .blend(colors.tab_bar_background)
+                            .blend(colors.tab_inactive_background)
+                    };
+                    let gradient = gpui::linear_gradient(
+                        90.,
+                        gpui::linear_color_stop(background, if hovered { 0.6 } else { 1. }),
+                        gpui::linear_color_stop(background.opacity(0.), 0.),
+                    );
+                    let fades: Vec<_> = window
+                        .painted_quads()
+                        .into_iter()
+                        .filter(|quad| quad.background == gradient)
+                        .collect();
+                    // Only the overflowing title fades; the two short titles stay intact.
+                    assert_eq!(fades.len(), 1, "rounded={rounded}, hovered={hovered}");
+                    assert_eq!(
+                        fades[0].bounds.size.width.as_f32() / window.scale_factor(),
+                        if hovered { 48. } else { 20. }
+                    );
+                });
             }
         }
     }

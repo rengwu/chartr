@@ -224,6 +224,7 @@ fn tab(
     .grouped(entry.grouped)
     .close_slot(close_slot)
     .build_rounded(hovered, cx)
+    .debug_selector(move || format!("WORKSPACE_TAB_{}", close_tab.get()))
     .on_hover(move |is_hovered, window, cx| {
         hovered_tab.update(cx, |hovered, _| {
             let next = if *is_hovered {
@@ -268,22 +269,109 @@ fn tab(
     });
 
     if grouped {
-        popup_right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
-            .trigger(move |_, _, _| tab)
-            .menu(move |window, cx| {
-                let ungroup = ungroup.clone();
-                let rename = rename.clone();
-                ContextMenu::build_popup(window, cx, move |menu| {
-                    menu.entry("Rename", None, move |window, cx| {
-                        rename(Action::RenameGroup { space, tab: close_tab }, window, cx)
-                    })
-                    .entry("Ungroup", None, move |window, cx| {
-                        ungroup(Action::UngroupPane { space, tab: close_tab }, window, cx)
-                    })
-                })
-            })
+        // The menu's content-sized wrapper needs a block that fills the flex slot.
+        div()
+            .w_full()
+            .child(
+                popup_right_click_menu(format!("group-tab-menu-{space:?}-{}", close_tab.get()))
+                    .trigger(move |_, _, _| tab)
+                    .menu(move |window, cx| {
+                        let ungroup = ungroup.clone();
+                        let rename = rename.clone();
+                        ContextMenu::build_popup(window, cx, move |menu| {
+                            menu.entry("Rename", None, move |window, cx| {
+                                rename(Action::RenameGroup { space, tab: close_tab }, window, cx)
+                            })
+                            .entry(
+                                "Ungroup",
+                                None,
+                                move |window, cx| {
+                                    ungroup(
+                                        Action::UngroupPane { space, tab: close_tab },
+                                        window,
+                                        cx,
+                                    )
+                                },
+                            )
+                        })
+                    }),
+            )
             .into_any_element()
     } else {
         tab.into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Context, Modifiers, Render, TestAppContext, point};
+    use std::rc::Rc;
+
+    struct Harness {
+        grouped: bool,
+        width: f32,
+    }
+
+    impl Render for Harness {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let hovered = window.use_keyed_state("test-hover", cx, |_, _| HoveredTab::None);
+            let entry = Entry {
+                space: cx.entity_id(),
+                space_key: "test".into(),
+                key: serde_json::from_value(serde_json::json!(1)).unwrap(),
+                tab: serde_json::from_value(serde_json::json!(1)).unwrap(),
+                pane: serde_json::from_value(serde_json::json!(1)).unwrap(),
+                index: 0,
+                title: if self.grouped { "2 tabs" } else { "codex" }.into(),
+                icon_path: None,
+                status: None,
+                process_running: false,
+                ended: false,
+                bell: false,
+                selected: false,
+                closable: true,
+                grouped: self.grouped,
+            };
+            div().size_full().child(h_flex().w(px(self.width)).child(tab(
+                0,
+                1,
+                None,
+                &entry,
+                &hovered,
+                Rc::new(|_, _, _| {}),
+                cx,
+            )))
+        }
+    }
+
+    #[gpui::test]
+    fn grouped_tab_menu_fills_its_slot_before_and_during_hover(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+            cx.set_global(SettingsStore::bare());
+        });
+        for grouped in [false, true] {
+            let (view, cx) = cx.add_window_view(|_, _| Harness { grouped, width: 200. });
+            for width in [200., 110., 200.] {
+                view.update(cx, |view, cx| {
+                    view.width = width;
+                    cx.notify();
+                });
+                cx.simulate_mouse_move(point(px(400.), px(100.)), None, Modifiers::none());
+                cx.run_until_parked();
+                let before = cx.debug_bounds("WORKSPACE_TAB_1").unwrap();
+                assert_eq!(before.size.width, px(width), "grouped={grouped}");
+                cx.simulate_mouse_move(
+                    point(before.right() - px(5.), before.center().y),
+                    None,
+                    Modifiers::none(),
+                );
+                cx.run_until_parked();
+                assert_eq!(cx.debug_bounds("WORKSPACE_TAB_1").unwrap(), before);
+            }
+        }
     }
 }

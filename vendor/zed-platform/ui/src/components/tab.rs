@@ -132,6 +132,8 @@ impl RenderOnce for Tab {
             ),
         };
 
+        // Width-filling tabs can supply their own trailing overlay in the title.
+        let show_end_slot = !self.fill_width || self.end_slot.is_some();
         let (start_slot, end_slot) = {
             let start_slot = h_flex()
                 .flex_none()
@@ -152,6 +154,7 @@ impl RenderOnce for Tab {
         };
 
         self.div
+            .group("")
             .when(self.fill_width, |tab| tab.w_full())
             .h(Tab::container_height(cx))
             .bg(tab_bg)
@@ -179,7 +182,6 @@ impl RenderOnce for Tab {
             .child(
                 h_flex()
                     .when(self.fill_width, |content| content.w_full().min_w_0())
-                    .group("")
                     .relative()
                     .h(Tab::content_height(cx))
                     .pl(DynamicSpacing::Base06.px(cx))
@@ -188,7 +190,7 @@ impl RenderOnce for Tab {
                     .text_color(text_color)
                     .child(start_slot)
                     .children(self.children)
-                    .child(end_slot),
+                    .when(show_end_slot, |content| content.child(end_slot)),
             )
     }
 }

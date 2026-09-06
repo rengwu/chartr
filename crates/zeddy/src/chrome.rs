@@ -9,7 +9,7 @@ pub mod sidebar;
 pub(crate) mod tab_sorter;
 pub mod tabs;
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use crate::{
     fonts::UI_LABEL_DEFAULT,
@@ -141,21 +141,90 @@ pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn tab_label(title: impl Into<SharedString>, selected: bool) -> impl IntoElement {
-    tab_label_with_color(title, selected, Color::Default)
-}
-
-fn tab_label_with_color(
-    title: impl Into<SharedString>,
+/// Clip the full title and paint a fade only when it reaches the trailing edge.
+/// Close controls overlay the title, so hovering never changes text geometry.
+fn tab_label(
+    title: SharedString,
     selected: bool,
     color: Color,
+    background: gpui::Hsla,
+    hover_background: gpui::Hsla,
+    close_slot: Option<AnyElement>,
 ) -> impl IntoElement {
-    h_flex().flex_1().min_w_0().when(selected, |label| label.pr_px()).child(
+    let text_right = Rc::new(Cell::new(px(0.)));
+    let measured_right = text_right.clone();
+    let closable = close_slot.is_some();
+    let fade = move |hovered: bool| {
+        let expanded = hovered && closable;
+        let text_right = text_right.clone();
+        let background = if hovered { hover_background } else { background };
         div()
-            .flex_1()
-            .min_w(px(TAB_LABEL_MIN_WIDTH))
-            .child(Label::new(title).size(UI_LABEL_DEFAULT).color(color).truncate()),
-    )
+            .absolute()
+            .right_0()
+            .top_0()
+            .h_full()
+            .w(px(if expanded { 48. } else { 20. }))
+            .map(|fade| {
+                if hovered {
+                    fade.invisible().group_hover("", |fade| fade.visible())
+                } else {
+                    fade.group_hover("", |fade| fade.invisible())
+                }
+            })
+            .child(
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        let reserved = if expanded { px(18.) } else { px(0.) };
+                        if text_right.get() > bounds.right() - reserved {
+                            window.paint_quad(gpui::fill(
+                                bounds,
+                                gpui::linear_gradient(
+                                    90.,
+                                    gpui::linear_color_stop(
+                                        background,
+                                        if expanded { 0.6 } else { 1. },
+                                    ),
+                                    gpui::linear_color_stop(background.opacity(0.), 0.),
+                                ),
+                            ));
+                        }
+                    },
+                )
+                .size_full(),
+            )
+    };
+    h_flex()
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .min_h(px(14.))
+        .overflow_hidden()
+        .when(selected, |label| label.pr_px())
+        .child(
+            div()
+                .flex_none()
+                .on_children_prepainted(move |bounds, _, _| {
+                    if let Some(label) = bounds.first() {
+                        measured_right.set(label.right());
+                    }
+                })
+                .child(Label::new(title).size(UI_LABEL_DEFAULT).color(color).single_line()),
+        )
+        .child(fade(false))
+        .child(fade(true))
+        .when_some(close_slot, |label, close| {
+            label.child(
+                h_flex()
+                    .absolute()
+                    .right_0()
+                    .size(px(14.))
+                    .justify_center()
+                    .invisible()
+                    .group_hover("", |button| button.visible())
+                    .child(close),
+            )
+        })
 }
 
 /// Resolve the Zed border shape shared by outer and pane-local tab strips.
@@ -248,6 +317,13 @@ impl<'a> ItemTab<'a> {
     }
 
     pub(crate) fn build(self, cx: &App) -> Tab {
+        let colors = cx.theme().colors();
+        let background =
+            colors.background.blend(colors.tab_bar_background).blend(if self.selected {
+                colors.tab_active_background
+            } else {
+                colors.tab_inactive_background
+            });
         Tab::new(self.id)
             .fill_width()
             .role(Role::Tab)
@@ -263,8 +339,14 @@ impl<'a> ItemTab<'a> {
                 self.key,
                 cx,
             ))
-            .end_slot::<AnyElement>(self.close_slot)
-            .child(tab_label(self.title, self.selected))
+            .child(tab_label(
+                self.title,
+                self.selected,
+                Color::Default,
+                background,
+                background,
+                self.close_slot,
+            ))
     }
 
     /// Inset, rounded variant for the outer strip in Tabbed mode only.
@@ -272,6 +354,17 @@ impl<'a> ItemTab<'a> {
     /// and label width so selection never shifts neighboring tabs.
     pub(crate) fn build_rounded(self, hovered: bool, cx: &App) -> Stateful<Div> {
         let colors = cx.theme().colors();
+        let panel_background = colors.background.blend(colors.panel_background);
+        let background = if self.selected {
+            panel_background.blend(colors.ghost_element_selected)
+        } else {
+            panel_background
+        };
+        let hover_background = if self.selected {
+            background
+        } else {
+            panel_background.blend(colors.ghost_element_hover)
+        };
         h_flex()
             .id(self.id)
             .group("")
@@ -310,12 +403,14 @@ impl<'a> ItemTab<'a> {
                 self.key,
                 cx,
             )))
-            .child(tab_label_with_color(
+            .child(tab_label(
                 self.title,
                 false,
                 if self.selected || hovered { Color::Default } else { Color::Muted },
+                background,
+                hover_background,
+                self.close_slot,
             ))
-            .child(h_flex().flex_none().size(px(14.)).justify_center().children(self.close_slot))
     }
 }
 
