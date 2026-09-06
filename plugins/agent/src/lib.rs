@@ -23,7 +23,7 @@ use zeddy_plugin::{
 };
 
 use crate::{
-    components::{ContextMenu, PopupMenu, form_picker, form_row, input_field},
+    components::{ContextMenu, FORM_CONTROL_SIZE, PopupMenu, form_picker, form_row, input_field},
     fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
     text_input::TextInput,
 };
@@ -561,6 +561,7 @@ impl AgentView {
             PopupMenu::new("registered-agent-picker")
                 .trigger(
                     Button::new("registered-agent-picker-trigger", selected)
+                        .size(FORM_CONTROL_SIZE)
                         .style(ButtonStyle::Outlined)
                         .start_icon(Icon::from_path(selected_icon).size(IconSize::Small))
                         .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
@@ -591,6 +592,7 @@ impl AgentView {
                 .into_any_element()
         } else {
             Button::new("registered-agent-picker-empty", "No registered agents")
+                .size(FORM_CONTROL_SIZE)
                 .style(ButtonStyle::Outlined)
                 .disabled(true)
                 .into_any_element()
@@ -622,6 +624,7 @@ impl AgentView {
             .child(
                 h_flex().w_full().justify_between().gap_3().px_3().pb_3().child(picker).child(
                     Button::new("launch-agent-session", "Launch session")
+                        .size(FORM_CONTROL_SIZE)
                         .style(ButtonStyle::Filled)
                         .disabled(!has_agents)
                         .on_click(launch),
