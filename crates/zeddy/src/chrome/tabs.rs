@@ -210,9 +210,7 @@ fn tab(
             }
         })
     })
-    .when(!entry.grouped, |tab| {
-        tab.on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
-    })
+    .on_drag(dragged, |dragged, offset, _, cx| dragged_item_preview(dragged, offset, cx))
     .can_drop(move |value, _, _| {
         value
             .downcast_ref::<DraggedItem>()
