@@ -78,16 +78,14 @@ impl Zeddy {
             .filter_map(|(index, pane)| {
                 let plugin = self.catalog.get(&pane.key.plugin)?;
                 let name = plugin.manifest.name.clone();
-                let version = plugin.manifest.version.clone();
+                let description = if plugin.manifest.description.trim().is_empty() {
+                    format!("Open {name} in your workspace.")
+                } else {
+                    plugin.manifest.description.clone()
+                };
                 let icon_path =
                     gpui::SharedString::from(plugin.icon_path().to_string_lossy().into_owned());
                 let surface = pane.title.clone();
-                let kind = match plugin.kind() {
-                    zeddy_plugin::manifest::Kind::Native => "Native",
-                    zeddy_plugin::manifest::Kind::Hosted => "Hosted",
-                    zeddy_plugin::manifest::Kind::Web => "Web",
-                };
-                let surface_label = (surface != name).then(|| surface.clone());
                 let key = pane.key.clone();
                 let open = weak.clone();
                 Some(
@@ -95,67 +93,46 @@ impl Zeddy {
                         .style(ButtonStyle::Outlined)
                         .size(ButtonSize::None)
                         .full_width()
-                        .height(px(88.).into())
+                        .height(rems(9.).into())
                         .tab_index(0isize)
                         .aria_label(format!("Open {surface} from {name}"))
+                        .aria_description(description.clone())
                         .on_click(move |_, window, cx| {
                             let _ = open.update(cx, |this, cx| {
                                 this.open_plugin_from_launcher(launcher, key.clone(), window, cx)
                             });
                         })
                         .child(
-                            h_flex()
+                            v_flex()
                                 .size_full()
+                                .min_w_0()
                                 .text_left()
-                                .items_center()
+                                .items_start()
                                 .gap_3()
-                                .px_3()
+                                .p_4()
                                 .child(
-                                    div()
-                                        .size(px(36.))
-                                        .flex_none()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .rounded_md()
-                                        .border_1()
-                                        .border_color(cx.theme().colors().border_variant)
-                                        .bg(cx.theme().colors().editor_background)
-                                        .child(
-                                            Icon::from_external_svg(icon_path)
-                                                .size(IconSize::Medium),
-                                        ),
+                                    Icon::from_external_svg(icon_path)
+                                        .size(IconSize::Medium)
+                                        .color(Color::Muted),
                                 )
                                 .child(
                                     v_flex()
+                                        .w_full()
                                         .min_w_0()
-                                        .flex_1()
                                         .items_start()
-                                        .gap_0p5()
+                                        .gap_1()
                                         .child(
-                                            Label::new(name)
+                                            Label::new(surface)
                                                 .size(UI_LABEL_LARGE)
-                                                .weight(gpui::FontWeight::SEMIBOLD)
+                                                .weight(gpui::FontWeight::MEDIUM)
                                                 .truncate(),
                                         )
-                                        .when_some(surface_label, |details, surface| {
-                                            details.child(
-                                                Label::new(surface)
-                                                    .size(UI_LABEL_DEFAULT)
-                                                    .color(Color::Muted)
-                                                    .truncate(),
-                                            )
-                                        })
                                         .child(
-                                            Label::new(format!("{kind} plugin  ·  v{version}"))
-                                                .size(UI_LABEL_SMALL)
-                                                .color(Color::Muted),
+                                            Label::new(description)
+                                                .size(UI_LABEL_DEFAULT)
+                                                .color(Color::Muted)
+                                                .line_clamp(3),
                                         ),
-                                )
-                                .child(
-                                    Icon::new(IconName::ChevronRight)
-                                        .size(IconSize::Small)
-                                        .color(Color::Muted),
                                 ),
                         )
                         .into_any_element(),
@@ -167,54 +144,41 @@ impl Zeddy {
         div()
             .id(format!("plugin-launcher-{}", launcher.get()))
             .size_full()
+            .flex()
+            .flex_col()
             .overflow_y_scroll()
             .bg(cx.theme().colors().editor_background)
             .child(
                 v_flex()
                     .w_full()
-                    .max_w(px(760.))
+                    .max_w(px(680.))
+                    .flex_none()
                     .mx_auto()
-                    .px_8()
-                    .pt_8()
-                    .pb_8()
-                    .gap_5()
+                    .my_auto()
+                    .p_6()
+                    .gap_6()
                     .child(
-                        h_flex()
+                        v_flex()
                             .items_center()
-                            .gap_3()
+                            .text_center()
+                            .gap_2()
                             .child(
-                                div()
-                                    .size(px(40.))
-                                    .flex_none()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded_lg()
-                                    .border_1()
-                                    .border_color(cx.theme().colors().border_variant)
-                                    .bg(cx.theme().colors().element_background)
-                                    .child(
-                                        Icon::from_path(crate::assets::PLUGIN_LAUNCHER_ICON_PATH)
-                                            .size(IconSize::Medium),
-                                    ),
+                                Label::new("Open a surface")
+                                    .size(UI_LABEL_LARGE)
+                                    .weight(gpui::FontWeight::MEDIUM),
                             )
                             .child(
-                                v_flex()
-                                    .gap_0p5()
-                                    .child(
-                                        Label::new("Open a surface")
-                                            .size(UI_LABEL_LARGE)
-                                            .weight(gpui::FontWeight::SEMIBOLD),
-                                    )
-                                    .child(
-                                        Label::new("Choose a surface to open in this pane.")
-                                            .size(UI_LABEL_DEFAULT)
-                                            .color(Color::Muted),
-                                    ),
+                                Label::new("Tools for your workspace")
+                                    .size(UI_LABEL_DEFAULT)
+                                    .color(Color::Muted),
                             ),
                     )
                     .when(has_cards, |launcher| {
-                        launcher.child(div().w_full().grid().grid_cols(2).gap_2().children(cards))
+                        launcher.child(h_flex().w_full().flex_wrap().gap_3().children(
+                            cards.into_iter().map(|card| {
+                                div().flex_1().flex_basis(px(240.)).min_w_0().child(card)
+                            }),
+                        ))
                     })
                     .when(!has_cards, |launcher| {
                         launcher.child(

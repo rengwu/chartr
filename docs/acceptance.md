@@ -147,7 +147,8 @@ continue to show the split indicator instead of one representative plugin icon.
 Confirm a temporary **New Surface** tab shows the Full Screen icon in
 each of those tab surfaces until a plugin replaces it in place.
 Open that picker and confirm every plugin card shows the same manifest-selected
-Hugeicon beside its plugin name.
+Hugeicon above its surface title and a short description instead of runtime or
+version metadata.
 Each pane-local `+` and surface pair likewise follows its last tab on the left
 and stays pinned beside the scrolling pane tabs. Outer and pane-local controls
 use the same icon size and padded divider cell; an empty outer strip keeps the
@@ -158,7 +159,10 @@ right edge. Confirm each surface control opens the surface picker at its indicat
 location, including within the selected pane and within an inactive sidebar
 space card.
 Confirm these controls use the **New surface** tooltip, and the picker shows
-**Open a surface** with **Choose a surface to open in this pane.** beneath it.
+**Open a surface** with **Tools for your workspace** beneath it and no heading icon.
+The chooser is centered horizontally and vertically, with two columns of cards
+in a roomy pane and one column in a narrow pane. Shrink the pane vertically and
+confirm the full chooser remains reachable by scrolling.
 With no surfaces available, confirm the picker shows **No surfaces available**.
 The **Plugins** category and plugin management labels in Settings retain their names.
 
