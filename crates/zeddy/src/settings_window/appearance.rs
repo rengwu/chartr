@@ -126,16 +126,14 @@ impl SettingsWindow {
             .menu(move |window, cx| {
                 let font = font.clone();
                 Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                    ["IBM Plex Sans", ".ZedSans", "System UI"].into_iter().fold(
-                        menu,
-                        |menu, family| {
-                            let set = font.clone();
-                            menu.entry(family, None, move |_, cx| {
-                                let _ = set
-                                    .update(cx, |this, cx| this.set_ui_font(family.to_owned(), cx));
-                            })
-                        },
-                    )
+                    fonts::UI_FONTS.iter().fold(menu, |menu, ui_font| {
+                        let family = ui_font.family;
+                        let set = font.clone();
+                        menu.entry(family, None, move |_, cx| {
+                            let _ =
+                                set.update(cx, |this, cx| this.set_ui_font(family.to_owned(), cx));
+                        })
+                    })
                 }))
             });
         let font_size = number_field(

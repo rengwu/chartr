@@ -39,23 +39,241 @@ pub const UI_LABEL_LARGE: LabelSize = LabelSize::Custom(UI_TEXT_LARGE);
 pub const UI_LABEL_DEFAULT: LabelSize = LabelSize::Custom(UI_TEXT_DEFAULT);
 pub const UI_LABEL_SMALL: LabelSize = LabelSize::Custom(UI_TEXT_SMALL);
 
-/// A terminal picker choice and its embedded faces. Lilex is loaded by Zed's assets.
-pub struct TerminalFont {
+/// A picker choice and its embedded faces. Empty faces use Zed's or system assets.
+pub struct BundledFont {
     pub family: &'static str,
     faces: &'static [&'static [u8]],
 }
 
+impl BundledFont {
+    fn native_family(&self) -> &'static str {
+        // Google's static optical-size instances retain these internal family
+        // names. Keep the public choice stable while requesting the actual face.
+        match self.family {
+            "DM Sans" => "DM Sans 9pt",
+            "Nunito Sans" => "Nunito Sans 12pt ExtraLight 12pt",
+            family => family,
+        }
+    }
+}
+
+/// Interface choices share their catalog with bundled font registration.
+pub const UI_FONTS: &[BundledFont] = &[
+    BundledFont {
+        family: "IBM Plex Sans",
+        faces: &[], // Supplied by the pinned Zed asset bundle.
+    },
+    BundledFont {
+        family: "System UI",
+        faces: &[], // Resolved by the native platform.
+    },
+    BundledFont {
+        family: "Asap",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/asap/Asap-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/asap/Asap-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/asap/Asap-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/asap/Asap-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Barlow",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/barlow/Barlow-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/barlow/Barlow-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/barlow/Barlow-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/barlow/Barlow-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Cabin",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/cabin/Cabin-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/cabin/Cabin-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/cabin/Cabin-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/cabin/Cabin-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Comic Neue",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/comicneue/ComicNeue-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/comicneue/ComicNeue-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/comicneue/ComicNeue-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/comicneue/ComicNeue-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "DM Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/dmsans/DMSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/dmsans/DMSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/dmsans/DMSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/dmsans/DMSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Fira Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/firasans/FiraSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/firasans/FiraSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/firasans/FiraSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/firasans/FiraSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Geist",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/geist/Geist-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/geist/Geist-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Hind",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/hind/Hind-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/hind/Hind-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Inter",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/inter/Inter-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/inter/Inter-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/inter/Inter-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/inter/Inter-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Jim Nightshade",
+        faces: &[include_bytes!("../assets/fonts/ui/jimnightshade/JimNightshade-Regular.ttf")],
+    },
+    BundledFont {
+        family: "Karla",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/karla/Karla-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/karla/Karla-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/karla/Karla-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/karla/Karla-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Lato",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/lato/Lato-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/lato/Lato-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/lato/Lato-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/lato/Lato-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Merriweather Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/merriweathersans/MerriweatherSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/merriweathersans/MerriweatherSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/merriweathersans/MerriweatherSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/merriweathersans/MerriweatherSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Noto Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/notosans/NotoSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/notosans/NotoSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/notosans/NotoSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/notosans/NotoSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Nunito Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/nunitosans/NunitoSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/nunitosans/NunitoSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/nunitosans/NunitoSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/nunitosans/NunitoSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Open Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/opensans/OpenSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/opensans/OpenSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/opensans/OpenSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/opensans/OpenSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Oxygen",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/oxygen/Oxygen-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/oxygen/Oxygen-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "PT Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/ptsans/PTSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/ptsans/PTSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/ptsans/PTSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/ptsans/PTSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "PT Serif",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/ptserif/PTSerif-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/ptserif/PTSerif-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/ptserif/PTSerif-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/ptserif/PTSerif-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Playpen Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/playpensans/PlaypenSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/playpensans/PlaypenSans-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Poppins",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/poppins/Poppins-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/poppins/Poppins-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/poppins/Poppins-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/poppins/Poppins-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Roboto",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/roboto/Roboto-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/roboto/Roboto-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/roboto/Roboto-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/roboto/Roboto-Bold.ttf"),
+        ],
+    },
+    BundledFont {
+        family: "Work Sans",
+        faces: &[
+            include_bytes!("../assets/fonts/ui/worksans/WorkSans-Italic.ttf"),
+            include_bytes!("../assets/fonts/ui/worksans/WorkSans-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/ui/worksans/WorkSans-Regular.ttf"),
+            include_bytes!("../assets/fonts/ui/worksans/WorkSans-Bold.ttf"),
+        ],
+    },
+];
+
 /// Keep the terminal picker and bundled font registration in one catalog.
-pub const TERMINAL_FONTS: &[TerminalFont] = &[
-    TerminalFont {
+pub const TERMINAL_FONTS: &[BundledFont] = &[
+    BundledFont {
         family: "IBM Plex Mono",
         faces: &[include_bytes!("../assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf")],
     },
-    TerminalFont {
+    BundledFont {
         family: "Lilex",
         faces: &[], // Supplied by the pinned Zed asset bundle.
     },
-    TerminalFont {
+    BundledFont {
         family: "Anonymous Pro",
         faces: &[
             include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-Bold.ttf"),
@@ -64,7 +282,7 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Cousine",
         faces: &[
             include_bytes!("../assets/fonts/cousine/Cousine-Bold.ttf"),
@@ -73,36 +291,34 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/cousine/Cousine-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Cutive Mono",
         faces: &[include_bytes!("../assets/fonts/cutivemono/CutiveMono-Regular.ttf")],
     },
-    TerminalFont {
+    BundledFont {
         family: "DM Mono",
         faces: &[
             include_bytes!("../assets/fonts/dmmono/DMMono-Italic.ttf"),
-            include_bytes!("../assets/fonts/dmmono/DMMono-Light.ttf"),
-            include_bytes!("../assets/fonts/dmmono/DMMono-LightItalic.ttf"),
             include_bytes!("../assets/fonts/dmmono/DMMono-Medium.ttf"),
             include_bytes!("../assets/fonts/dmmono/DMMono-MediumItalic.ttf"),
             include_bytes!("../assets/fonts/dmmono/DMMono-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Fira Code",
         faces: &[
             include_bytes!("../assets/fonts/firacode/FiraCode-Bold.ttf"),
             include_bytes!("../assets/fonts/firacode/FiraCode-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Inconsolata",
         faces: &[
             include_bytes!("../assets/fonts/inconsolata/Inconsolata-Bold.ttf"),
             include_bytes!("../assets/fonts/inconsolata/Inconsolata-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "JetBrains Mono",
         faces: &[
             include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-Bold.ttf"),
@@ -111,11 +327,11 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "PT Mono",
         faces: &[include_bytes!("../assets/fonts/ptmono/PTM55FT.ttf")],
     },
-    TerminalFont {
+    BundledFont {
         family: "Red Hat Mono",
         faces: &[
             include_bytes!("../assets/fonts/redhatmono/RedHatMono-Bold.ttf"),
@@ -124,7 +340,7 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/redhatmono/RedHatMono-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Roboto Mono",
         faces: &[
             include_bytes!("../assets/fonts/robotomono/RobotoMono-Bold.ttf"),
@@ -133,7 +349,7 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/robotomono/RobotoMono-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Source Code Pro",
         faces: &[
             include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-Bold.ttf"),
@@ -142,7 +358,7 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
             include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-Regular.ttf"),
         ],
     },
-    TerminalFont {
+    BundledFont {
         family: "Space Mono",
         faces: &[
             include_bytes!("../assets/fonts/spacemono/SpaceMono-Bold.ttf"),
@@ -155,8 +371,9 @@ pub const TERMINAL_FONTS: &[TerminalFont] = &[
 
 pub fn load_bundled(cx: &App) -> anyhow::Result<()> {
     cx.text_system().add_fonts(
-        TERMINAL_FONTS
+        UI_FONTS
             .iter()
+            .chain(TERMINAL_FONTS)
             .flat_map(|font| font.faces.iter().map(|face| Cow::Borrowed(*face)))
             .collect(),
     )
@@ -187,8 +404,13 @@ impl Default for Fonts {
 
 impl Fonts {
     pub fn from_settings(settings: &ResolvedSettings) -> Self {
+        let ui_family =
+            UI_FONTS.iter().find(|font| font.family == settings.ui_font_family).map_or_else(
+                || settings.ui_font_family.clone(),
+                |font| font.native_family().to_owned(),
+            );
         Self {
-            ui: gpui::font(settings.ui_font_family.clone()),
+            ui: gpui::font(ui_family),
             buffer: gpui::font(settings.terminal_font_family.clone()),
             ui_size: px(settings.ui_font_size),
             buffer_size: px(settings.terminal_font_size),

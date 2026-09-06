@@ -71,7 +71,7 @@ fn main() {
             eprintln!("Chartr could not load its bundled fonts: {error}");
         }
         if let Err(error) = fonts::load_bundled(cx) {
-            eprintln!("Chartr could not load its terminal fonts: {error}");
+            eprintln!("Chartr could not load its interface and terminal fonts: {error}");
         }
         // Zed's components read their font through this, and zeddy has no
         // settings file for the `theme_settings` crate to read one from.

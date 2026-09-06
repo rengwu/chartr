@@ -230,6 +230,7 @@ impl SettingsContent {
                 .unwrap_or(defaults.dark_theme),
             ui_font_family: appearance
                 .and_then(|content| content.ui_font_family.clone())
+                .filter(|family| !matches!(family.as_str(), ".ZedSans" | "Zed Sans"))
                 .unwrap_or(defaults.ui_font_family),
             ui_font_size: appearance
                 .and_then(|content| content.ui_font_size)
