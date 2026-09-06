@@ -63,6 +63,9 @@ pub fn render(
                     && !entry.selected
                     && !previous_hovered
                     && hovered != Some((entry.space, entry.tab));
+                let trailing_separator_visible = placement.index + 1 == placement.count
+                    && !entry.selected
+                    && hovered != Some((entry.space, entry.tab));
                 h_flex()
                     .relative()
                     .child(tab(
@@ -83,6 +86,16 @@ pub fn render(
                             .bg(cx.theme().colors().border)
                             .opacity(if separator_visible { 1. } else { 0. }),
                     )
+                    .when(trailing_separator_visible, |tab| {
+                        tab.child(
+                            div()
+                                .absolute()
+                                .right(gpui::rems(-0.125))
+                                .w(px(1.))
+                                .h(px(12.))
+                                .bg(cx.theme().colors().border),
+                        )
+                    })
                     .into_any_element()
             })
         })
