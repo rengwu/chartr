@@ -63,7 +63,7 @@ impl Item {
         match self {
             Self::Session(item) => item.session.title(),
             Self::Plugin(item) => item.title.clone(),
-            Self::PluginLauncher { .. } => "New Surface".to_owned(),
+            Self::PluginLauncher { .. } => "New surface".to_owned(),
         }
     }
 

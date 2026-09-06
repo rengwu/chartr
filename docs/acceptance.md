@@ -144,11 +144,16 @@ and trailing controls remain stationary without a one-pixel shift.
 Confirm Browser, Clock, and Hello show their manifest-selected Hugeicons in
 sidebar rows, standalone outer tabs, and pane-local tabs. Grouped outer tabs
 continue to show the split indicator instead of one representative plugin icon.
-Confirm a temporary **New Surface** tab shows the Full Screen icon in
+Confirm a temporary **New surface** tab shows the Full Screen icon in
 each of those tab surfaces until a plugin replaces it in place.
 Open that picker and confirm every plugin card shows the same manifest-selected
-Hugeicon above its surface title and a short description instead of runtime or
-version metadata.
+Hugeicon beside its surface title and a short description instead of runtime or
+version metadata. Cards pair the icon and title in a compact header, with a
+full-width description below, aligned to the card’s left padding and limited to
+two lines. Icons align with the title line; titles and descriptions start at
+the same height across a row, even when one description wraps and the other does
+not. The quiet outlined cards gain a background on hover and retain a visible
+keyboard-focus border.
 Each pane-local `+` and surface pair likewise follows its last tab on the left
 and stays pinned beside the scrolling pane tabs. Outer and pane-local controls
 use the same icon size and padded divider cell; an empty outer strip keeps the
@@ -212,14 +217,20 @@ the space and Git branch sit above rather than inside the composer; and the prom
 placeholder uses muted text. Register agents named for Claude, Codex, Grok,
 OpenCode, and Pi, then confirm both the picker trigger and menu infer the matching
 Hugeicons glyph (with the generic AI-programming glyph for OpenCode).
-**Register your first agent** must navigate to **Agent management** and open the
-registration dialog immediately. Register an adapter with arguments and each
-prompt-delivery mode, edit it through the same dialog, and confirm deletion is
-guarded by a confirmation. Return through both Back and the pane chevron's
-**Manage agents** item, launch a non-empty prompt, and confirm the resulting
+**Register your first agent** and the pane chevron's **Manage agents** item must
+open **Settings → Plugins → Agent → Configure**, reusing the existing Settings
+window. The workspace tab stays on the launcher. Use **New agent** to register
+an adapter with arguments and each prompt-delivery mode, edit it through the
+same dialog, and confirm deletion is guarded by a confirmation. Close Settings,
+launch a non-empty prompt, and confirm the resulting
 Chartr-owned terminal opens in the pane's owning space with the registered
 environment, arguments, and prompt delivery. Relaunch Chartr and confirm the
 agent registry remains available in every space.
+
+In the Skills pane, **Skill source settings** must open **Settings → Plugins →
+Skills → Configure**, reusing the same Settings window. Source registration,
+editing, ordering, and deletion are available only there; the workspace pane
+must never switch to a source-management page.
 
 ## Persistence and lifecycle
 

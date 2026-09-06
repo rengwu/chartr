@@ -14,7 +14,7 @@ impl Zeddy {
         let button_id = format!("new-item-pane-{}-{}", tab_id.get(), pane_id.get());
         let start = weak.clone();
         let button = chrome::new_item_button(button_id.clone())
-            .tooltip(Tooltip::text("New session in this pane"))
+            .tooltip(Tooltip::text("New terminal session"))
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
                 let _ = start.update(cx, |this, cx| {
@@ -218,6 +218,7 @@ impl Zeddy {
             .size_full()
             .min_h_0()
             .child(div().flex_1().min_h_0().child(workspace))
+            .child(self.pane_drop_preview.overlay())
             .children(terminal_search)
             .into_any_element()
     }
@@ -511,13 +512,20 @@ impl Zeddy {
                     })
                     .child(content)
                     .child(
-                        drop_target(drop_direction, drop_group, drop_space, target_space, cx)
-                            .on_drop(move |dragged: &chrome::DraggedNewItem, window, cx| {
-                                let _ = drop_new.update(cx, |this, cx| {
-                                    this.handle_new_item_drop(dragged, tab_id, pane_id, window, cx);
-                                });
-                            })
-                            .on_drop(move |dragged: &DraggedItem, window, cx| {
+                        drop_target(
+                            drop_direction,
+                            drop_group,
+                            drop_space,
+                            target_space,
+                            &self.pane_drop_preview,
+                        )
+                        .on_drop(move |dragged: &chrome::DraggedNewItem, window, cx| {
+                            let _ = drop_new.update(cx, |this, cx| {
+                                this.handle_new_item_drop(dragged, tab_id, pane_id, window, cx);
+                            });
+                        })
+                        .on_drop(
+                            move |dragged: &DraggedItem, window, cx| {
                                 let dragged = dragged.clone();
                                 let _ = drop_item.update(cx, |this, cx| {
                                     this.handle_item_drop(
@@ -530,7 +538,8 @@ impl Zeddy {
                                         cx,
                                     );
                                 });
-                            }),
+                            },
+                        ),
                     ),
             )
             .into_any_element()
@@ -712,7 +721,7 @@ impl Zeddy {
                 });
             },
         );
-        let tabs_with_pinned_new_item = h_flex()
+        let drag_lane = h_flex()
             .id(format!("pane-{}-tab-bar-drop-target", pane_id.get()))
             .w_full()
             .min_w_0()
@@ -742,11 +751,12 @@ impl Zeddy {
                         cx,
                     );
                 });
-            })
-            .child(sorted_tabs)
-            .child(self.pane_new_item_cell(tab_id, pane_id, weak, cx));
+            });
         TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
-            .child(tabs_with_pinned_new_item)
+            .child(
+                sorted_tabs
+                    .drag_lane(drag_lane, self.pane_new_item_cell(tab_id, pane_id, weak, cx)),
+            )
             .into_any_element()
     }
 }
@@ -756,6 +766,7 @@ mod creation_drag_tests {
     use super::*;
 
     struct Harness {
+        preview: pane_drop_preview::PaneDropPreview,
         kind: chrome::NewItemKind,
         clicks: usize,
         drops: Vec<Option<SplitDirection>>,
@@ -812,7 +823,7 @@ mod creation_drag_tests {
                                 "new-item-target".into(),
                                 "test".into(),
                                 cx.entity_id(),
-                                cx,
+                                &self.preview,
                             )
                             .debug_selector(|| "NEW_ITEM_HIGHLIGHT".into())
                             .on_drop(cx.listener(
@@ -823,6 +834,7 @@ mod creation_drag_tests {
                             )),
                         ),
                 )
+                .child(self.preview.overlay())
         }
     }
 
@@ -841,6 +853,7 @@ mod creation_drag_tests {
         init(cx);
         for kind in [chrome::NewItemKind::Terminal, chrome::NewItemKind::Plugin] {
             let (view, cx) = cx.add_window_view(|_, _| Harness {
+                preview: Default::default(),
                 kind,
                 clicks: 0,
                 drops: Vec::new(),
@@ -862,7 +875,12 @@ mod creation_drag_tests {
             cx.run_until_parked();
             let highlight = cx.debug_bounds("NEW_ITEM_HIGHLIGHT").unwrap();
             assert_eq!(highlight.size.width, body.size.width * 0.5);
+            let preview = view.read_with(cx, |view, _| view.preview.target_bounds()).unwrap();
+            assert_eq!(preview.origin, highlight.origin + gpui::point(px(6.), px(6.)));
+            assert_eq!(preview.size, highlight.size - gpui::size(px(12.), px(12.)));
             cx.simulate_mouse_up(edge, MouseButton::Left, gpui::Modifiers::none());
+            cx.run_until_parked();
+            assert!(view.read_with(cx, |view, _| view.preview.target_bounds()).is_none());
             assert_eq!(
                 view.read_with(cx, |view, _| view.drops.clone()),
                 vec![Some(SplitDirection::Right)]
@@ -877,6 +895,7 @@ mod creation_drag_tests {
     ) {
         init(cx);
         let (view, cx) = cx.add_window_view(|_, _| Harness {
+            preview: Default::default(),
             kind: chrome::NewItemKind::Plugin,
             clicks: 0,
             drops: Vec::new(),

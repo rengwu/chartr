@@ -108,7 +108,6 @@ impl Plugin for AgentPlugin {
         Some(
             cx.new(|cx| {
                 let mut view = AgentView::new(self.registry.clone(), context, cx);
-                view.page = Page::Management;
                 view.settings_only = true;
                 view
             })
@@ -218,13 +217,6 @@ fn valid_stored_agent(agent: &AgentRecord) -> bool {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Page {
-    #[default]
-    Launcher,
-    Management,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum DeliveryMode {
     #[default]
     Default,
@@ -261,7 +253,7 @@ struct AgentView {
     terminal: TerminalLauncher,
     space_name: String,
     branch: String,
-    page: Page,
+    plugin_settings: zeddy_plugin::services::PluginSettings,
     selected: String,
     prompt: Entity<TextInput>,
     name: Entity<TextInput>,
@@ -310,7 +302,7 @@ impl AgentView {
             terminal: context.terminal,
             space_name: context.space_name,
             branch,
-            page: Page::Launcher,
+            plugin_settings: context.plugin_settings,
             selected,
             prompt,
             name,
@@ -327,20 +319,8 @@ impl AgentView {
         }
     }
 
-    fn show_management(&mut self, open_new: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.page = Page::Management;
-        self.notice = None;
-        if open_new {
-            self.open_editor(None, window, cx);
-        } else {
-            cx.notify();
-        }
-    }
-
-    fn show_launcher(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
-        self.page = Page::Launcher;
-        self.notice = None;
-        cx.notify();
+    fn open_settings(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.plugin_settings.open(Some(AgentPlugin::ID), window, cx);
     }
 
     fn open_editor(
@@ -541,7 +521,7 @@ impl AgentView {
     fn launcher(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let agents = self.registry.read(cx).agents.clone();
         let has_agents = !agents.is_empty();
-        let register = cx.listener(|this, _, window, cx| this.show_management(true, window, cx));
+        let register = cx.listener(|this, _, window, cx| this.open_settings(window, cx));
         let launch = cx.listener(Self::launch);
         let weak = cx.weak_entity();
         let pane_menu = PopupMenu::new("agent-pane-menu")
@@ -555,7 +535,7 @@ impl AgentView {
                 let weak = weak.clone();
                 Some(ContextMenu::build_popup(window, cx, move |menu| {
                     menu.entry("Manage agents", None, move |window, cx| {
-                        let _ = weak.update(cx, |this, cx| this.show_management(false, window, cx));
+                        let _ = weak.update(cx, |this, cx| this.open_settings(window, cx));
                     })
                 }))
             });
@@ -673,7 +653,7 @@ impl AgentView {
                             .pb_2()
                             .child(
                                 Label::new(if has_agents {
-                                    "Send a message to launch a new agent session in this space."
+                                    "Launch a new session in this space with the selected agent"
                                 } else {
                                     "Welcome! Let's get you started."
                                 })
@@ -682,13 +662,15 @@ impl AgentView {
                             )
                             .when(!has_agents, |hero| {
                                 hero.child(
-                                    Button::new(
-                                        "register-first-agent",
-                                        "Register your first agent",
-                                    )
-                                    .style(ButtonStyle::Outlined)
-                                    .start_icon(Icon::new(IconName::Plus))
-                                    .on_click(register),
+                                    div().debug_selector(|| "REGISTER_FIRST_AGENT".into()).child(
+                                        Button::new(
+                                            "register-first-agent",
+                                            "Register your first agent",
+                                        )
+                                        .style(ButtonStyle::Outlined)
+                                        .start_icon(Icon::new(IconName::Plus))
+                                        .on_click(register),
+                                    ),
                                 )
                             }),
                     )
@@ -705,7 +687,6 @@ impl AgentView {
 
     fn management(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let agents = self.registry.read(cx).agents.clone();
-        let back = cx.listener(Self::show_launcher);
         let add = cx.listener(|this, _, window, cx| this.open_editor(None, window, cx));
         let table = agents
             .iter()
@@ -763,18 +744,11 @@ impl AgentView {
             .child(
                 v_flex()
                     .w_full()
-                    .when(!self.settings_only, |view| view.max_w(px(920.)).mx_auto().p_6())
                     .gap_5()
                     .child(
                         v_flex()
                             .w_full()
                             .gap_2()
-                            .when(!self.settings_only, |column| column.child(
-                                Button::new("back-to-agent-launcher", "Back")
-                                    .style(ButtonStyle::Transparent)
-                                    .start_icon(Icon::new(IconName::ArrowLeft))
-                                    .on_click(back),
-                            ))
                             .child(
                                 h_flex()
                                     .w_full()
@@ -1016,10 +990,7 @@ impl AgentView {
 
 impl Render for AgentView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = match self.page {
-            Page::Launcher => self.launcher(cx),
-            Page::Management => self.management(cx),
-        };
+        let page = if self.settings_only { self.management(cx) } else { self.launcher(cx) };
         div()
             .size_full()
             .relative()
@@ -1319,6 +1290,52 @@ mod tests {
             let first = AgentPlugin::new(host.clone(), cx);
             let second = AgentPlugin::new(host, cx);
             assert_eq!(first.registry, second.registry);
+        });
+    }
+
+    #[gpui::test]
+    fn setup_shortcuts_open_host_settings_and_keep_the_launcher(cx: &mut gpui::TestAppContext) {
+        use gpui::Modifiers;
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+        let root = tempfile::tempdir().unwrap();
+        let registry = cx.new(|_| AgentRegistry::load(root.path().join(STORAGE_FILE)));
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let requests = opened.clone();
+        let context = InstanceContext {
+            instance_id: 1,
+            space: String::new(),
+            space_name: "Free sessions".into(),
+            project_dir: None,
+            bound_session: None,
+            terminal: TerminalLauncher::new(|_, _| {}),
+            services: Default::default(),
+            plugin_settings: zeddy_plugin::services::PluginSettings::new(
+                move |plugin, window, _| {
+                    requests.borrow_mut().push((plugin.map(str::to_owned), window.window_handle()));
+                },
+            ),
+        };
+        let (view, cx) = cx.add_window_view(|_, cx| AgentView::new(registry, context, cx));
+        cx.run_until_parked();
+        let register = cx.debug_bounds("REGISTER_FIRST_AGENT").unwrap();
+        cx.simulate_click(register.center(), Modifiers::none());
+        cx.run_until_parked();
+        let trigger = cx.debug_bounds("ICON-ChevronDown").unwrap();
+        cx.simulate_click(trigger.center(), Modifiers::none());
+        let popup = cx.windows().into_iter().find(|window| *window != cx.window_handle()).unwrap();
+        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+        popup.run_until_parked();
+        let item = popup.debug_bounds("MENU_ITEM-Manage agents").unwrap();
+        popup.simulate_click(item.center(), Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(&*opened.borrow(), &vec![(Some(AgentPlugin::ID.into()), cx.window_handle()); 2],);
+        view.read_with(cx, |view, _| {
+            assert!(!view.settings_only);
+            assert!(!view.editor_open);
         });
     }
 

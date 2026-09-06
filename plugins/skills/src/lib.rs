@@ -26,6 +26,7 @@ use zeddy_plugin::{
         Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
         SharedString, Window, div, px, relative,
     },
+    services::PluginSettings,
 };
 
 pub struct SkillsPlugin {
@@ -82,14 +83,46 @@ impl Plugin for SkillsPlugin {
     fn view(
         &mut self,
         _: &PaneKey,
-        _: &InstanceContext,
+        context: &InstanceContext,
         _: &mut Window,
         cx: &mut App,
     ) -> gpui::AnyView {
-        cx.new(|cx| SkillsView::new(self.registry.clone(), false, cx)).into()
+        cx.new(|_| SkillsPane { settings: context.plugin_settings.clone() }).into()
     }
     fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<gpui::AnyView> {
-        Some(cx.new(|cx| SkillsView::new(self.registry.clone(), true, cx)).into())
+        Some(cx.new(|cx| SkillsView::new(self.registry.clone(), cx)).into())
+    }
+}
+
+struct SkillsPane {
+    settings: PluginSettings,
+}
+
+impl Render for SkillsPane {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let settings = self.settings.clone();
+        let menu = PopupMenu::new("skills-pane-menu")
+            .trigger(
+                IconButton::new("skills-pane-menu-trigger", IconName::ChevronDown)
+                    .icon_size(IconSize::Small)
+                    .aria_label("Skills pane menu"),
+            )
+            .anchor(Anchor::TopRight)
+            .menu(move |window, cx| {
+                let settings = settings.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
+                    menu.entry("Skill source settings", None, move |window, cx| {
+                        settings.open(Some(SkillsPlugin::ID), window, cx);
+                    })
+                }))
+            });
+        div()
+            .id("skills-pane")
+            .size_full()
+            .relative()
+            .bg(cx.theme().colors().editor_background)
+            .child(div().absolute().top_3().right_3().child(menu))
+            .into_any_element()
     }
 }
 
@@ -177,8 +210,6 @@ impl Registry {
 
 struct SkillsView {
     registry: Entity<Registry>,
-    management: bool,
-    settings_only: bool,
     editor_open: bool,
     editing: Option<String>,
     deleting: Option<String>,
@@ -205,7 +236,7 @@ impl Render for DraggedSource {
 }
 
 impl SkillsView {
-    fn new(registry: Entity<Registry>, settings_only: bool, cx: &mut Context<Self>) -> Self {
+    fn new(registry: Entity<Registry>, cx: &mut Context<Self>) -> Self {
         cx.observe(&registry, |this, registry, cx| {
             if registry.read(cx).busy.is_some() && this.pending_order.is_none() {
                 this.sorter.cancel();
@@ -215,8 +246,6 @@ impl SkillsView {
         .detach();
         let this = Self {
             registry,
-            management: settings_only,
-            settings_only,
             sorter: ListSorter::new(gpui::Rems(0.)),
             pending_order: None,
             focus: cx.focus_handle(),
@@ -230,9 +259,7 @@ impl SkillsView {
             url: cx.new(|cx| TextInput::new("https://github.com/someone/skills.git", cx)),
             git_ref: cx.new(|cx| TextInput::new("The default branch", cx)),
         };
-        if settings_only {
-            this.run(Operation::Scan, cx);
-        }
+        this.run(Operation::Scan, cx);
         this
     }
 
@@ -278,12 +305,6 @@ impl SkillsView {
             });
         })
         .detach();
-        cx.notify();
-    }
-
-    fn show_settings(&mut self, cx: &mut Context<Self>) {
-        self.management = true;
-        self.run(Operation::Scan, cx);
         cx.notify();
     }
 
@@ -396,32 +417,6 @@ impl SkillsView {
             });
         })
         .detach();
-    }
-
-    fn pane(&self, cx: &mut Context<Self>) -> AnyElement {
-        let weak = cx.weak_entity();
-        let menu = PopupMenu::new("skills-pane-menu")
-            .trigger(
-                IconButton::new("skills-pane-menu-trigger", IconName::ChevronDown)
-                    .icon_size(IconSize::Small)
-                    .aria_label("Skills pane menu"),
-            )
-            .anchor(Anchor::TopRight)
-            .menu(move |window, cx| {
-                let weak = weak.clone();
-                Some(ContextMenu::build_popup(window, cx, move |menu| {
-                    menu.entry("Skill source settings", None, move |_, cx| {
-                        let _ = weak.update(cx, |this, cx| this.show_settings(cx));
-                    })
-                }))
-            });
-        div()
-            .id("skills-pane")
-            .size_full()
-            .relative()
-            .bg(cx.theme().colors().editor_background)
-            .child(div().absolute().top_3().right_3().child(menu))
-            .into_any_element()
     }
 
     fn management(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -669,8 +664,7 @@ impl SkillsView {
             })
             .collect();
         v_flex().id("skill-source-settings").size_full().min_h_0().bg(cx.theme().colors().editor_background)
-            .child(v_flex().w_full().h_full().min_h_0().when(!self.settings_only, |view| view.max_w(px(1040.)).mx_auto().p_6()).gap_5()
-                .when(!self.settings_only, |view| view.child(Button::new("back-to-skills", "Back").style(ButtonStyle::Transparent).start_icon(Icon::new(IconName::ArrowLeft)).on_click(cx.listener(|this, _, _, cx| { this.management = false; cx.notify(); }))))
+            .child(v_flex().w_full().h_full().min_h_0().gap_5()
                 .child(h_flex().w_full().justify_between().gap_3()
                     .child(Label::new("Skill sources").size(UI_LABEL_LARGE))
                     .child(h_flex().gap_2()
@@ -906,7 +900,7 @@ impl Render for SkillsView {
         if self.sorter.tick(cx.background_executor().now(), window.rem_size(), cx.reduce_motion()) {
             window.request_animation_frame();
         }
-        let page = if self.management { self.management(cx) } else { self.pane(cx) };
+        let page = self.management(cx);
         div()
             .size_full()
             .relative()
@@ -1018,15 +1012,15 @@ mod tests {
     }
 
     #[gpui::test]
-    fn pane_menu_and_settings_share_a_registry_and_editor_and_delete_are_explicit(
-        cx: &mut TestAppContext,
-    ) {
+    fn pane_menu_opens_host_settings_in_the_owning_window(cx: &mut TestAppContext) {
         init(cx);
-        let temp = tempfile::tempdir().unwrap();
-        let registry = cx.new(|_| Registry::load(temp.path().join("data")));
-        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), false, cx));
+        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let requests = opened.clone();
+        let settings = PluginSettings::new(move |plugin, window, _| {
+            requests.borrow_mut().push((plugin.map(str::to_owned), window.window_handle()));
+        });
+        let (_, cx) = cx.add_window_view(|_, _| SkillsPane { settings });
         cx.run_until_parked();
-        assert!(!view.read_with(cx, |view, _| view.management));
         let trigger = cx.debug_bounds("ICON-ChevronDown").unwrap();
         cx.simulate_click(trigger.center(), Modifiers::none());
         let popup = cx.windows().into_iter().find(|window| *window != cx.window_handle()).unwrap();
@@ -1035,7 +1029,16 @@ mod tests {
         let item = popup.debug_bounds("MENU_ITEM-Skill source settings").unwrap();
         popup.simulate_click(item.center(), Modifiers::none());
         cx.run_until_parked();
-        assert!(view.read_with(cx, |view, _| view.management));
+        assert_eq!(&*opened.borrow(), &[(Some(SkillsPlugin::ID.into()), cx.window_handle())]);
+    }
+
+    #[gpui::test]
+    fn settings_editor_and_delete_are_explicit(cx: &mut TestAppContext) {
+        init(cx);
+        let temp = tempfile::tempdir().unwrap();
+        let registry = cx.new(|_| Registry::load(temp.path().join("data")));
+        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), cx));
+        cx.run_until_parked();
         cx.update(|window, cx| {
             view.update(cx, |view, cx| {
                 view.open_editor(None, window, cx);
@@ -1131,7 +1134,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let sources = drag_registry(temp.path());
         let registry = cx.new(|_| Registry::load(temp.path().to_owned()));
-        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), true, cx));
+        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), cx));
         cx.run_until_parked();
         let first = cx.debug_bounds("SOURCE_SLOT-First").unwrap();
         let second = cx.debug_bounds("SOURCE_SLOT-Second").unwrap();
@@ -1179,7 +1182,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let sources = drag_registry(temp.path());
         let registry = cx.new(|_| Registry::load(temp.path().to_owned()));
-        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), true, cx));
+        let (view, cx) = cx.add_window_view(|_, cx| SkillsView::new(registry.clone(), cx));
         cx.run_until_parked();
         move_first_to_last(cx);
         cx.simulate_keystrokes("escape");

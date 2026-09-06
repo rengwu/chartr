@@ -126,22 +126,22 @@ pub fn render(
                 );
             }
         },
+    )
+    .drag_lane(
+        h_flex().id("workspace-tab-strip").w_full().min_w_0().h(content_height),
+        h_flex()
+            .h(content_height)
+            .flex_none()
+            .px(DynamicSpacing::Base04.rems(cx))
+            .gap_px()
+            .child(new_item)
+            .child(new_plugin_pane),
     );
-    let tabs_with_pinned_new_item =
-        h_flex().w_full().min_w_0().h(content_height).child(list).child(
-            h_flex()
-                .h(content_height)
-                .flex_none()
-                .px(DynamicSpacing::Base04.rems(cx))
-                .gap_px()
-                .child(new_item)
-                .child(new_plugin_pane),
-        );
 
     let tab_bar = TabBar::new("workspace-tabs")
         .height(strip_height)
         .background(cx.theme().colors().panel_background)
-        .child(tabs_with_pinned_new_item);
+        .child(list);
     let tab_bar = match controls {
         Some((space_switcher, view_menu)) => tab_bar
             .start_child(

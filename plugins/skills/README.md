@@ -1,8 +1,8 @@
 # Skills
 
 A bundled native plugin, linked into Chartr like Agent. Its pane is intentionally
-empty except for a chevron menu leading to **Skill source settings**. The same
-page is available through **Settings → Plugins → Skills → Configure**.
+empty except for a chevron menu whose **Skill source settings** shortcut opens
+**Settings → Plugins → Skills → Configure**, the only source-management page.
 
 The plugin owns its ordered source registry and managed Git checkouts under
 `plugin-data/com.chartr.skills/`. Its typed service exposes source content while

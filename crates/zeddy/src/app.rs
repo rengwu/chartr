@@ -9,6 +9,7 @@
 mod backend;
 mod bundled_plugins;
 mod command_palette;
+mod pane_drop_preview;
 mod panes;
 mod persistence;
 mod plugins;
@@ -169,6 +170,7 @@ pub struct Zeddy {
     registry: Option<Registry>,
     spaces: Vec<Entity<Space>>,
     space_sorter: chrome::sidebar::SpaceSorter,
+    pane_drop_preview: pane_drop_preview::PaneDropPreview,
     active: Option<Entity<Space>>,
     mode: Mode,
     catalog: Catalog,
@@ -265,6 +267,7 @@ impl Zeddy {
             registry: None,
             spaces: Vec::new(),
             space_sorter: chrome::sidebar::SpaceSorter::new(chrome::sidebar::CARD_GAP),
+            pane_drop_preview: pane_drop_preview::PaneDropPreview::default(),
             active: None,
             mode: Mode::default(),
             catalog: Catalog::default(),
@@ -1418,12 +1421,11 @@ fn drop_target(
     group: String,
     space: String,
     new_item_space: EntityId,
-    cx: &App,
+    preview: &pane_drop_preview::PaneDropPreview,
 ) -> Div {
     div()
         .invisible()
         .absolute()
-        .bg(cx.theme().colors().drop_target_background)
         .can_drop(move |value, _, _| {
             value
                 .downcast_ref::<DraggedItem>()
@@ -1441,6 +1443,7 @@ fn drop_target(
             Some(SplitDirection::Left) => target.top_0().left_0().bottom_0().w(relative(0.5)),
             Some(SplitDirection::Right) => target.top_0().right_0().bottom_0().w(relative(0.5)),
         })
+        .child(preview.target())
 }
 
 fn pane_resize_handle(dragged: DraggedPaneDivider, axis: PaneAxisDirection) -> impl IntoElement {

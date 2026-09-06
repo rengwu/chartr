@@ -90,10 +90,10 @@ impl Zeddy {
                 let open = weak.clone();
                 Some(
                     ButtonLike::new(("plugin-launcher-card", index))
-                        .style(ButtonStyle::Outlined)
+                        .style(ButtonStyle::OutlinedGhost)
                         .size(ButtonSize::None)
                         .full_width()
-                        .height(rems(9.).into())
+                        .height(rems(5.5).into())
                         .tab_index(0isize)
                         .aria_label(format!("Open {surface} from {name}"))
                         .aria_description(description.clone())
@@ -108,31 +108,43 @@ impl Zeddy {
                                 .min_w_0()
                                 .text_left()
                                 .items_start()
-                                .gap_3()
-                                .p_4()
+                                .gap_1()
+                                .px_3()
+                                .py_2p5()
                                 .child(
-                                    Icon::from_external_svg(icon_path)
-                                        .size(IconSize::Medium)
-                                        .color(Color::Muted),
-                                )
-                                .child(
-                                    v_flex()
+                                    h_flex()
                                         .w_full()
-                                        .min_w_0()
-                                        .items_start()
-                                        .gap_1()
+                                        .h(rems(1.5))
+                                        .flex_none()
+                                        .gap_2p5()
+                                        .line_height(relative(1.5))
                                         .child(
-                                            Label::new(surface)
-                                                .size(UI_LABEL_LARGE)
-                                                .weight(gpui::FontWeight::MEDIUM)
-                                                .truncate(),
+                                            h_flex()
+                                                .w(rems(1.25))
+                                                .flex_none()
+                                                .justify_center()
+                                                .child(
+                                                    Icon::from_external_svg(icon_path)
+                                                        .size(IconSize::Medium)
+                                                        .color(Color::Muted),
+                                                ),
                                         )
                                         .child(
-                                            Label::new(description)
-                                                .size(UI_LABEL_DEFAULT)
-                                                .color(Color::Muted)
-                                                .line_clamp(3),
+                                            div().flex_1().min_w_0().child(
+                                                Label::new(surface)
+                                                    .size(UI_LABEL_LARGE)
+                                                    .weight(gpui::FontWeight::MEDIUM)
+                                                    .truncate(),
+                                            ),
                                         ),
+                                )
+                                .child(
+                                    div().w_full().line_height(relative(1.35)).child(
+                                        Label::new(description)
+                                            .size(UI_LABEL_DEFAULT)
+                                            .color(Color::Muted)
+                                            .line_clamp(2),
+                                    ),
                                 ),
                         )
                         .into_any_element(),
@@ -151,17 +163,17 @@ impl Zeddy {
             .child(
                 v_flex()
                     .w_full()
-                    .max_w(px(680.))
+                    .max_w(px(600.))
                     .flex_none()
                     .mx_auto()
                     .my_auto()
-                    .p_6()
-                    .gap_6()
+                    .p_5()
+                    .gap_4()
                     .child(
                         v_flex()
                             .items_center()
                             .text_center()
-                            .gap_2()
+                            .gap_1()
                             .child(
                                 Label::new("Open a surface")
                                     .size(UI_LABEL_LARGE)
@@ -174,7 +186,7 @@ impl Zeddy {
                             ),
                     )
                     .when(has_cards, |launcher| {
-                        launcher.child(h_flex().w_full().flex_wrap().gap_3().children(
+                        launcher.child(h_flex().w_full().flex_wrap().gap_2().children(
                             cards.into_iter().map(|card| {
                                 div().flex_1().flex_basis(px(240.)).min_w_0().child(card)
                             }),

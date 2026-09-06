@@ -50,6 +50,7 @@ pub(crate) struct SortableTabList {
     gap: gpui::Rems,
     tabs: Vec<SortableTab>,
     commit: Commit,
+    drag_lane: Option<(Stateful<Div>, AnyElement)>,
 }
 
 impl SortableTabList {
@@ -61,7 +62,14 @@ impl SortableTabList {
         tabs: Vec<SortableTab>,
         commit: impl Fn(&DraggedItem, usize, &mut Window, &mut App) + 'static,
     ) -> Self {
-        Self { list, id, axis, gap, tabs, commit: Box::new(commit) }
+        Self { list, id, axis, gap, tabs, commit: Box::new(commit), drag_lane: None }
+    }
+
+    /// Keep sorting over the entire strip, including pinned controls and empty
+    /// space, while only the tab list participates in scrolling and geometry.
+    pub fn drag_lane(mut self, lane: Stateful<Div>, end_slot: impl IntoElement) -> Self {
+        self.drag_lane = Some((lane, end_slot.into_any_element()));
+        self
     }
 }
 
@@ -134,79 +142,81 @@ impl RenderOnce for SortableTabList {
         let moving = sorter.clone();
         let dropping = sorter.clone();
         let leaving = sorter;
-        self.list
-            .gap(self.gap)
-            .track_scroll(&scroll)
-            .on_drag_move::<DraggedItem>(move |event: &DragMoveEvent<DraggedItem>, window, cx| {
-                let dragged = event.drag(cx).clone();
-                if !source.as_ref().is_some_and(|source| same_list(source, &dragged)) {
-                    return;
-                }
-                moving.update(cx, |sorter, cx| {
-                    // Leaving the strip restores the model order and allows the
-                    // existing pane/edge drop targets to take over immediately.
-                    let point = event.event.position;
-                    let in_lane = event.bounds.contains(&point);
-                    if !in_lane {
-                        if sorter.is_dragging() {
-                            sorter.suspend();
-                            window.refresh();
-                        }
-                        return;
-                    }
-                    if sorter.drag_move(
-                        key(&dragged),
-                        order.clone(),
-                        point,
-                        window.rem_size(),
-                        cx.background_executor().now(),
-                        cx.reduce_motion(),
-                    ) {
-                        window.refresh();
-                    }
-                });
-            })
-            .capture_any_mouse_up(move |event, window, cx| {
-                if event.button != MouseButton::Left || !dropping.read(cx).is_dragging() {
-                    return;
-                }
-                let now = cx.background_executor().now();
-                let reduce_motion = cx.reduce_motion();
-                let destination = dropping.update(cx, |sorter, _| {
-                    sorter.drop_at(
-                        axis.coordinate(event.position),
-                        window.rem_size(),
-                        now,
-                        reduce_motion,
-                    )
-                });
-                if let Some((id, index)) = destination {
-                    // The actual payload retains its source pane and item for
-                    // pane-local commits (including modifier-assisted cloning).
-                    if let Some(dragged) = payloads.get(&id) {
-                        (self.commit)(dragged, index, window, cx);
-                        dropping.update(cx, |sorter, _| sorter.accept_drop(now, reduce_motion));
-                        cx.stop_active_drag(window);
-                        cx.stop_propagation();
-                        window.refresh();
-                    }
-                }
-            })
-            .on_mouse_up_out(MouseButton::Left, move |_, window, cx| {
-                leaving.update(cx, |sorter, _| {
+        let list = self.list.gap(self.gap).track_scroll(&scroll).children(children);
+        let lane = match self.drag_lane {
+            Some((lane, end_slot)) => lane.child(list).child(end_slot),
+            None => list,
+        };
+        lane.on_drag_move::<DraggedItem>(move |event: &DragMoveEvent<DraggedItem>, window, cx| {
+            let dragged = event.drag(cx).clone();
+            if !source.as_ref().is_some_and(|source| same_list(source, &dragged)) {
+                return;
+            }
+            moving.update(cx, |sorter, cx| {
+                // Leaving the strip restores the model order and allows the
+                // existing pane/edge drop targets to take over immediately.
+                let point = event.event.position;
+                let in_lane = event.bounds.contains(&point);
+                if !in_lane {
                     if sorter.is_dragging() {
-                        sorter.cancel();
+                        sorter.suspend();
                         window.refresh();
                     }
-                });
-            })
-            .children(children)
+                    return;
+                }
+                if sorter.drag_move(
+                    key(&dragged),
+                    order.clone(),
+                    point,
+                    window.rem_size(),
+                    cx.background_executor().now(),
+                    cx.reduce_motion(),
+                ) {
+                    window.refresh();
+                }
+            });
+        })
+        .capture_any_mouse_up(move |event, window, cx| {
+            if event.button != MouseButton::Left || !dropping.read(cx).is_dragging() {
+                return;
+            }
+            let now = cx.background_executor().now();
+            let reduce_motion = cx.reduce_motion();
+            let destination = dropping.update(cx, |sorter, _| {
+                sorter.drop_at(
+                    axis.coordinate(event.position),
+                    window.rem_size(),
+                    now,
+                    reduce_motion,
+                )
+            });
+            if let Some((id, index)) = destination {
+                // The actual payload retains its source pane and item for
+                // pane-local commits (including modifier-assisted cloning).
+                if let Some(dragged) = payloads.get(&id) {
+                    (self.commit)(dragged, index, window, cx);
+                    dropping.update(cx, |sorter, _| sorter.accept_drop(now, reduce_motion));
+                    cx.stop_active_drag(window);
+                    cx.stop_propagation();
+                    window.refresh();
+                }
+            }
+        })
+        .on_mouse_up_out(MouseButton::Left, move |_, window, cx| {
+            leaving.update(cx, |sorter, _| {
+                if sorter.is_dragging() {
+                    sorter.cancel();
+                    window.refresh();
+                }
+            });
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chrome::{NewItemKind, new_item_drag_handle};
     use gpui::{Context, Modifiers, Render, TestAppContext, point};
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
@@ -279,38 +289,70 @@ mod tests {
                 SortAxis::Horizontal => h_flex().id("test-list").w(px(300.)).overflow_x_scroll(),
                 SortAxis::Vertical => v_flex().id("test-list").w(px(150.)),
             };
-            div()
-                .size_full()
-                .child(SortableTabList::new(
-                    "test-sorter".into(),
-                    list,
-                    self.axis,
-                    gpui::rems(0.25),
-                    tabs,
-                    move |dragged, index, _, cx| {
-                        weak.update(cx, |this, cx| {
-                            let from =
-                                this.order.iter().position(|id| *id == key(dragged)).unwrap();
-                            let id = this.order.remove(from);
-                            this.order.insert(index, id);
-                            this.commits += 1;
-                            cx.notify();
-                        })
-                        .unwrap();
-                    },
-                ))
-                .child(
-                    div()
-                        .id("foreign-drop")
-                        .w(px(150.))
-                        .h(px(100.))
-                        .mt(px(100.))
-                        .debug_selector(|| "FOREIGN_DROP".into())
+            let sortable = SortableTabList::new(
+                "test-sorter".into(),
+                list,
+                self.axis,
+                gpui::rems(0.25),
+                tabs,
+                move |dragged, index, _, cx| {
+                    weak.update(cx, |this, cx| {
+                        let from = this.order.iter().position(|id| *id == key(dragged)).unwrap();
+                        let id = this.order.remove(from);
+                        this.order.insert(index, id);
+                        this.commits += 1;
+                        cx.notify();
+                    })
+                    .unwrap();
+                },
+            );
+            let sortable = if self.axis == SortAxis::Horizontal {
+                let controls = h_flex().flex_none().children(
+                    [("NEW_TERMINAL", NewItemKind::Terminal), ("NEW_SURFACE", NewItemKind::Plugin)]
+                        .into_iter()
+                        .map(|(id, kind)| {
+                            new_item_drag_handle(
+                                id,
+                                None,
+                                kind,
+                                div()
+                                    .id(format!("{id}-button"))
+                                    .debug_selector(move || id.into())
+                                    .size(px(30.))
+                                    .on_click(cx.listener(|this, _: &gpui::ClickEvent, _, cx| {
+                                        this.clicks += 1;
+                                        cx.notify();
+                                    })),
+                            )
+                        }),
+                );
+                sortable.drag_lane(
+                    h_flex()
+                        .id("test-strip")
+                        .debug_selector(|| "SORT_STRIP".into())
+                        .w(px(600.))
+                        .h(px(30.))
                         .on_drop(cx.listener(|this, _: &DraggedItem, _, cx| {
                             this.legacy_drops += 1;
                             cx.notify();
                         })),
+                    controls,
                 )
+            } else {
+                sortable
+            };
+            div().size_full().child(sortable).child(
+                div()
+                    .id("foreign-drop")
+                    .w(px(150.))
+                    .h(px(100.))
+                    .mt(px(100.))
+                    .debug_selector(|| "FOREIGN_DROP".into())
+                    .on_drop(cx.listener(|this, _: &DraggedItem, _, cx| {
+                        this.legacy_drops += 1;
+                        cx.notify();
+                    })),
+            )
         }
     }
 
@@ -382,6 +424,120 @@ mod tests {
                 (vec![2, 1, 3], 1, 0, 0)
             );
             assert!(!cx.read(|cx| cx.has_active_drag()));
+        }
+    }
+
+    #[gpui::test]
+    fn buttons_and_empty_strip_space_keep_sorting_until_release(cx: &mut TestAppContext) {
+        init(cx);
+        for pane_tabs in [false, true] {
+            // Outer item 2 is a group; exercise both kinds of outer drag payload.
+            for dragged_id in [1, 2] {
+                for release_at in 0..3 {
+                    let (view, cx) =
+                        cx.add_window_view(|_, _| harness(SortAxis::Horizontal, pane_tabs));
+                    cx.run_until_parked();
+                    let selector = if dragged_id == 1 { "SORT_TAB_1" } else { "SORT_TAB_2" };
+                    let source = cx.debug_bounds(selector).unwrap().center();
+                    let strip = cx.debug_bounds("SORT_STRIP").unwrap();
+                    let targets = [
+                        cx.debug_bounds("NEW_TERMINAL").unwrap().center(),
+                        cx.debug_bounds("NEW_SURFACE").unwrap().center(),
+                        point(strip.right() - px(10.), strip.center().y),
+                    ];
+                    let mut expected = vec![1, 2, 3];
+                    expected.retain(|id| *id != dragged_id);
+                    expected.push(dragged_id);
+                    cx.simulate_mouse_down(source, MouseButton::Left, Modifiers::none());
+                    cx.simulate_mouse_move(
+                        source + point(px(8.), px(0.)),
+                        Some(MouseButton::Left),
+                        Modifiers::none(),
+                    );
+                    for target in &targets[..=release_at] {
+                        cx.simulate_mouse_move(*target, Some(MouseButton::Left), Modifiers::none());
+                        cx.run_until_parked();
+                        assert_eq!(view.read_with(cx, |this, _| this.order.clone()), vec![1, 2, 3]);
+                        assert_eq!(
+                            view.read_with(cx, |this, _| this.painted_order.borrow().clone()),
+                            expected
+                        );
+                        // The actual tab stays under the pointer instead of
+                        // reverting to the compact pane-placement preview.
+                        assert!(cx.debug_bounds(selector).unwrap().contains(target));
+                        assert!(cx.read(|cx| cx.has_active_drag()));
+                    }
+                    cx.simulate_mouse_up(targets[release_at], MouseButton::Left, Modifiers::none());
+                    cx.run_until_parked();
+                    assert_eq!(
+                        view.read_with(cx, |this, _| (
+                            this.order.clone(),
+                            this.commits,
+                            this.legacy_drops,
+                            this.clicks
+                        )),
+                        (expected, 1, 0, 0)
+                    );
+                    assert!(!cx.read(|cx| cx.has_active_drag()));
+                }
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn leaving_and_reentering_the_full_strip_resumes_sorting(cx: &mut TestAppContext) {
+        init(cx);
+        for pane_tabs in [false, true] {
+            for leave_right in [false, true] {
+                let (view, cx) =
+                    cx.add_window_view(|_, _| harness(SortAxis::Horizontal, pane_tabs));
+                cx.run_until_parked();
+                let source = cx.debug_bounds("SORT_TAB_2").unwrap().center();
+                let strip = cx.debug_bounds("SORT_STRIP").unwrap();
+                let target = point(strip.right() - px(10.), strip.center().y);
+                cx.simulate_mouse_down(source, MouseButton::Left, Modifiers::none());
+                cx.simulate_mouse_move(
+                    source + point(px(8.), px(0.)),
+                    Some(MouseButton::Left),
+                    Modifiers::none(),
+                );
+                cx.simulate_mouse_move(target, Some(MouseButton::Left), Modifiers::none());
+                cx.run_until_parked();
+                assert_eq!(
+                    view.read_with(cx, |this, _| this.painted_order.borrow().clone()),
+                    vec![1, 3, 2]
+                );
+                let outside = if leave_right {
+                    point(strip.right() + px(20.), target.y)
+                } else {
+                    point(target.x, strip.bottom() + px(20.))
+                };
+                cx.simulate_mouse_move(outside, Some(MouseButton::Left), Modifiers::none());
+                cx.run_until_parked();
+                assert_eq!(
+                    view.read_with(cx, |this, _| this.painted_order.borrow().clone()),
+                    vec![1, 2, 3]
+                );
+                assert!(cx.read(|cx| cx.has_active_drag()));
+                cx.simulate_mouse_move(target, Some(MouseButton::Left), Modifiers::none());
+                cx.run_until_parked();
+                assert_eq!(
+                    view.read_with(cx, |this, _| this.painted_order.borrow().clone()),
+                    vec![1, 3, 2]
+                );
+                assert!(cx.debug_bounds("SORT_TAB_2").unwrap().contains(&target));
+                cx.simulate_mouse_up(target, MouseButton::Left, Modifiers::none());
+                cx.run_until_parked();
+                assert_eq!(
+                    view.read_with(cx, |this, _| (
+                        this.order.clone(),
+                        this.commits,
+                        this.legacy_drops,
+                        this.clicks
+                    )),
+                    (vec![1, 3, 2], 1, 0, 0)
+                );
+            }
         }
     }
 

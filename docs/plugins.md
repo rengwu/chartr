@@ -228,7 +228,9 @@ Native code is already trusted; these are shared typed contracts, not a sandbox.
 The initial contracts are `services::Agents` (registered names and input
 preparation) and `services::Skills` (asynchronous enabled-source scanning,
 method text, directories and commit provenance). Agent and Skills own their
-registries. `InstanceContext.plugin_settings` navigates to setup.
+registries. Each plugin has one configuration surface under **Settings → Plugins →
+Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
+that surface instead of rendering another configuration page in the workspace.
 
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
 `PreparedTerminal` with a real session `id`; `send` delivers the validated input
