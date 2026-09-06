@@ -11,8 +11,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use ui::{
-    Button, ButtonSize, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName,
-    IconPosition, IconSize, Label, Table, TintColor, prelude::*,
+    Button, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName, IconPosition,
+    IconSize, Label, Table, TintColor, prelude::*,
 };
 use zeddy_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, TerminalLauncher, gpui,
@@ -23,7 +23,7 @@ use zeddy_plugin::{
 };
 
 use crate::{
-    components::{ContextMenu, PopupMenu},
+    components::{ContextMenu, PopupMenu, form_picker, form_row, input_field},
     fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
     text_input::TextInput,
 };
@@ -822,11 +822,7 @@ impl AgentView {
         let delivery = self.delivery;
         let weak = cx.weak_entity();
         let delivery_picker = PopupMenu::new("agent-delivery-picker")
-            .trigger(
-                Button::new("agent-delivery-trigger", delivery.label())
-                    .style(ButtonStyle::Outlined)
-                    .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
-            )
+            .trigger(form_picker("agent-delivery-trigger", delivery.label()))
             .anchor(Anchor::TopLeft)
             .menu(move |window, cx| {
                 let weak = weak.clone();
@@ -1032,42 +1028,6 @@ impl Render for AgentView {
             .children(self.editor_overlay(cx))
             .children(self.delete_overlay(cx))
     }
-}
-
-fn input_field(id: &'static str, input: Entity<TextInput>, cx: &App) -> AnyElement {
-    let focus = input.focus_handle(cx);
-    h_flex()
-        .id(id)
-        .w_full()
-        .h(ButtonSize::Default.rems())
-        .px_2()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().colors().border_variant)
-        .bg(cx.theme().colors().editor_background)
-        .track_focus(&focus)
-        .in_focus(|field| field.border_color(cx.theme().colors().border_focused))
-        .child(input)
-        .into_any_element()
-}
-
-fn form_row(
-    label: &'static str,
-    description: Option<&'static str>,
-    control: AnyElement,
-) -> AnyElement {
-    h_flex()
-        .w_full()
-        .items_start()
-        .gap_4()
-        .child(div().w(px(112.)).pt_2().child(Label::new(label).size(UI_LABEL_DEFAULT)))
-        .child(v_flex().flex_1().min_w_0().gap_1().child(control).when_some(
-            description,
-            |field, description| {
-                field.child(Label::new(description).size(UI_LABEL_SMALL).color(Color::Muted))
-            },
-        ))
-        .into_any_element()
 }
 
 fn context_item(icon: IconName, text: impl Into<SharedString>) -> AnyElement {

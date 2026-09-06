@@ -87,7 +87,6 @@ impl Render for Zeddy {
             }
         };
 
-        let command_palette = self.command_palette(cx);
         // Native child webviews sit above their parent window's GPUI scene. Rename dialogs use a
         // window-sized native popup when possible; these in-window overlays are the platform
         // fallback only.
@@ -100,8 +99,6 @@ impl Render for Zeddy {
                 "RenameSpace"
             } else if self.rename_group.is_some() {
                 "RenameGroup"
-            } else if self.command_palette_open {
-                "CommandPalette"
             } else {
                 "Chartr"
             })
@@ -211,7 +208,6 @@ impl Render for Zeddy {
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .child(title_bar)
             .child(body)
-            .children(command_palette)
             .children(rename)
     }
 }

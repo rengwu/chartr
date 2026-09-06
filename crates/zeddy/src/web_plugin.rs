@@ -116,18 +116,6 @@ use wry::{
     http::{Response, header},
 };
 
-pub fn view(
-    document: Document,
-    broker: FileBroker,
-    permissions: Permissions,
-    session: Option<SessionAccess>,
-    on_focus: Option<FocusHandler>,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyView {
-    create_view(document, broker, permissions, session, on_focus, None, window, cx).0
-}
-
 pub fn pane(
     document: Document,
     broker: FileBroker,

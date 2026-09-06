@@ -174,10 +174,7 @@ pub struct Zeddy {
     catalog: Catalog,
     plugins_restored: bool,
     settings: SettingsStore,
-    command_palette_open: bool,
-    command_palette_input: Entity<TextInput>,
-    command_palette_query: String,
-    command_palette_selected: usize,
+    command_palette_window: Option<AnyWindowHandle>,
     terminal_search_open: bool,
     terminal_search_input: Entity<TextInput>,
     terminal_search_query: String,
@@ -218,6 +215,10 @@ impl Zeddy {
         cx.observe_window_bounds(window, |this, window, cx| {
             this.capture_window_bounds(window);
             this.schedule_persistence(cx);
+            if let Some(palette) = this.command_palette_window {
+                let modal_size = window.viewport_size();
+                let _ = palette.update(cx, |_, window, _| window.resize(modal_size));
+            }
             if let Some(rename_window) = this.rename_window {
                 let modal_size = window.viewport_size();
                 let _ = rename_window.update(cx, |_, window, _| window.resize(modal_size));
@@ -233,16 +234,9 @@ impl Zeddy {
             cx.notify();
         })
         .detach();
-        let command_palette_input = cx.new(|cx| TextInput::new("Type a command…", cx));
         let terminal_search_input = cx.new(|cx| TextInput::new("Find in terminal…", cx));
         let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
         let title_bar = cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar"));
-        cx.subscribe(&command_palette_input, |this, input, _: &InputEvent, cx| {
-            this.command_palette_query = input.read(cx).text().to_owned();
-            this.command_palette_selected = 0;
-            cx.notify();
-        })
-        .detach();
         cx.subscribe(&terminal_search_input, |this, input, _: &InputEvent, cx| {
             this.terminal_search_query = input.read(cx).text().to_owned();
             this.start_terminal_search(cx);
@@ -276,10 +270,7 @@ impl Zeddy {
             catalog: Catalog::default(),
             plugins_restored: false,
             settings,
-            command_palette_open: false,
-            command_palette_input,
-            command_palette_query: String::new(),
-            command_palette_selected: 0,
+            command_palette_window: None,
             terminal_search_open: false,
             terminal_search_input,
             terminal_search_query: String::new(),
@@ -440,7 +431,7 @@ impl Zeddy {
         cx.observe_in(space, window, |this, space, window, cx| {
             if this.active.as_ref() == Some(&space)
                 && this.focus.is_focused(window)
-                && !this.command_palette_open
+                && this.command_palette_window.is_none()
                 && !this.terminal_search_open
                 && this.rename_space.is_none()
                 && this.rename_group.is_none()
@@ -486,7 +477,7 @@ impl Zeddy {
 
             if this.active.as_ref() == Some(space)
                 && space.read(cx).active() == Some(id)
-                && !this.command_palette_open
+                && this.command_palette_window.is_none()
                 && this.rename_space.is_none()
                 && this.rename_group.is_none()
             {
@@ -881,9 +872,8 @@ impl Zeddy {
     }
 
     fn close_active_item(&mut self, cx: &mut Context<Self>) {
-        if self.command_palette_open {
-            self.command_palette_open = false;
-            self.command_palette_query.clear();
+        if let Some(palette) = self.command_palette_window.take() {
+            let _ = palette.update(cx, |_, window, _| window.remove_window());
             cx.notify();
             return;
         }
@@ -1185,45 +1175,6 @@ impl Zeddy {
             cx.notify();
             return;
         }
-        if self.command_palette_open {
-            let key = event.keystroke.key.as_str();
-            match key {
-                "escape" => {
-                    cx.stop_propagation();
-                    self.command_palette_open = false;
-                    self.command_palette_query.clear();
-                    self.command_palette_input.update(cx, |input, cx| input.clear(cx));
-                    window.focus(&self.focus, cx);
-                }
-                "up" => {
-                    cx.stop_propagation();
-                    let count = self.filtered_palette_commands().len();
-                    if count > 0 {
-                        self.command_palette_selected =
-                            self.command_palette_selected.checked_sub(1).unwrap_or(count - 1);
-                    }
-                }
-                "down" => {
-                    cx.stop_propagation();
-                    let count = self.filtered_palette_commands().len();
-                    if count > 0 {
-                        self.command_palette_selected = (self.command_palette_selected + 1) % count;
-                    }
-                }
-                "enter" => {
-                    cx.stop_propagation();
-                    if let Some((command, _, _)) =
-                        self.filtered_palette_commands().get(self.command_palette_selected).copied()
-                    {
-                        self.invoke_palette_command(command, window, cx);
-                        return;
-                    }
-                }
-                _ => return,
-            }
-            cx.notify();
-            return;
-        }
         if event.keystroke.key == "escape" && cx.stop_active_drag(window) {
             self.space_sorter.cancel();
             if let Some(space) = self.active.clone() {
@@ -1416,8 +1367,8 @@ fn restore_space_order(
     ordered
 }
 
-fn pane_drop_direction_for_drag(
-    event: &DragMoveEvent<DraggedItem>,
+fn pane_drop_direction_for_drag<T: 'static>(
+    event: &DragMoveEvent<T>,
 ) -> Option<Option<SplitDirection>> {
     let bounds = event.bounds;
     let x = event.event.position.x - bounds.left();
@@ -1462,7 +1413,13 @@ fn split_direction_for_position(width: f32, height: f32, x: f32, y: f32) -> Opti
     .map(|(direction, _)| direction)
 }
 
-fn drop_target(direction: Option<SplitDirection>, group: String, space: String, cx: &App) -> Div {
+fn drop_target(
+    direction: Option<SplitDirection>,
+    group: String,
+    space: String,
+    new_item_space: EntityId,
+    cx: &App,
+) -> Div {
     div()
         .invisible()
         .absolute()
@@ -1471,7 +1428,11 @@ fn drop_target(direction: Option<SplitDirection>, group: String, space: String, 
             value
                 .downcast_ref::<DraggedItem>()
                 .is_some_and(|dragged| !dragged.grouped && dragged.space == space)
+                || value
+                    .downcast_ref::<chrome::DraggedNewItem>()
+                    .is_some_and(|dragged| dragged.space == new_item_space)
         })
+        .group_drag_over::<chrome::DraggedNewItem>(group.clone(), |style| style.visible())
         .group_drag_over::<DraggedItem>(group, |style| style.visible())
         .map(|target| match direction {
             None => target.top_0().right_0().bottom_0().left_0(),

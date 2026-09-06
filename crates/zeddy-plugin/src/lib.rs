@@ -56,6 +56,7 @@
 
 pub mod manifest;
 pub mod services;
+pub mod settings;
 
 pub use gpui;
 pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, ProjectAccess};

@@ -175,10 +175,6 @@ pub(super) fn materialize_bundled_clock(dir: &std::path::Path) -> std::io::Resul
     write_bundled_file(
         &dir.join("index.html"),
         include_bytes!("../../../../plugins/clock/index.html"),
-    )?;
-    write_bundled_file(
-        &dir.join("settings.html"),
-        include_bytes!("../../../../plugins/clock/settings.html"),
     )
 }
 

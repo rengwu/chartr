@@ -66,7 +66,7 @@ enum LoadSource {
 enum Tier {
     Native(Native),
     Hosted(HostedSurface),
-    Web { entry: PathBuf, settings_entry: Option<PathBuf> },
+    Web { entry: PathBuf },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +86,7 @@ impl HostedSurface {
 
 pub enum SettingsSource {
     Native(gpui::AnyView),
-    Web(PathBuf),
+    Declarative(zeddy_plugin::settings::SettingsSchema),
 }
 
 /// A native module linked into Chartr and the object it produced.
@@ -150,8 +150,9 @@ impl Loaded {
         }
         match &mut self.tier {
             Tier::Native(native) => native.plugin.settings(window, cx).map(SettingsSource::Native),
-            Tier::Hosted(_) => None,
-            Tier::Web { settings_entry, .. } => settings_entry.clone().map(SettingsSource::Web),
+            Tier::Hosted(_) | Tier::Web { .. } => {
+                self.manifest.settings.clone().map(SettingsSource::Declarative)
+            }
         }
     }
 }
@@ -799,9 +800,6 @@ pub fn validate_package(dir: &Path, manifest: &Manifest) -> Result<(), LoadError
             .as_deref()
             .ok_or(LoadError::Manifest(Invalid::Missing { field: "entry", kind: Kind::Web }))?;
         require_package_file(dir, Path::new(entry))?;
-        if let Some(settings) = &manifest.settings_entry {
-            require_package_file(dir, Path::new(settings))?;
-        }
     }
     Ok(())
 }
@@ -852,7 +850,7 @@ fn load_validated(dir: &Path, paths: &Paths, manifest: Manifest) -> Result<Loade
                 key: PaneKey::new(manifest.id.clone(), "main"),
                 title: manifest.name.clone(),
             }];
-            (Tier::Hosted(surface), panes, false)
+            (Tier::Hosted(surface), panes, manifest.settings.is_some())
         }
         Kind::Web => {
             let entry = dir.join(manifest.entry.as_deref().unwrap_or("index.html"));
@@ -863,9 +861,8 @@ fn load_validated(dir: &Path, paths: &Paths, manifest: Manifest) -> Result<Loade
                 key: PaneKey::new(manifest.id.clone(), "main"),
                 title: manifest.name.clone(),
             }];
-            let settings_entry = manifest.settings_entry.as_ref().map(|entry| dir.join(entry));
-            let has_settings = settings_entry.is_some();
-            (Tier::Web { entry, settings_entry }, panes, has_settings)
+            let has_settings = manifest.settings.is_some();
+            (Tier::Web { entry }, panes, has_settings)
         }
     };
 
@@ -1121,25 +1118,32 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_web_settings_document_is_validated_but_not_constructed_during_discovery(
-        cx: &mut gpui::TestAppContext,
-    ) {
+    fn portable_settings_are_discovered_without_an_html_document(cx: &mut gpui::TestAppContext) {
         let (_tmp, paths) = paths();
         let dir = write_web(&paths, "com.example.notes", "com.example.notes");
         let manifest = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
         std::fs::write(
             dir.join("zeddy-plugin.toml"),
-            format!("{manifest}settings_entry = \"settings.html\"\n"),
+            format!(
+                r#"{manifest}
+[settings]
+file = "settings.json"
+[[settings.fields]]
+key = "enabled"
+label = "Enabled"
+type = "toggle"
+default = true
+"#
+            ),
         )
         .unwrap();
-        std::fs::write(dir.join("settings.html"), "<p>settings</p>").unwrap();
 
         let catalog = cx.update(|cx| load_all(&paths, cx));
         assert!(catalog.get("com.example.notes").unwrap().has_settings);
     }
 
     #[gpui::test]
-    fn a_declared_missing_web_settings_document_rejects_the_plugin(cx: &mut gpui::TestAppContext) {
+    fn legacy_html_settings_are_rejected_with_a_migration_message(cx: &mut gpui::TestAppContext) {
         let (_tmp, paths) = paths();
         let dir = write_web(&paths, "com.example.notes", "com.example.notes");
         let manifest = std::fs::read_to_string(dir.join("zeddy-plugin.toml")).unwrap();
@@ -1151,7 +1155,7 @@ mod tests {
 
         let catalog = cx.update(|cx| load_all(&paths, cx));
         assert!(catalog.loaded.is_empty());
-        assert!(catalog.rejected[0].why.contains("missing.html"));
+        assert!(catalog.rejected[0].why.contains("declare native fields"));
     }
 
     #[gpui::test]

@@ -173,7 +173,7 @@ impl SettingsWindow {
 
     pub(super) fn plugin_configuration_page(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (id, view) = self.plugin_settings.clone().expect("configuration is open");
@@ -194,6 +194,7 @@ impl SettingsWindow {
                 .into_any_element();
         };
         let manifest = descriptor.manifest;
+        let declarative_settings = manifest.settings.is_some();
         let source = descriptor
             .installation
             .map(|installation| {
@@ -265,7 +266,17 @@ impl SettingsWindow {
                     })));
         }
         page.when_some(view.filter(|_| descriptor.enabled), |page, view| {
-            page.child(div().min_h(px(320.)).child(view))
+            // Native plugin management views need room for their own dialogs.
+            // Declarative forms flow in the ordinary Settings page scroll.
+            page.child(
+                div()
+                    .w_full()
+                    .when(!declarative_settings, |panel| {
+                        panel.min_h((window.viewport_size().height - px(140.)).max(px(320.)))
+                    })
+                    .flex_none()
+                    .child(view),
+            )
         })
         .child(details)
         .into_any_element()
@@ -457,7 +468,6 @@ impl SettingsWindow {
             this.pick_plugin_folder(window, cx);
         });
         let restart = cx.listener(|_, _, _, cx| cx.restart());
-        let git_focus = self.git_url_input.focus_handle(cx);
         let colors = cx.theme().colors();
         let install_actions = h_flex()
             .gap_2()
@@ -478,17 +488,7 @@ impl SettingsWindow {
             .border_color(colors.border_variant)
             .rounded_md()
             .child(Label::new("Git repository URL").size(UI_LABEL_DEFAULT))
-            .child(
-                h_flex()
-                    .h(ButtonSize::Default.rems())
-                    .px_2()
-                    .border_1()
-                    .border_color(colors.border_variant)
-                    .bg(colors.surface_background)
-                    .track_focus(&git_focus)
-                    .in_focus(|field| field.border_color(colors.border_focused))
-                    .child(self.git_url_input.clone()),
-            )
+            .child(input_field("plugin-git-url", self.git_url_input.clone(), cx))
             .child(
                 h_flex()
                     .gap_2()

@@ -26,6 +26,7 @@ mod keymap;
 mod mode;
 mod persistence;
 mod plugin_installer;
+mod plugin_settings;
 mod process;
 mod session;
 mod settings;

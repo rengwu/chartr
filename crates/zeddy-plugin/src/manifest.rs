@@ -141,9 +141,12 @@ pub struct Manifest {
     /// Web only: the entry document, relative to the plugin directory.
     #[serde(default)]
     pub entry: Option<String>,
-    /// Web only: an optional document constructed lazily inside Settings.
+    /// Legacy HTML settings are recognized only to return a migration error.
     #[serde(default)]
     pub settings_entry: Option<String>,
+    /// Portable plugins declare controls rendered natively by the host.
+    #[serde(default)]
+    pub settings: Option<crate::settings::SettingsSchema>,
 }
 
 /// Why a manifest was refused.
@@ -219,6 +222,19 @@ impl Manifest {
     fn validate(&self) -> Result<(), Invalid> {
         if self.manifest_version != MANIFEST_VERSION {
             return Err(Invalid::ManifestVersion { found: self.manifest_version });
+        }
+        if self.settings_entry.is_some() {
+            return Err(Invalid::Malformed(
+                "settings_entry HTML pages are no longer supported; declare native fields in [settings] instead".into(),
+            ));
+        }
+        if let Some(settings) = &self.settings {
+            if self.kind == Kind::Native {
+                return Err(Invalid::Malformed(
+                    "native plugins contribute settings through their registrar".into(),
+                ));
+            }
+            settings.validate().map_err(Invalid::Malformed)?;
         }
         if !is_usable_id(&self.id) {
             return Err(Invalid::BadId(self.id.clone()));

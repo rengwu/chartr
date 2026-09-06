@@ -11,7 +11,7 @@ impl Zeddy {
     ) -> AnyElement {
         let button_id = format!("new-item-pane-{}-{}", tab_id.get(), pane_id.get());
         let start = weak.clone();
-        chrome::new_item_button(button_id)
+        let button = chrome::new_item_button(button_id.clone())
             .tooltip(Tooltip::text("New session in this pane"))
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
@@ -23,7 +23,13 @@ impl Zeddy {
                     }
                 });
             })
-            .into_any_element()
+            .into_any_element();
+        chrome::new_item_drag_handle(
+            button_id,
+            self.active.as_ref().map(Entity::entity_id),
+            chrome::NewItemKind::Terminal,
+            button,
+        )
     }
 
     fn pane_new_plugin_button(
@@ -34,7 +40,7 @@ impl Zeddy {
     ) -> AnyElement {
         let button_id = format!("new-plugin-pane-{}-{}", tab_id.get(), pane_id.get());
         let open = weak.clone();
-        chrome::new_plugin_pane_button(button_id, IconSize::Small)
+        let button = chrome::new_plugin_pane_button(button_id.clone(), IconSize::Small)
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
                 let _ = open.update(cx, |this, cx| {
@@ -45,7 +51,13 @@ impl Zeddy {
                     }
                 });
             })
-            .into_any_element()
+            .into_any_element();
+        chrome::new_item_drag_handle(
+            button_id,
+            self.active.as_ref().map(Entity::entity_id),
+            chrome::NewItemKind::Plugin,
+            button,
+        )
     }
 
     fn pane_new_item_cell(
@@ -62,6 +74,43 @@ impl Zeddy {
                 .child(self.pane_new_plugin_button(tab_id, pane_id, weak)),
             cx,
         )
+    }
+
+    fn handle_new_item_drop(
+        &mut self,
+        dragged: &chrome::DraggedNewItem,
+        tab: WorkspaceTabId,
+        pane: LayoutPaneId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(space) = self.active.clone().filter(|space| space.entity_id() == dragged.space)
+        else {
+            return;
+        };
+        let terminal_ready = matches!(self.backend, Backend::Ready);
+        space.update(cx, |space, cx| {
+            let direction = space
+                .drag_target()
+                .filter(|(target_tab, target_pane, _)| *target_tab == tab && *target_pane == pane)
+                .and_then(|(_, _, direction)| direction);
+            space.clear_drag_target();
+            if space.workspace_tabs().workspace(tab).and_then(|layout| layout.pane(pane)).is_none()
+            {
+                return;
+            }
+            match dragged.kind {
+                chrome::NewItemKind::Terminal if terminal_ready => {
+                    space.start_session_dropped(tab, pane, direction, cx);
+                }
+                chrome::NewItemKind::Plugin => {
+                    space.open_plugin_launcher_dropped(tab, pane, direction, cx);
+                }
+                _ => {}
+            }
+        });
+        self.focus_active_terminal(window, cx);
+        cx.notify();
     }
 
     /// Zed has one pane drop path shared by tab targets and the pane body.
@@ -368,6 +417,9 @@ impl Zeddy {
 
         let drag_move = weak.clone();
         let drop_item = weak.clone();
+        let drag_new = weak.clone();
+        let drop_new = weak.clone();
+        let target_space = self.active.as_ref().expect("rendering the active space").entity_id();
         let focus_pane = weak.clone();
         let drop_group = format!("workspace-tab-{}-pane-drop-{}", tab_id.get(), pane_id.get());
         let drop_space = space.key();
@@ -435,23 +487,49 @@ impl Zeddy {
                             }
                         });
                     })
+                    .on_drag_move::<chrome::DraggedNewItem>(move |event, _, cx| {
+                        let Some(direction) = pane_drop_direction_for_drag(event) else {
+                            return;
+                        };
+                        let accepted = event.drag(cx).space == target_space;
+                        let _ = drag_new.update(cx, |this, cx| {
+                            if let Some(space) = this.active.clone() {
+                                let changed = space.update(cx, |space, _| {
+                                    if accepted {
+                                        space.set_drag_target(tab_id, pane_id, direction)
+                                    } else {
+                                        space.clear_drag_target()
+                                    }
+                                });
+                                if changed {
+                                    cx.notify();
+                                }
+                            }
+                        });
+                    })
                     .child(content)
-                    .child(drop_target(drop_direction, drop_group, drop_space, cx).on_drop(
-                        move |dragged: &DraggedItem, window, cx| {
-                            let dragged = dragged.clone();
-                            let _ = drop_item.update(cx, |this, cx| {
-                                this.handle_item_drop(
-                                    &dragged,
-                                    tab_id,
-                                    pane_id,
-                                    pane_drop_index,
-                                    true,
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    )),
+                    .child(
+                        drop_target(drop_direction, drop_group, drop_space, target_space, cx)
+                            .on_drop(move |dragged: &chrome::DraggedNewItem, window, cx| {
+                                let _ = drop_new.update(cx, |this, cx| {
+                                    this.handle_new_item_drop(dragged, tab_id, pane_id, window, cx);
+                                });
+                            })
+                            .on_drop(move |dragged: &DraggedItem, window, cx| {
+                                let dragged = dragged.clone();
+                                let _ = drop_item.update(cx, |this, cx| {
+                                    this.handle_item_drop(
+                                        &dragged,
+                                        tab_id,
+                                        pane_id,
+                                        pane_drop_index,
+                                        true,
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }),
+                    ),
             )
             .into_any_element()
     }
@@ -644,5 +722,156 @@ impl Zeddy {
         TabBar::new(format!("workspace-tab-{}-pane-{}-tabs", tab_id.get(), pane_id.get()))
             .child(tabs_with_pinned_new_item)
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod creation_drag_tests {
+    use super::*;
+
+    struct Harness {
+        kind: chrome::NewItemKind,
+        clicks: usize,
+        drops: Vec<Option<SplitDirection>>,
+        direction: Option<SplitDirection>,
+    }
+
+    impl Render for Harness {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let click = cx.listener(|this, _, _, cx| {
+                this.clicks += 1;
+                cx.notify();
+            });
+            let button = match self.kind {
+                chrome::NewItemKind::Terminal => {
+                    chrome::new_item_button("new").on_click(click).into_any_element()
+                }
+                chrome::NewItemKind::Plugin => {
+                    chrome::new_plugin_pane_button("new", IconSize::Small)
+                        .on_click(click)
+                        .into_any_element()
+                }
+            };
+            v_flex()
+                .size_full()
+                .child(
+                    div().debug_selector(|| "NEW_ITEM_SOURCE".into()).w(px(40.)).h(px(32.)).child(
+                        chrome::new_item_drag_handle(
+                            "new",
+                            Some(cx.entity_id()),
+                            self.kind,
+                            button,
+                        ),
+                    ),
+                )
+                .child(
+                    div()
+                        .debug_selector(|| "NEW_ITEM_BODY".into())
+                        .relative()
+                        .flex_1()
+                        .w_full()
+                        .min_h_0()
+                        .group("new-item-target")
+                        .on_drag_move::<chrome::DraggedNewItem>(cx.listener(
+                            |this, event, _, cx| {
+                                if let Some(direction) = pane_drop_direction_for_drag(event) {
+                                    this.direction = direction;
+                                    cx.notify();
+                                }
+                            },
+                        ))
+                        .child(
+                            drop_target(
+                                self.direction,
+                                "new-item-target".into(),
+                                "test".into(),
+                                cx.entity_id(),
+                                cx,
+                            )
+                            .debug_selector(|| "NEW_ITEM_HIGHLIGHT".into())
+                            .on_drop(cx.listener(
+                                |this, _: &chrome::DraggedNewItem, _, cx| {
+                                    this.drops.push(this.direction);
+                                    cx.notify();
+                                },
+                            )),
+                        ),
+                )
+        }
+    }
+
+    fn init(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+    }
+
+    #[gpui::test]
+    fn both_buttons_preview_edge_splits_without_creating_on_drag_start(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init(cx);
+        for kind in [chrome::NewItemKind::Terminal, chrome::NewItemKind::Plugin] {
+            let (view, cx) = cx.add_window_view(|_, _| Harness {
+                kind,
+                clicks: 0,
+                drops: Vec::new(),
+                direction: None,
+            });
+            cx.run_until_parked();
+            let source = cx.debug_bounds("NEW_ITEM_SOURCE").unwrap().center();
+            let body = cx.debug_bounds("NEW_ITEM_BODY").unwrap();
+            cx.simulate_mouse_down(source, MouseButton::Left, gpui::Modifiers::none());
+            cx.simulate_mouse_move(
+                source + gpui::point(px(24.), px(0.)),
+                Some(MouseButton::Left),
+                gpui::Modifiers::none(),
+            );
+            assert!(cx.read(|cx| cx.has_active_drag()));
+            assert_eq!(view.read_with(cx, |view, _| (view.clicks, view.drops.len())), (0, 0));
+            let edge = gpui::point(body.right() - px(2.), body.center().y);
+            cx.simulate_mouse_move(edge, Some(MouseButton::Left), gpui::Modifiers::none());
+            cx.run_until_parked();
+            let highlight = cx.debug_bounds("NEW_ITEM_HIGHLIGHT").unwrap();
+            assert_eq!(highlight.size.width, body.size.width * 0.5);
+            cx.simulate_mouse_up(edge, MouseButton::Left, gpui::Modifiers::none());
+            assert_eq!(
+                view.read_with(cx, |view, _| view.drops.clone()),
+                vec![Some(SplitDirection::Right)]
+            );
+            assert_eq!(view.read_with(cx, |view, _| view.clicks), 0);
+        }
+    }
+
+    #[gpui::test]
+    fn clicks_still_work_and_cancelled_drags_do_not_turn_into_clicks(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init(cx);
+        let (view, cx) = cx.add_window_view(|_, _| Harness {
+            kind: chrome::NewItemKind::Plugin,
+            clicks: 0,
+            drops: Vec::new(),
+            direction: None,
+        });
+        cx.run_until_parked();
+        let source = cx.debug_bounds("NEW_ITEM_SOURCE").unwrap().center();
+        cx.simulate_click(source, gpui::Modifiers::none());
+        assert_eq!(view.read_with(cx, |view, _| view.clicks), 1);
+        cx.simulate_mouse_down(source, MouseButton::Left, gpui::Modifiers::none());
+        cx.simulate_mouse_move(
+            source + gpui::point(px(24.), px(0.)),
+            Some(MouseButton::Left),
+            gpui::Modifiers::none(),
+        );
+        assert!(cx.read(|cx| cx.has_active_drag()));
+        cx.update(|window, cx| {
+            cx.stop_active_drag(window);
+        });
+        cx.simulate_mouse_move(source, Some(MouseButton::Left), gpui::Modifiers::none());
+        cx.simulate_mouse_up(source, MouseButton::Left, gpui::Modifiers::none());
+        assert_eq!(view.read_with(cx, |view, _| (view.clicks, view.drops.len())), (1, 0));
     }
 }

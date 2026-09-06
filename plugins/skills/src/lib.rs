@@ -2,7 +2,9 @@
 mod sources;
 
 use crate::{
-    components::{ContextMenu, ListSorter, PopupMenu},
+    components::{
+        ContextMenu, ListSorter, PopupMenu, form_button, form_picker, form_row, input_field,
+    },
     fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
     text_input::TextInput,
 };
@@ -15,8 +17,8 @@ use std::{
     },
 };
 use ui::{
-    Button, ButtonSize, ButtonStyle, Color, Icon, IconButton, IconName, IconPosition, IconSize,
-    Label, Switch, TintColor, prelude::*,
+    Button, ButtonStyle, Color, Icon, IconButton, IconName, IconPosition, IconSize, Label, Switch,
+    TintColor, prelude::*,
 };
 use zeddy_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, gpui,
@@ -690,12 +692,7 @@ impl SkillsView {
         let kind = self.kind;
         let weak = cx.weak_entity();
         let picker = PopupMenu::new("skill-source-kind")
-            .trigger(
-                Button::new("skill-source-kind-trigger", kind.label())
-                    .style(ButtonStyle::Outlined)
-                    .disabled(busy)
-                    .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
-            )
+            .trigger(form_picker("skill-source-kind-trigger", kind.label()).disabled(busy))
             .anchor(Anchor::TopLeft)
             .menu(move |window, cx| {
                 let weak = weak.clone();
@@ -739,8 +736,7 @@ impl SkillsView {
                         cx,
                     )))
                     .child(
-                        Button::new("pick-skill-source-folder", "Select folder")
-                            .style(ButtonStyle::Outlined)
+                        form_button("pick-skill-source-folder", "Select folder")
                             .start_icon(Icon::new(IconName::FolderOpen))
                             .disabled(busy)
                             .on_click(cx.listener(Self::pick_folder)),
@@ -977,42 +973,6 @@ fn source_columns(cells: Vec<AnyElement>) -> gpui::Div {
             .zip([0.52, 0.1, 0.12, 0.26])
             .map(|(cell, width)| div().w(relative(width)).min_w_0().flex_none().px_1().child(cell)),
     )
-}
-
-fn input_field(id: &'static str, input: Entity<TextInput>, cx: &App) -> AnyElement {
-    let focus = input.focus_handle(cx);
-    h_flex()
-        .id(id)
-        .w_full()
-        .h(ButtonSize::Default.rems())
-        .px_2()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().colors().border_variant)
-        .bg(cx.theme().colors().editor_background)
-        .track_focus(&focus)
-        .in_focus(|field| field.border_color(cx.theme().colors().border_focused))
-        .child(input)
-        .into_any_element()
-}
-
-fn form_row(
-    label: &'static str,
-    description: Option<&'static str>,
-    control: AnyElement,
-) -> AnyElement {
-    h_flex()
-        .w_full()
-        .items_start()
-        .gap_4()
-        .child(div().w(px(112.)).pt_2().child(Label::new(label).size(UI_LABEL_DEFAULT)))
-        .child(v_flex().flex_1().min_w_0().gap_1().child(control).when_some(
-            description,
-            |field, description| {
-                field.child(Label::new(description).size(UI_LABEL_SMALL).color(Color::Muted))
-            },
-        ))
-        .into_any_element()
 }
 
 fn notice_banner(message: impl Into<SharedString>, error: bool, cx: &App) -> AnyElement {

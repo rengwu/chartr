@@ -4,9 +4,9 @@ use super::*;
 
 impl Zeddy {
     pub(super) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.command_palette_open = false;
-        self.command_palette_query.clear();
-        self.command_palette_input.update(cx, |input, cx| input.clear(cx));
+        if let Some(palette) = self.command_palette_window.take() {
+            let _ = palette.update(cx, |_, window, _| window.remove_window());
+        }
         let Some(original_window) = window.window_handle().downcast::<Self>() else {
             return;
         };
@@ -268,28 +268,12 @@ impl Zeddy {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyView> {
-        let loaded = self.catalog.get(plugin)?;
-        let permissions = loaded.permissions().clone();
-        let package = loaded.dir.clone();
-        let unsafe_filesystem =
-            cx.global::<SettingsStore>().resolved().plugin(plugin).unsafe_filesystem;
         let source = self.catalog.get_mut(plugin)?.settings(window, cx)?;
         Some(match source {
             SettingsSource::Native(view) => view,
-            SettingsSource::Web(entry) => crate::web_plugin::view(
-                crate::web_plugin::Document { package, entry },
-                FileBroker::new(
-                    None,
-                    plugin_paths().data.join(plugin),
-                    permissions.project_files,
-                    unsafe_filesystem,
-                ),
-                permissions,
-                None,
-                None,
-                window,
-                cx,
-            ),
+            SettingsSource::Declarative(schema) => {
+                crate::plugin_settings::view(schema, plugin_paths().data.join(plugin), cx)
+            }
         })
     }
 

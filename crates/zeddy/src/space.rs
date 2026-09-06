@@ -674,6 +674,21 @@ impl Space {
         id
     }
 
+    pub fn open_plugin_launcher_dropped(
+        &mut self,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+        direction: Option<SplitDirection>,
+        cx: &mut Context<Self>,
+    ) -> Option<ItemId> {
+        self.layout.workspace(tab)?.pane(pane)?;
+        // Capture the target terminal binding before moving the chooser into a split.
+        let launcher = self.open_plugin_launcher_in(tab, pane, cx);
+        self.set_drag_target(tab, pane, direction);
+        self.drop_item(launcher, tab, pane, tab, pane, None);
+        Some(launcher)
+    }
+
     pub fn is_plugin_launcher(&self, id: ItemId) -> bool {
         self.items.get(&id).is_some_and(Item::is_plugin_launcher)
     }
@@ -911,12 +926,23 @@ impl Space {
         pane: crate::workspace::PaneId,
         cx: &mut Context<Self>,
     ) {
-        self.start_session_at(Some((tab, pane)), Vec::new(), cx).detach();
+        self.start_session_at(Some((tab, pane, None)), Vec::new(), cx).detach();
+    }
+
+    /// Resolve a dropped terminal's split only after the backend has started it.
+    pub fn start_session_dropped(
+        &mut self,
+        tab: WorkspaceTabId,
+        pane: crate::workspace::PaneId,
+        direction: Option<SplitDirection>,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_session_at(Some((tab, pane, direction)), Vec::new(), cx).detach();
     }
 
     fn start_session_at(
         &mut self,
-        destination: Option<(WorkspaceTabId, crate::workspace::PaneId)>,
+        destination: Option<(WorkspaceTabId, crate::workspace::PaneId, Option<SplitDirection>)>,
         initial_input: Vec<u8>,
         cx: &mut Context<Self>,
     ) -> gpui::Task<Result<zeddy_plugin::PreparedTerminal, String>> {
@@ -979,8 +1005,8 @@ impl Space {
                         let session = this.session_from_builder(info, builder, cx);
                         let session_id = session.id().0.clone();
                         let input = session.access();
-                        let inserted = if let Some((tab, pane)) = destination {
-                            this.insert_session_in(session, tab, pane)
+                        let inserted = if let Some((tab, pane, direction)) = destination {
+                            this.insert_session_in(session, tab, pane, direction)
                         } else {
                             this.insert_session(session)
                         };
@@ -1019,6 +1045,7 @@ impl Space {
         session: Session,
         tab: WorkspaceTabId,
         pane: crate::workspace::PaneId,
+        direction: Option<SplitDirection>,
     ) -> Option<ItemId> {
         self.workspace = Some(session.info.workspace.clone());
         let backend_id = session.id().clone();
@@ -1026,6 +1053,13 @@ impl Space {
             return None;
         }
 
+        let pane = direction
+            .and_then(|direction| {
+                self.layout
+                    .workspace_mut(tab)
+                    .and_then(|layout| layout.split_pane(pane, direction).ok())
+            })
+            .unwrap_or(pane);
         let id = self.layout.alloc_item();
         self.items.insert(id, Item::Session(SessionItem::new(session)));
         let placed = self
@@ -1312,6 +1346,59 @@ mod tests {
                 space.item(second).unwrap().icon_path().as_deref(),
                 Some(crate::assets::PLUGIN_LAUNCHER_ICON_PATH)
             );
+        });
+    }
+
+    #[gpui::test]
+    fn dropped_creation_places_the_picker_and_rejected_terminal_preserves_layout(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let temporary = tempfile::tempdir().unwrap();
+        let sidecar = temporary.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            zeddy_herdr::Sidecar::at(sidecar).unwrap(),
+            zeddy_herdr::Namespace::rooted(temporary.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new("Test".into(), temporary.path().to_owned(), Kind::AdHoc, client, cx)
+        });
+        space.update(cx, |space, cx| {
+            let first = space.open_plugin_launcher(cx);
+            let (tab, pane) = space.layout.location(first).unwrap();
+            let center = space.open_plugin_launcher_dropped(tab, pane, None, cx).unwrap();
+            assert_eq!(space.layout.location(center), Some((tab, pane)));
+            assert_eq!(
+                space.layout.workspace(tab).unwrap().pane(pane).unwrap().items(),
+                &[first, center]
+            );
+
+            for direction in [
+                SplitDirection::Left,
+                SplitDirection::Right,
+                SplitDirection::Up,
+                SplitDirection::Down,
+            ] {
+                let launcher =
+                    space.open_plugin_launcher_dropped(tab, pane, Some(direction), cx).unwrap();
+                let (placed_tab, placed_pane) = space.layout.location(launcher).unwrap();
+                assert_eq!(placed_tab, tab);
+                assert_ne!(placed_pane, pane);
+                let layout = space.layout.workspace(tab).unwrap();
+                assert_eq!(layout.pane(placed_pane).unwrap().items(), &[launcher]);
+                assert_eq!(layout.center.pane_in_direction(pane, direction), Some(placed_pane));
+                assert_eq!(layout.pane(pane).unwrap().items(), &[first, center]);
+                assert_eq!(space.drag_target(), None);
+            }
+
+            let before = space.layout.workspace(tab).unwrap().center.panes();
+            let item_count = space.items.len();
+            space.path = temporary.path().join("missing-folder");
+            space.start_session_dropped(tab, pane, Some(SplitDirection::Right), cx);
+            assert!(space.problem.as_deref().unwrap().contains("unavailable"));
+            assert!(!space.starting);
+            assert_eq!(space.layout.workspace(tab).unwrap().center.panes(), before);
+            assert_eq!(space.items.len(), item_count);
         });
     }
 

@@ -363,23 +363,35 @@ impl Zeddy {
 
     pub(super) fn new_item_button(&self, cx: &Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
-        chrome::new_item_button("new-item")
+        let button = chrome::new_item_button("new-item")
             .aria_label("New terminal session")
             .tooltip(Tooltip::text("New terminal session"))
             .on_click(move |_, window, cx| {
                 let _ = weak.update(cx, |this, cx| this.act(Action::New, window, cx));
             })
-            .into_any_element()
+            .into_any_element();
+        chrome::new_item_drag_handle(
+            "new-item",
+            self.active.as_ref().map(Entity::entity_id),
+            chrome::NewItemKind::Terminal,
+            button,
+        )
     }
 
     pub(super) fn new_plugin_pane_button(&self, cx: &Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
-        chrome::new_plugin_pane_button("new-plugin-pane", IconSize::Small)
+        let button = chrome::new_plugin_pane_button("new-plugin-pane", IconSize::Small)
             .on_click(move |_, window, cx| {
                 let _ = weak.update(cx, |this, cx| {
                     this.act(Action::NewPluginPane, window, cx);
                 });
             })
-            .into_any_element()
+            .into_any_element();
+        chrome::new_item_drag_handle(
+            "new-plugin-pane",
+            self.active.as_ref().map(Entity::entity_id),
+            chrome::NewItemKind::Plugin,
+            button,
+        )
     }
 }

@@ -97,15 +97,21 @@ pub fn render(
                 h_flex()
                     .gap_px()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(
+                    .child(super::new_item_drag_handle(
+                        ("new-in-space", space_index),
+                        Some(space_id),
+                        super::NewItemKind::Terminal,
                         IconButton::new(("new-in-space", space_index), IconName::Plus)
                             .icon_size(IconSize::XSmall)
                             .tooltip(Tooltip::text("New session in this space"))
                             .on_click(move |_, window, cx| {
                                 add(Action::NewInSpace { space: space_id }, window, cx)
                             }),
-                    )
-                    .child(
+                    ))
+                    .child(super::new_item_drag_handle(
+                        ("new-plugin-pane-in-space", space_index),
+                        Some(space_id),
+                        super::NewItemKind::Plugin,
                         new_plugin_pane_button(
                             ("new-plugin-pane-in-space", space_index),
                             IconSize::XSmall,
@@ -113,7 +119,7 @@ pub fn render(
                         .on_click(move |_, window, cx| {
                             add_plugin(Action::NewPluginPaneInSpace { space: space_id }, window, cx)
                         }),
-                    ),
+                    )),
             )
             .when(!space.is_free && movable_space_count > 1, |handle| {
                 handle

@@ -187,16 +187,7 @@ fn rename_dialog(
         .child(
             v_flex()
                 .gap_1()
-                .child(
-                    h_flex()
-                        .h(px(36.))
-                        .px_2()
-                        .rounded_md()
-                        .border_1()
-                        .border_color(cx.theme().colors().border_focused)
-                        .bg(cx.theme().colors().editor_background)
-                        .child(input),
-                )
+                .child(crate::components::input_field(format!("{dialog_id}-input"), input, cx))
                 .children(help.map(|help| {
                     Label::new(help).size(UI_LABEL_SMALL).color(Color::Muted).into_any_element()
                 })),

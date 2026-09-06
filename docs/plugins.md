@@ -58,8 +58,13 @@ Each plugin has exactly one entry in Settings: its name and trash, gear, and
 enable controls on the first line, then a short `description` that wraps across
 the full width. Prerequisite errors appear below the description. The host owns
 this layout; plugins cannot add extra rows. The gear opens the plugin's single
-configuration page, combining its optional native settings view or web
-`settings_entry` with package details, prerequisite setup links and host permissions.
+configuration page, combining native settings controls with package details,
+prerequisite setup links and host permissions. Build-time native plugins may
+contribute a GPUI view. Web and hosted plugins declare `[settings]` fields;
+Chartr renders these with the same native controls as its own forms. No plugin
+HTML or JavaScript runs inside the Settings window. Legacy `settings_entry`
+manifests are rejected with a migration message; replace that declaration with
+the schema below. Existing plugin data is retained.
 
 **Uninstall** confirms removal, closes the plugin's panes and configuration view,
 and removes its installed and bundled packages and any pending update. Source
@@ -109,7 +114,6 @@ version = "0.1.0"
 kind = "web"
 icon = "NoteIcon"             # package includes icons/NoteIcon.svg
 entry = "index.html"
-# settings_entry = "settings.html"
 
 [capabilities]
 multiplicity = "per_space"    # or "multiple"
@@ -125,6 +129,43 @@ session = false
 wayfinder = false            # map workflow and registered-agent launching
 ```
 
+Portable plugins can add native settings without a settings document:
+
+```toml
+[settings]
+file = "settings.json"         # relative to this plugin's private data directory
+
+[[settings.fields]]
+key = "format"                 # top-level JSON property
+label = "Clock format"
+type = "select"
+default = "24"
+options = [
+    { value = "24", label = "24-hour" },
+    { value = "12", label = "12-hour" },
+]
+
+[[settings.fields]]
+key = "show_seconds"
+label = "Show seconds"
+description = "Include seconds in the display."  # optional
+type = "toggle"
+default = true
+```
+
+`select` stores a string from its declared options; `toggle` stores a boolean.
+Field keys and option values must be unique, and a select's default must be one
+of its options. The host accepts up to 64 fields and 64 options per select.
+Unknown control types are rejected. Settings paths must remain inside private
+plugin data; parent directories must already exist.
+
+The file is a JSON object, limited to 1 MiB. Missing fields use their declared
+defaults. Opening Settings does not write a file. Each change re-reads the file,
+updates the selected key, preserves other keys, and replaces the file atomically.
+Unreadable, malformed, or unsupported saved values produce a native error and
+are not overwritten; correct the file and use **Reload**. Plugins read the same
+file through `data.read` (Clock checks it on each tick).
+
 The ID is the package identity used for replacement, data, preferences, and
 saved panes. Use a stable reverse-DNS name. IDs accept ASCII letters, digits,
 `.`, `-`, and `_`, up to 128 characters, and cannot start with `.`. Installed
@@ -139,11 +180,12 @@ saved panes. Web cloning and restoration create a fresh document; there is no
 host API for serializing per-pane web state. `session_binding` lets a pane bind
 to the terminal from which its launcher was opened (required for this capability);
 `permissions.session` separately grants
-access to that binding. A Settings document has no project or terminal binding.
+access to that binding. Native settings schemas grant no project, network, process,
+or terminal access.
 
 The `data.*` API always accesses
 `$XDG_DATA_HOME/chartr-zeddy/plugin-data/<plugin id>/`. This storage is shared
-across the plugin's panes, spaces, and Settings document, not allocated per
+across the plugin's panes, spaces, and native settings form, not allocated per
 instance. File APIs do not create parent directories.
 
 The project-file and network grants constrain their respective APIs.
@@ -271,7 +313,7 @@ closing the session makes its capabilities unavailable.
 ### Wayfinder workflow
 
 These actions require `permissions.wayfinder = true` and an owning space pane;
-they are unavailable to Settings documents. No identity-based exemption is used:
+they are unavailable to native settings schemas. No identity-based exemption is used:
 an installed web package must declare the same grant as bundled Wayfinder.
 All actions use the existing ordered queue and document-scoped replies.
 

@@ -162,7 +162,11 @@ In Tabbed mode, the trailing plus button opens a new terminal session directly;
 it has no context menu. A dedicated plugin-pane button beside it opens the plugin
 picker. Pane-local tab bars and sidebar space cards use the same direct plus and
 plugin-pane actions, so the picker opens in that pane or space. Choosing a surface
-replaces the picker in place, so the plugin opens in that same tab.
+replaces the picker in place, so the plugin opens in that same tab. Drag either
+creation button directly onto a pane in its space to create there: the center
+adds to that pane, and an edge opens a split. The split preview appears during
+the drag; canceling creates nothing. A terminal split is committed only after
+the session starts successfully.
 
 Build-time native modules receive an `InstanceContext` and return ordinary GPUI
 views:
@@ -189,7 +193,9 @@ Process execution carries the user's account authority, and terminal input can
 execute commands; file and network API restrictions do not constrain those grants.
 Unrestricted project-file API access is an explicit per-plugin setting.
 Revoking that setting or disabling a plugin destroys its live brokers and
-views immediately. A web plugin may name a lazy `settings_entry` document.
+views immediately. Plugin settings use native controls: portable plugins declare
+`[settings]` fields in their manifest, and Chartr reads and writes their private
+JSON settings file. HTML `settings_entry` pages are rejected.
 
 Hosted plugins are small declarative packages that activate a surface
 implemented inside Chartr. They are reserved for integrations—such as

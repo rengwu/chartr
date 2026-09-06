@@ -544,7 +544,7 @@ impl Render for BrowserView {
         let address = h_flex()
             .id(format!("{}-address", self.element_key))
             .key_context("ChartrBrowserAddress")
-            .h(ButtonSize::Medium.rems())
+            .h(crate::components::FORM_CONTROL_SIZE.rems())
             .flex_1()
             .min_w_0()
             .gap_1()

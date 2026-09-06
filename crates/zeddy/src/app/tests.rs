@@ -83,7 +83,7 @@ fn the_bundled_web_example_materializes_as_a_valid_plugin_directory() {
     assert_eq!(manifest.id, "com.example.clock");
     assert!(manifest.icon_path(&dir).is_file());
     assert!(dir.join("index.html").is_file());
-    assert!(dir.join("settings.html").is_file());
+    assert!(zeddy_plugin::Manifest::read(&dir).unwrap().settings.is_some());
 }
 
 #[test]

@@ -56,6 +56,7 @@ impl SettingsWindow {
 
         DropdownMenu::new(id, current, menu)
             .style(DropdownStyle::Outlined)
+            .trigger_size(FORM_CONTROL_SIZE)
             .attach(Anchor::BottomLeft)
             .aria_label(label)
             .into_any_element()

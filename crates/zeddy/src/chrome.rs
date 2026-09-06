@@ -33,6 +33,90 @@ pub(crate) fn new_plugin_pane_button(id: impl Into<ElementId>, icon_size: IconSi
         .child(Icon::from_path(PLUGIN_LAUNCHER_ICON_PATH).size(icon_size))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NewItemKind {
+    Terminal,
+    Plugin,
+}
+
+/// A creation intent. Starting a drag never allocates a session or changes layout.
+#[derive(Clone)]
+pub struct DraggedNewItem {
+    pub space: EntityId,
+    pub kind: NewItemKind,
+}
+
+impl Render for DraggedNewItem {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .bg(cx.theme().colors().elevated_surface_background)
+            .border_1()
+            .border_color(cx.theme().colors().border)
+            .child(
+                Label::new(match self.kind {
+                    NewItemKind::Terminal => "New terminal",
+                    NewItemKind::Plugin => "New plugin",
+                })
+                .size(UI_LABEL_DEFAULT),
+            )
+    }
+}
+
+pub(crate) fn new_item_drag_handle(
+    id: impl Into<ElementId>,
+    space: Option<EntityId>,
+    kind: NewItemKind,
+    button: impl IntoElement,
+) -> AnyElement {
+    NewItemDragHandle { id: id.into(), space, kind, button: button.into_any_element() }
+        .into_any_element()
+}
+
+#[derive(IntoElement)]
+struct NewItemDragHandle {
+    id: ElementId,
+    space: Option<EntityId>,
+    kind: NewItemKind,
+    button: AnyElement,
+}
+
+impl RenderOnce for NewItemDragHandle {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let id = (self.id, "drag");
+        let dragged = window.use_keyed_state(id.clone(), cx, |_, _| false);
+        let start = dragged.clone();
+        let release = dragged.clone();
+        div()
+            .id(id)
+            .capture_any_mouse_down(move |_, _, cx| {
+                dragged.update(cx, |dragged, _| *dragged = false)
+            })
+            .capture_any_mouse_up(move |_, window, cx| {
+                // A drag released back over its source, including after Escape,
+                // must not fall through to the button's ordinary click handler.
+                if *release.read(cx) {
+                    release.update(cx, |dragged, _| *dragged = false);
+                    cx.stop_active_drag(window);
+                    cx.stop_propagation();
+                }
+            })
+            .when_some(self.space, |handle, space| {
+                handle.on_drag(
+                    DraggedNewItem { space, kind: self.kind },
+                    move |dragged, _, _, cx| {
+                        start.update(cx, |started, _| *started = true);
+                        cx.refresh_windows();
+                        cx.new(|_| dragged.clone())
+                    },
+                )
+            })
+            .child(self.button)
+    }
+}
+
 pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {
     h_flex()
         // Zed's inner TabBar row derives its height from its tabs. Keep an

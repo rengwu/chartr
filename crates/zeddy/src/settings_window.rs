@@ -16,15 +16,15 @@ use gpui::{
     actions, px, size,
 };
 use ui::{
-    Banner, Button, ButtonSize, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton,
-    PopoverMenu, RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior,
-    Tooltip, prelude::*,
+    Banner, Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
+    RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
 };
 
 use crate::{
     app::Zeddy,
     components::{
-        ContextMenu, SegmentedControl, SegmentedControlOption, selection_list, selection_row,
+        ContextMenu, FORM_CONTROL_SIZE, SegmentedControl, SegmentedControlOption, form_button,
+        input_field, selection_list, selection_row,
     },
     fonts::{self, Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
@@ -768,7 +768,7 @@ fn format_number(value: f32) -> String {
 
 /// Settings actions keep a visible boundary at rest so they cannot be mistaken for labels.
 fn settings_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
-    Button::new(id, label).style(ButtonStyle::Outlined)
+    form_button(id, label)
 }
 
 fn sync_number_text(input: &Entity<TextInput>, value: f32, cx: &mut Context<SettingsWindow>) {
@@ -832,7 +832,8 @@ fn number_field(
         .role(Role::SpinButton)
         .aria_label(label)
         .aria_description(description)
-        .h(ButtonSize::Default.rems())
+        .h(FORM_CONTROL_SIZE.rems())
+        .flex_none()
         .child(decrement)
         .child(
             h_flex()
