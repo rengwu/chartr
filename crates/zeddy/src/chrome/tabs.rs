@@ -72,6 +72,7 @@ pub fn render(
                     && hovered != Some((entry.space, entry.tab));
                 h_flex()
                     .relative()
+                    .w_full()
                     .child(tab(
                         placement.index,
                         placement.count,
@@ -127,6 +128,7 @@ pub fn render(
             }
         },
     )
+    .tab_min_width(ItemTab::min_width(true, cx))
     .drag_lane(
         h_flex().id("workspace-tab-strip").w_full().min_w_0().h(content_height),
         h_flex()

@@ -721,6 +721,7 @@ impl Zeddy {
                 });
             },
         );
+        let sorted_tabs = sorted_tabs.tab_min_width(chrome::ItemTab::min_width(false, cx));
         let drag_lane = h_flex()
             .id(format!("pane-{}-tab-bar-drop-target", pane_id.get()))
             .w_full()

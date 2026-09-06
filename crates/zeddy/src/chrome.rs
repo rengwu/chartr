@@ -21,7 +21,7 @@ use zeddy_herdr::control::SessionStatus;
 
 use crate::assets::PLUGIN_LAUNCHER_ICON_PATH;
 
-const TAB_LABEL_MIN_WIDTH: f32 = 24.;
+const TAB_LABEL_MIN_WIDTH: f32 = 36.;
 
 pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
     IconButton::new(id, IconName::Plus).icon_size(IconSize::Small)
@@ -150,8 +150,9 @@ fn tab_label_with_color(
     selected: bool,
     color: Color,
 ) -> impl IntoElement {
-    h_flex().when(selected, |label| label.pr_px()).child(
+    h_flex().flex_1().min_w_0().when(selected, |label| label.pr_px()).child(
         div()
+            .flex_1()
             .min_w(px(TAB_LABEL_MIN_WIDTH))
             .child(Label::new(title).size(UI_LABEL_DEFAULT).color(color).truncate()),
     )
@@ -189,6 +190,14 @@ pub(crate) struct ItemTab<'a> {
 }
 
 impl<'a> ItemTab<'a> {
+    pub(crate) fn min_width(rounded: bool, cx: &App) -> Pixels {
+        // Minimum 36px label, 12px icon, 14px close slot, padding, gaps,
+        // and borders (including the selected pane tab's compensation pixel).
+        px(TAB_LABEL_MIN_WIDTH + 12. + 14. + 2.)
+            + DynamicSpacing::Base06.px(cx) * if rounded { 2. } else { 1. }
+            + DynamicSpacing::Base04.px(cx) * if rounded { 2. } else { 3. }
+    }
+
     pub(crate) fn new(
         id: impl Into<ElementId>,
         title: impl Into<SharedString>,
@@ -240,6 +249,7 @@ impl<'a> ItemTab<'a> {
 
     pub(crate) fn build(self, cx: &App) -> Tab {
         Tab::new(self.id)
+            .fill_width()
             .role(Role::Tab)
             .aria_label(self.aria_label)
             .aria_selected(self.selected)
@@ -269,6 +279,7 @@ impl<'a> ItemTab<'a> {
             .aria_label(self.aria_label)
             .aria_selected(self.selected)
             .flex_none()
+            .w_full()
             .h(Tab::container_height(cx) - px(2.))
             .px(DynamicSpacing::Base06.px(cx))
             .py(px(2.))
@@ -291,7 +302,7 @@ impl<'a> ItemTab<'a> {
             })
             .text_color(if self.selected { colors.text } else { colors.text_muted })
             .cursor_pointer()
-            .child(h_flex().size(px(12.)).justify_center().child(item_indicator(
+            .child(h_flex().flex_none().size(px(12.)).justify_center().child(item_indicator(
                 self.activity,
                 self.icon_path,
                 self.grouped,
@@ -304,7 +315,7 @@ impl<'a> ItemTab<'a> {
                 false,
                 if self.selected || hovered { Color::Default } else { Color::Muted },
             ))
-            .child(h_flex().size(px(14.)).justify_center().children(self.close_slot))
+            .child(h_flex().flex_none().size(px(14.)).justify_center().children(self.close_slot))
     }
 }
 

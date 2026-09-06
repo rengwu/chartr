@@ -38,6 +38,7 @@ pub struct Tab {
     start_slot: Option<AnyElement>,
     end_slot: Option<AnyElement>,
     children: SmallVec<[AnyElement; 2]>,
+    fill_width: bool,
 }
 
 impl Tab {
@@ -53,11 +54,18 @@ impl Tab {
             start_slot: None,
             end_slot: None,
             children: SmallVec::new(),
+            fill_width: false,
         }
     }
 
     pub fn position(mut self, position: TabPosition) -> Self {
         self.position = position;
+        self
+    }
+
+    /// Fit an externally sized tab slot, allowing its label to shrink.
+    pub fn fill_width(mut self) -> Self {
+        self.fill_width = true;
         self
     }
 
@@ -126,11 +134,13 @@ impl RenderOnce for Tab {
 
         let (start_slot, end_slot) = {
             let start_slot = h_flex()
+                .flex_none()
                 .size(START_TAB_SLOT_SIZE)
                 .justify_center()
                 .children(self.start_slot);
 
             let end_slot = h_flex()
+                .flex_none()
                 .size(END_TAB_SLOT_SIZE)
                 .justify_center()
                 .children(self.end_slot);
@@ -142,6 +152,7 @@ impl RenderOnce for Tab {
         };
 
         self.div
+            .when(self.fill_width, |tab| tab.w_full())
             .h(Tab::container_height(cx))
             .bg(tab_bg)
             .border_color(cx.theme().colors().border)
@@ -167,6 +178,7 @@ impl RenderOnce for Tab {
             .cursor_pointer()
             .child(
                 h_flex()
+                    .when(self.fill_width, |content| content.w_full().min_w_0())
                     .group("")
                     .relative()
                     .h(Tab::content_height(cx))

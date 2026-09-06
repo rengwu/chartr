@@ -51,6 +51,7 @@ pub(crate) struct SortableTabList {
     tabs: Vec<SortableTab>,
     commit: Commit,
     drag_lane: Option<(Stateful<Div>, AnyElement)>,
+    tab_min_width: Option<Pixels>,
 }
 
 impl SortableTabList {
@@ -62,7 +63,23 @@ impl SortableTabList {
         tabs: Vec<SortableTab>,
         commit: impl Fn(&DraggedItem, usize, &mut Window, &mut App) + 'static,
     ) -> Self {
-        Self { list, id, axis, gap, tabs, commit: Box::new(commit), drag_lane: None }
+        Self {
+            list,
+            id,
+            axis,
+            gap,
+            tabs,
+            commit: Box::new(commit),
+            drag_lane: None,
+            tab_min_width: None,
+        }
+    }
+
+    /// Equal-width tabs that shrink from 200px until their existing minimum,
+    /// at which point the list scrolls. Leave vertical sidebar rows unsized.
+    pub fn tab_min_width(mut self, width: Pixels) -> Self {
+        self.tab_min_width = Some(width);
+        self
     }
 
     /// Keep sorting over the entire strip, including pinned controls and empty
@@ -76,6 +93,7 @@ impl SortableTabList {
 impl RenderOnce for SortableTabList {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let axis = self.axis;
+        let tab_min_width = self.tab_min_width;
         let sorter: Entity<Sorter> =
             window.use_keyed_state(self.id, cx, |_, _| ListSorter::with_axis(self.gap, axis));
         let order: Vec<_> = self.tabs.iter().map(|tab| key(&tab.dragged)).collect();
@@ -114,6 +132,7 @@ impl RenderOnce for SortableTabList {
                 let surface = div()
                     .id(("sortable-tab-surface", id))
                     .relative()
+                    .when_some(tab_min_width, |tab, _| tab.w_full())
                     .when(axis == SortAxis::Vertical, |tab| tab.w_full())
                     .when(axis == SortAxis::Horizontal, |tab| tab.left(offset))
                     .when(axis == SortAxis::Vertical, |tab| tab.top(offset))
@@ -129,6 +148,13 @@ impl RenderOnce for SortableTabList {
                     .id(("sortable-tab-slot", id))
                     .relative()
                     .flex_none()
+                    .when_some(tab_min_width, |slot, min_width| {
+                        slot.w(px(200.))
+                            .flex_basis(px(200.))
+                            .flex_shrink_1()
+                            .min_w(min_width)
+                            .max_w(px(200.))
+                    })
                     .when(axis == SortAxis::Vertical, |slot| slot.w_full())
                     .child(if held {
                         deferred(surface).into_any_element()
@@ -373,6 +399,130 @@ mod tests {
             commits: 0,
             legacy_drops: 0,
             clicks: 0,
+        }
+    }
+
+    struct SizingHarness {
+        width: f32,
+        rounded: bool,
+    }
+
+    impl Render for SizingHarness {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let rounded = self.rounded;
+            let tabs = ["Short", "A much longer tab title that should truncate", "Third"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, title)| {
+                    let id = index as u64 + 1;
+                    let dragged = DraggedItem {
+                        space: "test".into(),
+                        tab: serde_json::from_value(serde_json::json!(id)).unwrap(),
+                        pane: serde_json::from_value(serde_json::json!(1)).unwrap(),
+                        item: serde_json::from_value(serde_json::json!(id)).unwrap(),
+                        index,
+                        top_level: rounded,
+                        grouped: false,
+                    };
+                    let item = dragged.item;
+                    SortableTab::new(dragged, index == 0, move |placement, cx| {
+                        let tab = crate::chrome::ItemTab::new(
+                            format!("sized-tab-{id}"),
+                            title,
+                            index == 0,
+                            crate::chrome::tab_position(
+                                placement.index,
+                                placement.count,
+                                placement.active_index,
+                            ),
+                            "test",
+                            item,
+                        )
+                        .close_slot(Some(
+                            div()
+                                .id(("sizing-close", id))
+                                .size(px(14.))
+                                .debug_selector(move || format!("SIZING_CLOSE_{id}"))
+                                .into_any_element(),
+                        ));
+                        let tab = if rounded {
+                            tab.build_rounded(false, cx).into_any_element()
+                        } else {
+                            tab.build(cx).into_any_element()
+                        };
+                        h_flex()
+                            .id(("sizing-tab", id))
+                            .w_full()
+                            .debug_selector(move || format!("SIZING_TAB_{id}"))
+                            .child(tab)
+                            .into_any_element()
+                    })
+                })
+                .collect();
+            div().size_full().child(
+                SortableTabList::new(
+                    "sizing-sorter".into(),
+                    h_flex().id("sizing-list").min_w_0().flex_shrink_1().overflow_x_scroll(),
+                    SortAxis::Horizontal,
+                    gpui::rems(0.25),
+                    tabs,
+                    |_, _, _, _| {},
+                )
+                .tab_min_width(crate::chrome::ItemTab::min_width(rounded, cx))
+                .drag_lane(
+                    h_flex().id("sizing-lane").w(px(self.width)),
+                    div()
+                        .id("sizing-controls")
+                        .flex_none()
+                        .w(px(60.))
+                        .h(px(30.))
+                        .debug_selector(|| "SIZING_CONTROLS".into()),
+                ),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn tab_widths_are_equal_capped_and_shrink_to_the_existing_minimum(cx: &mut TestAppContext) {
+        init(cx);
+        for rounded in [false, true] {
+            let (view, cx) = cx.add_window_view(|_, _| SizingHarness { width: 800., rounded });
+            for width in [800., 450., 180., 800.] {
+                view.update(cx, |view, cx| {
+                    view.width = width;
+                    cx.notify();
+                });
+                cx.run_until_parked();
+                let expected = cx.update(|window, cx| {
+                    let gap = f32::from(window.rem_size()) * 0.25;
+                    ((width - 60. - 2. * gap) / 3.)
+                        .clamp(f32::from(crate::chrome::ItemTab::min_width(rounded, cx)), 200.)
+                });
+                for (index, (tab_selector, close_selector)) in [
+                    ("SIZING_TAB_1", "SIZING_CLOSE_1"),
+                    ("SIZING_TAB_2", "SIZING_CLOSE_2"),
+                    ("SIZING_TAB_3", "SIZING_CLOSE_3"),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let id = index + 1;
+                    let tab = cx.debug_bounds(tab_selector).unwrap();
+                    assert!(
+                        (f32::from(tab.size.width) - expected).abs() <= 1.,
+                        "rounded={rounded}, strip={width}, tab={id}: {:?}, expected {expected}",
+                        tab.size.width
+                    );
+                    if width >= 450. {
+                        let close = cx.debug_bounds(close_selector).unwrap();
+                        assert_eq!(close.size.width, px(14.));
+                        assert!(close.right() <= tab.right());
+                    }
+                }
+                let controls = cx.debug_bounds("SIZING_CONTROLS").unwrap();
+                assert_eq!(controls.size.width, px(60.));
+                assert!(controls.right() <= px(width));
+            }
         }
     }
 
