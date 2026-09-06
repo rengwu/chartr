@@ -28,10 +28,18 @@ pub(crate) fn new_item_button(id: impl Into<ElementId>) -> IconButton {
 }
 
 pub(crate) fn new_plugin_pane_button(id: impl Into<ElementId>, icon_size: IconSize) -> ButtonLike {
+    new_plugin_pane_button_with_color(id, icon_size, Color::Default)
+}
+
+pub(crate) fn new_plugin_pane_button_with_color(
+    id: impl Into<ElementId>,
+    icon_size: IconSize,
+    color: Color,
+) -> ButtonLike {
     ButtonLike::new(id)
         .aria_label("New surface")
         .tooltip(Tooltip::text("New surface"))
-        .child(Icon::from_path(PLUGIN_LAUNCHER_ICON_PATH).size(icon_size))
+        .child(Icon::from_path(PLUGIN_LAUNCHER_ICON_PATH).size(icon_size).color(color))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,10 +142,18 @@ pub(crate) fn new_item_cell(button: impl IntoElement, cx: &App) -> AnyElement {
 }
 
 fn tab_label(title: impl Into<SharedString>, selected: bool) -> impl IntoElement {
+    tab_label_with_color(title, selected, Color::Default)
+}
+
+fn tab_label_with_color(
+    title: impl Into<SharedString>,
+    selected: bool,
+    color: Color,
+) -> impl IntoElement {
     h_flex().when(selected, |label| label.pr_px()).child(
         div()
             .min_w(px(TAB_LABEL_MIN_WIDTH))
-            .child(Label::new(title).size(UI_LABEL_DEFAULT).truncate()),
+            .child(Label::new(title).size(UI_LABEL_DEFAULT).color(color).truncate()),
     )
 }
 
@@ -260,16 +276,16 @@ impl<'a> ItemTab<'a> {
             .rounded_full()
             .border_1()
             .border_color(if hovered {
-                if self.selected { colors.text_muted } else { colors.border_variant }
+                colors.border_variant
             } else if self.selected {
-                colors.border
+                colors.border_variant.opacity(0.5)
             } else {
                 transparent_black()
             })
             .bg(if self.selected {
-                colors.element_selected
+                colors.ghost_element_selected
             } else if hovered {
-                colors.element_hover
+                colors.ghost_element_hover
             } else {
                 transparent_black()
             })
@@ -283,7 +299,11 @@ impl<'a> ItemTab<'a> {
                 self.key,
                 cx,
             )))
-            .child(tab_label(self.title, false))
+            .child(tab_label_with_color(
+                self.title,
+                false,
+                if self.selected || hovered { Color::Default } else { Color::Muted },
+            ))
             .child(h_flex().size(px(14.)).justify_center().children(self.close_slot))
     }
 }

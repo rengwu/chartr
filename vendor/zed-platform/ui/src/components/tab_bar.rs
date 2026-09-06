@@ -1,4 +1,4 @@
-use gpui::{AnyElement, ScrollHandle};
+use gpui::{AnyElement, Hsla, ScrollHandle};
 use smallvec::SmallVec;
 
 use crate::Tab;
@@ -12,6 +12,7 @@ pub struct TabBar {
     end_children: SmallVec<[AnyElement; 2]>,
     scroll_handle: Option<ScrollHandle>,
     height: Option<Pixels>,
+    background: Option<Hsla>,
 }
 
 impl TabBar {
@@ -23,11 +24,17 @@ impl TabBar {
             end_children: SmallVec::new(),
             scroll_handle: None,
             height: None,
+            background: None,
         }
     }
 
     pub fn height(mut self, height: Pixels) -> Self {
         self.height = Some(height);
+        self
+    }
+
+    pub fn background(mut self, background: Hsla) -> Self {
+        self.background = Some(background);
         self
     }
 
@@ -105,7 +112,7 @@ impl RenderOnce for TabBar {
             .flex_none()
             .w_full()
             .h(self.height.unwrap_or_else(|| Tab::container_height(cx)))
-            .bg(cx.theme().colors().tab_bar_background)
+            .bg(self.background.unwrap_or_else(|| cx.theme().colors().tab_bar_background))
             .when(!self.start_children.is_empty(), |this| {
                 this.child(
                     h_flex()

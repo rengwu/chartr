@@ -306,7 +306,7 @@ impl Zeddy {
                 .absolute()
                 .top_0()
                 .right_0()
-                .bottom(px(1.))
+                .bottom(if self.mode == Mode::Tabs { px(0.) } else { px(1.) })
                 .left_0()
                 .bg(colors.panel_background)
                 .into_any_element(),
@@ -364,6 +364,7 @@ impl Zeddy {
     pub(super) fn new_item_button(&self, cx: &Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
         let button = chrome::new_item_button("new-item")
+            .icon_color(Color::Muted)
             .aria_label("New terminal session")
             .tooltip(Tooltip::text("New terminal session"))
             .on_click(move |_, window, cx| {
@@ -380,13 +381,17 @@ impl Zeddy {
 
     pub(super) fn new_plugin_pane_button(&self, cx: &Context<Self>) -> AnyElement {
         let weak = cx.weak_entity();
-        let button = chrome::new_plugin_pane_button("new-plugin-pane", IconSize::Small)
-            .on_click(move |_, window, cx| {
-                let _ = weak.update(cx, |this, cx| {
-                    this.act(Action::NewPluginPane, window, cx);
-                });
-            })
-            .into_any_element();
+        let button = chrome::new_plugin_pane_button_with_color(
+            "new-plugin-pane",
+            IconSize::Small,
+            Color::Muted,
+        )
+        .on_click(move |_, window, cx| {
+            let _ = weak.update(cx, |this, cx| {
+                this.act(Action::NewPluginPane, window, cx);
+            });
+        })
+        .into_any_element();
         chrome::new_item_drag_handle(
             "new-plugin-pane",
             self.active.as_ref().map(Entity::entity_id),

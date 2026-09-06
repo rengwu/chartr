@@ -108,7 +108,7 @@ pub fn render(
                         super::NewItemKind::Terminal,
                         IconButton::new(("new-in-space", space_index), IconName::Plus)
                             .icon_size(IconSize::XSmall)
-                            .tooltip(Tooltip::text("New session in this space"))
+                            .tooltip(Tooltip::text("New terminal session"))
                             .on_click(move |_, window, cx| {
                                 add(Action::NewInSpace { space: space_id }, window, cx)
                             }),

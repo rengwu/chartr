@@ -56,6 +56,7 @@ pub fn render(
             let on = on.clone();
             let hovered_tab = hovered_tab.clone();
             SortableTab::new(dragged, entry.selected, move |placement, cx| {
+                let separator_color = cx.theme().colors().border_variant.opacity(0.5);
                 let previous_selected = placement.index.checked_sub(1) == placement.active_index;
                 let previous_hovered = placement.previous.is_some_and(|previous| {
                     hovered
@@ -86,7 +87,7 @@ pub fn render(
                             .left(gpui::rems(-0.125))
                             .w(px(1.))
                             .h(px(12.))
-                            .bg(cx.theme().colors().border)
+                            .bg(separator_color)
                             .opacity(if separator_visible { 1. } else { 0. }),
                     )
                     .when(trailing_separator_visible, |tab| {
@@ -96,7 +97,7 @@ pub fn render(
                                 .right(gpui::rems(-0.125))
                                 .w(px(1.))
                                 .h(px(12.))
-                                .bg(cx.theme().colors().border),
+                                .bg(separator_color),
                         )
                     })
                     .into_any_element()
@@ -137,8 +138,10 @@ pub fn render(
                 .child(new_plugin_pane),
         );
 
-    let tab_bar =
-        TabBar::new("workspace-tabs").height(strip_height).child(tabs_with_pinned_new_item);
+    let tab_bar = TabBar::new("workspace-tabs")
+        .height(strip_height)
+        .background(cx.theme().colors().panel_background)
+        .child(tabs_with_pinned_new_item);
     let tab_bar = match controls {
         Some((space_switcher, view_menu)) => tab_bar
             .start_child(
@@ -187,6 +190,7 @@ fn tab(
             .shape(IconButtonShape::Square)
             .size(ButtonSize::None)
             .icon_size(IconSize::XSmall)
+            .icon_color(if entry.selected || hovered { Color::Default } else { Color::Muted })
             .tooltip(Tooltip::text("Close"))
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
