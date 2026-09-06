@@ -347,6 +347,8 @@ impl Zeddy {
             return message("Pane layout is unavailable.", cx).into_any_element();
         };
         let active_pane = layout.active_pane() == pane_id;
+        let measured_size = self.active_pane_size.clone();
+        let measured_space = self.active.as_ref().map(Entity::entity_id);
         let header = show_header.then(|| {
             if pane.active().is_some() {
                 self.pane_header(space, tab_id, layout, pane_id, on, weak, cx)
@@ -443,6 +445,25 @@ impl Zeddy {
             .min_w_0()
             .min_h_0()
             .bg(cx.theme().colors().editor_background)
+            .when(active_pane, |view| {
+                view.child(
+                    gpui::canvas(
+                        move |bounds, _, _| {
+                            if let Some(space) = measured_space {
+                                measured_size.set(Some(super::shortcuts::MeasuredPane {
+                                    space,
+                                    tab: tab_id,
+                                    pane: pane_id,
+                                    size: bounds.size,
+                                }));
+                            }
+                        },
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .size_full(),
+                )
+            })
             .when(pane.active().is_none() && active_pane, |pane| {
                 pane.role(Role::Group).aria_label("Empty pane").tab_group().tab_index(0)
             })

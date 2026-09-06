@@ -20,6 +20,21 @@ pub const KEYMAP_FILE: &str = "keymap.toml";
 pub enum KeymapAction {
     CloseItem,
     NewTerminal,
+    NewTerminalPane,
+    NewSurface,
+    NewSurfacePane,
+    Ungroup,
+    SidebarMode,
+    TabbedMode,
+    CycleViewMode,
+    NewSpace,
+    CloseSpace,
+    ZoomIn,
+    ZoomOut,
+    TerminalZoomIn,
+    TerminalZoomOut,
+    NewFreeTerminal,
+    NewFreeSurface,
     FocusLeft,
     FocusRight,
     FocusUp,
@@ -29,9 +44,24 @@ pub enum KeymapAction {
 }
 
 impl KeymapAction {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 23] = [
         Self::CloseItem,
         Self::NewTerminal,
+        Self::NewTerminalPane,
+        Self::NewSurface,
+        Self::NewSurfacePane,
+        Self::Ungroup,
+        Self::SidebarMode,
+        Self::TabbedMode,
+        Self::CycleViewMode,
+        Self::NewSpace,
+        Self::CloseSpace,
+        Self::ZoomIn,
+        Self::ZoomOut,
+        Self::TerminalZoomIn,
+        Self::TerminalZoomOut,
+        Self::NewFreeTerminal,
+        Self::NewFreeSurface,
         Self::FocusLeft,
         Self::FocusRight,
         Self::FocusUp,
@@ -44,6 +74,21 @@ impl KeymapAction {
         match self {
             Self::CloseItem => "pane.close_active_item",
             Self::NewTerminal => "workspace.new_terminal",
+            Self::NewTerminalPane => "workspace.new_terminal_pane",
+            Self::NewSurface => "workspace.new_surface",
+            Self::NewSurfacePane => "workspace.new_surface_pane",
+            Self::Ungroup => "workspace.ungroup",
+            Self::SidebarMode => "workspace.sidebar_mode",
+            Self::TabbedMode => "workspace.tabbed_mode",
+            Self::CycleViewMode => "workspace.cycle_view_mode",
+            Self::NewSpace => "workspace.new_space",
+            Self::CloseSpace => "workspace.close_space",
+            Self::ZoomIn => "workspace.zoom_in",
+            Self::ZoomOut => "workspace.zoom_out",
+            Self::TerminalZoomIn => "workspace.terminal_zoom_in",
+            Self::TerminalZoomOut => "workspace.terminal_zoom_out",
+            Self::NewFreeTerminal => "workspace.new_free_terminal",
+            Self::NewFreeSurface => "workspace.new_free_surface",
             Self::FocusLeft => "workspace.activate_pane_left",
             Self::FocusRight => "workspace.activate_pane_right",
             Self::FocusUp => "workspace.activate_pane_up",
@@ -57,6 +102,21 @@ impl KeymapAction {
         match self {
             Self::CloseItem => "Close active item",
             Self::NewTerminal => "New terminal",
+            Self::NewTerminalPane => "New terminal pane",
+            Self::NewSurface => "New surface tab",
+            Self::NewSurfacePane => "New surface pane",
+            Self::Ungroup => "Ungroup current group",
+            Self::SidebarMode => "Switch to sidebar mode",
+            Self::TabbedMode => "Switch to tabbed mode",
+            Self::CycleViewMode => "Cycle view modes",
+            Self::NewSpace => "Open new space",
+            Self::CloseSpace => "Close current space",
+            Self::ZoomIn => "Zoom in interface",
+            Self::ZoomOut => "Zoom out interface",
+            Self::TerminalZoomIn => "Zoom in terminal",
+            Self::TerminalZoomOut => "Zoom out terminal",
+            Self::NewFreeTerminal => "New free terminal session",
+            Self::NewFreeSurface => "New free surface",
             Self::FocusLeft => "Focus pane left",
             Self::FocusRight => "Focus pane right",
             Self::FocusUp => "Focus pane up",
@@ -67,10 +127,28 @@ impl KeymapAction {
     }
 
     pub fn default_key(self) -> &'static str {
+        // GPUI's macOS/Linux backends fold Shift into punctuation (e.g. Shift+2
+        // arrives as @). Bind the emitted character, including the shifted
+        // =/+ key for terminal zoom, so it stays distinct from interface zoom.
         #[cfg(target_os = "macos")]
         return match self {
             Self::CloseItem => "cmd-w",
             Self::NewTerminal => "ctrl-~",
+            Self::NewTerminalPane => "cmd-shift-t",
+            Self::NewSurface => "cmd-n",
+            Self::NewSurfacePane => "cmd-shift-n",
+            Self::Ungroup => "cmd-shift-g",
+            Self::SidebarMode => "cmd-@",
+            Self::TabbedMode => "cmd-!",
+            Self::CycleViewMode => "cmd-~",
+            Self::NewSpace => "cmd-o",
+            Self::CloseSpace => "cmd-shift-w",
+            Self::ZoomIn => "cmd-=",
+            Self::ZoomOut => "cmd--",
+            Self::TerminalZoomIn => "cmd-+",
+            Self::TerminalZoomOut => "cmd-_",
+            Self::NewFreeTerminal => "",
+            Self::NewFreeSurface => "",
             Self::FocusLeft => "cmd-k cmd-left",
             Self::FocusRight => "cmd-k cmd-right",
             Self::FocusUp => "cmd-k cmd-up",
@@ -83,6 +161,22 @@ impl KeymapAction {
         return match self {
             Self::CloseItem => "ctrl-w",
             Self::NewTerminal => "ctrl-~",
+            Self::NewTerminalPane => "ctrl-shift-t",
+            Self::NewSurface => "ctrl-n",
+            Self::NewSurfacePane => "ctrl-shift-n",
+            Self::Ungroup => "ctrl-shift-g",
+            Self::SidebarMode => "ctrl-@",
+            Self::TabbedMode => "ctrl-!",
+            // Ctrl+~ already opens a terminal on Linux.
+            Self::CycleViewMode => "ctrl-alt-~",
+            Self::NewSpace => "ctrl-o",
+            Self::CloseSpace => "ctrl-shift-w",
+            Self::ZoomIn => "ctrl-=",
+            Self::ZoomOut => "ctrl--",
+            Self::TerminalZoomIn => "ctrl-+",
+            Self::TerminalZoomOut => "ctrl-_",
+            Self::NewFreeTerminal => "",
+            Self::NewFreeSurface => "",
             Self::FocusLeft => "ctrl-k ctrl-left",
             Self::FocusRight => "ctrl-k ctrl-right",
             Self::FocusUp => "ctrl-k ctrl-up",
@@ -152,12 +246,41 @@ impl KeymapStore {
         self.problem.as_deref()
     }
 
+    pub fn shortcut_label(&self, action: KeymapAction) -> &str {
+        let key = self.key(action);
+        match key {
+            "" => "Unbound",
+            #[cfg(target_os = "macos")]
+            "cmd-@" => "cmd-shift-2",
+            #[cfg(target_os = "macos")]
+            "cmd-!" => "cmd-shift-1",
+            #[cfg(target_os = "macos")]
+            "cmd-~" => "cmd-shift-`",
+            #[cfg(target_os = "macos")]
+            "cmd-+" => "cmd-shift-=",
+            #[cfg(target_os = "macos")]
+            "cmd-_" => "cmd-shift--",
+            #[cfg(not(target_os = "macos"))]
+            "ctrl-@" => "ctrl-shift-2",
+            #[cfg(not(target_os = "macos"))]
+            "ctrl-!" => "ctrl-shift-1",
+            #[cfg(not(target_os = "macos"))]
+            "ctrl-alt-~" => "ctrl-alt-shift-`",
+            #[cfg(not(target_os = "macos"))]
+            "ctrl-+" => "ctrl-shift-=",
+            #[cfg(not(target_os = "macos"))]
+            "ctrl-_" => "ctrl-shift--",
+            _ => key,
+        }
+    }
+
     pub fn set(&mut self, action: KeymapAction, key: String) -> Result<(), Error> {
-        validate_chord(&key)?;
-        if let Some(conflict) = KeymapAction::ALL
-            .into_iter()
-            .find(|candidate| *candidate != action && self.key(*candidate) == key)
-        {
+        if !key.is_empty() {
+            validate_chord(&key)?;
+        }
+        if let Some(conflict) = KeymapAction::ALL.into_iter().find(|candidate| {
+            !key.is_empty() && *candidate != action && self.key(*candidate) == key
+        }) {
             return Err(Error::Conflict { key, action: conflict });
         }
         let mut candidate = self.content.clone();
@@ -229,6 +352,42 @@ pub fn keymap_file() -> Result<PathBuf, crate::spaces::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn defaults_are_valid_unique_chords_with_two_unbound_commands() {
+        let mut keys = std::collections::HashSet::new();
+        let mut ids = std::collections::HashSet::new();
+        for action in KeymapAction::ALL {
+            assert!(ids.insert(action.id()));
+            let key = action.default_key();
+            if key.is_empty() {
+                assert!(matches!(
+                    action,
+                    KeymapAction::NewFreeTerminal | KeymapAction::NewFreeSurface
+                ));
+            } else {
+                validate_chord(key).unwrap();
+                assert!(keys.insert(key), "duplicate default: {key}");
+            }
+        }
+        assert_eq!(keys.len(), KeymapAction::ALL.len() - 2);
+    }
+
+    #[test]
+    fn unbound_commands_can_be_assigned_cleared_and_restored() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join(KEYMAP_FILE);
+        let mut store = KeymapStore::load(&file);
+        for action in [KeymapAction::NewFreeTerminal, KeymapAction::NewFreeSurface] {
+            assert_eq!(store.shortcut_label(action), "Unbound");
+            store.set(action, "ctrl-alt-z".into()).unwrap();
+            assert_eq!(KeymapStore::load(&file).key(action), "ctrl-alt-z");
+            store.set(action, String::new()).unwrap();
+            assert_eq!(KeymapStore::load(&file).key(action), "");
+        }
+        store.set(KeymapAction::NewSurface, String::new()).unwrap();
+        assert_eq!(KeymapStore::load(file).key(KeymapAction::NewSurface), "");
+    }
 
     #[test]
     fn sparse_overrides_round_trip_and_defaults_remain() {

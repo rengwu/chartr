@@ -189,6 +189,59 @@ impl Render for Zeddy {
             .on_action(cx.listener(|this, _: &actions::workspace::NewTerminal, window, cx| {
                 this.act(Action::New, window, cx)
             }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewTerminalPane, window, cx| {
+                this.new_adaptive_pane(true, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewSurface, window, cx| {
+                this.act(Action::NewPluginPane, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewSurfacePane, window, cx| {
+                this.new_adaptive_pane(false, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::Ungroup, window, cx| {
+                this.ungroup_current(window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::SidebarMode, _, cx| {
+                this.settings_set_mode(Mode::Sidebar, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::TabbedMode, _, cx| {
+                this.settings_set_mode(Mode::Tabs, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::CycleViewMode, _, cx| {
+                this.settings_set_mode(
+                    match this.mode {
+                        Mode::Tabs => Mode::Sidebar,
+                        Mode::Sidebar => Mode::Tabs,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewSpace, window, cx| {
+                this.act(Action::NewSpace, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::CloseSpace, window, cx| {
+                if let Some(space) = this.active.as_ref() {
+                    this.request_close_space(space.entity_id(), window, cx);
+                }
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ZoomIn, _, cx| {
+                this.adjust_zoom(false, 1., cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ZoomOut, _, cx| {
+                this.adjust_zoom(false, -1., cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::TerminalZoomIn, _, cx| {
+                this.adjust_zoom(true, 1., cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::TerminalZoomOut, _, cx| {
+                this.adjust_zoom(true, -1., cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewFreeTerminal, window, cx| {
+                this.new_free_item(true, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::NewFreeSurface, window, cx| {
+                this.new_free_item(false, window, cx)
+            }))
             .on_action(cx.listener(|this, _: &actions::settings::Open, window, cx| {
                 this.open_settings(window, cx)
             }))

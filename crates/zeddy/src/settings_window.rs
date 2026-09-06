@@ -57,11 +57,14 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     cx.bind_keys([KeyBinding::new("ctrl-w", Close, Some("ChartrSettings"))]);
 
-    cx.bind_keys([KeyBinding::new(
-        keymap.key(KeymapAction::OpenSettings),
-        crate::actions::settings::Open,
-        Some("ChartrSettings"),
-    )]);
+    let key = keymap.key(KeymapAction::OpenSettings);
+    if !key.is_empty() {
+        cx.bind_keys([KeyBinding::new(
+            key,
+            crate::actions::settings::Open,
+            Some("ChartrSettings"),
+        )]);
+    }
 }
 
 /// Focus Zed-style: one Settings window for the application, never one per

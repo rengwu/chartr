@@ -241,7 +241,7 @@ impl SettingsWindow {
                         if recording == Some(action) {
                             "Press shortcut…".to_owned()
                         } else {
-                            keymap.key(action).to_owned()
+                            keymap.shortcut_label(action).to_owned()
                         },
                     )
                     .toggle_state(recording == Some(action))
@@ -262,13 +262,6 @@ impl SettingsWindow {
                         .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
                 )
             })
-            .child(
-                Label::new(
-                    "Click a shortcut, then press one key chord. Changes apply immediately; conflicts in the Chartr context are rejected.",
-                )
-                .size(UI_LABEL_SMALL)
-                .color(Color::Muted),
-            )
             .child(table)
             .into_any_element()
     }

@@ -55,6 +55,21 @@ impl Zeddy {
     ) {
         let action: Box<dyn gpui::Action> = match command {
             PaletteCommand::NewTerminal => Box::new(actions::workspace::NewTerminal),
+            PaletteCommand::NewTerminalPane => Box::new(actions::workspace::NewTerminalPane),
+            PaletteCommand::NewSurface => Box::new(actions::workspace::NewSurface),
+            PaletteCommand::NewSurfacePane => Box::new(actions::workspace::NewSurfacePane),
+            PaletteCommand::Ungroup => Box::new(actions::workspace::Ungroup),
+            PaletteCommand::SidebarMode => Box::new(actions::workspace::SidebarMode),
+            PaletteCommand::TabbedMode => Box::new(actions::workspace::TabbedMode),
+            PaletteCommand::CycleViewMode => Box::new(actions::workspace::CycleViewMode),
+            PaletteCommand::NewSpace => Box::new(actions::workspace::NewSpace),
+            PaletteCommand::CloseSpace => Box::new(actions::workspace::CloseSpace),
+            PaletteCommand::ZoomIn => Box::new(actions::workspace::ZoomIn),
+            PaletteCommand::ZoomOut => Box::new(actions::workspace::ZoomOut),
+            PaletteCommand::TerminalZoomIn => Box::new(actions::workspace::TerminalZoomIn),
+            PaletteCommand::TerminalZoomOut => Box::new(actions::workspace::TerminalZoomOut),
+            PaletteCommand::NewFreeTerminal => Box::new(actions::workspace::NewFreeTerminal),
+            PaletteCommand::NewFreeSurface => Box::new(actions::workspace::NewFreeSurface),
             PaletteCommand::CloseItem => Box::new(actions::pane::CloseActiveItem),
             PaletteCommand::CloseAllItems => Box::new(actions::pane::CloseAllItems),
             PaletteCommand::MoveLeft => Box::new(actions::pane::MoveLeft),
@@ -366,7 +381,7 @@ mod tests {
         let (mut popup, events) = open(cx);
         popup.simulate_keystrokes("down enter");
         popup.run_until_parked();
-        assert_eq!(*events.borrow(), vec![Some(PaletteCommand::CloseItem)]);
+        assert_eq!(*events.borrow(), vec![Some(PaletteCommand::NewTerminalPane)]);
 
         let (mut popup, events) = open(cx);
         popup.simulate_mouse_down(

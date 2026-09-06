@@ -18,7 +18,28 @@ pub mod pane {
 pub mod workspace {
     gpui::actions!(
         chartr_workspace,
-        [NewTerminal, ActivatePaneLeft, ActivatePaneRight, ActivatePaneUp, ActivatePaneDown]
+        [
+            NewTerminal,
+            NewTerminalPane,
+            NewSurface,
+            NewSurfacePane,
+            Ungroup,
+            SidebarMode,
+            TabbedMode,
+            CycleViewMode,
+            NewSpace,
+            CloseSpace,
+            ZoomIn,
+            ZoomOut,
+            TerminalZoomIn,
+            TerminalZoomOut,
+            NewFreeTerminal,
+            NewFreeSurface,
+            ActivatePaneLeft,
+            ActivatePaneRight,
+            ActivatePaneUp,
+            ActivatePaneDown
+        ]
     );
 }
 
@@ -35,7 +56,12 @@ pub mod terminal_search {
 }
 
 pub fn init(keymap: &KeymapStore, cx: &mut App) {
-    cx.bind_keys(KeymapAction::ALL.map(|action| binding(action, keymap.key(action), "Chartr")));
+    cx.bind_keys(
+        KeymapAction::ALL
+            .into_iter()
+            .filter(|action| !keymap.key(*action).is_empty())
+            .map(|action| binding(action, keymap.key(action), "Chartr")),
+    );
 
     // Keep terminal behavior aligned with the exact pinned Zed revision. The
     // full default keymap also contains editor/workspace bindings Chartr does
@@ -74,15 +100,17 @@ pub fn rebind(action: KeymapAction, previous_key: &str, new_key: &str, cx: &mut 
         &["Chartr"]
     };
     for context in contexts {
-        let replacement = binding(action, new_key, context);
-        cx.bind_keys([
-            KeyBinding::new(
+        if !previous_key.is_empty() {
+            let previous = binding(action, previous_key, context);
+            cx.bind_keys([KeyBinding::new(
                 previous_key,
-                Unbind(replacement.action().name().into()),
+                Unbind(previous.action().name().into()),
                 Some(context),
-            ),
-            replacement,
-        ]);
+            )]);
+        }
+        if !new_key.is_empty() {
+            cx.bind_keys([binding(action, new_key, context)]);
+        }
     }
 }
 
@@ -92,6 +120,21 @@ fn binding(action: KeymapAction, key: &str, context: &str) -> KeyBinding {
     match action {
         KeymapAction::CloseItem => KeyBinding::new(key, pane::CloseActiveItem, context),
         KeymapAction::NewTerminal => KeyBinding::new(key, workspace::NewTerminal, context),
+        KeymapAction::NewTerminalPane => KeyBinding::new(key, workspace::NewTerminalPane, context),
+        KeymapAction::NewSurface => KeyBinding::new(key, workspace::NewSurface, context),
+        KeymapAction::NewSurfacePane => KeyBinding::new(key, workspace::NewSurfacePane, context),
+        KeymapAction::Ungroup => KeyBinding::new(key, workspace::Ungroup, context),
+        KeymapAction::SidebarMode => KeyBinding::new(key, workspace::SidebarMode, context),
+        KeymapAction::TabbedMode => KeyBinding::new(key, workspace::TabbedMode, context),
+        KeymapAction::CycleViewMode => KeyBinding::new(key, workspace::CycleViewMode, context),
+        KeymapAction::NewSpace => KeyBinding::new(key, workspace::NewSpace, context),
+        KeymapAction::CloseSpace => KeyBinding::new(key, workspace::CloseSpace, context),
+        KeymapAction::ZoomIn => KeyBinding::new(key, workspace::ZoomIn, context),
+        KeymapAction::ZoomOut => KeyBinding::new(key, workspace::ZoomOut, context),
+        KeymapAction::TerminalZoomIn => KeyBinding::new(key, workspace::TerminalZoomIn, context),
+        KeymapAction::TerminalZoomOut => KeyBinding::new(key, workspace::TerminalZoomOut, context),
+        KeymapAction::NewFreeTerminal => KeyBinding::new(key, workspace::NewFreeTerminal, context),
+        KeymapAction::NewFreeSurface => KeyBinding::new(key, workspace::NewFreeSurface, context),
         KeymapAction::FocusLeft => KeyBinding::new(key, workspace::ActivatePaneLeft, context),
         KeymapAction::FocusRight => KeyBinding::new(key, workspace::ActivatePaneRight, context),
         KeymapAction::FocusUp => KeyBinding::new(key, workspace::ActivatePaneUp, context),
@@ -123,6 +166,61 @@ fn terminal_send_keystroke(keystroke: &str) -> terminal_view::SendKeystroke {
 mod tests {
     use super::*;
     use gpui::{KeyContext, Keystroke, TestAppContext};
+
+    #[gpui::test]
+    fn defaults_dispatch_in_terminal_context_and_skip_unbound_actions(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = KeymapStore::bare();
+            init(&store, cx);
+            let keymap = cx.key_bindings();
+            let keymap = keymap.borrow();
+            let contexts =
+                [KeyContext::parse("Chartr").unwrap(), KeyContext::parse("Terminal").unwrap()];
+            for action in KeymapAction::ALL {
+                let key = store.key(action);
+                if key.is_empty() {
+                    let expected = binding(action, "ctrl-alt-z", "Chartr");
+                    assert_eq!(keymap.bindings_for_action(expected.action()).count(), 0);
+                    continue;
+                }
+                let expected = binding(action, key, "Chartr");
+                let strokes = key
+                    .split_whitespace()
+                    .map(|key| Keystroke::parse(key).unwrap())
+                    .collect::<Vec<_>>();
+                let (matches, pending) = keymap.bindings_for_input(&strokes, &contexts);
+                assert!(!pending, "{key}");
+                assert!(
+                    matches
+                        .first()
+                        .is_some_and(|matched| matched.action().partial_eq(expected.action())),
+                    "{action:?}: {key}"
+                );
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn unbound_action_can_be_bound_cleared_and_rebound_live(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let action = KeymapAction::NewFreeTerminal;
+            rebind(action, "", "ctrl-alt-z", cx);
+            assert_eq!(
+                cx.key_bindings().borrow().bindings_for_action(&workspace::NewFreeTerminal).count(),
+                1
+            );
+            rebind(action, "ctrl-alt-z", "", cx);
+            assert_eq!(
+                cx.key_bindings().borrow().bindings_for_action(&workspace::NewFreeTerminal).count(),
+                0
+            );
+            rebind(action, "", "ctrl-alt-z", cx);
+            assert_eq!(
+                cx.key_bindings().borrow().bindings_for_action(&workspace::NewFreeTerminal).count(),
+                1
+            );
+        });
+    }
 
     #[gpui::test]
     fn imports_the_pinned_zed_terminal_keymap(cx: &mut TestAppContext) {

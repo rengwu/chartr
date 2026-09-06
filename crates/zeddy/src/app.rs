@@ -15,6 +15,7 @@ mod persistence;
 mod plugins;
 mod rename;
 mod settings_bridge;
+mod shortcuts;
 mod terminal_search;
 #[cfg(test)]
 mod tests;
@@ -116,6 +117,21 @@ struct DraggedPaneDivider {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PaletteCommand {
     NewTerminal,
+    NewTerminalPane,
+    NewSurface,
+    NewSurfacePane,
+    Ungroup,
+    SidebarMode,
+    TabbedMode,
+    CycleViewMode,
+    NewSpace,
+    CloseSpace,
+    ZoomIn,
+    ZoomOut,
+    TerminalZoomIn,
+    TerminalZoomOut,
+    NewFreeTerminal,
+    NewFreeSurface,
     CloseItem,
     CloseAllItems,
     MoveLeft,
@@ -137,8 +153,23 @@ enum RenameKind {
 }
 
 impl PaletteCommand {
-    const ALL: [(Self, &'static str, &'static str); 13] = [
+    const ALL: [(Self, &'static str, &'static str); 28] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
+        (Self::NewTerminalPane, "Workspace: New terminal pane", ""),
+        (Self::NewSurface, "Workspace: New surface tab", ""),
+        (Self::NewSurfacePane, "Workspace: New surface pane", ""),
+        (Self::Ungroup, "Workspace: Ungroup current group", ""),
+        (Self::SidebarMode, "Workspace: Switch to sidebar mode", ""),
+        (Self::TabbedMode, "Workspace: Switch to tabbed mode", ""),
+        (Self::CycleViewMode, "Workspace: Cycle view modes", ""),
+        (Self::NewSpace, "Workspace: Open new space", ""),
+        (Self::CloseSpace, "Workspace: Close current space", ""),
+        (Self::ZoomIn, "Workspace: Zoom in interface", ""),
+        (Self::ZoomOut, "Workspace: Zoom out interface", ""),
+        (Self::TerminalZoomIn, "Workspace: Zoom in terminal", ""),
+        (Self::TerminalZoomOut, "Workspace: Zoom out terminal", ""),
+        (Self::NewFreeTerminal, "Workspace: New free terminal session", ""),
+        (Self::NewFreeSurface, "Workspace: New free surface", ""),
         (Self::CloseItem, "Pane: Close Active Item", "Cmd/Ctrl+W"),
         (Self::CloseAllItems, "Pane: Close All Items", ""),
         (Self::MoveLeft, "Pane: Move Active Item Left", ""),
@@ -171,6 +202,7 @@ pub struct Zeddy {
     spaces: Vec<Entity<Space>>,
     space_sorter: chrome::sidebar::SpaceSorter,
     pane_drop_preview: pane_drop_preview::PaneDropPreview,
+    active_pane_size: Rc<std::cell::Cell<Option<shortcuts::MeasuredPane>>>,
     active: Option<Entity<Space>>,
     mode: Mode,
     catalog: Catalog,
@@ -259,6 +291,7 @@ impl Zeddy {
             };
         let persisted = saved.clone();
         let mut this = Self {
+            active_pane_size: Rc::default(),
             client: None,
             backend: Backend::Starting,
             backend_ready_since: None,
