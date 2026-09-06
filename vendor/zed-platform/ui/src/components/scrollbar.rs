@@ -79,6 +79,8 @@ where
     let track_color = config.track_color;
     let has_border = config.border;
     let reveal_policy = config.reveal_policy;
+    let hover_only = config.hover_only;
+    let thumb_colors = config.thumb_colors;
 
     let state = window.use_keyed_state(element_id, cx, |_, cx| {
         let parent_id = cx.entity_id();
@@ -89,6 +91,8 @@ where
         state.0.update(cx, |state, _cx| {
             state.update_colors(track_color, has_border);
             state.reveal_policy = reveal_policy;
+            state.hover_only = hover_only;
+            state.thumb_colors = thumb_colors;
         })
     });
     state
@@ -389,6 +393,8 @@ pub struct Scrollbars<T: ScrollableHandle = ScrollHandle> {
     reveal_policy: ScrollbarRevealPolicy,
     track_color: Option<Hsla>,
     border: bool,
+    hover_only: bool,
+    thumb_colors: Option<[Hsla; 3]>,
 }
 
 impl Scrollbars {
@@ -398,6 +404,14 @@ impl Scrollbars {
 
     pub fn always_visible(show_along: ScrollAxes) -> Self {
         Self::new_with_setting(show_along, |_| ShowScrollbar::Always)
+    }
+
+    /// Reveal while the pointer is in the container, and retain mouse handling
+    /// throughout a thumb drag even when the pointer leaves the container.
+    pub fn on_hover(show_along: ScrollAxes) -> Self {
+        let mut scrollbars = Self::always_visible(show_along);
+        scrollbars.hover_only = true;
+        scrollbars
     }
 
     pub fn for_settings<S: ScrollbarVisibility + Default>() -> Scrollbars {
@@ -417,6 +431,8 @@ impl Scrollbars {
             reveal_policy: ScrollbarRevealPolicy::default(),
             track_color: None,
             border: false,
+            hover_only: false,
+            thumb_colors: None,
         }
     }
 }
@@ -459,6 +475,8 @@ impl<ScrollHandle: ScrollableHandle> Scrollbars<ScrollHandle> {
             border,
             style,
             reveal_policy,
+            hover_only,
+            thumb_colors,
             ..
         } = self;
 
@@ -472,7 +490,15 @@ impl<ScrollHandle: ScrollableHandle> Scrollbars<ScrollHandle> {
             get_visibility,
             style,
             reveal_policy,
+            hover_only,
+            thumb_colors,
         }
+    }
+
+    /// Override the theme's thumb colors for a surface with a different background.
+    pub fn thumb_colors(mut self, normal: Hsla, hovered: Hsla, active: Hsla) -> Self {
+        self.thumb_colors = Some([normal, hovered, active]);
+        self
     }
 
     pub fn show_along(mut self, along: ScrollAxes) -> Self {
@@ -653,6 +679,8 @@ struct ScrollbarState<T: ScrollableHandle = ScrollHandle> {
     show_state: VisibilityState,
     style: ScrollbarStyle,
     mouse_in_parent: bool,
+    hover_only: bool,
+    thumb_colors: Option<[Hsla; 3]>,
     last_prepaint_state: Option<ScrollbarPrepaintState>,
     _auto_hide_task: Option<Task<()>>,
 }
@@ -680,7 +708,9 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
             style: config.style.unwrap_or_default(),
             reveal_policy: config.reveal_policy,
             show_state: VisibilityState::from_behavior(show_behavior),
-            mouse_in_parent: true,
+            mouse_in_parent: !config.hover_only,
+            hover_only: config.hover_only,
+            thumb_colors: config.thumb_colors,
             last_prepaint_state: None,
             _auto_hide_task: None,
         }
@@ -911,6 +941,10 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
 
     fn visible(&self) -> bool {
         self.show_state.is_visible()
+    }
+
+    fn thumb_visible(&self, parent_hovered: bool) -> bool {
+        self.visible() && (!self.hover_only || parent_hovered || self.is_dragging())
     }
 
     #[inline]
@@ -1398,12 +1432,16 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
             let capture_phase;
 
-            if self.state.read(cx).visible() {
+            let show_thumb = {
+                let state = self.state.read(cx);
+                state.thumb_visible(prepaint_state.parent_bounds_hitbox.is_hovered(window))
+            };
+            if show_thumb {
                 let state = self.state.read(cx);
                 let thumb_state = &state.thumb_state;
                 let style = state.style;
 
-                if thumb_state.is_dragging() {
+                if thumb_state.is_dragging() || state.hover_only {
                     capture_phase = DispatchPhase::Capture;
                 } else {
                     capture_phase = DispatchPhase::Bubble;
@@ -1419,14 +1457,19 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                 } in &prepaint_state.thumbs
                 {
                     const MAXIMUM_OPACITY: f32 = 0.7;
+                    let [normal_color, hover_color, active_color] = state.thumb_colors.unwrap_or([
+                        colors.scrollbar_thumb_background,
+                        colors.scrollbar_thumb_hover_background,
+                        colors.scrollbar_thumb_active_background,
+                    ]);
                     let (thumb_base_color, hovered) = match thumb_state {
                         ThumbState::Dragging(dragged_axis, _) if dragged_axis == axis => {
-                            (colors.scrollbar_thumb_active_background, false)
+                            (active_color, false)
                         }
                         ThumbState::Hover(hovered_axis) if hovered_axis == axis => {
-                            (colors.scrollbar_thumb_hover_background, true)
+                            (hover_color, true)
                         }
-                        _ => (colors.scrollbar_thumb_background, false),
+                        _ => (normal_color, false),
                     };
 
                     let blend_color = track_config
@@ -1505,10 +1548,17 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                     }
                 }
             } else {
-                capture_phase = DispatchPhase::Bubble;
+                capture_phase = if self.state.read(cx).hover_only {
+                    DispatchPhase::Capture
+                } else {
+                    DispatchPhase::Bubble
+                };
             }
 
             self.state.update(cx, |state, _| {
+                // Keep the event transition baseline aligned with the frame we
+                // just painted, including the initial pointer position.
+                state.mouse_in_parent = prepaint_state.parent_bounds_hitbox.is_hovered(window);
                 state.last_prepaint_state = Some(prepaint_state)
             });
 
@@ -1518,7 +1568,8 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                 move |event: &MouseDownEvent, phase, window, cx| {
                     state.update(cx, |state, cx| {
                         let Some(scrollbar_layout) = (phase == capture_phase
-                            && event.button == MouseButton::Left)
+                            && event.button == MouseButton::Left
+                            && (!state.hover_only || state.parent_hovered(window)))
                             .then(|| state.hit_for_position(&event.position))
                             .flatten()
                         else {
@@ -1595,6 +1646,9 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                                 {
                                     if matches!(hover, ParentHoverEvent::Entered) {
                                         state.show_scrollbars(window, cx);
+                                        if state.hover_only {
+                                            cx.notify();
+                                        }
                                     }
                                     state.update_hovered_thumb(&event.position, window, cx);
                                     if state.thumb_state != ThumbState::Inactive {
@@ -1603,6 +1657,9 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                                 }
                                 ParentHoverEvent::Exited => {
                                     state.set_thumb_state(ThumbState::Inactive, window, cx);
+                                    if state.hover_only {
+                                        cx.notify();
+                                    }
                                 }
                                 _ => {}
                             }
@@ -1624,6 +1681,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                         }
 
                         if !state.parent_hovered(window) {
+                            state.set_thumb_state(ThumbState::Inactive, window, cx);
                             state.schedule_auto_hide(window, cx);
                             return;
                         }

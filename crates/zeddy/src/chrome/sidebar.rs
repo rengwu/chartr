@@ -4,7 +4,10 @@
 //! tab cannot hold — the agent's name under the title, and a close button that
 //! is not fighting the title for space — so this chrome shows them.
 
-use gpui::{EntityId, MouseButton, Rems, Role, canvas, deferred, fill, px, transparent_black};
+use gpui::{
+    Bounds, BoxShadow, ContentMask, EntityId, MouseButton, Rems, Role, canvas, deferred, fill,
+    linear_color_stop, linear_gradient, point, px, relative, size, transparent_black,
+};
 use ui::{IconButtonShape, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*};
 
 use super::Emit;
@@ -30,6 +33,14 @@ pub const MAX_WIDTH: f32 = 480.;
 pub(crate) const CARD_GAP: Rems = Rems(0.5);
 pub type SpaceSorter = crate::components::ListSorter<EntityId>;
 
+pub(super) fn scrollbar_thumb_colors(colors: &theme::ThemeColors) -> [gpui::Hsla; 3] {
+    [
+        colors.panel_background.blend(colors.text.alpha(0.7)).alpha(1.),
+        colors.text.alpha(1.),
+        colors.text.alpha(1.),
+    ]
+}
+
 pub fn render(
     spaces: &[SpaceEntries],
     controls: Option<(AnyElement, AnyElement)>,
@@ -40,6 +51,7 @@ pub fn render(
     cx: &mut App,
 ) -> impl IntoElement {
     let colors = cx.theme().colors();
+    let [thumb, hovered_thumb, active_thumb] = scrollbar_thumb_colors(colors);
     let sidebar_colors = sidebar_theme_colors(cx.theme());
     let session_backgrounds = SelectionRowBackgrounds {
         hover: sidebar_colors.session_hover,
@@ -69,7 +81,7 @@ pub fn render(
     let header = controls
         .map(|(space_switcher, view_menu)| header(space_switcher, view_menu).into_any_element());
     let scroll_handle = sorter.scroll_handle().clone();
-    let scroll_border = colors.border;
+    let scroll_background = colors.panel_background;
     let mut index = 0;
     let now = cx.background_executor().now();
     let reduce_motion = cx.reduce_motion();
@@ -305,7 +317,6 @@ pub fn render(
         .child(spaces_header)
         .child(
             v_flex()
-                .group("spaces-scroll-container")
                 .relative()
                 .flex_1()
                 .min_h_0()
@@ -322,35 +333,59 @@ pub fn render(
                         .children(cards),
                 )
                 .child(
-                    // Read the offset at paint time, after scrolling and layout
-                    // have clamped it. The overlay never changes card geometry.
+                    // Read the clamped offset at paint time. This passive overlay
+                    // adds no hitbox, layout shift, timer, or scroll subscription.
                     canvas(
                         |_, _, _| {},
                         move |bounds, _, window, _| {
-                            if scroll_handle.offset().y < px(0.) {
-                                window.paint_quad(fill(bounds, scroll_border));
+                            let strength = (-scroll_handle.offset().y / px(12.)).clamp(0., 1.);
+                            if strength == 0. {
+                                return;
                             }
+                            window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                                // A small, theme-colored blurred veil gives the
+                                // edge a frosted appearance. GPUI has no element
+                                // backdrop blur; this needs no offscreen capture.
+                                let veil = Bounds::new(
+                                    point(bounds.left(), bounds.top() - px(8.)),
+                                    size(bounds.size.width, px(8.)),
+                                );
+                                window.paint_drop_shadows(
+                                    veil,
+                                    Default::default(),
+                                    &[BoxShadow::new(
+                                        px(0.),
+                                        px(4.),
+                                        scroll_background.opacity(0.35 * strength),
+                                    )
+                                    .blur_radius(px(12.))],
+                                );
+                                window.paint_quad(fill(
+                                    bounds,
+                                    linear_gradient(
+                                        180.,
+                                        linear_color_stop(scroll_background.opacity(strength), 0.),
+                                        linear_color_stop(scroll_background.opacity(0.), 1.),
+                                    ),
+                                ));
+                            });
                         },
                     )
                     .absolute()
                     .top_0()
                     .left_0()
                     .w_full()
-                    .h(px(1.)),
+                    .h(px(28.))
+                    .max_h(relative(1.)),
                 )
-                .child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .visible_on_hover("spaces-scroll-container")
-                        .custom_scrollbars(
-                            Scrollbars::always_visible(ScrollAxes::Vertical)
-                                .id("spaces-scrollbar")
-                                .tracked_scroll_handle(sorter.scroll_handle())
-                                .notify_content(),
-                            window,
-                            cx,
-                        ),
+                .custom_scrollbars(
+                    Scrollbars::on_hover(ScrollAxes::Vertical)
+                        .id("spaces-scrollbar")
+                        .thumb_colors(thumb, hovered_thumb, active_thumb)
+                        .tracked_scroll_handle(sorter.scroll_handle())
+                        .notify_content(),
+                    window,
+                    cx,
                 ),
         )
         .children(free_sessions)

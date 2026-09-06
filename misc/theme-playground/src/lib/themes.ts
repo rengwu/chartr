@@ -47,15 +47,15 @@ const tokens = (base: BaseTokens, sidebar: [string, string, string, string]): Th
 export const THEME_PRESETS: ThemePreset[] = [
   {
     name: 'Ayu Dark', appearance: 'Dark',
-    tokens: tokens({ surface: '0x0d1016', sidebar: '0x131820', border: '0x36404e', text: '0xd8d5cd', muted: '0xa9adb5', card: '0x202731', cardOpen: '0x374352', ring: '0xe6b450', selected: '0x374352', hover: '0x2c3541', notice: '0xf08080', accent: '0xe6b450', done: '0xaacb73', idle: '0xe6b450', quiet: '0x7d8795', terminalForeground: '0xd8d5cd' }, ['0x1d242e', '0x242e3a', '0x2a3542', '0x313e4e']),
+    tokens: tokens({ surface: '0x0d1016', sidebar: '0x131820', border: '0x36404e', text: '0xd8d5cd', muted: '0xa9adb5', card: '0x202731', cardOpen: '0x374352', ring: '0x6ba9cf', selected: '0x374352', hover: '0x2c3541', notice: '0xf08080', accent: '0x6ba9cf', done: '0xaacb73', idle: '0xe6b450', quiet: '0x7d8795', terminalForeground: '0xd8d5cd' }, ['0x1d242e', '0x242e3a', '0x2a3542', '0x313e4e']),
   },
   {
     name: 'Ayu Light', appearance: 'Light',
-    tokens: tokens({ surface: '0xfcfcfa', sidebar: '0xeceef0', border: '0xbfc5cb', text: '0x343b43', muted: '0x59636e', card: '0xf5f6f7', cardOpen: '0xdce2e7', ring: '0xa66316', selected: '0xdce2e7', hover: '0xe5e9ed', notice: '0xc44545', accent: '0xa66316', done: '0x527c23', idle: '0x936115', quiet: '0x717b86', terminalForeground: '0x343b43' }, ['0xfafbfc', '0xf3f5f7', '0xe5e9ed', '0xd5dde5']),
+    tokens: tokens({ surface: '0xfcfcfa', sidebar: '0xeceef0', border: '0xbfc5cb', text: '0x343b43', muted: '0x59636e', card: '0xf5f6f7', cardOpen: '0xdce2e7', ring: '0x377ca8', selected: '0xdce2e7', hover: '0xe5e9ed', notice: '0xc44545', accent: '0x377ca8', done: '0x527c23', idle: '0x936115', quiet: '0x717b86', terminalForeground: '0x343b43' }, ['0xfafbfc', '0xf3f5f7', '0xe5e9ed', '0xd5dde5']),
   },
   {
     name: 'Ayu Mirage', appearance: 'Dark',
-    tokens: tokens({ surface: '0x242936', sidebar: '0x1c212c', border: '0x475266', text: '0xd9d7ce', muted: '0xb0b7c4', card: '0x2b3342', cardOpen: '0x465369', ring: '0xeac080', selected: '0x465369', hover: '0x354154', notice: '0xef9385', accent: '0xeac080', done: '0xb9d68a', idle: '0xeac080', quiet: '0x8995a8', terminalForeground: '0xd9d7ce' }, ['0x293141', '0x303b4d', '0x374357', '0x404e64']),
+    tokens: tokens({ surface: '0x242936', sidebar: '0x1c212c', border: '0x475266', text: '0xd9d7ce', muted: '0xb0b7c4', card: '0x2b3342', cardOpen: '0x465369', ring: '0x80b2d1', selected: '0x465369', hover: '0x354154', notice: '0xef9385', accent: '0x80b2d1', done: '0xb9d68a', idle: '0xeac080', quiet: '0x8995a8', terminalForeground: '0xd9d7ce' }, ['0x293141', '0x303b4d', '0x374357', '0x404e64']),
   },
   {
     name: 'Catppuccin Frappé', appearance: 'Dark',
@@ -83,7 +83,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     name: 'One Dark', appearance: 'Dark',
-    tokens: tokens({ surface: '0x242730', sidebar: '0x1c1f27', border: '0x454b5b', text: '0xdce1ed', muted: '0xacb5c8', card: '0x2b303c', cardOpen: '0x434c60', ring: '0xb5a0e8', selected: '0x434c60', hover: '0x343c4c', notice: '0xe58a94', accent: '0xb5a0e8', done: '0xa2c98c', idle: '0xe5c286', quiet: '0x8290a6', terminalForeground: '0xd0d7e5' }, ['0x282e3a', '0x303949', '0x374356', '0x3e4c62']),
+    tokens: tokens({ surface: '0x242730', sidebar: '0x1c1f27', border: '0x454b5b', text: '0xdce1ed', muted: '0xacb5c8', card: '0x2b303c', cardOpen: '0x434c60', ring: '0x7e98d9', selected: '0x434c60', hover: '0x343c4c', notice: '0xe58a94', accent: '0x7e98d9', done: '0xa2c98c', idle: '0xe5c286', quiet: '0x8290a6', terminalForeground: '0xd0d7e5' }, ['0x282e3a', '0x303949', '0x374356', '0x3e4c62']),
   },
   {
     name: 'One Light', appearance: 'Light',
@@ -99,7 +99,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     name: 'Chartr Dark', appearance: 'Dark',
-    tokens: tokens({ surface: '0x282c33', sidebar: '0x2f343e', border: '0x505866', text: '0xdce0e5', muted: '0xa9afbc', card: '0x2e343e', cardOpen: '0x454a56', ring: '0x47679e', selected: '0x454a56', hover: '0x363c46', notice: '0xd07277', accent: '0x74ade8', done: '0xa1c181', idle: '0xdec184', quiet: '0x878a98', terminalForeground: '0xabb2bf' }, ['0x353c47', '0x39414e', '0x3e4857', '0x444f61']),
+    tokens: tokens({ surface: '0x282c33', sidebar: '0x2f343e', border: '0x505866', text: '0xdce0e5', muted: '0x9aa4b2', card: '0x2e343e', cardOpen: '0x454a56', ring: '0x47679e', selected: '0x454a56', hover: '0x363c46', notice: '0xd07277', accent: '0x74ade8', done: '0xa1c181', idle: '0xdec184', quiet: '0x878a98', terminalForeground: '0xabb2bf' }, ['0x2e3540', '0x323a46', '0x384250', '0x3e495a']),
   },
   {
     name: 'Chartr Light', appearance: 'Light',

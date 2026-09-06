@@ -19,6 +19,8 @@ menus:
   they can appear above webviews. Tooltip creation is cancelled on dismissal
   and checked against the active parent window; existing tooltips close when
   their parent loses focus, preventing them from raising a background workspace.
+  Scrollbars also support container-hover visibility that retains input handling
+  during thumb drags, plus surface-specific thumb colors for sidebar contrast.
 
 The root Cargo patch table selects these crates, so builds do not depend on a
 modified Cargo checkout.

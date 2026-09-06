@@ -432,11 +432,11 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0xa9adb5,
         0x202731,
         0x374352,
-        0xe6b450,
+        0x6ba9cf,
         0x374352,
         0x2c3541,
         0xf08080,
-        0xe6b450,
+        0x6ba9cf,
         0xaacb73,
         0xe6b450,
         0x7d8795,
@@ -452,11 +452,11 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0x59636e,
         0xf5f6f7,
         0xdce2e7,
-        0xa66316,
+        0x377ca8,
         0xdce2e7,
         0xe5e9ed,
         0xc44545,
-        0xa66316,
+        0x377ca8,
         0x527c23,
         0x936115,
         0x717b86,
@@ -472,11 +472,11 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0xb0b7c4,
         0x2b3342,
         0x465369,
-        0xeac080,
+        0x80b2d1,
         0x465369,
         0x354154,
         0xef9385,
-        0xeac080,
+        0x80b2d1,
         0xb9d68a,
         0xeac080,
         0x8995a8,
@@ -612,11 +612,11 @@ const THEME_PALETTES: [ThemePalette; 13] = [
         0xacb5c8,
         0x2b303c,
         0x434c60,
-        0xb5a0e8,
+        0x7e98d9,
         0x434c60,
         0x343c4c,
         0xe58a94,
-        0xb5a0e8,
+        0x7e98d9,
         0xa2c98c,
         0xe5c286,
         0x8290a6,
@@ -742,7 +742,7 @@ const SIDEBAR_THEME_PALETTES: [SidebarThemePalette; 15] = [
     SidebarThemePalette::new("One Light", 0xf9fafc, 0xf0f3f8, 0xe3e8f1, 0xd3dced),
     SidebarThemePalette::new("VSCode Dark Modern", 0x1d1d1d, 0x222222, 0x232323, 0x2b2b2b),
     SidebarThemePalette::new("VSCode Dark Plus", 0x2c2c2f, 0x323235, 0x38383c, 0x3f3f44),
-    SidebarThemePalette::new(CHARTR_DARK, 0x353c47, 0x39414e, 0x3e4857, 0x444f61),
+    SidebarThemePalette::new(CHARTR_DARK, 0x2e3540, 0x323a46, 0x384250, 0x3e495a),
     SidebarThemePalette::new(CHARTR_LIGHT, 0xedf0f4, 0xe5eaf2, 0xd6deea, 0xc6d3e6),
 ];
 
@@ -919,6 +919,12 @@ fn chartr_dark(source: &Theme) -> Theme {
     let colors = &mut dark.styles.colors;
     let border = gpui::rgb(0x505866).into();
     let border_variant = gpui::rgb(0x414956).into();
+    // Keep secondary labels readable on the space cards independently of
+    // the bundled source theme's muted text.
+    let muted = gpui::rgb(0x9aa4b2).into();
+    colors.text_muted = muted;
+    colors.icon_muted = muted;
+    colors.icon_placeholder = muted;
     colors.text_accent = colors.text;
     colors.icon_accent = colors.icon;
     colors.border = border;

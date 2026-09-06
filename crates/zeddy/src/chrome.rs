@@ -6,6 +6,8 @@
 //! Neither owns workspace state: both take [`Entry`] values and emit stable ids.
 
 pub mod sidebar;
+#[cfg(test)]
+mod sidebar_tests;
 pub(crate) mod tab_sorter;
 pub mod tabs;
 

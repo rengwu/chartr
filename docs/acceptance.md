@@ -188,6 +188,12 @@ a drag so neither the tab preview nor drop highlight is obscured.
 In the All Spaces sidebar, clicking anywhere on a space card activates that
 space and returns keyboard focus to its workspace. Its session rows still select
 their specific tabs, and its `+` and plugin-pane buttons retain their own actions.
+Scroll space cards upward beneath the **Spaces** heading: a short, theme-colored
+frosted fade should gently hide their top edge, with no horizontal border. The
+fade should ease in over the first few pixels of scrolling and disappear at the
+top. Check light and dark themes, wheel/trackpad scrolling, thumb dragging, and
+clicking rows beneath the fade. The heading and Free sessions footer stay clear,
+and scrolling should remain smooth with many cards.
 
 Create five standalone tabs in one space. Move tabs 4 and 5 into tab 3, split
 tab 4 to the right, and leave tabs 1 and 2 standalone. Both sidebar and tabbed
