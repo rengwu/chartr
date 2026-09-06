@@ -46,9 +46,11 @@ Chartr Light. Capture and compare:
 - command palette, unavailable-folder recovery, closed-attach recovery, rejected
   plugin, visible web permissions, and the top-right Problems menu—including
   timestamps plus retry and restart actions for a backend crash loop;
-- the native Hello pane and real Clock web pane, including its persisted format.
+- the bundled Agent, Skills, and Wayfinder plugins, with no Hello or Clock
+  entry in the default launcher or Settings catalog.
 
-Install a web plugin from both a local folder and a Git repository in Settings →
+Install a web plugin (such as `examples/plugins/clock`, including its persisted
+format) from a local folder, and a web plugin from a Git repository in Settings →
 Plugins. Confirm that its declared permissions appear before installation, the
 managed copy is not a live reference to the source, and **Later** leaves a
 restart-required banner. Replace that plugin and confirm its data survives.
@@ -141,9 +143,10 @@ pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
 a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Confirm Browser, Clock, and Hello show their manifest-selected Hugeicons in
-sidebar rows, standalone outer tabs, and pane-local tabs. Grouped outer tabs
-continue to show the split indicator instead of one representative plugin icon.
+Confirm Agent, Skills, Wayfinder, and any installed Browser or Clock show their
+manifest-selected Hugeicons in sidebar rows, standalone outer tabs, and pane-local
+tabs. Grouped outer tabs continue to show the split indicator instead of one
+representative plugin icon.
 Confirm a temporary **New surface** tab shows the Full Screen icon in
 each of those tab surfaces until a plugin replaces it in place.
 Open that picker and confirm every plugin card shows the same manifest-selected

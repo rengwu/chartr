@@ -1,6 +1,4 @@
-use super::bundled_plugins::{
-    materialize_bundled_agent, materialize_bundled_clock, materialize_bundled_hello,
-};
+use super::bundled_plugins::materialize_bundled_agent;
 use super::{
     ErrorNoticeKey, ErrorSeverity, PersistedSpaceKind, Registry, Snapshot, SplitDirection,
     cleanup_empty_implicit_root, pane_drop_direction_for_position, reconcile_error_notices,
@@ -73,20 +71,6 @@ fn dismissed_errors_return_only_after_the_condition_clears() {
 }
 
 #[test]
-fn the_bundled_web_example_materializes_as_a_valid_plugin_directory() {
-    let temporary = tempfile::tempdir().unwrap();
-    let dir = temporary.path().join("com.example.clock");
-
-    materialize_bundled_clock(&dir).unwrap();
-
-    let manifest = zeddy_plugin::Manifest::read(&dir).unwrap();
-    assert_eq!(manifest.id, "com.example.clock");
-    assert!(manifest.icon_path(&dir).is_file());
-    assert!(dir.join("index.html").is_file());
-    assert!(zeddy_plugin::Manifest::read(&dir).unwrap().settings.is_some());
-}
-
-#[test]
 fn the_bundled_agent_materializes_as_a_native_plugin() {
     let temporary = tempfile::tempdir().unwrap();
     let dir = temporary.path().join("com.chartr.agent");
@@ -104,18 +88,6 @@ fn the_bundled_agent_materializes_as_a_native_plugin() {
     assert!(!dir.join("index.html").exists());
     assert!(!dir.join("styles.css").exists());
     assert!(!dir.join("app.js").exists());
-}
-
-#[test]
-fn the_bundled_native_example_materializes_with_its_valid_manifest() {
-    let temporary = tempfile::tempdir().unwrap();
-    let dir = temporary.path().join("com.example.hello");
-
-    let manifest = materialize_bundled_hello(&dir).unwrap();
-
-    assert_eq!(manifest.id, "com.example.hello");
-    assert!(manifest.icon_path(&dir).is_file());
-    assert!(dir.join("zeddy-plugin.toml").is_file());
 }
 
 #[test]

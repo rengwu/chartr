@@ -242,9 +242,10 @@ mod tests {
     use super::*;
 
     fn clock_store(data: &std::path::Path) -> Store {
-        let manifest =
-            zeddy_plugin::Manifest::parse(include_str!("../../../plugins/clock/zeddy-plugin.toml"))
-                .unwrap();
+        let manifest = zeddy_plugin::Manifest::parse(include_str!(
+            "../../../examples/plugins/clock/zeddy-plugin.toml"
+        ))
+        .unwrap();
         Store {
             schema: manifest.settings.unwrap(),
             broker: FileBroker::new(None, data.into(), ProjectAccess::None, false),

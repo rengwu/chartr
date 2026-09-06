@@ -1,3 +1,4 @@
 /target
 /vendor/herdr/*/
 plugins/*/target
+examples/plugins/*/target

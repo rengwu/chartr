@@ -2,8 +2,6 @@
 
 use super::*;
 
-const BUNDLED_HELLO_ID: &str = "com.example.hello";
-const BUNDLED_CLOCK_ID: &str = "com.example.clock";
 const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
 const BUNDLED_SKILLS_ID: &str = "com.chartr.skills";
 const BUNDLED_WAYFINDER_ID: &str = "com.chartr.wayfinder";
@@ -16,36 +14,6 @@ fn load_plugin_catalog_at(settings: &SettingsStore, paths: &Paths, cx: &mut App)
     let mut catalog = zeddy_plugin_host::load_all_where(paths, |_| false, cx);
     for rejected in &catalog.rejected {
         eprintln!("Chartr rejected plugin {}: {}", rejected.dir.display(), rejected.why);
-    }
-
-    if !catalog.contains(BUNDLED_HELLO_ID)
-        && !settings.resolved().plugin(BUNDLED_HELLO_ID).uninstalled
-    {
-        let dir = paths.bundled.join(BUNDLED_HELLO_ID);
-        match materialize_bundled_hello(&dir) {
-            Ok(manifest) => catalog.add_bundled_native(
-                manifest,
-                dir,
-                paths,
-                false,
-                crate::hello_plugin::bundled,
-                cx,
-            ),
-            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected { dir, why }),
-        }
-    }
-
-    if !catalog.contains(BUNDLED_CLOCK_ID)
-        && !settings.resolved().plugin(BUNDLED_CLOCK_ID).uninstalled
-    {
-        let dir = paths.bundled.join(BUNDLED_CLOCK_ID);
-        match materialize_bundled_clock(&dir) {
-            Ok(()) => catalog.add_directory(&dir, paths, false, cx),
-            Err(why) => catalog.rejected.push(zeddy_plugin_host::Rejected {
-                dir,
-                why: format!("cannot prepare the bundled Clock plugin: {why}"),
-            }),
-        }
     }
 
     if !catalog.contains(BUNDLED_AGENT_ID)
@@ -141,43 +109,6 @@ fn materialize_bundled_skills(dir: &std::path::Path) -> Result<zeddy_plugin::Man
     zeddy_plugin::Manifest::read(dir).map_err(|why| why.to_string())
 }
 
-pub(super) fn materialize_bundled_hello(
-    dir: &std::path::Path,
-) -> Result<zeddy_plugin::Manifest, String> {
-    std::fs::create_dir_all(dir)
-        .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
-    write_bundled_file(
-        &dir.join("zeddy-plugin.toml"),
-        include_bytes!("../../../../plugins/hello/zeddy-plugin.toml"),
-    )
-    .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
-    std::fs::create_dir_all(dir.join("icons"))
-        .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
-    write_bundled_file(
-        &dir.join("icons/WavingHand01Icon.svg"),
-        include_bytes!("../../../../plugins/hello/icons/WavingHand01Icon.svg"),
-    )
-    .map_err(|why| format!("cannot prepare the bundled Hello plugin: {why}"))?;
-    zeddy_plugin::Manifest::read(dir).map_err(|why| why.to_string())
-}
-
-pub(super) fn materialize_bundled_clock(dir: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    write_bundled_file(
-        &dir.join("zeddy-plugin.toml"),
-        include_bytes!("../../../../plugins/clock/zeddy-plugin.toml"),
-    )?;
-    std::fs::create_dir_all(dir.join("icons"))?;
-    write_bundled_file(
-        &dir.join("icons/Clock01Icon.svg"),
-        include_bytes!("../../../../plugins/clock/icons/Clock01Icon.svg"),
-    )?;
-    write_bundled_file(
-        &dir.join("index.html"),
-        include_bytes!("../../../../plugins/clock/index.html"),
-    )
-}
-
 pub(super) fn materialize_bundled_agent(
     dir: &std::path::Path,
 ) -> Result<zeddy_plugin::Manifest, String> {
@@ -235,12 +166,12 @@ mod tests {
     ) {
         let scratch = tempfile::tempdir().unwrap();
         let paths = Paths::under(scratch.path());
-        let directory = paths.installed.join(BUNDLED_CLOCK_ID);
+        let directory = paths.installed.join(BUNDLED_WAYFINDER_ID);
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(directory.join("zeddy-plugin.toml"), "invalid manifest").unwrap();
         let catalog = cx.update(|cx| load_plugin_catalog_at(&SettingsStore::bare(), &paths, cx));
-        assert!(catalog.get(BUNDLED_CLOCK_ID).is_none());
-        assert!(!catalog.disabled.contains_key(BUNDLED_CLOCK_ID));
+        assert!(catalog.get(BUNDLED_WAYFINDER_ID).is_none());
+        assert!(!catalog.disabled.contains_key(BUNDLED_WAYFINDER_ID));
         assert_eq!(catalog.rejected.iter().filter(|rejected| rejected.dir == directory).count(), 1);
     }
 
@@ -265,9 +196,12 @@ mod tests {
         assert!(!paths.bundled.join(BUNDLED_AGENT_ID).exists());
         assert!(catalog.disabled.contains_key(BUNDLED_WAYFINDER_ID));
         assert!(catalog.prerequisite_error(BUNDLED_WAYFINDER_ID).is_some());
-        assert!(catalog.get(BUNDLED_CLOCK_ID).is_some());
+        for id in ["com.example.clock", "com.example.hello"] {
+            assert!(!catalog.contains(id));
+            assert!(!paths.bundled.join(id).exists());
+        }
         assert!(catalog.get(BUNDLED_SKILLS_ID).is_some());
-        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 4);
+        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 2);
     }
 
     #[gpui::test]

@@ -19,8 +19,6 @@ mod browser_plugin;
 mod chrome;
 mod components;
 mod fonts;
-#[path = "../../../plugins/hello/src/lib.rs"]
-mod hello_plugin;
 mod item;
 mod keymap;
 mod mode;

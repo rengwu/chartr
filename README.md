@@ -202,11 +202,11 @@ implemented inside Chartr. They are reserved for integrations—such as
 Browser—that need native operating-system facilities while keeping all GPUI
 objects inside the host process's single framework copy.
 
-`plugins/hello` and `plugins/clock` are complete build-time native and web
-examples. Chartr bundles them as the **Hello** and **Clock** launcher entries;
-the Clock directory remains a reference for portable plugin authors. The
-bundled **Agent** native plugin in `plugins/agent` keeps a private registry of
-agent launch definitions and opens the selected adapter and prompt as an
+`examples/plugins/hello` and `examples/plugins/clock` are native and web reference
+examples. Neither is bundled or shown in the default launcher. Clock can be
+installed explicitly from its example directory. The bundled **Agent** native
+plugin in `plugins/agent` keeps a private registry of agent launch definitions
+and opens the selected adapter and prompt as an
 ordinary Chartr-owned session in the pane's space.
 
 The bundled **Skills** plugin in `plugins/skills` provides ordered local and
@@ -236,7 +236,8 @@ crates/zeddy/              window, spaces, panes, settings, persistence, UI
 crates/zeddy-herdr/        private Herdr protocol and lifecycle
 crates/zeddy-plugin/       native and manifest authoring contract
 crates/zeddy-plugin-host/  discovery, loading, and web filesystem broker
-plugins/                   example and separately installable plugin packages
+plugins/                   bundled and separately installable first-party plugins
+examples/plugins/          optional native and web reference examples
 vendor/herdr/              pinned sidecar fetch and licence
 docs/adr/                  architectural decisions
 .plan/maps/                durable product specification
@@ -248,7 +249,7 @@ docs/adr/                  architectural decisions
 cargo fmt --all --check
 cargo test --workspace --locked --no-fail-fast
 node --test crates/zeddy/tests/plugin_bridge.cjs
-cargo check --manifest-path plugins/hello/Cargo.toml --locked
+cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
 cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
