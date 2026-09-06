@@ -85,6 +85,7 @@ pub fn open_plugin(
             let _ = existing.update(cx, |settings, window, cx| {
                 settings.page = SettingsPage::Plugins;
                 settings.plugin_settings = None;
+                settings.plugin_information = None;
                 if let Some(plugin) = plugin {
                     settings.open_plugin_settings(plugin, window, cx);
                 }
@@ -146,6 +147,7 @@ pub struct SettingsWindow {
     original: WeakEntity<Zeddy>,
     page: SettingsPage,
     plugin_settings: Option<(String, Option<AnyView>)>,
+    plugin_information: Option<String>,
     git_install_open: bool,
     git_url_input: Entity<TextInput>,
     plugin_operation: Option<String>,
@@ -241,6 +243,7 @@ impl SettingsWindow {
             original,
             page: SettingsPage::default(),
             plugin_settings: None,
+            plugin_information: None,
             git_install_open: false,
             git_url_input,
             plugin_operation: None,
@@ -322,6 +325,18 @@ impl SettingsWindow {
                     .general
                     .get_or_insert_with(GeneralContent::default)
                     .middle_click_closes_sidebar_tab = Some(enabled);
+            },
+            false,
+            false,
+            cx,
+        );
+    }
+
+    fn set_show_view_mode_picker(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.update_settings(
+            |content| {
+                content.general.get_or_insert_with(GeneralContent::default).show_view_mode_picker =
+                    Some(show);
             },
             false,
             false,
@@ -533,6 +548,7 @@ impl SettingsWindow {
         };
         self.page = SettingsPage::ALL[next];
         self.plugin_settings = None;
+        self.plugin_information = None;
         cx.notify();
     }
 
@@ -637,6 +653,9 @@ impl SettingsWindow {
     }
 
     fn content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.page == SettingsPage::Plugins && self.plugin_information.is_some() {
+            return self.plugin_information_page(cx);
+        }
         if self.page == SettingsPage::Plugins && self.plugin_settings.is_some() {
             return self.plugin_configuration_page(window, cx);
         }
@@ -670,6 +689,7 @@ impl Render for SettingsWindow {
                         this.page = page;
                         if page != SettingsPage::Plugins {
                             this.plugin_settings = None;
+                            this.plugin_information = None;
                         }
                         cx.notify();
                     }))
@@ -682,7 +702,8 @@ impl Render for SettingsWindow {
             .collect();
         let unreadable = cx.global::<SettingsStore>().unreadable().map(str::to_owned);
         let page_title = self.page.title();
-        let show_page_title = self.page != SettingsPage::Plugins || self.plugin_settings.is_none();
+        let show_page_title = self.page != SettingsPage::Plugins
+            || (self.plugin_settings.is_none() && self.plugin_information.is_none());
         let content = self.content(window, cx);
 
         div()

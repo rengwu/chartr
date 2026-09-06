@@ -8,6 +8,7 @@ impl SettingsWindow {
         let terminate = settings.terminate_sessions_on_exit;
         let middle_click_closes_tab = settings.middle_click_closes_tab;
         let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
+        let show_view_mode_picker = settings.show_view_mode_picker;
         let mode = self.mode(cx);
         let show_space_picker = self.show_space_picker(cx).unwrap_or(true);
         let runtime_available = mode.is_some();
@@ -16,6 +17,7 @@ impl SettingsWindow {
         let middle_click_setting = cx.weak_entity();
         let sidebar_middle_click_setting = cx.weak_entity();
         let space_picker_setting = cx.weak_entity();
+        let view_mode_picker_setting = cx.weak_entity();
         let use_sidebar = cx.listener(move |this, _, _, cx| {
             if runtime_available {
                 this.set_mode(Mode::Sidebar, cx);
@@ -93,6 +95,19 @@ impl SettingsWindow {
                     let show = state.selected();
                     let _ = space_picker_setting
                         .update(cx, |this, cx| this.set_show_space_picker(show, cx));
+                }),
+        ));
+        fields.push(setting_field(
+            "Show view mode picker",
+            "Show the Sidebar/Tabbed toggle in the workspace title bar.",
+            Switch::new("show-view-mode-picker", show_view_mode_picker.into())
+                .tab_index(0isize)
+                .aria_label("Show view mode picker")
+                .aria_description("Show the Sidebar/Tabbed toggle in the workspace title bar.")
+                .on_click(move |state, _, cx| {
+                    let show = state.selected();
+                    let _ = view_mode_picker_setting
+                        .update(cx, |this, cx| this.set_show_view_mode_picker(show, cx));
                 }),
         ));
         fields.push(setting_field(

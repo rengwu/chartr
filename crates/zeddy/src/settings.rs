@@ -73,6 +73,7 @@ pub struct ResolvedSettings {
     pub terminate_sessions_on_exit: bool,
     pub middle_click_closes_tab: bool,
     pub middle_click_closes_sidebar_tab: bool,
+    pub show_view_mode_picker: bool,
     pub reduce_motion: bool,
     pub theme_mode: ThemeMode,
     pub fixed_theme: String,
@@ -92,6 +93,7 @@ impl Default for ResolvedSettings {
             terminate_sessions_on_exit: false,
             middle_click_closes_tab: true,
             middle_click_closes_sidebar_tab: true,
+            show_view_mode_picker: true,
             reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: CHARTR_DARK.to_owned(),
@@ -154,6 +156,8 @@ pub struct GeneralContent {
     pub middle_click_closes_tab: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub middle_click_closes_sidebar_tab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_view_mode_picker: Option<bool>,
     #[serde(flatten)]
     extra: toml::Table,
 }
@@ -206,6 +210,9 @@ impl SettingsContent {
             middle_click_closes_sidebar_tab: general
                 .and_then(|content| content.middle_click_closes_sidebar_tab)
                 .unwrap_or(defaults.middle_click_closes_sidebar_tab),
+            show_view_mode_picker: general
+                .and_then(|content| content.show_view_mode_picker)
+                .unwrap_or(defaults.show_view_mode_picker),
             reduce_motion: appearance
                 .and_then(|content| content.reduce_motion)
                 .unwrap_or(defaults.reduce_motion),

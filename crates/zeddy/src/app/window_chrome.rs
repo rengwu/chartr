@@ -250,7 +250,9 @@ impl Zeddy {
         let has_notices = !notices.is_empty();
         h_flex()
             .gap_1()
-            .child(self.presentation_toggle(on.clone()))
+            .when(self.settings.resolved().show_view_mode_picker, |controls| {
+                controls.child(self.presentation_toggle(on.clone()))
+            })
             .when(has_notices, |controls| controls.child(self.error_menu(notices, cx)))
             .child(self.settings_button(on))
             .into_any_element()
@@ -355,6 +357,8 @@ impl Zeddy {
             .relative()
             .w_full()
             .h(px(crate::title_bar::HEIGHT))
+            // Pull the tab strip into the title bar's spare bottom spacing.
+            .when(self.mode == Mode::Tabs, |bar| bar.mb(px(-4.)))
             .flex_none()
             .child(self.title_bar.clone())
             .children(overlays)

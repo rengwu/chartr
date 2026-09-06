@@ -46,6 +46,9 @@ impl SettingsWindow {
                 if this.plugin_settings.as_ref().is_some_and(|(id, _)| id == &plugin) {
                     this.plugin_settings = None;
                 }
+                if this.plugin_information.as_ref() == Some(&plugin) {
+                    this.plugin_information = None;
+                }
                 this.plugin_operation = Some(format!("Uninstalling {name}…"));
                 cx.notify();
                 origin.update(cx, |origin, cx| origin.settings_uninstall_plugin(plugin, cx))
@@ -166,6 +169,7 @@ impl SettingsWindow {
             return;
         };
         let view = origin.update(cx, |origin, cx| origin.settings_plugin_view(&plugin, window, cx));
+        self.plugin_information = None;
         self.plugin_settings = Some((plugin, view));
         self.problem = None;
         cx.notify();
@@ -195,43 +199,6 @@ impl SettingsWindow {
         };
         let manifest = descriptor.manifest;
         let declarative_settings = manifest.settings.is_some();
-        let source = descriptor
-            .installation
-            .map(|installation| {
-                let commit =
-                    installation.commit.map(|commit| format!(" ({commit})")).unwrap_or_default();
-                format!("{}{}", installation.source, commit)
-            })
-            .unwrap_or_else(|| {
-                if descriptor.bundled {
-                    "Bundled with Chartr".into()
-                } else {
-                    "Source not recorded".into()
-                }
-            });
-        let access = match manifest.kind {
-            zeddy_plugin::manifest::Kind::Native => "Runs as fully trusted native code.".into(),
-            zeddy_plugin::manifest::Kind::Hosted => format!(
-                "Uses Chartr's built-in {} surface.",
-                manifest.surface.as_deref().unwrap_or("hosted")
-            ),
-            zeddy_plugin::manifest::Kind::Web => {
-                format!("Declared host access: {}.", manifest.permissions.summary())
-            }
-        };
-        let details = v_flex()
-            .w_full()
-            .gap_2()
-            .p_3()
-            .rounded_md()
-            .bg(cx.theme().colors().surface_background)
-            .child(Label::new(manifest.name.clone()).size(UI_LABEL_LARGE))
-            .child(
-                Label::new(format!("{} · Version {} · {}", id, manifest.version, source))
-                    .size(UI_LABEL_SMALL)
-                    .color(Color::Muted),
-            )
-            .child(Label::new(access).size(UI_LABEL_SMALL).color(Color::Muted));
         if let Some(error) = descriptor.prerequisite_error {
             page = page.child(Label::new(error).size(UI_LABEL_SMALL).color(Color::Error));
         }
@@ -278,7 +245,104 @@ impl SettingsWindow {
                     .child(view),
             )
         })
-        .child(details)
+        .into_any_element()
+    }
+
+    fn open_plugin_information(&mut self, plugin: String, cx: &mut Context<Self>) {
+        self.plugin_settings = None;
+        self.plugin_information = Some(plugin);
+        self.problem = None;
+        cx.notify();
+    }
+
+    pub(super) fn plugin_information_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let id = self.plugin_information.clone().expect("plugin information is open");
+        let mut page = v_flex()
+            .w_full()
+            .gap_3()
+            .child(h_flex().child(
+                settings_button("plugin-information-back", "Back to plugins").on_click(
+                    cx.listener(|this, _, _, cx| {
+                        this.plugin_information = None;
+                        cx.notify();
+                    }),
+                ),
+            ))
+            .child(Label::new("Plugin Information").size(UI_LABEL_LARGE));
+        let (descriptors, rejected) = self
+            .original
+            .upgrade()
+            .map(|origin| origin.read(cx).settings_plugins())
+            .unwrap_or_default();
+        let name;
+        if let Some(descriptor) = descriptors.into_iter().find(|p| p.manifest.id == id) {
+            let manifest = descriptor.manifest;
+            name = manifest.name.clone();
+            let source = descriptor
+                .installation
+                .map(|installation| {
+                    let commit = installation
+                        .commit
+                        .map(|commit| format!(" ({commit})"))
+                        .unwrap_or_default();
+                    format!("{}{}", installation.source, commit)
+                })
+                .unwrap_or_else(|| {
+                    if descriptor.bundled {
+                        "Bundled with Chartr".into()
+                    } else {
+                        "Source not recorded".into()
+                    }
+                });
+            let access = match manifest.kind {
+                zeddy_plugin::manifest::Kind::Native => "Runs as fully trusted native code.".into(),
+                zeddy_plugin::manifest::Kind::Hosted => format!(
+                    "Uses Chartr's built-in {} surface.",
+                    manifest.surface.as_deref().unwrap_or("hosted")
+                ),
+                zeddy_plugin::manifest::Kind::Web => {
+                    format!("Declared host access: {}.", manifest.permissions.summary())
+                }
+            };
+            let details = v_flex()
+                .w_full()
+                .gap_2()
+                .p_3()
+                .rounded_md()
+                .bg(cx.theme().colors().surface_background)
+                .child(Label::new(manifest.name.clone()).size(UI_LABEL_LARGE))
+                .child(
+                    Label::new(format!("{} · Version {} · {}", id, manifest.version, source))
+                        .size(UI_LABEL_SMALL)
+                        .color(Color::Muted),
+                )
+                .child(Label::new(access).size(UI_LABEL_SMALL).color(Color::Muted));
+            page = page.child(details);
+        } else if let Some(rejected) = rejected.into_iter().find(|plugin| {
+            let paths = crate::app::plugin_paths();
+            plugin.dir.file_name().and_then(|name| name.to_str()) == Some(id.as_str())
+                && (plugin.dir.parent() == Some(paths.installed.as_path())
+                    || plugin.dir.parent() == Some(paths.bundled.as_path()))
+        }) {
+            name = id.clone();
+            page = page
+                .child(Label::new(name.clone()).size(UI_LABEL_LARGE))
+                .child(Label::new(rejected.why).size(UI_LABEL_SMALL).color(Color::Error));
+        } else {
+            return page
+                .child(Label::new("This plugin is no longer installed."))
+                .into_any_element();
+        }
+        page.child(
+            h_flex().child(
+                settings_button(format!("plugin-uninstall-{id}"), "Uninstall")
+                    .start_icon(Icon::new(IconName::Trash))
+                    .disabled(self.original.upgrade().is_none() || self.plugin_operation.is_some())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.uninstall_plugin(id.clone(), name.clone(), window, cx)
+                    })),
+            ),
+        )
         .into_any_element()
     }
 
@@ -534,26 +598,19 @@ impl SettingsWindow {
                             )
                         });
                     });
-            let remove_id = id.clone();
-            let remove_name = name.clone();
+            let information_id = id.clone();
             let settings_id = id.clone();
-            // The host owns exactly one row and one configuration destination.
-            // Plugin-specific views and host permissions are nested in that page.
+            // Keep configuration and package information in separate destinations.
             let controls = h_flex()
                 .flex_none()
                 .gap_2()
                 .child(
-                    IconButton::new(format!("plugin-uninstall-{id}"), IconName::Trash)
-                        .aria_label(format!("Uninstall {name}"))
-                        .tooltip(Tooltip::text(format!("Uninstall {name}")))
+                    IconButton::new(format!("plugin-information-{id}"), IconName::Info)
+                        .aria_label(format!("Information about {name}"))
+                        .tooltip(Tooltip::text("Plugin Information"))
                         .disabled(!origin_available || busy)
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.uninstall_plugin(
-                                remove_id.clone(),
-                                remove_name.clone(),
-                                window,
-                                cx,
-                            )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.open_plugin_information(information_id.clone(), cx)
                         })),
                 )
                 .child(
@@ -626,20 +683,15 @@ impl SettingsWindow {
                                     .when_some(id.filter(|_| removable), |row, id| {
                                         row.child(
                                             IconButton::new(
-                                                format!("plugin-uninstall-rejected-{id}"),
-                                                IconName::Trash,
+                                                format!("plugin-information-rejected-{id}"),
+                                                IconName::Info,
                                             )
-                                            .aria_label(format!("Uninstall {id}"))
-                                            .tooltip(Tooltip::text("Uninstall plugin"))
+                                            .aria_label(format!("Information about {id}"))
+                                            .tooltip(Tooltip::text("Plugin Information"))
                                             .disabled(!origin_available || busy)
                                             .on_click(
-                                                cx.listener(move |this, _, window, cx| {
-                                                    this.uninstall_plugin(
-                                                        id.clone(),
-                                                        id.clone(),
-                                                        window,
-                                                        cx,
-                                                    )
+                                                cx.listener(move |this, _, _, cx| {
+                                                    this.open_plugin_information(id.clone(), cx)
                                                 }),
                                             ),
                                         )

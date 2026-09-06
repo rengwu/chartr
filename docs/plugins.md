@@ -54,12 +54,13 @@ have no record. This record is for display, not verification of
 the author or package contents. Updating means installing the source again;
 there is no automatic update or version-history service.
 
-Each plugin has exactly one entry in Settings: its name and trash, gear, and
+Each plugin has exactly one entry in Settings: its name and info, gear, and
 enable controls on the first line, then a short `description` that wraps across
 the full width. Prerequisite errors appear below the description. The host owns
 this layout; plugins cannot add extra rows. The gear opens the plugin's single
-configuration page, combining native settings controls with package details,
-prerequisite setup links and host permissions. Build-time native plugins may
+configuration page, combining native settings controls with prerequisite setup
+links and host permissions. The info icon opens **Plugin Information**, which
+contains the package details, access summary, and **Uninstall** button. Build-time native plugins may
 contribute a GPUI view. Web and hosted plugins declare `[settings]` fields;
 Chartr renders these with the same native controls as its own forms. No plugin
 HTML or JavaScript runs inside the Settings window. Legacy `settings_entry`
@@ -164,7 +165,8 @@ defaults. Opening Settings does not write a file. Each change re-reads the file,
 updates the selected key, preserves other keys, and replaces the file atomically.
 Unreadable, malformed, or unsupported saved values produce a native error and
 are not overwritten; correct the file and use **Reload**. Plugins read the same
-file through `data.read` (Clock checks it on each tick).
+file through `data.read` (the optional `examples/plugins/clock` example checks
+it on each tick).
 
 The ID is the package identity used for replacement, data, preferences, and
 saved panes. Use a stable reverse-DNS name. IDs accept ASCII letters, digits,
