@@ -190,10 +190,9 @@ function renderPicker(data) {
   );
 }
 
-function ticketButton(t, number) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "ticket-link";
+function ticketLink(t, number) {
+  const link = document.createElement(t ? "a" : "span");
+  link.className = "ticket-link ticket-reference";
   const num = document.createElement("span");
   num.className = "num";
   num.textContent = String(number).padStart(2, "0");
@@ -203,11 +202,17 @@ function ticketButton(t, number) {
   const dot = document.createElement("span");
   dot.className = "dot";
   dot.dataset.state = t?.state || "Blocked";
-  button.append(num, name, dot);
-  button.disabled = !t;
-  button.title = t ? `${t.title} · ${t.state}` : "Missing ticket";
-  button.onclick = () => select(number);
-  return button;
+  link.append(num, name, dot);
+  link.title = t ? `Open ticket ${number}: ${t.title} · ${t.state}` : "Missing ticket";
+  if (t) {
+    link.href = `#ticket-${number}`;
+    link.onclick = (event) => {
+      event.preventDefault();
+      select(number);
+      $("close-detail").focus({ preventScroll: true });
+    };
+  } else link.setAttribute("aria-disabled", "true");
+  return link;
 }
 
 function render() {
@@ -233,7 +238,7 @@ function render() {
     : "Open map material";
   $("empty").hidden = data.maps.length > 0;
   $("empty-copy").textContent = data.folder
-    ? "No maps found. Add an existing map under .plan/maps/ to explore its tickets."
+    ? "Use the wayfinder skill to chart a map in .plan/maps/ following this plugin's TRACKER-CONVENTION.md."
     : "Open a folder space to discover its maps.";
   $("detail").hidden = !open;
   $("app").classList.toggle("has-detail", open);
@@ -264,7 +269,7 @@ function render() {
   $("blockers-section").hidden = !t || !t.blockers.length;
   $("blockers").replaceChildren(
     ...(t?.blockers || []).map((n) =>
-      ticketButton(
+      ticketLink(
         m.tickets.find((t) => t.number === n),
         n,
       ),
@@ -284,7 +289,7 @@ function render() {
   $("frontier").replaceChildren(
     ...(m?.tickets || [])
       .filter((t) => t.frontier)
-      .map((t) => ticketButton(t, t.number)),
+      .map((t) => ticketLink(t, t.number)),
   );
   $("warnings").replaceChildren(
     ...[...(m?.warnings || []), ...(t?.warnings || []), ...data.warnings].map(

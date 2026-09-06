@@ -189,21 +189,11 @@ p {
 .picker-heading {
   margin-bottom: 24px;
 }
-.eyebrow {
-  font:
-    10px ui-monospace,
-    monospace;
-  letter-spacing: 2px;
-  color: #9ca68d;
-}
 .picker-heading h1 {
   font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.6px;
   margin: 5px 0;
-}
-.picker-heading p {
-  color: var(--muted);
 }
 #map-grid {
   display: grid;
@@ -225,6 +215,7 @@ p {
     border-color 0.15s;
 }
 .map-card-title {
+  flex: 1;
   font-size: 14px;
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -528,6 +519,27 @@ p {
   border-radius: 50%;
   background: var(--state);
   flex: none;
+}
+.ticket-reference {
+  border: 0;
+  color: #cad8b7;
+  text-decoration: none;
+}
+a.ticket-reference .name {
+  text-decoration: underline;
+  text-decoration-color: #647054;
+  text-underline-offset: 3px;
+}
+a.ticket-reference:hover .name {
+  text-decoration-color: currentColor;
+}
+.ticket-reference .name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ticket-reference[aria-disabled="true"] {
+  color: var(--muted);
+  opacity: 0.45;
 }
 .warnings {
   font-size: 11px;
