@@ -39,11 +39,127 @@ pub const UI_LABEL_LARGE: LabelSize = LabelSize::Custom(UI_TEXT_LARGE);
 pub const UI_LABEL_DEFAULT: LabelSize = LabelSize::Custom(UI_TEXT_DEFAULT);
 pub const UI_LABEL_SMALL: LabelSize = LabelSize::Custom(UI_TEXT_SMALL);
 
-const IBM_PLEX_MONO: &[u8] =
-    include_bytes!("../assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf");
+/// A terminal picker choice and its embedded faces. Lilex is loaded by Zed's assets.
+pub struct TerminalFont {
+    pub family: &'static str,
+    faces: &'static [&'static [u8]],
+}
+
+/// Keep the terminal picker and bundled font registration in one catalog.
+pub const TERMINAL_FONTS: &[TerminalFont] = &[
+    TerminalFont {
+        family: "IBM Plex Mono",
+        faces: &[include_bytes!("../assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.ttf")],
+    },
+    TerminalFont {
+        family: "Lilex",
+        faces: &[], // Supplied by the pinned Zed asset bundle.
+    },
+    TerminalFont {
+        family: "Anonymous Pro",
+        faces: &[
+            include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-Bold.ttf"),
+            include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-Italic.ttf"),
+            include_bytes!("../assets/fonts/anonymouspro/AnonymousPro-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Cousine",
+        faces: &[
+            include_bytes!("../assets/fonts/cousine/Cousine-Bold.ttf"),
+            include_bytes!("../assets/fonts/cousine/Cousine-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/cousine/Cousine-Italic.ttf"),
+            include_bytes!("../assets/fonts/cousine/Cousine-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Cutive Mono",
+        faces: &[include_bytes!("../assets/fonts/cutivemono/CutiveMono-Regular.ttf")],
+    },
+    TerminalFont {
+        family: "DM Mono",
+        faces: &[
+            include_bytes!("../assets/fonts/dmmono/DMMono-Italic.ttf"),
+            include_bytes!("../assets/fonts/dmmono/DMMono-Light.ttf"),
+            include_bytes!("../assets/fonts/dmmono/DMMono-LightItalic.ttf"),
+            include_bytes!("../assets/fonts/dmmono/DMMono-Medium.ttf"),
+            include_bytes!("../assets/fonts/dmmono/DMMono-MediumItalic.ttf"),
+            include_bytes!("../assets/fonts/dmmono/DMMono-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Fira Code",
+        faces: &[
+            include_bytes!("../assets/fonts/firacode/FiraCode-Bold.ttf"),
+            include_bytes!("../assets/fonts/firacode/FiraCode-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Inconsolata",
+        faces: &[
+            include_bytes!("../assets/fonts/inconsolata/Inconsolata-Bold.ttf"),
+            include_bytes!("../assets/fonts/inconsolata/Inconsolata-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "JetBrains Mono",
+        faces: &[
+            include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-Bold.ttf"),
+            include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-Italic.ttf"),
+            include_bytes!("../assets/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "PT Mono",
+        faces: &[include_bytes!("../assets/fonts/ptmono/PTM55FT.ttf")],
+    },
+    TerminalFont {
+        family: "Red Hat Mono",
+        faces: &[
+            include_bytes!("../assets/fonts/redhatmono/RedHatMono-Bold.ttf"),
+            include_bytes!("../assets/fonts/redhatmono/RedHatMono-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/redhatmono/RedHatMono-Italic.ttf"),
+            include_bytes!("../assets/fonts/redhatmono/RedHatMono-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Roboto Mono",
+        faces: &[
+            include_bytes!("../assets/fonts/robotomono/RobotoMono-Bold.ttf"),
+            include_bytes!("../assets/fonts/robotomono/RobotoMono-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/robotomono/RobotoMono-Italic.ttf"),
+            include_bytes!("../assets/fonts/robotomono/RobotoMono-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Source Code Pro",
+        faces: &[
+            include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-Bold.ttf"),
+            include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-BoldIt.ttf"),
+            include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-It.ttf"),
+            include_bytes!("../assets/fonts/sourcecodepro/SourceCodePro-Regular.ttf"),
+        ],
+    },
+    TerminalFont {
+        family: "Space Mono",
+        faces: &[
+            include_bytes!("../assets/fonts/spacemono/SpaceMono-Bold.ttf"),
+            include_bytes!("../assets/fonts/spacemono/SpaceMono-BoldItalic.ttf"),
+            include_bytes!("../assets/fonts/spacemono/SpaceMono-Italic.ttf"),
+            include_bytes!("../assets/fonts/spacemono/SpaceMono-Regular.ttf"),
+        ],
+    },
+];
 
 pub fn load_bundled(cx: &App) -> anyhow::Result<()> {
-    cx.text_system().add_fonts(vec![Cow::Borrowed(IBM_PLEX_MONO)])
+    cx.text_system().add_fonts(
+        TERMINAL_FONTS
+            .iter()
+            .flat_map(|font| font.faces.iter().map(|face| Cow::Borrowed(*face)))
+            .collect(),
+    )
 }
 
 /// Install Chartr's resolved typography at the two native Zed settings

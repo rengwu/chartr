@@ -138,7 +138,8 @@ impl SettingsWindow {
             .menu(move |window, cx| {
                 let font = font.clone();
                 Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                    ["IBM Plex Mono", "Lilex", ".ZedMono"].into_iter().fold(menu, |menu, family| {
+                    fonts::TERMINAL_FONTS.iter().fold(menu, |menu, terminal_font| {
+                        let family = terminal_font.family;
                         let set = font.clone();
                         menu.entry(family, None, move |_, cx| {
                             let _ = set.update(cx, |this, cx| {
