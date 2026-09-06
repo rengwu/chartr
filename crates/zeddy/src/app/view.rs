@@ -11,6 +11,11 @@ impl Render for Zeddy {
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
             window.request_animation_frame();
         }
+        let (chrome_visibility, mode_animating) =
+            self.mode_transition.advance(self.mode, now, cx.reduce_motion());
+        if mode_animating {
+            window.request_animation_frame();
+        }
         let error_notices = self.error_notices(cx);
         let mut sidebar_spaces = self.sidebar_spaces(cx);
         self.space_sorter.arrange(&mut sidebar_spaces, |space| space.id);
@@ -31,63 +36,123 @@ impl Render for Zeddy {
                 self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
             )
         });
-        let title_bar = self.workspace_title_bar(title_controls, window, cx);
+        let title_bar = self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
 
         let workspace = v_flex()
+            .id("mode-workspace")
             .flex_1()
+            .min_w_0()
             .h_full()
             .overflow_hidden()
             .bg(workspace_background)
             .child(self.workspace_pane(window, cx));
 
-        let body = match self.mode {
-            Mode::Sidebar => {
+        let tab_height = chrome::tabs::height(cx);
+        let reveal_edge_height = px(14.);
+        let reveal_edge_strength =
+            (tab_height * (1. - chrome_visibility.tabs) / reveal_edge_height).clamp(0., 1.);
+        let reveal_edge_color = cx.theme().colors().panel_background;
+        // Keep one layout and one workspace subtree throughout the transition.
+        // Fixed-size surfaces slide within shrinking slots, so labels never squash.
+        let tab_slot = div()
+            .id("mode-tab-slot")
+            .relative()
+            .w_full()
+            .h(tab_height * chrome_visibility.tabs)
+            .flex_none()
+            .overflow_hidden()
+            .when(chrome_visibility.tabs > 0., |slot| {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
                     (
                         self.visible_space_switcher(window, cx),
                         self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
                     )
                 });
-                h_flex()
+                slot.child(
+                    div()
+                        .absolute()
+                        .top(tab_height * (chrome_visibility.tabs - 1.))
+                        .left_0()
+                        .w_full()
+                        .h(tab_height)
+                        .child(chrome::tabs::render(
+                            chrome_entries,
+                            controls,
+                            new_item,
+                            new_plugin_pane,
+                            emit.clone(),
+                            window,
+                            cx,
+                        )),
+                )
+            })
+            .when(chrome_visibility.tabs > 0. && reveal_edge_strength > 0., |slot| {
+                // A short, passive veil softens the actual clipping edge beneath
+                // the title bar. Let it recede as the strip settles into view so
+                // the resting tabs stay crisp, without fading the whole surface.
+                slot.child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            window.paint_quad(gpui::fill(
+                                bounds,
+                                gpui::linear_gradient(
+                                    180.,
+                                    gpui::linear_color_stop(
+                                        reveal_edge_color.opacity(reveal_edge_strength),
+                                        0.,
+                                    ),
+                                    gpui::linear_color_stop(reveal_edge_color.opacity(0.), 1.),
+                                ),
+                            ));
+                        },
+                    )
+                    .absolute()
+                    .top_0()
+                    .left_0()
                     .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .child(chrome::sidebar::render(
-                        &sidebar_spaces,
-                        controls,
-                        emit.clone(),
-                        &self.space_sorter,
-                        self.sidebar_width,
-                        window,
-                        cx,
-                    ))
-                    .child(workspace)
-                    .into_any_element()
-            }
-            Mode::Tabs => {
+                    .h(reveal_edge_height),
+                )
+            });
+        let sidebar_slot = div()
+            .id("mode-sidebar-slot")
+            .relative()
+            .w(px(self.sidebar_width * chrome_visibility.sidebar))
+            .h_full()
+            .flex_none()
+            // The settled sidebar's resize handle extends into the workspace.
+            .when(chrome_visibility.sidebar < 1., |slot| slot.overflow_hidden())
+            .when(chrome_visibility.sidebar > 0., |slot| {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
                     (
                         self.visible_space_switcher(window, cx),
                         self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
                     )
                 });
-                v_flex()
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .child(chrome::tabs::render(
-                        chrome_entries,
-                        controls,
-                        new_item,
-                        new_plugin_pane,
-                        emit,
-                        window,
-                        cx,
-                    ))
-                    .child(workspace)
-                    .into_any_element()
-            }
-        };
+                slot.child(
+                    div()
+                        .absolute()
+                        .left(px(self.sidebar_width * (chrome_visibility.sidebar - 1.)))
+                        .top_0()
+                        .w(px(self.sidebar_width))
+                        .h_full()
+                        .child(chrome::sidebar::render(
+                            &sidebar_spaces,
+                            controls,
+                            emit.clone(),
+                            &self.space_sorter,
+                            self.sidebar_width,
+                            window,
+                            cx,
+                        )),
+                )
+            });
+        let body = v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(tab_slot)
+            .child(h_flex().w_full().flex_1().min_h_0().child(sidebar_slot).child(workspace));
 
         // Native child webviews sit above their parent window's GPUI scene. Rename dialogs use a
         // window-sized native popup when possible; these in-window overlays are the platform

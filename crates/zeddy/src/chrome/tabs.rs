@@ -20,6 +20,10 @@ const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
 
 type HoveredTab = Option<(gpui::EntityId, WorkspaceTabId)>;
 
+pub(crate) fn height(cx: &App) -> Pixels {
+    Tab::container_height(cx) + px(4.)
+}
+
 pub fn render(
     entries: &[Entry],
     controls: Option<(AnyElement, AnyElement)>,
@@ -29,7 +33,7 @@ pub fn render(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let strip_height = Tab::container_height(cx) + px(4.);
+    let strip_height = height(cx);
     // Center tabs above the strip's one-pixel bottom border.
     let content_height = strip_height - px(1.);
     // Use stable workspace identities so hover cannot move to an unrelated

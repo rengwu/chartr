@@ -293,6 +293,7 @@ impl Zeddy {
     pub(super) fn workspace_title_bar(
         &self,
         controls: Option<(AnyElement, AnyElement)>,
+        visibility: crate::mode::ChromeVisibility,
         window: &Window,
         cx: &App,
     ) -> AnyElement {
@@ -308,18 +309,18 @@ impl Zeddy {
                 .absolute()
                 .top_0()
                 .right_0()
-                .bottom(if self.mode == Mode::Tabs { px(0.) } else { px(1.) })
+                .bottom(px(1. - visibility.tabs))
                 .left_0()
                 .bg(colors.panel_background)
                 .into_any_element(),
         );
-        if self.mode == Mode::Sidebar {
+        if visibility.sidebar > 0. {
             overlays.push(
                 div()
                     .absolute()
                     .left_0()
                     .bottom_0()
-                    .w(px(self.sidebar_width - 1.))
+                    .w(px((self.sidebar_width * visibility.sidebar - 1.).max(0.)))
                     .h(px(1.))
                     .bg(colors.panel_background)
                     .into_any_element(),
@@ -358,7 +359,7 @@ impl Zeddy {
             .w_full()
             .h(px(crate::title_bar::HEIGHT))
             // Pull the tab strip into the title bar's spare bottom spacing.
-            .when(self.mode == Mode::Tabs, |bar| bar.mb(px(-4.)))
+            .mb(px(-4. * visibility.tabs))
             .flex_none()
             .child(self.title_bar.clone())
             .children(overlays)
