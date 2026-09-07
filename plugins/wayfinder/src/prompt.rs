@@ -1,6 +1,6 @@
 //! One dispatcher, with source-owned methods selected from the ticket itself.
 use super::model::{Map, Ticket};
-use zeddy_plugin::services::{Skill, SkillCatalog};
+use chartr_plugin::services::{Skill, SkillCatalog};
 
 pub const CONVENTION: &str = include_str!("../TRACKER-CONVENTION.md");
 

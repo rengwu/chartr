@@ -20,19 +20,19 @@ ownership shape follows the pinned Zed revision's `workspace::MultiWorkspace`:
 The correspondence is structural, not a dependency on Zed's `workspace`
 crate. ADR 0002's dependency decision still holds: importing that crate would
 also import the editor, project, collaboration, database, language, remote, and
-node-runtime systems that zeddy does not use.
+node-runtime systems that chartr does not use.
 
 ## Persistence
 
-The folder registry lives at `$XDG_CONFIG_HOME/chartr-zeddy/spaces.toml`, with
+The folder registry lives at `$XDG_CONFIG_HOME/chartr/spaces.toml`, with
 platform fallbacks, file order as display order, duplicate suppression, and
 unknown TOML keys preserved. A committed sidebar reorder atomically rewrites
 that file order; a failed write restores the previous registry and drawn order.
 Window bounds, chrome choice, complete space order (including the synthetic and
 recovered spaces), ordered outer tabs, pane trees, item ownership, and restorable
-plugin state live in Chartr's SQLite state store. A pre-outer-tab pane tree
+plugin state live in chartr's SQLite state store. A pre-outer-tab pane tree
 migrates to one grouped outer entry. The rewrite deliberately does not import or
-mutate older Chartr registries.
+mutate older chartr registries.
 
 Free sessions are the one synthetic space. They use the operator's home
 directory and have no registry row. A registered home-directory row is not

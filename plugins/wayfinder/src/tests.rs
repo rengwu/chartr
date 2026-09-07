@@ -1,13 +1,13 @@
 use super::*;
+use chartr_plugin::{
+    PreparedTerminal, TerminalLauncher,
+    services::{PluginSettings, ServiceExport, Services, Skill},
+};
 use gpui::TestAppContext;
 use std::{
     cell::{Cell, RefCell},
     fs,
     rc::Rc,
-};
-use zeddy_plugin::{
-    PreparedTerminal, TerminalLauncher,
-    services::{PluginSettings, ServiceExport, Services, Skill},
 };
 
 fn fixture() -> tempfile::TempDir {
@@ -315,7 +315,7 @@ fn links_can_open_only_http_or_files_inside_this_space() {
 
 #[test]
 fn the_web_bridge_requires_an_explicit_grant_and_an_owning_pane() {
-    use zeddy_plugin::manifest::Permissions;
+    use chartr_plugin::manifest::Permissions;
     let root = fixture();
     let context = context(root.path(), |_| Ok(()));
     assert!(Bridge::for_web(Some(context.clone()), &Permissions::default()).is_none());

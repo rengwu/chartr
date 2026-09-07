@@ -1,5 +1,5 @@
 # Vendored from zed-industries/zed at 1ea16c1ab9dd6d36649e002dc60995634da04daf.
-# Chartr's narrow divergence is documented in CHARTR-PATCH.md.
+# chartr's narrow divergence is documented in chartr-PATCH.md.
 [package]
 name = "terminal_view"
 version = "0.1.0"

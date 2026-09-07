@@ -1201,6 +1201,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "chartr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assets",
+ "chrono",
+ "collections",
+ "editor",
+ "futures",
+ "gpui",
+ "gpui_platform",
+ "gtk",
+ "percent-encoding",
+ "pulldown-cmark",
+ "rusqlite",
+ "rustix 1.1.4",
+ "serde",
+ "serde_json",
+ "settings",
+ "task",
+ "tempfile",
+ "terminal",
+ "terminal_view",
+ "theme",
+ "toml 0.9.12+spec-1.1.0",
+ "ui",
+ "unicode-segmentation",
+ "ureq",
+ "url",
+ "util",
+ "wry",
+ "chartr-herdr",
+ "chartr-plugin",
+ "chartr-plugin-host",
+]
+
+[[package]]
+name = "chartr-herdr"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.4",
+ "serde",
+ "serde_json",
+ "socket2",
+ "tempfile",
+]
+
+[[package]]
+name = "chartr-plugin"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "chartr-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "rustix 1.1.4",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "chartr-plugin",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1564,15 +1633,15 @@ dependencies = [
 
 [[package]]
 name = "const-oid"
-version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
-
-[[package]]
-name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
+
+[[package]]
+name = "const-oid"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "const-random"
@@ -1648,15 +1717,6 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -1674,6 +1734,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1685,9 +1754,9 @@ dependencies = [
 
 [[package]]
 name = "core-foundation"
-version = "0.9.4"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
+checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -1695,9 +1764,9 @@ dependencies = [
 
 [[package]]
 name = "core-foundation"
-version = "0.10.1"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
+checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -5262,15 +5331,15 @@ checksum = "7e57c38c1e860fd37c604281cdfb1dd2216977fd76a50f85ba2f388ef3219616"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
-
-[[package]]
-name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
 
 [[package]]
 name = "litemap"
@@ -9103,18 +9172,18 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.9.9"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
+checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
 dependencies = [
  "lock_api",
 ]
 
 [[package]]
 name = "spin"
-version = "0.10.1"
+version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 dependencies = [
  "lock_api",
 ]
@@ -12777,75 +12846,6 @@ version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1ab9dd6d36649e002dc60995634da04daf"
 dependencies = [
  "env_var",
-]
-
-[[package]]
-name = "zeddy"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assets",
- "chrono",
- "collections",
- "editor",
- "futures",
- "gpui",
- "gpui_platform",
- "gtk",
- "percent-encoding",
- "pulldown-cmark",
- "rusqlite",
- "rustix 1.1.4",
- "serde",
- "serde_json",
- "settings",
- "task",
- "tempfile",
- "terminal",
- "terminal_view",
- "theme",
- "toml 0.9.12+spec-1.1.0",
- "ui",
- "unicode-segmentation",
- "ureq",
- "url",
- "util",
- "wry",
- "zeddy-herdr",
- "zeddy-plugin",
- "zeddy-plugin-host",
-]
-
-[[package]]
-name = "zeddy-herdr"
-version = "0.1.0"
-dependencies = [
- "rustix 1.1.4",
- "serde",
- "serde_json",
- "socket2",
- "tempfile",
-]
-
-[[package]]
-name = "zeddy-plugin"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "serde",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "zeddy-plugin-host"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "rustix 1.1.4",
- "serde",
- "serde_json",
- "tempfile",
- "zeddy-plugin",
 ]
 
 [[package]]

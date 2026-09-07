@@ -476,4 +476,4 @@ if (window.chartr) {
   setInterval(() => {
     if (!document.hidden) refresh();
   }, 2000);
-} else notice("Open this plugin in Chartr to connect to the current space.");
+} else notice("Open this plugin in chartr to connect to the current space.");

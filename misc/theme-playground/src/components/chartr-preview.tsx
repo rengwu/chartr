@@ -117,10 +117,10 @@ function SettingsPreview() {
           <div className="settings-header"><div><span>SETTINGS</span><h2>Appearance</h2></div><span>Changes save automatically</span></div>
           <div className="setting-group">
             <div className="setting-row"><div><strong>Theme mode</strong><span>Choose one theme or match your system.</span></div><div className="segmented"><button className="active">Fixed</button><button>System</button></div></div>
-            <div className="setting-row"><div><strong>Fixed theme</strong><span>Applied to every Chartr window.</span></div><button className="native-select">Current playground theme <ChevronDown /></button></div>
+            <div className="setting-row"><div><strong>Fixed theme</strong><span>Applied to every chartr window.</span></div><button className="native-select">Current playground theme <ChevronDown /></button></div>
           </div>
           <div className="setting-group">
-            <div className="setting-row"><div><strong>UI font</strong><span>Used throughout Chartr's interface.</span></div><button className="native-select">IBM Plex Sans <ChevronDown /></button></div>
+            <div className="setting-row"><div><strong>UI font</strong><span>Used throughout chartr's interface.</span></div><button className="native-select">IBM Plex Sans <ChevronDown /></button></div>
             <div className="setting-row"><div><strong>UI font size</strong><span>Scales controls and interface text.</span></div><div className="stepper"><button>−</button><span>14</span><button>+</button></div></div>
             <div className="setting-row"><div><strong>Reduce motion</strong><span>Minimize non-essential animation.</span></div><button className="native-switch" aria-label="Reduce motion"><i /></button></div>
           </div>
@@ -139,7 +139,7 @@ function ComponentsPreview() {
     <div className="component-showcase">
       <header className="showcase-titlebar">
         <div className="traffic-lights"><i /><i /><i /></div>
-        <div><strong>Chartr component states</strong><span>Theme token specimen</span></div>
+        <div><strong>chartr component states</strong><span>Theme token specimen</span></div>
         <b>20 TOKENS</b>
       </header>
 
@@ -219,7 +219,7 @@ function ComponentsPreview() {
   )
 }
 
-export function ChartrPreview() {
+export function ThemePreview() {
   return (
     <Tabs defaultValue="components" className="preview-tabs">
       <div className="preview-bar">

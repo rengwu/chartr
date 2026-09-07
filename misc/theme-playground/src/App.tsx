@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Braces, Check, Copy, Download, FileDown, Import, RotateCcw, Sparkles } from 'lucide-react'
 import { ColorTokenField } from '@/components/color-token-field'
-import { ChartrPreview } from '@/components/chartr-preview'
+import { ThemePreview } from '@/components/chartr-preview'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -21,7 +21,7 @@ import {
 import './App.css'
 
 const STORAGE_KEY = 'chartr-theme-playground:draft-v1'
-const DEFAULT_THEME = THEME_PRESETS.find((theme) => theme.name === 'Chartr Dark') ?? THEME_PRESETS[0]
+const DEFAULT_THEME = THEME_PRESETS.find((theme) => theme.name === 'chartr Dark') ?? THEME_PRESETS[0]
 
 const loadTheme = (): ThemePreset => {
   try {
@@ -107,7 +107,7 @@ function App() {
         <aside className="builder-sidebar">
           <header className="builder-brand">
             <div className="brand-mark"><Braces /></div>
-            <div><strong>Theme Playground</strong><span>Chartr developer tool</span></div>
+            <div><strong>Theme Playground</strong><span>chartr developer tool</span></div>
             <span className="beta-badge">DEV</span>
           </header>
 
@@ -150,7 +150,7 @@ function App() {
             <Dialog>
               <DialogTrigger asChild><Button className="export-button"><FileDown /> Export to Rust</Button></DialogTrigger>
               <DialogContent>
-                <div className="export-heading"><div className="export-icon"><Sparkles /></div><div><DialogTitle>Register {theme.name || 'new theme'}</DialogTitle><DialogDescription>Paste both entries into <code>crates/zeddy/src/settings.rs</code>, bump the two fixed array lengths, and the theme will be registered on the next build.</DialogDescription></div></div>
+                <div className="export-heading"><div className="export-icon"><Sparkles /></div><div><DialogTitle>Register {theme.name || 'new theme'}</DialogTitle><DialogDescription>Paste both entries into <code>crates/chartr/src/settings.rs</code>, bump the two fixed array lengths, and the theme will be registered on the next build.</DialogDescription></div></div>
                 <pre className="rust-output"><code>{rustExport}</code></pre>
                 <div className="export-actions">
                   <Button variant="outline" onClick={() => downloadText(`${fileSlug(theme.name)}.rs`, rustExport, 'text/plain')}><FileDown /> Download .rs</Button>
@@ -166,7 +166,7 @@ function App() {
             <div><span>PREVIEWING</span><strong>{theme.name || 'Untitled theme'}</strong><i>{theme.appearance}</i></div>
             <div className="palette-strip" aria-label="Theme palette">{['surface', 'sidebar', 'card', 'border', 'muted', 'text', 'accent', 'done', 'idle', 'notice'].map((key) => <i key={key} title={key} style={{ background: toCssHex(theme.tokens[key as TokenKey]) }} />)}</div>
           </header>
-          <ChartrPreview />
+          <ThemePreview />
         </main>
       </div>
     </TooltipProvider>

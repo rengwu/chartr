@@ -42,8 +42,8 @@ const tokens = (base: BaseTokens, sidebar: [string, string, string, string]): Th
   sidebarSessionActive: sidebar[3],
 })
 
-// Sourced from crates/zeddy/src/settings.rs. Keep this catalog in the same order
-// as THEME_PALETTES, followed by Chartr's derived dark/light themes.
+// Sourced from crates/chartr/src/settings.rs. Keep this catalog in the same order
+// as THEME_PALETTES, followed by chartr's derived dark/light themes.
 export const THEME_PRESETS: ThemePreset[] = [
   {
     name: 'Ayu Dark', appearance: 'Dark',
@@ -98,11 +98,11 @@ export const THEME_PRESETS: ThemePreset[] = [
     tokens: tokens({ surface: '0x1e1e1e', sidebar: '0x252526', border: '0x3f3f46', text: '0xd4d4d4', muted: '0x969696', card: '0x2d2d30', cardOpen: '0x37373d', ring: '0x007acc', selected: '0x37373d', hover: '0x2a2d2e', notice: '0xf44747', accent: '0x007acc', done: '0x6a9955', idle: '0xdcdcaa', quiet: '0x707070', terminalForeground: '0xd4d4d4' }, ['0x2c2c2f', '0x323235', '0x38383c', '0x3f3f44']),
   },
   {
-    name: 'Chartr Dark', appearance: 'Dark',
+    name: 'chartr Dark', appearance: 'Dark',
     tokens: tokens({ surface: '0x282c33', sidebar: '0x2f343e', border: '0x505866', text: '0xdce0e5', muted: '0x9aa4b2', card: '0x2e343e', cardOpen: '0x454a56', ring: '0x47679e', selected: '0x454a56', hover: '0x363c46', notice: '0xd07277', accent: '0x74ade8', done: '0xa1c181', idle: '0xdec184', quiet: '0x878a98', terminalForeground: '0xabb2bf' }, ['0x2e3540', '0x323a46', '0x384250', '0x3e495a']),
   },
   {
-    name: 'Chartr Light', appearance: 'Light',
+    name: 'chartr Light', appearance: 'Light',
     tokens: tokens({ surface: '0xf7f8fa', sidebar: '0xffffff', border: '0xbcc6d4', text: '0x24272d', muted: '0x505d70', card: '0xeef1f5', cardOpen: '0xd6dfed', ring: '0x4263c7', selected: '0xd6dfed', hover: '0xe3e8f0', notice: '0xbd4c49', accent: '0x4263c7', done: '0x467b3f', idle: '0x866915', quiet: '0x505d70', terminalForeground: '0x24272d' }, ['0xedf0f4', '0xe5eaf2', '0xd6deea', '0xc6d3e6']),
   },
 ]
@@ -153,7 +153,7 @@ export const TOKEN_GROUPS: TokenGroup[] = [
     ],
   },
   {
-    label: 'Chartr sidebar', description: 'App-specific sidebar layering',
+    label: 'chartr sidebar', description: 'App-specific sidebar layering',
     tokens: [
       { key: 'sidebarCardInactive', label: 'Card inactive', hint: 'Inactive space card' },
       { key: 'sidebarCardActive', label: 'Card active', hint: 'Active space card' },

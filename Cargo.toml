@@ -1,21 +1,21 @@
-# zeddy — a simple agent multiplexer.
+# chartr — a simple agent multiplexer.
 #
 # Four crates, each one a boundary rather than a bag of helpers:
 #
-#   zeddy-herdr        the only code that knows herdr exists
-#   zeddy-plugin       the contract a native plugin is written against
-#   zeddy-plugin-host  plugin discovery and runtime isolation
-#   zeddy              the window and the pinned Zed terminal host
+#   chartr-herdr        the only code that knows herdr exists
+#   chartr-plugin       the contract a native plugin is written against
+#   chartr-plugin-host  plugin discovery and runtime isolation
+#   chartr              the window and the pinned Zed terminal host
 #
 # Nothing above depends on anything below it out of order, and no crate but
-# `zeddy` links GPUI's platform backend.
+# `chartr` links GPUI's platform backend.
 [workspace]
 resolver = "3"
 members = [
-    "crates/zeddy",
-    "crates/zeddy-herdr",
-    "crates/zeddy-plugin",
-    "crates/zeddy-plugin-host",
+    "crates/chartr",
+    "crates/chartr-herdr",
+    "crates/chartr-plugin",
+    "crates/chartr-plugin-host",
 ]
 exclude = [
     "vendor/zed-platform/gpui_linux",
@@ -28,8 +28,8 @@ exclude = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-# Zed's `ui` and `theme` are GPL-3.0-or-later and zeddy links them directly, so
-# zeddy is too. See docs/adr/0002.
+# Zed's `ui` and `theme` are GPL-3.0-or-later and chartr links them directly, so
+# chartr is too. See docs/adr/0002.
 license = "GPL-3.0-or-later"
 repository = "https://github.com/rengwu/chartr"
 
@@ -38,8 +38,8 @@ repository = "https://github.com/rengwu/chartr"
 #
 # One pinned Zed revision supplies the framework, platform, UI/theme, and full
 # terminal model/view. Keeping the terminal pair at the same revision is what
-# gives Chartr Zed's emulator, rendering, input, selection, clipboard, IME, and
-# mouse behavior as one unit. Only `zeddy` may name
+# gives chartr Zed's emulator, rendering, input, selection, clipboard, IME, and
+# mouse behavior as one unit. Only `chartr` may name
 # `gpui_platform`: a plugin that linked a second window-server backend would
 # register a second application with the OS.
 gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false, features = ["x11"] }
@@ -87,7 +87,7 @@ unicode-segmentation = "1"
 
 # The dev profile is the build whose window you actually drag. GPUI and Zed's
 # terminal stack are not useful at opt-level 0, so dependencies are optimized
-# in dev while Chartr's own crates stay fast to rebuild.
+# in dev while chartr's own crates stay fast to rebuild.
 [profile.dev.package."*"]
 opt-level = 2
 

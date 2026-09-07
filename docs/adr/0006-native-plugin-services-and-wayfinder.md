@@ -24,7 +24,7 @@ arbitrary RPC, dependency downloads and version solving are unnecessary here.
 
 ## Why there is no four-role settings table
 
-The original Go Chartr was inspected at local revision `ac94f06`, particularly
+The original Go chartr was inspected at local revision `ac94f06`, particularly
 `internal/config/binding.go`, `internal/prompt/rolebinding.go`, the prompt cores,
 the map parser and scanner, and `web/src/lib/starmap/`. The source methods were
 inspected in [chartr-skills](https://github.com/rengwu/chartr-skills), revision
@@ -33,7 +33,7 @@ The local uncommitted `to-chain` addition is unrelated to this map plugin.
 
 The original roles are prompt selection, not four different scheduling engines.
 `grilling → grill`, `prototype → prototype`, `research → research`, and
-`task → implement` already follow the ticket's own `type`. Original Chartr's
+`task → implement` already follow the ticket's own `type`. Original chartr's
 [ADR 0015](https://github.com/rengwu/chartr/blob/ac94f06/docs/adr/0015-map-kind-removed-role-comes-from-the-ticket.md)
 also eliminated map-level classification for precisely this redundancy.
 

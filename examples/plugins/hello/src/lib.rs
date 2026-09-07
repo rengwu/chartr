@@ -1,11 +1,11 @@
-//! The smallest complete native zeddy plugin.
+//! The smallest complete native chartr plugin.
 //!
-//! Its view is an ordinary GPUI view mounted directly in zeddy's element tree:
+//! Its view is an ordinary GPUI view mounted directly in chartr's element tree:
 //! the same frame path, input, and painting as the terminal in the next tab.
 //! Nothing here is a shim — `div()` is GPUI's own `div()`, and the pane it
-//! returns is an `AnyView` zeddy renders without a renderer in between.
+//! returns is an `AnyView` chartr renders without a renderer in between.
 
-use zeddy_plugin::{
+use chartr_plugin::{
     Host, PaneKey, Plugin, PluginObject, Registrar, gpui,
     gpui::{Context, IntoElement, Window, div, prelude::*, px, rgb},
 };
@@ -14,7 +14,7 @@ pub struct Hello {
     host: Host,
 }
 
-/// Construct the same plugin object when the example is bundled with Chartr.
+/// Construct the same plugin object when the example is bundled with chartr.
 pub fn bundled(host: Host, cx: &mut gpui::App) -> Box<dyn PluginObject> {
     Box::new(Hello::new(host, cx))
 }
@@ -27,7 +27,7 @@ impl Plugin for Hello {
     }
 
     fn activate(&mut self, registrar: &mut Registrar, _: &mut gpui::App) {
-        // Declaring is not building: zeddy calls `view` only when the pane is
+        // Declaring is not building: chartr calls `view` only when the pane is
         // actually shown, so contributing a pane costs a string until then.
         registrar.add_pane("main", "Hello");
     }
@@ -35,7 +35,7 @@ impl Plugin for Hello {
     fn view(
         &mut self,
         _: &PaneKey,
-        _: &zeddy_plugin::InstanceContext,
+        _: &chartr_plugin::InstanceContext,
         _: &mut Window,
         cx: &mut gpui::App,
     ) -> gpui::AnyView {

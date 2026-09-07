@@ -1,25 +1,25 @@
-//! Chartr's bundled native agent launcher.
+//! chartr's bundled native agent launcher.
 //!
 //! The pane is an ordinary GPUI view. Agent definitions live in the plugin's
 //! private data directory, while terminal creation is delegated to the owning
-//! Chartr space through the native plugin instance context.
+//! chartr space through the native plugin instance context.
 
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
 };
 
-use serde::{Deserialize, Serialize};
-use ui::{
-    Button, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName, IconPosition,
-    IconSize, Label, Table, TintColor, prelude::*,
-};
-use zeddy_plugin::{
+use chartr_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, TerminalLauncher, gpui,
     gpui::{
         Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
         SharedString, Window, div, px, relative,
     },
+};
+use serde::{Deserialize, Serialize};
+use ui::{
+    Button, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName, IconPosition,
+    IconSize, Label, Table, TintColor, prelude::*,
 };
 
 use crate::{
@@ -38,7 +38,7 @@ pub struct AgentPlugin {
 struct SharedRegistries(std::collections::HashMap<PathBuf, gpui::WeakEntity<AgentRegistry>>);
 impl gpui::Global for SharedRegistries {}
 
-/// Construct the plugin object linked into Chartr.
+/// Construct the plugin object linked into chartr.
 pub fn bundled(host: Host, cx: &mut App) -> Box<dyn PluginObject> {
     Box::new(AgentPlugin::new(host, cx))
 }
@@ -65,8 +65,8 @@ impl Plugin for AgentPlugin {
         registrar.add_pane("main", "Agent").add_settings();
     }
 
-    fn services(&self) -> Vec<zeddy_plugin::services::ServiceExport> {
-        use zeddy_plugin::services::{Agents, ServiceExport};
+    fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
+        use chartr_plugin::services::{Agents, ServiceExport};
         let listing = self.registry.downgrade();
         let preparing = listing.clone();
         vec![ServiceExport::new(Agents::new(
@@ -103,7 +103,7 @@ impl Plugin for AgentPlugin {
             bound_session: None,
             terminal: TerminalLauncher::new(|_, _| {}),
             services: Default::default(),
-            plugin_settings: zeddy_plugin::services::PluginSettings::new(|_, _, _| {}),
+            plugin_settings: chartr_plugin::services::PluginSettings::new(|_, _, _| {}),
         };
         Some(
             cx.new(|cx| {
@@ -253,7 +253,7 @@ struct AgentView {
     terminal: TerminalLauncher,
     space_name: String,
     branch: String,
-    plugin_settings: zeddy_plugin::services::PluginSettings,
+    plugin_settings: chartr_plugin::services::PluginSettings,
     selected: String,
     prompt: Entity<TextInput>,
     name: Entity<TextInput>,
@@ -997,7 +997,7 @@ impl Render for AgentView {
         div()
             .size_full()
             .relative()
-            .key_context("ChartrAgentPlugin")
+            .key_context("chartrAgentPlugin")
             .child(page)
             .children(self.editor_overlay(cx))
             .children(self.delete_overlay(cx))
@@ -1316,7 +1316,7 @@ mod tests {
             bound_session: None,
             terminal: TerminalLauncher::new(|_, _| {}),
             services: Default::default(),
-            plugin_settings: zeddy_plugin::services::PluginSettings::new(
+            plugin_settings: chartr_plugin::services::PluginSettings::new(
                 move |plugin, window, _| {
                     requests.borrow_mut().push((plugin.map(str::to_owned), window.window_handle()));
                 },

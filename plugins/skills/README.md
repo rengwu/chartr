@@ -1,6 +1,6 @@
 # Skills
 
-A bundled native plugin, linked into Chartr like Agent. Its pane is intentionally
+A bundled native plugin, linked into chartr like Agent. Its pane is intentionally
 empty except for a chevron menu whose **Skill source settings** shortcut opens
 **Settings → Plugins → Skills → Configure**, the only source-management page.
 
@@ -27,7 +27,7 @@ installable through the Git plugin installer.
   Skill names are case-insensitive: the first enabled source wins, and later
   duplicates are marked as shadowed. Duplicate names inside one source produce
   a warning; the first discovered path wins.
-- Rescan updates local counts. Discovery matches the original Chartr walk:
+- Rescan updates local counts. Discovery matches the original chartr walk:
   directories one to three levels below the source containing `SKILL.md`, sorted
   by path, skipping dot directories and `node_modules`, and not descending into
   a discovered skill's supporting files. Source symlinks are followed within
@@ -45,5 +45,5 @@ Registration and refresh do not execute skill scripts.
 The native Skills service now exposes ordered, enabled source content to
 dependent plugins. Wayfinder consumes it to compose its agent prompts, respecting
 source precedence and exact `source/skill` pins. This plugin does not generate
-`CHARTR.md` or mirror skills into projects; supporting resources are read from
+`chartr.md` or mirror skills into projects; supporting resources are read from
 the resolved source directory. Standalone Agent sessions are unchanged.

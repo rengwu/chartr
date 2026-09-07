@@ -1,4 +1,4 @@
-//! File-derived Wayfinder maps. The original Chartr reader is the format reference.
+//! File-derived Wayfinder maps. The original chartr reader is the format reference.
 use anyhow::{Context as _, Result, bail};
 use std::{
     collections::{BTreeMap, HashSet},

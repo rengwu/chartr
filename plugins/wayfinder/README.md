@@ -41,7 +41,7 @@ Map browsing needs only a folder. Agent launching uses the following providers:
   **Skill sources…**. For the supplied methods, register
   `https://github.com/rengwu/chartr-skills` through the Skills settings.
 
-Dependencies are listed by feature in `zeddy-plugin.toml` and Settings. Nothing
+Dependencies are listed by feature in `chartr-plugin.toml` and Settings. Nothing
 is installed, fetched or enabled automatically. If a provider is disabled,
 Wayfinder keeps showing maps and explains why launch is unavailable. The setup
 buttons open the provider's configuration, or the Plugins page if it is disabled.
@@ -60,7 +60,7 @@ a ticket can also run with its matching method alone.
 The method picker can pin any discovered `source/skill`. A missing pin refuses
 launch rather than silently switching to another source. Bare automatic names
 respect Skills' enabled source order. Supporting files are resolved from their
-source directory; no skill mirror or generated `CHARTR.md` is written.
+source directory; no skill mirror or generated `chartr.md` is written.
 
 **Review & launch** shows the dispatcher, source provenance, selected methods,
 tracker convention, map, ticket, resolved blockers and optional operator note.
@@ -90,7 +90,7 @@ the advisory lock coordinates Wayfinder's own launches and claim updates.
 ## Implementation and validation
 
 The frontend is plain HTML, CSS and two JavaScript modules, with no framework,
-bundler, network calls or runtime dependencies. It loads through Chartr's normal
+bundler, network calls or runtime dependencies. It loads through chartr's normal
 web-plugin host. The old GPUI pane and native canvas are removed. The same plugin
 ID preserves existing pane restoration and enablement settings.
 

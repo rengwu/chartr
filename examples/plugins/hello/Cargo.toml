@@ -1,7 +1,7 @@
-# A build-time native zeddy module: one trait and one manifest.
+# A build-time native chartr module: one trait and one manifest.
 #
-# Deliberately not a member of zeddy's workspace so its small contract can be
-# checked independently. It is not linked into the shipped Chartr application.
+# Deliberately not a member of chartr's workspace so its small contract can be
+# checked independently. It is not linked into the shipped chartr application.
 [workspace]
 
 [package]
@@ -12,4 +12,4 @@ rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-zeddy-plugin = { path = "../../../crates/zeddy-plugin" }
+chartr-plugin = { path = "../../../crates/chartr-plugin" }

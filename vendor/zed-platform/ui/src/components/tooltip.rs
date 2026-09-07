@@ -25,7 +25,7 @@ pub struct Tooltip {
 
 // A child webview is composited above the parent GPUI scene by the operating system, so no GPUI
 // elevation can place an in-window tooltip over it. Keep the active tooltip in a passive native
-// child window, just as Chartr does for menus.
+// child window, just as chartr does for menus.
 #[derive(Default)]
 struct NativeTooltipRegistry {
     current: Option<NativeTooltipRegistration>,

@@ -4,9 +4,9 @@
 
 A plugin is `kind = "web"` (a manifest and entry document in a sandboxed
 webview), `kind = "hosted"` (a declarative package activating a reviewed
-Chartr-owned surface), or `kind = "native"` (a GPUI module linked into Chartr at
+chartr-owned surface), or `kind = "native"` (a GPUI module linked into chartr at
 build time). All contribute the same thing: a pane. Nothing above
-`zeddy-plugin-host` asks which runtime a pane came from.
+`chartr-plugin-host` asks which runtime a pane came from.
 
 ## Why three
 
@@ -17,11 +17,11 @@ different requirements and one runtime cannot honestly serve both.
   ABI, and a sandbox. Its pane is composited rather than painted, so it runs a
   frame behind the terminal next to it. For a clock, invisible. For a star map
   being panned, not.
-- A build-time native module is on zeddy's own frame path — the same scrolling, resizing,
+- A build-time native module is on chartr's own frame path — the same scrolling, resizing,
   focus, input, and painting as a built-in view, because it *is* an ordinary
   view.
 - A hosted package carries no code and activates an explicit surface kept in
-  Chartr. It fits first-party integrations that need native windowing or OS
+  chartr. It fits first-party integrations that need native windowing or OS
   services but should still be installed separately.
 
 Web packages provide the open extension path. Build-time native modules retain
@@ -46,8 +46,8 @@ a sandbox. Explicit runtimes keep that tradeoff visible.
 
 - Plugin installation is validation plus an atomic directory copy. It never
   runs a compiler, package script, or plugin code.
-- Hosted surface names form a small allowlist in Chartr; unknown names are
+- Hosted surface names form a small allowlist in chartr; unknown names are
   rejected at discovery.
-- Native GPUI modules are part of the Chartr build rather than its installer.
+- Native GPUI modules are part of the chartr build rather than its installer.
 - Plugin data lives outside the plugin directory and survives replacement,
   because a reload replaces the directory.

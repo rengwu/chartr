@@ -870,12 +870,14 @@ class MapRenderer {
       g.font = "italic 10px system-ui,sans-serif";
       g.textAlign = "center";
       g.fillStyle = "#909b80";
-      g.fillText(
-        clipTitle(fog.title, 45),
-        x,
-        y,
-        Math.max(40, 210 * this.#cam.s),
-      );
+      const maxWidth = Math.max(40, 210 * this.#cam.s);
+      let budget = Math.min(45, fog.title.length);
+      let title = clipTitle(fog.title, budget);
+      // Canvas maxWidth condenses glyphs; shorten the text instead.
+      while (budget > 0 && g.measureText(title).width > maxWidth) {
+        title = clipTitle(fog.title, --budget);
+      }
+      g.fillText(title, x, y);
     }
   }
   #render = () => {

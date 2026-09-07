@@ -1,20 +1,20 @@
 #!/bin/sh
-# Vendors the herdr executable zeddy ships as its backend.
+# Vendors the herdr executable chartr ships as its backend.
 #
 # A maintenance step, run by hand when the pin moves — never by a build. This is
-# the only thing in zeddy that reaches the network, and it is not on the path of
+# the only thing in chartr that reaches the network, and it is not on the path of
 # `cargo build`.
 #
 #     sh vendor/herdr/fetch.sh              # this machine's target
 #     sh vendor/herdr/fetch.sh <triple>…    # named targets (cross toolchain required)
 #
 # Each executable lands at `vendor/herdr/<triple>/herdr`, which is gitignored:
-# they belong to herdr, not to this history. `crates/zeddy/build.rs` copies the
-# one for the target being built in beside the zeddy binary.
+# they belong to herdr, not to this history. `crates/chartr/build.rs` copies the
+# one for the target being built in beside the chartr binary.
 #
 # Herdr's latest release predates semantic mouse forwarding for direct attach.
 # Until that change is tagged, this builds one immutable upstream revision and
-# brands it with a Zeddy-specific version. The runtime handshake therefore
+# brands it with a chartr-specific version. The runtime handshake therefore
 # rejects both an older release binary and an arbitrary build of the same
 # upstream package version.
 
@@ -24,19 +24,19 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 
 version=$(sed -n 's/^pub const SUPPORTED_HERDR_VERSION: &str = "\(.*\)";$/\1/p' \
-    "$root/crates/zeddy-herdr/src/lib.rs")
+    "$root/crates/chartr-herdr/src/lib.rs")
 upstream_version=$(sed -n \
     's/^pub const SUPPORTED_HERDR_UPSTREAM_VERSION: &str = "\(.*\)";$/\1/p' \
-    "$root/crates/zeddy-herdr/src/lib.rs")
+    "$root/crates/chartr-herdr/src/lib.rs")
 revision=$(sed -n \
     's/^pub const SUPPORTED_HERDR_REVISION: &str = "\([0-9a-f][0-9a-f]*\)";$/\1/p' \
-    "$root/crates/zeddy-herdr/src/lib.rs")
+    "$root/crates/chartr-herdr/src/lib.rs")
 [ -n "$version" ] && [ -n "$upstream_version" ] && [ -n "$revision" ] || {
-    echo "cannot read the Herdr pins from crates/zeddy-herdr/src/lib.rs" >&2
+    echo "cannot read the Herdr pins from crates/chartr-herdr/src/lib.rs" >&2
     exit 1
 }
 
-# Herdr does not support Zeddy's Windows control plane; keep accepted targets
+# Herdr does not support chartr's Windows control plane; keep accepted targets
 # explicit so a typo cannot silently produce a sidecar in the wrong directory.
 supported_target() {
     case "$1" in
@@ -79,7 +79,7 @@ case $("$zig_bin" version) in
     ;;
 esac
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/zeddy-herdr.XXXXXX")
+work=$(mktemp -d "${TMPDIR:-/tmp}/chartr-herdr.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 source_dir="$work/source"
 mkdir -p "$source_dir"
@@ -107,7 +107,7 @@ for target in $targets; do
     (
         cd "$source_dir"
         CARGO_TARGET_DIR="$work/target" \
-            HERDR_BUILD_CHANNEL=zeddy \
+            HERDR_BUILD_CHANNEL=chartr \
             HERDR_BUILD_ID="$build_id" \
             HERDR_BUILD_COMMIT="$revision" \
             ZIG="$zig_bin" \

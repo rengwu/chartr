@@ -1,8 +1,8 @@
 # Code map
 
-Chartr's workspace owns spaces; each space owns its live items and a serializable
+chartr's workspace owns spaces; each space owns its live items and a serializable
 pane layout. Keep behavior with its owner and reusable visual controls in
-`crates/zeddy/src/components/`.
+`crates/chartr/src/components/`.
 
 | Area | Entry point | Supporting modules |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ pane layout. Keep behavior with its owner and reusable visual controls in
 | Pane layout UI | `app/panes.rs` | Pane headers, layout rendering, drag/drop, and resizing. |
 | Plugin instances | `app/plugins.rs` | Launcher, shared view construction, restoration, and cloning. |
 | Bundled plugins | `app/bundled_plugins.rs` | Catalog setup and packaged asset materialization. |
-| Native plugin services | `crates/zeddy-plugin/src/services.rs` | Catalog-scoped Agent and Skills exports, with live provider availability. |
+| Native plugin services | `crates/chartr-plugin/src/services.rs` | Catalog-scoped Agent and Skills exports, with live provider availability. |
 | Wayfinder | `plugins/wayfinder/app.js` | Web canvas in `starmap.js`; the permission-gated bridge in `src/lib.rs` owns source-aware prompts and file-derived claims. |
 | Window controls | `app/window_chrome.rs` | Space switcher, problems menu, title bar, and action buttons. |
 | Dialogs and commands | `app/rename.rs`, `app/command_palette.rs` | Rename lifecycle and command palette, hosted in native modals above embedded webviews. |
@@ -21,7 +21,7 @@ pane layout. Keep behavior with its owner and reusable visual controls in
 | Settings window | `settings_window.rs` | Shared state, setting updates, window frame, and field controls. |
 | Settings pages | `settings_window/` | Appearance, general/terminal/hotkeys, and plugin pages. |
 | Shared controls | `components.rs` | Reexports form controls, native modal hosting, popup menus, and selection controls. |
-| Portable plugin settings | `plugin_settings.rs` | Renders declarative native controls and persists private plugin JSON; schema and validation live in `zeddy-plugin/src/settings.rs`. |
+| Portable plugin settings | `plugin_settings.rs` | Renders declarative native controls and persists private plugin JSON; schema and validation live in `chartr-plugin/src/settings.rs`. |
 | Live content and model | `space.rs`, `item.rs`, `workspace.rs` | Runtime ownership and serializable pane/tab state. |
 
 The `app/` and `settings_window/` modules implement their parent's view type.

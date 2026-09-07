@@ -1,7 +1,7 @@
 # Release acceptance
 
 The durable behavior contract is the
-[workspace specification](../.plan/maps/chartr-zeddy-workspace/spec.md). This
+[workspace specification](../.plan/maps/chartr-workspace/spec.md). This
 checklist is the release gate, not a second specification.
 
 ## Automated gate
@@ -12,7 +12,7 @@ and GPUI X11 link. Before release, run the real-sidecar suite locally on each
 shipping architecture:
 
 ```sh
-cargo test -p zeddy --test live_session -- --ignored --nocapture --test-threads=1
+cargo test -p chartr --test live_session -- --ignored --nocapture --test-threads=1
 ```
 
 That suite must handshake the exact sidecar, create a persistent terminal,
@@ -21,8 +21,8 @@ daemon, and reject the stale session identity.
 
 ## Visual matrix
 
-Review at 700×900, 1100×720, and a maximized window in both Chartr Dark and
-Chartr Light. Capture and compare:
+Review at 700×900, 1100×720, and a maximized window in both chartr Dark and
+chartr Light. Capture and compare:
 
 - empty Free sessions startup, one folder, and several spaces;
 - several variable-height space cards before, during, and after a reorder;
@@ -54,9 +54,9 @@ format) from a local folder, and a web plugin from a Git repository in Settings 
 Plugins. Confirm that its declared permissions appear before installation, the
 managed copy is not a live reference to the source, and **Later** leaves a
 restart-required banner. Replace that plugin and confirm its data survives.
-Attempt to install a separately compiled native GPUI plugin and confirm Chartr
+Attempt to install a separately compiled native GPUI plugin and confirm chartr
 rejects it without executing or loading the library. Confirm **Restart**
-persists the workspace, relaunches Chartr, and exposes a newly installed web or
+persists the workspace, relaunches chartr, and exposes a newly installed web or
 hosted contribution.
 
 Install the separately packaged `com.chartr.browser` plugin and exercise it in
@@ -232,8 +232,8 @@ window. The workspace tab stays on the launcher. Use **New agent** to register
 an adapter with arguments and each prompt-delivery mode, edit it through the
 same dialog, and confirm deletion is guarded by a confirmation. Close Settings,
 launch a non-empty prompt, and confirm the resulting
-Chartr-owned terminal opens in the pane's owning space with the registered
-environment, arguments, and prompt delivery. Relaunch Chartr and confirm the
+chartr-owned terminal opens in the pane's owning space with the registered
+environment, arguments, and prompt delivery. Relaunch chartr and confirm the
 agent registry remains available in every space.
 
 In the Skills pane, **Skill source settings** must open **Settings → Plugins →

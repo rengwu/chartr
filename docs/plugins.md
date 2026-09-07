@@ -1,19 +1,19 @@
 # Plugin packages
 
-Chartr installs packages; it does not build projects. Installation has no
+chartr installs packages; it does not build projects. Installation has no
 scripts, hooks, package manager, compiler, or Rust-toolchain dependency.
 Packages are user-selected code, with no marketplace or audit requirement.
 Install sources you trust; manifest permissions describe the host APIs a plugin
 can use, not a guarantee that its overall behavior is confined to those APIs.
 
-Every package is a directory with `zeddy-plugin.toml` at its root. A web
+Every package is a directory with `chartr-plugin.toml` at its root. A web
 package includes the declared HTML entry and its assets. Entries may live in
 subdirectories; asset URLs resolve within the package root, including filenames
 that require URL encoding.
 
 Every manifest also declares one free Hugeicons Stroke Rounded export by its
 canonical name, for example `icon = "Clock01Icon"`. The matching SVG must be
-packaged at `icons/Clock01Icon.svg`. Chartr validates that file before install
+packaged at `icons/Clock01Icon.svg`. chartr validates that file before install
 or load and uses it in sidebar, outer, and pane-local tabs.
 Installation and discovery share the same package validator, including for
 disabled plugins. Declared assets must be regular files inside the package;
@@ -21,25 +21,25 @@ absolute paths, parent traversal, and symlinks escaping the package are rejected
 Installation rejects source symlinks and omits `.git` and `target` directories.
 
 A hosted package contains only declarative files and names a surface already
-implemented by Chartr. Hosted surfaces are intended for first-party plugins
+implemented by chartr. Hosted surfaces are intended for first-party plugins
 that need deep operating-system integration without crossing the GPUI dynamic
 library boundary. Browser is the first one: `kind = "hosted"` and
 `surface = "browser"`.
 
 ## Installation sources
 
-- **Local folder:** Chartr copies the selected package into private staging
+- **Local folder:** chartr copies the selected package into private staging
   before showing the confirmation.
-- **Git repository:** Chartr shallow-clones the default branch. No release API,
+- **Git repository:** chartr shallow-clones the default branch. No release API,
   package manager, or build system is involved. Cloning has a two-minute deadline
   and disables interactive terminal credential prompts. Cancel in Settings, or
   close Settings, to stop preparation and its Git process group.
 
-After the user confirms the package details and declared permissions, Chartr
+After the user confirms the package details and declared permissions, chartr
 validates the staged contents again and queues the package under
-`$XDG_DATA_HOME/chartr-zeddy/plugin-pending/<plugin id>/`. **Later** leaves the
+`$XDG_DATA_HOME/chartr/plugin-pending/<plugin id>/`. **Later** leaves the
 current catalog and package assets unchanged, including after disable/re-enable.
-At the next startup, before loading any plugins, Chartr atomically activates the
+At the next startup, before loading any plugins, chartr atomically activates the
 queued package at `plugins/<plugin id>/`. Activation failure preserves the
 installed copy and retains the pending package for retry; interruption after
 activation can safely reapply the same package. Persistent plugin data lives
@@ -62,7 +62,7 @@ configuration page, combining native settings controls with prerequisite setup
 links and host permissions. The info icon opens **Plugin Information**, which
 contains the package details, access summary, and **Uninstall** button. Build-time native plugins may
 contribute a GPUI view. Web and hosted plugins declare `[settings]` fields;
-Chartr renders these with the same native controls as its own forms. No plugin
+chartr renders these with the same native controls as its own forms. No plugin
 HTML or JavaScript runs inside the Settings window. Legacy `settings_entry`
 manifests are rejected with a migration message; replace that declaration with
 the schema below. Existing plugin data is retained.
@@ -84,20 +84,20 @@ when their provider returns. Missing, disabled, or cyclic prerequisites block
 enabling, including during startup. These rules apply to all plugin tiers.
 
 Hosted and web packages are architecture-independent and need no release
-binary. Installing Chartr Browser is therefore only a shallow clone or folder
+binary. Installing chartr Browser is therefore only a shallow clone or folder
 copy, manifest validation, confirmation, and atomic rename. Browser uses
 ephemeral web-engine storage and persists only each pane's last URL.
 
-Chartr may link native plugin modules at application build time, but it rejects
+chartr may link native plugin modules at application build time, but it rejects
 separately installed GPUI dynamic libraries. Precompiling does not make Rust
 GUI objects or crate-global state ABI-safe across two independently linked
 copies of GPUI. Plugins that need native operating-system integration should
-use a Chartr-implemented hosted surface; portable third-party plugins should use the web
+use a chartr-implemented hosted surface; portable third-party plugins should use the web
 tier.
 
 The bundled Agent plugin is one such native module. Its GPUI pane receives the
 owning space's display context and a host capability that opens a normal
-Chartr-owned terminal. Agent commands, arguments, environment, and prompt
+chartr-owned terminal. Agent commands, arguments, environment, and prompt
 delivery remain structured until the native plugin quotes each shell word; the
 resulting session belongs to the pane's space and follows the same persistence
 and close lifecycle as a terminal opened by the user.
@@ -171,7 +171,7 @@ it on each tick).
 The ID is the package identity used for replacement, data, preferences, and
 saved panes. Use a stable reverse-DNS name. IDs accept ASCII letters, digits,
 `.`, `-`, and `_`, up to 128 characters, and cannot start with `.`. Installed
-directory names must match the ID. `version` is a display string; Chartr does
+directory names must match the ID. `version` is a display string; chartr does
 not compare versions or prevent downgrades. This build accepts only manifest
 version 2; unknown TOML fields are ignored.
 
@@ -186,7 +186,7 @@ access to that binding. Native settings schemas grant no project, network, proce
 or terminal access.
 
 The `data.*` API always accesses
-`$XDG_DATA_HOME/chartr-zeddy/plugin-data/<plugin id>/`. This storage is shared
+`$XDG_DATA_HOME/chartr/plugin-data/<plugin id>/`. This storage is shared
 across the plugin's panes, spaces, and native settings form, not allocated per
 instance. File APIs do not create parent directories.
 
@@ -276,7 +276,7 @@ await window.chartr.invoke("data.write", { path: "notes.txt", data: text });
 HTTP 4xx/5xx responses reject. Allowlist entries match hostnames, not paths or
 ports. A URL entry contributes its hostname; `*.example.org` includes the base
 domain and its subdomains. Packaged web documents cannot make direct network
-connections under Chartr's content security policy; use the host API.
+connections under chartr's content security policy; use the host API.
 
 `process.run` launches a command directly, without a shell unless the plugin
 explicitly invokes one. Arguments default to an empty array. A nonzero exit code

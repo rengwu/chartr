@@ -4,14 +4,14 @@ mod prompt;
 #[cfg(test)]
 mod tests;
 
+use chartr_plugin::{
+    InstanceContext,
+    services::{AGENT_SERVICE, Agents, SKILLS_SERVICE, SkillCatalog, Skills},
+};
 use gpui::{AnyWindowHandle, AsyncApp};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use zeddy_plugin::{
-    InstanceContext,
-    services::{AGENT_SERVICE, Agents, SKILLS_SERVICE, SkillCatalog, Skills},
-};
 
 #[derive(Deserialize)]
 #[serde(tag = "action")]
@@ -62,7 +62,7 @@ impl Bridge {
     /// No bundled-plugin exemption: installed documents need the same grant.
     pub fn for_web(
         context: Option<InstanceContext>,
-        permissions: &zeddy_plugin::manifest::Permissions,
+        permissions: &chartr_plugin::manifest::Permissions,
     ) -> Option<Self> {
         context.filter(|_| permissions.wayfinder).map(Self::new)
     }

@@ -32,26 +32,26 @@ arm64 | x86_64) ;;
     ;;
 esac
 
-default_output="$root/target/Chartr-dev-$version-$revision-$architecture.dmg"
+default_output="$root/target/chartr-dev-$version-$revision-$architecture.dmg"
 output=${1:-$default_output}
 case "$output" in
 /*) ;;
 *) output="$root/$output" ;;
 esac
 
-echo "building Chartr $version ($revision)"
-cargo build --manifest-path "$root/Cargo.toml" --release -p zeddy --locked
+echo "building chartr $version ($revision)"
+cargo build --manifest-path "$root/Cargo.toml" --release -p chartr --locked
 
-binary="$root/target/release/zeddy"
+binary="$root/target/release/chartr"
 sidecar="$root/target/release/herdr"
 [ -x "$binary" ] && [ -x "$sidecar" ] || {
-    echo "release build did not produce zeddy and herdr" >&2
+    echo "release build did not produce chartr and herdr" >&2
     exit 1
 }
 
 expected_herdr=$(sed -n \
     's/^pub const SUPPORTED_HERDR_VERSION: &str = "\(.*\)";$/\1/p' \
-    "$root/crates/zeddy-herdr/src/lib.rs")
+    "$root/crates/chartr-herdr/src/lib.rs")
 actual_herdr=$("$sidecar" --version | sed 's/^herdr //')
 [ "$actual_herdr" = "$expected_herdr" ] || {
     echo "Herdr sidecar is $actual_herdr; expected $expected_herdr" >&2
@@ -64,25 +64,25 @@ trap 'rm -rf "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 
 image_root="$work/image"
-app="$image_root/Chartr Dev.app"
+app="$image_root/chartr Dev.app"
 macos="$app/Contents/MacOS"
 resources="$app/Contents/Resources"
 mkdir -p "$macos" "$resources"
-ditto "$binary" "$macos/Chartr"
+ditto "$binary" "$macos/chartr"
 ditto "$sidecar" "$macos/herdr"
 
 plist="$app/Contents/Info.plist"
 plutil -create xml1 "$plist"
 plutil -insert CFBundleDevelopmentRegion -string en "$plist"
-plutil -insert CFBundleDisplayName -string "Chartr Dev" "$plist"
-plutil -insert CFBundleExecutable -string Chartr "$plist"
-plutil -insert CFBundleIdentifier -string dev.chartr.zeddy.dev "$plist"
+plutil -insert CFBundleDisplayName -string "chartr Dev" "$plist"
+plutil -insert CFBundleExecutable -string chartr "$plist"
+plutil -insert CFBundleIdentifier -string dev.chartr.dev "$plist"
 plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$plist"
-plutil -insert CFBundleName -string "Chartr Dev" "$plist"
+plutil -insert CFBundleName -string "chartr Dev" "$plist"
 plutil -insert CFBundlePackageType -string APPL "$plist"
 plutil -insert CFBundleShortVersionString -string "$version" "$plist"
 plutil -insert CFBundleVersion -string "$build_number" "$plist"
-plutil -insert ChartrGitRevision -string "$revision" "$plist"
+plutil -insert chartrGitRevision -string "$revision" "$plist"
 plutil -insert LSApplicationCategoryType -string public.app-category.developer-tools "$plist"
 plutil -insert NSHighResolutionCapable -bool YES "$plist"
 
@@ -92,16 +92,16 @@ plutil -insert LSMinimumSystemVersion -string "$minimum_macos" "$plist"
 plutil -lint "$plist"
 
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.zeddy.dev.herdr "$macos/herdr"
+    --identifier dev.chartr.dev.herdr "$macos/herdr"
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.zeddy.dev "$macos/Chartr"
+    --identifier dev.chartr.dev "$macos/chartr"
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.zeddy.dev "$app"
+    --identifier dev.chartr.dev "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 ln -s /Applications "$image_root/Applications"
-temporary_dmg="$work/Chartr-dev.dmg"
-hdiutil create -quiet -volname "Chartr Dev $version" -srcfolder "$image_root" \
+temporary_dmg="$work/chartr-dev.dmg"
+hdiutil create -quiet -volname "chartr Dev $version" -srcfolder "$image_root" \
     -fs HFS+ -format UDZO "$temporary_dmg"
 hdiutil verify "$temporary_dmg"
 

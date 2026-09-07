@@ -73,8 +73,8 @@ pub(super) enum Operation {
 }
 
 impl Store {
-    pub fn catalog(&self) -> Result<zeddy_plugin::services::SkillCatalog> {
-        use zeddy_plugin::services::{Skill as ResolvedSkill, SkillCatalog};
+    pub fn catalog(&self) -> Result<chartr_plugin::services::SkillCatalog> {
+        use chartr_plugin::services::{Skill as ResolvedSkill, SkillCatalog};
         let mut catalog = SkillCatalog::default();
         for (source, state) in self.sources.iter().zip(self.states()) {
             if !source.enabled {
@@ -361,7 +361,7 @@ fn local_path(value: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-// Match the original Chartr walk: depths 1–3, sorted, skip dot directories and
+// Match the original chartr walk: depths 1–3, sorted, skip dot directories and
 // node_modules, and stop at each skill so its supporting files are not skills.
 fn discover(root: &Path, depth: usize, found: &mut Vec<PathBuf>) {
     if depth > 3 {
@@ -422,7 +422,7 @@ mod tests {
             root,
             &[
                 "-c",
-                "user.name=Chartr Test",
+                "user.name=chartr Test",
                 "-c",
                 "user.email=chartr@example.invalid",
                 "commit",

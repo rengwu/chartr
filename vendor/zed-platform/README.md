@@ -3,7 +3,7 @@
 These crates are vendored from Zed revision
 `1ea16c1ab9dd6d36649e002dc60995634da04daf`.
 
-Chartr patches the narrow dependency seam needed for native child-surface
+chartr patches the narrow dependency seam needed for native child-surface
 menus:
 
 - `gpui_macos` implements `WindowKind::AnchoredPopup` as a borderless AppKit

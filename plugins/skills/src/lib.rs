@@ -8,6 +8,14 @@ use crate::{
     fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
     text_input::TextInput,
 };
+use chartr_plugin::{
+    Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, gpui,
+    gpui::{
+        Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
+        SharedString, Window, div, px, relative,
+    },
+    services::PluginSettings,
+};
 use sources::{Kind, Operation, Source, State, Store};
 use std::{
     path::PathBuf,
@@ -19,14 +27,6 @@ use std::{
 use ui::{
     Button, ButtonStyle, Color, Icon, IconButton, IconName, IconPosition, IconSize, Label, Switch,
     TintColor, prelude::*,
-};
-use zeddy_plugin::{
-    Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, gpui,
-    gpui::{
-        Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
-        SharedString, Window, div, px, relative,
-    },
-    services::PluginSettings,
 };
 
 pub struct SkillsPlugin {
@@ -59,8 +59,8 @@ impl Plugin for SkillsPlugin {
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
         registrar.add_pane("main", "Skills").add_settings();
     }
-    fn services(&self) -> Vec<zeddy_plugin::services::ServiceExport> {
-        use zeddy_plugin::services::{ServiceExport, Skills};
+    fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
+        use chartr_plugin::services::{ServiceExport, Skills};
         let registry = self.registry.downgrade();
         vec![ServiceExport::new(Skills::new(move |cx| {
             let Some(registry) = registry.upgrade() else {
@@ -735,12 +735,12 @@ impl SkillsView {
                             .disabled(busy)
                             .on_click(cx.listener(Self::pick_folder)),
                     );
-                fields = fields.child(form_row("Path", Some("Your folder, edited by you — Chartr only reads it. Use an absolute path, or ~/ for your home directory."), folder.into_any_element()));
+                fields = fields.child(form_row("Path", Some("Your folder, edited by you — chartr only reads it. Use an absolute path, or ~/ for your home directory."), folder.into_any_element()));
             }
             Kind::Git => {
                 fields = fields
                     .child(form_row("URL", None, input_field("skill-source-url", self.url.clone(), cx)))
-                    .child(form_row("Ref", Some("Optional branch or tag; leave blank for the default branch. Chartr keeps its own checkout. Register repositories you trust; no further approval is required for refreshes."), input_field("skill-source-ref", self.git_ref.clone(), cx)));
+                    .child(form_row("Ref", Some("Optional branch or tag; leave blank for the default branch. chartr keeps its own checkout. Register repositories you trust; no further approval is required for refreshes."), input_field("skill-source-ref", self.git_ref.clone(), cx)));
             }
         }
         let fields = fields
@@ -904,7 +904,7 @@ impl Render for SkillsView {
         div()
             .size_full()
             .relative()
-            .key_context("ChartrSkillsPlugin")
+            .key_context("chartrSkillsPlugin")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" && this.sorter.is_dragging() {

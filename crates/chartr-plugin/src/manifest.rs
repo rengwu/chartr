@@ -1,0 +1,394 @@
+//! `chartr-plugin.toml` — the file every plugin package has in common.
+//!
+//! A plugin is a directory with this file in it. What the directory *contains*
+//! beyond the manifest depends on its runtime, and the manifest's
+//! [`Kind`] is what says which.
+
+use std::path::Path;
+
+use serde::Deserialize;
+
+/// The manifest version this build reads. Bumped when a field changes meaning.
+pub const MANIFEST_VERSION: u32 = 2;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Multiplicity {
+    /// Reopening focuses the existing item in that owning space.
+    #[default]
+    PerSpace,
+    /// Each open request creates an independent instance.
+    Multiple,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectAccess {
+    #[default]
+    None,
+    Read,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Permissions {
+    #[serde(default)]
+    pub project_files: ProjectAccess,
+    #[serde(default)]
+    pub network: Vec<String>,
+    #[serde(default)]
+    pub process: bool,
+    #[serde(default)]
+    pub session: bool,
+    /// Wayfinder tracker operations and registered-agent launching in this space.
+    #[serde(default)]
+    pub wayfinder: bool,
+}
+
+impl Permissions {
+    /// Describe the API grants without implying that process or terminal access
+    /// is constrained by the file and network brokers.
+    pub fn summary(&self) -> String {
+        let project = match self.project_files {
+            ProjectAccess::None => "none",
+            ProjectAccess::Read => "read",
+            ProjectAccess::ReadWrite => "read and write",
+        };
+        let mut grants = vec![format!("project-file API: {project}")];
+        if !self.network.is_empty() {
+            grants.push(format!("network API: {}", self.network.join(", ")));
+        }
+        if self.process {
+            grants.push("process execution with your user account's authority".into());
+        }
+        if self.session {
+            grants.push("bound-terminal metadata and input (can run commands as you)".into());
+        }
+        if self.wayfinder {
+            grants.push("Wayfinder maps, skill sources, ticket claims and registered-agent launching (can run commands as you)".into());
+        }
+        grants.join("; ")
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Capabilities {
+    #[serde(default)]
+    pub multiplicity: Multiplicity,
+    #[serde(default)]
+    pub cloneable: bool,
+    #[serde(default)]
+    pub restorable: bool,
+    #[serde(default)]
+    pub session_binding: bool,
+}
+
+/// Which tier a plugin belongs to.
+///
+/// The runtimes keep portable extensions, reviewed OS integrations, and
+/// build-time GPUI modules explicit rather than pretending they share one
+/// security or distribution model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    /// A module mounted directly in chartr's element tree at application build
+    /// time. Separately compiled GPUI libraries are rejected by the installer.
+    Native,
+    /// A separately installed package that activates a surface implemented by
+    /// chartr, such as a child browser webview.
+    Hosted,
+    /// HTML and JavaScript in an OS webview, with declared host API grants.
+    /// Process and terminal grants carry user-level execution authority.
+    Web,
+}
+
+/// A parsed `chartr-plugin.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Dependency {
+    pub plugin: String,
+    /// A short explanation of why this required provider is needed.
+    pub feature: String,
+}
+
+/// A parsed `chartr-plugin.toml`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Manifest {
+    pub manifest_version: u32,
+    /// Reverse-DNS, and the identity everything else keys off: the install
+    /// directory, the data directory, the pane ids. Two plugins with the same
+    /// id are the same plugin at different versions.
+    pub id: String,
+    pub name: String,
+    /// Short user-facing summary shown in the plugin list.
+    #[serde(default)]
+    pub description: String,
+    pub version: String,
+    pub kind: Kind,
+    /// The canonical Hugeicons export name for this plugin's tab icon. The
+    /// package supplies its Stroke Rounded SVG at `icons/<name>.svg`.
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default)]
+    pub capabilities: Capabilities,
+    #[serde(default)]
+    pub permissions: Permissions,
+    /// Required plugins, never an instruction to install or enable packages.
+    #[serde(default)]
+    pub dependencies: Vec<Dependency>,
+    /// Hosted only: the chartr-provided surface to activate.
+    #[serde(default)]
+    pub surface: Option<String>,
+    /// Web only: the entry document, relative to the plugin directory.
+    #[serde(default)]
+    pub entry: Option<String>,
+    /// Legacy HTML settings are recognized only to return a migration error.
+    #[serde(default)]
+    pub settings_entry: Option<String>,
+    /// Portable plugins declare controls rendered natively by the host.
+    #[serde(default)]
+    pub settings: Option<crate::settings::SettingsSchema>,
+}
+
+/// Why a manifest was refused.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Invalid {
+    Unreadable(String),
+    Malformed(String),
+    /// The manifest is from a different generation of the format.
+    ManifestVersion {
+        found: u32,
+    },
+    /// A field the manifest's own `kind` requires is missing.
+    Missing {
+        field: &'static str,
+        kind: Kind,
+    },
+    BadId(String),
+    BadIcon(String),
+}
+
+impl std::fmt::Display for Invalid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unreadable(why) => write!(f, "cannot read chartr-plugin.toml: {why}"),
+            Self::Malformed(why) => write!(f, "chartr-plugin.toml is not valid: {why}"),
+            Self::ManifestVersion { found } => {
+                write!(f, "manifest_version is {found}; this chartr reads {MANIFEST_VERSION}")
+            }
+            Self::Missing { field, kind } => {
+                write!(f, "a {kind:?} plugin must declare `{field}`")
+            }
+            Self::BadId(id) => write!(f, "`{id}` is not a usable plugin id"),
+            Self::BadIcon(icon) => write!(
+                f,
+                "`{icon}` is not a usable Hugeicons name; expected an ASCII name ending in `Icon`"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Invalid {}
+
+impl Manifest {
+    /// Parse and validate an embedded or otherwise in-memory manifest.
+    pub fn parse(text: &str) -> Result<Self, Invalid> {
+        let manifest: Self =
+            toml::from_str(text).map_err(|err| Invalid::Malformed(err.to_string()))?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    /// Read and validate the manifest in a plugin directory.
+    ///
+    /// Validation is total: a manifest that comes back `Ok` has everything its
+    /// own tier needs, so nothing downstream re-checks a field.
+    pub fn read(dir: &Path) -> Result<Self, Invalid> {
+        let path = dir.join("chartr-plugin.toml");
+        let text = std::fs::read_to_string(&path)
+            .map_err(|err| Invalid::Unreadable(format!("{}: {err}", path.display())))?;
+        Self::parse(&text)
+    }
+
+    /// Resolve the package-owned SVG for the manifest's Hugeicon.
+    pub fn icon_path(&self, package: &Path) -> std::path::PathBuf {
+        package.join(self.icon_relative_path())
+    }
+
+    /// The Hugeicon's path within a plugin package.
+    pub fn icon_relative_path(&self) -> std::path::PathBuf {
+        Path::new("icons").join(format!("{}.svg", self.icon))
+    }
+
+    fn validate(&self) -> Result<(), Invalid> {
+        if self.manifest_version != MANIFEST_VERSION {
+            return Err(Invalid::ManifestVersion { found: self.manifest_version });
+        }
+        if self.settings_entry.is_some() {
+            return Err(Invalid::Malformed(
+                "settings_entry HTML pages are no longer supported; declare native fields in [settings] instead".into(),
+            ));
+        }
+        if let Some(settings) = &self.settings {
+            if self.kind == Kind::Native {
+                return Err(Invalid::Malformed(
+                    "native plugins contribute settings through their registrar".into(),
+                ));
+            }
+            settings.validate().map_err(Invalid::Malformed)?;
+        }
+        if !is_usable_id(&self.id) {
+            return Err(Invalid::BadId(self.id.clone()));
+        }
+        for dependency in &self.dependencies {
+            if !is_usable_id(&dependency.plugin) || dependency.plugin == self.id {
+                return Err(Invalid::BadId(dependency.plugin.clone()));
+            }
+            if dependency.feature.trim().is_empty() {
+                return Err(Invalid::Malformed("a dependency must name its feature".into()));
+            }
+        }
+        if self.icon.is_empty() {
+            return Err(Invalid::Missing { field: "icon", kind: self.kind });
+        }
+        if !is_usable_icon(&self.icon) {
+            return Err(Invalid::BadIcon(self.icon.clone()));
+        }
+        match self.kind {
+            Kind::Native => {}
+            Kind::Hosted => {
+                if self.surface.is_none() {
+                    return Err(Invalid::Missing { field: "surface", kind: self.kind });
+                }
+            }
+            Kind::Web => {
+                if self.entry.is_none() {
+                    return Err(Invalid::Missing { field: "entry", kind: self.kind });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Hugeicons' exported names are ASCII identifiers such as `Clock01Icon`.
+/// Restricting the value to that shape also makes the derived package path
+/// incapable of escaping the plugin directory.
+fn is_usable_icon(icon: &str) -> bool {
+    icon.len() > "Icon".len()
+        && icon.len() <= 128
+        && icon.ends_with("Icon")
+        && icon.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// An id has to be safe to use as a directory name, because it is used as one.
+fn is_usable_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        && !id.starts_with('.')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(toml: &str) -> Result<Manifest, Invalid> {
+        Manifest::parse(toml)
+    }
+
+    const NATIVE: &str = r#"
+        manifest_version = 2
+        id = "com.example.starmap"
+        name = "Star map"
+        version = "0.1.0"
+        kind = "native"
+        icon = "StarIcon"
+    "#;
+
+    const WEB: &str = r#"
+        manifest_version = 2
+        id = "com.example.notes"
+        name = "Notes"
+        version = "0.1.0"
+        kind = "web"
+        icon = "NoteIcon"
+        entry = "index.html"
+    "#;
+
+    const HOSTED: &str = r#"
+        manifest_version = 2
+        id = "com.chartr.browser"
+        name = "Browser"
+        version = "0.1.0"
+        kind = "hosted"
+        icon = "InternetIcon"
+        surface = "browser"
+    "#;
+
+    #[test]
+    fn all_runtimes_parse() {
+        assert_eq!(parse(NATIVE).expect("native").kind, Kind::Native);
+        assert_eq!(parse(HOSTED).expect("hosted").kind, Kind::Hosted);
+        assert_eq!(parse(WEB).expect("web").kind, Kind::Web);
+    }
+
+    #[test]
+    fn capabilities_and_permissions_are_explicit_and_default_safe() {
+        let defaults = parse(WEB).expect("web defaults");
+        assert_eq!(defaults.capabilities.multiplicity, Multiplicity::PerSpace);
+        assert!(!defaults.capabilities.cloneable);
+        assert_eq!(defaults.permissions.project_files, ProjectAccess::None);
+        assert!(defaults.permissions.network.is_empty());
+
+        let declared = parse(&format!(
+            "{WEB}\n[capabilities]\nmultiplicity = 'multiple'\ncloneable = true\nrestorable = true\nsession_binding = true\n\
+             [permissions]\nproject_files = 'read_write'\nnetwork = ['https://api.example.com']\nprocess = true\nsession = true\n"
+        ))
+        .expect("declared contract");
+        assert_eq!(declared.capabilities.multiplicity, Multiplicity::Multiple);
+        assert!(declared.capabilities.cloneable && declared.capabilities.restorable);
+        assert_eq!(declared.permissions.project_files, ProjectAccess::ReadWrite);
+        assert!(declared.permissions.process && declared.permissions.session);
+    }
+
+    #[test]
+    fn each_tier_requires_only_its_own_fields() {
+        // Each plugin kind requires only its own runtime field.
+        assert!(parse(WEB).is_ok());
+        assert!(parse(NATIVE).is_ok());
+        assert!(parse(HOSTED).is_ok());
+        let no_entry = WEB.replace("entry = \"index.html\"", "");
+        assert_eq!(parse(&no_entry), Err(Invalid::Missing { field: "entry", kind: Kind::Web }));
+        let no_surface = HOSTED.replace("surface = \"browser\"", "");
+        assert_eq!(
+            parse(&no_surface),
+            Err(Invalid::Missing { field: "surface", kind: Kind::Hosted })
+        );
+    }
+
+    #[test]
+    fn an_id_that_could_escape_its_directory_is_refused() {
+        for bad in ["", ".", "../etc", "a/b", ".hidden"] {
+            let toml = NATIVE.replace("com.example.starmap", bad);
+            assert!(matches!(parse(&toml), Err(Invalid::BadId(_))), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn icon_names_are_canonical_and_cannot_form_paths() {
+        let manifest = parse(WEB).expect("web");
+        assert_eq!(manifest.icon, "NoteIcon");
+        assert_eq!(
+            manifest.icon_path(Path::new("/plugins/notes")),
+            Path::new("/plugins/notes/icons/NoteIcon.svg")
+        );
+        assert_eq!(
+            parse(&WEB.replace("        icon = \"NoteIcon\"\n", "")),
+            Err(Invalid::Missing { field: "icon", kind: Kind::Web })
+        );
+        for bad in ["clock", "../ClockIcon", "Clock_Icon", "ClockIcon.svg"] {
+            let toml = WEB.replace("NoteIcon", bad);
+            assert!(matches!(parse(&toml), Err(Invalid::BadIcon(_))), "accepted {bad:?}");
+        }
+    }
+}

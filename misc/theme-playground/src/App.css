@@ -325,7 +325,7 @@
 .statusbar svg { width: 9px; }
 .statusbar .status-spacer { flex: 1; }
 
-/* The workspace preview mirrors Chartr's actual multi-agent pane layout. */
+/* The workspace preview mirrors chartr's actual multi-agent pane layout. */
 .workspace-window {
   --chartr-titlebar-height: 34px;
   --chartr-tab-height: 32px;
