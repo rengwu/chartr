@@ -4,6 +4,7 @@ use super::*;
 
 const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
 const BUNDLED_SKILLS_ID: &str = "com.chartr.skills";
+const BUNDLED_PROMPTS_ID: &str = "com.chartr.prompts";
 const BUNDLED_WAYFINDER_ID: &str = "com.chartr.wayfinder";
 
 pub(super) fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
@@ -44,6 +45,22 @@ fn load_plugin_catalog_at(settings: &SettingsStore, paths: &Paths, cx: &mut App)
                 paths,
                 false,
                 crate::skills_plugin::bundled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
+        }
+    }
+    if !catalog.contains(BUNDLED_PROMPTS_ID)
+        && !settings.resolved().plugin(BUNDLED_PROMPTS_ID).uninstalled
+    {
+        let dir = paths.bundled.join(BUNDLED_PROMPTS_ID);
+        match materialize_bundled_prompts(&dir) {
+            Ok(manifest) => catalog.add_bundled_native(
+                manifest,
+                dir,
+                paths,
+                false,
+                crate::prompts_plugin::bundled,
                 cx,
             ),
             Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
@@ -100,6 +117,22 @@ pub(super) fn materialize_bundled_wayfinder(
     };
     write().map_err(|error| format!("Cannot prepare Wayfinder: {error}"))?;
     chartr_plugin::Manifest::read(dir).map_err(|error| error.to_string())
+}
+
+fn materialize_bundled_prompts(dir: &std::path::Path) -> Result<chartr_plugin::Manifest, String> {
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(dir.join("icons"))?;
+        write_bundled_file(
+            &dir.join("chartr-plugin.toml"),
+            include_bytes!("../../../../plugins/prompts/chartr-plugin.toml"),
+        )?;
+        write_bundled_file(
+            &dir.join("icons/BookOpen01Icon.svg"),
+            include_bytes!("../../../../plugins/prompts/icons/BookOpen01Icon.svg"),
+        )
+    };
+    write().map_err(|why| format!("cannot prepare the bundled Prompts plugin: {why}"))?;
+    chartr_plugin::Manifest::read(dir).map_err(|why| why.to_string())
 }
 
 fn materialize_bundled_skills(dir: &std::path::Path) -> Result<chartr_plugin::Manifest, String> {
@@ -210,7 +243,8 @@ mod tests {
             assert!(!paths.bundled.join(id).exists());
         }
         assert!(catalog.get(BUNDLED_SKILLS_ID).is_some());
-        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 2);
+        assert!(catalog.get(BUNDLED_PROMPTS_ID).is_some());
+        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 3);
     }
 
     #[gpui::test]

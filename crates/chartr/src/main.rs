@@ -26,6 +26,8 @@ mod persistence;
 mod plugin_installer;
 mod plugin_settings;
 mod process;
+#[path = "../../../plugins/prompts/src/lib.rs"]
+mod prompts_plugin;
 mod session;
 mod settings;
 mod settings_window;
@@ -78,6 +80,7 @@ fn main() {
         fonts::install(settings.resolved(), cx);
         actions::init(&keymap, cx);
         text_input::init(cx);
+        prompts_plugin::init(cx);
         browser_plugin::init(cx);
         settings_window::init(&keymap, cx);
         cx.set_global(settings.clone());

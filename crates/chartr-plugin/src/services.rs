@@ -57,6 +57,38 @@ impl Eq for Services {}
 
 pub const AGENT_SERVICE: &str = "com.chartr.agent";
 pub const SKILLS_SERVICE: &str = "com.chartr.skills";
+pub const PROMPTS_SERVICE: &str = "com.chartr.prompts";
+
+/// A reusable prompt. Titles are display metadata; only `prompt` is injected.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SavedPrompt {
+    pub id: String,
+    pub title: String,
+    pub prompt: String,
+}
+
+type PromptList = dyn Fn(&gpui::App) -> Result<Vec<SavedPrompt>, String>;
+
+/// Prompts owns persistence. Consumers resolve stable IDs against a fresh list
+/// and use the body verbatim, without adding the title or other formatting.
+pub struct Prompts(Box<PromptList>);
+
+impl Prompts {
+    pub fn new(list: impl Fn(&gpui::App) -> Result<Vec<SavedPrompt>, String> + 'static) -> Self {
+        Self(Box::new(list))
+    }
+
+    pub fn list(&self, cx: &gpui::App) -> Result<Vec<SavedPrompt>, String> {
+        (self.0)(cx)
+    }
+
+    pub fn resolve(&self, id: &str, cx: &gpui::App) -> Result<SavedPrompt, String> {
+        self.list(cx)?
+            .into_iter()
+            .find(|prompt| prompt.id == id)
+            .ok_or_else(|| "The saved prompt no longer exists.".into())
+    }
+}
 
 type Configure = dyn Fn(Option<&str>, &mut gpui::Window, &mut gpui::App);
 

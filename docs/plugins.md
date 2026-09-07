@@ -234,6 +234,13 @@ registries. Each plugin has one configuration surface under **Settings → Plugi
 Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
 that surface instead of rendering another configuration page in the workspace.
 
+The bundled Prompts plugin exports `services::Prompts` from
+`com.chartr.prompts`. It owns a shared saved-prompt library and a table pane.
+`list(cx)` returns records with stable IDs, display titles, and prompt text;
+`resolve(id, cx)` reads a current record by ID. Consumers inject only the
+`prompt` field. The title is never part of the injection payload. See
+[Prompts](../plugins/prompts/README.md) for persistence and surface behavior.
+
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
 `PreparedTerminal` with a real session `id`; `send` delivers the validated input
 and reports errors. This lets a consumer claim a ticket before the agent starts.

@@ -46,7 +46,7 @@ chartr Light. Capture and compare:
 - command palette, unavailable-folder recovery, closed-attach recovery, rejected
   plugin, visible web permissions, and the top-right Problems menu—including
   timestamps plus retry and restart actions for a backend crash loop;
-- the bundled Agent, Skills, and Wayfinder plugins, with no Hello or Clock
+- the bundled Agent, Skills, Prompts, and Wayfinder plugins, with no Hello or Clock
   entry in the default launcher or Settings catalog.
 
 Install a web plugin (such as `examples/plugins/clock`, including its persisted
@@ -143,7 +143,7 @@ pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
 a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Confirm Agent, Skills, Wayfinder, and any installed Browser or Clock show their
+Confirm Agent, Skills, Prompts, Wayfinder, and any installed Browser or Clock show their
 manifest-selected Hugeicons in sidebar rows, standalone outer tabs, and pane-local
 tabs. Grouped outer tabs continue to show the split indicator instead of one
 representative plugin icon.
@@ -240,6 +240,15 @@ In the Skills pane, **Skill source settings** must open **Settings → Plugins �
 Skills → Configure**, reusing the same Settings window. Source registration,
 editing, ordering, and deletion are available only there; the workspace pane
 must never switch to a source-management page.
+
+In Prompts, create a titled prompt containing multiple lines, blank lines, and
+Unicode. Confirm the table previews it, search matches title and body, and Copy
+places only the full prompt text on the clipboard. Edit the title and body,
+cancel a draft, and cancel then confirm deletion. Open Prompts in another space
+and confirm both panes share changes. Editing the same record in both panes
+must report a conflict instead of overwriting the first save. Relaunch and
+confirm the library and pane return. At narrow pane widths, the table must
+scroll horizontally with its actions reachable.
 
 ## Persistence and lifecycle
 
