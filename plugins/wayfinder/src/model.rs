@@ -450,7 +450,17 @@ pub fn release(root: &Path, path: &Path, session: &str) -> Result<()> {
     write_claim(&ticket, None)
 }
 
-fn lock(root: &Path) -> Result<fs::File> {
+struct LaunchLock(fs::File);
+
+impl Drop for LaunchLock {
+    fn drop(&mut self) {
+        // A concurrent fork can inherit this descriptor until exec. Closing
+        // only our copy would leave its lock held on Linux in the meantime.
+        let _ = self.0.unlock();
+    }
+}
+
+fn lock(root: &Path) -> Result<LaunchLock> {
     let root = root.canonicalize()?;
     let plan = root.join(".plan").canonicalize()?;
     if !plan.starts_with(&root) {
@@ -463,7 +473,7 @@ fn lock(root: &Path) -> Result<fs::File> {
         .write(true)
         .open(plan.join(".wayfinder-launch.lock"))?;
     file.try_lock().context("Another Wayfinder launch is being prepared")?;
-    Ok(file)
+    Ok(LaunchLock(file))
 }
 
 fn write_claim(ticket: &Ticket, session: Option<&str>) -> Result<()> {
@@ -549,5 +559,19 @@ mod tests {
         fs::write(dir.join("map.md"), "# Changed\n## Destination\nNew.\n").unwrap();
         assert!(claim(root.path(), &expected, 1, "terminal-2").is_err());
         assert_eq!(discover(root.path()).unwrap()[0].tickets[0].status, Status::Open);
+    }
+
+    #[test]
+    fn launch_lock_releases_even_while_an_inherited_descriptor_remains_open() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(".plan")).unwrap();
+        let guard = lock(root.path()).unwrap();
+        assert!(lock(root.path()).is_err());
+
+        let inherited = guard.0.try_clone().unwrap();
+        drop(guard);
+        let next = lock(root.path()).unwrap();
+        drop(next);
+        drop(inherited);
     }
 }
