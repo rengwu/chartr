@@ -17,7 +17,10 @@
       </section>
       <header class="toolbar" hidden>
         <button id="back" title="Back to all maps">
-          <span aria-hidden="true">‹</span> Back
+          <svg class="icon" aria-hidden="true">
+            <use href="icons/ui.svg#ArrowLeft02Icon"></use>
+          </svg>
+          <span>Back</span>
         </button>
         <button
           id="overview"
@@ -28,10 +31,17 @@
         </button>
       </header>
       <div id="notice" role="status" hidden>
-        <span></span><button aria-label="Dismiss message">×</button>
+        <span></span
+        ><button class="icon-button" aria-label="Dismiss message">
+          <svg class="icon" aria-hidden="true">
+            <use href="icons/ui.svg#Cancel01Icon"></use>
+          </svg>
+        </button>
       </div>
       <section id="empty" hidden>
-        <span class="empty-star" aria-hidden="true">✧</span>
+        <svg class="icon empty-star" aria-hidden="true">
+          <use href="icons/ui.svg#Orbit01Icon"></use>
+        </svg>
         <h1>No maps found</h1>
         <p id="empty-copy">
           Use the wayfinder skill to chart a map in .plan/maps/ following this
@@ -53,17 +63,24 @@
             <h1 id="detail-title"></h1>
             <button
               id="close-detail"
+              class="icon-button text-button"
               title="Close details (Escape)"
               aria-label="Close details"
             >
-              ×
+              <svg class="icon" aria-hidden="true">
+                <use href="icons/ui.svg#Cancel01Icon"></use>
+              </svg>
             </button>
           </div>
           <div class="metadata">
             <span id="ticket-kind"></span
             ><span id="ticket-state" class="badge"></span
-            ><span class="spacer"></span
-            ><button id="open-file" class="text-button">Open file ↗</button>
+            ><button id="open-file" class="text-button">
+              <span>Open file</span>
+              <svg class="icon" aria-hidden="true">
+                <use href="icons/ui.svg#ArrowUpRight01Icon"></use>
+              </svg>
+            </button>
           </div>
         </header>
         <div id="reading" class="reading">
@@ -84,28 +101,52 @@
         </div>
         <form id="launcher" hidden>
           <div id="setup" class="setup"></div>
-          <textarea
-            id="note"
-            rows="2"
-            aria-label="Additional direction"
-            placeholder="Additional direction (optional)"
-          ></textarea>
-          <div class="launch-options">
-            <label>Agent<select id="agents" required></select></label
-            ><label
-              >Method<select id="methods">
-                <option value="">Automatic</option>
-              </select></label
+          <label class="note-field" for="note">
+            <span class="field-label"
+              >Additional direction <span class="optional">Optional</span></span
             >
+            <textarea
+              id="note"
+              rows="2"
+              placeholder="Add context for the agent…"
+            ></textarea>
+          </label>
+          <div class="launch-options">
+            <label for="agents"
+              >Agent
+              <span class="select-control">
+                <select id="agents" required></select>
+                <svg class="icon" aria-hidden="true">
+                  <use href="icons/ui.svg#ArrowDown01Icon"></use>
+                </svg>
+              </span>
+            </label>
+            <label for="methods"
+              >Method
+              <span class="select-control">
+                <select id="methods">
+                  <option value="">Automatic</option>
+                </select>
+                <svg class="icon" aria-hidden="true">
+                  <use href="icons/ui.svg#ArrowDown01Icon"></use>
+                </svg>
+              </span>
+            </label>
           </div>
           <div class="launch-actions">
-            <button type="button" id="agent-setup" class="text-button">
-              Agents…</button
-            ><button type="button" id="skill-setup" class="text-button">
-              Skill sources…</button
-            ><span class="spacer"></span
-            ><button id="preview" type="submit" class="primary">
-              Review & launch ↗
+            <div class="setup-actions">
+              <button type="button" id="agent-setup" class="text-button">
+                Agents…
+              </button>
+              <button type="button" id="skill-setup" class="text-button">
+                Skill sources…
+              </button>
+            </div>
+            <button id="preview" type="submit" class="primary">
+              <span>Review & launch</span>
+              <svg class="icon" aria-hidden="true">
+                <use href="icons/ui.svg#ArrowUpRight01Icon"></use>
+              </svg>
             </button>
           </div>
         </form>
@@ -114,7 +155,16 @@
         </footer>
       </aside>
       <footer class="map-footer" hidden>
-        <button id="fit" title="Fit map (F)" aria-label="Fit map">⌖</button>
+        <button
+          id="fit"
+          class="icon-button"
+          title="Fit map (F)"
+          aria-label="Fit map"
+        >
+          <svg class="icon" aria-hidden="true">
+            <use href="icons/ui.svg#FullScreenIcon"></use>
+          </svg>
+        </button>
         <div id="legend" aria-label="Star status legend">
           <span data-state="Ready">Ready</span
           ><span data-state="Claimed">Claimed</span
@@ -130,15 +180,26 @@
             <h2 id="prompt-title">Ready to launch?</h2>
             <p id="prompt-sources"></p>
           </div>
-          <button id="close-preview" aria-label="Close prompt preview">
-            ×
+          <button
+            id="close-preview"
+            class="icon-button text-button"
+            aria-label="Close prompt preview"
+          >
+            <svg class="icon" aria-hidden="true">
+              <use href="icons/ui.svg#Cancel01Icon"></use>
+            </svg>
           </button>
         </header>
         <pre id="prompt-text" tabindex="0"></pre>
         <footer>
           <span id="preview-status" role="status"></span
           ><button id="cancel-preview">Cancel</button
-          ><button id="launch" class="primary">Launch agent ↗</button>
+          ><button id="launch" class="primary">
+            <span>Launch agent</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="icons/ui.svg#ArrowUpRight01Icon"></use>
+            </svg>
+          </button>
         </footer>
       </dialog>
     </main>

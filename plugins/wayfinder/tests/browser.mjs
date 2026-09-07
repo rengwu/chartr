@@ -7,7 +7,13 @@ const { chromium, webkit } = await import(
   process.env.PLAYWRIGHT_MODULE || "playwright"
 );
 const root = new URL("../", import.meta.url);
-const allowed = new Set(["index.html", "styles.css", "app.js", "starmap.js"]);
+const allowed = new Set([
+  "index.html",
+  "styles.css",
+  "app.js",
+  "starmap.js",
+  "icons/ui.svg",
+]);
 const server = createServer(async (req, res) => {
   const name = req.url === "/" ? "index.html" : req.url.slice(1);
   if (!allowed.has(name)) {
@@ -21,7 +27,9 @@ const server = createServer(async (req, res) => {
       ? "text/javascript"
       : name.endsWith(".css")
         ? "text/css"
-        : "text/html",
+        : name.endsWith(".svg")
+          ? "image/svg+xml"
+          : "text/html",
   );
   res.setHeader(
     "Content-Security-Policy",

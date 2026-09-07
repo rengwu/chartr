@@ -1,6 +1,15 @@
 import { StarMap, decideDock } from "./starmap.js";
 
 const $ = (id) => document.getElementById(id);
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(svg.namespaceURI, "use");
+  use.setAttribute("href", `icons/ui.svg#${name}`);
+  svg.append(use);
+  return svg;
+}
 const invoke = (action, options) =>
   window.chartr.invoke(`wayfinder.${action}`, options);
 const state = {
@@ -70,7 +79,7 @@ function paneLimits() {
     ? {
         min: Math.min(240, Math.max(120, innerHeight - 192)),
         max: Math.max(120, innerHeight - 192),
-        fallback: innerHeight * 0.5,
+        fallback: innerHeight * 0.6,
       }
     : {
         min: 260,
@@ -202,8 +211,12 @@ function ticketLink(t, number) {
   const dot = document.createElement("span");
   dot.className = "dot";
   dot.dataset.state = t?.state || "Blocked";
+  dot.setAttribute("aria-hidden", "true");
   link.append(num, name, dot);
-  link.title = t ? `Open ticket ${number}: ${t.title} · ${t.state}` : "Missing ticket";
+  link.title = t
+    ? `Open ticket ${number}: ${t.title} · ${t.state}`
+    : "Missing ticket";
+  link.setAttribute("aria-label", link.title);
   if (t) {
     link.href = `#ticket-${number}`;
     link.onclick = (event) => {
@@ -251,7 +264,9 @@ function render() {
   if (!open) return;
   $("detail-title").textContent = t?.title || m?.title || "Wayfinder";
   $("detail-title").title = $("detail-title").textContent;
-  $("ticket-number").textContent = t ? String(t.number).padStart(2, "0") : "✧";
+  $("ticket-number").replaceChildren(
+    t ? String(t.number).padStart(2, "0") : icon("Orbit01Icon"),
+  );
   $("ticket-kind").textContent = t?.kind || "Map material";
   $("ticket-state").hidden = !t;
   if (t) {
@@ -279,8 +294,11 @@ function render() {
   $("assets").replaceChildren(
     ...(t?.assets || []).map((path) => {
       const button = document.createElement("button");
-      button.className = "ticket-link";
-      button.textContent = `${path} ↗`;
+      button.className = "ticket-link asset-link";
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = path;
+      button.append(icon("File01Icon"), name, icon("ArrowUpRight01Icon"));
       button.onclick = () => openFile(path);
       return button;
     }),
@@ -295,7 +313,9 @@ function render() {
     ...[...(m?.warnings || []), ...(t?.warnings || []), ...data.warnings].map(
       (w) => {
         const p = document.createElement("p");
-        p.textContent = w;
+        const message = document.createElement("span");
+        message.textContent = w;
+        p.append(icon("Alert02Icon"), message);
         return p;
       },
     ),

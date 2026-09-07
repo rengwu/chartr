@@ -84,6 +84,15 @@ pub(super) fn materialize_bundled_wayfinder(
             ("styles.css", include_bytes!("../../../../plugins/wayfinder/styles.css").as_slice()),
             ("app.js", include_bytes!("../../../../plugins/wayfinder/app.js").as_slice()),
             ("starmap.js", include_bytes!("../../../../plugins/wayfinder/starmap.js").as_slice()),
+            (
+                "icons/ui.svg",
+                include_bytes!("../../../../plugins/wayfinder/icons/ui.svg").as_slice(),
+            ),
+            (
+                "icons/HUGEICONS_NOTICE.md",
+                include_bytes!("../../../../plugins/wayfinder/icons/HUGEICONS_NOTICE.md")
+                    .as_slice(),
+            ),
         ] {
             write_bundled_file(&dir.join(name), bytes)?;
         }
@@ -216,7 +225,14 @@ mod tests {
         let manifest = materialize_bundled_wayfinder(&dir).unwrap();
         assert_eq!(manifest.kind, zeddy_plugin::manifest::Kind::Web);
         assert!(manifest.capabilities.restorable && manifest.permissions.wayfinder);
-        for name in ["index.html", "styles.css", "app.js", "starmap.js"] {
+        for name in [
+            "index.html",
+            "styles.css",
+            "app.js",
+            "starmap.js",
+            "icons/ui.svg",
+            "icons/HUGEICONS_NOTICE.md",
+        ] {
             assert!(dir.join(name).is_file());
         }
         let paths = zeddy_plugin_host::Paths {
