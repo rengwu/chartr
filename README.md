@@ -9,6 +9,8 @@
 - [Documentation](#documentation)
 - [Legacy v0.2.4 release](https://github.com/rengwu/chartr/releases/tag/v0.2.4)
 
+<img width="1169" height="857" alt="Screenshot 2026-09-08 at 4 11 24 AM" src="https://github.com/user-attachments/assets/8af894fe-4a0f-4247-b733-e9d521fd44a1" />
+
 chartr brings your CLI agents, skills, and tools into one workspace. Organize
 projects into spaces, arrange terminals and tools side by side in split panes,
 and switch between sidebar and tabbed views. Customize themes and fonts to
