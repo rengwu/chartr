@@ -29,14 +29,24 @@ jobs:
             libva-dev libvulkan1 libwayland-dev libx11-xcb-dev \
             libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
+      - name: Install the pinned Rust toolchain
+        run: rustup show
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install Zig for Herdr
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.15.2
+
       - name: Fetch the pinned Herdr sidecar
-        run: sh vendor/herdr/fetch.sh
+        run: ZIG="$(command -v zig)" sh vendor/herdr/fetch.sh
+
+      # The workspace's terminal encoder requires a newer Zig than Herdr.
+      - name: Install Zig for the workspace
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.16.0
 
       - name: Check formatting
         run: cargo fmt --all --check
