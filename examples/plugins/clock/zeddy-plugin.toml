@@ -1,0 +1,28 @@
+manifest_version = 2
+id = "com.example.clock"
+name = "Clock"
+description = "Keep track of the time in your workspace."
+version = "0.1.0"
+kind = "web"
+icon = "Clock01Icon"
+entry = "index.html"
+
+[capabilities]
+multiplicity = "multiple"
+restorable = true
+
+[permissions]
+project_files = "none"
+
+[settings]
+file = "settings.json"
+
+[[settings.fields]]
+key = "format"
+label = "Clock format"
+type = "select"
+default = "24"
+options = [
+    { value = "24", label = "24-hour" },
+    { value = "12", label = "12-hour" },
+]

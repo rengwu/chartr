@@ -1,0 +1,11 @@
+manifest_version = 2
+id = "com.chartr.skills"
+name = "Skills"
+description = "Manage reusable skills and methods for your agents."
+version = "0.1.0"
+kind = "native"
+icon = "BookOpen01Icon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

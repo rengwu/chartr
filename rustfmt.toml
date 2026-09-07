@@ -1,0 +1,4 @@
+# Matches the shape the code was written in: wide enough that a signature and a
+# doc-commented match arm each fit on one line.
+max_width = 100
+use_small_heuristics = "Max"

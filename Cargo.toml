@@ -1,0 +1,116 @@
+# zeddy — a simple agent multiplexer.
+#
+# Four crates, each one a boundary rather than a bag of helpers:
+#
+#   zeddy-herdr        the only code that knows herdr exists
+#   zeddy-plugin       the contract a native plugin is written against
+#   zeddy-plugin-host  plugin discovery and runtime isolation
+#   zeddy              the window and the pinned Zed terminal host
+#
+# Nothing above depends on anything below it out of order, and no crate but
+# `zeddy` links GPUI's platform backend.
+[workspace]
+resolver = "3"
+members = [
+    "crates/zeddy",
+    "crates/zeddy-herdr",
+    "crates/zeddy-plugin",
+    "crates/zeddy-plugin-host",
+]
+exclude = [
+    "vendor/zed-platform/gpui_linux",
+    "vendor/zed-platform/gpui_macos",
+    "vendor/zed-platform/ui",
+    "vendor/zed-terminal-view",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+# Zed's `ui` and `theme` are GPL-3.0-or-later and zeddy links them directly, so
+# zeddy is too. See docs/adr/0002.
+license = "GPL-3.0-or-later"
+repository = "https://github.com/rengwu/chartr"
+
+[workspace.dependencies]
+# --- the Zed layer -------------------------------------------------------
+#
+# One pinned Zed revision supplies the framework, platform, UI/theme, and full
+# terminal model/view. Keeping the terminal pair at the same revision is what
+# gives Chartr Zed's emulator, rendering, input, selection, clipboard, IME, and
+# mouse behavior as one unit. Only `zeddy` may name
+# `gpui_platform`: a plugin that linked a second window-server backend would
+# register a second application with the OS.
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false, features = ["x11"] }
+# `font-kit` is NOT in gpui_platform's default features, and without it macOS
+# falls back to a text system that rasterises nothing: a window that paints
+# every quad and icon correctly and shows not one glyph, with the explanation
+# behind a `log::warn!` that an app with no logger never sees. It is enabled
+# here on purpose, and `fonts::text_renders` checks the result at startup.
+# Wry's in-window Linux child webview is an X11 surface. Selecting the same
+# GPUI backend makes both native and web panes work on X11 and XWayland instead
+# of allowing GPUI to pick Wayland and rejecting web panes at runtime.
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", features = ["font-kit", "x11"] }
+ui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+zed_assets = { package = "assets", git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+terminal = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+terminal_view = { path = "vendor/zed-terminal-view" }
+editor = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+settings = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+task = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+collections = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+util = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+# --- everything else -----------------------------------------------------
+anyhow = "1"
+chrono = "0.4"
+# Background tasks deliver terminal and backend events without polling the
+# window thread. This is already part of GPUI's dependency graph.
+futures = "0.3"
+# Herdr's control plane is NDJSON.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+toml = "0.9"
+# Staged installs and tests use temporary directories on the destination
+# filesystem so validated packages can be renamed into place.
+tempfile = "3"
+url = "2"
+percent-encoding = "2"
+wry = "0.56.1"
+ureq = "3"
+rustix = { version = "1.1", features = ["fs", "process", "event"] }
+socket2 = "0.6"
+unicode-segmentation = "1"
+
+# The dev profile is the build whose window you actually drag. GPUI and Zed's
+# terminal stack are not useful at opt-level 0, so dependencies are optimized
+# in dev while Chartr's own crates stay fast to rebuild.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 0
+# The pinned Zed graph is large enough that incremental object caches can fill
+# a development machine. Cold builds are slower than warm launches either way;
+# keep the reusable non-incremental artifacts bounded and predictable.
+incremental = false
+
+# Zed's crates are normally built inside its workspace and rely on these
+# workspace-level patches. Keep them pinned beside the Zed revision above so
+# importing `terminal_view` is reproducible outside the Zed monorepo.
+[patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+tree-sitter-language = { git = "https://github.com/tree-sitter/tree-sitter", rev = "dff1fd868c750dbbae179fcd5c43ce987e4e0528" }
+
+# GPUI exposes anchored popup windows, but the pinned revision only implements
+# them on Wayland. These small platform forks complete the same contract on
+# macOS and X11 so menus can sit above native child surfaces without app-level
+# focus, z-order, or event-routing workarounds.
+[patch."https://github.com/zed-industries/zed.git"]
+gpui_linux = { path = "vendor/zed-platform/gpui_linux" }
+gpui_macos = { path = "vendor/zed-platform/gpui_macos" }
+ui = { path = "vendor/zed-platform/ui" }

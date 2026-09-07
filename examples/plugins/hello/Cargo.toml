@@ -1,0 +1,15 @@
+# A build-time native zeddy module: one trait and one manifest.
+#
+# Deliberately not a member of zeddy's workspace so its small contract can be
+# checked independently. It is not linked into the shipped Chartr application.
+[workspace]
+
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+zeddy-plugin = { path = "../../../crates/zeddy-plugin" }
