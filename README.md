@@ -2,7 +2,7 @@
 
 <img alt="chartr icon" src="./docs/assets/v4/icon-mac-1024.png" width="34%" align="right">
 
-**An extensible AI-native workspace.**
+**An extensible AI-native workspace, built with Rust.**
 
 - [Build from source](#installation)
 - [Getting started](#getting-started)
