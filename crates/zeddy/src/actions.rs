@@ -8,6 +8,10 @@ use gpui::{App, KeyBinding, Unbind};
 
 use crate::keymap::{KeymapAction, KeymapStore};
 
+// Match at terminal depth as well, so upstream shell bindings cannot swallow
+// Chartr shortcuts. Use the same predicate when rebinding or clearing them.
+const WORKSPACE_CONTEXT: &str = "Chartr || (Chartr > Terminal)";
+
 pub mod pane {
     gpui::actions!(
         chartr_pane,
@@ -56,18 +60,18 @@ pub mod terminal_search {
 }
 
 pub fn init(keymap: &KeymapStore, cx: &mut App) {
-    cx.bind_keys(
-        KeymapAction::ALL
-            .into_iter()
-            .filter(|action| !keymap.key(*action).is_empty())
-            .map(|action| binding(action, keymap.key(action), "Chartr")),
-    );
-
     // Keep terminal behavior aligned with the exact pinned Zed revision. The
     // full default keymap also contains editor/workspace bindings Chartr does
     // not own, so import only actions implemented by the terminal stack (plus
     // Select All, which TerminalView handles explicitly).
     cx.bind_keys(upstream_terminal_bindings(cx));
+
+    cx.bind_keys(
+        KeymapAction::ALL
+            .into_iter()
+            .filter(|action| !keymap.key(*action).is_empty())
+            .map(|action| binding(action, keymap.key(action), WORKSPACE_CONTEXT)),
+    );
 
     #[cfg(target_os = "macos")]
     cx.bind_keys([KeyBinding::new("cmd-f", terminal_search::Toggle, Some("Terminal"))]);
@@ -95,9 +99,9 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
 /// terminal, browser, or text-input bindings installed by other modules.
 pub fn rebind(action: KeymapAction, previous_key: &str, new_key: &str, cx: &mut App) {
     let contexts: &[&str] = if action == KeymapAction::OpenSettings {
-        &["Chartr", "ChartrSettings"]
+        &[WORKSPACE_CONTEXT, "ChartrSettings"]
     } else {
-        &["Chartr"]
+        &[WORKSPACE_CONTEXT]
     };
     for context in contexts {
         if !previous_key.is_empty() {
@@ -156,7 +160,7 @@ fn upstream_terminal_bindings(cx: &App) -> Vec<KeyBinding> {
 }
 
 /// Parameterized actions use the same serialized contract as Zed's keymap.
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(test, not(target_os = "macos")))]
 fn terminal_send_keystroke(keystroke: &str) -> terminal_view::SendKeystroke {
     serde_json::from_value(serde_json::Value::String(keystroke.to_owned()))
         .expect("Zed's terminal::SendKeystroke action accepts a string")
@@ -196,6 +200,13 @@ mod tests {
                         .is_some_and(|matched| matched.action().partial_eq(expected.action())),
                     "{action:?}: {key}"
                 );
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let (matches, pending) =
+                    keymap.bindings_for_input(&[Keystroke::parse("ctrl-k").unwrap()], &contexts);
+                assert!(!pending, "Ctrl+K must reach the shell without waiting for a pane chord");
+                assert!(matches[0].action().partial_eq(&terminal_send_keystroke("ctrl-k")));
             }
         });
     }
@@ -239,14 +250,20 @@ mod tests {
             assert!(actions.contains(&"terminal::Copy"));
             assert!(actions.contains(&"terminal::Paste"));
             assert!(actions.contains(&"terminal::SendText"));
-            assert!(has_binding("alt-left", "terminal::SendText"));
-            assert!(has_binding("alt-right", "terminal::SendText"));
             assert!(has_binding("shift-pageup", "terminal::ScrollPageUp"));
 
             #[cfg(target_os = "macos")]
-            assert!(has_binding("cmd-v", "terminal::Paste"));
+            {
+                assert!(has_binding("alt-left", "terminal::SendText"));
+                assert!(has_binding("alt-right", "terminal::SendText"));
+                assert!(has_binding("cmd-v", "terminal::Paste"));
+            }
             #[cfg(not(target_os = "macos"))]
-            assert!(has_binding("ctrl-shift-v", "terminal::Paste"));
+            {
+                assert!(has_binding("alt-b", "terminal::SendText"));
+                assert!(has_binding("alt-f", "terminal::SendText"));
+                assert!(has_binding("ctrl-shift-v", "terminal::Paste"));
+            }
         });
     }
 
@@ -254,7 +271,7 @@ mod tests {
     fn live_rebind_disables_the_previous_shortcut(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let previous_key = KeymapAction::CloseItem.default_key();
-            cx.bind_keys([KeyBinding::new(previous_key, pane::CloseActiveItem, Some("Chartr"))]);
+            cx.bind_keys([binding(KeymapAction::CloseItem, previous_key, WORKSPACE_CONTEXT)]);
 
             rebind(KeymapAction::CloseItem, previous_key, "ctrl-alt-w", cx);
 
@@ -275,11 +292,37 @@ mod tests {
     }
 
     #[gpui::test]
+    fn rebinding_overrides_terminal_passthrough_and_clearing_restores_it(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let passthrough = terminal_send_keystroke("ctrl-w");
+            cx.bind_keys([KeyBinding::new("ctrl-w", passthrough.clone(), Some("Terminal"))]);
+            let action = KeymapAction::CloseItem;
+            let stroke = [Keystroke::parse("ctrl-w").unwrap()];
+            let contexts =
+                [KeyContext::parse("Chartr").unwrap(), KeyContext::parse("Terminal").unwrap()];
+
+            rebind(action, "", "ctrl-w", cx);
+            let keymap = cx.key_bindings();
+            let (matches, pending) = keymap.borrow().bindings_for_input(&stroke, &contexts);
+            assert!(!pending);
+            assert!(matches[0].action().partial_eq(&pane::CloseActiveItem));
+
+            rebind(action, "ctrl-w", "ctrl-alt-w", cx);
+            let (matches, pending) = keymap.borrow().bindings_for_input(&stroke, &contexts);
+            assert!(!pending);
+            assert!(matches[0].action().partial_eq(&passthrough));
+
+            rebind(action, "ctrl-alt-w", "", cx);
+            assert_eq!(keymap.borrow().bindings_for_action(&pane::CloseActiveItem).count(), 0);
+        });
+    }
+
+    #[gpui::test]
     fn open_settings_rebinds_in_both_application_contexts(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let previous_key = KeymapAction::OpenSettings.default_key();
             cx.bind_keys([
-                KeyBinding::new(previous_key, settings::Open, Some("Chartr")),
+                binding(KeymapAction::OpenSettings, previous_key, WORKSPACE_CONTEXT),
                 KeyBinding::new(previous_key, settings::Open, Some("ChartrSettings")),
             ]);
 
