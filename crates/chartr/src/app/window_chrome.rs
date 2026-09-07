@@ -303,29 +303,17 @@ impl WorkspaceWindow {
 
         let colors = cx.theme().colors();
         let window_active = window.is_window_active();
-        let mut overlays = Vec::with_capacity(4);
+        let mut overlays = Vec::with_capacity(3);
         overlays.push(
             div()
                 .absolute()
                 .top_0()
                 .right_0()
-                .bottom(px(1. - visibility.tabs))
+                .bottom_0()
                 .left_0()
                 .bg(colors.panel_background)
                 .into_any_element(),
         );
-        if visibility.sidebar > 0. {
-            overlays.push(
-                div()
-                    .absolute()
-                    .left_0()
-                    .bottom_0()
-                    .w(px((self.sidebar_width * visibility.sidebar - 1.).max(0.)))
-                    .h(px(1.))
-                    .bg(colors.panel_background)
-                    .into_any_element(),
-            );
-        }
         if let Some((space_switcher, view_menu)) = controls {
             overlays.push(
                 h_flex()

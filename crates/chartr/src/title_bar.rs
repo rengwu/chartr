@@ -22,11 +22,17 @@ pub const fn app_owns_drag() -> bool {
 pub struct TitleBar {
     id: ElementId,
     should_move: bool,
+    bordered: bool,
 }
 
 impl TitleBar {
     pub fn new(id: impl Into<ElementId>) -> Self {
-        Self { id: id.into(), should_move: false }
+        Self { id: id.into(), should_move: false, bordered: true }
+    }
+
+    pub fn borderless(mut self) -> Self {
+        self.bordered = false;
+        self
     }
 }
 
@@ -51,8 +57,7 @@ impl Render for TitleBar {
             .h(px(HEIGHT))
             .flex_none()
             .bg(background)
-            .border_b_1()
-            .border_color(colors.border)
+            .when(self.bordered, |bar| bar.border_b_1().border_color(colors.border))
             .on_mouse_down_out(cx.listener(|this, _, _, _| this.should_move = false))
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.should_move = false))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, _| this.should_move = true))

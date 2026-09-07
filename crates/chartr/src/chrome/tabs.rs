@@ -6,7 +6,7 @@
 //! identity.
 
 use gpui::Entity;
-use ui::{ButtonSize, IconButtonShape, Tab, TabBar, Tooltip, prelude::*};
+use ui::{ButtonSize, IconButtonShape, Tab, Tooltip, prelude::*};
 
 use super::Emit;
 
@@ -34,8 +34,7 @@ pub fn render(
     cx: &mut App,
 ) -> impl IntoElement {
     let strip_height = height(cx);
-    // Center tabs above the strip's one-pixel bottom border.
-    let content_height = strip_height - px(1.);
+    let content_height = strip_height;
     // Use stable workspace identities so hover cannot move to an unrelated
     // tab when entries are reordered, closed, or the current space changes.
     let hovered_tab = window.use_keyed_state("workspace-tab-hover", cx, |_, _| HoveredTab::None);
@@ -144,23 +143,28 @@ pub fn render(
             .child(new_plugin_pane),
     );
 
-    let tab_bar = TabBar::new("workspace-tabs")
-        .height(strip_height)
-        .background(cx.theme().colors().panel_background)
-        .child(list);
-    let tab_bar = match controls {
-        Some((space_switcher, view_menu)) => tab_bar
-            .start_child(
-                h_flex().flex_none().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher),
+    let (start, end) = controls.unzip();
+    // The workspace owns the separator below this strip, including during
+    // mode transitions when a sidebar is visible alongside it.
+    h_flex()
+        .id("workspace-tabs")
+        .group("tab_bar")
+        .w_full()
+        .h(strip_height)
+        .flex_none()
+        .bg(cx.theme().colors().panel_background)
+        .when_some(start, |strip, space_switcher| {
+            strip.child(
+                h_flex()
+                    .flex_none()
+                    .px(DynamicSpacing::Base06.rems(cx))
+                    .child(h_flex().max_w(px(SPACE_SWITCHER_MAX_WIDTH)).child(space_switcher)),
             )
-            .end_child(view_menu)
-            .into_any_element(),
-        None => tab_bar.into_any_element(),
-    };
-
-    // Inset tabs leave the strip's bottom border continuous for standalone
-    // items and pane groups alike.
-    div().relative().w_full().flex_none().child(tab_bar)
+        })
+        .child(div().flex_1().min_w_0().h_full().overflow_x_hidden().child(list))
+        .when_some(end, |strip, view_menu| {
+            strip.child(h_flex().flex_none().px(DynamicSpacing::Base06.rems(cx)).child(view_menu))
+        })
 }
 
 fn tab(

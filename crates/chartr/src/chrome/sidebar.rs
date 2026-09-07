@@ -311,8 +311,6 @@ pub fn render(
         .flex_none()
         .h_full()
         .bg(colors.panel_background)
-        .border_r_1()
-        .border_color(colors.border)
         .children(header)
         .child(spaces_header)
         .child(

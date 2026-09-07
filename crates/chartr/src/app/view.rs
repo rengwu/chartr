@@ -45,6 +45,10 @@ impl Render for WorkspaceWindow {
             .h_full()
             .overflow_hidden()
             .bg(workspace_background)
+            // Keep the frame on the workspace as the surrounding chrome slides.
+            .border_t_1()
+            .border_l_1()
+            .border_color(cx.theme().colors().border)
             .child(self.workspace_pane(window, cx));
 
         let tab_height = chrome::tabs::height(cx);

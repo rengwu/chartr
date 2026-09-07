@@ -271,7 +271,8 @@ impl WorkspaceWindow {
         .detach();
         let terminal_search_input = cx.new(|cx| TextInput::new("Find in terminal…", cx));
         let rename_input = cx.new(|cx| TextInput::new("Type a name…", cx));
-        let title_bar = cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar"));
+        let title_bar =
+            cx.new(|_| crate::title_bar::TitleBar::new("workspace-title-bar").borderless());
         cx.subscribe(&terminal_search_input, |this, input, _: &InputEvent, cx| {
             this.terminal_search_query = input.read(cx).text().to_owned();
             this.start_terminal_search(cx);
