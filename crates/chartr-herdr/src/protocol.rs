@@ -43,6 +43,24 @@ pub struct ErrorBody {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Empty {}
 
+#[derive(Debug, Deserialize)]
+pub struct PaneHistoryInfo {
+    pub pane: PaneHistory,
+}
+#[derive(Debug, Deserialize)]
+pub struct PaneHistory {
+    pub scroll: PaneScroll,
+}
+#[derive(Debug, Deserialize)]
+pub struct PaneScroll {
+    pub max_offset_from_bottom: u64,
+    pub viewport_rows: u64,
+}
+#[derive(Debug, Deserialize)]
+pub struct PaneSelection {
+    pub text: String,
+}
+
 /// `server.live_handoff` — replace an incompatible private daemon without
 /// terminating the PTYs it owns.
 #[derive(Debug, Serialize)]

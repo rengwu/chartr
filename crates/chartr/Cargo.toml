@@ -7,7 +7,12 @@ license.workspace = true
 repository.workspace = true
 default-run = "chartr"
 
+[features]
+# Enables a loopback-only integration-test fixture; absent from normal builds.
+companion-test-host = []
+
 [dependencies]
+chartr-companion = { path = "../chartr-companion" }
 chartr-herdr = { path = "../chartr-herdr" }
 chartr-plugin = { path = "../chartr-plugin" }
 chartr-plugin-host = { path = "../chartr-plugin-host" }

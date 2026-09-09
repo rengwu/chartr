@@ -9,6 +9,7 @@
 mod backend;
 mod bundled_plugins;
 mod command_palette;
+mod companion;
 mod pane_drop_preview;
 mod panes;
 mod persistence;
@@ -16,6 +17,7 @@ mod plugins;
 mod rename;
 mod settings_bridge;
 mod shortcuts;
+mod status_bar;
 mod terminal_search;
 #[cfg(test)]
 mod tests;
@@ -124,6 +126,7 @@ enum PaletteCommand {
     SidebarMode,
     TabbedMode,
     CycleViewMode,
+    ToggleStatusBar,
     NewSpace,
     CloseSpace,
     ZoomIn,
@@ -153,7 +156,7 @@ enum RenameKind {
 }
 
 impl PaletteCommand {
-    const ALL: [(Self, &'static str, &'static str); 28] = [
+    const ALL: [(Self, &'static str, &'static str); 29] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
         (Self::NewTerminalPane, "Workspace: New terminal pane", ""),
         (Self::NewSurface, "Workspace: New surface tab", ""),
@@ -162,6 +165,7 @@ impl PaletteCommand {
         (Self::SidebarMode, "Workspace: Switch to sidebar mode", ""),
         (Self::TabbedMode, "Workspace: Switch to tabbed mode", ""),
         (Self::CycleViewMode, "Workspace: Cycle view modes", ""),
+        (Self::ToggleStatusBar, "Workspace: Toggle status bar", ""),
         (Self::NewSpace, "Workspace: Open new space", ""),
         (Self::CloseSpace, "Workspace: Close current space", ""),
         (Self::ZoomIn, "Workspace: Zoom in interface", ""),
@@ -207,6 +211,10 @@ pub struct WorkspaceWindow {
     mode: Mode,
     mode_transition: crate::mode::ModeTransition,
     catalog: Catalog,
+    background_statuses: Vec<(String, chartr_plugin::BackgroundStatus)>,
+    companion_bridge: Option<crate::companion_plugin::Bridge>,
+    companion_history: chartr_companion::History,
+    companion_leases: HashMap<String, companion::MobileLease>,
     plugins_restored: bool,
     settings: SettingsStore,
     command_palette_window: Option<AnyWindowHandle>,
@@ -242,6 +250,7 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::observe_background_status(cx);
         let focus = cx.focus_handle();
         cx.on_focus_in(&focus, window, |this, window, cx| {
             this.focus_active_terminal(window, cx);
@@ -307,6 +316,10 @@ impl WorkspaceWindow {
             mode: Mode::default(),
             mode_transition: crate::mode::ModeTransition::default(),
             catalog: Catalog::default(),
+            background_statuses: Vec::new(),
+            companion_bridge: None,
+            companion_history: chartr_companion::History::default(),
+            companion_leases: HashMap::new(),
             plugins_restored: false,
             settings,
             command_palette_window: None,
@@ -449,6 +462,7 @@ impl WorkspaceWindow {
             })
             .or_else(|| spaces.first().cloned());
 
+        this.bind_companion(window, cx);
         let catalog = load_plugin_catalog(&this.settings, cx);
         this.client = Some(client);
         this.registry = registry;
@@ -536,6 +550,7 @@ impl WorkspaceWindow {
                 space.active().and_then(|id| space.item(id))
             })
             .and_then(crate::item::Item::as_session)
+            .filter(|item| !self.companion_leases.contains_key(&item.session.id().0))
             .and_then(crate::item::SessionItem::terminal_view)
         else {
             return false;

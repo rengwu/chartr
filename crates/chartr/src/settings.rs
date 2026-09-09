@@ -74,6 +74,7 @@ pub struct ResolvedSettings {
     pub middle_click_closes_tab: bool,
     pub middle_click_closes_sidebar_tab: bool,
     pub show_view_mode_picker: bool,
+    pub show_status_bar: bool,
     pub reduce_motion: bool,
     pub theme_mode: ThemeMode,
     pub fixed_theme: String,
@@ -94,6 +95,7 @@ impl Default for ResolvedSettings {
             middle_click_closes_tab: true,
             middle_click_closes_sidebar_tab: true,
             show_view_mode_picker: true,
+            show_status_bar: true,
             reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: DEFAULT_DARK_THEME.to_owned(),
@@ -158,6 +160,8 @@ pub struct GeneralContent {
     pub middle_click_closes_sidebar_tab: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_view_mode_picker: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_status_bar: Option<bool>,
     #[serde(flatten)]
     extra: toml::Table,
 }
@@ -213,6 +217,9 @@ impl SettingsContent {
             show_view_mode_picker: general
                 .and_then(|content| content.show_view_mode_picker)
                 .unwrap_or(defaults.show_view_mode_picker),
+            show_status_bar: general
+                .and_then(|content| content.show_status_bar)
+                .unwrap_or(defaults.show_status_bar),
             reduce_motion: appearance
                 .and_then(|content| content.reduce_motion)
                 .unwrap_or(defaults.reduce_motion),
@@ -1143,6 +1150,7 @@ mod tests {
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, DEFAULT_DARK_THEME);
         assert!(!resolved.reduce_motion);
+        assert!(resolved.show_status_bar);
         assert!(resolved.middle_click_closes_tab);
         assert!(resolved.middle_click_closes_sidebar_tab);
     }
@@ -1157,6 +1165,7 @@ mod tests {
                 content.terminal.get_or_insert_default().font_size = Some(17.);
                 content.appearance.get_or_insert_default().reduce_motion = Some(true);
                 let general = content.general.get_or_insert_default();
+                general.show_status_bar = Some(false);
                 general.middle_click_closes_tab = Some(true);
                 general.middle_click_closes_sidebar_tab = Some(true);
             })
@@ -1164,6 +1173,7 @@ mod tests {
         let relaunched = SettingsStore::load(&file);
         assert_eq!(relaunched.resolved().terminal_font_size, 17.);
         assert!(relaunched.resolved().reduce_motion);
+        assert!(!relaunched.resolved().show_status_bar);
         assert!(relaunched.resolved().middle_click_closes_tab);
         assert!(relaunched.resolved().middle_click_closes_sidebar_tab);
         assert!(fs::read_to_string(file).unwrap().starts_with("# chartr"));

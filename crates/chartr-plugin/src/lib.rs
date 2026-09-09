@@ -245,6 +245,22 @@ pub struct Host {
 }
 
 /// A native plugin.
+/// A persistent background service, independent of any open plugin pane.
+/// Keep this query cheap: the host reads it periodically on the UI thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackgroundStatus {
+    pub label: String,
+    pub detail: String,
+    pub state: BackgroundState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackgroundState {
+    Idle,
+    Running,
+    Error,
+}
+
 pub trait Plugin: Sized + 'static {
     /// The reverse-DNS id, which must equal the manifest's.
     const ID: &'static str;
@@ -253,6 +269,10 @@ pub trait Plugin: Sized + 'static {
 
     /// Declare what this plugin contributes. Called once, at load.
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
+
+    fn background_status(&self, _cx: &gpui::App) -> Option<BackgroundStatus> {
+        None
+    }
 
     fn services(&self) -> Vec<services::ServiceExport> {
         Vec::new()
@@ -281,6 +301,7 @@ pub trait Plugin: Sized + 'static {
 
 /// The object-safe face of [`Plugin`] used by chartr's build-time registry.
 pub trait PluginObject {
+    fn background_status(&self, cx: &gpui::App) -> Option<BackgroundStatus>;
     fn id(&self) -> &str;
     fn services(&self) -> Vec<services::ServiceExport>;
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
@@ -295,6 +316,10 @@ pub trait PluginObject {
 }
 
 impl<P: Plugin> PluginObject for P {
+    fn background_status(&self, cx: &gpui::App) -> Option<BackgroundStatus> {
+        Plugin::background_status(self, cx)
+    }
+
     fn services(&self) -> Vec<services::ServiceExport> {
         Plugin::services(self)
     }

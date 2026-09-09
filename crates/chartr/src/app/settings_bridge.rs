@@ -86,6 +86,9 @@ impl WorkspaceWindow {
             };
             !current.plugin(id).uninstalled || previous.plugin(id).uninstalled
         });
+        if let Some(bridge) = &self.companion_bridge {
+            cx.set_global(bridge.clone());
+        }
         self.catalog.enable_requested(
             &plugin_paths(),
             |id| current.plugin(id).enabled && !previous.plugin(id).enabled,
@@ -202,6 +205,9 @@ impl WorkspaceWindow {
     ) -> Result<(), String> {
         let was_enabled = self.catalog.get(&plugin).is_some();
         if enabled {
+            if let Some(bridge) = &self.companion_bridge {
+                cx.set_global(bridge.clone());
+            }
             self.catalog.enable(&plugin_paths(), &plugin, cx).map_err(|error| error.to_string())?;
         }
         let mut affected = if enabled { Vec::new() } else { self.catalog.dependents(&plugin) };

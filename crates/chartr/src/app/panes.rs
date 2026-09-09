@@ -356,48 +356,68 @@ impl WorkspaceWindow {
                 self.empty_pane_header(tab_id, pane_id, weak, cx)
             }
         });
-        let content =
-            pane.active()
-                .and_then(|id| space.item(id).map(|item| (id, item)))
-                .map(|(id, item)| match item {
-                    crate::item::Item::Session(item) => {
-                        let Some(terminal_view) = item.terminal_view() else {
-                            return message("Starting terminal…", cx).into_any_element();
-                        };
-                        let terminal = crate::terminal_host::element(
-                            terminal_view,
-                            cx.theme().colors().terminal_background,
-                        );
-                        let ended = item.session.ended();
-                        let retrying = space.reattaching(id);
-                        let retry = weak.clone();
-                        v_flex()
-                            .relative()
+        let content = pane
+            .active()
+            .and_then(|id| space.item(id).map(|item| (id, item)))
+            .map(|(id, item)| match item {
+                crate::item::Item::Session(item) => {
+                    if let Some(lease) = self.companion_leases.get(&item.session.id().0) {
+                        // Do not mount TerminalView while mobile owns geometry: its
+                        // prepaint always resizes the PTY to the desktop pane.
+                        let content = item.session.terminal().read(cx).get_content();
+                        return v_flex()
                             .size_full()
-                            .child(terminal)
-                            .when_some(ended, |view, ended| {
-                                let detail = match &ended {
+                            .p_3()
+                            .gap_2()
+                            .overflow_hidden()
+                            .child(
+                                Label::new(format!(
+                                    "Viewing on mobile · {} × {}",
+                                    lease.columns, lease.rows
+                                ))
+                                .color(Color::Muted),
+                            )
+                            .child(div().font_family("monospace").text_size(px(13.)).child(content))
+                            .into_any_element();
+                    }
+                    let Some(terminal_view) = item.terminal_view() else {
+                        return message("Starting terminal…", cx).into_any_element();
+                    };
+                    let terminal = crate::terminal_host::element(
+                        terminal_view,
+                        cx.theme().colors().terminal_background,
+                    );
+                    let ended = item.session.ended();
+                    let retrying = space.reattaching(id);
+                    let retry = weak.clone();
+                    v_flex()
+                        .relative()
+                        .size_full()
+                        .child(terminal)
+                        .when_some(ended, |view, ended| {
+                            let detail = match &ended {
                                 crate::session::Ended::Closed => {
                                     "Session ended. Close this tab when you are done reviewing it."
                                         .to_owned()
                                 }
                             };
-                                view.child(
-                                    div().absolute().left_2().right_2().bottom_2().child(
-                                        Banner::new()
-                                            .severity(Severity::Error)
-                                            .child(Label::new(detail).size(UI_LABEL_DEFAULT))
-                                            .action_slot(
-                                                Button::new(
-                                                    format!("reattach-session-{}", id.get()),
-                                                    if retrying {
-                                                        "Reattaching…"
-                                                    } else {
-                                                        "Reattach"
-                                                    },
-                                                )
-                                                .disabled(retrying)
-                                                .on_click(move |_, _, cx| {
+                            view.child(
+                                div().absolute().left_2().right_2().bottom_2().child(
+                                    Banner::new()
+                                        .severity(Severity::Error)
+                                        .child(Label::new(detail).size(UI_LABEL_DEFAULT))
+                                        .action_slot(
+                                            Button::new(
+                                                format!("reattach-session-{}", id.get()),
+                                                if retrying {
+                                                    "Reattaching…"
+                                                } else {
+                                                    "Reattach"
+                                                },
+                                            )
+                                            .disabled(retrying)
+                                            .on_click(
+                                                move |_, _, cx| {
                                                     let _ = retry.update(cx, |this, cx| {
                                                         if let Some(space) = this.active.clone() {
                                                             space.update(cx, |space, cx| {
@@ -405,20 +425,20 @@ impl WorkspaceWindow {
                                                             });
                                                         }
                                                     });
-                                                }),
+                                                },
                                             ),
-                                    ),
-                                )
-                            })
-                            .into_any_element()
-                    }
-                    crate::item::Item::Plugin(item) => item.view.clone_view().into_any_element(),
-                    crate::item::Item::PluginLauncher { .. } => self.plugin_launcher(id, weak, cx),
-                })
-                .unwrap_or_else(|| {
-                    empty_pane_message("Drop a tab here or create a new item.", cx)
+                                        ),
+                                ),
+                            )
+                        })
                         .into_any_element()
-                });
+                }
+                crate::item::Item::Plugin(item) => item.view.clone_view().into_any_element(),
+                crate::item::Item::PluginLauncher { .. } => self.plugin_launcher(id, weak, cx),
+            })
+            .unwrap_or_else(|| {
+                empty_pane_message("Drop a tab here or create a new item.", cx).into_any_element()
+            });
 
         let drag_move = weak.clone();
         let drop_item = weak.clone();

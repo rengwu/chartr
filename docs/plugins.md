@@ -102,6 +102,17 @@ delivery remain structured until the native plugin quotes each shell word; the
 resulting session belongs to the pane's space and follows the same persistence
 and close lifecycle as a terminal opened by the user.
 
+## Background status
+
+Bundled native plugins can implement `Plugin::background_status(&App)` to return
+a `BackgroundStatus` with a short label, tooltip detail, and `Idle`, `Running`, or
+`Error` state. This query must be fast and perform no blocking I/O. The workspace
+checks for changes once per second, independently of pane visibility. Clicking
+a status opens the plugin’s settings; disabling the plugin removes its status.
+The bar can be hidden without stopping any service, and its visibility is saved
+as `[general] show_status_bar` in `settings.toml`. Companion contributes its
+listener and connection state through this API.
+
 ## Manifest
 
 A complete web example (optional fields shown with their defaults):
@@ -351,3 +362,7 @@ The UI asks for a second confirmation. Open without a target opens the map/ticke
 file; relative targets resolve beside that file and must remain inside the space.
 HTTP(S) targets open through the OS. Raw HTML is escaped, images render as links,
 and no project Markdown executes in the web document.
+
+## Android companion
+
+The bundled native [Companion](../plugins/companion/README.md) plugin provides an opt-in, encrypted direct-IP connection for the Android app in `../chartr-mobile`. It shares open spaces and their existing terminal sessions through a flat mobile interface. Its listener starts only from the plugin's **Start sharing** control and stops when disabled or unloaded. See the [wire protocol](companion-protocol.md) for its bounded host operations.

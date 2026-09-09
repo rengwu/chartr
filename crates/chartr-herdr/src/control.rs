@@ -149,6 +149,35 @@ impl Client {
         &self.namespace
     }
 
+    /// Read Herdr's retained buffer, not the attach client's viewport repaint.
+    /// `pane.read` caps its recent output; selection.read can address the entire
+    /// buffer without scrolling the desktop or taking over another attachment.
+    pub fn read_scrollback(&self, pane: &PaneId, columns: usize) -> Result<String> {
+        let bounded = self.until(Duration::from_secs(3));
+        let info: protocol::PaneHistoryInfo =
+            bounded.call("pane.get", &serde_json::json!({"pane_id":pane.0}))?;
+        let rows = info
+            .pane
+            .scroll
+            .max_offset_from_bottom
+            .checked_add(info.pane.scroll.viewport_rows)
+            .ok_or_else(|| Error::Protocol("Scrollback row count overflow".into()))?;
+        if rows == 0 || columns == 0 {
+            return Ok(String::new());
+        }
+        let row = u32::try_from(rows - 1)
+            .map_err(|_| Error::Protocol("Scrollback is too large to address".into()))?;
+        let col = u16::try_from(columns - 1)
+            .map_err(|_| Error::Protocol("Terminal is too wide to address".into()))?;
+        let selection: protocol::PaneSelection = bounded.call(
+            "pane.selection.read",
+            &serde_json::json!({
+                "pane_id":pane.0,"anchor":{"row":0,"col":0},"cursor":{"row":row,"col":col}
+            }),
+        )?;
+        Ok(selection.text)
+    }
+
     /// Bring the private daemon up if it is not already, then handshake it.
     ///
     /// Starting and adopting are the same call on purpose. chartr has no

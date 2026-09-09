@@ -121,6 +121,10 @@ impl Space {
         self.problem.as_deref()
     }
 
+    pub fn companion_client(&self) -> Client {
+        self.client.clone()
+    }
+
     pub fn workspace_tabs(&self) -> &WorkspaceTabs {
         &self.layout
     }

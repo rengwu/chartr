@@ -31,6 +31,7 @@ pub mod workspace {
             SidebarMode,
             TabbedMode,
             CycleViewMode,
+            ToggleStatusBar,
             NewSpace,
             CloseSpace,
             ZoomIn,

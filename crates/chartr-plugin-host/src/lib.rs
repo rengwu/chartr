@@ -104,6 +104,13 @@ pub enum PaneSource<'a> {
 }
 
 impl Loaded {
+    pub fn background_status(&self, cx: &gpui::App) -> Option<chartr_plugin::BackgroundStatus> {
+        match &self.tier {
+            Tier::Native(native) => native.plugin.background_status(cx),
+            _ => None,
+        }
+    }
+
     pub fn id(&self) -> &str {
         &self.manifest.id
     }

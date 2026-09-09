@@ -270,6 +270,9 @@ impl Render for WorkspaceWindow {
             .on_action(cx.listener(|this, _: &actions::workspace::Ungroup, window, cx| {
                 this.ungroup_current(window, cx)
             }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ToggleStatusBar, _, cx| {
+                this.toggle_status_bar(cx);
+            }))
             .on_action(cx.listener(|this, _: &actions::workspace::SidebarMode, _, cx| {
                 this.settings_set_mode(Mode::Sidebar, cx)
             }))
@@ -332,6 +335,7 @@ impl Render for WorkspaceWindow {
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .child(title_bar)
             .child(body)
+            .when(self.settings.resolved().show_status_bar, |view| view.child(self.status_bar(cx)))
             .children(rename)
     }
 }

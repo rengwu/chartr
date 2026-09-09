@@ -9,6 +9,8 @@ impl SettingsWindow {
         let middle_click_closes_tab = settings.middle_click_closes_tab;
         let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
         let show_view_mode_picker = settings.show_view_mode_picker;
+        let show_status_bar = settings.show_status_bar;
+        let status_bar_setting = cx.weak_entity();
         let mode = self.mode(cx);
         let show_space_picker = self.show_space_picker(cx).unwrap_or(true);
         let runtime_available = mode.is_some();
@@ -108,6 +110,18 @@ impl SettingsWindow {
                     let show = state.selected();
                     let _ = view_mode_picker_setting
                         .update(cx, |this, cx| this.set_show_view_mode_picker(show, cx));
+                }),
+        ));
+        fields.push(setting_field(
+            "Show status bar",
+            "Show persistent services and running sessions at the bottom of the workspace.",
+            Switch::new("show-status-bar", show_status_bar.into())
+                .tab_index(0isize)
+                .aria_label("Show status bar")
+                .on_click(move |state, _, cx| {
+                    let show = state.selected();
+                    let _ = status_bar_setting
+                        .update(cx, |this, cx| this.set_show_status_bar(show, cx));
                 }),
         ));
         fields.push(setting_field(

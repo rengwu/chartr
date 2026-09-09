@@ -13,6 +13,7 @@
 resolver = "3"
 members = [
     "crates/chartr",
+    "crates/chartr-companion",
     "crates/chartr-herdr",
     "crates/chartr-plugin",
     "crates/chartr-plugin-host",
@@ -25,7 +26,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.95"
 # Zed's `ui` and `theme` are GPL-3.0-or-later and chartr links them directly, so

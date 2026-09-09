@@ -33,6 +33,10 @@ own tools that live alongside your agents.
   horizontally or vertically, and switch between sidebar and tabbed layouts.
 - **Persistent sessions** — By default, your shells survive closing and reopening
   the app. Closing a terminal tab ends that session.
+- **Persistent activity status** — A hideable status bar shows running sessions,
+  terminal service health, and Companion sharing/connections even after its pane closes.
+  Click a service for controls; restore the bar in Settings → General or with
+  “Workspace: Toggle status bar” in the command palette.
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
 - **Tools beside your terminals** — Agent, Skills, Prompts, and Wayfinder are
@@ -118,9 +122,11 @@ After fetching the sidecar, build a disk image with:
 scripts/build-dev-dmg.sh
 ```
 
-The script builds in release mode and produces a `chartr Dev.app` DMG and SHA-256
-checksum under `target/`. The app is ad-hoc signed and unnotarized. Pass an output
-path as the script's only argument to put the image elsewhere.
+The script builds in release mode and produces a `chartr.app` DMG and SHA-256
+checksum under `target/`. The bundle uses the macOS app artwork in
+`docs/assets/v4/`, including the dedicated small-size variants. The app is
+ad-hoc signed and unnotarized. Pass an output path as the script's only argument
+to put the image elsewhere.
 
 ## Getting started
 

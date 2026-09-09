@@ -17,6 +17,8 @@ mod app;
 mod assets;
 mod browser_plugin;
 mod chrome;
+#[path = "../../../plugins/companion/src/lib.rs"]
+mod companion_plugin;
 mod components;
 mod fonts;
 mod item;

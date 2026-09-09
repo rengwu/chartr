@@ -61,6 +61,7 @@ impl WorkspaceWindow {
             PaletteCommand::Ungroup => Box::new(actions::workspace::Ungroup),
             PaletteCommand::SidebarMode => Box::new(actions::workspace::SidebarMode),
             PaletteCommand::TabbedMode => Box::new(actions::workspace::TabbedMode),
+            PaletteCommand::ToggleStatusBar => Box::new(actions::workspace::ToggleStatusBar),
             PaletteCommand::CycleViewMode => Box::new(actions::workspace::CycleViewMode),
             PaletteCommand::NewSpace => Box::new(actions::workspace::NewSpace),
             PaletteCommand::CloseSpace => Box::new(actions::workspace::CloseSpace),

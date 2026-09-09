@@ -75,6 +75,37 @@ fn load_plugin_catalog_at(settings: &SettingsStore, paths: &Paths, cx: &mut App)
             Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
         }
     }
+    let id = "com.chartr.companion";
+    if !catalog.contains(id) && !settings.resolved().plugin(id).uninstalled {
+        let dir = paths.bundled.join(id);
+        let result = (|| -> Result<chartr_plugin::Manifest, String> {
+            std::fs::create_dir_all(dir.join("icons")).map_err(|e| e.to_string())?;
+            for (name, bytes) in [
+                (
+                    "chartr-plugin.toml",
+                    include_bytes!("../../../../plugins/companion/chartr-plugin.toml").as_slice(),
+                ),
+                (
+                    "icons/ChipIcon.svg",
+                    include_bytes!("../../../../plugins/companion/icons/ChipIcon.svg").as_slice(),
+                ),
+            ] {
+                write_bundled_file(&dir.join(name), bytes).map_err(|e| e.to_string())?;
+            }
+            chartr_plugin::Manifest::read(&dir).map_err(|e| e.to_string())
+        })();
+        match result {
+            Ok(manifest) => catalog.add_bundled_native(
+                manifest,
+                dir,
+                paths,
+                false,
+                crate::companion_plugin::bundled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
+        }
+    }
     catalog.enable_requested(paths, |id| settings.resolved().plugin(id).enabled, cx);
     catalog
 }
@@ -244,7 +275,7 @@ mod tests {
         }
         assert!(catalog.get(BUNDLED_SKILLS_ID).is_some());
         assert!(catalog.get(BUNDLED_PROMPTS_ID).is_some());
-        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 3);
+        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 4);
     }
 
     #[gpui::test]
