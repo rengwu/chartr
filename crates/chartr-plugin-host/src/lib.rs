@@ -362,8 +362,8 @@ impl Catalog {
             ),
         };
         match result {
-            Ok(loaded) => {
-                self.publish_services(&loaded);
+            Ok(mut loaded) => {
+                self.publish_services(&mut loaded, cx);
                 self.loaded.insert(plugin.to_owned(), loaded);
                 Ok(())
             }
@@ -436,18 +436,33 @@ impl Catalog {
             return;
         }
         match load_builtin_native(manifest, dir.clone(), paths, factory, cx) {
-            Ok(plugin) => {
-                self.publish_services(&plugin);
+            Ok(mut plugin) => {
+                self.publish_services(&mut plugin, cx);
                 self.loaded.insert(plugin.manifest.id.clone(), plugin);
             }
             Err(why) => self.rejected.push(Rejected { dir, why: why.to_string() }),
         }
     }
 
-    fn publish_services(&self, loaded: &Loaded) {
-        if let Tier::Native(native) = &loaded.tier {
-            self.services.publish(loaded.id(), native.plugin.services());
+    fn publish_services(&self, loaded: &mut Loaded, cx: &mut gpui::App) {
+        let mut exports = if let Tier::Native(native) = &loaded.tier {
+            native.plugin.services()
+        } else {
+            Vec::new()
+        };
+        if !loaded.manifest.prompt_templates.is_empty() {
+            let templates = loaded.manifest.prompt_templates.clone();
+            exports.push(chartr_plugin::services::ServiceExport::new(
+                chartr_plugin::services::PromptTemplates::new(move |_, _| {
+                    gpui::Task::ready(Ok(templates.clone()))
+                }),
+            ));
         }
+        self.services.publish(loaded.id(), exports);
+        if let Tier::Native(native) = &mut loaded.tier {
+            native.plugin.connect_services(self.services.clone(), cx);
+        }
+        chartr_plugin::services::PromptTemplates::changed(cx);
     }
 }
 

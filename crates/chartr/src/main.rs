@@ -23,6 +23,8 @@ mod components;
 mod fonts;
 mod item;
 mod keymap;
+#[path = "../../../plugins/markdown-prompt/src/lib.rs"]
+mod markdown_prompt_plugin;
 mod mode;
 mod persistence;
 mod plugin_installer;

@@ -278,6 +278,9 @@ pub trait Plugin: Sized + 'static {
         Vec::new()
     }
 
+    /// Connect background consumers to this catalog without opening a pane.
+    fn connect_services(&mut self, _services: services::Services, _cx: &mut gpui::App) {}
+
     /// Build the view for one of the panes declared in [`Plugin::activate`].
     ///
     /// Called when the pane is first shown, and again after a reload.
@@ -304,6 +307,7 @@ pub trait PluginObject {
     fn background_status(&self, cx: &gpui::App) -> Option<BackgroundStatus>;
     fn id(&self) -> &str;
     fn services(&self) -> Vec<services::ServiceExport>;
+    fn connect_services(&mut self, services: services::Services, cx: &mut gpui::App);
     fn activate(&mut self, registrar: &mut Registrar, cx: &mut gpui::App);
     fn view(
         &mut self,
@@ -316,6 +320,10 @@ pub trait PluginObject {
 }
 
 impl<P: Plugin> PluginObject for P {
+    fn connect_services(&mut self, services: services::Services, cx: &mut gpui::App) {
+        Plugin::connect_services(self, services, cx);
+    }
+
     fn background_status(&self, cx: &gpui::App) -> Option<BackgroundStatus> {
         Plugin::background_status(self, cx)
     }

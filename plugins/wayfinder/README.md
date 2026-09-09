@@ -60,7 +60,12 @@ a ticket can also run with its matching method alone.
 The method picker can pin any discovered `source/skill`. A missing pin refuses
 launch rather than silently switching to another source. Bare automatic names
 respect Skills' enabled source order. Supporting files are resolved from their
-source directory; no skill mirror or generated `chartr.md` is written.
+source directory; ticket launch writes no skill mirror or generated `chartr.md`.
+
+Wayfinder also declares a `brief` prompt template in its manifest. It includes
+the workflow brief and complete tracker convention, so Markdown Prompt can
+include it without relying on legacy `.chartr/TRACKER-CONVENTION.md` files.
+The host exports it only while Wayfinder is enabled.
 
 **Review & launch** shows the dispatcher, source provenance, selected methods,
 tracker convention, map, ticket, resolved blockers and optional operator note.

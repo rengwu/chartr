@@ -245,12 +245,12 @@ registries. Each plugin has one configuration surface under **Settings → Plugi
 Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
 that surface instead of rendering another configuration page in the workspace.
 
-The bundled Prompts plugin exports `services::Prompts` from
+The bundled Saved Prompts plugin exports `services::Prompts` from
 `com.chartr.prompts`. It owns a shared saved-prompt library and a table pane.
 `list(cx)` returns records with stable IDs, display titles, and prompt text;
 `resolve(id, cx)` reads a current record by ID. Consumers inject only the
 `prompt` field. The title is never part of the injection payload. See
-[Prompts](../plugins/prompts/README.md) for persistence and surface behavior.
+[Saved Prompts](../plugins/prompts/README.md) for persistence and surface behavior.
 
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
 `PreparedTerminal` with a real session `id`; `send` delivers the validated input
@@ -366,3 +366,82 @@ and no project Markdown executes in the web document.
 ## Android companion
 
 The bundled native [Companion](../plugins/companion/README.md) plugin provides an opt-in, encrypted direct-IP connection for the Android app in `../chartr-mobile`. It shares open spaces and their existing terminal sessions through a flat mobile interface. Its listener starts only from the plugin's **Start sharing** control and stops when disabled or unloaded. See the [wire protocol](companion-protocol.md) for its bounded host operations.
+
+
+## Prompt template providers
+
+`PromptTemplates` is the shared read contract consumed by Markdown Prompt and
+available to future native consumers. Saved Prompts, Skills and Wayfinder each
+own their contributions. Providers never choose the consumer's destination or
+write files on its behalf.
+
+A template has a stable provider-local `id`, a user-facing `title`, and a literal
+Markdown `prompt` body (the existing `SavedPrompt` value type). Identity is the
+pair `(plugin_id, template_id)`, never the title. Identical titles from different
+providers coexist; there is no name-based precedence or fallback. Provider order
+is lexicographic plugin ID; each provider controls its own template order.
+Renaming a title preserves references. Removing a provider or ID makes a
+referenced template unavailable and prevents Apply. Bodies are not recursively
+expanded, interpreted as expressions, or executed. Consumers add no headings or
+other formatting to a body.
+
+Dynamic providers call `PromptTemplates::changed(cx)` after committing a content
+change. Consumers observe `PromptTemplates::changes(cx)` to invalidate cached
+content. Saved Prompts emits this after CRUD/reload; Skills emits it after source
+registration, refresh, reordering, enablement, deletion and rescans. The signal
+is an invalidation notice, not permission for a provider to write project files.
+Markdown Prompt refreshes only compositions explicitly activated with Apply.
+
+The host calls `Plugin::connect_services(services, cx)` after publishing exports.
+This lifecycle hook gives background consumers the live catalog without opening
+a pane. Markdown Prompt uses it to resume persisted applied compositions on
+startup. Disabling the plugin drops its worker; provider changes also undergo
+periodic reconciliation for external file edits and provider removal.
+
+Native plugins export the asynchronous typed service from `Plugin::services()`:
+
+```rust,ignore
+ServiceExport::new(PromptTemplates::new(|project_dir, cx| {
+    // Read provider-owned state here; perform expensive work in the background.
+    cx.background_executor().spawn(async move {
+        Ok(vec![SavedPrompt {
+            id: "brief".into(),
+            title: "Project brief".into(),
+            prompt: build_markdown(project_dir)?,
+        }])
+    })
+}))
+```
+
+The optional project directory is the requesting pane's folder. A provider may
+return an error when its state is unavailable or updating. No open provider pane
+is required. Consumers discover enabled exports with
+`context.services.all::<PromptTemplates>()` and request fresh content using
+`provider.list(context.project_dir.clone(), cx)`. Consumers validate nonempty,
+unique IDs and nonempty titles and cap each body and constructed output at 1 MiB.
+
+Portable plugins can publish literal Markdown without executing code:
+
+```toml
+[[prompt_templates]]
+id = "brief"
+title = "My plugin brief"
+prompt = """
+## My plugin
+
+Instructions for working with this plugin.
+"""
+```
+
+The host publishes manifest templates through the same service and removes them
+on disable/uninstall. A provider should use either its manifest declaration or a
+native dynamic export; manifest declarations take precedence if both are
+present. Dynamic exports currently use the trusted native service contract;
+portable web plugins can contribute literal templates but do not yet have an
+asynchronous JavaScript template callback API.
+
+Saved Prompts retains `com.chartr.prompts` and its original storage/service
+contract for compatibility. Markdown Prompt is a separate bundled native plugin,
+`com.chartr.markdown-prompt`, with no required provider dependencies. Its UI and
+file ownership rules are documented in
+[Markdown Prompt](../plugins/markdown-prompt/README.md).

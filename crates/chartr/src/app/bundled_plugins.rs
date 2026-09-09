@@ -66,6 +66,21 @@ fn load_plugin_catalog_at(settings: &SettingsStore, paths: &Paths, cx: &mut App)
             Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
         }
     }
+    let markdown_id = "com.chartr.markdown-prompt";
+    if !catalog.contains(markdown_id) && !settings.resolved().plugin(markdown_id).uninstalled {
+        let dir = paths.bundled.join(markdown_id);
+        match materialize_bundled_markdown_prompt(&dir) {
+            Ok(manifest) => catalog.add_bundled_native(
+                manifest,
+                dir,
+                paths,
+                false,
+                crate::markdown_prompt_plugin::bundled,
+                cx,
+            ),
+            Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
+        }
+    }
     if !catalog.contains(BUNDLED_WAYFINDER_ID)
         && !settings.resolved().plugin(BUNDLED_WAYFINDER_ID).uninstalled
     {
@@ -148,6 +163,23 @@ pub(super) fn materialize_bundled_wayfinder(
     };
     write().map_err(|error| format!("Cannot prepare Wayfinder: {error}"))?;
     chartr_plugin::Manifest::read(dir).map_err(|error| error.to_string())
+}
+
+fn materialize_bundled_markdown_prompt(
+    dir: &std::path::Path,
+) -> Result<chartr_plugin::Manifest, String> {
+    std::fs::create_dir_all(dir.join("icons")).map_err(|e| e.to_string())?;
+    write_bundled_file(
+        &dir.join("chartr-plugin.toml"),
+        include_bytes!("../../../../plugins/markdown-prompt/chartr-plugin.toml"),
+    )
+    .map_err(|e| e.to_string())?;
+    write_bundled_file(
+        &dir.join("icons/BookOpen01Icon.svg"),
+        include_bytes!("../../../../plugins/markdown-prompt/icons/BookOpen01Icon.svg"),
+    )
+    .map_err(|e| e.to_string())?;
+    chartr_plugin::Manifest::read(dir).map_err(|e| e.to_string())
 }
 
 fn materialize_bundled_prompts(dir: &std::path::Path) -> Result<chartr_plugin::Manifest, String> {
@@ -275,7 +307,7 @@ mod tests {
         }
         assert!(catalog.get(BUNDLED_SKILLS_ID).is_some());
         assert!(catalog.get(BUNDLED_PROMPTS_ID).is_some());
-        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 4);
+        assert_eq!(catalog.loaded.len() + catalog.disabled.len(), 5);
     }
 
     #[gpui::test]

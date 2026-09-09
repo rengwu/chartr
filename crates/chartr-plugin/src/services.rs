@@ -38,6 +38,21 @@ impl Services {
         self.0.borrow_mut().retain(|(id, _), _| id != plugin);
     }
 
+    /// Discover enabled providers of a common contract, in stable plugin-ID order.
+    pub fn all<T: 'static>(&self) -> Vec<(String, Rc<T>)> {
+        let mut providers: Vec<_> = self
+            .0
+            .borrow()
+            .iter()
+            .filter_map(|((id, kind), value)| {
+                (*kind == TypeId::of::<T>())
+                    .then(|| (id.clone(), value.clone().downcast::<T>().unwrap()))
+            })
+            .collect();
+        providers.sort_by(|a, b| a.0.cmp(&b.0));
+        providers
+    }
+
     pub fn get<T: 'static>(&self, plugin: &str) -> Option<Rc<T>> {
         self.0.borrow().get(&(plugin.to_owned(), TypeId::of::<T>()))?.clone().downcast().ok()
     }
@@ -205,5 +220,47 @@ mod tests {
         assert_eq!(*consumer.get::<u32>("provider").unwrap(), 9);
         directory.remove("provider");
         assert!(consumer.get::<u32>("provider").is_none());
+    }
+}
+
+/// A common asynchronous template contract. IDs are stable within the exporting
+/// plugin; consumers persist (plugin ID, template ID), never display titles.
+/// Bodies are literal Markdown, not recursively evaluated or executed.
+/// Providers own their data and may use the requesting project to build content.
+type TemplateList =
+    dyn Fn(Option<PathBuf>, &mut gpui::App) -> gpui::Task<Result<Vec<SavedPrompt>, String>>;
+pub struct PromptTemplates(Box<TemplateList>);
+impl PromptTemplates {
+    pub fn new(
+        list: impl Fn(Option<PathBuf>, &mut gpui::App) -> gpui::Task<Result<Vec<SavedPrompt>, String>>
+        + 'static,
+    ) -> Self {
+        Self(Box::new(list))
+    }
+    pub fn list(
+        &self,
+        project: Option<PathBuf>,
+        cx: &mut gpui::App,
+    ) -> gpui::Task<Result<Vec<SavedPrompt>, String>> {
+        (self.0)(project, cx)
+    }
+}
+
+/// Provider-owned content changed. Consumers subscribe without keeping provider panes open.
+pub struct TemplateChanges;
+struct TemplateChangeBus(gpui::Entity<TemplateChanges>);
+impl gpui::Global for TemplateChangeBus {}
+impl PromptTemplates {
+    pub fn changes(cx: &mut gpui::App) -> gpui::Entity<TemplateChanges> {
+        use gpui::AppContext;
+        if let Some(bus) = cx.try_global::<TemplateChangeBus>() {
+            return bus.0.clone();
+        }
+        let signal = cx.new(|_| TemplateChanges);
+        cx.set_global(TemplateChangeBus(signal.clone()));
+        signal
+    }
+    pub fn changed(cx: &mut gpui::App) {
+        Self::changes(cx).update(cx, |_, cx| cx.notify());
     }
 }

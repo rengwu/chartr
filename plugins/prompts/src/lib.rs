@@ -67,16 +67,33 @@ impl Plugin for PromptsPlugin {
     }
 
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
-        registrar.add_pane("main", "Prompts");
+        registrar.add_pane("main", "Saved Prompts");
     }
 
     fn services(&self) -> Vec<ServiceExport> {
         let registry = self.registry.downgrade();
-        vec![ServiceExport::new(Prompts::new(move |cx| {
-            let registry = registry.upgrade().ok_or("Prompts is unavailable.")?;
-            let registry = registry.read(cx);
-            registry.store.as_ref().map(|store| store.prompts().to_vec()).map_err(Clone::clone)
-        }))]
+        let templates = registry.clone();
+        vec![
+            ServiceExport::new(chartr_plugin::services::PromptTemplates::new(move |_, cx| {
+                let result = templates
+                    .upgrade()
+                    .ok_or_else(|| "Saved Prompts is unavailable.".to_owned())
+                    .and_then(|registry| {
+                        registry
+                            .read(cx)
+                            .store
+                            .as_ref()
+                            .map(|store| store.prompts().to_vec())
+                            .map_err(Clone::clone)
+                    });
+                gpui::Task::ready(result)
+            })),
+            ServiceExport::new(Prompts::new(move |cx| {
+                let registry = registry.upgrade().ok_or("Prompts is unavailable.")?;
+                let registry = registry.read(cx);
+                registry.store.as_ref().map(|store| store.prompts().to_vec()).map_err(Clone::clone)
+            })),
+        ]
     }
 
     fn view(
@@ -102,6 +119,7 @@ impl Registry {
 
     fn reload(&mut self, cx: &mut Context<Self>) {
         self.store = Store::load(self.path.clone());
+        chartr_plugin::services::PromptTemplates::changed(cx);
         cx.notify();
     }
 
@@ -114,6 +132,9 @@ impl Registry {
             Ok(store) => operation(store),
             Err(error) => Err(error.clone()),
         };
+        if result.is_ok() {
+            chartr_plugin::services::PromptTemplates::changed(cx);
+        }
         cx.notify();
         result
     }
@@ -295,7 +316,7 @@ impl PromptsView {
                     .w_full()
                     .justify_between()
                     .gap_2()
-                    .child(Label::new("Prompts").size(UI_LABEL_LARGE))
+                    .child(Label::new("Saved Prompts").size(UI_LABEL_LARGE))
                     .child(
                         h_flex()
                             .gap_2()
@@ -337,7 +358,7 @@ impl PromptsView {
                         .h_full()
                         .min_h_0()
                         .child(
-                            columns(["Title", "Prompt", "Actions"].map(|label| {
+                            columns(["Name", "Content", "Actions"].map(|label| {
                                 Label::new(label)
                                     .size(UI_LABEL_SMALL)
                                     .color(Color::Muted)

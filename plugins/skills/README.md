@@ -47,3 +47,12 @@ dependent plugins. Wayfinder consumes it to compose its agent prompts, respectin
 source precedence and exact `source/skill` pins. This plugin does not generate
 `chartr.md` or mirror skills into projects; supporting resources are read from
 the resolved source directory. Standalone Agent sessions are unchanged.
+
+Skills also exports a `skill-sources` template through `PromptTemplates`. It
+rescans enabled sources on request and renders their ordered, qualified skill
+references, actual source paths and shadowing information. Markdown Prompt can
+include this content in a user-composed file. Skills itself writes no project
+files.
+
+Successful source changes notify template consumers immediately. Applied Markdown
+Prompt compositions update without reopening their panes.

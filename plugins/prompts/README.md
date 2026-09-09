@@ -1,7 +1,7 @@
-# Prompts
+# Saved Prompts
 
-Prompts is a bundled native Chartr plugin for a library of reusable prompts.
-Open **Prompts** from the surface picker. Its table shows a title, a preview of
+Saved Prompts is a bundled native Chartr plugin for a library of reusable prompts.
+Open **Saved Prompts** from the surface picker. Its table shows a title, a preview of
 the prompt, and Copy, Edit, and Delete actions. Search matches both fields.
 New prompt and Edit open a multiline editor; Cancel discards the draft, and
 deletion requires a second click. Copy puts only the full prompt text on the
@@ -34,7 +34,12 @@ returns the current records; `resolve(id, cx)` resolves a stable reference.
 Consumers inject only `SavedPrompt.prompt`, without the title or added markup.
 The service reports unavailable or unreadable libraries as errors.
 
-The table, storage module, and service contract are separate so a composer or
-an AGENTS.md / CHARTR.md surface can reuse the library. Those surfaces and
-automatic agent injection are not implemented here. Prompts has no dependency
-on Agent or Skills and does not modify project files or start terminals.
+Saved Prompts also exports the common `PromptTemplates` service. Markdown Prompt
+consumes those stable IDs alongside templates from other enabled plugins.
+Only the saved body is expanded, without the title or added markup. The original
+`com.chartr.prompts` ID and storage location are retained so existing libraries
+and restored panes continue to work. This plugin does not write project files
+or launch agents.
+
+Successful saves, deletions and reloads notify template consumers. Markdown
+Prompt automatically updates applied compositions that reference changed prompts.

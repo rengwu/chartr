@@ -39,7 +39,7 @@ own tools that live alongside your agents.
   “Workspace: Toggle status bar” in the command palette.
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
-- **Tools beside your terminals** — Agent, Skills, Prompts, and Wayfinder are
+- **Tools beside your terminals** — Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder are
   bundled. Install additional web and hosted plugins, including the Browser surface.
 - **Make it yours** — Choose themes and fonts, follow the system appearance,
   rebind shortcuts, and configure plugins in native Settings.
@@ -174,7 +174,8 @@ imported automatically.
   persistence, and plugin behavior
 - [Plugin packages](docs/plugins.md) — installation, permissions, and host APIs
 - [Skills](plugins/skills/README.md) — source registration and discovery
-- [Prompts](plugins/prompts/README.md) — saved prompts and reusable prompt data
+- [Saved Prompts](plugins/prompts/README.md) — saved prompts and reusable prompt data
+- [Markdown Prompt](plugins/markdown-prompt/README.md) — compose and maintain Markdown from text and plugin templates
 - [Wayfinder](plugins/wayfinder/README.md) — maps, prompts, and ticket launches
 - [Tracker convention](plugins/wayfinder/TRACKER-CONVENTION.md) — the map and
   ticket file format
@@ -190,7 +191,7 @@ commit history preserved. The Go implementation at v0.2.4 remains on
 [`legacy/v0.2.4`](https://github.com/rengwu/chartr/tree/legacy/v0.2.4).
 
 The Rust workspace, persistent terminals, native Settings, plugin host, and
-bundled Agent, Skills, Prompts, and Wayfinder surfaces are implemented. CI builds
+bundled Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder surfaces are implemented. CI builds
 and tests the workspace and native plugin example on macOS and Ubuntu.
 
 Before the first Rust release:

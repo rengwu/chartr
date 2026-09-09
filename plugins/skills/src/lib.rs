@@ -62,23 +62,47 @@ impl Plugin for SkillsPlugin {
     fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
         use chartr_plugin::services::{ServiceExport, Skills};
         let registry = self.registry.downgrade();
-        vec![ServiceExport::new(Skills::new(move |cx| {
-            let Some(registry) = registry.upgrade() else {
-                return gpui::Task::ready(Err("Skills is unavailable.".into()));
-            };
-            let registry = registry.read(cx);
-            if registry.load_failed {
-                return gpui::Task::ready(Err(registry.problem.clone().unwrap_or_default()));
-            }
-            if registry.busy.is_some() {
-                return gpui::Task::ready(Err(
-                    "Skill sources are being updated. Try again shortly.".into(),
-                ));
-            }
-            let store = registry.store.clone();
-            cx.background_executor()
-                .spawn(async move { store.catalog().map_err(|error| format!("{error:#}")) })
-        }))]
+        let template_registry = registry.clone();
+        vec![
+            ServiceExport::new(chartr_plugin::services::PromptTemplates::new(move |_, cx| {
+                let Some(registry) = template_registry.upgrade() else {
+                    return gpui::Task::ready(Err("Skills is unavailable.".into()));
+                };
+                let registry = registry.read(cx);
+                if registry.load_failed || registry.busy.is_some() {
+                    return gpui::Task::ready(Err(
+                        "Skill sources are unavailable or updating. Try again shortly.".into(),
+                    ));
+                }
+                let store = registry.store.clone();
+                cx.background_executor().spawn(async move {
+                let catalog = store.catalog().map_err(|e| format!("{e:#}"))?;
+                let mut body = String::from("## Skill sources\n\nSkills are listed in resolution order. Bare names use the first enabled source; qualified source/skill names select an exact source. Read each SKILL.md and resolve supporting files relative to its directory.\n\n");
+                for skill in catalog.skills {
+                    body.push_str(&format!("- `{}` — `{}/SKILL.md`{}\n", skill.reference(), skill.directory.display(), if skill.shadowed { " (shadowed; use qualified name)" } else { "" }));
+                }
+                for warning in catalog.warnings { body.push_str(&format!("\nSource warning: {warning}\n")); }
+                Ok(vec![chartr_plugin::services::SavedPrompt { id: "skill-sources".into(), title: "Skill sources".into(), prompt: body }])
+            })
+            })),
+            ServiceExport::new(Skills::new(move |cx| {
+                let Some(registry) = registry.upgrade() else {
+                    return gpui::Task::ready(Err("Skills is unavailable.".into()));
+                };
+                let registry = registry.read(cx);
+                if registry.load_failed {
+                    return gpui::Task::ready(Err(registry.problem.clone().unwrap_or_default()));
+                }
+                if registry.busy.is_some() {
+                    return gpui::Task::ready(Err(
+                        "Skill sources are being updated. Try again shortly.".into(),
+                    ));
+                }
+                let store = registry.store.clone();
+                cx.background_executor()
+                    .spawn(async move { store.catalog().map_err(|error| format!("{error:#}")) })
+            })),
+        ]
     }
     fn view(
         &mut self,
@@ -198,6 +222,7 @@ impl Registry {
                         this.states = states;
                         this.problem = None;
                         this.load_failed = false;
+                        chartr_plugin::services::PromptTemplates::changed(cx);
                     }
                     Err(error) => this.problem = Some(error),
                 }

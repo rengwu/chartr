@@ -123,6 +123,9 @@ pub struct Manifest {
     #[serde(default)]
     pub description: String,
     pub version: String,
+    /// Literal Markdown templates, exported only while this plugin is enabled.
+    #[serde(default)]
+    pub prompt_templates: Vec<crate::services::SavedPrompt>,
     pub kind: Kind,
     /// The canonical Hugeicons export name for this plugin's tab icon. The
     /// package supplies its Stroke Rounded SVG at `icons/<name>.svg`.
@@ -220,6 +223,16 @@ impl Manifest {
     }
 
     fn validate(&self) -> Result<(), Invalid> {
+        let mut template_ids = std::collections::HashSet::new();
+        for template in &self.prompt_templates {
+            if template.id.is_empty()
+                || template.title.trim().is_empty()
+                || !template_ids.insert(&template.id)
+                || template.prompt.len() > 1024 * 1024
+            {
+                return Err(Invalid::Malformed("prompt_templates need unique nonempty IDs, nonempty titles and bodies no larger than 1 MiB".into()));
+            }
+        }
         if self.manifest_version != MANIFEST_VERSION {
             return Err(Invalid::ManifestVersion { found: self.manifest_version });
         }
