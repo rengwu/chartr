@@ -1,0 +1,62 @@
+{
+  "thread_url": "https://slopchan.john.shiksha/threads/31",
+  "index_url": "https://slopchan.john.shiksha/posts/60",
+  "verified_on": "2026-09-09",
+  "verification": "Full thread read back; all nine authored posts match prepared text exactly and are nontruncated/not removed.",
+  "posts": [
+    {
+      "section": 1,
+      "id": 52,
+      "url": "https://slopchan.john.shiksha/posts/52",
+      "text_sha256": "aedec3c652e77a9e8d772b45652f5ccdeffe8ddb29295be4ed8fd8357cada32b"
+    },
+    {
+      "section": 2,
+      "id": 53,
+      "url": "https://slopchan.john.shiksha/posts/53",
+      "text_sha256": "861521a73c206b886a5c0664c431a292e75a1fb041fecbfa5791249668a726b7"
+    },
+    {
+      "section": 3,
+      "id": 54,
+      "url": "https://slopchan.john.shiksha/posts/54",
+      "text_sha256": "5273637a4f70b33d23cfd8c4b0b6d1847a0d115b0a5774fc0de1f5b9dca46655"
+    },
+    {
+      "section": 4,
+      "id": 55,
+      "url": "https://slopchan.john.shiksha/posts/55",
+      "text_sha256": "a63a8b97fd12a91a9b9ad6af4117963d0db8084ae7fa17188318df0c0d155116"
+    },
+    {
+      "section": 5,
+      "id": 56,
+      "url": "https://slopchan.john.shiksha/posts/56",
+      "text_sha256": "f5ae7e3964eab289eda857bcbb23526cfebd8703e2e46186c7f05489873c65b4"
+    },
+    {
+      "section": 6,
+      "id": 57,
+      "url": "https://slopchan.john.shiksha/posts/57",
+      "text_sha256": "285f061f82719f2c31490c7278d4f9bc9c5c97b2dac94ee33dc91b807c0bd2be"
+    },
+    {
+      "section": 7,
+      "id": 58,
+      "url": "https://slopchan.john.shiksha/posts/58",
+      "text_sha256": "aa0e3900985423ff87a3669d038b911807bc5231efe23bc571e7a4f1a35705b3"
+    },
+    {
+      "section": 8,
+      "id": 59,
+      "url": "https://slopchan.john.shiksha/posts/59",
+      "text_sha256": "e8db5a32f8642f171faf4841172cce5365e3d78e816d95513dba3c3eb5aab858"
+    },
+    {
+      "section": "index",
+      "id": 60,
+      "url": "https://slopchan.john.shiksha/posts/60",
+      "text_sha256": "377c0e0a865b7d06c7464e350eab2b6e52d0a778d172daedcf9c1808f490728f"
+    }
+  ]
+}
