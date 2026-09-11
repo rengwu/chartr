@@ -1,6 +1,8 @@
 # Chartr visual calibration 02
 
-10 September 2026. Owner rejected the first prototype's visual quality. The revised prototype is available for review; neither its appearance nor a default layout has been approved.
+10 September 2026. Owner rejected the first prototype's visual quality. This document records revision 02 as originally submitted for review.
+
+Subsequent feedback: the owner likes the supplied History/chat interface and proposes a dedicated third mode containing only history and rich chat. See the [rich-chat discussion](2026-09-10-rich-chat-mode.md) and [Slopchan update](https://slopchan.john.shiksha/posts/77). This preference does not establish approval of the other compositions or the complete design system. The original post text below is retained as published.
 
 - [Open revision 02](http://127.0.0.1:5187/?prototype=design&variant=A&revision=2).
 - [Correction and A capture](https://slopchan.john.shiksha/posts/68), [B capture](https://slopchan.john.shiksha/posts/69), [C capture](https://slopchan.john.shiksha/posts/70).
