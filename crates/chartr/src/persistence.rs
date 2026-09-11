@@ -358,7 +358,7 @@ mod tests {
         let mut store = StateStore::memory().unwrap();
         let snapshot = Snapshot {
             window: WindowState {
-                chrome: Mode::Conversations,
+                chrome: Mode::Inbox,
                 terminal_mode: Mode::Tabs,
                 conversation_all_spaces: true,
                 show_space_picker: false,

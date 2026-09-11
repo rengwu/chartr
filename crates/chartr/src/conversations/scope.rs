@@ -22,6 +22,7 @@ impl Conversations {
         self.active_space = active;
         self.scope = scope;
         if changed {
+            self.clear_terminal();
             self.pending_runtime = None;
             self.new_agent = None;
             self.new_space = None;

@@ -1,5 +1,5 @@
 //! Presentation modes. Sidebar and Tabs project the existing terminal layout;
-//! Conversations projects durable provider identities over the same runtimes.
+//! Inbox projects durable provider identities over the same runtimes.
 //! Switching presentation never starts or stops a session.
 
 use serde::{Deserialize, Serialize};
@@ -16,8 +16,9 @@ pub enum Mode {
     /// A horizontal strip across the top. Familiar, and denser per session —
     /// the mode for a handful of things you are switching between quickly.
     Tabs,
-    /// History and rich chat over the existing agent runtimes.
-    Conversations,
+    /// Agent session history beside the selected session terminal.
+    #[serde(alias = "conversations")]
+    Inbox,
 }
 
 const TRANSITION_DURATION: Duration = Duration::from_millis(500);
@@ -34,7 +35,7 @@ impl From<Mode> for ChromeVisibility {
         match mode {
             Mode::Sidebar => Self { sidebar: 1., tabs: 0. },
             Mode::Tabs => Self { sidebar: 0., tabs: 1. },
-            Mode::Conversations => Self { sidebar: 0., tabs: 0. },
+            Mode::Inbox => Self { sidebar: 0., tabs: 0. },
         }
     }
 }

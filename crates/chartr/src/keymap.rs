@@ -106,7 +106,7 @@ impl KeymapAction {
             Self::Ungroup => "Ungroup current group",
             Self::SidebarMode => "Switch to sidebar mode",
             Self::TabbedMode => "Switch to tabbed mode",
-            Self::ConversationMode => "Switch to conversation mode",
+            Self::ConversationMode => "Switch to inbox view",
             Self::CycleViewMode => "Cycle view modes",
             Self::NewSpace => "Open new space",
             Self::CloseSpace => "Close current space",

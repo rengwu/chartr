@@ -21,7 +21,7 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             self.settings_set_mode(self.terminal_mode, cx);
         }
         if terminal && !matches!(self.backend, Backend::Ready) {
@@ -64,7 +64,7 @@ impl WorkspaceWindow {
     }
 
     pub(super) fn ungroup_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         if let Some(space) = self.active.clone()

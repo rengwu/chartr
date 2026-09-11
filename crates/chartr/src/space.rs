@@ -177,6 +177,10 @@ impl Space {
         self.reattaching.contains(&id)
     }
 
+    pub fn session_item(&self, backend: &PaneId) -> Option<&crate::item::SessionItem> {
+        self.items.get(self.sessions.get(backend)?)?.as_session()
+    }
+
     pub fn session_access(&self, backend: &PaneId) -> Option<crate::session::SessionAccess> {
         let item = self.sessions.get(backend)?;
         self.items.get(item)?.as_session().map(|item| item.session.access())
@@ -925,9 +929,7 @@ impl Space {
         self.start_session_at(None, Vec::new(), cx)
     }
 
-    /// A conversation launch has no rendered TerminalElement to size its PTY.
-    /// Zed's bootstrap grid is only six rows; give the new hidden CLI a usable
-    /// viewport until its first real terminal layout takes over.
+    /// Give a newly allocated CLI a usable grid until Inbox first mounts it.
     pub fn size_conversation_terminal(
         &self,
         pane: &PaneId,

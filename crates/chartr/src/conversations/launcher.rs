@@ -40,15 +40,10 @@ impl Conversations {
             .into_any_element()
     }
 
-    pub(super) fn new_editor_key(&self, name: &str) -> String {
-        format!("{}\0{name}", self.new_space.as_deref().unwrap_or_default())
-    }
-
     fn begin_conversation(
         &mut self,
         name: String,
         space: String,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         if self.busy {
@@ -74,104 +69,23 @@ impl Conversations {
         self.last_launch_agent = Some(name.clone());
         self.last_launch_space = Some(space.clone());
         self.new_agent = Some(name.clone());
-        self.new_space = Some(space);
+        self.new_space = Some(space.clone());
         self.launch_runtime = None;
         self.pending_runtime = None;
         self.selected = None;
         self.problem = None;
-        let editor = self.new_editor(&name, window, cx);
-        editor.focus_handle(cx).focus(window, cx);
+        self.busy = true;
+        self.clear_terminal();
+        self.focus_terminal = true;
+        cx.emit(Event::LaunchAgent { name, space });
         cx.notify();
         Ok(())
-    }
-
-    fn new_editor(
-        &mut self,
-        name: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<Editor> {
-        if let Some(editor) = self.new_editors.get(&self.new_editor_key(name)) {
-            return editor.clone();
-        }
-        let editor = cx.new(|cx| {
-            let mut editor = Editor::auto_height(3, 10, window, cx);
-            editor.set_soft_wrap();
-            editor.set_autoindent(false);
-            editor.set_use_autoclose(false);
-            editor.set_show_wrap_guides(false, cx);
-            editor.set_show_indent_guides(false, cx);
-            editor.set_placeholder_text(&format!("Message {name}…"), window, cx);
-            editor
-        });
-        cx.observe(&editor, |_, _, cx| cx.notify()).detach();
-        self.new_editors.insert(self.new_editor_key(name), editor.clone());
-        editor
-    }
-
-    pub(super) fn new_conversation(
-        &mut self,
-        name: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let editor = self.new_editor(name, window, cx);
-        let waiting = self.busy || self.launch_runtime.is_some();
-        editor.update(cx, |editor, _| editor.set_read_only(waiting));
-        let colors = cx.theme().colors().clone();
-        v_flex().flex_1().min_w_0().h_full()
-            .child(h_flex().h(px(42.)).px_4().gap_2().border_b_1().border_color(colors.border)
-                .child(Icon::new(IconName::Chat).size(IconSize::Small).color(Color::Muted))
-                .child(Label::new(format!("New {name} conversation")))
-                .child(div().flex_1())
-                .when_some(self.new_space.as_ref().and_then(|key| self.spaces.iter().find(|s| &s.key == key)).cloned(), |header, space|
-                    header.child(Label::new(choice_label(&space, &self.spaces)).size(LabelSize::Small).color(Color::Muted))))
-            .child(v_flex().flex_1().min_h_0().px_4().pt_4().gap_2()
-                .child(Label::new(if self.busy { format!("Starting {name}…") }
-                    else if self.launch_runtime.is_some() { format!("Waiting for {name} to connect…") }
-                    else { "What would you like to work on?".into() }).color(Color::Muted))
-                .when_some(self.launch_runtime.clone(), |view, runtime| view
-                    .child(Label::new("If it needs setup or has no chat adapter, continue in its terminal.").size(LabelSize::Small).color(Color::Muted))
-                    .child(Button::new("new-agent-terminal", "Open terminal")
-                        .on_click(cx.listener(move |_, _, _, cx| cx.emit(Event::ShowTerminal(runtime.clone())))))))
-            .child(div().px_4().pb_4().pt_2().child(v_flex()
-                .key_context("ConversationComposer").px_3().pt_3().pb_2().gap_3()
-                .rounded_lg().border_1().border_color(colors.border).bg(colors.element_background)
-                .child(editor.clone())
-                .child(h_flex().gap_2()
-                    .child(Label::new(SharedString::from(name.to_owned())).size(LabelSize::Small).color(Color::Muted))
-                    .child(div().flex_1())
-                    .child(IconButton::new("start-agent-conversation", IconName::ArrowUp)
-                        .icon_size(IconSize::Small).aria_label("Start conversation")
-                        .disabled(waiting || !self.connected || editor.read(cx).text(cx).trim().is_empty())
-                        .tooltip(Tooltip::text("Start conversation · Enter"))
-                        .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))))))
-            .into_any_element()
-    }
-
-    pub(super) fn launch_from_composer(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        if self.busy || !self.connected || self.launch_runtime.is_some() {
-            return;
-        }
-        let Some(name) = self.new_agent.clone() else { return };
-        let Some(editor) = self.new_editors.get(&self.new_editor_key(&name)) else { return };
-        let prompt = editor.read(cx).text(cx);
-        if prompt.trim().is_empty() {
-            return;
-        }
-        self.busy = true;
-        self.problem = None;
-        let Some(space) = self.new_space.clone() else {
-            self.busy = false;
-            return;
-        };
-        cx.emit(Event::LaunchAgent { name, prompt, space });
-        cx.notify();
     }
 
     pub fn launch_allocated(&mut self, name: &str, runtime: &str, cx: &mut Context<Self>) {
         if self.new_agent.as_deref() == Some(name) {
             self.launch_runtime = Some(runtime.into());
+            self.focus_terminal = true;
             cx.notify();
         }
     }
@@ -237,15 +151,14 @@ impl LaunchPanel {
         }
     }
 
-    fn launch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn launch(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.scope != self.owner.read(cx).scope {
             self.problem = Some("The current space changed. Open the launcher again.".into());
             cx.notify();
             return;
         }
         let (Some(space), Some(agent)) = (self.space.clone(), self.agent.clone()) else { return };
-        let result =
-            self.owner.update(cx, |owner, cx| owner.begin_conversation(agent, space, window, cx));
+        let result = self.owner.update(cx, |owner, cx| owner.begin_conversation(agent, space, cx));
         match result {
             Ok(()) => cx.emit(gpui::DismissEvent),
             Err(error) => {
@@ -365,10 +278,6 @@ impl Render for LaunchPanel {
             .border_1()
             .border_color(colors.border)
             .bg(colors.elevated_surface_background)
-            .on_action(cx.listener(|this, _: &super::view::Submit, window, cx| {
-                cx.stop_propagation();
-                this.launch(window, cx);
-            }))
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 if !this.space_menu.is_deployed() && !this.agent_menu.is_deployed() {
                     cx.emit(gpui::DismissEvent);

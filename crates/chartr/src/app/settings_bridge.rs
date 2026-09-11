@@ -37,7 +37,7 @@ impl WorkspaceWindow {
         if self.mode == mode {
             return;
         }
-        if mode == Mode::Conversations {
+        if mode == Mode::Inbox {
             self.terminal_mode = self.mode;
             self.terminal_search_open = false;
             if let Some(runtime) = self.active.as_ref().and_then(|space| {

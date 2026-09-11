@@ -166,7 +166,7 @@ impl PaletteCommand {
         (Self::Ungroup, "Workspace: Ungroup current group", ""),
         (Self::SidebarMode, "Workspace: Switch to sidebar mode", ""),
         (Self::TabbedMode, "Workspace: Switch to tabbed mode", ""),
-        (Self::ConversationMode, "Workspace: Switch to conversation mode", ""),
+        (Self::ConversationMode, "Workspace: Switch to inbox view", ""),
         (Self::CycleViewMode, "Workspace: Cycle view modes", ""),
         (Self::ToggleStatusBar, "Workspace: Toggle status bar", ""),
         (Self::NewSpace, "Workspace: Open new space", ""),
@@ -563,7 +563,7 @@ impl WorkspaceWindow {
     }
 
     fn focus_active_terminal(&self, window: &mut Window, cx: &mut App) -> bool {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             self.conversations.focus_handle(cx).focus(window, cx);
             return true;
         }
@@ -737,7 +737,7 @@ impl WorkspaceWindow {
     }
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode == Mode::Conversations
+        if self.mode == Mode::Inbox
             && matches!(
                 &action,
                 Action::New
@@ -759,7 +759,7 @@ impl WorkspaceWindow {
             }
             Action::SwitchToTabs => self.settings_set_mode(Mode::Tabs, cx),
             Action::SwitchToSidebar => self.settings_set_mode(Mode::Sidebar, cx),
-            Action::SwitchToConversations => self.settings_set_mode(Mode::Conversations, cx),
+            Action::SwitchToConversations => self.settings_set_mode(Mode::Inbox, cx),
             Action::OpenSettings => self.open_settings(window, cx),
             Action::NewSpace => self.pick_a_folder(window, cx),
             Action::New => {
@@ -974,7 +974,7 @@ impl WorkspaceWindow {
             cx.notify();
             return;
         }
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             self.conversations.update(cx, |view, cx| view.archive_selected(cx));
             return;
         }
@@ -1004,7 +1004,7 @@ impl WorkspaceWindow {
     }
 
     fn request_close_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         let Some(space) = self.active.clone() else {
@@ -1030,7 +1030,7 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
@@ -1225,7 +1225,7 @@ impl WorkspaceWindow {
     }
 
     fn move_active_to_pane(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         if let Some(space) = self.active.clone() {
@@ -1240,7 +1240,7 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         if let Some(space) = self.active.clone() {
@@ -1257,7 +1257,7 @@ impl WorkspaceWindow {
     }
 
     fn join_active_into_next(&mut self, cx: &mut Context<Self>) {
-        if self.mode == Mode::Conversations {
+        if self.mode == Mode::Inbox {
             return;
         }
         if let Some(space) = self.active.clone() {

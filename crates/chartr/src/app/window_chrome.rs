@@ -4,8 +4,8 @@ use super::*;
 
 impl WorkspaceWindow {
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let all_spaces = self.mode == Mode::Conversations && self.conversation_all_spaces;
-        let conversations = self.mode == Mode::Conversations;
+        let all_spaces = self.mode == Mode::Inbox && self.conversation_all_spaces;
+        let conversations = self.mode == Mode::Inbox;
         let current = if all_spaces {
             "All spaces".to_owned()
         } else {
@@ -308,8 +308,8 @@ impl WorkspaceWindow {
                 ),
                 SegmentedControlOption::new(
                     "presentation-conversations",
-                    "Conversations",
-                    self.mode == Mode::Conversations,
+                    "Inbox",
+                    self.mode == Mode::Inbox,
                     move |_, window, cx| {
                         use_conversations(Action::SwitchToConversations, window, cx)
                     },

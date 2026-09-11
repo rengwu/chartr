@@ -155,37 +155,21 @@ impl Agents {
     }
 }
 
-/// Optional chat-launch preparation. Agent still owns saved arguments, environment
-/// and quoting; the host owns terminal creation and conversation observation.
-pub struct ConversationLaunch {
+/// Direct Inbox launch preparation. Agent owns quoting and saved profile fields;
+/// the host owns terminal creation and session discovery.
+pub struct InboxLaunch {
     pub input: Vec<u8>,
     pub integration: Option<String>,
-    pub opencode: Option<OpenCodeConversation>,
 }
 
-pub struct OpenCodeConversation {
-    pub prompt: String,
-    /// A saved continuation/session option must not be replaced by a fresh session.
-    pub reuse: bool,
-    pub model: Option<String>,
-    pub agent: Option<String>,
-}
-
-type ConversationInput = dyn Fn(&str, &str, &gpui::App) -> Result<ConversationLaunch, String>;
-pub struct ConversationAgents(Box<ConversationInput>);
-impl ConversationAgents {
-    pub fn new(
-        prepare: impl Fn(&str, &str, &gpui::App) -> Result<ConversationLaunch, String> + 'static,
-    ) -> Self {
+type InboxInput = dyn Fn(&str, &gpui::App) -> Result<InboxLaunch, String>;
+pub struct InboxAgents(Box<InboxInput>);
+impl InboxAgents {
+    pub fn new(prepare: impl Fn(&str, &gpui::App) -> Result<InboxLaunch, String> + 'static) -> Self {
         Self(Box::new(prepare))
     }
-    pub fn prepare(
-        &self,
-        name: &str,
-        prompt: &str,
-        cx: &gpui::App,
-    ) -> Result<ConversationLaunch, String> {
-        (self.0)(name, prompt, cx)
+    pub fn prepare(&self, name: &str, cx: &gpui::App) -> Result<InboxLaunch, String> {
+        (self.0)(name, cx)
     }
 }
 

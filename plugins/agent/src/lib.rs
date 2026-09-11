@@ -63,7 +63,7 @@ impl Plugin for AgentPlugin {
     }
 
     fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
-        use chartr_plugin::services::{Agents, ConversationAgents, ServiceExport};
+        use chartr_plugin::services::{Agents, InboxAgents, ServiceExport};
         let listing = self.registry.downgrade();
         let preparing = listing.clone();
         let conversations = listing.clone();
@@ -91,7 +91,7 @@ impl Plugin for AgentPlugin {
                     opening_input(agent, prompt)
                 },
             )),
-            ServiceExport::new(ConversationAgents::new(move |name, prompt, cx| {
+            ServiceExport::new(InboxAgents::new(move |name, cx| {
                 let registry = conversations.upgrade().ok_or("Agent is unavailable.")?;
                 let registry = registry.read(cx);
                 if let Some(error) = &registry.problem {
@@ -102,7 +102,7 @@ impl Plugin for AgentPlugin {
                     .iter()
                     .find(|agent| agent.name == name)
                     .ok_or("The selected agent is no longer registered.")?;
-                conversation_input(agent, prompt)
+                inbox_input(agent)
             })),
         ]
     }
@@ -1057,70 +1057,10 @@ fn opening_input(agent: &AgentRecord, prompt: &str) -> Result<Vec<u8>, String> {
     Ok(input)
 }
 
-fn conversation_input(
-    agent: &AgentRecord,
-    prompt: &str,
-) -> Result<chartr_plugin::services::ConversationLaunch, String> {
-    let mut launch = agent.clone();
-    let program =
-        Path::new(agent.adapter.trim()).file_name().and_then(|s| s.to_str()).unwrap_or("");
-    let provider = chartr_agent::Provider::executable(program);
-    let integration = provider.map(|provider| provider.slug().to_owned());
-    if provider == Some(chartr_agent::Provider::OpenCode) {
-        // An explicit listener keeps subsequent chat input in this very TUI.
-        // Preserve user-specified networking options and every registered field.
-        for (flag, value) in [("--port", "0"), ("--hostname", "127.0.0.1")] {
-            if !launch.args.iter().any(|arg| arg == flag || arg.starts_with(&format!("{flag}="))) {
-                launch.args.extend([flag.to_owned(), value.to_owned()]);
-            }
-        }
-    }
-    let opencode = (provider == Some(chartr_agent::Provider::OpenCode)).then(|| {
-        chartr_plugin::services::OpenCodeConversation {
-            prompt: prompt.into(),
-            reuse: agent.args.iter().any(|arg| {
-                matches!(
-                    arg.as_str(),
-                    "--continue" | "-c" | "--session" | "-s" | "--prompt" | "attach"
-                ) || arg.starts_with("--session=")
-                    || arg.starts_with("--prompt=")
-            }),
-            model: registered_option(&agent.args, &["--model", "-m"]),
-            agent: registered_option(&agent.args, &["--agent"]),
-        }
-    });
-    let input = if provider == Some(chartr_agent::Provider::OpenCode) {
-        opening_input(&launch, "")?
-    } else if provider == Some(chartr_agent::Provider::Claude)
-        && resolved_delivery(program, &launch.delivery)? == PromptDelivery::Argument
-    {
-        // Claude's variadic options (e.g. --tools) otherwise consume a trailing
-        // opening prompt. Its positional prompt can precede these options.
-        launch.args.insert(0, prompt.to_owned());
-        opening_input(&launch, "")?
-    } else {
-        opening_input(&launch, prompt)?
-    };
-    Ok(chartr_plugin::services::ConversationLaunch { input, integration, opencode })
-}
-
-fn registered_option(args: &[String], flags: &[&str]) -> Option<String> {
-    args.iter().enumerate().rev().find_map(|(index, arg)| {
-        flags.iter().find_map(|flag| {
-            if arg == flag {
-                args.get(index + 1).cloned()
-            } else {
-                arg.strip_prefix(&format!("{flag}=")).map(str::to_owned)
-            }
-        })
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PromptDelivery {
-    Argument,
-    Typed,
-    Flag(String),
+fn inbox_input(agent: &AgentRecord) -> Result<chartr_plugin::services::InboxLaunch, String> {
+    let integration = chartr_agent::Provider::executable(agent.adapter.trim())
+        .map(|provider| provider.slug().to_owned());
+    Ok(chartr_plugin::services::InboxLaunch { input: opening_input(agent, "")?, integration })
 }
 
 fn resolved_delivery(program: &str, configured: &str) -> Result<PromptDelivery, String> {
@@ -1298,15 +1238,11 @@ mod tests {
                 let executable = format!("/opt/agents/{alias}");
                 let agent =
                     record(&executable, &["--profile", "saved"], &["AGENT_MODE=work"], "default");
-                let launch = conversation_input(&agent, "do the task").unwrap();
+                let launch = inbox_input(&agent).unwrap();
                 assert_eq!(launch.integration.as_deref(), Some(definition.slug));
                 let input = String::from_utf8(launch.input).unwrap();
                 assert!(input.contains(&shell_quoted(&executable)), "{alias}: {input}");
                 assert!(input.contains("saved") && input.contains("AGENT_MODE='work'"));
-                assert_eq!(
-                    launch.opencode.is_some(),
-                    definition.transport == chartr_agent::MessageTransport::OpenCodeApi
-                );
             }
         }
     }
@@ -1322,49 +1258,16 @@ mod tests {
     }
 
     #[test]
-    fn conversation_launch_keeps_profiles_and_adds_only_missing_opencode_transport_options() {
-        let prompt = "first line\nquote ' and $(not-a-command)";
-        for adapter in ["/opt/bin/codex", "custom-wrapper"] {
-            let agent =
-                record(adapter, &["--model", "saved-model"], &["TEST_VALUE=two words"], "argv");
-            assert_eq!(
-                conversation_input(&agent, prompt).unwrap().input,
-                opening_input(&agent, prompt).unwrap()
-            );
+    fn inbox_launch_preserves_registered_commands_without_chat_transport_options() {
+        for adapter in ["/opt/bin/codex", "claude", "opencode", "custom-wrapper"] {
+            let agent = record(adapter, &["--model", "saved model", "--session=saved"],
+                &["TEST_VALUE=two words"], "default");
+            let launch = inbox_input(&agent).unwrap();
+            assert_eq!(launch.input, opening_input(&agent, "").unwrap());
+            let input = String::from_utf8(launch.input).unwrap();
+            assert!(!input.contains("--port"));
+            assert!(!input.contains("--hostname"));
         }
-        let claude = record(
-            "claude",
-            &["--model", "saved-model", "--tools", ""],
-            &["TEST_VALUE=kept"],
-            "default",
-        );
-        let input =
-            String::from_utf8(conversation_input(&claude, "first prompt").unwrap().input).unwrap();
-        assert_eq!(
-            input,
-            "TEST_VALUE='kept' 'claude' 'first prompt' '--model' 'saved-model' '--tools' ''\r"
-        );
-        let mut agent =
-            record("opencode", &["--model", "saved/model"], &["TEST_VALUE=kept"], "default");
-        let launch = conversation_input(&agent, prompt).unwrap();
-        assert_eq!(launch.integration.as_deref(), Some("opencode"));
-        let input = String::from_utf8(launch.input).unwrap();
-        assert!(input.starts_with("TEST_VALUE='kept' 'opencode' "));
-        assert_eq!(launch.opencode.as_ref().unwrap().prompt, prompt);
-        assert_eq!(launch.opencode.as_ref().unwrap().model.as_deref(), Some("saved/model"));
-        assert!(!launch.opencode.as_ref().unwrap().reuse);
-        assert!(input.contains("'--model' 'saved/model' '--port' '0' '--hostname' '127.0.0.1'"));
-        assert_eq!(agent.args, vec!["--model", "saved/model"]);
-        agent.args.extend(["--port=54321".into(), "--hostname".into(), "localhost".into()]);
-        agent.delivery = "--prompt".into();
-        assert_eq!(
-            conversation_input(&agent, prompt).unwrap().input,
-            opening_input(&agent, "").unwrap()
-        );
-        agent.args.extend(["--session=ses_saved".into(), "--agent=plan".into()]);
-        let launch = conversation_input(&agent, prompt).unwrap();
-        assert!(launch.opencode.as_ref().unwrap().reuse);
-        assert_eq!(launch.opencode.as_ref().unwrap().agent.as_deref(), Some("plan"));
     }
 
     #[test]

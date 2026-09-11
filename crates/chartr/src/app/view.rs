@@ -7,6 +7,9 @@ impl Render for WorkspaceWindow {
         let ui_font = Fonts::setup_ui(window, cx);
         self.restore_plugins_once(window, cx);
         self.sync_conversation_spaces(cx);
+        if self.mode == Mode::Inbox {
+            self.sync_inbox_terminal(cx);
+        }
         let entries = self.entries(cx);
         let now = cx.background_executor().now();
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
@@ -15,7 +18,7 @@ impl Render for WorkspaceWindow {
         let (chrome_visibility, mode_animating) = self.mode_transition.advance(
             self.mode,
             now,
-            cx.reduce_motion() || self.mode == Mode::Conversations,
+            cx.reduce_motion() || self.mode == Mode::Inbox,
         );
         if mode_animating {
             window.request_animation_frame();
@@ -53,7 +56,7 @@ impl Render for WorkspaceWindow {
             .border_t_1()
             .border_l_1()
             .border_color(cx.theme().colors().border)
-            .child(if self.mode == Mode::Conversations {
+            .child(if self.mode == Mode::Inbox {
                 self.conversations.clone().into_any_element()
             } else {
                 self.workspace_pane(window, cx)
@@ -293,14 +296,14 @@ impl Render for WorkspaceWindow {
                 this.settings_set_mode(Mode::Tabs, cx)
             }))
             .on_action(cx.listener(|this, _: &actions::workspace::ConversationMode, _, cx| {
-                this.settings_set_mode(Mode::Conversations, cx)
+                this.settings_set_mode(Mode::Inbox, cx)
             }))
             .on_action(cx.listener(|this, _: &actions::workspace::CycleViewMode, _, cx| {
                 this.settings_set_mode(
                     match this.mode {
-                        Mode::Tabs => Mode::Conversations,
+                        Mode::Tabs => Mode::Inbox,
                         Mode::Sidebar => Mode::Tabs,
-                        Mode::Conversations => Mode::Sidebar,
+                        Mode::Inbox => Mode::Sidebar,
                     },
                     cx,
                 )

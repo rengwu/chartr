@@ -5,7 +5,6 @@ use super::*;
 impl WorkspaceWindow {
     /// Apply the explicit exit policy before the window releases its spaces.
     pub fn apply_exit_policy(&mut self, cx: &mut Context<Self>) {
-        self.conversations.update(cx, |view, _| view.flush_drafts());
         if !self.settings.resolved().terminate_sessions_on_exit {
             return;
         }

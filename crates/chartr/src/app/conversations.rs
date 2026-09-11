@@ -3,6 +3,28 @@ use crate::conversations::Event;
 use chartr_conversations::{NativeSession, Observation, Provider, Status};
 
 impl WorkspaceWindow {
+    pub(super) fn sync_inbox_terminal(&mut self, cx: &mut Context<Self>) {
+        let inbox = self.conversations.read(cx);
+        let target = inbox.selected_runtime().and_then(|runtime| {
+            let pane = chartr_herdr::PaneId(runtime.to_owned());
+            let item = self.spaces.iter().find_map(|space| space.read(cx).session_item(&pane))?;
+            if let Some(row) = inbox.selected_row()
+                && !matches_session(row, &item.session.info)
+            {
+                return Some((None, Some("Session ended. This conversation remains in Inbox.".to_owned())));
+            }
+            if item.session.ended().is_some() {
+                return Some((None, Some("Session ended. This conversation remains in Inbox.".to_owned())));
+            }
+            if let Some(lease) = self.companion_leases.get(runtime) {
+                return Some((None, Some(format!("Viewing on mobile · {} × {}", lease.columns, lease.rows))));
+            }
+            Some((item.terminal_view(), None))
+        });
+        let (view, notice) = target.unwrap_or_default();
+        self.conversations.update(cx, |inbox, cx| inbox.set_terminal(view, notice, cx));
+    }
+
     pub(super) fn sync_conversation_spaces(&mut self, cx: &mut Context<Self>) {
         let choices = self
             .spaces
@@ -30,7 +52,6 @@ impl WorkspaceWindow {
         cx: &mut Context<Self>,
     ) {
         self.conversations.update(cx, |view, _| {
-            view.set_terminal_client(self.client.clone());
             view.set_agent_services(self.catalog.services.clone());
         });
         if let Some(client) = self.client.clone()
@@ -108,31 +129,6 @@ impl WorkspaceWindow {
     ) {
         match event {
             Event::SelectionChanged => self.schedule_persistence(cx),
-            Event::ShowTerminal(runtime) => {
-                let pane = chartr_herdr::PaneId(runtime.clone());
-                let target = self
-                    .spaces
-                    .iter()
-                    .find(|space| space.read(cx).session_access(&pane).is_some())
-                    .cloned();
-                if let Some(space) = target {
-                    space.update(cx, |space, cx| {
-                        space.activate_session(&pane, cx);
-                    });
-                    self.active = Some(space);
-                    let mode = if self.terminal_mode == Mode::Conversations {
-                        Mode::Sidebar
-                    } else {
-                        self.terminal_mode
-                    };
-                    self.settings_set_mode(mode, cx);
-                    self.focus_active_terminal(window, cx);
-                } else {
-                    self.conversations.update(cx, |view, cx| {
-                        view.report(Err("The original terminal is no longer available.".into()), cx)
-                    });
-                }
-            }
             Event::EnableIntegration(provider) => {
                 let provider = *provider;
                 let Some(client) = self.client.clone() else {
@@ -163,8 +159,8 @@ impl WorkspaceWindow {
                 })
                 .detach();
             }
-            Event::LaunchAgent { name, prompt, space } => {
-                self.new_agent_conversation(name.clone(), prompt.clone(), space.clone(), window, cx)
+            Event::LaunchAgent { name, space } => {
+                self.new_agent_conversation(name.clone(), space.clone(), window, cx)
             }
             Event::ManageAgents => {
                 if let Some(handle) = window.window_handle().downcast::<Self>() {
@@ -183,7 +179,6 @@ impl WorkspaceWindow {
     fn new_agent_conversation(
         &mut self,
         name: String,
-        prompt: String,
         space_key: String,
         window: &Window,
         cx: &mut Context<Self>,
@@ -201,7 +196,7 @@ impl WorkspaceWindow {
                 .cloned()
                 .ok_or("The selected space is no longer available. Choose a space again.")?;
             let launch =
-                prepare_registered_conversation(&self.catalog.services, &name, &prompt, cx)?;
+                prepare_registered_conversation(&self.catalog.services, &name, cx)?;
             Ok::<_, String>((client, space, launch))
         })();
         let (client, space, launch) = match preparation {
@@ -212,7 +207,6 @@ impl WorkspaceWindow {
             }
         };
         let executor = cx.background_executor().clone();
-        let cwd = space.read(cx).path().clone();
         let window_handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let install_client = client.clone();
@@ -232,7 +226,7 @@ impl WorkspaceWindow {
                     else { Err("The selected space was removed before launch.".to_owned()) }
                 }).map_err(|e| e.to_string())??;
                 this.update(cx, |this, cx| {
-                    prepare_registered_conversation(&this.catalog.services, &name, &prompt, cx)
+                    prepare_registered_conversation(&this.catalog.services, &name, cx)
                 }).map_err(|e| e.to_string())??;
                 let terminal =
                     space.update(cx, |space, cx| space.prepare_plugin_session(cx)).await?;
@@ -246,16 +240,9 @@ impl WorkspaceWindow {
                         view.launch_allocated(&name, &terminal.id, cx)
                     });
                     // Resolve again after async startup: disabled/deleted profiles must not run.
-                    prepare_registered_conversation(&this.catalog.services, &name, &prompt, cx)
+                    prepare_registered_conversation(&this.catalog.services, &name, cx)
                 }).map_err(|e| e.to_string())??;
                 terminal.send(&launch.input)?;
-                if let Some(options) = launch.opencode {
-                    let pane = chartr_herdr::PaneId(terminal.id.clone());
-                    executor.spawn(async move {
-                        initialize_registered_opencode(&client, &pane, &cwd, options)
-                            .map_err(|e| format!("{e}. Open its terminal to continue; your opening message is retained."))
-                    }).await?;
-                }
                 this.update(cx, |this, cx| {
                     this.conversations.update(cx, |view, cx| {
                         view.launch_started(&name, &terminal.id, cx)
@@ -276,101 +263,26 @@ impl WorkspaceWindow {
 fn prepare_registered_conversation(
     services: &chartr_plugin::services::Services,
     name: &str,
-    prompt: &str,
     cx: &App,
-) -> Result<chartr_plugin::services::ConversationLaunch, String> {
-    use chartr_plugin::services::{AGENT_SERVICE, Agents, ConversationAgents, ConversationLaunch};
-    if let Some(service) = services.get::<ConversationAgents>(AGENT_SERVICE) {
-        return service.prepare(name, prompt, cx);
+) -> Result<chartr_plugin::services::InboxLaunch, String> {
+    use chartr_plugin::services::{AGENT_SERVICE, Agents, InboxAgents, InboxLaunch};
+    if let Some(service) = services.get::<InboxAgents>(AGENT_SERVICE) {
+        return service.prepare(name, cx);
     }
-    let service =
-        services.get::<Agents>(AGENT_SERVICE).ok_or("Enable Agent and register an agent first.")?;
-    Ok(ConversationLaunch {
-        input: service.prepare(name, prompt, cx)?,
-        integration: None,
-        opencode: None,
-    })
+    let service = services.get::<Agents>(AGENT_SERVICE)
+        .ok_or("Enable Agent and register an agent first.")?;
+    Ok(InboxLaunch { input: service.prepare(name, "", cx)?, integration: None })
 }
 
-/// Bootstrap only the terminal we just allocated. Native IDs are never guessed
-/// from a provider's most recent transcript or another pane in the same folder.
-fn initialize_registered_opencode(
-    client: &chartr_herdr::control::Client,
-    pane: &chartr_herdr::PaneId,
-    cwd: &std::path::Path,
-    options: chartr_plugin::services::OpenCodeConversation,
-) -> anyhow::Result<()> {
-    use chartr_conversations::{OpenCode, endpoints_for_process};
-    use std::time::{Duration, Instant};
-    let deadline = Instant::now() + Duration::from_secs(25);
-    let (pid, adapter) = loop {
-        if let Some(pid) = client.foreground_pid(pane)? {
-            if let Some(adapter) = endpoints_for_process(pid)?
-                .iter()
-                .filter_map(|endpoint| OpenCode::new(endpoint, cwd).ok())
-                .find(|adapter| adapter.health().is_ok())
-            {
-                break (pid, adapter);
-            }
-        }
-        anyhow::ensure!(Instant::now() < deadline, "OpenCode's local connection is not ready");
-        std::thread::sleep(Duration::from_millis(150));
-    };
-    let native = if options.reuse {
-        loop {
-            if let Some(native) = client
-                .sessions(None)?
-                .into_iter()
-                .find(|session| &session.id == pane)
-                .and_then(|session| session.agent_session)
-                .filter(|native| native.agent == "opencode" && native.kind == "id")
-            {
-                break native.value;
-            }
-            anyhow::ensure!(
-                Instant::now() < deadline,
-                "The saved OpenCode session has not connected"
-            );
-            std::thread::sleep(Duration::from_millis(150));
-        }
-    } else {
-        loop {
-            let screen = client.read_visible(pane)?;
-            if screen.contains("tab agents") || screen.contains("Ask anything") {
-                break;
-            }
-            anyhow::ensure!(Instant::now() < deadline, "OpenCode needs setup in its terminal");
-            std::thread::sleep(Duration::from_millis(150));
-        }
-        let native = adapter.create()?;
-        let title = adapter.read(&native)?.0;
-        adapter.select(&native)?;
-        let selection_deadline = Instant::now() + Duration::from_secs(5);
-        while !client.read_visible(pane)?.contains(&title) {
-            anyhow::ensure!(
-                Instant::now() < selection_deadline,
-                "OpenCode did not select the new conversation"
-            );
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        anyhow::ensure!(
-            client.foreground_pid(pane)? == Some(pid),
-            "The original OpenCode process changed"
-        );
-        client.report_opencode_session(pane, &native)?;
-        native
-    };
-    anyhow::ensure!(
-        client.foreground_pid(pane)? == Some(pid),
-        "The original OpenCode process changed"
-    );
-    adapter.ready(&native)?;
-    adapter.send_with_options(
-        &native,
-        &OpenCode::message_id(),
-        &options.prompt,
-        options.model.as_deref(),
-        options.agent.as_deref(),
-    )?;
-    Ok(())
+/// Reused panes must never expose another native conversation through an old row.
+fn matches_session(row: &chartr_conversations::Conversation, session: &chartr_herdr::control::Session) -> bool {
+    row.runtime.as_deref() == Some(&session.id.0)
+        && row.terminal.as_deref() == Some(&session.terminal.0)
+        && session.agent.as_deref().and_then(Provider::detect) == Some(row.provider)
+        && row.native.as_ref().is_none_or(|native| {
+            session.agent_session.as_ref().is_some_and(|identity| {
+                identity.kind == "id" && identity.value == native.id
+                    && Provider::detect(&identity.agent) == Some(row.provider)
+            })
+        })
 }
