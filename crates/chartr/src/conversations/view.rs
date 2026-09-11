@@ -1,6 +1,6 @@
 use super::integrations::Setup;
 use super::*;
-use gpui::{AnyElement, MouseButton, SharedString, div, px};
+use gpui::{AnyElement, MouseButton, SharedString, Window, div, px};
 use ui::{Button, ButtonSize, ButtonStyle, IconButton, Tooltip, prelude::*};
 
 gpui::actions!(chartr_inbox, [FocusSearch]);

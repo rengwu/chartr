@@ -1,7 +1,7 @@
 use super::scope::choice_label;
 use super::*;
 use chartr_plugin::services::{AGENT_SERVICE, Agents, Services};
-use gpui::{Anchor, AnyElement, SharedString, div, px};
+use gpui::{Anchor, AnyElement, Window, px};
 use ui::{Button, ButtonStyle, IconButton, Tooltip, prelude::*};
 
 impl Conversations {

@@ -1307,13 +1307,10 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "chartr-agent",
- "chartr-herdr",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
- "ureq",
- "url",
 ]
 
 [[package]]

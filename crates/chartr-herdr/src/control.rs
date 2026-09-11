@@ -8,9 +8,6 @@
 //! runs them on a background executor and delivers the answer back. This crate
 //! does not decide that for them.
 
-mod conversation_input;
-pub use conversation_input::{AgentInputTarget, InputFailure};
-
 use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, BufReader, Write},
@@ -175,38 +172,6 @@ impl Client {
             }),
         )?;
         Ok(())
-    }
-
-    /// Report an identity obtained from the same runtime's verified local API.
-    pub fn report_opencode_session(&self, pane: &PaneId, native_id: &str) -> Result<()> {
-        // Herdr acknowledges receipt before process detection necessarily grants
-        // identity authority. Read back the binding instead of assuming acceptance.
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            let _: serde_json::Value = self.call(
-                "pane.report_agent_session",
-                &serde_json::json!({
-                    "pane_id": pane.0, "source": "herdr:opencode", "agent": "opencode",
-                    "agent_session_id": native_id, "session_start_source": "select"
-                }),
-            )?;
-            let list: PaneList = self.call("pane.list", &PaneListParams { workspace_id: None })?;
-            if list
-                .panes
-                .iter()
-                .find(|p| p.pane_id == pane.0)
-                .and_then(|p| p.agent_session.as_ref())
-                .is_some_and(|s| s.value == native_id)
-            {
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                return Err(Error::Protocol(
-                    "The agent started, but its conversation identity could not be verified".into(),
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(150));
-        }
     }
 
     pub fn agent_integrations(&self) -> Result<Vec<protocol::IntegrationInfo>> {

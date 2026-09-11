@@ -41,6 +41,9 @@ own tools that live alongside your agents.
   terminal service health, and Companion sharing/connections even after its pane closes.
   Click a service for controls; restore the bar in Settings → General or with
   “Workspace: Toggle status bar” in the command palette.
+- **Inbox** — Browse detected agent sessions in a searchable history sidebar,
+  with the selected session’s original terminal on the right. Rename, archive,
+  and launch agents without leaving the view. [Inbox details](docs/conversations.md).
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
 - **Tools beside your terminals** — Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder are

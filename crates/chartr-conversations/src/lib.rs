@@ -1,21 +1,18 @@
 //! Conversation identity and provider observations, independent of pane layout.
 //!
 //! This crate never starts, stops or owns a terminal. The host supplies verified
-//! runtime observations and adapters address the conversation already running.
+//! runtime observations; read-only local adapters supply sidebar titles and recency.
 
-mod opencode;
 mod store;
 mod transcripts;
 
-pub use opencode::OpenCode;
-pub use opencode::endpoints_for_process;
 pub use store::Store;
 pub use transcripts::ProviderPaths;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub use chartr_agent::{MessageTransport, Provider};
+pub use chartr_agent::Provider;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeSession {
@@ -66,34 +63,6 @@ pub struct Message {
     pub complete: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Request {
-    Question { id: String, prompt: String, options: Vec<(String, String)> },
-    Permission { id: String, permission: String, patterns: Vec<String> },
-    TerminalRequired,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Delivery {
-    pub message_id: String,
-    pub text: String,
-    #[serde(default)]
-    pub prior_user_messages: Option<Vec<String>>,
-}
-
-impl Delivery {
-    pub fn matches(&self, message: &Message) -> bool {
-        match &self.prior_user_messages {
-            Some(prior) => {
-                message.role == Role::User
-                    && !prior.contains(&message.id)
-                    && message.text.trim_end() == self.text.trim_end()
-            }
-            None => message.id == self.message_id,
-        }
-    }
-}
-
 /// The owning Chartr space, independent of the CLI's working directory.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpaceIdentity {
@@ -116,7 +85,8 @@ pub struct Conversation {
     pub archived: bool,
     pub messages: Vec<Message>,
     #[serde(default)]
-    pub delivery: Option<Delivery>,
+    // Preserve legacy chat receipts without retaining an input transport.
+    pub delivery: Option<serde_json::Value>,
     /// Only reconciled, live observations grant a runtime or an input route.
     #[serde(skip)]
     pub runtime: Option<String>,
@@ -125,26 +95,12 @@ pub struct Conversation {
     #[serde(skip)]
     pub status: Status,
     #[serde(skip)]
-    pub endpoint: Option<String>,
-    #[serde(skip)]
     pub problem: Option<String>,
-    #[serde(skip)]
-    pub requests: Vec<Request>,
 }
 
 impl Conversation {
     pub fn display_title(&self) -> &str {
         self.custom_title.as_deref().unwrap_or(&self.title)
-    }
-
-    pub fn can_send(&self) -> bool {
-        (self.provider.transport() == MessageTransport::TerminalPrompt
-            || (self.provider.transport() == MessageTransport::OpenCodeApi
-                && self.endpoint.is_some()))
-            && self.native.is_some()
-            && self.runtime.is_some()
-            && self.status == Status::Idle
-            && self.delivery.is_none()
     }
 
     pub fn matches(&self, query: &str) -> bool {

@@ -4,6 +4,9 @@ use super::*;
 
 impl WorkspaceWindow {
     fn active_terminal(&self, cx: &App) -> Option<Entity<terminal::Terminal>> {
+        if self.mode == Mode::Inbox {
+            return self.conversations.read(cx).terminal(cx);
+        }
         self.active
             .as_ref()
             .and_then(|space| {
@@ -15,9 +18,6 @@ impl WorkspaceWindow {
     }
 
     pub(super) fn toggle_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.mode == Mode::Inbox {
-            return;
-        }
         if self.terminal_search_open {
             self.close_terminal_search(window, cx);
             return;

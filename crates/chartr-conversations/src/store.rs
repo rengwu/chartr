@@ -1,8 +1,5 @@
-use crate::{
-    Conversation, Observation, OpenCode, Provider, ProviderPaths, Status,
-    opencode::endpoints_for_process, transcripts::Reader,
-};
-use anyhow::{Context, Result, ensure};
+use crate::{Conversation, Observation, ProviderPaths, Status, transcripts::Reader};
+use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
 use std::{collections::HashMap, path::Path, time::Duration};
 
@@ -12,11 +9,8 @@ pub struct Store {
     rows: HashMap<String, Conversation>,
     runtimes: HashMap<String, String>,
     aliases: HashMap<String, String>,
-    observations: HashMap<String, Observation>,
     paths: ProviderPaths,
     reader: Reader,
-    draft_versions: HashMap<String, u64>,
-    verified_at: Option<std::time::Instant>,
 }
 
 impl Store {
@@ -47,11 +41,8 @@ impl Store {
             rows,
             runtimes: HashMap::new(),
             aliases: HashMap::new(),
-            observations: HashMap::new(),
             paths,
             reader: Reader::default(),
-            draft_versions: HashMap::new(),
-            verified_at: None,
         })
     }
 
@@ -78,13 +69,10 @@ impl Store {
     pub fn reconcile(&mut self, observations: Vec<Observation>, now: u64) -> Result<()> {
         let previous = self.runtimes.clone();
         self.runtimes.clear();
-        self.observations.clear();
         for row in self.rows.values_mut() {
             row.runtime = None;
             row.terminal = None;
-            row.endpoint = None;
             row.status = Status::Ended;
-            row.requests.clear();
         }
         for observation in observations {
             let provider = observation.provider;
@@ -112,9 +100,7 @@ impl Store {
                 runtime: None,
                 terminal: None,
                 status: Status::Unknown,
-                endpoint: None,
                 problem: None,
-                requests: Vec::new(),
             });
             let promoted = previous
                 .get(&observation.runtime)
@@ -147,6 +133,10 @@ impl Store {
             }
             row.native = observation.native.clone();
             row.problem = None;
+            if let Some(title) = observation.title.as_ref().filter(|title| !title.trim().is_empty())
+            {
+                row.title = title.clone();
+            }
             if let Some(native) = &observation.native {
                 match self.reader.read(provider, native, &self.paths) {
                     Ok(transcript) => {
@@ -167,54 +157,8 @@ impl Store {
                     }
                     Err(error) => row.problem = Some(error.to_string()),
                 }
-                if provider == Provider::OpenCode
-                    && let (Some(pid), Some(cwd)) = (observation.pid, observation.cwd.as_deref())
-                {
-                    if let Ok(endpoints) = endpoints_for_process(pid) {
-                        for endpoint in endpoints {
-                            let Ok(client) = OpenCode::new(&endpoint, cwd) else { continue };
-                            if client.health().is_err() {
-                                continue;
-                            }
-                            if let Ok((title, status, mut messages)) = client.read(&native.id) {
-                                let Ok(requests) = client.pending(&native.id) else { continue };
-                                crate::transcripts::bound_messages(&mut messages);
-                                if messages.iter().filter(|m| m.role == crate::Role::User).count()
-                                    > row
-                                        .messages
-                                        .iter()
-                                        .filter(|m| m.role == crate::Role::User)
-                                        .count()
-                                {
-                                    row.updated = now;
-                                }
-                                row.title = if title.starts_with("New session - ") {
-                                    crate::prompt_title(&messages)
-                                        .unwrap_or_else(|| "New OpenCode conversation".into())
-                                } else {
-                                    title
-                                };
-                                row.messages = messages;
-                                row.status =
-                                    if !requests.is_empty() { Status::Waiting } else { status };
-                                row.endpoint = Some(endpoint);
-                                row.requests = requests;
-                                row.problem = None;
-                                break;
-                            }
-                        }
-                    }
-                }
             } else {
                 row.problem = Some("Enable the agent integration, then start or resume a conversation in its terminal.".to_owned());
-            }
-            if let Some(delivery) = &row.delivery {
-                if row.messages.iter().any(|message| delivery.matches(message)) {
-                    if row.draft == delivery.text {
-                        row.draft.clear();
-                    }
-                    row.delivery = None;
-                }
             }
             if let Some(old_id) = promoted {
                 let transaction = self.db.transaction()?;
@@ -223,17 +167,12 @@ impl Store {
                 transaction.commit()?;
                 self.rows.remove(&old_id);
                 self.aliases.insert(old_id.clone(), id.clone());
-                if let Some(version) = self.draft_versions.remove(&old_id) {
-                    self.draft_versions.insert(id.clone(), version);
-                }
             } else {
                 self.save_if_changed(&row)?;
             }
             self.runtimes.insert(observation.runtime.clone(), id.clone());
-            self.observations.insert(observation.runtime.clone(), observation);
             self.rows.insert(id, row);
         }
-        self.verified_at = Some(std::time::Instant::now());
         Ok(())
     }
 
@@ -257,21 +196,6 @@ impl Store {
         Ok(())
     }
 
-    pub fn set_draft(&mut self, id: &str, draft: String) -> Result<()> {
-        ensure!(draft.len() <= 1024 * 1024, "Draft is too large");
-        self.edit(id, |row| row.draft = draft)
-    }
-
-    pub fn set_draft_version(&mut self, id: &str, draft: String, version: u64) -> Result<()> {
-        let id = self.resolve_id(id);
-        if self.draft_versions.get(&id).is_some_and(|saved| *saved > version) {
-            return Ok(());
-        }
-        self.set_draft(&id, draft)?;
-        self.draft_versions.insert(id, version);
-        Ok(())
-    }
-
     pub fn rename(&mut self, id: &str, title: String) -> Result<()> {
         let title = title.trim().chars().take(150).collect::<String>();
         self.edit(id, |row| row.custom_title = (!title.is_empty()).then_some(title))
@@ -280,83 +204,12 @@ impl Store {
     pub fn archive(&mut self, id: &str, archived: bool) -> Result<()> {
         self.edit(id, |row| row.archived = archived)
     }
-
-    pub fn begin_delivery(&mut self, id: &str, message_id: String, text: String) -> Result<()> {
-        ensure!(
-            self.get(id).is_some_and(|row| row.delivery.is_none()),
-            "Resolve the previous delivery before sending again"
-        );
-        self.edit(id, |row| {
-            row.delivery = Some(crate::Delivery { message_id, text, prior_user_messages: None })
-        })
-    }
-
-    pub fn begin_terminal_delivery(
-        &mut self,
-        id: &str,
-        message_id: String,
-        text: String,
-    ) -> Result<()> {
-        ensure!(
-            self.get(id).is_some_and(|row| row.delivery.is_none()),
-            "Resolve the previous delivery before sending again"
-        );
-        self.edit(id, |row| {
-            let prior_user_messages = Some(
-                row.messages
-                    .iter()
-                    .filter(|m| m.role == crate::Role::User)
-                    .map(|m| m.id.clone())
-                    .collect(),
-            );
-            row.delivery = Some(crate::Delivery { message_id, text, prior_user_messages });
-        })
-    }
-
-    pub fn terminal_target(&self, id: &str) -> Result<Observation> {
-        ensure!(
-            self.verified_at.is_some_and(|at| at.elapsed() < Duration::from_secs(10)),
-            "Waiting for a fresh terminal observation"
-        );
-        let row = self.get(id).context("Conversation no longer exists")?;
-        ensure!(
-            row.provider.transport() == chartr_agent::MessageTransport::TerminalPrompt
-                && row.native.is_some(),
-            "This conversation has no terminal input binding"
-        );
-        let runtime = row.runtime.as_ref().context("This conversation is no longer running")?;
-        self.observations.get(runtime).cloned().context("The runtime is unavailable")
-    }
-
-    pub fn confirm_delivery(&mut self, id: &str) -> Result<()> {
-        self.edit(id, |row| row.delivery = None)
-    }
-
-    pub fn live_client(&self, id: &str) -> Result<(OpenCode, String)> {
-        ensure!(
-            self.verified_at.is_some_and(|at| at.elapsed() < Duration::from_secs(10)),
-            "Waiting for a fresh terminal observation"
-        );
-        let row = self.get(id).context("Conversation no longer exists")?;
-        let runtime = row.runtime.as_ref().context("This conversation is no longer running")?;
-        let observation = self.observations.get(runtime).context("The runtime is unavailable")?;
-        let pid = observation.pid.context("The running agent could not be verified")?;
-        let endpoint =
-            row.endpoint.as_ref().context("Continue this conversation in terminal mode")?;
-        ensure!(
-            endpoints_for_process(pid)?.contains(endpoint),
-            "The agent's local connection changed; wait for it to reconnect"
-        );
-        let native = row.native.as_ref().context("Conversation identity is unavailable")?;
-        let cwd = row.cwd.as_deref().context("Conversation directory is unavailable")?;
-        Ok((OpenCode::new(endpoint, cwd)?, native.id.clone()))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::NativeSession;
+    use crate::{NativeSession, Provider};
 
     fn observation(runtime: &str, native: Option<&str>) -> Observation {
         Observation {
@@ -405,47 +258,28 @@ mod tests {
     }
 
     #[test]
-    fn terminal_delivery_requires_a_new_matching_user_item_and_survives_reopen() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut store = Store::open(&dir.path().join("db"), paths(dir.path())).unwrap();
-        store.reconcile(vec![observation("one", Some("a"))], 1).unwrap();
-        let id = store.for_runtime("one").unwrap().to_owned();
-        let old = crate::Message {
-            id: "old".into(),
-            role: crate::Role::User,
-            text: "repeat".into(),
-            complete: true,
-        };
-        store.edit(&id, |row| row.messages.push(old.clone())).unwrap();
-        store.begin_terminal_delivery(&id, "delivery".into(), "repeat".into()).unwrap();
-        drop(store);
-        let store = Store::open(&dir.path().join("db"), paths(dir.path())).unwrap();
-        let delivery = store.get(&id).unwrap().delivery.as_ref().unwrap();
-        assert!(!delivery.matches(&old));
-        assert!(!delivery.matches(&crate::Message {
-            id: "new".into(),
-            role: crate::Role::Assistant,
-            ..old.clone()
-        }));
-        assert!(delivery.matches(&crate::Message { id: "new".into(), ..old }));
-    }
-
-    #[test]
-    fn delayed_draft_writes_cannot_overwrite_shutdown_and_uncertain_sends_survive_restart() {
+    fn legacy_chat_data_is_retained_without_replaying_it() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("db");
         let mut store = Store::open(&file, paths(dir.path())).unwrap();
         store.reconcile(vec![observation("one", Some("a"))], 1).unwrap();
         let id = store.for_runtime("one").unwrap().to_owned();
-        store.set_draft_version(&id, "latest".into(), 2).unwrap();
-        store.set_draft_version(&id, "old background write".into(), 1).unwrap();
-        store.begin_delivery(&id, "msg_123".into(), "Unconfirmed message".into()).unwrap();
+        store
+            .edit(&id, |row| {
+                row.draft = "unsent draft".into();
+                row.delivery = Some(serde_json::json!({"message_id":"old", "text":"old send"}));
+            })
+            .unwrap();
+        store.reconcile(vec![observation("one", Some("a"))], 2).unwrap();
+        store.archive(&id, true).unwrap();
         drop(store);
         let store = Store::open(&file, paths(dir.path())).unwrap();
         let row = store.get(&id).unwrap();
-        assert_eq!(row.draft, "latest");
-        assert_eq!(row.delivery.as_ref().unwrap().text, "Unconfirmed message");
-        assert!(!row.can_send());
+        assert_eq!(row.draft, "unsent draft");
+        assert_eq!(row.delivery.as_ref().unwrap()["text"], "old send");
+        assert!(row.archived);
+        assert_eq!(row.status, Status::Ended);
+        assert!(row.runtime.is_none());
     }
 
     #[test]
@@ -459,7 +293,7 @@ mod tests {
         let a = store.for_runtime("one").unwrap().to_owned();
         let b = store.for_runtime("two").unwrap().to_owned();
         assert_ne!(a, b);
-        store.set_draft(&a, "keep draft".into()).unwrap();
+        store.edit(&a, |row| row.draft = "keep draft".into()).unwrap();
         store.rename(&a, "Human title".into()).unwrap();
         store
             .reconcile(vec![observation("one", Some("new")), observation("three", Some("a"))], 2)
@@ -472,7 +306,6 @@ mod tests {
         drop(store);
         let reopened = Store::open(&file, paths(dir.path())).unwrap();
         assert_eq!(reopened.get(&a).unwrap().draft, "keep draft");
-        assert!(!reopened.get(&a).unwrap().can_send());
         assert!(reopened.get(&a).unwrap().runtime.is_none());
     }
 
@@ -482,7 +315,7 @@ mod tests {
         let mut store = Store::open(&dir.path().join("db"), paths(dir.path())).unwrap();
         store.reconcile(vec![observation("one", None)], 1).unwrap();
         let old = store.for_runtime("one").unwrap().to_owned();
-        store.set_draft(&old, "draft".into()).unwrap();
+        store.edit(&old, |row| row.draft = "draft".into()).unwrap();
         store.reconcile(vec![observation("one", Some("a"))], 2).unwrap();
         assert_eq!(store.list().len(), 1);
         assert_ne!(store.resolve_id(&old), old);

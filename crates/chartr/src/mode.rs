@@ -144,3 +144,13 @@ mod tests {
         assert_eq!(transition.advance(Mode::Sidebar, now, true), (Mode::Sidebar.into(), false));
     }
 }
+
+#[cfg(test)]
+mod inbox_migration_tests {
+    use super::*;
+    #[test]
+    fn conversations_preferences_migrate_to_inbox() {
+        assert_eq!(serde_json::from_str::<Mode>("\"conversations\"").unwrap(), Mode::Inbox);
+        assert_eq!(serde_json::to_string(&Mode::Inbox).unwrap(), "\"inbox\"");
+    }
+}

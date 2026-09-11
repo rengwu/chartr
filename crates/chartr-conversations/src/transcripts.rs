@@ -1,4 +1,4 @@
-use crate::{Message, NativeSession, Provider, Role, opencode};
+use crate::{Message, NativeSession, Provider, Role};
 use anyhow::{Context, Result, bail, ensure};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
@@ -323,7 +323,7 @@ fn read_opencode(path: &Path, id: &str) -> Result<Transcript> {
             .collect::<Result<Vec<_>>>()?;
         data.push(json!({"info": info, "parts": parts}));
     }
-    let mut messages = opencode::parse_messages(&json!(data))?;
+    let mut messages = parse_opencode_messages(&json!(data))?;
     bound_messages(&mut messages);
     Ok(Transcript { title: Some(title), messages })
 }
@@ -373,4 +373,45 @@ mod tests {
         );
         assert!(find_exact_transcript(root.path(), "b", Provider::Claude).is_err());
     }
+}
+
+fn parse_opencode_messages(value: &Value) -> Result<Vec<Message>> {
+    let records = value.as_array().context("Unsupported OpenCode message format")?;
+    let mut messages = Vec::new();
+    for record in records {
+        let info = &record["info"];
+        let Some(id) = info["id"].as_str() else { continue };
+        let role = match info["role"].as_str() {
+            Some("user") => Role::User,
+            Some("assistant") => Role::Assistant,
+            _ => continue,
+        };
+        let Some(parts) = record["parts"].as_array() else { continue };
+        let text = parts
+            .iter()
+            .filter(|p| p["type"] == "text" && p["synthetic"] != true)
+            .filter_map(|p| p["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !text.is_empty() {
+            messages.push(Message {
+                id: id.to_owned(),
+                role,
+                text,
+                complete: role == Role::User || info["time"]["completed"].is_number(),
+            });
+        }
+        for part in parts.iter().filter(|p| p["type"] == "tool") {
+            let state = &part["state"];
+            let name = state["title"].as_str().or(part["tool"].as_str()).unwrap_or("Tool");
+            let output = state["output"].as_str().or(state["error"].as_str()).unwrap_or("");
+            messages.push(Message {
+                id: part["id"].as_str().unwrap_or(id).to_owned(),
+                role: Role::Tool,
+                text: format!("{name}\n{output}"),
+                complete: matches!(state["status"].as_str(), Some("completed" | "error")),
+            });
+        }
+    }
+    Ok(messages)
 }

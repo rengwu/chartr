@@ -165,7 +165,9 @@ pub struct InboxLaunch {
 type InboxInput = dyn Fn(&str, &gpui::App) -> Result<InboxLaunch, String>;
 pub struct InboxAgents(Box<InboxInput>);
 impl InboxAgents {
-    pub fn new(prepare: impl Fn(&str, &gpui::App) -> Result<InboxLaunch, String> + 'static) -> Self {
+    pub fn new(
+        prepare: impl Fn(&str, &gpui::App) -> Result<InboxLaunch, String> + 'static,
+    ) -> Self {
         Self(Box::new(prepare))
     }
     pub fn prepare(&self, name: &str, cx: &gpui::App) -> Result<InboxLaunch, String> {

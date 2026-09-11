@@ -1063,6 +1063,13 @@ fn inbox_input(agent: &AgentRecord) -> Result<chartr_plugin::services::InboxLaun
     Ok(chartr_plugin::services::InboxLaunch { input: opening_input(agent, "")?, integration })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PromptDelivery {
+    Argument,
+    Typed,
+    Flag(String),
+}
+
 fn resolved_delivery(program: &str, configured: &str) -> Result<PromptDelivery, String> {
     let configured = configured.trim();
     match configured {
@@ -1260,8 +1267,12 @@ mod tests {
     #[test]
     fn inbox_launch_preserves_registered_commands_without_chat_transport_options() {
         for adapter in ["/opt/bin/codex", "claude", "opencode", "custom-wrapper"] {
-            let agent = record(adapter, &["--model", "saved model", "--session=saved"],
-                &["TEST_VALUE=two words"], "default");
+            let agent = record(
+                adapter,
+                &["--model", "saved model", "--session=saved"],
+                &["TEST_VALUE=two words"],
+                "default",
+            );
             let launch = inbox_input(&agent).unwrap();
             assert_eq!(launch.input, opening_input(&agent, "").unwrap());
             let input = String::from_utf8(launch.input).unwrap();

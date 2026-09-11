@@ -47,6 +47,7 @@ impl Render for WorkspaceWindow {
 
         let workspace = v_flex()
             .id("mode-workspace")
+            .relative()
             .flex_1()
             .min_w_0()
             .h_full()
@@ -60,6 +61,9 @@ impl Render for WorkspaceWindow {
                 self.conversations.clone().into_any_element()
             } else {
                 self.workspace_pane(window, cx)
+            })
+            .when(self.mode == Mode::Inbox, |workspace| {
+                workspace.children(self.terminal_search_overlay(cx))
             });
 
         let tab_height = chrome::tabs::height(cx);

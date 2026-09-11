@@ -8,7 +8,7 @@ pub use view::init;
 
 use crate::text_input::{InputEvent, TextInput};
 use chartr_conversations::{Conversation, Observation, Provider, ProviderPaths, Status, Store};
-use gpui::{App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Window};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable};
 use std::sync::{Arc, Mutex};
 
 pub enum Event {
@@ -61,18 +61,26 @@ impl Focusable for Conversations {
 
 impl Conversations {
     pub fn new(selected: Option<String>, cx: &mut Context<Self>) -> Self {
-        let search = cx.new(|cx| TextInput::new("Search conversations…", cx));
-        cx.subscribe(&search, |this, input, _: &InputEvent, cx| {
-            this.query = input.read(cx).text().to_owned();
-            cx.notify();
-        })
-        .detach();
         let loaded = crate::persistence::state_file().and_then(|path| {
             Store::open(
                 &path.with_file_name("conversations.sqlite"),
                 ProviderPaths::from_environment(),
             )
         });
+        Self::with_store(selected, loaded, cx)
+    }
+
+    fn with_store(
+        selected: Option<String>,
+        loaded: anyhow::Result<Store>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let search = cx.new(|cx| TextInput::new("Search conversations…", cx));
+        cx.subscribe(&search, |this, input, _: &InputEvent, cx| {
+            this.query = input.read(cx).text().to_owned();
+            cx.notify();
+        })
+        .detach();
         let (store, rows, problem) = match loaded {
             Ok(store) => {
                 let rows = store.list();
@@ -123,6 +131,13 @@ impl Conversations {
             .and_then(|id| self.rows.iter().find(|row| &row.id == id && self.in_scope(row)))
     }
 
+    pub fn terminal(&self, cx: &App) -> Option<Entity<terminal::Terminal>> {
+        self.terminal_view
+            .as_ref()
+            .filter(|_| self.connected)
+            .map(|view| view.read(cx).terminal().clone())
+    }
+
     pub fn selected_runtime(&self) -> Option<&str> {
         self.selected_row()
             .and_then(|row| row.runtime.as_deref())
@@ -135,6 +150,7 @@ impl Conversations {
         notice: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        let view = view.filter(|_| self.connected);
         if self.terminal_view != view || self.terminal_notice != notice {
             self.terminal_view = view;
             self.terminal_notice = notice;
@@ -200,8 +216,6 @@ impl Conversations {
         self.clear_terminal();
         self.integrations.reset();
         for row in &mut self.rows {
-            row.endpoint = None;
-            row.requests.clear();
             row.status = Status::Unknown;
         }
         cx.notify();
@@ -248,8 +262,7 @@ impl Conversations {
                         Ok((mut rows, expected, resolved)) => {
                             if !this.connected {
                                 for row in &mut rows {
-                                    row.endpoint = None;
-                                    row.requests.clear();
+                                    row.status = Status::Unknown;
                                 }
                             }
                             // Resolve a provisional row without changing a newer user selection.
@@ -281,6 +294,7 @@ impl Conversations {
         let Some(store) = self.store.clone() else { return };
         let executor = cx.background_executor().clone();
         cx.spawn(async move |this, cx| {
+            let expected = id.clone();
             let result = executor
                 .spawn(async move {
                     let mut store =
@@ -293,8 +307,12 @@ impl Conversations {
                 match result {
                     Ok(rows) => {
                         this.rows = rows;
-                        this.selected = None;
-                        cx.emit(Event::SelectionChanged);
+                        if this.selected.as_ref() == Some(&expected) {
+                            this.selected = None;
+                            this.renaming = None;
+                            this.clear_terminal();
+                            cx.emit(Event::SelectionChanged);
+                        }
                     }
                     Err(error) => this.problem = Some(error),
                 };
@@ -328,5 +346,93 @@ impl Conversations {
         })
         .detach();
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Window, px, size};
+    use terminal::{
+        TerminalBuilder,
+        terminal_settings::{AlternateScroll, CursorShape},
+    };
+    use util::paths::PathStyle;
+
+    #[gpui::test]
+    fn inbox_mounts_and_focuses_the_original_terminal(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ProviderPaths {
+            codex: dir.path().join("codex"),
+            claude: dir.path().join("claude"),
+            opencode: dir.path().join("opencode"),
+        };
+        let mut store = Store::open(&dir.path().join("history.sqlite"), paths).unwrap();
+        store
+            .reconcile(
+                vec![Observation {
+                    runtime: "pane".into(),
+                    terminal: "pty".into(),
+                    provider: Provider::Codex,
+                    native: Some(chartr_conversations::NativeSession {
+                        id: "fixture".into(),
+                        path: None,
+                    }),
+                    cwd: None,
+                    space: None,
+                    title: Some("A terminal session".into()),
+                    status: Status::Idle,
+                    pid: None,
+                }],
+                1,
+            )
+            .unwrap();
+        let selected = store.for_runtime("pane").unwrap().to_owned();
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                CursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+        let model = terminal.clone();
+        let (inbox, cx) = cx.add_window_view(move |window: &mut Window, cx| {
+            let terminal_view = crate::terminal_host::new_view(model, window, cx);
+            let mut inbox = Conversations::with_store(Some(selected), Ok(store), cx);
+            inbox.connected = true;
+            inbox.focus_terminal = true;
+            inbox.set_terminal(Some(terminal_view), None, cx);
+            inbox
+        });
+        terminal.update(cx, |terminal, cx| terminal.write_output(b"Inbox terminal content", cx));
+        cx.simulate_resize(size(px(1000.), px(600.)));
+        cx.run_until_parked();
+        inbox.update_in(cx, |inbox, window, cx| {
+            assert_eq!(inbox.terminal(cx), Some(terminal.clone()));
+            assert!(inbox.focus_handle(cx).is_focused(window));
+        });
+        let first_width = terminal
+            .read_with(cx, |terminal, _| terminal.last_content().terminal_bounds.bounds.size.width);
+        assert!(first_width > px(600.) && first_width < px(710.));
+        cx.simulate_resize(size(px(1200.), px(600.)));
+        cx.run_until_parked();
+        let next_width = terminal
+            .read_with(cx, |terminal, _| terminal.last_content().terminal_bounds.bounds.size.width);
+        assert!(
+            next_width > first_width + px(180.),
+            "Inbox must resize the existing terminal model"
+        );
+        inbox.update(cx, |inbox, cx| inbox.disconnected(cx));
+        cx.run_until_parked();
+        assert!(inbox.read_with(cx, |inbox, cx| inbox.terminal(cx)).is_none());
     }
 }
