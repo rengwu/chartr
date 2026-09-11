@@ -36,6 +36,8 @@ macro_rules! providers {
 providers! {
     Codex => ("Codex", "codex", &["codex", "codex-cli"], TerminalPrompt, true),
     Claude => ("Claude", "claude", &["claude", "claude-code", "claude code"], TerminalPrompt, true),
+    Kimi => ("Kimi", "kimi", &["kimi", "kimi-cli", "kimi-code"], TerminalOnly, false),
+    Pi => ("Pi", "pi", &["pi"], TerminalOnly, false),
     Grok => ("Grok", "grok", &["grok", "grok-build"], TerminalOnly, false),
     OpenCode => ("OpenCode", "opencode", &["opencode", "open code"], OpenCodeApi, false),
 }

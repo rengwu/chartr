@@ -62,14 +62,20 @@ not rename or duplicate a conversation. Provisional rows merge transactionally
 when an identity arrives. Manually resuming an existing native ID reconnects its
 history entry.
 
-Herdr detects Codex, Claude Code, OpenCode, and Grok sessions. Detection alone
-produces a provisional entry whose terminal is already usable. The integration
-notice lets you enable/update discovery hooks; start or resume the agent in a
-new terminal after installation. Running processes do not retroactively load
-new hooks.
+Herdr detects Codex, Claude Code, OpenCode, Grok, Kimi, and Pi sessions. Detection alone
+produces a provisional entry whose terminal is already usable. A missing native
+session ID does not add setup guidance above the terminal. Launching through
+Inbox installs/verifies discovery hooks automatically; existing processes do
+not retroactively load new hooks.
 
-Local, read-only Codex/Claude JSONL and OpenCode database readers supply titles
-and recency. Grok uses observed session metadata. No reader guesses the newest
+Local, read-only Codex/Claude/Pi JSONL and OpenCode database readers supply titles
+and recency. The running CLI’s terminal title also supplies titles before native
+identity arrives; Grok and Kimi use this observed metadata. Pi uses its saved
+session name or first user prompt, with its exact reported JSONL path and a
+matching session header. The launcher adapts Pi’s managed hook for older
+`hasUI`/`agent_end` and newer `mode`/`agent_settled` extension APIs. Existing Pi
+terminals need `/reload` after an integration update to load the corrected hook.
+No reader guesses the newest
 transcript in a project: native identity must match exactly. Missing or
 unsupported transcript data does not prevent terminal use. Provider data paths
 are inherited by Chartr; remote hosts and separate per-terminal data namespaces

@@ -63,23 +63,6 @@ impl WorkspaceWindow {
         self.conversations.update(cx, |view, _| {
             view.set_agent_services(self.catalog.services.clone());
         });
-        if let Some(client) = self.client.clone()
-            && self.conversations.update(cx, |view, _| view.needs_integration_check())
-        {
-            let executor = cx.background_executor().clone();
-            cx.spawn(async move |this, cx| {
-                let result =
-                    executor
-                        .spawn(async move {
-                            client.agent_integrations().map_err(|error| error.to_string())
-                        })
-                        .await;
-                let _ = this.update(cx, |this, cx| {
-                    this.conversations.update(cx, |view, cx| view.integrations_checked(result, cx));
-                });
-            })
-            .detach();
-        }
         let observations = infos
             .iter()
             .filter_map(|session| {
@@ -88,8 +71,9 @@ impl WorkspaceWindow {
                     .agent_session
                     .as_ref()
                     .filter(|identity| Provider::detect(&identity.agent) == Some(provider))
-                    .filter(|identity| identity.kind == "id")
-                    .map(|identity| NativeSession { id: identity.value.clone(), path: None });
+                    .and_then(|identity| {
+                        NativeSession::from_identity(provider, &identity.kind, &identity.value)
+                    });
                 let owner =
                     self.spaces
                         .iter()
@@ -142,36 +126,6 @@ impl WorkspaceWindow {
                     self.close_terminal_search(window, cx);
                 }
                 self.schedule_persistence(cx);
-            }
-            Event::EnableIntegration(provider) => {
-                let provider = *provider;
-                let Some(client) = self.client.clone() else {
-                    self.conversations.update(cx, |view, cx| {
-                        view.integration_installed(
-                            provider,
-                            Err("Terminal service is unavailable.".into()),
-                            cx,
-                        )
-                    });
-                    return;
-                };
-                let executor = cx.background_executor().clone();
-                cx.spawn(async move |this, cx| {
-                    let result = executor
-                        .spawn(async move {
-                            client
-                                .install_agent_integration(provider.slug())
-                                .map_err(|e| e.to_string())
-                        })
-                        .await;
-                    let _ = this.update(cx, |this, cx| {
-                        this.conversations.update(cx, |view, cx| {
-                            view.integration_installed(provider, result, cx)
-                        });
-                        this.refresh(cx);
-                    });
-                })
-                .detach();
             }
             Event::LaunchAgent { name, space } => {
                 self.new_agent_conversation(name.clone(), space.clone(), window, cx)
@@ -310,9 +264,12 @@ fn matches_session(
         && session.agent.as_deref().and_then(Provider::detect) == Some(row.provider)
         && row.native.as_ref().is_none_or(|native| {
             session.agent_session.as_ref().is_some_and(|identity| {
-                identity.kind == "id"
-                    && identity.value == native.id
-                    && Provider::detect(&identity.agent) == Some(row.provider)
+                Provider::detect(&identity.agent) == Some(row.provider)
+                    && NativeSession::from_identity(row.provider, &identity.kind, &identity.value)
+                        .is_some_and(|observed| {
+                            observed.id == native.id
+                                && (native.path.is_none() || observed.path == native.path)
+                        })
             })
         })
 }
@@ -340,6 +297,40 @@ mod tests {
             foreground_pid: None,
             cwd: None,
         }
+    }
+
+    #[test]
+    fn inbox_binds_pi_path_identities_without_following_another_session() {
+        let mut session = session();
+        session.agent = Some("pi".into());
+        let identity = session.agent_session.as_mut().unwrap();
+        identity.agent = "pi".into();
+        identity.kind = "path".into();
+        identity.value = "/pi/sessions/--project--/2026-09-11T14-00-00-000Z_pi-a.jsonl".into();
+        let native =
+            NativeSession::from_identity(Provider::Pi, &identity.kind, &identity.value).unwrap();
+        assert_eq!(native.id, "pi-a");
+        let mut row: chartr_conversations::Conversation =
+            serde_json::from_value(serde_json::json!({
+                "id":"a", "provider":"pi", "native":native,
+                "title":"Axolotls", "cwd":null, "updated":1,
+                "draft":"", "archived":false, "messages":[]
+            }))
+            .unwrap();
+        row.runtime = Some("pane".into());
+        row.terminal = Some("pty".into());
+        assert!(matches_session(&row, &session));
+        session.agent_session.as_mut().unwrap().value =
+            "/pi/sessions/--project--/2026-09-11T14-00-00-000Z_pi-b.jsonl".into();
+        assert!(!matches_session(&row, &session));
+        assert!(
+            NativeSession::from_identity(Provider::Pi, "path", "relative/session_a.jsonl")
+                .is_none()
+        );
+        assert!(NativeSession::from_identity(Provider::Pi, "path", "/unknown/file.txt").is_none());
+        assert!(
+            NativeSession::from_identity(Provider::Claude, "path", "/pi/session_a.jsonl").is_none()
+        );
     }
 
     #[test]

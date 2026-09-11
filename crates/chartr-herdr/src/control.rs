@@ -77,6 +77,45 @@ pub struct Session {
     pub cwd: Option<PathBuf>,
 }
 
+/// Agent TUIs report their inferred titles through OSC, even before a native
+/// session integration attaches. Keep Herdr's explicit pane title as the override.
+fn conversation_title(pane: &protocol::Pane, agent: Option<&str>) -> Option<String> {
+    if let Some(title) = pane.title.as_deref().and_then(non_blank) {
+        return Some(title.trim().to_owned());
+    }
+    let title = pane
+        .terminal_title_stripped
+        .as_deref()
+        .and_then(non_blank)
+        .or_else(|| pane.terminal_title.as_deref().and_then(non_blank))?
+        .trim();
+    let provider = agent.and_then(chartr_agent::Provider::detect);
+    let title = match provider {
+        Some(chartr_agent::Provider::OpenCode) => title.strip_prefix("OC | ").unwrap_or(title),
+        Some(chartr_agent::Provider::Grok) => title.strip_suffix(" - grok").unwrap_or(title),
+        Some(chartr_agent::Provider::Pi) if title.starts_with("π - ") => {
+            let title = title.strip_prefix("π - ")?;
+            let cwd = pane.foreground_cwd.as_deref().or(pane.cwd.as_deref())?;
+            let directory = std::path::Path::new(cwd).file_name()?.to_str()?;
+            if title == directory {
+                return None;
+            }
+            title.strip_suffix(&format!(" - {directory}")).unwrap_or(title)
+        }
+        _ => title,
+    }
+    .trim();
+    // A CLI's startup label is not a conversation title and must not overwrite
+    // a useful title already captured for this session.
+    if title.is_empty()
+        || title.chars().any(char::is_control)
+        || provider.is_some_and(|provider| chartr_agent::Provider::detect(title) == Some(provider))
+    {
+        return None;
+    }
+    Some(title.to_owned())
+}
+
 impl Session {
     fn from_pane(pane: protocol::Pane, label: Option<String>, running: Option<String>) -> Self {
         let label = label
@@ -88,6 +127,7 @@ impl Session {
             .and_then(non_blank)
             .or_else(|| pane.display_agent.as_deref().and_then(non_blank))
             .map(str::to_owned);
+        let conversation_title = conversation_title(&pane, agent.as_deref());
         Self {
             id: PaneId(pane.pane_id),
             terminal: TerminalId(pane.terminal_id),
@@ -97,7 +137,7 @@ impl Session {
             status: pane.agent_status.into(),
             agent,
             agent_session: pane.agent_session,
-            conversation_title: pane.title,
+            conversation_title,
             foreground_pid: None,
             cwd: pane.foreground_cwd.or(pane.cwd).map(PathBuf::from),
         }
@@ -177,17 +217,19 @@ impl Client {
     pub fn agent_integrations(&self) -> Result<Vec<protocol::IntegrationInfo>> {
         let mut result: protocol::IntegrationList = self.call("integration.list", &Empty {})?;
         for entry in &mut result.integrations {
-            if entry.target == "opencode"
-                && entry.state == protocol::IntegrationState::Current
-                && !crate::integration::opencode_current(&self.namespace)
-            {
+            let compatible = match entry.target.as_str() {
+                "opencode" => crate::integration::opencode_current(&self.namespace),
+                "pi" => crate::integration::pi_current(),
+                _ => true,
+            };
+            if entry.state == protocol::IntegrationState::Current && !compatible {
                 entry.state = protocol::IntegrationState::NotInstalled;
             }
         }
         Ok(result.integrations)
     }
 
-    /// Invoked by Enable integration or a registered-agent conversation launch.
+    /// Invoked by a registered-agent conversation launch.
     /// An installer receipt is not sufficient: read back the installed state.
     pub fn install_agent_integration(&self, provider: &str) -> Result<()> {
         if chartr_agent::Provider::from_slug(provider).is_none() {
@@ -198,6 +240,9 @@ impl Client {
             client.call("integration.install", &serde_json::json!({"target": provider}))?;
         if provider == "opencode" {
             crate::integration::install_opencode(&self.namespace)?;
+        }
+        if provider == "pi" {
+            crate::integration::install_pi()?;
         }
         if !client.agent_integrations()?.iter().any(|integration| {
             integration.target == provider
@@ -921,6 +966,8 @@ mod tests {
             workspace_id: "w1".to_owned(),
             tab_id: "w1:t1".to_owned(),
             title: title.map(str::to_owned),
+            terminal_title: None,
+            terminal_title_stripped: None,
             display_agent: agent.map(str::to_owned),
             agent: None,
             agent_status: protocol::AgentStatus::Unknown,
@@ -928,6 +975,60 @@ mod tests {
             cwd: None,
             foreground_cwd: None,
         }
+    }
+
+    #[test]
+    fn inbox_titles_use_live_terminal_metadata_without_a_native_session() {
+        for (agent, raw, expected) in [
+            ("opencode", "OC | Friendly greeting", "Friendly greeting"),
+            (
+                "grok",
+                "User Greeting to Start Conversation - grok",
+                "User Greeting to Start Conversation",
+            ),
+            ("kimi", "hi", "hi"),
+            ("pi", "Investigate a failing build", "Investigate a failing build"),
+        ] {
+            // Match pane.list's wire shape: title and agent_session are absent.
+            let pane: protocol::Pane = serde_json::from_value(serde_json::json!({
+                "pane_id":"p1", "terminal_id":"term-p1", "agent":agent,
+                "terminal_title":raw, "terminal_title_stripped":raw
+            }))
+            .unwrap();
+            let session = Session::from(pane);
+            assert_eq!(session.conversation_title.as_deref(), Some(expected));
+            assert!(session.agent_session.is_none());
+            assert!(chartr_agent::Provider::detect(session.agent.as_deref().unwrap()).is_some());
+        }
+    }
+
+    #[test]
+    fn pi_directory_labels_are_not_conversation_titles() {
+        let mut pane = pane("pi", None, Some("pi"));
+        pane.foreground_cwd = Some("/Users/rengwu".into());
+        pane.terminal_title_stripped = Some("π - rengwu".into());
+        assert!(Session::from(pane.clone()).conversation_title.is_none());
+        pane.terminal_title_stripped = Some("π - Axolotls - rengwu".into());
+        assert_eq!(Session::from(pane.clone()).conversation_title.as_deref(), Some("Axolotls"));
+        pane.title = Some("My manual title".into());
+        assert_eq!(Session::from(pane).conversation_title.as_deref(), Some("My manual title"));
+    }
+
+    #[test]
+    fn inbox_title_fallbacks_preserve_explicit_names_and_ignore_startup_labels() {
+        let mut pane = pane("p1", Some("My title"), Some("opencode"));
+        pane.terminal_title_stripped = Some("OC | Inferred title".into());
+        assert_eq!(Session::from(pane.clone()).conversation_title.as_deref(), Some("My title"));
+        pane.title = Some("   ".into());
+        assert_eq!(
+            Session::from(pane.clone()).conversation_title.as_deref(),
+            Some("Inferred title")
+        );
+        pane.terminal_title_stripped = Some("OpenCode".into());
+        assert!(Session::from(pane.clone()).conversation_title.is_none());
+        pane.terminal_title_stripped = None;
+        pane.terminal_title = Some("OC | Raw title".into());
+        assert_eq!(Session::from(pane).conversation_title.as_deref(), Some("Raw title"));
     }
 
     #[test]

@@ -1,7 +1,6 @@
-use super::integrations::Setup;
 use super::*;
 use gpui::{AnyElement, MouseButton, SharedString, Window, div, px};
-use ui::{Button, ButtonSize, ButtonStyle, IconButton, Tooltip, prelude::*};
+use ui::{Button, ButtonSize, IconButton, Tooltip, prelude::*};
 
 gpui::actions!(chartr_inbox, [FocusSearch]);
 
@@ -317,8 +316,7 @@ impl Conversations {
                                 "Archive conversation; keep agent running"
                             }))
                             .on_click(cx.listener(|this, _, _, cx| this.archive_selected(cx))),
-                    )
-                    ,
+                    ),
             )
             .when(self.renaming.as_deref() == Some(&row.id), |view| {
                 view.child(
@@ -346,32 +344,14 @@ impl Conversations {
                         ),
                 )
             })
-            .when(row.native.is_none() && row.runtime.is_some(), |view| {
-                let provider = row.provider;
-                let setup = self.integrations.get(provider);
-                let (message, button, disabled) = match setup {
-                    Setup::Checking => ("Checking agent integration…".to_owned(), None, true),
-                    Setup::Installing => ("Installing agent integration…".to_owned(), None, true),
-                    Setup::Enabled => ("Integration enabled. Start or resume the agent in a new terminal to connect its history.".to_owned(), None, true),
-                    Setup::Failed(error) => (format!("Could not enable integration: {error}"), Some("Retry integration"), false),
-                    Setup::Outdated => ("Update the agent integration to detect session history.".to_owned(), Some("Update integration"), false),
-                    Setup::Available => ("Enable the agent integration to detect session history.".to_owned(), Some("Enable integration"), false),
-                };
-                view.child(h_flex().px_4().py_2().gap_2().flex_none()
-                    .child(div().flex_1().text_size(rems(0.85)).text_color(colors.text_muted).child(message))
-                    .when_some(button, |line, label| line.child(
-                        Button::new("enable-conversation-integration", label).size(ButtonSize::Compact)
-                            .style(ButtonStyle::Outlined).disabled(disabled || self.busy || !self.connected)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.busy = true;
-                                this.integrations.installing(provider);
-                                cx.emit(Event::EnableIntegration(provider));
-                                cx.notify();
-                            })))))
-            })
-            .child(self.terminal_content(if row.runtime.is_none() {
-                "Session ended. This conversation remains in Inbox."
-            } else { "Connecting to session terminal…" }, cx))
+            .child(self.terminal_content(
+                if row.runtime.is_none() {
+                    "Session ended. This conversation remains in Inbox."
+                } else {
+                    "Connecting to session terminal…"
+                },
+                cx,
+            ))
             .into_any_element()
     }
 

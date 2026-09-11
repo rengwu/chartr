@@ -127,6 +127,12 @@ pub struct Pane {
     /// herdr's own title for the pane, when it has worked one out.
     #[serde(default)]
     pub title: Option<String>,
+    /// OSC title supplied by the running CLI; distinct from Herdr's pane label.
+    #[serde(default)]
+    pub terminal_title: Option<String>,
+    /// Herdr's presentation-safe version of the terminal title.
+    #[serde(default)]
+    pub terminal_title_stripped: Option<String>,
     /// The command herdr believes is running — `claude`, `codex`, and so on.
     /// This is the whole reason chartr is an *agent* multiplexer and not a
     /// terminal multiplexer: the backend already knows what a pane is running.

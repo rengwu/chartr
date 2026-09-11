@@ -1,5 +1,4 @@
 //! Inbox: durable agent history with the original session terminal.
-mod integrations;
 mod launcher;
 mod scope;
 pub use scope::SpaceChoice;
@@ -7,14 +6,13 @@ mod view;
 pub use view::init;
 
 use crate::text_input::{InputEvent, TextInput};
-use chartr_conversations::{Conversation, Observation, Provider, ProviderPaths, Status, Store};
+use chartr_conversations::{Conversation, Observation, ProviderPaths, Status, Store};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable};
 use std::sync::{Arc, Mutex};
 
 pub enum Event {
     LaunchAgent { name: String, space: String },
     ManageAgents,
-    EnableIntegration(Provider),
     SelectionChanged,
 }
 
@@ -33,7 +31,6 @@ pub struct Conversations {
     pending_runtime: Option<String>,
     problem: Option<String>,
     busy: bool,
-    integrations: integrations::Integrations,
     services: chartr_plugin::services::Services,
     new_agent: Option<String>,
     new_space: Option<String>,
@@ -104,7 +101,6 @@ impl Conversations {
             pending_runtime: None,
             problem,
             busy: false,
-            integrations: Default::default(),
             services: Default::default(),
             new_agent: None,
             new_space: None,
@@ -187,34 +183,9 @@ impl Conversations {
         cx.notify();
     }
 
-    pub fn needs_integration_check(&mut self) -> bool {
-        self.integrations.begin_check()
-    }
-
-    pub fn integrations_checked(
-        &mut self,
-        result: Result<Vec<chartr_herdr::protocol::IntegrationInfo>, String>,
-        cx: &mut Context<Self>,
-    ) {
-        self.integrations.checked(result);
-        cx.notify();
-    }
-
-    pub fn integration_installed(
-        &mut self,
-        provider: Provider,
-        result: Result<(), String>,
-        cx: &mut Context<Self>,
-    ) {
-        self.busy = false;
-        self.integrations.installed(provider, result);
-        cx.notify();
-    }
-
     pub fn disconnected(&mut self, cx: &mut Context<Self>) {
         self.connected = false;
         self.clear_terminal();
-        self.integrations.reset();
         for row in &mut self.rows {
             row.status = Status::Unknown;
         }
@@ -352,6 +323,7 @@ impl Conversations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chartr_conversations::Provider;
     use gpui::{Window, px, size};
     use terminal::{
         TerminalBuilder,
@@ -371,6 +343,7 @@ mod tests {
             codex: dir.path().join("codex"),
             claude: dir.path().join("claude"),
             opencode: dir.path().join("opencode"),
+            pi: dir.path().join("pi"),
         };
         let mut store = Store::open(&dir.path().join("history.sqlite"), paths).unwrap();
         store

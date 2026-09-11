@@ -230,7 +230,79 @@ mod tests {
             codex: root.join("codex"),
             claude: root.join("claude"),
             opencode: root.join("opencode"),
+            pi: root.join("pi"),
         }
+    }
+
+    #[test]
+    fn pi_prompt_titles_promote_the_right_row_and_preserve_manual_names_on_resume() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("db");
+        let mut store = Store::open(&file, paths(dir.path())).unwrap();
+        let mut a = observation("a", None);
+        a.provider = Provider::Pi;
+        let mut b = observation("b", None);
+        b.provider = Provider::Pi;
+        store.reconcile(vec![a.clone(), b.clone()], 1).unwrap();
+        let provisional = store.for_runtime("a").unwrap().to_owned();
+        for (observed, prompt) in [(&mut a, "Axolotls"), (&mut b, "Dinner")] {
+            let path = dir.path().join(format!("timestamp_{}.jsonl", observed.runtime));
+            std::fs::write(&path, format!("{{\"type\":\"session\",\"id\":\"{}\"}}\n{{\"type\":\"message\",\"message\":{{\"role\":\"user\",\"content\":\"{prompt}\"}}}}\n", observed.runtime)).unwrap();
+            observed.native =
+                NativeSession::from_identity(Provider::Pi, "path", path.to_str().unwrap());
+        }
+        store.reconcile(vec![a.clone(), b.clone()], 2).unwrap();
+        assert_eq!(store.list().len(), 2);
+        assert_eq!(store.get(&provisional).unwrap().display_title(), "Axolotls");
+        assert_eq!(store.get(store.for_runtime("b").unwrap()).unwrap().display_title(), "Dinner");
+        store.rename(&provisional, "My axolotl notes".into()).unwrap();
+        let native_id = store.resolve_id(&provisional);
+        store.reconcile(vec![], 3).unwrap();
+        drop(store);
+        let mut store = Store::open(&file, paths(dir.path())).unwrap();
+        a.runtime = "resumed".into();
+        a.terminal = "resumed-terminal".into();
+        store.reconcile(vec![a, b], 4).unwrap();
+        assert_eq!(store.for_runtime("resumed"), Some(native_id.as_str()));
+        assert_eq!(store.get(&native_id).unwrap().display_title(), "My axolotl notes");
+        assert_eq!(store.list().len(), 2);
+    }
+
+    #[test]
+    fn detected_kimi_and_pi_sessions_are_indexed_and_live_titles_replace_fallbacks() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("db");
+        let mut store = Store::open(&file, paths(dir.path())).unwrap();
+        let mut observations = Vec::new();
+        for name in ["kimi", "pi", "opencode", "grok"] {
+            let mut observed = observation(name, None);
+            observed.provider =
+                Provider::detect(name).expect("Every supported launcher must reach Inbox");
+            observations.push(observed);
+        }
+        store.reconcile(observations.clone(), 1).unwrap();
+        assert_eq!(store.list().len(), 4);
+        for observed in &mut observations {
+            observed.title = Some(format!("Task from {}", observed.provider.name()));
+        }
+        store.reconcile(observations.clone(), 2).unwrap();
+        for observed in &observations {
+            let id = store.for_runtime(&observed.runtime).unwrap();
+            assert_eq!(store.get(id).unwrap().display_title(), observed.title.as_ref().unwrap());
+        }
+        let kimi = store.for_runtime("kimi").unwrap().to_owned();
+        store.rename(&kimi, "My Kimi task".into()).unwrap();
+        // Provider hooks can attach later; promotion keeps the entry and its manual name.
+        for observed in &mut observations {
+            observed.native = Some(NativeSession { id: "native".into(), path: None });
+        }
+        store.reconcile(observations, 3).unwrap();
+        assert_eq!(store.list().len(), 4);
+        assert_eq!(store.get(&kimi).unwrap().display_title(), "My Kimi task");
+        store.reconcile(vec![], 4).unwrap();
+        let reopened = Store::open(&file, paths(dir.path())).unwrap();
+        assert_eq!(reopened.list().len(), 4);
+        assert!(reopened.list().iter().all(|row| row.status == Status::Ended));
     }
 
     #[test]

@@ -20,6 +20,28 @@ pub struct NativeSession {
     pub path: Option<PathBuf>,
 }
 
+impl NativeSession {
+    /// Pi's hook reports its exact JSONL path rather than an ID. Its filename
+    /// contains the session ID; the reader also verifies the file's header.
+    pub fn from_identity(provider: Provider, kind: &str, value: &str) -> Option<Self> {
+        if kind == "id" {
+            return Some(Self { id: value.to_owned(), path: None });
+        }
+        if provider != Provider::Pi || kind != "path" {
+            return None;
+        }
+        let path = PathBuf::from(value);
+        if !path.is_absolute() || path.extension()?.to_str()? != "jsonl" {
+            return None;
+        }
+        let (_, id) = path.file_stem()?.to_str()?.rsplit_once('_')?;
+        if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
+            return None;
+        }
+        Some(Self { id: id.to_owned(), path: Some(path) })
+    }
+}
+
 /// A current host observation; neither a row selection nor a layout position.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Observation {

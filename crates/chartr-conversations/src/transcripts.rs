@@ -1,5 +1,5 @@
 use crate::{Message, NativeSession, Provider, Role};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use std::{
@@ -18,6 +18,7 @@ pub struct ProviderPaths {
     pub codex: PathBuf,
     pub claude: PathBuf,
     pub opencode: PathBuf,
+    pub pi: PathBuf,
 }
 
 impl ProviderPaths {
@@ -34,6 +35,13 @@ impl ProviderPaths {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".claude")),
             opencode: data.join("opencode"),
+            pi: std::env::var_os("PI_CODING_AGENT_DIR")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .map(|path| {
+                    path.strip_prefix("~").map(|rest| home.join(rest)).unwrap_or(path.clone())
+                })
+                .unwrap_or_else(|| home.join(".pi/agent")),
         }
     }
 
@@ -43,6 +51,8 @@ impl ProviderPaths {
             Provider::Claude => &self.claude,
             Provider::OpenCode => &self.opencode,
             Provider::Grok => return "local:grok".to_owned(),
+            Provider::Kimi => return "local:kimi".to_owned(),
+            Provider::Pi => &self.pi,
         }
         .to_string_lossy()
         .into_owned()
@@ -58,7 +68,7 @@ pub(crate) struct Transcript {
 #[derive(Default)]
 pub(crate) struct Reader {
     paths: HashMap<(Provider, String), PathBuf>,
-    cache: HashMap<PathBuf, (SystemTime, u64, Transcript)>,
+    cache: HashMap<(Provider, String, PathBuf), (SystemTime, u64, Transcript)>,
 }
 
 impl Reader {
@@ -77,18 +87,22 @@ impl Reader {
         if provider == Provider::OpenCode {
             return read_opencode(&paths.opencode.join("opencode.db"), &native.id);
         }
-        if provider == Provider::Grok {
-            bail!(
-                "This Grok version has no verified transcript adapter yet. Continue in terminal."
-            );
+        if matches!(provider, Provider::Grok | Provider::Kimi) {
+            // These providers supply titles through the observed terminal. A local
+            // transcript reader is not required for Inbox detection or terminal use.
+            return Ok(Transcript::default());
         }
         let root = match provider {
             Provider::Claude => paths.claude.join("projects"),
             Provider::Codex => paths.codex.join("sessions"),
+            Provider::Pi => paths.pi.join("sessions"),
             _ => unreachable!(),
         };
         let key = (provider, native.id.clone());
-        let path = if let Some(path) = self.paths.get(&key).filter(|p| p.is_file()) {
+        let path = if let Some(path) = native.path.as_ref().filter(|_| provider == Provider::Pi) {
+            ensure!(path.is_absolute(), "Pi must report an absolute session path");
+            path.clone()
+        } else if let Some(path) = self.paths.get(&key).filter(|p| p.is_file()) {
             path.clone()
         } else {
             let path = find_exact_transcript(&root, &native.id, provider)?;
@@ -97,7 +111,8 @@ impl Reader {
         };
         let metadata = fs::metadata(&path)?;
         let modified = metadata.modified()?;
-        if let Some((time, len, transcript)) = self.cache.get(&path)
+        let cache_key = (provider, native.id.clone(), path.clone());
+        if let Some((time, len, transcript)) = self.cache.get(&cache_key)
             && *time == modified
             && *len == metadata.len()
         {
@@ -110,7 +125,7 @@ impl Reader {
         let file = fs::File::open(&path)?;
         let transcript =
             parse_jsonl(BufReader::new(file.take(MAX_TRANSCRIPT_BYTES)), provider, &native.id)?;
-        self.cache.insert(path, (modified, metadata.len(), transcript.clone()));
+        self.cache.insert(cache_key, (modified, metadata.len(), transcript.clone()));
         Ok(transcript)
     }
 }
@@ -139,6 +154,7 @@ fn find_exact_transcript(root: &Path, id: &str, provider: Provider) -> Result<Pa
                 Provider::Codex => {
                     name.starts_with("rollout-") && name.ends_with(&format!("-{id}.jsonl"))
                 }
+                Provider::Pi => name.ends_with(&format!("_{id}.jsonl")),
                 _ => false,
             };
             if matches_id {
@@ -175,6 +191,20 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
         }
         if value["type"] == "custom-title" {
             result.title = value["customTitle"].as_str().map(str::to_owned);
+        }
+        if provider == Provider::Pi {
+            if value["type"] == "session" {
+                ensure!(value["id"] == native_id, "Transcript belongs to another conversation");
+                native_verified = true;
+            }
+            if value["type"] == "session_info" {
+                // Pi uses the latest name, including explicit clears, across branches.
+                result.title = value["name"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned);
+            }
         }
         // Codex's model-visible response_items also contain injected AGENTS.md,
         // environment and permission context with role=user. Its user_message
@@ -236,6 +266,25 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
                     item,
                     role,
                     item["id"]
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!("line-{index}")),
+                )
+            }
+            Provider::Pi => {
+                if value["type"] != "message" {
+                    continue;
+                }
+                let item = &value["message"];
+                let role = match item["role"].as_str() {
+                    Some("user") => Role::User,
+                    Some("assistant") => Role::Assistant,
+                    _ => continue,
+                };
+                (
+                    item,
+                    role,
+                    value["id"]
                         .as_str()
                         .map(str::to_owned)
                         .unwrap_or_else(|| format!("line-{index}")),
@@ -325,12 +374,98 @@ fn read_opencode(path: &Path, id: &str) -> Result<Transcript> {
     }
     let mut messages = parse_opencode_messages(&json!(data))?;
     bound_messages(&mut messages);
-    Ok(Transcript { title: Some(title), messages })
+    let title = if title.trim().is_empty()
+        || title.starts_with("New session - ")
+        || title.starts_with("Child session - ")
+    {
+        crate::prompt_title(&messages)
+    } else {
+        Some(title)
+    };
+    Ok(Transcript { title, messages })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pi_uses_first_prompt_or_latest_session_name_and_verifies_identity() {
+        let data = concat!(
+            "{\"type\":\"session\",\"version\":3,\"id\":\"pi-a\",\"cwd\":\"/same/project\"}\n",
+            "{\"type\":\"message\",\"id\":\"m1\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"image\"},{\"type\":\"text\",\"text\":\"hi! tell me some stuff about axolotls\"}]}}\n",
+            "{\"type\":\"message\",\"id\":\"m2\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"private\"},{\"type\":\"text\",\"text\":\"Axolotls are salamanders.\"}]}}\n",
+            "{\"type\":\"message\",\"id\":\"m3\",\"message\":{\"role\":\"user\",\"content\":\"A follow-up\"}}\n",
+        );
+        let transcript = parse_jsonl(data.as_bytes(), Provider::Pi, "pi-a").unwrap();
+        assert_eq!(transcript.title.as_deref(), Some("hi! tell me some stuff about axolotls"));
+        assert_eq!(transcript.messages.len(), 3);
+        assert_eq!(transcript.messages[1].text, "Axolotls are salamanders.");
+        assert!(parse_jsonl(data.as_bytes(), Provider::Pi, "pi-b").is_err());
+        assert!(
+            parse_jsonl(
+                b"{\"type\":\"session_info\",\"name\":\"Wrong\"}".as_slice(),
+                Provider::Pi,
+                "pi-a"
+            )
+            .is_err()
+        );
+
+        let named = format!(
+            "{data}{{\"type\":\"session_info\",\"name\":\"Old name\"}}\n{{\"type\":\"session_info\",\"name\":\" Axolotls \"}}\n{{\"type\":"
+        );
+        assert_eq!(
+            parse_jsonl(named.as_bytes(), Provider::Pi, "pi-a").unwrap().title.as_deref(),
+            Some("Axolotls")
+        );
+        let cleared = format!("{named}\n{{\"type\":\"session_info\",\"name\":\"\"}}\n");
+        assert_eq!(
+            parse_jsonl(cleared.as_bytes(), Provider::Pi, "pi-a").unwrap().title,
+            transcript.title
+        );
+    }
+
+    #[test]
+    fn pi_reads_only_the_reported_session_and_rechecks_identity_before_cache_hits() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ProviderPaths {
+            codex: dir.path().join("codex"),
+            claude: dir.path().join("claude"),
+            opencode: dir.path().join("opencode"),
+            pi: dir.path().join("pi"),
+        };
+        let sessions = paths.pi.join("sessions/--same-project--");
+        fs::create_dir_all(&sessions).unwrap();
+        let file = sessions.join("2026-09-11T14-00-00-000Z_pi-a.jsonl");
+        let other = sessions.join("2026-09-11T15-00-00-000Z_pi-b.jsonl");
+        fs::write(&file, "{\"type\":\"session\",\"id\":\"pi-a\"}\n{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"Axolotls\"}}\n").unwrap();
+        fs::write(&other, "{\"type\":\"session\",\"id\":\"pi-b\"}\n{\"type\":\"session_info\",\"name\":\"Dinner\"}\n").unwrap();
+        let mut reader = Reader::default();
+        let mut native =
+            NativeSession::from_identity(Provider::Pi, "path", file.to_str().unwrap()).unwrap();
+        assert_eq!(
+            reader.read(Provider::Pi, &native, &paths).unwrap().title.as_deref(),
+            Some("Axolotls")
+        );
+        native.id = "pi-b".into();
+        assert!(reader.read(Provider::Pi, &native, &paths).is_err());
+        native.path = None;
+        assert_eq!(
+            reader.read(Provider::Pi, &native, &paths).unwrap().title.as_deref(),
+            Some("Dinner")
+        );
+        native.id = "missing".into();
+        assert!(reader.read(Provider::Pi, &native, &paths).is_err());
+        // A reported path outside the default root is authoritative, but its header must match.
+        let custom = dir.path().join("custom_pi-a.jsonl");
+        fs::rename(&file, &custom).unwrap();
+        native =
+            NativeSession::from_identity(Provider::Pi, "path", custom.to_str().unwrap()).unwrap();
+        assert_eq!(
+            reader.read(Provider::Pi, &native, &paths).unwrap().title.as_deref(),
+            Some("Axolotls")
+        );
+    }
 
     #[test]
     fn claude_deduplicates_and_ignores_incomplete_tail_and_subagents() {
@@ -360,6 +495,28 @@ mod tests {
         assert_eq!(transcript.title.as_deref(), Some("hi"));
         assert_eq!(transcript.messages.len(), 2);
         assert!(transcript.messages[1].text.contains("user quoted"));
+    }
+
+    #[test]
+    fn opencode_placeholder_titles_do_not_replace_observed_titles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("opencode.db");
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("CREATE TABLE session(id TEXT, title TEXT); CREATE TABLE message(id TEXT, session_id TEXT, time_created INTEGER, data TEXT); CREATE TABLE part(id TEXT, message_id TEXT, data TEXT);
+            INSERT INTO session VALUES ('a', 'New session - 2026-09-11');").unwrap();
+        assert!(read_opencode(&path, "a").unwrap().title.is_none());
+        db.execute("INSERT INTO message VALUES ('u', 'a', 1, ?1)", [r#"{"role":"user"}"#]).unwrap();
+        db.execute(
+            "INSERT INTO part VALUES ('p', 'u', ?1)",
+            [r#"{"type":"text","text":"Fix the sidebar"}"#],
+        )
+        .unwrap();
+        assert_eq!(read_opencode(&path, "a").unwrap().title.as_deref(), Some("Fix the sidebar"));
+        db.execute("UPDATE session SET title = 'Provider-generated title'", []).unwrap();
+        assert_eq!(
+            read_opencode(&path, "a").unwrap().title.as_deref(),
+            Some("Provider-generated title")
+        );
     }
 
     #[test]
