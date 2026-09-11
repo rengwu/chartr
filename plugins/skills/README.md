@@ -48,10 +48,16 @@ source precedence and exact `source/skill` pins. This plugin does not generate
 `chartr.md` or mirror skills into projects; supporting resources are read from
 the resolved source directory. Standalone Agent sessions are unchanged.
 
-Skills also exports a `skill-sources` template through `PromptTemplates`. It
-rescans enabled sources on request and renders their ordered, qualified skill
-references, actual source paths and shadowing information. Markdown Prompt can
-include this content in a user-composed file. Skills itself writes no project
+Skills exports `Skills - All` and a `Skills - <source name>` template for each
+enabled source through `PromptTemplates`, individually draggable in Markdown
+Prompt. The combined template keeps the `skill-sources` ID for existing
+compositions; source templates use `skill-source:<lowercase source name>` IDs.
+Each source template includes only that source's skills and warnings, with bare
+names resolved within that source. The “Skill sources” heading and resolution
+instructions appear only in `Skills - All`. Templates rescan on request and group skills
+in source order. Each source lists its title and root path once, followed by bare
+skill names, relative `SKILL.md` paths and shadowing information. Markdown Prompt
+can include this content in a user-composed file. Skills itself writes no project
 files.
 
 Successful source changes notify template consumers immediately. Applied Markdown

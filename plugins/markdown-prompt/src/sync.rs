@@ -1,5 +1,5 @@
 //! Plugin-lifetime synchronization of the last applied composition, independent
-//! of panes and unapplied drafts. All writes share the manual Apply lock.
+//! of panes. Autosaves and file updates share the per-composition lock.
 use super::document::{self, Bodies, Document, Part};
 use chartr_plugin::{
     BackgroundState, BackgroundStatus,
@@ -8,7 +8,7 @@ use chartr_plugin::{
 use gpui::Context;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -43,7 +43,7 @@ fn save(path: &Path, active: &Applied) -> Result<(), String> {
     let encoded = serde_json::to_vec_pretty(active).map_err(|e| e.to_string())?;
     chartr_storage::write_atomic(&active_path(path), &encoded).map_err(|e| e.to_string())
 }
-/// Called with the per-composition lock held, after successful explicit Apply.
+/// Called with the per-composition lock held to select the live composition.
 pub fn activate(path: &Path, root: &Path, doc: &Document) -> Result<(), String> {
     save(
         path,
@@ -61,7 +61,7 @@ pub fn receipts(path: &Path, fallback: &Document) -> Result<HashMap<String, Stri
     }
     Ok(receipts)
 }
-/// Saving a draft may pause/resume syncing, but never replaces applied parts.
+/// Change only the persisted worker state while retaining its composition.
 pub fn set_enabled(path: &Path, enabled: bool) -> Result<(), String> {
     if let Some(mut active) = read(path)? {
         if active.document.enabled != enabled {
@@ -70,6 +70,39 @@ pub fn set_enabled(path: &Path, enabled: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Save edits independently of whether their output can currently be written.
+pub fn persist(
+    path: &Path,
+    project: Option<&Path>,
+    mut doc: Document,
+    expected: Option<&[u8]>,
+) -> Result<(Document, Option<String>), String> {
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.with_extension("lock"))
+        .map_err(|e| e.to_string())?;
+    lock.lock().map_err(|e| e.to_string())?;
+    if std::fs::read(path).ok().as_deref() != expected {
+        return Err("This composition changed in another pane. Reopen Markdown Prompt to load the saved version.".into());
+    }
+    doc.managed_files = receipts(path, &document::load(path)?)?;
+    // A failed activation must not leave an older composition writing to its old destination.
+    set_enabled(path, false)?;
+    document::save(path, &doc)?;
+    let error = if doc.enabled {
+        match project {
+            Some(project) => activate(path, project, &doc).err(),
+            None => Some("Open a folder space to write Markdown. Your draft is saved.".into()),
+        }
+    } else {
+        None
+    };
+    Ok((doc, error))
 }
 fn discover(data: &Path) -> Result<Vec<(PathBuf, Applied)>, String> {
     let entries = match std::fs::read_dir(data) {
@@ -111,7 +144,7 @@ fn update(
         return Ok(());
     }
     let Some(mut active) = read(path)? else { return Ok(()) };
-    // An explicit Apply or pause during expansion wins over this older scan.
+    // An autosave or pause during expansion wins over this older scan.
     if &active != expected || !active.document.enabled {
         return Ok(());
     }
@@ -133,6 +166,8 @@ pub struct Manager {
     alive: Arc<AtomicBool>,
     revision: Arc<AtomicU64>,
     problems: HashMap<PathBuf, String>,
+    updated: HashSet<PathBuf>,
+    pending_edits: HashSet<PathBuf>,
     count: usize,
     subscription: Option<gpui::Subscription>,
     timer: Option<gpui::Task<()>>,
@@ -153,6 +188,8 @@ impl Manager {
             alive: Arc::new(AtomicBool::new(true)),
             revision: Arc::new(AtomicU64::new(0)),
             problems: HashMap::new(),
+            updated: HashSet::new(),
+            pending_edits: HashSet::new(),
             count: 0,
             subscription: None,
             timer: None,
@@ -185,6 +222,20 @@ impl Manager {
     pub fn problem(&self, path: &Path) -> Option<String> {
         self.problems.get(path).cloned()
     }
+    pub fn updated(&self, path: &Path) -> bool {
+        self.updated.contains(path)
+    }
+    pub fn pause_for_edits(&mut self, path: &Path, cx: &mut Context<Self>) {
+        self.pending_edits.insert(path.to_owned());
+        self.problems.remove(path);
+        self.updated.remove(path);
+        self.revision.fetch_add(1, Ordering::SeqCst);
+        cx.notify();
+    }
+    pub fn resume_after_save(&mut self, path: &Path, cx: &mut Context<Self>) {
+        self.pending_edits.remove(path);
+        self.request(cx);
+    }
     pub fn status(&self) -> BackgroundStatus {
         if !self.problems.is_empty() {
             BackgroundStatus {
@@ -200,7 +251,7 @@ impl Manager {
         } else {
             BackgroundStatus {
                 label: format!("Markdown Prompt: {} active file(s)", self.count),
-                detail: "Applied compositions follow current template content automatically."
+                detail: "Enabled compositions follow current template content automatically."
                     .into(),
                 state: if self.busy { BackgroundState::Running } else { BackgroundState::Idle },
             }
@@ -219,13 +270,14 @@ impl Manager {
         let alive = self.alive.clone();
         let revision = self.revision.clone();
         let expected_revision = revision.load(Ordering::SeqCst);
+        let pending_edits = self.pending_edits.clone();
         self.work = Some(cx.spawn(async move |this, cx| {
             let records = cx.background_executor().spawn(async move { discover(&data) }).await;
-            let mut problems = HashMap::new(); let mut count = 0;
+            let mut problems = HashMap::new(); let mut updated = HashSet::new(); let mut count = 0;
             match records {
                 Err(e) => { problems.insert(PathBuf::from("configuration"), e); },
                 Ok(records) => for (path, active) in records {
-                    if !active.document.enabled { continue; }
+                    if !active.document.enabled || pending_edits.contains(&path) { continue; }
                     count += 1;
                     let mut providers: Vec<_> = active.document.parts.iter().filter_map(|p| if let Part::Template { provider, .. } = p { Some(provider.clone()) } else { None }).collect();
                     providers.sort(); providers.dedup();
@@ -254,12 +306,15 @@ impl Manager {
                             cx.background_executor().spawn(async move { update(&path, &active, &body, &alive, &revision, expected_revision) }).await
                         }
                     };
-                    if let Err(e) = result { problems.insert(path, e); }
+                    match result {
+                        Err(e) => { problems.insert(path, e); },
+                        Ok(()) => { updated.insert(path); },
+                    }
                 }
             }
             let _ = this.update(cx, |this, cx| {
                 this.busy = false; this.count = count;
-                if this.revision.load(Ordering::SeqCst) == expected_revision { this.problems = problems; }
+                if this.revision.load(Ordering::SeqCst) == expected_revision { this.problems = problems; this.updated = updated; }
                 cx.notify();
                 if this.pending { this.request(cx); }
             });
@@ -273,6 +328,34 @@ mod tests {
     use super::*;
     use chartr_plugin::services::{SavedPrompt, ServiceExport};
     use gpui::AppContext;
+
+    #[test]
+    fn autosave_preserves_drafts_without_a_folder_and_rejects_stale_panes() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let path = data.path().join("draft.json");
+        let doc = Document {
+            parts: vec![Part::Text { text: "Keep my draft".into() }],
+            ..Document::default()
+        };
+        let (saved, error) = persist(&path, None, doc.clone(), None).unwrap();
+        assert!(error.unwrap().contains("folder space"));
+        assert_eq!(document::load(&path).unwrap(), doc);
+        assert!(read(&path).unwrap().is_none());
+        assert!(persist(&path, Some(project.path()), doc.clone(), None).is_err());
+        assert_eq!(document::load(&path).unwrap(), doc);
+
+        let expected = std::fs::read(&path).unwrap();
+        let (_, error) = persist(&path, Some(project.path()), saved, Some(&expected)).unwrap();
+        assert!(error.is_none());
+        assert_eq!(read(&path).unwrap().unwrap().document, doc);
+        let disabled = Document { enabled: false, ..doc };
+        let expected = std::fs::read(&path).unwrap();
+        persist(&path, Some(project.path()), disabled.clone(), Some(&expected)).unwrap();
+        assert_eq!(document::load(&path).unwrap(), disabled);
+        assert!(!read(&path).unwrap().unwrap().document.enabled);
+        assert!(!project.path().join("CHARTR.md").exists());
+    }
 
     fn apply_fixture(data: &Path, project: &Path, name: &str, append: bool) -> PathBuf {
         let path = data.join(format!("{name}.json"));

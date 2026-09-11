@@ -16,6 +16,8 @@ pub struct Document {
     pub version: u32,
     pub enabled: bool,
     pub append: bool,
+    #[serde(default)]
+    pub create_if_missing: bool,
     pub filename: String,
     pub parts: Vec<Part>,
     #[serde(default)]
@@ -27,6 +29,7 @@ impl Default for Document {
             version: 1,
             enabled: true,
             append: false,
+            create_if_missing: false,
             filename: "CHARTR.md".into(),
             parts: vec![Part::Text { text: String::new() }],
             managed_files: HashMap::new(),
@@ -91,14 +94,18 @@ pub fn apply(root: &Path, doc: &Document, body: &str) -> Result<PathBuf, String>
     }
     let path = target(root, &doc.filename)?;
     let (content, original) = if doc.append {
-        let bytes = std::fs::read(&path)
-            .map_err(|e| format!("Append needs an existing Markdown file: {e}"))?;
+        let original = match std::fs::read(&path) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && doc.create_if_missing => None,
+            Err(e) => return Err(format!("Append needs an existing Markdown file: {e}")),
+        };
+        let bytes = original.as_deref().unwrap_or_default();
         if bytes.len() > 4 * 1024 * 1024 {
             return Err("The destination exceeds 4 MiB.".into());
         }
         let existing =
-            std::str::from_utf8(&bytes).map_err(|_| "The destination is not UTF-8 Markdown.")?;
-        (appended(existing, body)?, Some(bytes))
+            std::str::from_utf8(bytes).map_err(|_| "The destination is not UTF-8 Markdown.")?;
+        (appended(existing, body)?, original)
     } else {
         match std::fs::read(&path) {
             Ok(bytes) => {
@@ -210,5 +217,46 @@ mod tests {
         doc.filename = "escape/a.md".into();
         assert!(apply(root.path(), &doc, "x").is_err());
         assert_eq!(std::fs::read_to_string(outside.path().join("a.md")).unwrap(), "private");
+    }
+
+    #[test]
+    fn append_can_create_missing_file_and_then_preserve_surrounding_content() {
+        let root = tempfile::tempdir().unwrap();
+        let mut doc = Document { append: true, ..Document::default() };
+        let path = root.path().join(&doc.filename);
+        assert!(apply(root.path(), &doc, "first").is_err());
+        assert!(!path.exists());
+
+        doc.create_if_missing = true;
+        apply(root.path(), &doc, "first").unwrap();
+        let first = format!("{START}\nfirst\n{END}\n");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+        std::fs::write(&path, format!("# Instructions\n\n{first}User notes\n")).unwrap();
+        apply(root.path(), &doc, "updated").unwrap();
+        let expected = format!("# Instructions\n\n{START}\nupdated\n{END}\nUser notes\n");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+        apply(root.path(), &doc, "updated").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+
+        std::fs::write(&path, [0xff]).unwrap();
+        assert!(apply(root.path(), &doc, "x").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), [0xff]);
+        doc.filename = "missing-parent/file.md".into();
+        assert!(apply(root.path(), &doc, "x").is_err());
+        assert!(!root.path().join("missing-parent").exists());
+    }
+
+    #[test]
+    fn create_if_missing_defaults_off_for_old_drafts_and_is_persisted() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("composition.json");
+        let mut legacy = serde_json::to_value(Document::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("create_if_missing");
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let mut doc = load(&path).unwrap();
+        assert!(!doc.create_if_missing);
+        doc.create_if_missing = true;
+        save(&path, &doc).unwrap();
+        assert_eq!(load(&path).unwrap(), doc);
     }
 }

@@ -73,6 +73,64 @@ pub(super) enum Operation {
 }
 
 impl Store {
+    pub fn templates(&self) -> Result<Vec<chartr_plugin::services::SavedPrompt>> {
+        use chartr_plugin::services::SavedPrompt;
+        let mut templates = vec![SavedPrompt {
+            // Keep existing Markdown Prompt compositions connected to the combined template.
+            id: "skill-sources".into(),
+            title: "Skills - All".into(),
+            prompt: self.prompt(true)?,
+        }];
+        for source in self.sources.iter().filter(|source| source.enabled) {
+            let selected = Self { root: self.root.clone(), sources: vec![source.clone()] };
+            templates.push(SavedPrompt {
+                id: format!("skill-source:{}", source.name.to_lowercase()),
+                title: format!("Skills - {}", source.name),
+                prompt: selected.prompt(false)?,
+            });
+        }
+        Ok(templates)
+    }
+
+    fn prompt(&self, include_intro: bool) -> Result<String> {
+        let catalog = self.catalog()?;
+        let mut body = if include_intro {
+            String::from(
+                "## Skill sources\n\nSources are listed in resolution order. Bare names use the first enabled source; `source/skill` selects an exact source. Skill paths are relative to the source root. Read each SKILL.md and resolve supporting files relative to its directory.\n",
+            )
+        } else {
+            String::new()
+        };
+        for source in self.sources.iter().filter(|source| source.enabled) {
+            let mut skills =
+                catalog.skills.iter().filter(|skill| skill.source == source.name).peekable();
+            if skills.peek().is_none() {
+                continue;
+            }
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str(&format!(
+                "### Skill source: {} ({})\n",
+                source.name,
+                source.path.display()
+            ));
+            for skill in skills {
+                let path = skill.directory.strip_prefix(&source.path)?.join("SKILL.md");
+                body.push_str(&format!(
+                    "- `{}` — `{}`{}\n",
+                    skill.name,
+                    path.display(),
+                    if skill.shadowed { " (shadowed; use qualified name)" } else { "" },
+                ));
+            }
+        }
+        for warning in catalog.warnings {
+            body.push_str(&format!("\nSource warning: {warning}\n"));
+        }
+        Ok(body)
+    }
+
     pub fn catalog(&self) -> Result<chartr_plugin::services::SkillCatalog> {
         use chartr_plugin::services::{Skill as ResolvedSkill, SkillCatalog};
         let mut catalog = SkillCatalog::default();
@@ -442,6 +500,58 @@ mod tests {
             git_ref: git_ref.into(),
             ..source(name, Path::new(""))
         }
+    }
+
+    #[test]
+    fn templates_keep_the_combined_id_and_scope_each_enabled_source() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first");
+        let second = temp.path().join("second");
+        skill(&first, "shared");
+        skill(&second, "engineering/shared");
+        skill(&second, "only-second");
+        let mut disabled = source("Disabled", &first);
+        disabled.enabled = false;
+        let mut store = Store {
+            root: temp.path().join("data"),
+            sources: vec![
+                source("bag-of-skills", &first),
+                source("Matt Pocock", &second),
+                disabled,
+                source("Missing", &temp.path().join("missing")),
+            ],
+        };
+        let templates = store.templates().unwrap();
+        assert_eq!(
+            templates.iter().map(|template| template.title.as_str()).collect::<Vec<_>>(),
+            ["Skills - All", "Skills - bag-of-skills", "Skills - Matt Pocock", "Skills - Missing"],
+        );
+        assert_eq!(templates[0].id, "skill-sources");
+        assert!(templates[0].prompt.starts_with("## Skill sources\n\nSources are listed"));
+        assert!(templates[0].prompt.contains("(shadowed; use qualified name)"));
+        assert!(templates[0].prompt.contains("Source warning: Missing is unavailable."));
+        assert_eq!(
+            templates[1].prompt,
+            format!("### bag-of-skills\n`{}`\n\n- `shared` — `shared/SKILL.md`\n", first.display()),
+        );
+        assert!(!templates[1].prompt.contains("Matt Pocock"));
+        assert!(!templates[1].prompt.contains("only-second"));
+        assert!(!templates[1].prompt.contains("Missing"));
+        assert_eq!(templates[2].id, "skill-source:matt pocock");
+        assert!(templates[2].prompt.contains("- `shared` — `engineering/shared/SKILL.md`"));
+        assert!(!templates[2].prompt.contains("shadowed"));
+        assert!(!templates[2].prompt.contains("bag-of-skills"));
+        assert_eq!(templates[2].prompt.matches(&second.display().to_string()).count(), 1);
+        assert!(templates[3].prompt.contains("Source warning: Missing is unavailable."));
+
+        store.sources.swap(0, 1);
+        let reordered = store.templates().unwrap();
+        assert_eq!(reordered[1], templates[2]);
+        assert_eq!(reordered[2], templates[1]);
+        store.sources[0].enabled = false;
+        let enabled = store.templates().unwrap();
+        assert!(!enabled.iter().any(|template| template.id == templates[2].id));
+        assert!(!enabled[0].prompt.contains("Matt Pocock"));
     }
 
     #[test]

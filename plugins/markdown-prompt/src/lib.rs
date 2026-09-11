@@ -1,10 +1,12 @@
-//! A project-scoped composer. Templates remain references until preview/apply.
+//! A project-scoped autosaving composer with optional live Markdown output.
 mod document;
 mod rich_input;
 mod sync;
-use crate::{components::input_field, text_input::TextInput};
+use crate::{
+    components::{SegmentedControl, SegmentedControlOption, input_field},
+    text_input::TextInput,
+};
 use chartr_plugin::ui as plugin_ui;
-use chartr_plugin::ui::action as form_button;
 use chartr_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, services::PromptTemplates,
 };
@@ -17,6 +19,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     path::PathBuf,
+    time::Duration,
 };
 use ui::{Color, Switch, prelude::*};
 
@@ -54,13 +57,7 @@ impl Plugin for MarkdownPromptPlugin {
             context.space.hash(&mut hash);
         }
         let path = self.data.join(format!("{:016x}.json", hash.finish()));
-        cx.new(|cx| {
-            let mut view = Composer::new(context.clone(), path, window, cx);
-            view.sync = Some(self.sync.downgrade());
-            cx.observe(&self.sync, |_, _, cx| cx.notify()).detach();
-            view
-        })
-        .into()
+        cx.new(|cx| Composer::new(context.clone(), path, self.sync.clone(), window, cx)).into()
     }
 }
 
@@ -76,11 +73,17 @@ impl Render for TemplateChip {
         plugin_ui::template_chip(false, cx).p_2().child(plugin_ui::label(self.title.clone()))
     }
 }
+struct ModeDraft {
+    append: bool,
+    create_if_missing: bool,
+    filename: Entity<TextInput>,
+}
+
 struct Composer {
     context: InstanceContext,
     path: PathBuf,
     doc: Document,
-    filename: Entity<TextInput>,
+    mode_draft: Option<ModeDraft>,
     editor: Entity<Editor>,
     chips_dirty: bool,
     templates_dirty: bool,
@@ -90,15 +93,20 @@ struct Composer {
     error: Option<String>,
     status: Option<String>,
     preview: Option<String>,
+    preview_focus: gpui::FocusHandle,
     busy: bool,
     invalid_config: bool,
     saved_bytes: Option<Vec<u8>>,
-    sync: Option<gpui::WeakEntity<sync::Manager>>,
+    sync: Entity<sync::Manager>,
+    edit_revision: u64,
+    save_ready: bool,
+    saving: bool,
 }
 impl Composer {
     fn new(
         context: InstanceContext,
         path: PathBuf,
+        sync: Entity<sync::Manager>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -106,17 +114,6 @@ impl Composer {
         let error = loaded.as_ref().err().cloned();
         let invalid_config = error.is_some();
         let doc = loaded.unwrap_or_default();
-        let filename = cx.new(|cx| {
-            let mut input = TextInput::new("CHARTR.md", cx);
-            input.set_text(doc.filename.clone(), false, cx);
-            input
-        });
-        cx.subscribe(&filename, |this, _, _: &crate::text_input::InputEvent, cx| {
-            this.preview = None;
-            this.status = None;
-            cx.notify();
-        })
-        .detach();
         let saved_bytes = std::fs::read(&path).ok();
         let editor = cx.new(|cx| {
             let mut editor = Editor::auto_height(5, 22, window, cx);
@@ -132,9 +129,7 @@ impl Composer {
         cx.subscribe(&editor, |this, _, event: &editor::EditorEvent, cx| {
             if matches!(event, editor::EditorEvent::BufferEdited) {
                 this.chips_dirty = true;
-                this.preview = None;
-                this.status = None;
-                cx.notify();
+                this.queue_save(false, cx);
             }
         })
         .detach();
@@ -144,11 +139,12 @@ impl Composer {
             cx.notify();
         })
         .detach();
+        cx.observe(&sync, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             context,
             path,
             doc,
-            filename,
+            mode_draft: None,
             editor,
             chips_dirty: true,
             templates_dirty: false,
@@ -158,17 +154,25 @@ impl Composer {
             error,
             status: None,
             preview: None,
+            preview_focus: cx.focus_handle(),
             busy: false,
             invalid_config,
             saved_bytes,
-            sync: None,
+            sync,
+            edit_revision: 0,
+            save_ready: false,
+            saving: false,
         };
-        this.refresh(false, window, cx);
+        this.refresh(window, cx);
+        // Opening a saved composition resumes its current Enabled state. A fresh
+        // untouched editor never creates an empty project file just by opening.
+        if this.saved_bytes.is_some() {
+            this.queue_save(true, cx);
+        }
         this
     }
     fn snapshot(&self, cx: &App) -> Document {
         let mut doc = self.doc.clone();
-        doc.filename = self.filename.read(cx).text().trim().to_owned();
         doc.parts = rich_input::decode(&self.editor.read(cx).text(cx));
         doc
     }
@@ -178,121 +182,213 @@ impl Composer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.busy {
+        if self.invalid_config {
             return;
         }
         window.focus(&self.editor.focus_handle(cx), cx);
         self.editor.update(cx, |editor, cx| rich_input::insert(editor, &chip, window, cx));
         self.chips_dirty = true;
         self.preview = None;
-        self.status = None;
+        self.queue_save(false, cx);
+    }
+    fn show_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.invalid_config {
+            return;
+        }
+        let filename = cx.new(|cx| {
+            let mut input = TextInput::new("CHARTR.md", cx);
+            input.set_text(self.doc.filename.clone(), false, cx);
+            input
+        });
+        window.focus(&filename.focus_handle(cx), cx);
+        self.preview = None;
+        self.mode_draft = Some(ModeDraft {
+            append: self.doc.append,
+            create_if_missing: self.doc.create_if_missing,
+            filename,
+        });
         cx.notify();
     }
-    fn refresh(&mut self, apply: bool, _: &mut Window, cx: &mut Context<Self>) {
+
+    fn cancel_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.mode_draft = None;
+        window.focus(&self.editor.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    fn save_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(draft) = self.mode_draft.take() else { return };
+        self.doc.append = draft.append;
+        self.doc.create_if_missing = draft.create_if_missing;
+        self.doc.filename = draft.filename.read(cx).text().trim().to_owned();
+        self.queue_save(true, cx);
+        window.focus(&self.editor.focus_handle(cx), cx);
+    }
+
+    fn show_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy || self.invalid_config {
             return;
         }
-        if apply && !self.doc.enabled {
+        match document::compose(&self.snapshot(cx).parts, &self.bodies) {
+            Ok(body) => {
+                self.preview = Some(body);
+                self.error = None;
+                window.focus(&self.preview_focus, cx);
+            }
+            Err(error) => self.error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn dismiss_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.preview = None;
+        window.focus(&self.editor.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    fn queue_save(&mut self, immediate: bool, cx: &mut Context<Self>) {
+        if self.invalid_config {
             return;
         }
-        let providers = self.context.services.all::<PromptTemplates>();
+        self.edit_revision += 1;
+        self.save_ready = false;
+        self.preview = None;
+        self.error = None;
+        self.status = Some("Saving…".into());
+        self.sync.update(cx, |sync, cx| sync.pause_for_edits(&self.path, cx));
+        if immediate {
+            self.save_ready = true;
+            self.flush_save(cx);
+        } else {
+            let revision = self.edit_revision;
+            // Retain the editor until this save finishes, even if its pane closes.
+            let keep_alive = cx.entity();
+            let timer = cx.background_executor().timer(Duration::from_millis(500));
+            cx.spawn(async move |this, cx| {
+                let _keep_alive = keep_alive;
+                timer.await;
+                let _ = this.update(cx, |this, cx| {
+                    if this.edit_revision == revision {
+                        this.save_ready = true;
+                        this.flush_save(cx);
+                    }
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    fn flush_save(&mut self, cx: &mut Context<Self>) {
+        if self.saving || !self.save_ready || self.invalid_config {
+            return;
+        }
+        self.save_ready = false;
+        self.saving = true;
+        let doc = self.snapshot(cx);
+        let path = self.path.clone();
         let project = self.context.project_dir.clone();
-        let requests: Vec<_> = providers
+        let expected = self.saved_bytes.clone();
+        let revision = self.edit_revision;
+        let keep_alive = cx.entity();
+        cx.spawn(async move |this, cx| {
+            let _keep_alive = keep_alive;
+            let result =
+                cx.background_executor()
+                    .spawn(async move {
+                        sync::persist(&path, project.as_deref(), doc, expected.as_deref())
+                    })
+                    .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                match result {
+                    Ok((doc, error)) => {
+                        this.saved_bytes = serde_json::to_vec_pretty(&doc).ok();
+                        // Controls and text may have changed while the save was in flight.
+                        this.doc.managed_files = doc.managed_files;
+                        if this.edit_revision == revision {
+                            this.error = error;
+                            this.status = None;
+                        }
+                    }
+                    Err(error) => {
+                        this.error = Some(error);
+                        this.status = Some("Changes could not be saved".into());
+                    }
+                }
+                if this.edit_revision == revision {
+                    this.sync.update(cx, |sync, cx| sync.resume_after_save(&this.path, cx));
+                }
+                this.flush_save(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn refresh(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        if self.busy || self.invalid_config {
+            return;
+        }
+        let project = self.context.project_dir.clone();
+        let requests: Vec<_> = self
+            .context
+            .services
+            .all::<PromptTemplates>()
             .into_iter()
             .map(|(id, provider)| (id, provider.list(project.clone(), cx)))
             .collect();
-        let doc = self.snapshot(cx);
-        let expected = self.saved_bytes.clone();
         self.busy = true;
-        self.error = None;
-        if apply {
-            self.status = None;
-        }
-        cx.notify();
         cx.spawn(async move |this, cx| {
-            let mut templates = Vec::new(); let mut bodies = Bodies::new(); let mut warnings = Vec::new();
+            let mut templates = Vec::new();
+            let mut bodies = Bodies::new();
+            let mut warnings = Vec::new();
             for (provider, task) in requests {
                 match task.await {
                     Ok(items) => {
                         let mut ids = std::collections::HashSet::new();
-                        if items.iter().any(|item| item.id.is_empty() || item.title.trim().is_empty() || item.prompt.len() > 1024 * 1024 || !ids.insert(item.id.clone())) {
-                            warnings.push(format!("{provider}: invalid or duplicate template IDs")); continue;
+                        if items.iter().any(|item| {
+                            item.id.is_empty()
+                                || item.title.trim().is_empty()
+                                || item.prompt.len() > 1024 * 1024
+                                || !ids.insert(item.id.clone())
+                        }) {
+                            warnings.push(format!("{provider}: invalid or duplicate template IDs"));
+                            continue;
                         }
                         for item in items {
                             bodies.insert((provider.clone(), item.id.clone()), item.prompt);
-                            templates.push(TemplateChip { provider: provider.clone(), id: item.id, title: item.title, origin: None });
+                            templates.push(TemplateChip {
+                                provider: provider.clone(),
+                                id: item.id,
+                                title: item.title,
+                                origin: None,
+                            });
                         }
-                    },
+                    }
                     Err(error) => warnings.push(format!("{provider}: {error}")),
                 }
             }
-            let prepared = this.update(cx, |this, cx| {
-                // A provider disabled during a scan cannot supply stale content.
-                let enabled: std::collections::HashSet<_> = this.context.services.all::<PromptTemplates>().into_iter().map(|(id, _)| id).collect();
+            let _ = this.update(cx, |this, cx| {
+                let enabled: std::collections::HashSet<_> = this
+                    .context
+                    .services
+                    .all::<PromptTemplates>()
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .collect();
                 bodies.retain(|(provider, _), _| enabled.contains(provider));
                 templates.retain(|t| enabled.contains(&t.provider));
-                let composed = document::compose(&doc.parts, &bodies);
-                this.templates = templates; this.chips_dirty = true; this.bodies = bodies; this.warnings = warnings;
-                this.preview = composed.as_ref().ok().cloned();
-                this.error = composed.as_ref().err().cloned();
-                if !apply || composed.is_err() { this.busy = false; }
-                cx.notify();
-                composed
-            });
-            let Ok(Ok(body)) = prepared else { return };
-            if !apply { return; }
-            let Some(root) = project else {
-                let _ = this.update(cx, |this, cx| { this.error = Some("Open a folder space to write Markdown.".into()); this.busy = false; cx.notify(); }); return;
-            };
-            let Ok(path) = this.read_with(cx, |this, _| this.path.clone()) else { return };
-            let result = cx.background_executor().spawn(async move {
-                std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-                let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path.with_extension("lock")).map_err(|e| e.to_string())?;
-                lock.lock().map_err(|e| e.to_string())?;
-                if std::fs::read(&path).ok() != expected { return Err("This composition changed in another pane. Reopen Markdown Prompt before saving or applying.".into()); }
-                let mut doc = doc;
-                // Ownership receipts come from disk, never a stale pane.
-                doc.managed_files = sync::receipts(&path, &document::load(&path)?)?;
-                let written = document::apply(&root, &doc, &body)?;
-                if !doc.append { doc.managed_files.insert(doc.filename.clone(), body); }
-                document::save(&path, &doc).map_err(|e| format!("File written, but configuration could not be saved: {e}"))?;
-                sync::activate(&path, &root, &doc).map_err(|e| format!("File applied, but automatic sync could not be enabled: {e}"))?;
-                Ok::<_, String>((written, doc))
-            }).await;
-            let _ = this.update(cx, |this, cx| {
+                this.templates = templates;
+                this.chips_dirty = true;
+                this.bodies = bodies;
+                this.warnings = warnings;
                 this.busy = false;
-                match result {
-                    Ok((path, doc)) => { this.saved_bytes = serde_json::to_vec_pretty(&doc).ok(); this.doc = doc; PromptTemplates::changed(cx); this.status = Some(format!("Applied to {} · automatic sync is on", path.display())); },
-                    Err(error) => this.error = Some(error),
-                }
                 cx.notify();
             });
-        }).detach();
-    }
-    fn save_draft(&mut self, cx: &mut Context<Self>) {
-        if self.busy || self.invalid_config {
-            return;
-        }
-        let doc = self.snapshot(cx);
-        let path = self.path.clone();
-        let expected = self.saved_bytes.clone();
-        self.busy = true;
-        cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move {
-                std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-                let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path.with_extension("lock")).map_err(|e| e.to_string())?;
-                lock.lock().map_err(|e| e.to_string())?;
-                if std::fs::read(&path).ok() != expected { return Err("This composition changed in another pane. Reopen Markdown Prompt before saving or applying.".into()); }
-                let mut doc = doc;
-                doc.managed_files = sync::receipts(&path, &document::load(&path)?)?;
-                document::save(&path, &doc)?; sync::set_enabled(&path, doc.enabled)?; Ok::<_, String>(doc)
-            }).await;
-            let _ = this.update(cx, |this, cx| {
-                this.busy = false;
-                match result { Ok(doc) => { this.saved_bytes = serde_json::to_vec_pretty(&doc).ok(); this.doc = doc; PromptTemplates::changed(cx); this.status = Some("Draft saved.".into()); this.error = None; }, Err(e) => this.error = Some(e) }
-                cx.notify();
-            });
-        }).detach();
+        })
+        .detach();
         cx.notify();
     }
 }
@@ -300,9 +396,9 @@ impl Render for Composer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.templates_dirty && !self.busy {
             self.templates_dirty = false;
-            self.refresh(false, window, cx);
+            self.refresh(window, cx);
         }
-        let blocked = self.busy || self.invalid_config;
+        let blocked = self.invalid_config;
         if self.chips_dirty {
             self.chips_dirty = false;
             rich_input::decorate(&self.editor, &self.templates, window, cx);
@@ -335,10 +431,28 @@ impl Render for Composer {
                     )
             })
             .collect();
-        plugin_ui::pane_surface("markdown-prompt", cx).key_context("Prompts").size_full().overflow_y_scroll().p_4().gap_3()
+        let sync = self.sync.read(cx);
+        let status = self.status.clone().unwrap_or_else(|| {
+            if self.invalid_config {
+                "Configuration needs attention".into()
+            } else if self.error.is_some()
+                || (self.doc.enabled && sync.problem(&self.path).is_some())
+            {
+                "Draft saved · file needs attention".into()
+            } else if !self.doc.enabled {
+                "Draft saved · file updates paused".into()
+            } else if sync.updated(&self.path) {
+                "File updated · live sync on".into()
+            } else if self.saved_bytes.is_some() {
+                "Updating file…".into()
+            } else {
+                "Edits save automatically · live sync on".into()
+            }
+        });
+        let page = plugin_ui::pane_surface("markdown-prompt", cx).key_context("Prompts").size_full().overflow_y_scroll().p_4().gap_3()
             .child(plugin_ui::PageHeader::new("Markdown Prompt"))
-            .child(h_flex().gap_2().child(Switch::new("markdown-enabled", self.doc.enabled.into()).disabled(blocked).on_click(cx.listener(|this, state: &ui::ToggleState, _, cx| { this.doc.enabled = state.selected(); this.status = None; cx.notify(); }))).child(plugin_ui::label("Enabled")))
-            .child(h_flex().justify_between().child(plugin_ui::label("Templates")).child(plugin_ui::action("refresh-templates", "Refresh / preview").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.refresh(false, window, cx)))))
+            .child(h_flex().gap_2().child(Switch::new("markdown-enabled", self.doc.enabled.into()).disabled(blocked).on_click(cx.listener(|this, state: &ui::ToggleState, _, cx| { this.doc.enabled = state.selected(); this.queue_save(true, cx); }))).child(plugin_ui::label("Enabled")).child(plugin_ui::label(status).color(Color::Muted)))
+            .child(h_flex().justify_between().child(plugin_ui::label("Templates")).child(plugin_ui::action("refresh-templates", "Refresh").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.refresh(window, cx)))))
             .child(h_flex().gap_2().flex_wrap().children(templates))
             .when(self.templates.is_empty(), |view| view.child(plugin_ui::label("No templates available. Enable Saved Prompts, Skills or another provider.").color(Color::Muted)))
             .children(self.warnings.iter().map(|warning| plugin_ui::notice(warning.clone(), true)))
@@ -346,28 +460,88 @@ impl Render for Composer {
             .child(plugin_ui::label("Type freely. Click or drag a template into the text. Select a chip to move, copy or delete it.").color(Color::Muted))
             .child(plugin_ui::outlined_content(cx).id("composition").w_full()
                 .on_drag_move(cx.listener(|this, event: &gpui::DragMoveEvent<TemplateChip>, window, cx| {
-                    if !this.busy && event.bounds.contains(&event.event.position) {
+                    if !this.invalid_config && event.bounds.contains(&event.event.position) {
                         window.focus(&this.editor.focus_handle(cx), cx);
                         this.editor.update(cx, |editor, cx| rich_input::place_caret(editor, event.event.position, window, cx));
                     }
                 }))
                 .on_drop(cx.listener(|this, chip: &TemplateChip, window, cx| { cx.stop_propagation(); this.insert_at_cursor(chip.clone(), window, cx); }))
                 .child(self.editor.clone()))
-            .child(h_flex().gap_2().child(plugin_ui::label("Mode"))
-                .child(plugin_ui::action("append-mode", if self.doc.append { "● Append" } else { "Append" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = true; this.status = None; cx.notify(); })))
-                .child(plugin_ui::action("new-file-mode", if !self.doc.append { "● New file" } else { "New file" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = false; this.status = None; cx.notify(); }))))
-            .child(plugin_ui::label(if self.doc.append { "Update a marked section in an existing file; surrounding content is preserved." } else { "Create and maintain an owned file; external edits are reported before replacement." }).color(Color::Muted))
-            .child(plugin_ui::label("Filename (relative to this folder)"))
-            .when(self.context.project_dir.is_none(), |view| view.child(plugin_ui::label("Free sessions has no destination folder. Open Markdown Prompt inside a folder space to apply this file.").color(Color::Muted)))
-            .child(input_field("markdown-filename", self.filename.clone(), cx))
-            .when_some(self.context.project_dir.clone(), |view, root| view.child(plugin_ui::label(root.display().to_string()).color(Color::Muted)))
-            .when_some(self.preview.clone(), |view, text| view.child(plugin_ui::label("Expanded preview")).child(plugin_ui::outlined_content(cx).child(plugin_ui::label(text))))
+            .child(h_flex().child(plugin_ui::action("preview-markdown", "Preview").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.show_preview(window, cx)))))
+            .child(h_flex().child(plugin_ui::action("edit-markdown-mode", "Mode").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.show_mode(window, cx)))))
             .when_some(self.error.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
-            .when_some(self.sync.as_ref().and_then(|sync| sync.upgrade()).and_then(|sync| sync.read(cx).problem(&self.path)), |view, error| view.child(plugin_ui::notice(format!("Automatic sync: {error}"), true)))
-            .when_some(self.status.clone(), |view, status| view.child(plugin_ui::label(status)))
-            .child(h_flex().justify_end().gap_2()
-                .child(plugin_ui::action("save-markdown-draft", "Save draft").disabled(blocked).on_click(cx.listener(|this, _, _, cx| this.save_draft(cx))))
-                .child(form_button("apply-markdown", if self.busy { "Working…" } else { "Apply" }).disabled(blocked || !self.doc.enabled || self.context.project_dir.is_none()).on_click(cx.listener(|this, _, window, cx| this.refresh(true, window, cx)))))
+            .when_some(self.sync.read(cx).problem(&self.path), |view, error| view.child(plugin_ui::notice(format!("Automatic sync: {error}"), true)));
+        div()
+            .size_full()
+            .relative()
+            .track_focus(&self.preview_focus)
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" {
+                    if this.mode_draft.is_some() {
+                        this.cancel_mode(window, cx);
+                        cx.stop_propagation();
+                    } else if this.preview.is_some() {
+                        this.dismiss_preview(window, cx);
+                        cx.stop_propagation();
+                    }
+                }
+            }))
+            .child(page)
+            .when_some(self.mode_draft.as_ref(), |view, draft| {
+                view.child(
+                    plugin_ui::ModalOverlay::new("markdown-mode-scrim", cx.listener(|this, _, window, cx| this.cancel_mode(window, cx)))
+                        .child(plugin_ui::DialogSurface::new("markdown-mode-dialog")
+                            .child(plugin_ui::dialog_header("Mode", div(), cx))
+                            .child(plugin_ui::dialog_body().id("markdown-mode-contents").overflow_y_scroll()
+                                .child(h_flex().gap_2().child(plugin_ui::label("Mode"))
+                                    .child(SegmentedControl::new("Markdown output mode", [
+                                        SegmentedControlOption::new("append-mode", "Append", draft.append, cx.listener(|this, _, _, cx| { if let Some(draft) = this.mode_draft.as_mut() { draft.append = true; } cx.notify(); })),
+                                        SegmentedControlOption::new("new-file-mode", "New file", !draft.append, cx.listener(|this, _, _, cx| { if let Some(draft) = this.mode_draft.as_mut() { draft.append = false; } cx.notify(); })),
+                                    ]).disabled(blocked)))
+                                .child(plugin_ui::label(if draft.append { "Update a marked section in the named file; surrounding content is preserved." } else { "Create and maintain an owned file; external edits are reported before replacement." }).color(Color::Muted))
+                                .when(draft.append, |view| view.child(h_flex().gap_2()
+                                    .child(Switch::new("markdown-create-if-missing", draft.create_if_missing.into()).disabled(blocked).on_click(cx.listener(|this, state: &ui::ToggleState, _, cx| {
+                                        if let Some(draft) = this.mode_draft.as_mut() { draft.create_if_missing = state.selected(); }
+                                        cx.notify();
+                                    })))
+                                    .child(plugin_ui::label("Create file if it doesn't exist"))))
+                                .child(plugin_ui::label("Filename (relative to this folder)"))
+                                .when(self.context.project_dir.is_none(), |view| view.child(plugin_ui::label("Free sessions has no destination folder. Open Markdown Prompt inside a folder space to enable file updates.").color(Color::Muted)))
+                                .child(input_field("markdown-filename", draft.filename.clone(), cx))
+                                .when_some(self.context.project_dir.clone(), |view, root| view.child(plugin_ui::label(root.display().to_string()).color(Color::Muted)))
+                            )
+                            .child(plugin_ui::dialog_actions(cx)
+                                .child(plugin_ui::action("cancel-markdown-mode", "Cancel").on_click(cx.listener(|this, _, window, cx| this.cancel_mode(window, cx))))
+                                .child(plugin_ui::action("save-markdown-mode", "Save").on_click(cx.listener(|this, _, window, cx| this.save_mode(window, cx)))))
+                        ),
+                )
+            })
+            .when_some(self.preview.clone(), |view, text| {
+                view.child(
+                    plugin_ui::ModalOverlay::new(
+                        "markdown-preview-scrim",
+                        cx.listener(|this, _, window, cx| this.dismiss_preview(window, cx)),
+                    )
+                    .child(
+                        plugin_ui::DialogSurface::new("markdown-preview-dialog")
+                            .child(plugin_ui::dialog_header(
+                                "Expanded preview",
+                                plugin_ui::action("close-markdown-preview", "Close").on_click(
+                                    cx.listener(|this, _, window, cx| {
+                                        this.dismiss_preview(window, cx)
+                                    }),
+                                ),
+                                cx,
+                            ))
+                            .child(
+                                plugin_ui::dialog_body()
+                                    .id("markdown-preview-contents")
+                                    .overflow_y_scroll()
+                                    .child(plugin_ui::label(text)),
+                            ),
+                    ),
+                )
+            })
     }
 }
 
@@ -378,6 +552,187 @@ mod tests {
         TerminalLauncher,
         services::{PluginSettings, SavedPrompt, ServiceExport, Services},
     };
+
+    #[gpui::test]
+    fn autosave_debounces_edits_and_enabled_controls_file_updates(cx: &mut gpui::TestAppContext) {
+        let root = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("composition.json");
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+            crate::text_input::init(cx);
+            crate::prompts_plugin::init(cx);
+        });
+        let services = Services::default();
+        let manager = cx.new(|_| sync::Manager::new(data.path().into()));
+        manager.update(cx, |manager, cx| manager.connect(services.clone(), cx));
+        let context = InstanceContext {
+            instance_id: 1,
+            space: "fixture".into(),
+            space_name: "Fixture".into(),
+            project_dir: Some(root.path().into()),
+            bound_session: None,
+            terminal: TerminalLauncher::new(|_, _| {}),
+            services,
+            plugin_settings: PluginSettings::new(|_, _, _| {}),
+        };
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            Composer::new(context.clone(), path.clone(), manager.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert!(!path.exists());
+        assert!(!root.path().join("CHARTR.md").exists());
+
+        view.update_in(cx, |this, _, cx| {
+            this.doc.enabled = false;
+            this.queue_save(true, cx);
+        });
+        cx.run_until_parked();
+        assert!(!document::load(&path).unwrap().enabled);
+        view.update_in(cx, |this, window, cx| {
+            this.show_mode(window, cx);
+            let draft = this.mode_draft.as_mut().unwrap();
+            draft.append = true;
+            draft.create_if_missing = true;
+            draft.filename.update(cx, |input, cx| input.set_text("AGENTS.md", true, cx));
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(1000));
+        cx.run_until_parked();
+        assert_eq!(document::load(&path).unwrap().filename, "CHARTR.md");
+        assert!(!document::load(&path).unwrap().append);
+        view.update_in(cx, |this, window, cx| this.save_mode(window, cx));
+        cx.run_until_parked();
+        let initial = std::fs::read(&path).unwrap();
+        view.update_in(cx, |this, window, cx| {
+            this.editor.update(cx, |editor, cx| editor.set_text("first", window, cx));
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(250));
+        view.update_in(cx, |this, window, cx| {
+            this.editor.update(cx, |editor, cx| editor.set_text("latest", window, cx));
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(250));
+        cx.run_until_parked();
+        assert_eq!(std::fs::read(&path).unwrap(), initial);
+        cx.executor().advance_clock(Duration::from_millis(250));
+        cx.run_until_parked();
+        let draft = document::load(&path).unwrap();
+        assert_eq!(draft.filename, "AGENTS.md");
+        assert!(draft.append && draft.create_if_missing);
+        assert_eq!(document::compose(&draft.parts, &Bodies::new()).unwrap(), "latest");
+        let output = root.path().join("AGENTS.md");
+        assert!(!output.exists());
+
+        // A newer toggle while an autosave is in flight must win without writing.
+        view.update_in(cx, |this, _, cx| {
+            this.doc.enabled = true;
+            this.queue_save(true, cx);
+            this.doc.enabled = false;
+            this.queue_save(true, cx);
+        });
+        cx.run_until_parked();
+        assert!(!document::load(&path).unwrap().enabled);
+        assert!(!output.exists());
+        view.update_in(cx, |this, _, cx| {
+            this.doc.enabled = true;
+            this.queue_save(true, cx);
+        });
+        cx.run_until_parked();
+        let expected = document::appended("", "latest").unwrap();
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+        assert!(manager.read_with(cx, |manager, _| manager.updated(&path)));
+
+        view.update_in(cx, |this, window, cx| {
+            this.show_mode(window, cx);
+            let draft = this.mode_draft.as_mut().unwrap();
+            draft.append = false;
+            draft.create_if_missing = false;
+            draft.filename.update(cx, |input, cx| input.set_text("UNSAVED.md", true, cx));
+            // An independent text autosave must use the committed mode and filename.
+            this.editor.update(cx, |editor, cx| editor.set_text("live edit", window, cx));
+        });
+        cx.run_until_parked();
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        let expected = document::appended("", "live edit").unwrap();
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+
+        assert!(!root.path().join("UNSAVED.md").exists());
+        assert_eq!(document::load(&path).unwrap().filename, "AGENTS.md");
+        view.update_in(cx, |this, window, cx| {
+            this.cancel_mode(window, cx);
+            this.show_mode(window, cx);
+            let draft = this.mode_draft.as_ref().unwrap();
+            assert!(draft.append && draft.create_if_missing);
+            assert_eq!(draft.filename.read(cx).text(), "AGENTS.md");
+        });
+        cx.run_until_parked();
+        cx.simulate_keystrokes("escape");
+        assert!(cx.read_entity(&view, |this, _| this.mode_draft.is_none()));
+        view.update_in(cx, |this, window, cx| this.show_mode(window, cx));
+        cx.run_until_parked();
+        cx.simulate_click(gpui::point(gpui::px(1.), gpui::px(1.)), gpui::Modifiers::none());
+        assert!(cx.read_entity(&view, |this, _| this.mode_draft.is_none()));
+        assert_eq!(document::load(&path).unwrap().filename, "AGENTS.md");
+
+        // Saving an invalid destination preserves the last good file and reports an error.
+        view.update_in(cx, |this, window, cx| {
+            this.show_mode(window, cx);
+            this.mode_draft
+                .as_ref()
+                .unwrap()
+                .filename
+                .update(cx, |input, cx| input.set_text("../outside.md", true, cx));
+            this.save_mode(window, cx);
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert_eq!(document::load(&path).unwrap().filename, "../outside.md");
+        assert!(manager.read_with(cx, |manager, _| manager.problem(&path).is_some()));
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+
+        view.update_in(cx, |this, window, cx| {
+            this.doc.enabled = false;
+            this.queue_save(true, cx);
+            this.editor.update(cx, |editor, cx| editor.set_text("paused draft", window, cx));
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert!(!document::load(&path).unwrap().enabled);
+        assert!(manager.read_with(cx, |manager, _| manager.problem(&path).is_none()));
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+
+        view.update_in(cx, |this, window, cx| {
+            this.editor.update(cx, |editor, cx| editor.set_text("saved after closing", window, cx));
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |_, window, _| window.remove_window());
+        let weak = view.downgrade();
+        drop(view);
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert_eq!(
+            document::compose(&document::load(&path).unwrap().parts, &Bodies::new()).unwrap(),
+            "saved after closing"
+        );
+        assert!(weak.upgrade().is_none());
+        let (restored, cx) = cx.add_window_view(|window, cx| {
+            Composer::new(context, path.clone(), manager.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert!(cx.read_entity(&restored, |this, cx| {
+            !this.doc.enabled && this.editor.read(cx).text(cx) == "saved after closing"
+        }));
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), expected);
+    }
 
     #[gpui::test]
     fn compose_live_templates_save_restore_and_maintain_owned_file(cx: &mut gpui::TestAppContext) {
@@ -417,18 +772,23 @@ mod tests {
             services: services.clone(),
             plugin_settings: PluginSettings::new(|_, _, _| {}),
         };
-        let (view, cx) = cx
-            .add_window_view(|window, cx| Composer::new(context.clone(), path.clone(), window, cx));
+        let manager = cx.new(|_| sync::Manager::new(data.path().into()));
+        manager.update(cx, |manager, cx| manager.connect(services.clone(), cx));
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            Composer::new(context.clone(), path.clone(), manager.clone(), window, cx)
+        });
         cx.run_until_parked();
+        assert!(cx.read_entity(&view, |this, _| this.preview.is_none()));
         view.update_in(cx, |this, window, cx| {
             let chip = this.templates[0].clone();
             this.insert_at_cursor(chip, window, cx);
-            this.refresh(true, window, cx);
         });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_millis(500));
         cx.run_until_parked();
         assert_eq!(std::fs::read_to_string(root.path().join("CHARTR.md")).unwrap(), "first");
         publish("second\nline", "Renamed");
-        view.update_in(cx, |this, window, cx| this.refresh(true, window, cx));
+        cx.update(|_, cx| PromptTemplates::changed(cx));
         cx.run_until_parked();
         assert_eq!(std::fs::read_to_string(root.path().join("CHARTR.md")).unwrap(), "second\nline");
         let saved = document::load(&path).unwrap();
@@ -438,24 +798,28 @@ mod tests {
                 .iter()
                 .any(|part| matches!(part, Part::Template { id, .. } if id == "stable"))
         );
-        assert_eq!(saved.managed_files["CHARTR.md"], "second\nline");
+        assert_eq!(sync::receipts(&path, &saved).unwrap()["CHARTR.md"], "second\nline");
+        assert!(cx.read_entity(&view, |this, _| this.preview.is_none()));
+        view.update_in(cx, |this, window, cx| this.show_preview(window, cx));
         assert_eq!(
             cx.read_entity(&view, |this, _| this.preview.clone()),
             Some("second\nline".into())
         );
+        view.update_in(cx, |this, window, cx| this.dismiss_preview(window, cx));
+        assert!(cx.read_entity(&view, |this, _| this.preview.is_none()));
         services.remove("example.provider");
-        view.update_in(cx, |this, window, cx| this.refresh(true, window, cx));
+        cx.update(|_, cx| PromptTemplates::changed(cx));
         cx.run_until_parked();
-        assert!(cx.read_entity(&view, |this, _| {
-            this.error.as_ref().is_some_and(|e| e.contains("unavailable"))
+        assert!(manager.read_with(cx, |manager, _| {
+            manager.problem(&path).is_some_and(|e| e.contains("disabled"))
         }));
         assert_eq!(std::fs::read_to_string(root.path().join("CHARTR.md")).unwrap(), "second\nline");
         publish("third", "Renamed");
         std::fs::write(root.path().join("CHARTR.md"), "User edits").unwrap();
-        view.update_in(cx, |this, window, cx| this.refresh(true, window, cx));
+        cx.update(|_, cx| PromptTemplates::changed(cx));
         cx.run_until_parked();
-        assert!(cx.read_entity(&view, |this, _| {
-            this.error.as_ref().is_some_and(|e| e.contains("edited outside"))
+        assert!(manager.read_with(cx, |manager, _| {
+            manager.problem(&path).is_some_and(|e| e.contains("edited outside"))
         }));
         assert_eq!(std::fs::read_to_string(root.path().join("CHARTR.md")).unwrap(), "User edits");
     }

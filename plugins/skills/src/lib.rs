@@ -71,15 +71,8 @@ impl Plugin for SkillsPlugin {
                     ));
                 }
                 let store = registry.store.clone();
-                cx.background_executor().spawn(async move {
-                let catalog = store.catalog().map_err(|e| format!("{e:#}"))?;
-                let mut body = String::from("## Skill sources\n\nSkills are listed in resolution order. Bare names use the first enabled source; qualified source/skill names select an exact source. Read each SKILL.md and resolve supporting files relative to its directory.\n\n");
-                for skill in catalog.skills {
-                    body.push_str(&format!("- `{}` — `{}/SKILL.md`{}\n", skill.reference(), skill.directory.display(), if skill.shadowed { " (shadowed; use qualified name)" } else { "" }));
-                }
-                for warning in catalog.warnings { body.push_str(&format!("\nSource warning: {warning}\n")); }
-                Ok(vec![chartr_plugin::services::SavedPrompt { id: "skill-sources".into(), title: "Skill sources".into(), prompt: body }])
-            })
+                cx.background_executor()
+                    .spawn(async move { store.templates().map_err(|e| format!("{e:#}")) })
             })),
             ServiceExport::new(Skills::new(move |cx| {
                 let Some(registry) = registry.upgrade() else {
