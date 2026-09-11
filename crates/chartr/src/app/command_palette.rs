@@ -61,6 +61,7 @@ impl WorkspaceWindow {
             PaletteCommand::Ungroup => Box::new(actions::workspace::Ungroup),
             PaletteCommand::SidebarMode => Box::new(actions::workspace::SidebarMode),
             PaletteCommand::TabbedMode => Box::new(actions::workspace::TabbedMode),
+            PaletteCommand::ConversationMode => Box::new(actions::workspace::ConversationMode),
             PaletteCommand::ToggleStatusBar => Box::new(actions::workspace::ToggleStatusBar),
             PaletteCommand::CycleViewMode => Box::new(actions::workspace::CycleViewMode),
             PaletteCommand::NewSpace => Box::new(actions::workspace::NewSpace),
@@ -222,33 +223,11 @@ fn palette_surface(
     height: gpui::Pixels,
     cx: &App,
 ) -> AnyElement {
-    div()
-        .id("command-palette-scrim")
-        .absolute()
-        .top_0()
-        .right_0()
-        .bottom_0()
-        .left_0()
-        .flex()
-        .items_start()
-        .justify_center()
-        .pt(px(48.))
-        .bg(gpui::black().opacity(0.35))
-        .on_mouse_down(gpui::MouseButton::Left, dismiss)
+    chartr_plugin::ui::ModalOverlay::new("command-palette-scrim", dismiss)
         .child(
-            v_flex()
-                .id("command-palette")
-                .debug_selector(|| "COMMAND_PALETTE".into())
-                .w(px(640.))
-                .max_w(relative(0.92))
-                .max_h((height - px(72.)).max(px(42.)).min(px(480.)))
-                .rounded_lg()
-                .border_1()
-                .border_color(cx.theme().colors().border)
-                .bg(cx.theme().colors().elevated_surface_background)
-                .shadow_lg()
-                .overflow_hidden()
-                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            chartr_plugin::ui::DialogSurface::new("command-palette")
+                .debug_selector("COMMAND_PALETTE")
+                .height_limit((height - px(72.)).max(px(42.)).min(px(480.)))
                 .child(
                     h_flex()
                         .h(px(42.))

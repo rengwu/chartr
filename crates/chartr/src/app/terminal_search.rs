@@ -15,6 +15,9 @@ impl WorkspaceWindow {
     }
 
     pub(super) fn toggle_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         if self.terminal_search_open {
             self.close_terminal_search(window, cx);
             return;

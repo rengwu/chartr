@@ -8,6 +8,9 @@
 //! runs them on a background executor and delivers the answer back. This crate
 //! does not decide that for them.
 
+mod conversation_input;
+pub use conversation_input::{AgentInputTarget, InputFailure};
+
 use std::{
     collections::{HashMap, HashSet},
     io::{BufRead, BufReader, Write},
@@ -70,6 +73,10 @@ pub struct Session {
     pub status: SessionStatus,
     /// The agent herdr believes is running in the pane, if any.
     pub agent: Option<String>,
+    /// Provider-owned identity. This is independent of the terminal's lifetime.
+    pub agent_session: Option<protocol::AgentSession>,
+    pub conversation_title: Option<String>,
+    pub foreground_pid: Option<u32>,
     pub cwd: Option<PathBuf>,
 }
 
@@ -79,10 +86,10 @@ impl Session {
             .or_else(|| pane.title.as_deref().and_then(non_blank).map(str::to_owned))
             .unwrap_or_else(|| pane.pane_id.clone());
         let agent = pane
-            .display_agent
+            .agent
             .as_deref()
             .and_then(non_blank)
-            .or_else(|| pane.agent.as_deref().and_then(non_blank))
+            .or_else(|| pane.display_agent.as_deref().and_then(non_blank))
             .map(str::to_owned);
         Self {
             id: PaneId(pane.pane_id),
@@ -92,7 +99,10 @@ impl Session {
             running,
             status: pane.agent_status.into(),
             agent,
-            cwd: pane.cwd.map(PathBuf::from),
+            agent_session: pane.agent_session,
+            conversation_title: pane.title,
+            foreground_pid: None,
+            cwd: pane.foreground_cwd.or(pane.cwd).map(PathBuf::from),
         }
     }
 
@@ -147,6 +157,105 @@ impl Client {
 
     pub fn namespace(&self) -> &Namespace {
         &self.namespace
+    }
+
+    pub fn foreground_pid(&self, pane: &PaneId) -> Result<Option<u32>> {
+        let process: protocol::PaneProcess =
+            self.call("pane.process_info", &protocol::PaneProcessParams { pane_id: &pane.0 })?;
+        Ok(process.process_info.agent_program().map(|process| process.pid))
+    }
+
+    /// Launch an ordinary CLI in a newly allocated pane through the backend's
+    /// agent launcher. The caller must never apply this to an occupied pane.
+    pub fn start_agent(&self, pane: &PaneId, kind: &str, name: &str, args: &[&str]) -> Result<()> {
+        let _: serde_json::Value = self.call(
+            "agent.start",
+            &serde_json::json!({
+                "pane_id": pane.0, "kind": kind, "name": name, "args": args
+            }),
+        )?;
+        Ok(())
+    }
+
+    /// Report an identity obtained from the same runtime's verified local API.
+    pub fn report_opencode_session(&self, pane: &PaneId, native_id: &str) -> Result<()> {
+        // Herdr acknowledges receipt before process detection necessarily grants
+        // identity authority. Read back the binding instead of assuming acceptance.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let _: serde_json::Value = self.call(
+                "pane.report_agent_session",
+                &serde_json::json!({
+                    "pane_id": pane.0, "source": "herdr:opencode", "agent": "opencode",
+                    "agent_session_id": native_id, "session_start_source": "select"
+                }),
+            )?;
+            let list: PaneList = self.call("pane.list", &PaneListParams { workspace_id: None })?;
+            if list
+                .panes
+                .iter()
+                .find(|p| p.pane_id == pane.0)
+                .and_then(|p| p.agent_session.as_ref())
+                .is_some_and(|s| s.value == native_id)
+            {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::Protocol(
+                    "The agent started, but its conversation identity could not be verified".into(),
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    }
+
+    pub fn agent_integrations(&self) -> Result<Vec<protocol::IntegrationInfo>> {
+        let mut result: protocol::IntegrationList = self.call("integration.list", &Empty {})?;
+        for entry in &mut result.integrations {
+            if entry.target == "opencode"
+                && entry.state == protocol::IntegrationState::Current
+                && !crate::integration::opencode_current(&self.namespace)
+            {
+                entry.state = protocol::IntegrationState::NotInstalled;
+            }
+        }
+        Ok(result.integrations)
+    }
+
+    /// Invoked by Enable integration or a registered-agent conversation launch.
+    /// An installer receipt is not sufficient: read back the installed state.
+    pub fn install_agent_integration(&self, provider: &str) -> Result<()> {
+        if chartr_agent::Provider::from_slug(provider).is_none() {
+            return Err(Error::Protocol("Unknown agent integration".into()));
+        }
+        let client = self.until(Duration::from_secs(30));
+        let _: serde_json::Value =
+            client.call("integration.install", &serde_json::json!({"target": provider}))?;
+        if provider == "opencode" {
+            crate::integration::install_opencode(&self.namespace)?;
+        }
+        if !client.agent_integrations()?.iter().any(|integration| {
+            integration.target == provider
+                && integration.state == protocol::IntegrationState::Current
+        }) {
+            return Err(Error::Protocol(format!(
+                "{provider} integration could not be verified after installation. Try enabling it again."
+            )));
+        }
+        Ok(())
+    }
+
+    /// Read the current screen, including a TUI's alternate screen. Launch
+    /// readiness must not depend on a valid scrollback selection existing yet.
+    pub fn read_visible(&self, pane: &PaneId) -> Result<String> {
+        let value: serde_json::Value = self.until(Duration::from_secs(3)).call(
+            "pane.read",
+            &serde_json::json!({"pane_id": pane.0, "source": "visible", "format": "text", "strip_ansi": true, "lines": 200}),
+        )?;
+        value["read"]["text"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Protocol("The agent screen could not be read".into()))
     }
 
     /// Read Herdr's retained buffer, not the attach client's viewport repaint.
@@ -393,19 +502,34 @@ impl Client {
                     .and_then(non_blank)
                     .or_else(|| pane.agent.as_deref().and_then(non_blank))
                     .map(str::to_owned);
-                let running = agent.clone().or_else(|| {
+                // Conversation input needs the live process identity even when
+                // the provider name already supplies the terminal's label.
+                let needs_identity = |name: &str| {
+                    chartr_agent::Provider::detect(name)
+                        .is_some_and(|provider| provider.needs_process_identity())
+                };
+                let process = if pane.agent.as_deref().is_some_and(needs_identity)
+                    || agent.is_none()
+                    || agent.as_deref().is_some_and(needs_identity)
+                {
                     let params = protocol::PaneProcessParams { pane_id: &pane.pane_id };
                     self.call::<_, protocol::PaneProcess>("pane.process_info", &params)
-                        .ok()?
-                        .process_info
-                        .foreground_program()?
-                        .name
-                        .as_deref()
-                        .and_then(non_blank)
-                        .map(str::to_owned)
+                        .ok()
+                        .and_then(|info| {
+                            info.process_info
+                                .agent_program()
+                                .map(|process| (process.pid, process.name.clone()))
+                        })
+                } else {
+                    None
+                };
+                let running = agent.clone().or_else(|| {
+                    process.as_ref()?.1.as_deref().and_then(non_blank).map(str::to_owned)
                 });
                 let label = tabs.get(&pane.tab_id).map(tab_label);
-                Session::from_pane(pane, label, running)
+                let mut session = Session::from_pane(pane, label, running);
+                session.foreground_pid = process.map(|(pid, _)| pid);
+                session
             })
             .collect()
     }
@@ -706,6 +830,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn installation_requires_verified_state_and_surfaces_installer_errors() {
+        for (install_result, state, success) in [
+            (serde_json::json!({"result": {"type":"integration_install"}}), "current", true),
+            (serde_json::json!({"result": {"type":"integration_install"}}), "not_installed", false),
+            (
+                serde_json::json!({"error": {"code":"integration_install_failed", "message":"Permission denied"}}),
+                "",
+                false,
+            ),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let namespace = Namespace::rooted(tmp.path());
+            let sidecar = tmp.path().join("herdr");
+            std::fs::write(&sidecar, "fixture").unwrap();
+            let listener = UnixListener::bind(namespace.socket()).unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = String::new();
+                BufReader::new(&stream).read_line(&mut request).unwrap();
+                let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+                assert_eq!(request["method"], "integration.install");
+                assert_eq!(request["params"]["target"], "codex");
+                writeln!(stream, "{install_result}").unwrap();
+                if state.is_empty() {
+                    return;
+                }
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = String::new();
+                BufReader::new(&stream).read_line(&mut request).unwrap();
+                let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+                assert_eq!(request["method"], "integration.list");
+                writeln!(stream, "{}", serde_json::json!({"result":{"integrations":[{"target":"codex","state":state}]}})).unwrap();
+            });
+            let client = Client::new(Sidecar::at(sidecar).unwrap(), namespace);
+            let result = client.install_agent_integration("codex");
+            assert_eq!(result.is_ok(), success);
+            if state.is_empty() {
+                assert!(result.unwrap_err().to_string().contains("Permission denied"));
+            }
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
     fn stalled_daemons_cannot_exceed_connect_or_reconnect_deadlines() {
         for connect in [Client::connect, Client::reconnect] {
             let temp = tempfile::tempdir().unwrap();
@@ -791,7 +959,9 @@ mod tests {
             display_agent: agent.map(str::to_owned),
             agent: None,
             agent_status: protocol::AgentStatus::Unknown,
+            agent_session: None,
             cwd: None,
+            foreground_cwd: None,
         }
     }
 
@@ -845,14 +1015,30 @@ mod tests {
         let process = protocol::ProcessInfo {
             shell_pid: 10,
             foreground_processes: vec![
-                protocol::Process { pid: 10, name: Some("zsh".to_owned()) },
-                protocol::Process { pid: 11, name: Some("htop".to_owned()) },
+                protocol::Process { pid: 10, name: Some("zsh".to_owned()), argv0: None },
+                protocol::Process { pid: 11, name: Some("htop".to_owned()), argv0: None },
             ],
         };
         assert_eq!(
             process.foreground_program().and_then(|process| process.name.as_deref()),
             Some("htop")
         );
+    }
+
+    #[test]
+    fn agent_identity_ignores_helpers_and_handles_version_named_claude_binaries() {
+        for agent in ["codex", "claude", "opencode"] {
+            let info: protocol::ProcessInfo = serde_json::from_value(serde_json::json!({
+                "shell_pid":10,
+                "foreground_processes":[
+                    {"pid":12,"name":"python3","argv0":"python3"},
+                    {"pid":11,"name":if agent == "claude" {"2.1.267"} else {agent},"argv0":agent},
+                    {"pid":10,"name":"zsh","argv0":"zsh"}
+                ]
+            }))
+            .unwrap();
+            assert_eq!(info.agent_program().map(|p| p.pid), Some(11));
+        }
     }
 
     #[test]

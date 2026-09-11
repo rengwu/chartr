@@ -1,10 +1,7 @@
 //! Portable plugin settings use native controls and the existing private JSON data file.
 //! No plugin HTML or JavaScript is constructed in the Settings window.
 
-use crate::{
-    components::{ContextMenu, FORM_CONTROL_SIZE, PopupMenu, form_button, form_picker, form_row},
-    fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL},
-};
+use crate::components::{ContextMenu, FORM_CONTROL_SIZE, PopupMenu, form_picker, form_row};
 use chartr_plugin::{
     ProjectAccess,
     settings::{SettingsControl, SettingsField, SettingsSchema},
@@ -13,7 +10,7 @@ use chartr_plugin_host::{BrokerError, FileBroker};
 use gpui::{Anchor, AnyElement, AnyView, App, AppContext, Context, Render, Window};
 use serde_json::{Map, Value};
 use std::{io::Read, path::PathBuf};
-use ui::{Color, IconPosition, Label, Switch, prelude::*};
+use ui::{Color, IconPosition, Switch, prelude::*};
 
 const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
 
@@ -209,31 +206,35 @@ impl PluginSettings {
     }
 }
 
-impl Render for PluginSettings {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl chartr_plugin::RenderSettings for PluginSettings {
+    fn render_settings(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> chartr_plugin::SettingsPage {
         let fields: Vec<_> =
             self.store.schema.fields.iter().map(|field| self.field(field, cx)).collect();
-        v_flex()
-            .id("native-plugin-settings")
-            .w_full()
-            .p_4()
-            .gap_4()
+        chartr_plugin::SettingsPage::flow("native-plugin-settings")
             .children(fields)
             .child(
-                Label::new("Changes are saved for this plugin.")
-                    .size(UI_LABEL_SMALL)
+                chartr_plugin::ui::caption("Changes are saved for this plugin.")
                     .color(Color::Muted),
             )
-            .when_some(self.problem.clone(), |form, problem| {
-                form.child(Label::new(problem).size(UI_LABEL_DEFAULT).color(Color::Error)).child(
-                    form_button("reload-plugin-settings", "Reload").on_click(cx.listener(
-                        |this, _, _, cx| {
+            .when_some(self.problem.clone(), |page, problem| {
+                page.child(chartr_plugin::ui::notice(problem, true).action(
+                    chartr_plugin::ui::action("reload-plugin-settings", "Reload").on_click(
+                        cx.listener(|this, _, _, cx| {
                             this.reload();
                             cx.notify();
-                        },
-                    )),
-                )
+                        }),
+                    ),
+                ))
             })
+    }
+}
+impl Render for PluginSettings {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        chartr_plugin::RenderSettings::render_settings(self, window, cx)
     }
 }
 

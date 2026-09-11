@@ -186,6 +186,9 @@ mod tests {
             running: None,
             status: control::SessionStatus::Unknown,
             agent: None,
+            agent_session: None,
+            conversation_title: None,
+            foreground_pid: None,
             cwd: None,
         };
         let mut attachment = |info: control::Session| {

@@ -43,6 +43,27 @@ pub struct ErrorBody {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Empty {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationState {
+    NotInstalled,
+    Current,
+    Outdated,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct IntegrationInfo {
+    pub target: String,
+    pub state: IntegrationState,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IntegrationList {
+    pub integrations: Vec<IntegrationInfo>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PaneHistoryInfo {
     pub pane: PaneHistory,
@@ -118,8 +139,21 @@ pub struct Pane {
     /// instead of trying to infer agent state from terminal output itself.
     #[serde(default)]
     pub agent_status: AgentStatus,
+    /// Native conversation identity reported by Herdr's provider integration.
+    #[serde(default)]
+    pub agent_session: Option<AgentSession>,
     #[serde(default)]
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub foreground_cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, serde::Serialize)]
+pub struct AgentSession {
+    pub source: String,
+    pub agent: String,
+    pub kind: String,
+    pub value: String,
 }
 
 /// What Herdr believes the agent in a pane is doing.
@@ -182,6 +216,20 @@ pub struct ProcessInfo {
 }
 
 impl ProcessInfo {
+    /// Prefer the actual agent over transient helpers in its foreground group.
+    pub fn agent_program(&self) -> Option<&Process> {
+        self.foreground_processes
+            .iter()
+            .filter(|process| {
+                process.pid != self.shell_pid
+                    && [process.name.as_deref(), process.argv0.as_deref()]
+                        .into_iter()
+                        .flatten()
+                        .any(|name| chartr_agent::Provider::executable(name).is_some())
+            })
+            .min_by_key(|process| process.pid)
+            .or_else(|| self.foreground_program())
+    }
     /// The program running in the pane, excluding the shell waiting at its own
     /// prompt.
     pub fn foreground_program(&self) -> Option<&Process> {
@@ -195,6 +243,8 @@ pub struct Process {
     pub pid: u32,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub argv0: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -240,6 +290,27 @@ pub struct Created {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_aliases_and_argv0_win_over_transient_helpers() {
+        for definition in chartr_agent::DEFINITIONS {
+            for alias in definition.aliases {
+                let processes = ProcessInfo {
+                    shell_pid: 1,
+                    foreground_processes: vec![
+                        Process { pid: 1, name: Some("zsh".into()), argv0: None },
+                        Process { pid: 2, name: Some("git".into()), argv0: None },
+                        Process {
+                            pid: 3,
+                            name: Some("2.1.267".into()),
+                            argv0: Some(format!("/opt/{alias}")),
+                        },
+                    ],
+                };
+                assert_eq!(processes.agent_program().unwrap().pid, 3, "{alias}");
+            }
+        }
+    }
 
     #[test]
     fn a_response_carrying_an_error_parses_as_one() {

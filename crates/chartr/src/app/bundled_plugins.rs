@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod settings_surface_tests;
+
 const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
 const BUNDLED_SKILLS_ID: &str = "com.chartr.skills";
 const BUNDLED_PROMPTS_ID: &str = "com.chartr.prompts";

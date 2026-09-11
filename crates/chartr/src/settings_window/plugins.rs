@@ -717,49 +717,36 @@ impl SettingsWindow {
             .child(install_actions)
             .when(show_git, |view| view.child(git_form))
             .when_some(self.plugin_operation.clone(), |view, status| {
-                view.child(Banner::new().child(
-                    h_flex().gap_3().child(Label::new(status).size(UI_LABEL_DEFAULT)).when(
-                        self.plugin_cancel.is_some(),
-                        |row| {
-                            row.child(settings_button("cancel-plugin-install", "Cancel").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    if let Some(cancel) = &this.plugin_cancel {
-                                        cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                                        this.plugin_operation =
-                                            Some("Cancelling installation…".into());
-                                        cx.notify();
-                                    }
-                                }),
-                            ))
-                        },
-                    ),
+                view.child(chartr_plugin::ui::notice(status, false).when(
+                    self.plugin_cancel.is_some(),
+                    |notice| {
+                        notice.action(settings_button("cancel-plugin-install", "Cancel").on_click(
+                            cx.listener(|this, _, _, cx| {
+                                if let Some(cancel) = &this.plugin_cancel {
+                                    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    this.plugin_operation = Some("Cancelling installation…".into());
+                                    cx.notify();
+                                }
+                            }),
+                        ))
+                    },
                 ))
             })
             .when(self.plugin_restart_required, |view| {
                 view.child(
-                    Banner::new().child(
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .gap_3()
-                            .child(Label::new("Restart chartr to enable installed plugins."))
-                            .child(
-                                settings_button("restart-after-plugin-install", "Restart")
-                                    .disabled(busy)
-                                    .on_click(restart),
-                            ),
-                    ),
+                    chartr_plugin::ui::notice("Restart chartr to enable installed plugins.", false)
+                        .action(
+                            settings_button("restart-after-plugin-install", "Restart")
+                                .disabled(busy)
+                                .on_click(restart),
+                        ),
                 )
             })
             .when(!origin_available, |view| {
-                view.child(
-                    Banner::new().child(
-                        Label::new(
-                            "Open Settings from a chartr workspace to manage runtime plugins.",
-                        )
-                        .size(UI_LABEL_DEFAULT),
-                    ),
-                )
+                view.child(chartr_plugin::ui::notice(
+                    "Open Settings from a chartr workspace to manage runtime plugins.",
+                    false,
+                ))
             })
             .when(!has_fields && rejected.is_empty(), |view| {
                 view.child(Label::new("No plugins installed.").color(Color::Muted))

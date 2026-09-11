@@ -3,7 +3,7 @@ use anyhow::{Context as _, Result, bail};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
-    io::{Read as _, Write as _},
+    io::Read as _,
     path::{Path, PathBuf},
 };
 
@@ -507,15 +507,11 @@ fn write_claim(ticket: &Ticket, session: Option<&str>) -> Result<()> {
     if ticket.raw.ends_with('\n') {
         result.push('\n');
     }
-    let mut temporary =
-        tempfile::NamedTempFile::new_in(ticket.path.parent().context("No ticket directory")?)?;
-    temporary.as_file().set_permissions(fs::metadata(&ticket.path)?.permissions())?;
-    temporary.write_all(result.as_bytes())?;
-    temporary.as_file().sync_all()?;
+    let staged = chartr_storage::StagedWrite::new(&ticket.path, result.as_bytes())?;
     if fs::read_to_string(&ticket.path)? != ticket.raw {
         bail!("The ticket changed while updating its claim.");
     }
-    temporary.persist(&ticket.path).map_err(|error| error.error)?;
+    staged.replace()?;
     Ok(())
 }
 

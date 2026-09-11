@@ -6,13 +6,17 @@ impl Render for WorkspaceWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ui_font = Fonts::setup_ui(window, cx);
         self.restore_plugins_once(window, cx);
+        self.sync_conversation_spaces(cx);
         let entries = self.entries(cx);
         let now = cx.background_executor().now();
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
             window.request_animation_frame();
         }
-        let (chrome_visibility, mode_animating) =
-            self.mode_transition.advance(self.mode, now, cx.reduce_motion());
+        let (chrome_visibility, mode_animating) = self.mode_transition.advance(
+            self.mode,
+            now,
+            cx.reduce_motion() || self.mode == Mode::Conversations,
+        );
         if mode_animating {
             window.request_animation_frame();
         }
@@ -49,7 +53,11 @@ impl Render for WorkspaceWindow {
             .border_t_1()
             .border_l_1()
             .border_color(cx.theme().colors().border)
-            .child(self.workspace_pane(window, cx));
+            .child(if self.mode == Mode::Conversations {
+                self.conversations.clone().into_any_element()
+            } else {
+                self.workspace_pane(window, cx)
+            });
 
         let tab_height = chrome::tabs::height(cx);
         let reveal_edge_height = px(14.);
@@ -157,6 +165,11 @@ impl Render for WorkspaceWindow {
             .min_h_0()
             .child(tab_slot)
             .child(h_flex().w_full().flex_1().min_h_0().child(sidebar_slot).child(workspace));
+
+        if self.mode_focus_pending {
+            self.mode_focus_pending = false;
+            self.focus_active_terminal(window, cx);
+        }
 
         // Native child webviews sit above their parent window's GPUI scene. Rename dialogs use a
         // window-sized native popup when possible; these in-window overlays are the platform
@@ -279,11 +292,15 @@ impl Render for WorkspaceWindow {
             .on_action(cx.listener(|this, _: &actions::workspace::TabbedMode, _, cx| {
                 this.settings_set_mode(Mode::Tabs, cx)
             }))
+            .on_action(cx.listener(|this, _: &actions::workspace::ConversationMode, _, cx| {
+                this.settings_set_mode(Mode::Conversations, cx)
+            }))
             .on_action(cx.listener(|this, _: &actions::workspace::CycleViewMode, _, cx| {
                 this.settings_set_mode(
                     match this.mode {
-                        Mode::Tabs => Mode::Sidebar,
+                        Mode::Tabs => Mode::Conversations,
                         Mode::Sidebar => Mode::Tabs,
+                        Mode::Conversations => Mode::Sidebar,
                     },
                     cx,
                 )

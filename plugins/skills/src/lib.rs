@@ -2,17 +2,16 @@
 mod sources;
 
 use crate::{
-    components::{
-        ContextMenu, ListSorter, PopupMenu, form_button, form_picker, form_row, input_field,
-    },
-    fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
+    components::{ContextMenu, ListSorter, PopupMenu, form_picker, form_row, input_field},
     text_input::TextInput,
 };
+use chartr_plugin::ui as plugin_ui;
+use chartr_plugin::ui::action as form_button;
 use chartr_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, gpui,
     gpui::{
         Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
-        SharedString, Window, div, px, relative,
+        Window, div, px, relative,
     },
     services::PluginSettings,
 };
@@ -24,10 +23,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use ui::{
-    Button, ButtonStyle, Color, Icon, IconButton, IconName, IconPosition, IconSize, Label, Switch,
-    TintColor, prelude::*,
-};
+use ui::{Color, Icon, IconName, IconPosition, Switch, prelude::*};
 
 pub struct SkillsPlugin {
     registry: Entity<Registry>,
@@ -113,8 +109,11 @@ impl Plugin for SkillsPlugin {
     ) -> gpui::AnyView {
         cx.new(|_| SkillsPane { settings: context.plugin_settings.clone() }).into()
     }
-    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<gpui::AnyView> {
-        Some(cx.new(|cx| SkillsView::new(self.registry.clone(), cx)).into())
+    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<chartr_plugin::SettingsView> {
+        Some(chartr_plugin::SettingsView::new(
+            cx.new(|cx| SkillsView::new(self.registry.clone(), cx)),
+            cx,
+        ))
     }
 }
 
@@ -127,8 +126,7 @@ impl Render for SkillsPane {
         let settings = self.settings.clone();
         let menu = PopupMenu::new("skills-pane-menu")
             .trigger(
-                IconButton::new("skills-pane-menu-trigger", IconName::ChevronDown)
-                    .icon_size(IconSize::Small)
+                plugin_ui::icon_action("skills-pane-menu-trigger", IconName::ChevronDown)
                     .aria_label("Skills pane menu"),
             )
             .anchor(Anchor::TopRight)
@@ -140,11 +138,7 @@ impl Render for SkillsPane {
                     })
                 }))
             });
-        div()
-            .id("skills-pane")
-            .size_full()
-            .relative()
-            .bg(cx.theme().colors().editor_background)
+        plugin_ui::pane_surface("skills-pane", cx)
             .child(div().absolute().top_3().right_3().child(menu))
             .into_any_element()
     }
@@ -505,18 +499,15 @@ impl SkillsView {
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .child(Label::new(name.clone()).truncate())
-                        .child(
-                            Label::new(detail).size(UI_LABEL_SMALL).color(Color::Muted).truncate(),
-                        )
+                        .child(plugin_ui::label(name.clone()).truncate())
+                        .child(plugin_ui::caption(detail).color(Color::Muted).truncate())
                         .when(source.kind == Kind::Git, |view| {
                             view.child(
-                                Label::new(format!(
+                                plugin_ui::caption(format!(
                                     "{} · {}",
                                     source.git_ref,
                                     source.commit.chars().take(12).collect::<String>()
                                 ))
-                                .size(UI_LABEL_SMALL)
                                 .color(Color::Muted),
                             )
                         }),
@@ -530,16 +521,15 @@ impl SkillsView {
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(
-                    Button::new(("edit-skill-source", index), "Edit").disabled(blocked).on_click(
-                        cx.listener(move |this, _, window, cx| {
+                    plugin_ui::action(("edit-skill-source", index), "Edit")
+                        .disabled(blocked)
+                        .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_editor(Some(edit_source.clone()), window, cx)
-                        }),
-                    ),
+                        })),
                 );
             if source.kind == Kind::Git {
                 actions = actions.child(
-                    IconButton::new(("refresh-skill-source", index), IconName::RotateCw)
-                        .icon_size(IconSize::Small)
+                    plugin_ui::icon_action(("refresh-skill-source", index), IconName::RotateCw)
                         .aria_label(format!("Refresh {name}"))
                         .disabled(blocked)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -557,8 +547,7 @@ impl SkillsView {
                     .map(|(_, source, _)| source.name.clone());
                 let move_name = name.clone();
                 actions = actions.child(
-                    IconButton::new(format!("source-order-{index}-{offset}"), icon)
-                        .icon_size(IconSize::Small)
+                    plugin_ui::icon_action(format!("source-order-{index}-{offset}"), icon)
                         .aria_label(format!("{label}: {name}"))
                         .disabled(blocked || adjacent.is_none())
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -575,8 +564,7 @@ impl SkillsView {
                 );
             }
             actions = actions.child(
-                IconButton::new(("delete-skill-source", index), IconName::Trash)
-                    .icon_size(IconSize::Small)
+                plugin_ui::icon_action(("delete-skill-source", index), IconName::Trash)
                     .aria_label(format!("Delete {name}"))
                     .disabled(blocked)
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -595,16 +583,14 @@ impl SkillsView {
             let shadowed = state.skills.iter().filter(|skill| skill.shadowed).count();
             let cells = vec![
                 name_cell.into_any_element(),
-                Label::new(if source.kind == Kind::Local { "local" } else { "remote" })
+                plugin_ui::label(if source.kind == Kind::Local { "local" } else { "remote" })
                     .color(Color::Muted)
                     .into_any_element(),
                 v_flex()
-                    .child(Label::new(count))
+                    .child(plugin_ui::label(count))
                     .when(shadowed > 0, |view| {
                         view.child(
-                            Label::new(format!("{shadowed} shadowed"))
-                                .size(UI_LABEL_SMALL)
-                                .color(Color::Muted),
+                            plugin_ui::caption(format!("{shadowed} shadowed")).color(Color::Muted),
                         )
                     })
                     .into_any_element(),
@@ -612,8 +598,7 @@ impl SkillsView {
             ];
             let held = self.sorter.holds(name.clone());
             let offset = self.sorter.offset_of(name.clone(), now, cx.reduce_motion());
-            let colors = cx.theme().colors();
-            let row = source_columns(cells)
+            let row = plugin_ui::data_row(source_columns(cells), position, held, cx)
                 .id(format!("skill-source-row-{name}"))
                 .debug_selector({
                     let name = name.clone();
@@ -621,14 +606,6 @@ impl SkillsView {
                 })
                 .relative()
                 .py_1()
-                .border_1()
-                .border_color(gpui::transparent_black())
-                .bg(if position % 2 == 1 {
-                    colors.element_background
-                } else {
-                    colors.editor_background
-                })
-                .when(held, |row| row.border_color(colors.drop_target_border).shadow_md())
                 .when(offset != px(0.), |row| row.top(offset))
                 .when(!blocked && sources.len() > 1, |row| {
                     row.when(!cx.has_active_drag(), |row| row.cursor_grab())
@@ -659,15 +636,15 @@ impl SkillsView {
                     }),
             );
         }
-        let header = source_columns(
-            ["Name", "Type", "Skills", "Actions"]
-                .into_iter()
-                .map(|name| Label::new(name).into_any_element())
-                .collect(),
-        )
-        .pb_2()
-        .border_b_1()
-        .border_color(cx.theme().colors().border);
+        let header = plugin_ui::table_header(
+            source_columns(
+                ["Name", "Type", "Skills", "Actions"]
+                    .into_iter()
+                    .map(|name| plugin_ui::label(name).into_any_element())
+                    .collect(),
+            ),
+            cx,
+        );
         let table = v_flex().w_full().flex_1().min_h_0().child(header).child(
             v_flex()
                 .id("skill-source-rows")
@@ -678,7 +655,7 @@ impl SkillsView {
                 .track_scroll(self.sorter.scroll_handle())
                 .children(drawn)
                 .when(sources.is_empty(), |view| {
-                    view.child(Label::new("No registered skill sources.").color(Color::Muted))
+                    view.child(plugin_ui::label("No registered skill sources.").color(Color::Muted))
                 }),
         );
         let warnings: Vec<_> = sources
@@ -688,18 +665,15 @@ impl SkillsView {
                 state.warnings.iter().map(|warning| format!("{}: {warning}", source.name))
             })
             .collect();
-        v_flex().id("skill-source-settings").size_full().min_h_0().bg(cx.theme().colors().editor_background)
-            .child(v_flex().w_full().h_full().min_h_0().gap_5()
-                .child(h_flex().w_full().justify_between().gap_3()
-                    .child(Label::new("Skill sources").size(UI_LABEL_LARGE))
-                    .child(h_flex().gap_2()
-                        .child(Button::new("rescan-skill-sources", "Rescan").disabled(busy).on_click(cx.listener(|this, _, _, cx| this.run(Operation::Scan, cx))))
-                        .child(Button::new("new-skill-source", "New source").style(ButtonStyle::Outlined).start_icon(Icon::new(IconName::Plus)).disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx))))))
-                .child(Label::new("Register folders and Git repositories containing skills. Earlier enabled sources take precedence for duplicate skill names. Drag rows or use the arrows to change their order.").color(Color::Muted))
-                .when_some(problem, |view, problem| view.child(notice_banner(problem, true, cx)))
-                .when_some(status, |view, status| view.child(h_flex().gap_2().child(Label::new(status).color(Color::Muted)).child(Button::new("cancel-skill-source-operation", "Cancel").on_click(cx.listener(|this, _, _, cx| { if let Some(cancel) = &this.registry.read(cx).cancel { cancel.store(true, Ordering::Relaxed); } })))))
-                .children(warnings.into_iter().map(|warning| notice_banner(warning, false, cx)))
-                .child(table))
+        chartr_plugin::SettingsPage::fill("skill-source-settings")
+                .child(plugin_ui::PageHeader::new("Skill sources")
+                    .description("Register folders and Git repositories containing skills. Earlier enabled sources take precedence for duplicate skill names. Drag rows or use the arrows to change their order.")
+                    .action(plugin_ui::action("rescan-skill-sources", "Rescan").disabled(busy).on_click(cx.listener(|this, _, _, cx| this.run(Operation::Scan, cx))))
+                    .action(plugin_ui::action("new-skill-source", "New source").start_icon(Icon::new(IconName::Plus)).disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx)))))
+                .when_some(problem, |view, problem| view.child(plugin_ui::notice(problem, true)))
+                .when_some(status, |view, status| view.child(h_flex().gap_2().child(plugin_ui::label(status).color(Color::Muted)).child(plugin_ui::action("cancel-skill-source-operation", "Cancel").on_click(cx.listener(|this, _, _, cx| { if let Some(cancel) = &this.registry.read(cx).cancel { cancel.store(true, Ordering::Relaxed); } })))))
+                .children(warnings.into_iter().map(|warning| plugin_ui::notice(warning, false)))
+                .child(table)
             .into_any_element()
     }
 
@@ -735,12 +709,9 @@ impl SkillsView {
                     menu
                 }))
             });
-        let mut fields = v_flex()
+        let mut fields = plugin_ui::dialog_body()
             .id("skill-source-form-fields")
             .relative()
-            .w_full()
-            .p_4()
-            .gap_3()
             .overflow_y_scroll()
             .child(form_row("Name", None, input_field("skill-source-name", self.name.clone(), cx)))
             .child(form_row("Kind", None, picker.into_any_element()));
@@ -770,10 +741,10 @@ impl SkillsView {
         }
         let fields = fields
             .when_some(self.form_error.clone(), |form, error| {
-                form.child(notice_banner(error, true, cx))
+                form.child(plugin_ui::notice(error, true))
             })
             .when(busy, |form| {
-                form.child(Label::new("Saving source…").color(Color::Muted)).child(
+                form.child(plugin_ui::label("Saving source…").color(Color::Muted)).child(
                     div()
                         .absolute()
                         .top_0()
@@ -784,60 +755,27 @@ impl SkillsView {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
                 )
             });
-        let content = v_flex()
-            .id("skill-source-editor")
-            .w(px(660.))
-            .max_w(relative(0.92))
-            .max_h(relative(0.9))
-            .rounded_lg()
-            .border_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().elevated_surface_background)
-            .shadow_lg()
-            .overflow_hidden()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .px_4()
-                    .py_3()
-                    .border_b_1()
-                    .border_color(cx.theme().colors().border)
-                    .child(
-                        Label::new(if self.editing.is_some() {
-                            "Edit skill source"
-                        } else {
-                            "Register a source"
-                        })
-                        .size(UI_LABEL_LARGE),
-                    )
-                    .child(
-                        IconButton::new("close-skill-source-editor", IconName::Close)
-                            .aria_label("Close dialog")
-                            .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
-                    ),
-            )
+        let content = plugin_ui::DialogSurface::new("skill-source-editor")
+            .child(plugin_ui::dialog_header(
+                if self.editing.is_some() { "Edit skill source" } else { "Register a source" },
+                plugin_ui::icon_action("close-skill-source-editor", IconName::Close)
+                    .aria_label("Close dialog")
+                    .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
+                cx,
+            ))
             .child(fields)
             .child(
-                h_flex()
-                    .w_full()
-                    .justify_end()
-                    .gap_2()
-                    .px_4()
-                    .py_3()
-                    .border_t_1()
-                    .border_color(cx.theme().colors().border)
+                plugin_ui::dialog_actions(cx)
                     .child(
-                        Button::new("cancel-skill-source-editor", "Cancel")
+                        plugin_ui::action("cancel-skill-source-editor", "Cancel")
                             .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
                     )
                     .child(
-                        Button::new(
+                        plugin_ui::action(
                             "save-skill-source",
                             if self.editing.is_some() { "Save" } else { "Register" },
                         )
-                        .style(ButtonStyle::Filled)
+                        .primary()
                         .disabled(busy)
                         .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
                     ),
@@ -860,35 +798,25 @@ impl SkillsView {
         } else {
             "Only the registration will be removed. The folder and its files are untouched."
         };
-        let content = v_flex()
-            .id("delete-skill-source-dialog")
-            .w(px(460.))
-            .max_w(relative(0.9))
-            .p_4()
-            .gap_3()
-            .rounded_lg()
-            .border_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().elevated_surface_background)
-            .shadow_lg()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(Label::new("Delete skill source?").size(UI_LABEL_LARGE))
-            .child(Label::new(format!("Delete “{name}”? {detail}")))
+        let content = plugin_ui::DialogSurface::new("delete-skill-source-dialog")
+            .compact()
+            .child(plugin_ui::heading("Delete skill source?"))
+            .child(plugin_ui::label(format!("Delete “{name}”? {detail}")))
             .when_some(self.form_error.clone(), |view, error| {
-                view.child(notice_banner(error, true, cx))
+                view.child(plugin_ui::notice(error, true))
             })
             .child(
                 h_flex()
                     .justify_end()
                     .gap_2()
                     .child(
-                        Button::new("cancel-delete-skill-source", "Cancel")
+                        plugin_ui::action("cancel-delete-skill-source", "Cancel")
                             .disabled(busy)
                             .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
                     )
                     .child(
-                        Button::new("confirm-delete-skill-source", "Delete")
-                            .style(ButtonStyle::Tinted(TintColor::Error))
+                        plugin_ui::action("confirm-delete-skill-source", "Delete")
+                            .destructive()
                             .disabled(busy)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.submit(Operation::Remove(name.clone()), cx)
@@ -899,19 +827,7 @@ impl SkillsView {
     }
 
     fn overlay(&self, id: &'static str, content: AnyElement, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .id(id)
-            .absolute()
-            .top_0()
-            .right_0()
-            .bottom_0()
-            .left_0()
-            .flex()
-            .items_start()
-            .justify_center()
-            .pt_8()
-            .bg(gpui::black().opacity(0.35))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.dismiss(cx)))
+        plugin_ui::ModalOverlay::new(id, cx.listener(|this, _, _, cx| this.dismiss(cx)))
             .child(content)
             .into_any_element()
     }
@@ -992,24 +908,6 @@ fn source_columns(cells: Vec<AnyElement>) -> gpui::Div {
             .zip([0.52, 0.1, 0.12, 0.26])
             .map(|(cell, width)| div().w(relative(width)).min_w_0().flex_none().px_1().child(cell)),
     )
-}
-
-fn notice_banner(message: impl Into<SharedString>, error: bool, cx: &App) -> AnyElement {
-    let (foreground, background) = if error {
-        (Color::Error, cx.theme().status().error.opacity(0.1))
-    } else {
-        (Color::Muted, cx.theme().colors().element_background)
-    };
-    div()
-        .w_full()
-        .px_3()
-        .py_2()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().colors().border_variant)
-        .bg(background)
-        .child(Label::new(message).size(UI_LABEL_DEFAULT).color(foreground))
-        .into_any_element()
 }
 
 #[cfg(test)]
@@ -1254,5 +1152,15 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(!registry.read_with(cx, |registry, _| registry.load_failed));
+    }
+}
+
+impl chartr_plugin::RenderSettings for SkillsView {
+    fn render_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> chartr_plugin::SettingsPage {
+        chartr_plugin::SettingsPage::fill("skills-settings-root").child(self.render(window, cx))
     }
 }

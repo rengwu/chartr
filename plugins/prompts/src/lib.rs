@@ -1,6 +1,7 @@
 //! Saved prompts: one shared library, a table surface, and a read service.
 mod store;
 
+use chartr_plugin::ui as plugin_ui;
 use std::{collections::HashMap, path::PathBuf};
 
 use chartr_plugin::{
@@ -12,13 +13,9 @@ use gpui::{
     AnyElement, App, ClipboardItem, Context, Entity, Focusable, KeyBinding, Render, WeakEntity,
     Window, div, px,
 };
-use ui::{Button, ButtonStyle, Color, Icon, IconName, Label, prelude::*};
+use ui::{Color, Icon, IconName, prelude::*};
 
-use crate::{
-    components::{form_button, input_field},
-    fonts::{UI_LABEL_LARGE, UI_LABEL_SMALL},
-    text_input::TextInput,
-};
+use crate::{components::input_field, text_input::TextInput};
 use store::Store;
 
 /// Reuse the pinned editor's platform editing keys. Project/workspace actions
@@ -243,28 +240,31 @@ impl PromptsView {
                 let actions = if confirming {
                     h_flex()
                         .gap_1()
-                        .child(Button::new(("confirm-delete-prompt", index), "Delete?").on_click(
-                            cx.listener(|this, _, _, cx| {
-                                let Some(original) = this.deleting.clone() else { return };
-                                let result = this.registry.update(cx, |registry, cx| {
-                                    registry.modify(|store| store.delete(&original), cx)
-                                });
-                                this.error = result.err();
-                                this.deleting = None;
-                                cx.notify();
-                            }),
-                        ))
-                        .child(Button::new(("cancel-delete-prompt", index), "Cancel").on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.deleting = None;
-                                cx.notify();
-                            }),
-                        ))
+                        .child(
+                            plugin_ui::action(("confirm-delete-prompt", index), "Delete?")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let Some(original) = this.deleting.clone() else { return };
+                                    let result = this.registry.update(cx, |registry, cx| {
+                                        registry.modify(|store| store.delete(&original), cx)
+                                    });
+                                    this.error = result.err();
+                                    this.deleting = None;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            plugin_ui::action(("cancel-delete-prompt", index), "Cancel").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.deleting = None;
+                                    cx.notify();
+                                }),
+                            ),
+                        )
                 } else {
                     h_flex()
                         .gap_1()
                         .child(
-                            Button::new(
+                            plugin_ui::action(
                                 ("copy-prompt", index),
                                 if self.copied.as_ref() == Some(&prompt.id) {
                                     "Copied"
@@ -282,10 +282,12 @@ impl PromptsView {
                                 },
                             )),
                         )
-                        .child(Button::new(("edit-prompt", index), "Edit").on_click(cx.listener(
-                            move |this, _, window, cx| this.edit(Some(editing.clone()), window, cx),
-                        )))
-                        .child(Button::new(("delete-prompt", index), "Delete").on_click(
+                        .child(plugin_ui::action(("edit-prompt", index), "Edit").on_click(
+                            cx.listener(move |this, _, window, cx| {
+                                this.edit(Some(editing.clone()), window, cx)
+                            }),
+                        ))
+                        .child(plugin_ui::action(("delete-prompt", index), "Delete").on_click(
                             cx.listener(move |this, _, _, cx| {
                                 this.deleting = Some(deleting.clone());
                                 this.error = None;
@@ -294,16 +296,17 @@ impl PromptsView {
                         ))
                 };
                 let preview = prompt.prompt.split_whitespace().collect::<Vec<_>>().join(" ");
-                columns([
-                    Label::new(prompt.title).truncate().into_any_element(),
-                    Label::new(preview).color(Color::Muted).truncate().into_any_element(),
-                    actions.into_any_element(),
-                ])
+                plugin_ui::separated_row(
+                    columns([
+                        plugin_ui::label(prompt.title).truncate().into_any_element(),
+                        plugin_ui::label(preview).color(Color::Muted).truncate().into_any_element(),
+                        actions.into_any_element(),
+                    ]),
+                    cx,
+                )
                 .id(("prompt-row", index))
                 .py_2()
                 .flex_none()
-                .border_b_1()
-                .border_color(cx.theme().colors().border_variant)
                 .into_any_element()
             })
             .collect::<Vec<_>>();
@@ -312,43 +315,33 @@ impl PromptsView {
             .min_h_0()
             .gap_3()
             .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .gap_2()
-                    .child(Label::new("Saved Prompts").size(UI_LABEL_LARGE))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(Button::new("reload-prompts", "Reload").on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.registry.update(cx, |registry, cx| registry.reload(cx));
-                                    this.deleting = None;
-                                    this.error = None;
-                                    this.copied = None;
-                                    cx.notify();
-                                },
-                            )))
-                            .child(
-                                form_button("new-prompt", "New prompt")
-                                    .disabled(blocked)
-                                    .start_icon(Icon::new(IconName::Plus))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.edit(None, window, cx)
-                                    })),
+                plugin_ui::PageHeader::new("Saved Prompts")
+                    .description("Your reusable prompts, shared across spaces.")
+                    .action(plugin_ui::action("reload-prompts", "Reload").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.registry.update(cx, |registry, cx| registry.reload(cx));
+                            this.deleting = None;
+                            this.error = None;
+                            this.copied = None;
+                            cx.notify();
+                        },
+                    )))
+                    .action(
+                        plugin_ui::action("new-prompt", "New prompt")
+                            .disabled(blocked)
+                            .start_icon(Icon::new(IconName::Plus))
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.edit(None, window, cx)),
                             ),
                     ),
             )
-            .child(Label::new("Your reusable prompts, shared across spaces.").color(Color::Muted))
             .when_some(registry.store.as_ref().err().cloned(), |view, error| {
                 view.child(
-                    Label::new(format!("{error} Fix the library file, then Reload."))
+                    plugin_ui::label(format!("{error} Fix the library file, then Reload."))
                         .color(Color::Error),
                 )
             })
-            .when_some(self.error.clone(), |view, error| {
-                view.child(Label::new(error).color(Color::Error))
-            })
+            .when_some(self.error.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
             .child(input_field("search-prompts", self.search.clone(), cx))
             .child(
                 v_flex().id("prompt-table").flex_1().min_h_0().overflow_x_scroll().child(
@@ -357,17 +350,12 @@ impl PromptsView {
                         .w_full()
                         .h_full()
                         .min_h_0()
-                        .child(
+                        .child(plugin_ui::table_header(
                             columns(["Name", "Content", "Actions"].map(|label| {
-                                Label::new(label)
-                                    .size(UI_LABEL_SMALL)
-                                    .color(Color::Muted)
-                                    .into_any_element()
-                            }))
-                            .pb_2()
-                            .border_b_1()
-                            .border_color(cx.theme().colors().border),
-                        )
+                                plugin_ui::caption(label).color(Color::Muted).into_any_element()
+                            })),
+                            cx,
+                        ))
                         .child(
                             v_flex()
                                 .id("prompt-rows")
@@ -378,7 +366,9 @@ impl PromptsView {
                                 .children(rows)
                                 .when(filtered.is_empty() && !blocked, |view| {
                                     view.child(
-                                        div().py_4().child(Label::new(empty).color(Color::Muted)),
+                                        div()
+                                            .py_4()
+                                            .child(plugin_ui::label(empty).color(Color::Muted)),
                                     )
                                 }),
                         ),
@@ -393,38 +383,25 @@ impl PromptsView {
             .min_h_0()
             .gap_3()
             .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .gap_2()
-                    .child(
-                        Label::new(if draft.original.is_some() {
-                            "Edit prompt"
-                        } else {
-                            "New prompt"
-                        })
-                        .size(UI_LABEL_LARGE),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(Button::new("cancel-prompt-edit", "Cancel").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.draft = None;
-                                    this.error = None;
-                                    cx.notify();
-                                }),
-                            ))
-                            .child(
-                                form_button("save-prompt", "Save prompt")
-                                    .style(ButtonStyle::Filled)
-                                    .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
-                            ),
-                    ),
+                plugin_ui::PageHeader::new(if draft.original.is_some() {
+                    "Edit prompt"
+                } else {
+                    "New prompt"
+                })
+                .action(plugin_ui::action("cancel-prompt-edit", "Cancel").on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.draft = None;
+                        this.error = None;
+                        cx.notify();
+                    },
+                )))
+                .action(
+                    plugin_ui::action("save-prompt", "Save prompt")
+                        .primary()
+                        .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
+                ),
             )
-            .when_some(self.error.clone(), |view, error| {
-                view.child(Label::new(error).color(Color::Error))
-            })
+            .when_some(self.error.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
             .child(
                 v_flex()
                     .id("prompt-fields")
@@ -433,27 +410,21 @@ impl PromptsView {
                     .min_h_0()
                     .gap_3()
                     .overflow_y_scroll()
-                    .child(Label::new("Title"))
+                    .child(plugin_ui::label("Title"))
                     .child(input_field("prompt-title", draft.title.clone(), cx))
                     .child(
-                        Label::new("For your reference. Not included in the prompt.")
-                            .size(UI_LABEL_SMALL)
+                        plugin_ui::caption("For your reference. Not included in the prompt.")
                             .color(Color::Muted),
                     )
-                    .child(Label::new("Prompt"))
+                    .child(plugin_ui::label("Prompt"))
                     .child(
-                        div()
+                        plugin_ui::outlined_content(cx)
                             .w_full()
                             .flex_none()
-                            .p_2()
-                            .rounded_md()
-                            .border_1()
-                            .border_color(cx.theme().colors().border_variant)
                             .child(draft.body.clone()),
                     )
                     .child(
-                        Label::new("Only this text is copied or used as the prompt.")
-                            .size(UI_LABEL_SMALL)
+                        plugin_ui::caption("Only this text is copied or used as the prompt.")
                             .color(Color::Muted),
                     ),
             )
@@ -472,13 +443,11 @@ fn columns([title, prompt, actions]: [AnyElement; 3]) -> gpui::Div {
 
 impl Render for PromptsView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .id("prompts-pane")
+        plugin_ui::pane_surface("prompts-pane", cx)
             .key_context("Prompts")
             .size_full()
             .min_h_0()
             .p_4()
-            .bg(cx.theme().colors().editor_background)
             .child(if let Some(draft) = &self.draft {
                 self.editor(draft, cx)
             } else {

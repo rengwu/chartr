@@ -5,12 +5,7 @@
 //! operator-owned file is reported and never overwritten, and successful
 //! updates replace the file atomically.
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::{self, Write as _},
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
 use gpui::{BorrowAppContext, Hsla};
 use serde::{Deserialize, Serialize};
@@ -354,15 +349,8 @@ impl SettingsStore {
                 "{error}; chartr will not overwrite settings it cannot read"
             )));
         }
-        let parent = file.parent().unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent)?;
         let encoded = toml::to_string_pretty(content).map_err(io::Error::other)?;
-        let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-        staged.write_all(format!("{HEADER}\n{encoded}").as_bytes())?;
-        staged.flush()?;
-        staged.as_file().sync_all()?;
-        staged.persist(file).map_err(|error| error.error)?;
-        Ok(())
+        chartr_storage::write_atomic(file, format!("{HEADER}\n{encoded}").as_bytes())
     }
 }
 

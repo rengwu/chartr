@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    io::Write,
     path::{Component, Path, PathBuf},
 };
 
@@ -116,22 +115,15 @@ pub fn apply(root: &Path, doc: &Document, body: &str) -> Result<PathBuf, String>
     if original.as_ref().is_some_and(|bytes| bytes == content.as_bytes()) {
         return Ok(path);
     }
-    let mut staged =
-        tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    staged.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
+    let staged =
+        chartr_storage::StagedWrite::new(&path, content.as_bytes()).map_err(|e| e.to_string())?;
     if let Some(original) = original {
-        staged
-            .as_file()
-            .set_permissions(std::fs::metadata(&path).map_err(|e| e.to_string())?.permissions())
-            .map_err(|e| e.to_string())?;
         if std::fs::read(&path).map_err(|e| e.to_string())? != original {
             return Err("The destination changed while applying. Try again.".into());
         }
-        staged.as_file().sync_all().map_err(|e| e.to_string())?;
-        staged.persist(&path).map_err(|e| e.to_string())?;
+        staged.replace().map_err(|e| e.to_string())?;
     } else {
-        staged.as_file().sync_all().map_err(|e| e.to_string())?;
-        staged.persist_noclobber(&path).map_err(|e| {
+        staged.create_new().map_err(|e| {
             format!("New file could not be created (existing files are never overwritten): {e}")
         })?;
     }
@@ -151,12 +143,8 @@ pub fn load(path: &Path) -> Result<Document, String> {
     }
 }
 pub fn save(path: &Path, doc: &Document) -> Result<(), String> {
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    let mut staged =
-        tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    serde_json::to_writer_pretty(&mut staged, doc).map_err(|e| e.to_string())?;
-    staged.persist(path).map_err(|e| e.to_string())?;
-    Ok(())
+    let encoded = serde_json::to_vec_pretty(doc).map_err(|e| e.to_string())?;
+    chartr_storage::write_atomic(path, &encoded).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

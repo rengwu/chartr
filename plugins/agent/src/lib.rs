@@ -4,6 +4,7 @@
 //! private data directory, while terminal creation is delegated to the owning
 //! chartr space through the native plugin instance context.
 
+use chartr_plugin::ui as plugin_ui;
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
@@ -12,19 +13,15 @@ use std::{
 use chartr_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, TerminalLauncher, gpui,
     gpui::{
-        Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
-        SharedString, Window, div, px, relative,
+        Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, Render, SharedString,
+        Window, div, px, relative,
     },
 };
 use serde::{Deserialize, Serialize};
-use ui::{
-    Button, ButtonStyle, Color, ColumnWidthConfig, Icon, IconButton, IconName, IconPosition,
-    IconSize, Label, Table, TintColor, prelude::*,
-};
+use ui::{Color, ColumnWidthConfig, Icon, IconName, IconPosition, IconSize, Table, prelude::*};
 
 use crate::{
-    components::{ContextMenu, FORM_CONTROL_SIZE, PopupMenu, form_picker, form_row, input_field},
-    fonts::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL},
+    components::{ContextMenu, PopupMenu, form_picker, form_row, input_field},
     text_input::TextInput,
 };
 
@@ -66,20 +63,36 @@ impl Plugin for AgentPlugin {
     }
 
     fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
-        use chartr_plugin::services::{Agents, ServiceExport};
+        use chartr_plugin::services::{Agents, ConversationAgents, ServiceExport};
         let listing = self.registry.downgrade();
         let preparing = listing.clone();
-        vec![ServiceExport::new(Agents::new(
-            move |cx| {
-                let registry = listing.upgrade().ok_or("Agent is unavailable.")?;
-                let registry = registry.read(cx);
-                if let Some(error) = &registry.problem {
-                    return Err(error.clone());
-                }
-                Ok(registry.agents.iter().map(|agent| agent.name.clone()).collect())
-            },
-            move |name, prompt, cx| {
-                let registry = preparing.upgrade().ok_or("Agent is unavailable.")?;
+        let conversations = listing.clone();
+        vec![
+            ServiceExport::new(Agents::new(
+                move |cx| {
+                    let registry = listing.upgrade().ok_or("Agent is unavailable.")?;
+                    let registry = registry.read(cx);
+                    if let Some(error) = &registry.problem {
+                        return Err(error.clone());
+                    }
+                    Ok(registry.agents.iter().map(|agent| agent.name.clone()).collect())
+                },
+                move |name, prompt, cx| {
+                    let registry = preparing.upgrade().ok_or("Agent is unavailable.")?;
+                    let registry = registry.read(cx);
+                    if let Some(error) = &registry.problem {
+                        return Err(error.clone());
+                    }
+                    let agent = registry
+                        .agents
+                        .iter()
+                        .find(|agent| agent.name == name)
+                        .ok_or("The selected agent is no longer registered.")?;
+                    opening_input(agent, prompt)
+                },
+            )),
+            ServiceExport::new(ConversationAgents::new(move |name, prompt, cx| {
+                let registry = conversations.upgrade().ok_or("Agent is unavailable.")?;
                 let registry = registry.read(cx);
                 if let Some(error) = &registry.problem {
                     return Err(error.clone());
@@ -89,12 +102,12 @@ impl Plugin for AgentPlugin {
                     .iter()
                     .find(|agent| agent.name == name)
                     .ok_or("The selected agent is no longer registered.")?;
-                opening_input(agent, prompt)
-            },
-        ))]
+                conversation_input(agent, prompt)
+            })),
+        ]
     }
 
-    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<gpui::AnyView> {
+    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<chartr_plugin::SettingsView> {
         let context = InstanceContext {
             instance_id: 0,
             space: String::new(),
@@ -105,14 +118,8 @@ impl Plugin for AgentPlugin {
             services: Default::default(),
             plugin_settings: chartr_plugin::services::PluginSettings::new(|_, _, _| {}),
         };
-        Some(
-            cx.new(|cx| {
-                let mut view = AgentView::new(self.registry.clone(), context, cx);
-                view.settings_only = true;
-                view
-            })
-            .into(),
-        )
+        let view = cx.new(|cx| AgentView::new(self.registry.clone(), context, cx));
+        Some(chartr_plugin::SettingsView::new(view, cx))
     }
 
     fn view(
@@ -200,7 +207,7 @@ impl AgentRegistry {
         }
         let encoded = serde_json::to_string_pretty(&RegistryFile { version: 1, agents: &agents })
             .map_err(|error| format!("encoding registered agents: {error}"))?;
-        std::fs::write(&self.path, format!("{encoded}\n"))
+        chartr_storage::write_atomic(&self.path, format!("{encoded}\n").as_bytes())
             .map_err(|error| format!("saving registered agents: {error}"))?;
         self.agents = agents;
         self.problem = None;
@@ -248,7 +255,6 @@ impl DeliveryMode {
 }
 
 struct AgentView {
-    settings_only: bool,
     registry: Entity<AgentRegistry>,
     terminal: TerminalLauncher,
     space_name: String,
@@ -298,7 +304,6 @@ impl AgentView {
         .detach();
         Self {
             registry,
-            settings_only: false,
             terminal: context.terminal,
             space_name: context.space_name,
             branch,
@@ -526,8 +531,7 @@ impl AgentView {
         let weak = cx.weak_entity();
         let pane_menu = PopupMenu::new("agent-pane-menu")
             .trigger(
-                IconButton::new("agent-pane-menu-trigger", IconName::ChevronDown)
-                    .icon_size(IconSize::Small)
+                plugin_ui::icon_action("agent-pane-menu-trigger", IconName::ChevronDown)
                     .aria_label("Agent pane menu"),
             )
             .anchor(Anchor::TopRight)
@@ -560,9 +564,7 @@ impl AgentView {
             let weak = cx.weak_entity();
             PopupMenu::new("registered-agent-picker")
                 .trigger(
-                    Button::new("registered-agent-picker-trigger", selected)
-                        .size(FORM_CONTROL_SIZE)
-                        .style(ButtonStyle::Outlined)
+                    plugin_ui::action("registered-agent-picker-trigger", selected)
                         .start_icon(Icon::from_path(selected_icon).size(IconSize::Small))
                         .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
                 )
@@ -591,9 +593,7 @@ impl AgentView {
                 })
                 .into_any_element()
         } else {
-            Button::new("registered-agent-picker-empty", "No registered agents")
-                .size(FORM_CONTROL_SIZE)
-                .style(ButtonStyle::Outlined)
+            plugin_ui::action("registered-agent-picker-empty", "No registered agents")
                 .disabled(true)
                 .into_any_element()
         };
@@ -607,13 +607,8 @@ impl AgentView {
             .gap_5()
             .child(context_item(IconName::FolderOpen, self.space_name.clone()))
             .child(context_item(IconName::GitBranch, self.branch.clone()));
-        let composer = v_flex()
+        let composer = plugin_ui::card(cx)
             .w_full()
-            .rounded_lg()
-            .border_1()
-            .border_color(cx.theme().colors().border)
-            .bg(cx.theme().colors().surface_background)
-            .overflow_hidden()
             .child(
                 h_flex()
                     .h(px(48.))
@@ -623,20 +618,15 @@ impl AgentView {
             )
             .child(
                 h_flex().w_full().justify_between().gap_3().px_3().pb_3().child(picker).child(
-                    Button::new("launch-agent-session", "Launch session")
-                        .size(FORM_CONTROL_SIZE)
-                        .style(ButtonStyle::Filled)
+                    plugin_ui::action("launch-agent-session", "Launch session")
+                        .primary()
                         .disabled(!has_agents)
                         .on_click(launch),
                 ),
             );
 
-        v_flex()
-            .id("agent-launcher-page")
-            .size_full()
-            .relative()
+        plugin_ui::pane_surface("agent-launcher-page", cx)
             .items_center()
-            .bg(cx.theme().colors().editor_background)
             .child(div().absolute().top_3().right_3().child(pane_menu))
             .child(
                 v_flex()
@@ -655,22 +645,20 @@ impl AgentView {
                             .gap_3()
                             .pb_2()
                             .child(
-                                Label::new(if has_agents {
+                                plugin_ui::heading(if has_agents {
                                     "Launch a new session in this space with the selected agent"
                                 } else {
                                     "Welcome! Let's get you started."
                                 })
-                                .size(UI_LABEL_LARGE)
                                 .color(Color::Muted),
                             )
                             .when(!has_agents, |hero| {
                                 hero.child(
                                     div().debug_selector(|| "REGISTER_FIRST_AGENT".into()).child(
-                                        Button::new(
+                                        plugin_ui::action(
                                             "register-first-agent",
                                             "Register your first agent",
                                         )
-                                        .style(ButtonStyle::Outlined)
                                         .start_icon(Icon::new(IconName::Plus))
                                         .on_click(register),
                                     ),
@@ -678,10 +666,10 @@ impl AgentView {
                             }),
                     )
                     .when_some(registry_problem, |page, problem| {
-                        page.child(notice_banner(problem, true, cx))
+                        page.child(plugin_ui::notice(problem, true))
                     })
                     .when_some(notice, |page, (message, error)| {
-                        page.child(notice_banner(message, error, cx))
+                        page.child(plugin_ui::notice(message, error))
                     })
                     .child(v_flex().w_full().gap_2().child(context).child(composer)),
             )
@@ -713,8 +701,8 @@ impl AgentView {
                     let delete =
                         cx.listener(move |this, _, _, cx| this.ask_delete(delete_name.clone(), cx));
                     table.row(vec![
-                        Label::new(name).truncate().into_any_element(),
-                        Label::new(agent.adapter.clone())
+                        plugin_ui::label(name).truncate().into_any_element(),
+                        plugin_ui::label(agent.adapter.clone())
                             .color(Color::Muted)
                             .truncate()
                             .into_any_element(),
@@ -722,10 +710,9 @@ impl AgentView {
                             .w_full()
                             .justify_end()
                             .gap_1()
-                            .child(Button::new(("edit-agent", index), "Edit").on_click(edit))
+                            .child(plugin_ui::action(("edit-agent", index), "Edit").on_click(edit))
                             .child(
-                                IconButton::new(("delete-agent", index), IconName::Trash)
-                                    .icon_size(IconSize::Small)
+                                plugin_ui::icon_action(("delete-agent", index), IconName::Trash)
                                     .aria_label(format!("Delete {}", agent.name))
                                     .on_click(delete),
                             )
@@ -734,56 +721,28 @@ impl AgentView {
                 },
             )
             .empty_table_callback(|_, _| {
-                Label::new("No registered agents.").color(Color::Muted).into_any_element()
+                plugin_ui::label("No registered agents.").color(Color::Muted).into_any_element()
             });
         let problem = self.registry.read(cx).problem.clone();
         let notice = self.notice.clone();
 
-        v_flex()
-            .id("agent-management-page")
-            .size_full()
-            .bg(cx.theme().colors().editor_background)
-            .overflow_y_scroll()
+        chartr_plugin::SettingsPage::scroll("agent-management-page")
             .child(
-                v_flex()
-                    .w_full()
-                    .gap_5()
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_center()
-                                    .justify_between()
-                                    .gap_4()
-                                    .child(Label::new("Agent management").size(UI_LABEL_LARGE))
-                                    .child(
-                                        Button::new("new-agent", "New agent")
-                                            .style(ButtonStyle::Outlined)
-                                            .start_icon(Icon::new(IconName::Plus))
-                                            .on_click(add),
-                                    ),
-                            )
-                            .child(
-                                div().w_full().child(
-                                    Label::new(
-                                        "Configure the command, flags, and prompt delivery for each agent.",
-                                    )
-                                    .size(UI_LABEL_DEFAULT)
-                                    .color(Color::Muted),
-                                ),
-                            ),
+                plugin_ui::PageHeader::new("Agent management")
+                    .description(
+                        "Configure the command, flags, and prompt delivery for each agent.",
                     )
-                    .when_some(problem, |page, problem| {
-                        page.child(notice_banner(problem, true, cx))
-                    })
-                    .when_some(notice, |page, (message, error)| {
-                        page.child(notice_banner(message, error, cx))
-                    })
-                    .child(table),
+                    .action(
+                        plugin_ui::action("new-agent", "New agent")
+                            .start_icon(Icon::new(IconName::Plus))
+                            .on_click(add),
+                    ),
             )
+            .when_some(problem, |page, problem| page.child(plugin_ui::notice(problem, true)))
+            .when_some(notice, |page, (message, error)| {
+                page.child(plugin_ui::notice(message, error))
+            })
+            .child(table)
             .into_any_element()
     }
 
@@ -827,55 +786,15 @@ impl AgentView {
         let error = self.form_error.clone();
 
         Some(
-            div()
-                .id("agent-editor-scrim")
-                .absolute()
-                .top_0()
-                .right_0()
-                .bottom_0()
-                .left_0()
-                .flex()
-                .items_start()
-                .justify_center()
-                .pt_8()
-                .bg(gpui::black().opacity(0.35))
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            plugin_ui::ModalOverlay::new("agent-editor-scrim", move |_, _, cx| {
                     let _ = close_scrim.update(cx, |this, cx| this.dismiss_editor(cx));
                 })
                 .child(
-                    v_flex()
-                        .id("agent-editor-dialog")
-                        .w(px(620.))
-                        .max_w(relative(0.92))
-                        .max_h(relative(0.9))
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(cx.theme().colors().border)
-                        .bg(cx.theme().colors().elevated_surface_background)
-                        .shadow_lg()
-                        .overflow_hidden()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    plugin_ui::DialogSurface::new("agent-editor-dialog")
+                        .child(plugin_ui::dialog_header(title,
+                            plugin_ui::icon_action("close-agent-editor", IconName::Close).aria_label("Close dialog").on_click(close_button), cx))
                         .child(
-                            h_flex()
-                                .w_full()
-                                .justify_between()
-                                .px_4()
-                                .py_3()
-                                .border_b_1()
-                                .border_color(cx.theme().colors().border)
-                                .child(Label::new(title).size(UI_LABEL_LARGE))
-                                .child(
-                                    IconButton::new("close-agent-editor", IconName::Close)
-                                        .aria_label("Close dialog")
-                                        .on_click(close_button),
-                                ),
-                        )
-                        .child(
-                            v_flex()
-                                .id("agent-editor-fields")
-                                .w_full()
-                                .p_4()
-                                .gap_3()
+                            plugin_ui::dialog_body().id("agent-editor-fields")
                                 .overflow_y_scroll()
                                 .child(form_row(
                                     "Name",
@@ -906,22 +825,15 @@ impl AgentView {
                                     input_field("agent-environment", self.env.clone(), cx),
                                 ))
                                 .when_some(error, |form, error| {
-                                    form.child(notice_banner(error, true, cx))
+                                    form.child(plugin_ui::notice(error, true))
                                 }),
                         )
                         .child(
-                            h_flex()
-                                .w_full()
-                                .justify_end()
-                                .gap_2()
-                                .px_4()
-                                .py_3()
-                                .border_t_1()
-                                .border_color(cx.theme().colors().border)
-                                .child(Button::new("cancel-agent-editor", "Cancel").on_click(cancel))
+                            plugin_ui::dialog_actions(cx)
+                                .child(plugin_ui::action("cancel-agent-editor", "Cancel").on_click(cancel))
                                 .child(
-                                    Button::new("save-agent", "Save")
-                                        .style(ButtonStyle::Filled)
+                                    plugin_ui::action("save-agent", "Save")
+                                        .primary()
                                         .on_click(save),
                                 ),
                         ),
@@ -936,64 +848,41 @@ impl AgentView {
         let cancel = cx.listener(Self::cancel_delete);
         let confirm = cx.listener(Self::confirm_delete);
         Some(
-            div()
-                .id("delete-agent-scrim")
-                .absolute()
-                .top_0()
-                .right_0()
-                .bottom_0()
-                .left_0()
-                .flex()
-                .items_start()
-                .justify_center()
-                .pt(px(96.))
-                .bg(gpui::black().opacity(0.35))
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                    let _ = cancel_scrim.update(cx, |this, cx| {
-                        this.deleting = None;
-                        cx.notify();
-                    });
-                })
-                .child(
-                    v_flex()
-                        .id("delete-agent-dialog")
-                        .w(px(440.))
-                        .max_w(relative(0.9))
-                        .p_4()
-                        .gap_3()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(cx.theme().colors().border)
-                        .bg(cx.theme().colors().elevated_surface_background)
-                        .shadow_lg()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(Label::new("Delete agent?").size(UI_LABEL_LARGE))
-                        .child(
-                            Label::new(format!(
-                                "Delete “{name}”? This does not close sessions already running with it."
-                            ))
-                            .size(UI_LABEL_DEFAULT),
-                        )
-                        .child(
-                            h_flex()
-                                .justify_end()
-                                .gap_2()
-                                .child(Button::new("cancel-agent-delete", "Cancel").on_click(cancel))
-                                .child(
-                                    Button::new("confirm-agent-delete", "Delete")
-                                        .style(ButtonStyle::Tinted(TintColor::Error))
-                                        .on_click(confirm),
-                                ),
-                        ),
-                )
-                .into_any_element(),
+            plugin_ui::ModalOverlay::new("delete-agent-scrim", move |_, _, cx| {
+                let _ = cancel_scrim.update(cx, |this, cx| {
+                    this.deleting = None;
+                    cx.notify();
+                });
+            })
+            .child(
+                plugin_ui::DialogSurface::new("delete-agent-dialog")
+                    .compact()
+                    .child(plugin_ui::heading("Delete agent?"))
+                    .child(plugin_ui::label(format!(
+                        "Delete “{name}”? This does not close sessions already running with it."
+                    )))
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                plugin_ui::action("cancel-agent-delete", "Cancel").on_click(cancel),
+                            )
+                            .child(
+                                plugin_ui::action("confirm-agent-delete", "Delete")
+                                    .destructive()
+                                    .on_click(confirm),
+                            ),
+                    ),
+            )
+            .into_any_element(),
         )
     }
 }
 
 impl Render for AgentView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let page = if self.settings_only { self.management(cx) } else { self.launcher(cx) };
+        let page = self.launcher(cx);
         div()
             .size_full()
             .relative()
@@ -1009,7 +898,7 @@ fn context_item(icon: IconName, text: impl Into<SharedString>) -> AnyElement {
         .min_w_0()
         .gap_1()
         .child(Icon::new(icon).size(IconSize::XSmall).color(Color::Muted))
-        .child(Label::new(text).size(UI_LABEL_SMALL).color(Color::Muted).truncate())
+        .child(plugin_ui::caption(text).color(Color::Muted).truncate())
         .into_any_element()
 }
 
@@ -1053,24 +942,6 @@ fn known_agent_icon(value: &str) -> Option<&'static str> {
     } else {
         None
     }
-}
-
-fn notice_banner(message: impl Into<SharedString>, error: bool, cx: &App) -> AnyElement {
-    let (foreground, background) = if error {
-        (Color::Error, cx.theme().status().error.opacity(0.1))
-    } else {
-        (Color::Muted, cx.theme().colors().element_background)
-    };
-    div()
-        .w_full()
-        .px_3()
-        .py_2()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().colors().border_variant)
-        .bg(background)
-        .child(Label::new(message).size(UI_LABEL_DEFAULT).color(foreground))
-        .into_any_element()
 }
 
 fn valid_agent_name(name: &str) -> bool {
@@ -1186,6 +1057,65 @@ fn opening_input(agent: &AgentRecord, prompt: &str) -> Result<Vec<u8>, String> {
     Ok(input)
 }
 
+fn conversation_input(
+    agent: &AgentRecord,
+    prompt: &str,
+) -> Result<chartr_plugin::services::ConversationLaunch, String> {
+    let mut launch = agent.clone();
+    let program =
+        Path::new(agent.adapter.trim()).file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let provider = chartr_agent::Provider::executable(program);
+    let integration = provider.map(|provider| provider.slug().to_owned());
+    if provider == Some(chartr_agent::Provider::OpenCode) {
+        // An explicit listener keeps subsequent chat input in this very TUI.
+        // Preserve user-specified networking options and every registered field.
+        for (flag, value) in [("--port", "0"), ("--hostname", "127.0.0.1")] {
+            if !launch.args.iter().any(|arg| arg == flag || arg.starts_with(&format!("{flag}="))) {
+                launch.args.extend([flag.to_owned(), value.to_owned()]);
+            }
+        }
+    }
+    let opencode = (provider == Some(chartr_agent::Provider::OpenCode)).then(|| {
+        chartr_plugin::services::OpenCodeConversation {
+            prompt: prompt.into(),
+            reuse: agent.args.iter().any(|arg| {
+                matches!(
+                    arg.as_str(),
+                    "--continue" | "-c" | "--session" | "-s" | "--prompt" | "attach"
+                ) || arg.starts_with("--session=")
+                    || arg.starts_with("--prompt=")
+            }),
+            model: registered_option(&agent.args, &["--model", "-m"]),
+            agent: registered_option(&agent.args, &["--agent"]),
+        }
+    });
+    let input = if provider == Some(chartr_agent::Provider::OpenCode) {
+        opening_input(&launch, "")?
+    } else if provider == Some(chartr_agent::Provider::Claude)
+        && resolved_delivery(program, &launch.delivery)? == PromptDelivery::Argument
+    {
+        // Claude's variadic options (e.g. --tools) otherwise consume a trailing
+        // opening prompt. Its positional prompt can precede these options.
+        launch.args.insert(0, prompt.to_owned());
+        opening_input(&launch, "")?
+    } else {
+        opening_input(&launch, prompt)?
+    };
+    Ok(chartr_plugin::services::ConversationLaunch { input, integration, opencode })
+}
+
+fn registered_option(args: &[String], flags: &[&str]) -> Option<String> {
+    args.iter().enumerate().rev().find_map(|(index, arg)| {
+        flags.iter().find_map(|flag| {
+            if arg == flag {
+                args.get(index + 1).cloned()
+            } else {
+                arg.strip_prefix(&format!("{flag}=")).map(str::to_owned)
+            }
+        })
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PromptDelivery {
     Argument,
@@ -1199,11 +1129,15 @@ fn resolved_delivery(program: &str, configured: &str) -> Result<PromptDelivery, 
         "" | "default" => {
             let name =
                 Path::new(program).file_name().and_then(|name| name.to_str()).unwrap_or(program);
-            Ok(if matches!(name, "claude" | "codex") {
-                PromptDelivery::Argument
-            } else {
-                PromptDelivery::Typed
-            })
+            Ok(
+                if chartr_agent::Provider::executable(name)
+                    .is_some_and(|provider| provider.definition().positional_prompt)
+                {
+                    PromptDelivery::Argument
+                } else {
+                    PromptDelivery::Typed
+                },
+            )
         }
         "argv" => Ok(PromptDelivery::Argument),
         "type" => Ok(PromptDelivery::Typed),
@@ -1337,7 +1271,6 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(&*opened.borrow(), &vec![(Some(AgentPlugin::ID.into()), cx.window_handle()); 2],);
         view.read_with(cx, |view, _| {
-            assert!(!view.settings_only);
             assert!(!view.editor_open);
         });
     }
@@ -1359,6 +1292,26 @@ mod tests {
     }
 
     #[test]
+    fn every_provider_alias_selects_its_integration_without_rewriting_the_command() {
+        for definition in chartr_agent::DEFINITIONS {
+            for alias in definition.aliases {
+                let executable = format!("/opt/agents/{alias}");
+                let agent =
+                    record(&executable, &["--profile", "saved"], &["AGENT_MODE=work"], "default");
+                let launch = conversation_input(&agent, "do the task").unwrap();
+                assert_eq!(launch.integration.as_deref(), Some(definition.slug));
+                let input = String::from_utf8(launch.input).unwrap();
+                assert!(input.contains(&shell_quoted(&executable)), "{alias}: {input}");
+                assert!(input.contains("saved") && input.contains("AGENT_MODE='work'"));
+                assert_eq!(
+                    launch.opencode.is_some(),
+                    definition.transport == chartr_agent::MessageTransport::OpenCodeApi
+                );
+            }
+        }
+    }
+
+    #[test]
     fn arguments_are_optional() {
         let agent = record("codex", &[], &[], "argv");
         assert!(valid_stored_agent(&agent));
@@ -1366,6 +1319,52 @@ mod tests {
             String::from_utf8(opening_input(&agent, "inspect this").unwrap()).unwrap(),
             "'codex' 'inspect this'\r"
         );
+    }
+
+    #[test]
+    fn conversation_launch_keeps_profiles_and_adds_only_missing_opencode_transport_options() {
+        let prompt = "first line\nquote ' and $(not-a-command)";
+        for adapter in ["/opt/bin/codex", "custom-wrapper"] {
+            let agent =
+                record(adapter, &["--model", "saved-model"], &["TEST_VALUE=two words"], "argv");
+            assert_eq!(
+                conversation_input(&agent, prompt).unwrap().input,
+                opening_input(&agent, prompt).unwrap()
+            );
+        }
+        let claude = record(
+            "claude",
+            &["--model", "saved-model", "--tools", ""],
+            &["TEST_VALUE=kept"],
+            "default",
+        );
+        let input =
+            String::from_utf8(conversation_input(&claude, "first prompt").unwrap().input).unwrap();
+        assert_eq!(
+            input,
+            "TEST_VALUE='kept' 'claude' 'first prompt' '--model' 'saved-model' '--tools' ''\r"
+        );
+        let mut agent =
+            record("opencode", &["--model", "saved/model"], &["TEST_VALUE=kept"], "default");
+        let launch = conversation_input(&agent, prompt).unwrap();
+        assert_eq!(launch.integration.as_deref(), Some("opencode"));
+        let input = String::from_utf8(launch.input).unwrap();
+        assert!(input.starts_with("TEST_VALUE='kept' 'opencode' "));
+        assert_eq!(launch.opencode.as_ref().unwrap().prompt, prompt);
+        assert_eq!(launch.opencode.as_ref().unwrap().model.as_deref(), Some("saved/model"));
+        assert!(!launch.opencode.as_ref().unwrap().reuse);
+        assert!(input.contains("'--model' 'saved/model' '--port' '0' '--hostname' '127.0.0.1'"));
+        assert_eq!(agent.args, vec!["--model", "saved/model"]);
+        agent.args.extend(["--port=54321".into(), "--hostname".into(), "localhost".into()]);
+        agent.delivery = "--prompt".into();
+        assert_eq!(
+            conversation_input(&agent, prompt).unwrap().input,
+            opening_input(&agent, "").unwrap()
+        );
+        agent.args.extend(["--session=ses_saved".into(), "--agent=plan".into()]);
+        let launch = conversation_input(&agent, prompt).unwrap();
+        assert!(launch.opencode.as_ref().unwrap().reuse);
+        assert_eq!(launch.opencode.as_ref().unwrap().agent.as_deref(), Some("plan"));
     }
 
     #[test]
@@ -1429,5 +1428,24 @@ mod tests {
     fn unknown_agents_get_the_generic_programming_icon() {
         assert_eq!(inferred_agent_icon("my-agent", "agent-cli"), GENERIC_AGENT_ICON);
         assert_eq!(inferred_agent_icon("copilot", "pi"), "icons/agent_copilot.svg");
+    }
+}
+
+impl chartr_plugin::RenderSettings for AgentView {
+    fn render_settings(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> chartr_plugin::SettingsPage {
+        let page = self.management(cx);
+        chartr_plugin::SettingsPage::fill("agent-settings-root").child(
+            div()
+                .size_full()
+                .relative()
+                .key_context("chartrAgentPlugin")
+                .child(page)
+                .children(self.editor_overlay(cx))
+                .children(self.delete_overlay(cx)),
+        )
     }
 }

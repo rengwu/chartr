@@ -155,6 +155,40 @@ impl Agents {
     }
 }
 
+/// Optional chat-launch preparation. Agent still owns saved arguments, environment
+/// and quoting; the host owns terminal creation and conversation observation.
+pub struct ConversationLaunch {
+    pub input: Vec<u8>,
+    pub integration: Option<String>,
+    pub opencode: Option<OpenCodeConversation>,
+}
+
+pub struct OpenCodeConversation {
+    pub prompt: String,
+    /// A saved continuation/session option must not be replaced by a fresh session.
+    pub reuse: bool,
+    pub model: Option<String>,
+    pub agent: Option<String>,
+}
+
+type ConversationInput = dyn Fn(&str, &str, &gpui::App) -> Result<ConversationLaunch, String>;
+pub struct ConversationAgents(Box<ConversationInput>);
+impl ConversationAgents {
+    pub fn new(
+        prepare: impl Fn(&str, &str, &gpui::App) -> Result<ConversationLaunch, String> + 'static,
+    ) -> Self {
+        Self(Box::new(prepare))
+    }
+    pub fn prepare(
+        &self,
+        name: &str,
+        prompt: &str,
+        cx: &gpui::App,
+    ) -> Result<ConversationLaunch, String> {
+        (self.0)(name, prompt, cx)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Skill {
     pub source: String,

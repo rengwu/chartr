@@ -57,9 +57,13 @@
 pub mod manifest;
 pub mod services;
 pub mod settings;
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub use gpui;
 pub use manifest::{Capabilities, Kind, Manifest, Multiplicity, Permissions, ProjectAccess};
+mod settings_page;
+pub use settings_page::{RenderSettings, SettingsPage, SettingsView};
 
 use std::{path::PathBuf, rc::Rc};
 
@@ -293,11 +297,13 @@ pub trait Plugin: Sized + 'static {
     ) -> gpui::AnyView;
 
     /// Build this plugin's user-global Settings contribution on first open.
+    /// Use [`SettingsPage`] for its page container. The host owns the background;
+    /// nested backgrounds belong only to controls, cards, and dialog surfaces.
     fn settings(
         &mut self,
         _window: &mut gpui::Window,
         _cx: &mut gpui::App,
-    ) -> Option<gpui::AnyView> {
+    ) -> Option<SettingsView> {
         None
     }
 }
@@ -316,7 +322,7 @@ pub trait PluginObject {
         window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> gpui::AnyView;
-    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyView>;
+    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<SettingsView>;
 }
 
 impl<P: Plugin> PluginObject for P {
@@ -350,7 +356,7 @@ impl<P: Plugin> PluginObject for P {
         Plugin::view(self, pane, context, window, cx)
     }
 
-    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<gpui::AnyView> {
+    fn settings(&mut self, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<SettingsView> {
         Plugin::settings(self, window, cx)
     }
 }

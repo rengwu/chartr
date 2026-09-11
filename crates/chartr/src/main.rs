@@ -20,6 +20,7 @@ mod chrome;
 #[path = "../../../plugins/companion/src/lib.rs"]
 mod companion_plugin;
 mod components;
+mod conversations;
 mod fonts;
 mod item;
 mod keymap;
@@ -84,6 +85,7 @@ fn main() {
         fonts::install(settings.resolved(), cx);
         actions::init(&keymap, cx);
         text_input::init(cx);
+        conversations::init(cx);
         prompts_plugin::init(cx);
         browser_plugin::init(cx);
         settings_window::init(&keymap, cx);

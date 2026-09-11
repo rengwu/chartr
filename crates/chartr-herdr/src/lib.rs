@@ -21,6 +21,7 @@
 #![cfg(unix)]
 
 pub mod control;
+mod integration;
 pub mod namespace;
 pub mod protocol;
 pub mod sidecar;

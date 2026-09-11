@@ -30,6 +30,7 @@ pub mod workspace {
             Ungroup,
             SidebarMode,
             TabbedMode,
+            ConversationMode,
             CycleViewMode,
             ToggleStatusBar,
             NewSpace,
@@ -131,6 +132,9 @@ fn binding(action: KeymapAction, key: &str, context: &str) -> KeyBinding {
         KeymapAction::Ungroup => KeyBinding::new(key, workspace::Ungroup, context),
         KeymapAction::SidebarMode => KeyBinding::new(key, workspace::SidebarMode, context),
         KeymapAction::TabbedMode => KeyBinding::new(key, workspace::TabbedMode, context),
+        KeymapAction::ConversationMode => {
+            KeyBinding::new(key, workspace::ConversationMode, context)
+        }
         KeymapAction::CycleViewMode => KeyBinding::new(key, workspace::CycleViewMode, context),
         KeymapAction::NewSpace => KeyBinding::new(key, workspace::NewSpace, context),
         KeymapAction::CloseSpace => KeyBinding::new(key, workspace::CloseSpace, context),

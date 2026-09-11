@@ -270,11 +270,7 @@ impl SettingsWindow {
         v_flex()
             .gap_2()
             .when_some(keymap_problem, |view, problem| {
-                view.child(
-                    Banner::new()
-                        .severity(Severity::Error)
-                        .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
-                )
+                view.child(chartr_plugin::ui::notice(problem, true))
             })
             .child(table)
             .into_any_element()

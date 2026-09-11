@@ -493,6 +493,7 @@ pub enum Action {
     LocateSpace { space: EntityId },
     SwitchToTabs,
     SwitchToSidebar,
+    SwitchToConversations,
     NewSpace,
     NewInSpace { space: EntityId },
     NewPluginPaneInSpace { space: EntityId },

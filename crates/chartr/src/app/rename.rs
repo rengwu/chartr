@@ -126,20 +126,15 @@ impl WorkspaceWindow {
             RenameKind::Group => this.commit_group_rename(window, cx),
         });
         Some(
-            div()
-                .id(match kind {
+            chartr_plugin::ui::ModalOverlay::new(
+                match kind {
                     RenameKind::Space => "rename-space-scrim",
                     RenameKind::Group => "rename-group-scrim",
-                })
-                .absolute()
-                .top_0()
-                .right_0()
-                .bottom_0()
-                .left_0()
-                .bg(gpui::black().opacity(0.35))
-                .on_mouse_down(MouseButton::Left, cancel_scrim)
-                .child(rename_dialog(kind, self.rename_input.clone(), cancel_button, save, cx))
-                .into_any_element(),
+                },
+                cancel_scrim,
+            )
+            .child(rename_dialog(kind, self.rename_input.clone(), cancel_button, save, cx))
+            .into_any_element(),
         )
     }
 }
@@ -168,21 +163,8 @@ fn rename_dialog(
         ),
     };
 
-    v_flex()
-        .id(dialog_id)
-        .absolute()
-        .top(px(96.))
-        .left(relative(0.5))
-        .ml(px(-220.))
-        .w(px(440.))
-        .p_4()
-        .gap_3()
-        .rounded_lg()
-        .border_1()
-        .border_color(cx.theme().colors().border)
-        .bg(cx.theme().colors().elevated_surface_background)
-        .shadow_lg()
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+    chartr_plugin::ui::DialogSurface::new(dialog_id)
+        .compact()
         .child(Label::new(title).size(UI_LABEL_LARGE))
         .child(
             v_flex()
@@ -283,9 +265,10 @@ impl Render for RenameWindow {
             .font(ui_font)
             .text_size(UI_TEXT_DEFAULT)
             .text_color(cx.theme().colors().text)
-            .bg(gpui::black().opacity(0.35))
             .on_key_down(on_key)
-            .on_mouse_down(MouseButton::Left, cancel_scrim)
-            .child(rename_dialog(self.kind, self.input.clone(), cancel_button, save, cx))
+            .child(
+                chartr_plugin::ui::ModalOverlay::new("rename-modal-overlay", cancel_scrim)
+                    .child(rename_dialog(self.kind, self.input.clone(), cancel_button, save, cx)),
+            )
     }
 }

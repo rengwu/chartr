@@ -8,11 +8,10 @@
 
 use std::borrow::Cow;
 
-use gpui::{App, Font, Pixels, Rems, Window, px};
+use gpui::{App, Font, Pixels, Window, px};
 use settings::Settings as _;
 use terminal::terminal_settings::TerminalSettings;
 use theme::{ThemeSettingsProvider, UiDensity};
-use ui::LabelSize;
 
 use crate::settings::ResolvedSettings;
 
@@ -31,13 +30,7 @@ const MONOSPACE_FAMILY: &str = "IBM Plex Mono";
 /// chartr's semantic interface type scale. These values are relative to the
 /// configured `ui_font_size`, whose default is 14 px, so the default scale is
 /// exactly 14/12/10 px while still respecting the user's interface scale.
-pub const UI_TEXT_LARGE: Rems = Rems(1.);
-pub const UI_TEXT_DEFAULT: Rems = Rems(12. / 14.);
-pub const UI_TEXT_SMALL: Rems = Rems(10. / 14.);
-
-pub const UI_LABEL_LARGE: LabelSize = LabelSize::Custom(UI_TEXT_LARGE);
-pub const UI_LABEL_DEFAULT: LabelSize = LabelSize::Custom(UI_TEXT_DEFAULT);
-pub const UI_LABEL_SMALL: LabelSize = LabelSize::Custom(UI_TEXT_SMALL);
+pub use chartr_plugin::ui::{UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT};
 
 /// A picker choice and its embedded faces. Empty faces use Zed's or system assets.
 pub struct BundledFont {
@@ -50,6 +43,7 @@ impl BundledFont {
         // Google's static optical-size instances retain these internal family
         // names. Keep the public choice stable while requesting the actual face.
         match self.family {
+            "System UI" => ".SystemUIFont",
             "DM Sans" => "DM Sans 9pt",
             "Nunito Sans" => "Nunito Sans 12pt ExtraLight 12pt",
             family => family,

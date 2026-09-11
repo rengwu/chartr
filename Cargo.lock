@@ -1248,10 +1248,13 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "assets",
+ "chartr-agent",
  "chartr-companion",
+ "chartr-conversations",
  "chartr-herdr",
  "chartr-plugin",
  "chartr-plugin-host",
+ "chartr-storage",
  "chrono",
  "collections",
  "editor",
@@ -1281,6 +1284,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chartr-agent"
+version = "0.3.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "chartr-companion"
 version = "0.3.0"
 dependencies = [
@@ -1292,9 +1302,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "chartr-conversations"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "chartr-agent",
+ "chartr-herdr",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "chartr-herdr"
 version = "0.3.0"
 dependencies = [
+ "chartr-agent",
  "rustix 1.1.4",
  "serde",
  "serde_json",
@@ -1308,7 +1334,9 @@ version = "0.3.0"
 dependencies = [
  "gpui",
  "serde",
+ "syn 2.0.119",
  "toml 0.9.12+spec-1.1.0",
+ "ui",
 ]
 
 [[package]]
@@ -1320,6 +1348,13 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "chartr-storage"
+version = "0.3.0"
+dependencies = [
  "tempfile",
 ]
 

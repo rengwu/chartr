@@ -5,12 +5,7 @@
 //! in the shared `chartr` context, writes atomically, and updates GPUI's live
 //! keymap after each successful edit.
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::{self, Write as _},
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, fs, io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +21,7 @@ pub enum KeymapAction {
     Ungroup,
     SidebarMode,
     TabbedMode,
+    ConversationMode,
     CycleViewMode,
     NewSpace,
     CloseSpace,
@@ -44,7 +40,7 @@ pub enum KeymapAction {
 }
 
 impl KeymapAction {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::CloseItem,
         Self::NewTerminal,
         Self::NewTerminalPane,
@@ -53,6 +49,7 @@ impl KeymapAction {
         Self::Ungroup,
         Self::SidebarMode,
         Self::TabbedMode,
+        Self::ConversationMode,
         Self::CycleViewMode,
         Self::NewSpace,
         Self::CloseSpace,
@@ -80,6 +77,7 @@ impl KeymapAction {
             Self::Ungroup => "workspace.ungroup",
             Self::SidebarMode => "workspace.sidebar_mode",
             Self::TabbedMode => "workspace.tabbed_mode",
+            Self::ConversationMode => "workspace.conversation_mode",
             Self::CycleViewMode => "workspace.cycle_view_mode",
             Self::NewSpace => "workspace.new_space",
             Self::CloseSpace => "workspace.close_space",
@@ -108,6 +106,7 @@ impl KeymapAction {
             Self::Ungroup => "Ungroup current group",
             Self::SidebarMode => "Switch to sidebar mode",
             Self::TabbedMode => "Switch to tabbed mode",
+            Self::ConversationMode => "Switch to conversation mode",
             Self::CycleViewMode => "Cycle view modes",
             Self::NewSpace => "Open new space",
             Self::CloseSpace => "Close current space",
@@ -140,6 +139,7 @@ impl KeymapAction {
             Self::Ungroup => "cmd-shift-g",
             Self::SidebarMode => "cmd-@",
             Self::TabbedMode => "cmd-!",
+            Self::ConversationMode => "cmd-#",
             Self::CycleViewMode => "cmd-~",
             Self::NewSpace => "cmd-o",
             Self::CloseSpace => "cmd-shift-w",
@@ -167,6 +167,7 @@ impl KeymapAction {
             Self::Ungroup => "ctrl-shift-g",
             Self::SidebarMode => "ctrl-@",
             Self::TabbedMode => "ctrl-!",
+            Self::ConversationMode => "ctrl-#",
             // Ctrl+~ already opens a terminal on Linux.
             Self::CycleViewMode => "ctrl-alt-~",
             Self::NewSpace => "ctrl-o",
@@ -303,14 +304,8 @@ impl KeymapStore {
                 "{problem}; chartr will not overwrite a keymap it cannot read"
             )));
         }
-        let parent = file.parent().unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent)?;
-        let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-        staged.write_all(toml::to_string_pretty(content).map_err(io::Error::other)?.as_bytes())?;
-        staged.flush()?;
-        staged.as_file().sync_all()?;
-        staged.persist(file).map_err(|error| error.error)?;
-        Ok(())
+        let encoded = toml::to_string_pretty(content).map_err(io::Error::other)?;
+        chartr_storage::write_atomic(file, encoded.as_bytes())
     }
 }
 

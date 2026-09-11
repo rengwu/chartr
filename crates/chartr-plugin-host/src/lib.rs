@@ -85,7 +85,7 @@ impl HostedSurface {
 }
 
 pub enum SettingsSource {
-    Native(gpui::AnyView),
+    Native(chartr_plugin::SettingsView),
     Declarative(chartr_plugin::settings::SettingsSchema),
 }
 

@@ -21,6 +21,9 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.mode == Mode::Conversations {
+            self.settings_set_mode(self.terminal_mode, cx);
+        }
         if terminal && !matches!(self.backend, Backend::Ready) {
             return;
         }
@@ -61,6 +64,9 @@ impl WorkspaceWindow {
     }
 
     pub(super) fn ungroup_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         if let Some(space) = self.active.clone()
             && let Some(tab) = space.read(cx).active_tab_id()
             && space.read(cx).workspace_tabs().tab(tab).is_some_and(|tab| tab.is_grouped())

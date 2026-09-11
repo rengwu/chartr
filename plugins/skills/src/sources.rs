@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
-    io::{Read as _, Write as _},
+    io::Read as _,
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicBool, Ordering},
@@ -252,12 +252,10 @@ impl Store {
     }
 
     fn persist(&self, sources: &[Source]) -> Result<()> {
-        fs::create_dir_all(&self.root).context("creating skill source storage")?;
-        let mut file = tempfile::NamedTempFile::new_in(&self.root)?;
-        serde_json::to_writer_pretty(&mut file, sources)?;
-        file.write_all(b"\n")?;
-        file.as_file().sync_all()?;
-        file.persist(self.root.join("sources.json")).context("saving skill sources")?;
+        let mut encoded = serde_json::to_vec_pretty(sources)?;
+        encoded.push(b'\n');
+        chartr_storage::write_atomic(&self.root.join("sources.json"), &encoded)
+            .context("saving skill sources")?;
         Ok(())
     }
 

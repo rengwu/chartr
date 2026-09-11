@@ -628,6 +628,7 @@ impl Space {
             | Action::OpenSpaceFolder { .. }
             | Action::LocateSpace { .. }
             | Action::SwitchToTabs
+            | Action::SwitchToConversations
             | Action::SwitchToSidebar
             | Action::BeginSpaceDrag { .. }
             | Action::OpenSettings => {}
@@ -922,6 +923,29 @@ impl Space {
         cx: &mut Context<Self>,
     ) -> gpui::Task<Result<chartr_plugin::PreparedTerminal, String>> {
         self.start_session_at(None, Vec::new(), cx)
+    }
+
+    /// A conversation launch has no rendered TerminalElement to size its PTY.
+    /// Zed's bootstrap grid is only six rows; give the new hidden CLI a usable
+    /// viewport until its first real terminal layout takes over.
+    pub fn size_conversation_terminal(
+        &self,
+        pane: &PaneId,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) =
+            self.sessions.get(pane).and_then(|id| self.items.get(id)).and_then(Item::as_session)
+        else {
+            return;
+        };
+        session.session.terminal().update(cx, |terminal, cx| {
+            let mut bounds = terminal::TerminalBounds::default();
+            bounds.bounds.size.width = bounds.cell_width * 120.;
+            bounds.bounds.size.height = bounds.line_height * 36.;
+            terminal.set_size(bounds);
+            terminal.sync(window, cx);
+        });
     }
 
     pub fn start_session_in(
@@ -1248,6 +1272,9 @@ mod tests {
             running: None,
             status: chartr_herdr::control::SessionStatus::Unknown,
             agent: None,
+            agent_session: None,
+            conversation_title: None,
+            foreground_pid: None,
             cwd: Some(path.to_owned()),
         }
     }

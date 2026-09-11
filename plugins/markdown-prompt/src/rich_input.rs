@@ -4,11 +4,10 @@
 use super::{TemplateChip, document::Part};
 use editor::{Editor, FoldPlaceholder, MultiBufferOffset, SelectionEffects, display_map::Crease};
 use gpui::{
-    App, Context, Entity, Focusable, InteractiveElement, IntoElement, Pixels, Point, Styled,
-    Window, div,
+    App, Context, Entity, Focusable, InteractiveElement, IntoElement, Pixels, Point, Styled, Window,
 };
 use std::{ops::Range, sync::Arc};
-use ui::{ActiveTheme, Label, Tooltip, prelude::*};
+use ui::{Tooltip, prelude::*};
 
 const START: char = '\u{e000}';
 const END: char = '\u{e001}';
@@ -108,18 +107,9 @@ pub fn decorate(
                             "Template · select and delete like text"
                         }
                     );
-                    div()
+                    chartr_plugin::ui::template_chip(unavailable, cx)
                         .id(fold_id)
                         .px_1()
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(if unavailable {
-                            cx.theme().status().error
-                        } else {
-                            cx.theme().colors().border
-                        })
-                        .bg(cx.theme().colors().element_background)
-                        .text_color(cx.theme().colors().text)
                         .cursor_default()
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
@@ -137,7 +127,7 @@ pub fn decorate(
                         })
                         .on_drag(drag.clone(), |drag, _, _, cx| cx.new(|_| drag.clone()))
                         .tooltip(Tooltip::text(tooltip))
-                        .child(Label::new(label))
+                        .child(chartr_plugin::ui::label(label))
                         .into_any_element()
                 }),
                 ..FoldPlaceholder::default()

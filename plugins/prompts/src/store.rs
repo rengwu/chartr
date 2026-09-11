@@ -1,5 +1,5 @@
 //! Versioned prompt storage, independent of the table and future consumers.
-use std::{collections::HashSet, io::Write, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
 use chartr_plugin::services::SavedPrompt;
 use serde::{Deserialize, Serialize};
@@ -113,14 +113,9 @@ impl Store {
             );
         }
         let write = || -> anyhow::Result<()> {
-            let parent =
-                self.path.parent().ok_or_else(|| anyhow::anyhow!("Missing data directory"))?;
-            std::fs::create_dir_all(parent)?;
-            let mut file = tempfile::NamedTempFile::new_in(parent)?;
-            serde_json::to_writer_pretty(&mut file, &next)?;
-            file.write_all(b"\n")?;
-            file.as_file().sync_all()?;
-            file.persist(&self.path)?;
+            let mut encoded = serde_json::to_vec_pretty(&next)?;
+            encoded.push(b'\n');
+            chartr_storage::write_atomic(&self.path, &encoded)?;
             Ok(())
         };
         write().map_err(|error| format!("Could not save prompts: {error:#}"))?;

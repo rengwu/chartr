@@ -1,6 +1,7 @@
 //! Opt-in remote service. The plugin owns the listener; disabling it revokes connections.
 use crate::text_input::TextInput;
 use chartr_companion::{Operation, Server};
+use chartr_plugin::ui as plugin_ui;
 use chartr_plugin::{Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar};
 use gpui::{App, AppContext, Context, Entity, Global, Render, Window};
 use std::sync::{Arc, atomic::AtomicBool, mpsc};
@@ -98,8 +99,8 @@ impl Plugin for CompanionPlugin {
     ) -> gpui::AnyView {
         self.state.clone().into()
     }
-    fn settings(&mut self, _: &mut Window, _: &mut App) -> Option<gpui::AnyView> {
-        Some(self.state.clone().into())
+    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<chartr_plugin::SettingsView> {
+        Some(chartr_plugin::SettingsView::new(self.state.clone(), cx))
     }
 }
 impl Drop for CompanionPlugin {
@@ -134,10 +135,7 @@ impl State {
         };
         let value = Sharing { enabled, address: self.address.read(cx).text().to_string() };
         let result = (|| -> std::io::Result<()> {
-            std::fs::create_dir_all(path.parent().unwrap())?;
-            let temporary = path.with_extension("json.tmp");
-            std::fs::write(&temporary, serde_json::to_vec(&value)?)?;
-            std::fs::rename(temporary, path)
+            chartr_storage::write_atomic(path, &serde_json::to_vec(&value)?)
         })();
         if let Err(error) = result {
             self.problem = Some(format!("Could not remember sharing settings: {error}"));
@@ -194,17 +192,29 @@ impl State {
         cx.notify();
     }
 }
-impl Render for State {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl chartr_plugin::RenderSettings for State {
+    fn render_settings(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> chartr_plugin::SettingsPage {
         let info = self.server.lock().unwrap().as_ref().map(|s| s.address.to_string());
-        v_flex().size_full().p_6().gap_4()
-            .child(Label::new("Chartr, within reach").size(LabelSize::Large))
-            .child(Label::new("Open Chartr Mobile and enter this computer’s LAN or Tailscale IP and port.").color(Color::Muted))
-            .child(self.address.clone())
-            .child(Button::new("companion-toggle", if info.is_some() { "Stop sharing" } else { "Start sharing" }).on_click(cx.listener(|this, _, _, cx| this.toggle(cx))))
-            .when_some(info, |view, address| view.child(Label::new(format!("Sharing on {address}"))))
-            .child(Label::new("Open access: connections need no pairing code. A mobile viewer controls terminal sizing until it leaves or disconnects.").color(Color::Muted))
-            .when_some(self.problem.clone(), |view, error| view.child(Label::new(error).color(Color::Error)))
+        chartr_plugin::SettingsPage::fill("companion-settings")
+            .child(plugin_ui::PageHeader::new("Chartr, within reach").description("Open Chartr Mobile and enter this computer’s LAN or Tailscale IP and port."))
+            .child(crate::components::input_field("companion-address", self.address.clone(), cx))
+            .child(plugin_ui::action("companion-toggle", if info.is_some() { "Stop sharing" } else { "Start sharing" }).on_click(cx.listener(|this, _, _, cx| this.toggle(cx))))
+            .when_some(info, |view, address| view.child(plugin_ui::label(format!("Sharing on {address}"))))
+            .child(plugin_ui::label("Open access: connections need no pairing code. A mobile viewer controls terminal sizing until it leaves or disconnects.").color(Color::Muted))
+            .when_some(self.problem.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
+    }
+}
+
+impl Render for State {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .p_6()
+            .child(chartr_plugin::RenderSettings::render_settings(self, window, cx))
     }
 }
 

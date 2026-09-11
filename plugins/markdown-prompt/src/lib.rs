@@ -2,11 +2,9 @@
 mod document;
 mod rich_input;
 mod sync;
-use crate::{
-    components::{form_button, input_field},
-    fonts::UI_LABEL_LARGE,
-    text_input::TextInput,
-};
+use crate::{components::input_field, text_input::TextInput};
+use chartr_plugin::ui as plugin_ui;
+use chartr_plugin::ui::action as form_button;
 use chartr_plugin::{
     Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, services::PromptTemplates,
 };
@@ -20,7 +18,7 @@ use std::{
     hash::{Hash, Hasher},
     path::PathBuf,
 };
-use ui::{Button, ButtonStyle, Color, Label, Switch, prelude::*};
+use ui::{Color, Switch, prelude::*};
 
 pub struct MarkdownPromptPlugin {
     data: PathBuf,
@@ -75,11 +73,7 @@ struct TemplateChip {
 }
 impl Render for TemplateChip {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .p_2()
-            .rounded_md()
-            .bg(cx.theme().colors().element_background)
-            .child(Label::new(self.title.clone()))
+        plugin_ui::template_chip(false, cx).p_2().child(plugin_ui::label(self.title.clone()))
     }
 }
 struct Composer {
@@ -324,7 +318,7 @@ impl Render for Composer {
                     .id(("template", index))
                     .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
                     .child(
-                        Button::new(
+                        plugin_ui::action(
                             ("insert-template", index),
                             format!(
                                 "{} · {}",
@@ -332,7 +326,6 @@ impl Render for Composer {
                                 chip.provider.trim_start_matches("com.chartr.")
                             ),
                         )
-                        .style(ButtonStyle::Outlined)
                         .disabled(blocked)
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
@@ -342,17 +335,16 @@ impl Render for Composer {
                     )
             })
             .collect();
-        v_flex().id("markdown-prompt").key_context("Prompts").size_full().overflow_y_scroll().p_4().gap_3()
-            .bg(cx.theme().colors().editor_background)
-            .child(Label::new("Markdown Prompt").size(UI_LABEL_LARGE))
-            .child(h_flex().gap_2().child(Switch::new("markdown-enabled", self.doc.enabled.into()).disabled(blocked).on_click(cx.listener(|this, state: &ui::ToggleState, _, cx| { this.doc.enabled = state.selected(); this.status = None; cx.notify(); }))).child(Label::new("Enabled")))
-            .child(h_flex().justify_between().child(Label::new("Templates")).child(Button::new("refresh-templates", "Refresh / preview").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.refresh(false, window, cx)))))
+        plugin_ui::pane_surface("markdown-prompt", cx).key_context("Prompts").size_full().overflow_y_scroll().p_4().gap_3()
+            .child(plugin_ui::PageHeader::new("Markdown Prompt"))
+            .child(h_flex().gap_2().child(Switch::new("markdown-enabled", self.doc.enabled.into()).disabled(blocked).on_click(cx.listener(|this, state: &ui::ToggleState, _, cx| { this.doc.enabled = state.selected(); this.status = None; cx.notify(); }))).child(plugin_ui::label("Enabled")))
+            .child(h_flex().justify_between().child(plugin_ui::label("Templates")).child(plugin_ui::action("refresh-templates", "Refresh / preview").disabled(blocked).on_click(cx.listener(|this, _, window, cx| this.refresh(false, window, cx)))))
             .child(h_flex().gap_2().flex_wrap().children(templates))
-            .when(self.templates.is_empty(), |view| view.child(Label::new("No templates available. Enable Saved Prompts, Skills or another provider.").color(Color::Muted)))
-            .children(self.warnings.iter().map(|warning| Label::new(warning.clone()).color(Color::Error)))
-            .child(Label::new("Constructed Markdown contents"))
-            .child(Label::new("Type freely. Click or drag a template into the text. Select a chip to move, copy or delete it.").color(Color::Muted))
-            .child(div().id("composition").w_full().p_3().border_1().border_color(cx.theme().colors().border).rounded_md()
+            .when(self.templates.is_empty(), |view| view.child(plugin_ui::label("No templates available. Enable Saved Prompts, Skills or another provider.").color(Color::Muted)))
+            .children(self.warnings.iter().map(|warning| plugin_ui::notice(warning.clone(), true)))
+            .child(plugin_ui::label("Constructed Markdown contents"))
+            .child(plugin_ui::label("Type freely. Click or drag a template into the text. Select a chip to move, copy or delete it.").color(Color::Muted))
+            .child(plugin_ui::outlined_content(cx).id("composition").w_full()
                 .on_drag_move(cx.listener(|this, event: &gpui::DragMoveEvent<TemplateChip>, window, cx| {
                     if !this.busy && event.bounds.contains(&event.event.position) {
                         window.focus(&this.editor.focus_handle(cx), cx);
@@ -361,20 +353,20 @@ impl Render for Composer {
                 }))
                 .on_drop(cx.listener(|this, chip: &TemplateChip, window, cx| { cx.stop_propagation(); this.insert_at_cursor(chip.clone(), window, cx); }))
                 .child(self.editor.clone()))
-            .child(h_flex().gap_2().child(Label::new("Mode"))
-                .child(Button::new("append-mode", if self.doc.append { "● Append" } else { "Append" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = true; this.status = None; cx.notify(); })))
-                .child(Button::new("new-file-mode", if !self.doc.append { "● New file" } else { "New file" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = false; this.status = None; cx.notify(); }))))
-            .child(Label::new(if self.doc.append { "Update a marked section in an existing file; surrounding content is preserved." } else { "Create and maintain an owned file; external edits are reported before replacement." }).color(Color::Muted))
-            .child(Label::new("Filename (relative to this folder)"))
-            .when(self.context.project_dir.is_none(), |view| view.child(Label::new("Free sessions has no destination folder. Open Markdown Prompt inside a folder space to apply this file.").color(Color::Muted)))
+            .child(h_flex().gap_2().child(plugin_ui::label("Mode"))
+                .child(plugin_ui::action("append-mode", if self.doc.append { "● Append" } else { "Append" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = true; this.status = None; cx.notify(); })))
+                .child(plugin_ui::action("new-file-mode", if !self.doc.append { "● New file" } else { "New file" }).disabled(blocked).on_click(cx.listener(|this, _, _, cx| { this.doc.append = false; this.status = None; cx.notify(); }))))
+            .child(plugin_ui::label(if self.doc.append { "Update a marked section in an existing file; surrounding content is preserved." } else { "Create and maintain an owned file; external edits are reported before replacement." }).color(Color::Muted))
+            .child(plugin_ui::label("Filename (relative to this folder)"))
+            .when(self.context.project_dir.is_none(), |view| view.child(plugin_ui::label("Free sessions has no destination folder. Open Markdown Prompt inside a folder space to apply this file.").color(Color::Muted)))
             .child(input_field("markdown-filename", self.filename.clone(), cx))
-            .when_some(self.context.project_dir.clone(), |view, root| view.child(Label::new(root.display().to_string()).color(Color::Muted)))
-            .when_some(self.preview.clone(), |view, text| view.child(Label::new("Expanded preview")).child(div().p_3().border_1().border_color(cx.theme().colors().border_variant).child(Label::new(text))))
-            .when_some(self.error.clone(), |view, error| view.child(Label::new(error).color(Color::Error)))
-            .when_some(self.sync.as_ref().and_then(|sync| sync.upgrade()).and_then(|sync| sync.read(cx).problem(&self.path)), |view, error| view.child(Label::new(format!("Automatic sync: {error}")).color(Color::Error)))
-            .when_some(self.status.clone(), |view, status| view.child(Label::new(status)))
+            .when_some(self.context.project_dir.clone(), |view, root| view.child(plugin_ui::label(root.display().to_string()).color(Color::Muted)))
+            .when_some(self.preview.clone(), |view, text| view.child(plugin_ui::label("Expanded preview")).child(plugin_ui::outlined_content(cx).child(plugin_ui::label(text))))
+            .when_some(self.error.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
+            .when_some(self.sync.as_ref().and_then(|sync| sync.upgrade()).and_then(|sync| sync.read(cx).problem(&self.path)), |view, error| view.child(plugin_ui::notice(format!("Automatic sync: {error}"), true)))
+            .when_some(self.status.clone(), |view, status| view.child(plugin_ui::label(status)))
             .child(h_flex().justify_end().gap_2()
-                .child(Button::new("save-markdown-draft", "Save draft").disabled(blocked).on_click(cx.listener(|this, _, _, cx| this.save_draft(cx))))
+                .child(plugin_ui::action("save-markdown-draft", "Save draft").disabled(blocked).on_click(cx.listener(|this, _, _, cx| this.save_draft(cx))))
                 .child(form_button("apply-markdown", if self.busy { "Working…" } else { "Apply" }).disabled(blocked || !self.doc.enabled || self.context.project_dir.is_none()).on_click(cx.listener(|this, _, window, cx| this.refresh(true, window, cx)))))
     }
 }

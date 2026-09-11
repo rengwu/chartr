@@ -41,6 +41,11 @@ heading to reorder its whole card. The card stays locked to the sidebar's X axis
 continues tracking vertically outside the sidebar, autoscrolls at the list edges,
 and settles into the closest legal slot at release.
 
+**Conversations** is a third projection: searchable agent history and rich chat,
+with no terminal panes. It preserves the same running terminals and saved layout.
+See [Conversation mode](conversations.md) for provider capabilities, setup, input
+semantics and persistence.
+
 Terminal titles follow Herdr's live view of the PTY, as in chartr-rs: a detected
 agent wins, otherwise the non-shell foreground process is shown, and an idle
 shell falls back to Herdr's persistent tab label or number. The same two-second

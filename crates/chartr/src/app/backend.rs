@@ -5,6 +5,7 @@ use super::*;
 impl WorkspaceWindow {
     /// Apply the explicit exit policy before the window releases its spaces.
     pub fn apply_exit_policy(&mut self, cx: &mut Context<Self>) {
+        self.conversations.update(cx, |view, _| view.flush_drafts());
         if !self.settings.resolved().terminate_sessions_on_exit {
             return;
         }
@@ -102,7 +103,10 @@ impl WorkspaceWindow {
                         }
                         match snapshot {
                             Ok(infos) => this.distribute(infos, cx),
-                            Err(error) => this.problem = Some(error.to_string()),
+                            Err(error) => {
+                                this.conversations.update(cx, |view, cx| view.disconnected(cx));
+                                this.problem = Some(error.to_string());
+                            }
                         }
                         cx.notify();
                     });
@@ -121,6 +125,7 @@ impl WorkspaceWindow {
         if self.backend_ready_since.is_some_and(|since| since.elapsed() >= BACKEND_STEADY) {
             self.backend_restart_spent = false;
         }
+        self.conversations.update(cx, |view, cx| view.disconnected(cx));
         self.drop_dead_terminals(cx);
         self.backend_ready_since = None;
 
@@ -176,6 +181,7 @@ impl WorkspaceWindow {
             return;
         };
         if clean_restart {
+            self.conversations.update(cx, |view, cx| view.disconnected(cx));
             self.drop_dead_terminals(cx);
         }
         self.backend = if clean_restart {
@@ -257,6 +263,7 @@ impl WorkspaceWindow {
         infos: Vec<chartr_herdr::control::Session>,
         cx: &mut Context<Self>,
     ) {
+        self.observe_conversations(&infos, cx);
         let paths_by_workspace: HashMap<WorkspaceId, PathBuf> = infos
             .iter()
             .filter_map(|info| info.cwd.clone().map(|cwd| (info.workspace.clone(), cwd)))

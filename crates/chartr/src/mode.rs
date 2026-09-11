@@ -1,9 +1,6 @@
-//! The two ways chartr arranges the same sessions.
-//!
-//! Both modes show one session at a time and switch between the same list. The
-//! difference is only where the list lives, so the mode is one enum and not two
-//! layouts: nothing below the chrome knows which one is showing, and toggling
-//! never touches a session.
+//! Presentation modes. Sidebar and Tabs project the existing terminal layout;
+//! Conversations projects durable provider identities over the same runtimes.
+//! Switching presentation never starts or stops a session.
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -19,6 +16,8 @@ pub enum Mode {
     /// A horizontal strip across the top. Familiar, and denser per session —
     /// the mode for a handful of things you are switching between quickly.
     Tabs,
+    /// History and rich chat over the existing agent runtimes.
+    Conversations,
 }
 
 const TRANSITION_DURATION: Duration = Duration::from_millis(500);
@@ -35,6 +34,7 @@ impl From<Mode> for ChromeVisibility {
         match mode {
             Mode::Sidebar => Self { sidebar: 1., tabs: 0. },
             Mode::Tabs => Self { sidebar: 0., tabs: 1. },
+            Mode::Conversations => Self { sidebar: 0., tabs: 0. },
         }
     }
 }

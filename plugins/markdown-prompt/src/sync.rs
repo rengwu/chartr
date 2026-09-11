@@ -40,12 +40,8 @@ fn read(path: &Path) -> Result<Option<Applied>, String> {
     }
 }
 fn save(path: &Path, active: &Applied) -> Result<(), String> {
-    let mut file =
-        tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    serde_json::to_writer_pretty(&mut file, active).map_err(|e| e.to_string())?;
-    file.as_file().sync_all().map_err(|e| e.to_string())?;
-    file.persist(active_path(path)).map_err(|e| e.to_string())?;
-    Ok(())
+    let encoded = serde_json::to_vec_pretty(active).map_err(|e| e.to_string())?;
+    chartr_storage::write_atomic(&active_path(path), &encoded).map_err(|e| e.to_string())
 }
 /// Called with the per-composition lock held, after successful explicit Apply.
 pub fn activate(path: &Path, root: &Path, doc: &Document) -> Result<(), String> {

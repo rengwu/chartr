@@ -12,8 +12,11 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/chartr-storage",
+    "crates/chartr-agent",
     "crates/chartr",
     "crates/chartr-companion",
+    "crates/chartr-conversations",
     "crates/chartr-herdr",
     "crates/chartr-plugin",
     "crates/chartr-plugin-host",

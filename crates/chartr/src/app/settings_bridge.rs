@@ -34,7 +34,25 @@ impl WorkspaceWindow {
     }
 
     pub(crate) fn settings_set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        if self.mode == mode {
+            return;
+        }
+        if mode == Mode::Conversations {
+            self.terminal_mode = self.mode;
+            self.terminal_search_open = false;
+            if let Some(runtime) = self.active.as_ref().and_then(|space| {
+                let space = space.read(cx);
+                let item = space.active().and_then(|id| space.item(id))?.as_session()?;
+                item.session.info.agent.as_ref()?;
+                Some(item.session.id().0.clone())
+            }) {
+                self.conversations.update(cx, |view, cx| view.select_runtime(&runtime, cx));
+            }
+        } else {
+            self.terminal_mode = mode;
+        }
         self.mode = mode;
+        self.mode_focus_pending = true;
         cx.notify();
     }
 
@@ -276,7 +294,7 @@ impl WorkspaceWindow {
     ) -> Option<AnyView> {
         let source = self.catalog.get_mut(plugin)?.settings(window, cx)?;
         Some(match source {
-            SettingsSource::Native(view) => view,
+            SettingsSource::Native(view) => view.into_view(),
             SettingsSource::Declarative(schema) => {
                 crate::plugin_settings::view(schema, plugin_paths().data.join(plugin), cx)
             }

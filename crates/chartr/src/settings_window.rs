@@ -16,8 +16,8 @@ use gpui::{
     actions, px, size,
 };
 use ui::{
-    Banner, Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
-    RedistributableColumnsState, Severity, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
+    Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
+    RedistributableColumnsState, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
 };
 
 use crate::{
@@ -772,29 +772,23 @@ impl Render for SettingsWindow {
                             .min_w_0()
                             .overflow_y_scroll()
                             .child(
-                                v_flex()
-                                    .w_full()
-                                    .max_w(px(720.))
-                                    .p_6()
-                                    .gap_4()
-                                    .when(show_page_title, |view| {
-                                        view.child(Label::new(page_title).size(UI_LABEL_LARGE))
-                                    })
-                                    .when_some(unreadable, |view, problem| {
-                                        view.child(
-                                            Banner::new()
-                                                .severity(Severity::Error)
-                                                .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
-                                        )
-                                    })
-                                    .when_some(self.problem.clone(), |view, problem| {
-                                        view.child(
-                                            Banner::new()
-                                                .severity(Severity::Error)
-                                                .child(Label::new(problem).size(UI_LABEL_DEFAULT)),
-                                        )
-                                    })
-                                    .child(content),
+                                chartr_plugin::SettingsPage::flow("settings-page").child(
+                                    v_flex()
+                                        .w_full()
+                                        .max_w(px(720.))
+                                        .p_6()
+                                        .gap_4()
+                                        .when(show_page_title, |view| {
+                                            view.child(Label::new(page_title).size(UI_LABEL_LARGE))
+                                        })
+                                        .when_some(unreadable, |view, problem| {
+                                            view.child(chartr_plugin::ui::notice(problem, true))
+                                        })
+                                        .when_some(self.problem.clone(), |view, problem| {
+                                            view.child(chartr_plugin::ui::notice(problem, true))
+                                        })
+                                        .child(content),
+                                ),
                             ),
                     ),
             )

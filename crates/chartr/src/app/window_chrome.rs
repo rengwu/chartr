@@ -4,11 +4,16 @@ use super::*;
 
 impl WorkspaceWindow {
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let current = self
-            .active
-            .as_ref()
-            .map(|space| space.read(cx).name().to_owned())
-            .unwrap_or_else(|| "No space".to_owned());
+        let all_spaces = self.mode == Mode::Conversations && self.conversation_all_spaces;
+        let conversations = self.mode == Mode::Conversations;
+        let current = if all_spaces {
+            "All spaces".to_owned()
+        } else {
+            self.active
+                .as_ref()
+                .map(|space| space.read(cx).name().to_owned())
+                .unwrap_or_else(|| "No space".to_owned())
+        };
         let active_id = self.active.as_ref().map(Entity::entity_id);
         let weak = cx.weak_entity();
         let spaces: Vec<_> = self
@@ -43,6 +48,22 @@ impl WorkspaceWindow {
                         let _ = add.update(cx, |this, cx| this.pick_a_folder(window, cx));
                     });
 
+                    if conversations {
+                        let all = weak.clone();
+                        menu = menu.separator().toggleable_entry(
+                            "All spaces",
+                            all_spaces,
+                            IconPosition::End,
+                            None,
+                            move |_, cx| {
+                                let _ = all.update(cx, |this, cx| {
+                                    this.conversation_all_spaces = true;
+                                    cx.notify();
+                                });
+                            },
+                        );
+                    }
+
                     let registered: Vec<_> = spaces
                         .iter()
                         .filter(|(_, _, kind)| *kind == SpaceKind::Registered)
@@ -55,12 +76,16 @@ impl WorkspaceWindow {
                         let select = weak.clone();
                         menu = menu.toggleable_entry(
                             name.clone(),
-                            active_id == Some(space.entity_id()),
+                            !all_spaces && active_id == Some(space.entity_id()),
                             IconPosition::End,
                             None,
                             move |window, cx| {
                                 let _ = select.update(cx, |this, cx| {
-                                    this.activate(target.clone(), window, cx)
+                                    if conversations {
+                                        this.conversation_all_spaces = false;
+                                    }
+                                    this.activate(target.clone(), window, cx);
+                                    cx.notify();
                                 });
                             },
                         );
@@ -74,12 +99,16 @@ impl WorkspaceWindow {
                         let select = weak.clone();
                         menu = menu.toggleable_entry(
                             name.clone(),
-                            active_id == Some(space.entity_id()),
+                            !all_spaces && active_id == Some(space.entity_id()),
                             IconPosition::End,
                             None,
                             move |window, cx| {
                                 let _ = select.update(cx, |this, cx| {
-                                    this.activate(target.clone(), window, cx)
+                                    if conversations {
+                                        this.conversation_all_spaces = false;
+                                    }
+                                    this.activate(target.clone(), window, cx);
+                                    cx.notify();
                                 });
                             },
                         );
@@ -260,7 +289,8 @@ impl WorkspaceWindow {
 
     fn presentation_toggle(&self, on: chrome::Emit) -> AnyElement {
         let use_sidebar = on.clone();
-        let use_tabs = on;
+        let use_tabs = on.clone();
+        let use_conversations = on;
         SegmentedControl::new(
             "Session list presentation",
             [
@@ -275,6 +305,14 @@ impl WorkspaceWindow {
                     "Tabbed",
                     self.mode == Mode::Tabs,
                     move |_, window, cx| use_tabs(Action::SwitchToTabs, window, cx),
+                ),
+                SegmentedControlOption::new(
+                    "presentation-conversations",
+                    "Conversations",
+                    self.mode == Mode::Conversations,
+                    move |_, window, cx| {
+                        use_conversations(Action::SwitchToConversations, window, cx)
+                    },
                 ),
             ],
         )

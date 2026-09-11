@@ -28,6 +28,12 @@ const fn default_show_space_picker() -> bool {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowState {
     pub chrome: Mode,
+    #[serde(default)]
+    pub terminal_mode: Mode,
+    #[serde(default)]
+    pub selected_conversation: Option<String>,
+    #[serde(default)]
+    pub conversation_all_spaces: bool,
     #[serde(default = "default_show_space_picker")]
     pub show_space_picker: bool,
     pub sidebar_width: f32,
@@ -39,6 +45,9 @@ impl Default for WindowState {
     fn default() -> Self {
         Self {
             chrome: Mode::Sidebar,
+            terminal_mode: Mode::Sidebar,
+            selected_conversation: None,
+            conversation_all_spaces: false,
             show_space_picker: false,
             sidebar_width: 280.,
             active_space: Some("ad-hoc".to_owned()),
@@ -349,7 +358,9 @@ mod tests {
         let mut store = StateStore::memory().unwrap();
         let snapshot = Snapshot {
             window: WindowState {
-                chrome: Mode::Tabs,
+                chrome: Mode::Conversations,
+                terminal_mode: Mode::Tabs,
+                conversation_all_spaces: true,
                 show_space_picker: false,
                 sidebar_width: 312.,
                 active_space: Some("two".to_owned()),
@@ -451,6 +462,7 @@ mod tests {
         .unwrap();
 
         assert!(restored.show_space_picker);
+        assert!(!restored.conversation_all_spaces);
     }
 
     #[test]

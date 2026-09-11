@@ -10,6 +10,7 @@ mod backend;
 mod bundled_plugins;
 mod command_palette;
 mod companion;
+mod conversations;
 mod pane_drop_preview;
 mod panes;
 mod persistence;
@@ -125,6 +126,7 @@ enum PaletteCommand {
     Ungroup,
     SidebarMode,
     TabbedMode,
+    ConversationMode,
     CycleViewMode,
     ToggleStatusBar,
     NewSpace,
@@ -156,7 +158,7 @@ enum RenameKind {
 }
 
 impl PaletteCommand {
-    const ALL: [(Self, &'static str, &'static str); 29] = [
+    const ALL: [(Self, &'static str, &'static str); 30] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
         (Self::NewTerminalPane, "Workspace: New terminal pane", ""),
         (Self::NewSurface, "Workspace: New surface tab", ""),
@@ -164,6 +166,7 @@ impl PaletteCommand {
         (Self::Ungroup, "Workspace: Ungroup current group", ""),
         (Self::SidebarMode, "Workspace: Switch to sidebar mode", ""),
         (Self::TabbedMode, "Workspace: Switch to tabbed mode", ""),
+        (Self::ConversationMode, "Workspace: Switch to conversation mode", ""),
         (Self::CycleViewMode, "Workspace: Cycle view modes", ""),
         (Self::ToggleStatusBar, "Workspace: Toggle status bar", ""),
         (Self::NewSpace, "Workspace: Open new space", ""),
@@ -209,6 +212,10 @@ pub struct WorkspaceWindow {
     active_pane_size: Rc<std::cell::Cell<Option<shortcuts::MeasuredPane>>>,
     active: Option<Entity<Space>>,
     mode: Mode,
+    terminal_mode: Mode,
+    mode_focus_pending: bool,
+    conversations: Entity<crate::conversations::Conversations>,
+    conversation_all_spaces: bool,
     mode_transition: crate::mode::ModeTransition,
     catalog: Catalog,
     background_statuses: Vec<(String, chartr_plugin::BackgroundStatus)>,
@@ -301,6 +308,14 @@ impl WorkspaceWindow {
                 Err(error) => (None, Snapshot::default(), Some(error.to_string())),
             };
         let persisted = saved.clone();
+        let conversations = cx.new(|cx| {
+            crate::conversations::Conversations::new(saved.window.selected_conversation.clone(), cx)
+        });
+        cx.subscribe_in(&conversations, window, |this, _, event, window, cx| {
+            this.conversation_event(event, window, cx)
+        })
+        .detach();
+        cx.observe(&conversations, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
             active_pane_size: Rc::default(),
             client: None,
@@ -314,6 +329,10 @@ impl WorkspaceWindow {
             pane_drop_preview: pane_drop_preview::PaneDropPreview::default(),
             active: None,
             mode: Mode::default(),
+            terminal_mode: saved.window.terminal_mode,
+            mode_focus_pending: true,
+            conversations,
+            conversation_all_spaces: saved.window.conversation_all_spaces,
             mode_transition: crate::mode::ModeTransition::default(),
             catalog: Catalog::default(),
             background_statuses: Vec::new(),
@@ -470,6 +489,8 @@ impl WorkspaceWindow {
         this.active = active;
         this.mode = saved.window.chrome;
         this.catalog = catalog;
+        this.conversations
+            .update(cx, |view, _| view.set_agent_services(this.catalog.services.clone()));
         this.state = state.map(|state| crate::persistence::StateWriter::new(state, persisted));
         this.capture_window_bounds(window);
         cx.observe_self(|this, cx| this.schedule_persistence(cx)).detach();
@@ -542,6 +563,10 @@ impl WorkspaceWindow {
     }
 
     fn focus_active_terminal(&self, window: &mut Window, cx: &mut App) -> bool {
+        if self.mode == Mode::Conversations {
+            self.conversations.focus_handle(cx).focus(window, cx);
+            return true;
+        }
         let Some(view) = self
             .active
             .as_ref()
@@ -567,6 +592,9 @@ impl WorkspaceWindow {
         Snapshot {
             window: WindowState {
                 chrome: self.mode,
+                terminal_mode: self.terminal_mode,
+                selected_conversation: self.conversations.read(cx).selected().map(str::to_owned),
+                conversation_all_spaces: self.conversation_all_spaces,
                 show_space_picker: self.show_space_picker,
                 sidebar_width: self.sidebar_width,
                 active_space: self.active.as_ref().map(|space| space.read(cx).key()),
@@ -675,7 +703,10 @@ impl WorkspaceWindow {
             let _ = this.update(cx, |this, cx| match result {
                 Ok(infos) => this.distribute(infos, cx),
                 Err(_) if !answers => this.backend_died(client, cx),
-                Err(error) => this.problem = Some(error.to_string()),
+                Err(error) => {
+                    this.conversations.update(cx, |view, cx| view.disconnected(cx));
+                    this.problem = Some(error.to_string());
+                }
             });
         })
         .detach();
@@ -706,6 +737,17 @@ impl WorkspaceWindow {
     }
 
     fn act(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations
+            && matches!(
+                &action,
+                Action::New
+                    | Action::NewPluginPane
+                    | Action::NewInSpace { .. }
+                    | Action::NewPluginPaneInSpace { .. }
+            )
+        {
+            self.settings_set_mode(self.terminal_mode, cx);
+        }
         match action {
             Action::BeginSpaceDrag { at } => self.space_sorter.press(at),
             Action::ActivateSpace { space } => {
@@ -717,6 +759,7 @@ impl WorkspaceWindow {
             }
             Action::SwitchToTabs => self.settings_set_mode(Mode::Tabs, cx),
             Action::SwitchToSidebar => self.settings_set_mode(Mode::Sidebar, cx),
+            Action::SwitchToConversations => self.settings_set_mode(Mode::Conversations, cx),
             Action::OpenSettings => self.open_settings(window, cx),
             Action::NewSpace => self.pick_a_folder(window, cx),
             Action::New => {
@@ -931,6 +974,10 @@ impl WorkspaceWindow {
             cx.notify();
             return;
         }
+        if self.mode == Mode::Conversations {
+            self.conversations.update(cx, |view, cx| view.archive_selected(cx));
+            return;
+        }
         let Some(space) = self.active.clone() else {
             return;
         };
@@ -957,6 +1004,9 @@ impl WorkspaceWindow {
     }
 
     fn request_close_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         let Some(space) = self.active.clone() else {
             return;
         };
@@ -980,6 +1030,9 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         let Some(space) = self.spaces.iter().find(|space| space.entity_id() == space_id).cloned()
         else {
             return;
@@ -1172,6 +1225,9 @@ impl WorkspaceWindow {
     }
 
     fn move_active_to_pane(&mut self, direction: SplitDirection, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.move_active_to_pane(direction));
             cx.notify();
@@ -1184,6 +1240,9 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         if let Some(space) = self.active.clone() {
             let moved = space.update(cx, |space, _| space.activate_pane_in_direction(direction));
             if moved {
@@ -1198,6 +1257,9 @@ impl WorkspaceWindow {
     }
 
     fn join_active_into_next(&mut self, cx: &mut Context<Self>) {
+        if self.mode == Mode::Conversations {
+            return;
+        }
         if let Some(space) = self.active.clone() {
             space.update(cx, |space, _| space.join_active_into_next());
             cx.notify();

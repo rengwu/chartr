@@ -245,6 +245,54 @@ registries. Each plugin has one configuration surface under **Settings → Plugi
 Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
 that surface instead of rendering another configuration page in the workspace.
 
+Native settings return `Option<chartr_plugin::SettingsView>`, created with
+`SettingsView::new(entity, cx)`. The entity implements `RenderSettings`, whose
+return type is the shared `SettingsPage`; a pane's arbitrary `AnyView` is no
+longer a settings contribution. The host adapter retains the entity, observes
+its notifications, and routes actions back to it.
+
+Use `SettingsPage::flow` for forms in the host scroll, `fill` for pages with
+independently scrolling lists, and `scroll` for management pages that scroll as
+a whole. The shell owns section spacing, exposes no `Styled` implementation,
+and paints no background. The Settings window owns the background and outer
+inset. Do not wrap embedded settings in another padded or painted page.
+
+With the SDK's `ui` feature, `chartr_plugin::ui` supplies semantic `label`,
+`heading`, `caption`, `action`, `icon_action`, `PageHeader`, `Notice`,
+`ModalOverlay`, `DialogSurface`, forms, pane foundations, cards, template chips,
+and table surface helpers. Actions expose `primary()` and `destructive()`;
+typography and action dimensions are selected by their semantic components.
+Dialog content and behavior remain plugin-owned. Native popup hosting stays
+with the host so dialogs continue to appear above embedded webviews. The host's
+existing form and font exports delegate to these same definitions.
+
+The core SDK remains usable without `ui` (see the Hello example). A module that
+builds native UI opts into it in its dependency:
+
+```toml
+chartr-plugin = { path = "path/to/chartr-plugin", features = ["ui"] }
+```
+
+The workspace test suite scans **every plugin Rust source directory**, including
+new plugins, for copied background/border/radius/shadow recipes and direct raw
+label/button construction. Extend the shared components for new presentation
+requirements; do not add local styling exceptions. Compile-fail tests protect
+the shell/action API, while rendered catalog tests check actual native and
+declarative settings after theme and UI-scale changes. Portable plugins continue
+to contribute host-rendered settings schemas, not HTML settings pages.
+
+Provider identity is defined once in `chartr-agent`: the declaration generates
+the enum, canonical integration IDs, aliases, and explicit input capabilities.
+Launchers, conversation state, and Herdr process recognition consume it. Preserve
+provider-specific protocol parsing in its adapter; do not create another list
+of provider names to infer shared capabilities.
+
+Native stores use `chartr-storage::write_atomic` for private configuration and
+`StagedWrite` for validated project writes. Both sync the staged file before
+publishing it and retain existing permissions. Callers retain format validation,
+conflict checks, and authorization of project paths. Use `create_new()` when
+replacement is forbidden; it must not clobber a concurrently created file.
+
 The bundled Saved Prompts plugin exports `services::Prompts` from
 `com.chartr.prompts`. It owns a shared saved-prompt library and a table pane.
 `list(cx)` returns records with stable IDs, display titles, and prompt text;
