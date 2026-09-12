@@ -1,168 +1,258 @@
 # chartr
 
-<img src="./docs/assets/v4/icon-mac-1024.png" width="34%" align="right">
+<img alt="chartr icon" src="./docs/assets/v4/icon-mac-1024.png" width="34%" align="right">
 
-**AI workspace with a map of your work.**
+**An extensible AI-native workspace, built with Rust.**
 
-- [macOS app](https://github.com/rengwu/chartr/releases/latest/download/chartr_darwin_arm64.dmg)
-  (Apple silicon, unsigned)
-- [Linux AppImage](https://github.com/rengwu/chartr/releases/latest/download/chartr_linux_amd64.AppImage)
-  (`amd64` or `arm64`)
-- [More releases](https://github.com/rengwu/chartr/releases)
-- [Getting started with chartr](docs/getting-started.md)
+- [Build from source](#installation)
+- [Getting started](#getting-started)
+- [Documentation](#documentation)
+- [Legacy v0.2.4 release](https://github.com/rengwu/chartr/releases/tag/v0.2.4)
 
-An approachable agent multiplexer. Open a space, run agents and commands in tabbed terminal sessions.
 
-Plan with an agent, then chart a map of your work. Drive the map to completion, one ticket at a time. Each ticket spawns a session with the exact context it needs to complete its task.
+chartr brings your CLI agents, skills, and tools into one workspace. Organize
+projects into spaces, arrange terminals and tools side by side in split panes,
+and switch between sidebar and tabbed views. Customize themes and fonts to
+make it your own.
 
-> chartr is still alpha. Features and file formats may change before 1.0.
+Extend your workflow with plugins, from agent launching and skill management
+to planning and browsing. Use the included plugins, install more, or build your
+own tools that live alongside your agents.
+
+> chartr has been rewritten in Rust. The legacy Go/Svelte version is preserved
+> on [`legacy/v0.2.4`](https://github.com/rengwu/chartr/tree/legacy/v0.2.4);
+> v0.2.4 downloads are for that version. chartr is still in active development,
+> and features and file formats may change before 1.0.
+
+
+<img width="1169" height="857" alt="Screenshot 2026-09-08 at 4 11 24 AM" src="https://github.com/user-attachments/assets/8af894fe-4a0f-4247-b733-e9d521fd44a1" />
 
 <br clear="right">
 
-<img alt="The chartr cockpit" src="https://github.com/user-attachments/assets/d69cd749-5c6e-41ef-bd78-e971b89c823b" />
-
 ## Key features
 
-- **Bring your CLI agents** - Register the agents you already use, launch them easily afterwards.
-- **Use your existing skills** - Register your skills from local folders or remote git repositories.
-- **Live star-map** - Visualize your plan and track live progress on an interactive map.
-- **Ticket-ready sessions** - Spawn an agent from a ticket with the relevant context already loaded.
-- **At-a-glance status** - See which sessions are working, idle or waiting for input.
-- **Self-titling tabs** - Agent tabs name themselves from the agent's own session, so a row of tabs reads as your work.
-- **Folders as spaces** - Terminal sessions are grouped into spaces you can filter and reorder.
-- **Get notified** - Receive system notifications when a session needs you.
-- **Make it yours** - Configure terminal appearance, or hack the prompts to suit your workflow.
+- **Folders as spaces** — Keep each project's terminals and tools together,
+  with a permanent Free sessions space for work outside a project.
+- **Tabs and split panes** — Drag terminals and tools into groups, split them
+  horizontally or vertically, and switch between sidebar and tabbed layouts.
+- **Persistent sessions** — By default, your shells survive closing and reopening
+  the app. Closing a terminal tab ends that session.
+- **Persistent activity status** — A hideable status bar shows running sessions,
+  terminal service health, and Companion sharing/connections even after its pane closes.
+  Click a service for controls; restore the bar in Settings → General or with
+  “Workspace: Toggle status bar” in the command palette.
+- **Inbox** — Browse detected agent sessions in a searchable history sidebar,
+  with the selected session’s original terminal on the right. Rename, archive,
+  and launch agents without leaving the view. [Inbox details](docs/conversations.md).
+- **Live terminal titles** — See the detected agent or foreground command in
+  each tab, with the session label as its fallback.
+- **Tools beside your terminals** — Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder are
+  bundled. Install additional web and hosted plugins, including the Browser surface.
+- **Make it yours** — Choose themes and fonts, follow the system appearance,
+  rebind shortcuts, and configure plugins in native Settings.
+- **Bring your CLI agents** — Register the agents you already use and launch
+  them with your own arguments, environment, and prompts.
+- **Use your existing skills** — Register skills from local folders or remote
+  Git repositories, and choose which sources take precedence.
+- **Live star-map** — Explore your plan, ticket dependencies, and progress in
+  the bundled Wayfinder surface.
+- **Ticket-ready sessions** — Review the map, ticket, resolved blockers, and
+  selected skills before launching an agent with that context.
 
 ## Installation
 
-Download the macOS or Linux app using the links above. Other builds are
-available on the [releases page](https://github.com/rengwu/chartr/releases).
+The rewrite is currently built from source. A development DMG can also be built
+locally on macOS. Production release packages are still being prepared.
 
-### macOS
+| Platform | Current support                                                    |
+| -------- | ------------------------------------------------------------------ |
+| macOS    | Native desktop app; CI runs on Apple silicon.                      |
+| Linux    | Native desktop app under X11 or XWayland; CI runs on Ubuntu 24.04. |
+| Windows  | Deferred until further notice                                      |
 
-The app is currently unsigned. If macOS blocks the first launch:
+### Build from source
 
-1. Open chartr and click **Done**.
-2. Go to **System Settings → Privacy & Security → Security**.
-3. Click **Open Anyway**.
+Install Git, Rustup, a C/C++ build toolchain, CMake, and pkg-config. On macOS,
+install the Xcode Command Line Tools. Rustup reads the pinned Rust version and
+components from [rust-toolchain.toml](rust-toolchain.toml).
 
-### Linux AppImage
+Keep two Zig versions available: **0.15.2** for building the pinned Herdr sidecar,
+and **0.16.0** on your `PATH` for the workspace build. The `ZIG` assignment below
+selects the older compiler for the sidecar command only.
 
-Make the AppImage executable, then run it:
-
-```sh
-chmod +x chartr_linux_amd64.AppImage
-./chartr_linux_amd64.AppImage
-```
-
-WebKitGTK comes bundled. An Arch release is also planned.
-
-### Debian and Ubuntu
-
-The native package uses your distribution's WebKitGTK and receives its security
-updates through apt. Ubuntu 24.04+ or Debian 13+ is required.
+<details>
+<summary>Ubuntu 24.04 build dependencies</summary>
 
 ```sh
-sudo apt install ./chartr_linux_amd64.deb
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential clang cmake pkg-config \
+  libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev \
+  libva-dev libvulkan1 libwayland-dev libx11-xcb-dev \
+  libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev
 ```
 
-### Fedora
+These are the same system packages used by [CI](.github/workflows/ci.yml).
+Rustup and the two Zig versions must be installed separately.
 
-The Fedora package likewise uses the distribution's WebKitGTK runtime.
+</details>
 
 ```sh
-sudo dnf install ./chartr_linux_amd64.rpm
+git clone --branch rewrite/rust https://github.com/rengwu/chartr.git
+cd chartr
+rustup show
+
+# Replace this path with your Zig 0.15.2 executable.
+ZIG=/absolute/path/to/zig-0.15.2/zig sh vendor/herdr/fetch.sh
+
+# The workspace uses Zig 0.16.0 from PATH.
+cargo run -p chartr --locked
 ```
 
-### Windows
+The sidecar fetch builds an immutable Herdr revision with the direct-attach
+mouse handling the rewrite needs. chartr uses its own private daemon and data
+directory; a standalone Herdr installation is not required.
 
-The fully-supported Windows desktop app will be coming soon.
+Pass a folder to register and open it as a space at launch:
 
-### CLI usage and building from source
+```sh
+cargo run -p chartr --locked -- /path/to/project
+```
 
-See
-[CLI and source builds](docs/cli-and-source-builds.md).
+No frontend build is needed. The bundled web surfaces ship with their assets.
+
+### macOS development DMG
+
+After fetching the sidecar, build a disk image with:
+
+```sh
+scripts/build-dev-dmg.sh
+```
+
+The script builds in release mode and produces a `chartr.app` DMG and SHA-256
+checksum under `target/`. The bundle uses the macOS app artwork in
+`docs/assets/v4/`, including the dedicated small-size variants. The app is
+ad-hoc signed and unnotarized. Pass an output path as the script's only argument
+to put the image elsewhere.
+
+## Getting started
+
+1. **Open a space.** Add a project folder, or use Free sessions for a shell
+   outside a project. The `+` button opens a terminal.
+2. **Register an agent.** Open **Settings → Plugins → Agent → Configure** and
+   add an installed CLI agent and its launch settings.
+3. **Register your skills.** Open **Settings → Plugins → Skills → Configure**
+   and add local folders or Git repositories containing your skills.
+4. **Chart your work.** Open the Agent surface using the **New surface** button
+   beside `+`. Work with your agent to write a plan under `.plan/maps/`, following
+   the [tracker convention](plugins/wayfinder/TRACKER-CONVENTION.md).
+5. **Drive the map.** Open Wayfinder, choose a map and a ready ticket, then use
+   **Review & launch** to inspect the prompt and start its agent session.
+
+Wayfinder can browse existing maps before agents or skills are configured. It
+allows one claimed ticket per space at a time; ordinary agent sessions and
+terminals remain independent.
+
+To add the optional Browser surface from this checkout, choose `plugins/browser`
+under **Settings → Plugins → Install from Folder…**, then restart when prompted.
+See [Browser](plugins/browser/README.md) for its capabilities and limits.
+
+## Your data
+
+chartr runs locally and does not require a chartr account. Maps and tickets are
+Markdown files in your project. The application keeps its other data under the
+`chartr` namespace:
+
+| Data                                      | Default location                    |
+| ----------------------------------------- | ----------------------------------- |
+| Settings, shortcuts, and registered spaces | `~/.config/chartr/`                  |
+| Window and workspace state                | `~/.local/state/chartr/state.sqlite` |
+| Installed plugins and plugin data         | `~/.local/share/chartr/`             |
+| Private Herdr runtime                     | `~/.config/chartr/herdr/`            |
+
+`XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and `XDG_DATA_HOME` override the corresponding
+base directories. These defaults apply on both macOS and Linux. Configuration
+and data from previous development namespaces, Go chartr, or chartr-rs are not
+imported automatically.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md) — fresh machine to first star-map
-- [CLI and source builds](docs/cli-and-source-builds.md) — run the server or
-  build chartr locally
+- [Workspace reference](docs/workspace.md) — spaces, panes, terminals, settings,
+  persistence, and plugin behavior
+- [Plugin packages](docs/plugins.md) — installation, permissions, and host APIs
+- [Skills](plugins/skills/README.md) — source registration and discovery
+- [Saved Prompts](plugins/prompts/README.md) — saved prompts and reusable prompt data
+- [Markdown Prompt](plugins/markdown-prompt/README.md) — compose and maintain Markdown from text and plugin templates
+- [Wayfinder](plugins/wayfinder/README.md) — maps, prompts, and ticket launches
+- [Tracker convention](plugins/wayfinder/TRACKER-CONVENTION.md) — the map and
+  ticket file format
+- [Code map](docs/code-map.md) — where each part of the app lives
 - [ADRs](docs/adr/) — why it is shaped the way it is
-- [Security](SECURITY.md) — found a vulnerability? here's how to report it.
+- [Release acceptance](docs/acceptance.md) — the automated and hands-on release
+  checklist
 
 ## Project status
 
-The current release is **`v0.2.4`**. Download it from the
-[releases page](https://github.com/rengwu/chartr/releases).
+Development continues here on `rewrite/rust`, with the complete `chartr`
+commit history preserved. The Go implementation at v0.2.4 remains on
+[`legacy/v0.2.4`](https://github.com/rengwu/chartr/tree/legacy/v0.2.4).
 
-Highlights in `v0.2.4`:
+The Rust workspace, persistent terminals, native Settings, plugin host, and
+bundled Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder surfaces are implemented. CI builds
+and tests the workspace and native plugin example on macOS and Ubuntu.
 
-- **Self-titling tabs** - Tabs use harness titles or generate one from the first
-  completed turn. Titles are searchable; configure them in Settings.
-- **Accurate notifications** - Completion is read from agent transcripts for
-  claude, codex, grok, kimi and pi.
-- **Faster terminal** - Select the renderer in `terminal.toml`; Linux defaults
-  to canvas, with DOM fallback and latency tracking.
-- **Find in the terminal** - `Ctrl+Shift+F` opens search in the active session.
-- **Sortable sessions** - Drag session rows to reorder them within a space.
-- **Persistent free shells** - `Ctrl+C` or `/exit` leaves the shell and
-  scrollback open.
-- **Linux desktop fixes** - Improved AppImage paths, environment handling,
-  resource cleanup, icons and folder chooser errors.
-- **Better agent status** - Fixed Claude's spinner and pre-trusted kimi
-  workspaces.
-- **Sharper chrome** - Standardized icon sizing and native title-bar layout.
+Before the first Rust release:
 
-Still to come:
+- Complete hands-on terminal, plugin, persistence, and recovery acceptance on
+  each shipping architecture.
+- Prepare distributable macOS and Linux packages and a release workflow.
+- Document installation and upgrade behavior, then publish a release candidate.
 
-- **Windows desktop app** - Package and test the existing WebView2 shell.
-- **AUR release** - Distribute chartr through the Arch User Repository.
-- **Prompt presets** - A catalog of reusable prompts a space launches with.
-- **GitHub Issues integration** - Bring GitHub issues into the chartr workflow.
-- **Inbox mode** - Add an alternate view for tasks that need your attention.
-- **Built-in updater** - Detect new releases and provide a way to install them.
-- **Scratch location** - Make its starting directory configurable.
-- **Alternate keybindings** - Add Neovim and Emacs keybinding presets.
-- **More panes** - Add browser, source control, code review, and
-  token usage panes alongside maps.
-- **Agent onboarding** - Detect installed agent CLIs on first launch and guide
-  users through registration.
-- **Agent status coverage** - Expand live detection for third-party agents and
-  uncommon prompts.
+Native Wayland web panes and Windows support remain outside the current target.
+See [open issues](https://github.com/rengwu/chartr/issues) for additional reports.
 
-Known bugs:
+### Development checks
 
-- **Ticket details** - Markdown does not render cleanly, and clicking a ticket
-  reference does not open that ticket.
-- **Folder picker** - The chooser is raised by the server, so it needs `zenity`
-  or `kdialog` on Linux and is unavailable on Windows. Where none is found,
-  register a space by typing its absolute path instead.
-- **Notification coverage** - Completion is only as good as the transcript
-  behind it. An agent chartr cannot read a transcript for still falls back to
-  screen-derived timing, which can fire late or not at all.
-- **Claude status** - Claude reads as blocked on its permission prompt, but
-  still reports idle while it waits on its other selectors.
+```sh
+cargo fmt --all --check
+cargo test --workspace --locked --no-fail-fast
+cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
+node --test crates/chartr/tests/plugin_bridge.cjs
+node --test plugins/wayfinder/tests/layout.test.mjs
+```
 
-See the
-[GitHub releases](https://github.com/rengwu/chartr/releases) for published release
-notes and [open issues](https://github.com/rengwu/chartr/issues) for additional
-reports.
+The JavaScript checks require Node.js. The real-sidecar tests are ignored by the
+default suite; after fetching Herdr, run them explicitly before release:
 
-No hosted service or user accounts will ever be planned. chartr does not send any usage data or telemetry.
+```sh
+cargo test -p chartr --test live_session --locked -- --ignored --nocapture --test-threads=1
+```
+
+That suite deliberately kills and restarts its private test daemon to verify
+recovery. Interactive terminal and webview behavior is covered by the
+[release acceptance checklist](docs/acceptance.md).
 
 ## Related projects
 
-- [herdr](https://github.com/ogulcancelik/herdr) — the agent multiplexer that inspired this, in your terminal instead of a window
-- [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — my read-only map CLI and viewer; where the star-map started
-- [mattpocock/skills](https://github.com/mattpocock/skills) — the original `/wayfinder` skill and the method the maps side drives
+- [Zed](https://github.com/zed-industries/zed) — the GPUI framework, UI components,
+  themes, and terminal stack used by the rewrite
+- [Herdr](https://github.com/herdrdev/herdr) — the persistent terminal backend
+  that powers chartr's sessions
+- [wayfinder-maps](https://github.com/rengwu/wayfinder-maps) — the read-only map CLI
+  and viewer where the star-map started
+- [mattpocock/skills](https://github.com/mattpocock/skills) — the original
+  `/wayfinder` skill and the method that inspired the maps workflow
 
 ## Acknowledgements
 
-- [@brownoxford](https://github.com/brownoxford) for privately reporting localhost trust-boundary vulnerabilities
-  that allowed cross-origin WebSocket control of live terminals, DNS-rebinding
-  access, and CORS-simple API writes. His report led to strict Origin, Host, and
-  content-type validation, owner-only state, verified build tooling, and safer bind
-  warnings.
-- [@bradymwilliams](https://github.com/bradymwilliams) for [reporting an issue](https://github.com/rengwu/chartr/pull/5)
-  that led to improvements when opening chartr from monorepo subdirectories.
+- [@brownoxford](https://github.com/brownoxford) for privately reporting
+  vulnerabilities that helped harden the original implementation's localhost
+  trust boundaries.
+- [@bradymwilliams](https://github.com/bradymwilliams) for
+  [reporting an issue](https://github.com/rengwu/chartr/pull/5) that led to
+  improvements when opening chartr from monorepo subdirectories.
+
+## Licence
+
+[GPL-3.0-or-later](LICENSE-GPL). chartr links Zed's `ui` and `theme` crates
+directly; see [ADR 0002](docs/adr/0002-the-zed-layer.md).

@@ -1,0 +1,48 @@
+# Vendored from zed-industries/zed at 1ea16c1ab9dd6d36649e002dc60995634da04daf.
+# chartr's narrow divergence is documented in chartr-PATCH.md.
+[package]
+name = "terminal_view"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+
+[features]
+test-support = ["editor/test-support", "gpui/test-support"]
+
+[lib]
+path = "src/terminal_view.rs"
+doctest = false
+
+[dependencies]
+anyhow = "1"
+async-recursion = "1.0.0"
+dirs = "6.0"
+futures = "0.3"
+itertools = "0.14.0"
+log = { version = "0.4.16", features = ["kv_unstable_serde", "serde"] }
+pretty_assertions = { version = "1.3.0", features = ["unstable"] }
+regex = "1.5"
+schemars = { version = "1.0", features = ["indexmap2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shellexpand = "3.1"
+shlex = "1.3.0"
+
+breadcrumbs = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+collections = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+db = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+editor = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf", default-features = false }
+language = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+menu = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+project = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+settings = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+task = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+terminal = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+theme = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+theme_settings = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+ui = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+util = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+workspace = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }
+zed_actions = { git = "https://github.com/zed-industries/zed.git", rev = "1ea16c1ab9dd6d36649e002dc60995634da04daf" }

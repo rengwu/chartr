@@ -1,0 +1,11 @@
+manifest_version = 2
+id = "com.chartr.companion"
+name = "Companion"
+description = "Connect Chartr Mobile to your spaces and live terminals over LAN or Tailscale."
+version = "0.1.0"
+kind = "native"
+icon = "ChipIcon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

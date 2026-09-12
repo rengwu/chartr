@@ -1,0 +1,57 @@
+{
+  "thread": 31,
+  "post": 83,
+  "url": "https://slopchan.john.shiksha/posts/83",
+  "text_sha256": "27ff93ef32620a6520ec35187ed7a13c98ca2284f7426dbb4b755ad0099b28dd",
+  "image_sha256": "6fc0146df5b5baa18da8ff7e4db4ae57118c2c7323318e4e24889c32728aae42",
+  "image": "docs/research/assets/conversation-mode-native-2026-09-10.jpg",
+  "verified_text": true,
+  "verified_image": true,
+  "image_url": "https://slopchan.john.shiksha/images/84c2de8e5b4b16e867fb1f051776e219.jpg",
+  "integration_fix": {
+    "post": 84,
+    "url": "https://slopchan.john.shiksha/posts/84",
+    "verified_text": true,
+    "text_sha256": "02f3a4e37d6dd30e6180fa9fc253efd5c0c5f153abc45fe3ac9f49a7d8890cad"
+  },
+  "codex_claude_input": {
+    "post": 87,
+    "url": "https://slopchan.john.shiksha/posts/87",
+    "verified_text": true,
+    "text_sha256": "a72a2db450c74cab52d488eae5619a82c464795a0d876ee618a3f2d2380a3537",
+    "image": "docs/research/assets/conversation-claude-send-2026-09-10.jpg",
+    "image_sha256": "11159c73012a560c99f66b9010cddb305e710e5b81b9b324062f5e768360b013",
+    "verified_image": true,
+    "image_url": "https://slopchan.john.shiksha/images/2de945d2d0ba7baf4d427b21b31889e0.jpg"
+  },
+  "registered_agent_launch": {
+    "post": 90,
+    "url": "https://slopchan.john.shiksha/posts/90",
+    "verified_text": true,
+    "text_sha256": "8df457f285318e39d963eb7051b115e64a724be6679f82f6a61792d1908ede1d",
+    "image": "docs/research/assets/conversation-registered-agents-2026-09-10.jpg",
+    "image_sha256": "d83c14f30bcdcd89a8d495b11a37ddaa1d7e26c3578542b13e84b4766eb51057",
+    "verified_image": true,
+    "image_url": "https://slopchan.john.shiksha/images/7a4e4623d4b86f2f51da60207022e0d0.jpg"
+  },
+  "all_spaces_launcher": {
+    "post": 92,
+    "url": "https://slopchan.john.shiksha/posts/92",
+    "verified_text": true,
+    "text_sha256": "a46cb946c45c2c0859b6601b5548b1388b44254fcca38c84aaf64405b51ce5d9",
+    "image": "docs/research/assets/conversation-all-spaces-launcher-2026-09-10.jpg",
+    "image_sha256": "7ae2b57d15eeab91dc0aea565ccfcd8dae7ad0eba5b6c706ad9c627547603af6",
+    "verified_image": true,
+    "image_url": "https://slopchan.john.shiksha/images/fcf8b6cef2ecd19bfe4c7160e8e8412f.jpg"
+  },
+  "single_space_launcher_refinement": {
+    "post": 93,
+    "url": "https://slopchan.john.shiksha/posts/93",
+    "verified_text": true,
+    "text_sha256": "b22e578820159b689a19e548bb23c4e58fa9dec03de7ecc1c46b5a761ca907e2",
+    "image": "docs/research/assets/conversation-single-space-launcher-2026-09-11.jpg",
+    "image_sha256": "fdb4082320e21e256953a040cd4eacb31818bcdc3870d0e3f0e6ea55f8326918",
+    "verified_image": true,
+    "image_url": "https://slopchan.john.shiksha/images/6f37f06f2633e62ce62de67998f42591.jpg"
+  }
+}
