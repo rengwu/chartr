@@ -72,7 +72,7 @@ impl Conversations {
         loaded: anyhow::Result<Store>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| TextInput::new("Search conversations…", cx));
+        let search = cx.new(|cx| TextInput::new("Search…", cx));
         cx.subscribe(&search, |this, input, _: &InputEvent, cx| {
             this.query = input.read(cx).text().to_owned();
             cx.notify();
@@ -323,13 +323,36 @@ impl Conversations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{chrome::sidebar_pane, mode::Mode};
     use chartr_conversations::Provider;
-    use gpui::{Window, px, size};
+    use gpui::{DragMoveEvent, Modifiers, MouseButton, Window, point, px, size};
     use terminal::{
         TerminalBuilder,
         terminal_settings::{AlternateScroll, CursorShape},
     };
+    use ui::prelude::*;
     use util::paths::PathStyle;
+
+    struct InboxHarness {
+        inbox: Entity<Conversations>,
+        sidebar: sidebar_pane::SidebarPane,
+    }
+
+    impl Render for InboxHarness {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let contents = self.inbox.update(cx, |inbox, cx| inbox.render_sidebar(cx));
+            h_flex()
+                .size_full()
+                .child(sidebar_pane::render(self.sidebar.width(), None, contents, cx))
+                .child(div().flex_1().min_w_0().h_full().child(self.inbox.clone()))
+                .on_drag_move::<crate::chrome::DraggedSidebar>(cx.listener(
+                    |this, event: &DragMoveEvent<crate::chrome::DraggedSidebar>, _, cx| {
+                        this.sidebar.resize(event.event.position.x / px(1.), Mode::Inbox);
+                        cx.notify();
+                    },
+                ))
+        }
+    }
 
     #[gpui::test]
     fn inbox_mounts_and_focuses_the_original_terminal(cx: &mut gpui::TestAppContext) {
@@ -337,6 +360,7 @@ mod tests {
             ::settings::init(cx);
             theme::init(theme::LoadThemes::JustBase, cx);
             crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+            view::init(cx);
         });
         let dir = tempfile::tempdir().unwrap();
         let paths = ProviderPaths {
@@ -378,14 +402,19 @@ mod tests {
             .subscribe(cx)
         });
         let model = terminal.clone();
-        let (inbox, cx) = cx.add_window_view(move |window: &mut Window, cx| {
+        let (harness, cx) = cx.add_window_view(move |window: &mut Window, cx| {
             let terminal_view = crate::terminal_host::new_view(model, window, cx);
-            let mut inbox = Conversations::with_store(Some(selected), Ok(store), cx);
-            inbox.connected = true;
-            inbox.focus_terminal = true;
-            inbox.set_terminal(Some(terminal_view), None, cx);
-            inbox
+            let inbox = cx.new(|cx| {
+                let mut inbox = Conversations::with_store(Some(selected), Ok(store), cx);
+                inbox.connected = true;
+                inbox.focus_terminal = true;
+                inbox.set_terminal(Some(terminal_view), None, cx);
+                inbox
+            });
+            cx.observe(&inbox, |_, _, cx| cx.notify()).detach();
+            InboxHarness { inbox, sidebar: sidebar_pane::SidebarPane::new(320., Mode::Inbox) }
         });
+        let inbox = harness.read_with(cx, |harness, _| harness.inbox.clone());
         terminal.update(cx, |terminal, cx| terminal.write_output(b"Inbox terminal content", cx));
         cx.simulate_resize(size(px(1000.), px(600.)));
         cx.run_until_parked();
@@ -404,6 +433,37 @@ mod tests {
             next_width > first_width + px(180.),
             "Inbox must resize the existing terminal model"
         );
+
+        // The shared divider must receive drags above the terminal and obey Inbox's minimum.
+        let divider = point(px(323.), px(250.));
+        let wider = point(px(440.), px(250.));
+        cx.simulate_mouse_down(divider, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(wider, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(wider, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(wider, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(harness.read_with(cx, |harness, _| harness.sidebar.width()), 440.);
+        let narrower_terminal = terminal
+            .read_with(cx, |terminal, _| terminal.last_content().terminal_bounds.bounds.size.width);
+        assert!(narrower_terminal < next_width - px(100.));
+        let divider = point(px(443.), px(250.));
+        let narrower = point(px(50.), px(250.));
+        cx.simulate_mouse_down(divider, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(narrower, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(narrower, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(narrower, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        assert_eq!(
+            harness.read_with(cx, |harness, _| harness.sidebar.width()),
+            sidebar_pane::INBOX_MIN_WIDTH,
+        );
+
+        // Search still routes from the terminal to the separately mounted sidebar.
+        inbox.update_in(cx, |inbox, window, cx| inbox.focus_handle(cx).focus(window, cx));
+        cx.simulate_keystrokes(if cfg!(target_os = "macos") { "cmd-f" } else { "ctrl-f" });
+        inbox.update_in(cx, |inbox, window, cx| {
+            assert!(inbox.search.focus_handle(cx).is_focused(window));
+        });
         inbox.update(cx, |inbox, cx| inbox.disconnected(cx));
         cx.run_until_parked();
         assert!(inbox.read_with(cx, |inbox, cx| inbox.terminal(cx)).is_none());

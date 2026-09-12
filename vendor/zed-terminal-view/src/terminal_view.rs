@@ -140,6 +140,7 @@ pub struct TerminalView {
     mode: TerminalMode,
     vertical_alignment: TerminalVerticalAlignment,
     grid_padding: bool,
+    resize_paused: bool,
     // Explicit override for whether workspace-specific context menu actions are shown.
     // When `None`, visibility is derived from `mode` (hidden for embedded terminals).
     show_workspace_actions: Option<bool>,
@@ -306,6 +307,7 @@ impl TerminalView {
             mode: TerminalMode::Standalone,
             vertical_alignment: TerminalVerticalAlignment::default(),
             grid_padding: false,
+            resize_paused: false,
             show_workspace_actions: None,
             workspace_id,
             show_breadcrumbs: TerminalSettings::get_global(cx).toolbar.breadcrumbs,
@@ -351,6 +353,15 @@ impl TerminalView {
     pub fn set_grid_padding(&mut self, padded: bool, cx: &mut Context<Self>) {
         if self.grid_padding != padded {
             self.grid_padding = padded;
+            cx.notify();
+        }
+    }
+
+    /// Preserve the grid size while the host animates its viewport. The grid
+    /// still moves with the view; unpausing applies the next layout's size.
+    pub fn set_resize_paused(&mut self, paused: bool, cx: &mut Context<Self>) {
+        if self.resize_paused != paused {
+            self.resize_paused = paused;
             cx.notify();
         }
     }

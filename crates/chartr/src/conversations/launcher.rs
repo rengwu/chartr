@@ -2,7 +2,7 @@ use super::scope::choice_label;
 use super::*;
 use chartr_plugin::services::{AGENT_SERVICE, Agents, Services};
 use gpui::{Anchor, AnyElement, Window, px};
-use ui::{Button, ButtonStyle, IconButton, Tooltip, prelude::*};
+use ui::{Button, ButtonStyle, IconButton, IconButtonShape, Tooltip, prelude::*};
 
 impl Conversations {
     pub fn set_agent_services(&mut self, services: Services) {
@@ -25,7 +25,10 @@ impl Conversations {
         } else {
             popup.trigger(
                 IconButton::new("new-conversation", IconName::Plus)
+                    .shape(IconButtonShape::Square)
+                    .size(ButtonSize::None)
                     .icon_size(IconSize::Small)
+                    .icon_color(Color::Muted)
                     .disabled(self.busy)
                     .aria_label("New conversation")
                     .tooltip(Tooltip::text("New conversation")),

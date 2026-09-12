@@ -1,6 +1,10 @@
 use super::*;
-use gpui::{AnyElement, MouseButton, SharedString, Window, div, px};
-use ui::{Button, ButtonSize, IconButton, Tooltip, prelude::*};
+use gpui::{AnyElement, Role, Window, div, px};
+use ui::{Button, ButtonSize, IconButton, IconButtonShape, Tooltip, prelude::*};
+
+use crate::components::{SelectionRowBackgrounds, selection_list, selection_row};
+use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL, UI_TEXT_DEFAULT};
+use crate::settings::sidebar_theme_colors;
 
 gpui::actions!(chartr_inbox, [FocusSearch]);
 
@@ -20,162 +24,6 @@ impl Render for Conversations {
             .as_ref()
             .and_then(|id| self.rows.iter().find(|r| &r.id == id && self.in_scope(r)))
             .cloned();
-        let rows: Vec<_> = self
-            .rows
-            .iter()
-            .filter(|row| {
-                self.in_scope(row)
-                    && row.archived == self.show_archived
-                    && (row.matches(&self.query)
-                        || self
-                            .space_label(row)
-                            .to_lowercase()
-                            .contains(&self.query.trim().to_lowercase()))
-            })
-            .cloned()
-            .collect();
-        let sidebar = v_flex()
-            .id("conversation-history")
-            .w(px(296.))
-            .min_w(px(220.))
-            .flex_none()
-            .h_full()
-            .bg(colors.panel_background)
-            .border_r_1()
-            .border_color(colors.border)
-            .child(
-                h_flex()
-                    .h(px(42.))
-                    .px_3()
-                    .gap_2()
-                    .flex_none()
-                    .child(
-                        Icon::new(IconName::HistoryRerun).size(IconSize::Small).color(Color::Muted),
-                    )
-                    .child(Label::new("Inbox").size(LabelSize::Default))
-                    .child(div().flex_1())
-                    .child(
-                        IconButton::new("history-archive", IconName::Archive)
-                            .icon_size(IconSize::Small)
-                            .icon_color(if self.show_archived {
-                                Color::Default
-                            } else {
-                                Color::Muted
-                            })
-                            .tooltip(Tooltip::text(if self.show_archived {
-                                "Show recent conversations"
-                            } else {
-                                "Show archived conversations"
-                            }))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_archived = !this.show_archived;
-                                cx.notify();
-                            })),
-                    )
-                    .child(self.agent_picker(false, cx)),
-            )
-            .child(div().px_3().pb_3().pt_1().child(crate::components::input_field(
-                "history-search",
-                self.search.clone(),
-                cx,
-            )))
-            .child(
-                h_flex().px_3().h(px(28.)).child(
-                    Label::new(if self.show_archived { "Archived" } else { "Recent" })
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                ),
-            )
-            .child(
-                v_flex()
-                    .id("history-rows")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .children(rows.iter().map(|row| {
-                        let id = row.id.clone();
-                        let title = row.display_title().to_owned();
-                        let space_label = self.space_label(row);
-                        let detail = format!(
-                            "{} · {}",
-                            row.provider.name(),
-                            row.cwd
-                                .as_ref()
-                                .map(|p| p.display().to_string())
-                                .unwrap_or_else(|| "Free sessions".to_owned())
-                        );
-                        let is_selected = self.selected.as_deref() == Some(&id);
-                        h_flex()
-                            .id(SharedString::from(format!("history-{id}")))
-                            .h(px(46.))
-                            .px_3()
-                            .gap_2()
-                            .w_full()
-                            .min_w_0()
-                            .flex_none()
-                            .cursor_pointer()
-                            .bg(if is_selected {
-                                colors.element_selected
-                            } else {
-                                colors.panel_background
-                            })
-                            .hover(|row| row.bg(colors.element_hover))
-                            .tooltip(Tooltip::text(detail))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _, window, cx| {
-                                    this.new_agent = None;
-                                    this.new_space = None;
-                                    this.launch_runtime = None;
-                                    this.selected = Some(id.clone());
-                                    this.renaming = None;
-                                    this.clear_terminal();
-                                    this.focus_terminal = true;
-                                    this.pending_runtime = None;
-                                    this.problem = None;
-                                    this.focus.focus(window, cx);
-                                    cx.emit(Event::SelectionChanged);
-                                    cx.notify();
-                                }),
-                            )
-                            .child(
-                                Icon::new(IconName::Chat).size(IconSize::Small).color(Color::Muted),
-                            )
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .child(Label::new(title).size(LabelSize::Default).truncate())
-                                    .child(
-                                        Label::new(space_label)
-                                            .size(LabelSize::Small)
-                                            .color(Color::Muted)
-                                            .truncate(),
-                                    ),
-                            )
-                            .when(row.runtime.is_some(), |item| {
-                                item.child(div().size(px(5.)).rounded_full().bg(match row.status {
-                                    Status::Working => cx.theme().status().info,
-                                    Status::Waiting => cx.theme().status().warning,
-                                    _ => cx.theme().status().success,
-                                }))
-                            })
-                            .child(
-                                Label::new(relative_time(row.updated))
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                    }))
-                    .when(rows.is_empty(), |list| {
-                        list.child(div().px_3().py_4().text_color(colors.text_muted).child(
-                            if self.query.is_empty() {
-                                "Conversations will appear here as you use your agents."
-                            } else {
-                                "No matching conversations."
-                            },
-                        ))
-                    }),
-            );
 
         if self.focus_terminal
             && let Some(terminal) = self.terminal_view.as_ref()
@@ -240,7 +88,7 @@ impl Render for Conversations {
                 cx.stop_propagation();
                 this.search.focus_handle(cx).focus(window, cx);
             }))
-            .child(h_flex().flex_1().min_h_0().w_full().child(sidebar).child(content))
+            .child(h_flex().flex_1().min_h_0().w_full().child(content))
             .when_some(self.problem.clone(), |view, problem| {
                 view.child(
                     h_flex()
@@ -265,6 +113,204 @@ impl Render for Conversations {
 }
 
 impl Conversations {
+    pub(crate) fn render_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = cx.theme().colors().clone();
+        let rows: Vec<_> = self
+            .rows
+            .iter()
+            .filter(|row| {
+                self.in_scope(row)
+                    && row.archived == self.show_archived
+                    && (row.matches(&self.query)
+                        || self
+                            .space_label(row)
+                            .to_lowercase()
+                            .contains(&self.query.trim().to_lowercase()))
+            })
+            .cloned()
+            .collect();
+        v_flex()
+            .id("conversation-history")
+            .key_context("Inbox")
+            .size_full()
+            .min_h_0()
+            .min_w_0()
+            .text_size(UI_TEXT_DEFAULT)
+            .on_action(cx.listener(|this, _: &FocusSearch, window, cx| {
+                cx.stop_propagation();
+                this.search.focus_handle(cx).focus(window, cx);
+            }))
+            .bg(colors.panel_background)
+            .child(
+                h_flex()
+                    .w_full()
+                    .px_2()
+                    .pb_2()
+                    .flex_none()
+                    .justify_between()
+                    .child(Label::new("Inbox").size(UI_LABEL_SMALL).color(Color::Muted))
+                    .child(
+                        h_flex()
+                            .gap_px()
+                            .child(
+                                IconButton::new("history-archive", IconName::Archive)
+                                    .shape(IconButtonShape::Square)
+                                    .size(ButtonSize::None)
+                                    .icon_size(IconSize::Small)
+                                    .icon_color(if self.show_archived {
+                                        Color::Default
+                                    } else {
+                                        Color::Muted
+                                    })
+                                    .aria_label(if self.show_archived {
+                                        "Show recent conversations"
+                                    } else {
+                                        "Show archived conversations"
+                                    })
+                                    .tooltip(Tooltip::text(if self.show_archived {
+                                        "Show recent conversations"
+                                    } else {
+                                        "Show archived conversations"
+                                    }))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.show_archived = !this.show_archived;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(self.agent_picker(false, cx)),
+                    ),
+            )
+            .child(div().px_1p5().pb_2().flex_none().child(crate::components::input_field(
+                "history-search",
+                self.search.clone(),
+                cx,
+            )))
+            .child(self.flat_history(&rows, cx))
+            .into_any_element()
+    }
+
+    fn flat_history(&self, rows: &[Conversation], cx: &Context<Self>) -> AnyElement {
+        selection_list()
+            .id("history-rows")
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .px_1p5()
+            .pb_2()
+            .overflow_y_scroll()
+            .child(
+                div().px_1().pb_1().flex_none().child(
+                    Label::new(if self.show_archived { "Archived" } else { "Recent" })
+                        .size(UI_LABEL_SMALL)
+                        .color(Color::Muted),
+                ),
+            )
+            .children(rows.iter().map(|row| self.history_row(row, cx)))
+            .when(rows.is_empty(), |list| list.child(self.empty_history(cx)))
+            .into_any_element()
+    }
+
+    fn empty_history(&self, cx: &App) -> AnyElement {
+        div()
+            .px_1()
+            .py_2()
+            .text_color(cx.theme().colors().text_muted)
+            .child(if self.query.is_empty() {
+                "Conversations will appear here as you use your agents."
+            } else {
+                "No matching conversations."
+            })
+            .into_any_element()
+    }
+
+    fn history_row(&self, row: &Conversation, cx: &Context<Self>) -> AnyElement {
+        let colors = cx.theme().colors();
+        let sidebar_colors = sidebar_theme_colors(cx.theme());
+        let row_backgrounds = SelectionRowBackgrounds {
+            hover: sidebar_colors.session_hover,
+            selected: sidebar_colors.session_active,
+        };
+        let id = row.id.clone();
+        let title = row.display_title().to_owned();
+        let space_label = self.space_label(row);
+        let adapter_label = if self.scope.is_none() {
+            format!("{} · {}", row.provider.slug(), space_label)
+        } else {
+            row.provider.slug().to_owned()
+        };
+        let detail = format!(
+            "{}\n{} · {}\n{}",
+            title,
+            row.provider.name(),
+            space_label,
+            row.cwd
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "Free sessions".to_owned())
+        );
+        let is_selected = self.selected.as_deref() == Some(&id);
+        let status_color = if row.runtime.is_some() {
+            match row.status {
+                Status::Working => cx.theme().status().info,
+                Status::Waiting => cx.theme().status().warning,
+                _ => cx.theme().status().success,
+            }
+        } else {
+            colors.text_muted.opacity(0.45)
+        };
+        div()
+            .id(format!("history-row-{id}"))
+            .w_full()
+            .min_w_0()
+            .flex_none()
+            .tooltip(Tooltip::text(detail))
+            .child(
+                selection_row(format!("history-{id}"), is_selected)
+                    .backgrounds(row_backgrounds)
+                    .aria_role(Role::Tab)
+                    .aria_label(title.clone())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.new_agent = None;
+                        this.new_space = None;
+                        this.launch_runtime = None;
+                        this.selected = Some(id.clone());
+                        this.renaming = None;
+                        this.clear_terminal();
+                        this.focus_terminal = true;
+                        this.pending_runtime = None;
+                        this.problem = None;
+                        this.focus.focus(window, cx);
+                        cx.emit(Event::SelectionChanged);
+                        cx.notify();
+                    }))
+                    .start_slot(
+                        h_flex()
+                            .w(IconSize::XSmall.rems())
+                            .flex_none()
+                            .justify_center()
+                            .child(div().size(px(5.)).rounded_full().bg(status_color)),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Label::new(title).size(UI_LABEL_DEFAULT).truncate())
+                            .child(
+                                Label::new(adapter_label)
+                                    .size(UI_LABEL_SMALL)
+                                    .color(Color::Muted)
+                                    .truncate(),
+                            ),
+                    )
+                    .end_slot(
+                        Label::new(relative_time(row.updated))
+                            .size(UI_LABEL_SMALL)
+                            .color(Color::Muted),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn conversation(&mut self, row: &Conversation, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors().clone();
         let context = self.space_label(row);

@@ -16,16 +16,11 @@ use crate::components::SortAxis;
 use crate::components::popup_right_click_menu;
 
 use super::{
-    Action, DraggedItem, DraggedSidebar, DraggedSpace, Entry, SpaceEntries, item_indicator,
-    new_plugin_pane_button,
+    Action, DraggedItem, DraggedSpace, Entry, SpaceEntries, item_indicator, new_plugin_pane_button,
 };
 use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, selection_row};
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 use crate::settings::{SettingsStore, sidebar_theme_colors};
-
-/// Limits for the resizable sidebar.
-pub const MIN_WIDTH: f32 = 108.;
-pub const MAX_WIDTH: f32 = 480.;
 
 /// One shared value for layout and FLIP arithmetic. `gap_2` is half a rem;
 /// spelling that out keeps card travel equal to the distance layout actually
@@ -43,10 +38,8 @@ pub(super) fn scrollbar_thumb_colors(colors: &theme::ThemeColors) -> [gpui::Hsla
 
 pub fn render(
     spaces: &[SpaceEntries],
-    controls: Option<(AnyElement, AnyElement)>,
     on: Emit,
     sorter: &SpaceSorter,
-    width: f32,
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
@@ -78,8 +71,6 @@ pub fn render(
                 .tooltip(Tooltip::text("New Space"))
                 .on_click(move |_, window, cx| add_space(Action::NewSpace, window, cx)),
         );
-    let header = controls
-        .map(|(space_switcher, view_menu)| header(space_switcher, view_menu).into_any_element());
     let scroll_handle = sorter.scroll_handle().clone();
     let scroll_background = colors.panel_background;
     let mut index = 0;
@@ -307,11 +298,10 @@ pub fn render(
     v_flex()
         .id("spaces-sidebar")
         .relative()
-        .w(px(width))
-        .flex_none()
+        .w_full()
+        .min_h_0()
         .h_full()
         .bg(colors.panel_background)
-        .children(header)
         .child(spaces_header)
         .child(
             v_flex()
@@ -387,33 +377,6 @@ pub fn render(
                 ),
         )
         .children(free_sessions)
-        .child(deferred(
-            div()
-                .id("sidebar-resize-handle")
-                .absolute()
-                // Keep the resize target fully outside the sidebar so it
-                // cannot occlude a trailing row action at the panel boundary.
-                .right(px(-6.))
-                .top_0()
-                .h_full()
-                .w(px(6.))
-                .cursor_col_resize()
-                .on_drag(DraggedSidebar, |dragged, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.new(|_| dragged.clone())
-                })
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
-        ))
-}
-
-fn header(space_switcher: AnyElement, view_menu: AnyElement) -> impl IntoElement {
-    h_flex()
-        .h(px(36.))
-        .px_2()
-        .gap_1()
-        .justify_between()
-        .child(h_flex().min_w_0().flex_1().child(space_switcher))
-        .child(h_flex().gap_px().child(view_menu))
 }
 
 fn row(

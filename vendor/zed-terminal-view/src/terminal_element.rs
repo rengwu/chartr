@@ -1282,7 +1282,7 @@ impl Element for TerminalElement {
                 let player_color = theme.players().local();
                 let match_color = theme.colors().search_match_background;
                 let horizontal_insets;
-                let (dimensions, line_height_px) = {
+                let (mut dimensions, line_height_px) = {
                     let rem_size = window.rem_size();
                     let font_pixels = text_style.font_size.to_pixels(rem_size);
                     let line_height = f32::from(font_pixels) * line_height;
@@ -1367,6 +1367,20 @@ impl Element for TerminalElement {
                         line_height,
                     )
                 };
+
+                if self.terminal_view.read(cx).resize_paused {
+                    // Keep the previous grid while following the animated pane's
+                    // origin. set_size can update mouse coordinates without
+                    // reflowing the grid or sending another PTY resize.
+                    let previous = self.terminal.read(cx).last_content().terminal_bounds;
+                    dimensions = TerminalBounds {
+                        bounds: Bounds {
+                            origin: dimensions.bounds.origin,
+                            size: previous.bounds.size,
+                        },
+                        ..previous
+                    };
+                }
 
                 let search_matches = self.terminal.read(cx).matches.clone();
 

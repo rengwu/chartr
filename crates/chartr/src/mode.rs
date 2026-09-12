@@ -33,9 +33,8 @@ pub(crate) struct ChromeVisibility {
 impl From<Mode> for ChromeVisibility {
     fn from(mode: Mode) -> Self {
         match mode {
-            Mode::Sidebar => Self { sidebar: 1., tabs: 0. },
+            Mode::Sidebar | Mode::Inbox => Self { sidebar: 1., tabs: 0. },
             Mode::Tabs => Self { sidebar: 0., tabs: 1. },
-            Mode::Inbox => Self { sidebar: 0., tabs: 0. },
         }
     }
 }
@@ -43,6 +42,7 @@ impl From<Mode> for ChromeVisibility {
 #[derive(Default)]
 pub(crate) struct ModeTransition {
     motion: Option<Motion>,
+    sidebar_mode: Mode,
 }
 
 struct Motion {
@@ -72,12 +72,20 @@ impl Motion {
 }
 
 impl ModeTransition {
+    /// Keep the outgoing sidebar's contents while Tabbed hides its pane.
+    pub fn sidebar_mode(&self) -> Mode {
+        self.sidebar_mode
+    }
+
     pub fn advance(
         &mut self,
         mode: Mode,
         now: Instant,
         reduce_motion: bool,
     ) -> (ChromeVisibility, bool) {
+        if mode != Mode::Tabs {
+            self.sidebar_mode = mode;
+        }
         let target = ChromeVisibility::from(mode);
         if self.motion.as_ref().is_none_or(|motion| motion.to != target) || reduce_motion {
             // Restore directly on first render. Redirect an interrupted slide from
@@ -99,7 +107,12 @@ mod tests {
 
     #[test]
     fn restores_without_motion_and_slides_both_surfaces_together() {
-        for (from, to) in [(Mode::Sidebar, Mode::Tabs), (Mode::Tabs, Mode::Sidebar)] {
+        for (from, to) in [
+            (Mode::Sidebar, Mode::Tabs),
+            (Mode::Tabs, Mode::Sidebar),
+            (Mode::Inbox, Mode::Tabs),
+            (Mode::Tabs, Mode::Inbox),
+        ] {
             let now = Instant::now();
             let mut transition = ModeTransition::default();
             assert_eq!(transition.advance(from, now, false), (from.into(), false));
@@ -114,6 +127,49 @@ mod tests {
                 (to.into(), false)
             );
         }
+    }
+
+    #[test]
+    fn sidebar_and_inbox_keep_the_same_pane_visible() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        let visible = ChromeVisibility { sidebar: 1., tabs: 0. };
+        for mode in [Mode::Sidebar, Mode::Inbox, Mode::Sidebar] {
+            assert_eq!(transition.advance(mode, now, false), (visible, false));
+            assert_eq!(transition.sidebar_mode(), mode);
+        }
+    }
+
+    #[test]
+    fn inbox_contents_stay_in_the_sidebar_through_its_exit_to_tabs() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        transition.advance(Mode::Inbox, now, false);
+        for elapsed in [Duration::ZERO, TRANSITION_DURATION / 4, TRANSITION_DURATION / 2] {
+            let (visible, animating) = transition.advance(Mode::Tabs, now + elapsed, false);
+            assert!(animating && visible.sidebar > 0.);
+            assert_eq!(transition.sidebar_mode(), Mode::Inbox);
+        }
+        assert_eq!(
+            transition.advance(Mode::Tabs, now + TRANSITION_DURATION, false),
+            (Mode::Tabs.into(), false),
+        );
+    }
+
+    #[test]
+    fn interrupted_sidebar_exits_use_the_explicitly_selected_sidebar_content() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        transition.advance(Mode::Inbox, now, false);
+        transition.advance(Mode::Tabs, now, false);
+        let midway = now + TRANSITION_DURATION / 3;
+        let (visible, _) = transition.advance(Mode::Tabs, midway, false);
+        assert_eq!(transition.advance(Mode::Inbox, midway, false), (visible, true));
+        assert_eq!(transition.sidebar_mode(), Mode::Inbox);
+        assert_eq!(transition.advance(Mode::Sidebar, midway, false), (visible, true));
+        assert_eq!(transition.sidebar_mode(), Mode::Sidebar);
+        transition.advance(Mode::Tabs, midway, false);
+        assert_eq!(transition.sidebar_mode(), Mode::Sidebar);
     }
 
     #[test]

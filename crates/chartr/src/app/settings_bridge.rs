@@ -52,6 +52,7 @@ impl WorkspaceWindow {
             self.terminal_mode = mode;
         }
         self.mode = mode;
+        self.sidebar.set_mode(mode, cx.background_executor().now());
         self.mode_focus_pending = true;
         cx.notify();
     }

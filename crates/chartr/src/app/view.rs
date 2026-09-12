@@ -15,13 +15,28 @@ impl Render for WorkspaceWindow {
         if self.space_sorter.tick(now, window.rem_size(), cx.reduce_motion()) {
             window.request_animation_frame();
         }
-        let (chrome_visibility, mode_animating) = self.mode_transition.advance(
-            self.mode,
-            now,
-            cx.reduce_motion() || self.mode == Mode::Inbox,
-        );
-        if mode_animating {
+        let (chrome_visibility, mode_animating) =
+            self.mode_transition.advance(self.mode, now, cx.reduce_motion());
+        let (sidebar_width, sidebar_animating) = self.sidebar.advance(now, cx.reduce_motion());
+        if mode_animating || sidebar_animating {
             window.request_animation_frame();
+        }
+        // The pane keeps sliding, but each terminal reflows only once, after
+        // both the chrome transition and any Inbox width expansion settle.
+        let terminal_views: Vec<_> = self
+            .spaces
+            .iter()
+            .flat_map(|space| {
+                let space = space.read(cx);
+                space.all_item_ids().into_iter().filter_map(move |id| {
+                    space.item(id).and_then(crate::item::Item::as_session)?.terminal_view()
+                })
+            })
+            .collect();
+        for view in terminal_views {
+            view.update(cx, |view, cx| {
+                view.set_resize_paused(mode_animating || sidebar_animating, cx);
+            });
         }
         let error_notices = self.error_notices(cx);
         let mut sidebar_spaces = self.sidebar_spaces(cx);
@@ -136,7 +151,7 @@ impl Render for WorkspaceWindow {
         let sidebar_slot = div()
             .id("mode-sidebar-slot")
             .relative()
-            .w(px(self.sidebar_width * chrome_visibility.sidebar))
+            .w(px(sidebar_width * chrome_visibility.sidebar))
             .h_full()
             .flex_none()
             // The settled sidebar's resize handle extends into the workspace.
@@ -148,22 +163,26 @@ impl Render for WorkspaceWindow {
                         self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
                     )
                 });
+                let contents = if self.mode_transition.sidebar_mode() == Mode::Inbox {
+                    self.conversations.update(cx, |inbox, cx| inbox.render_sidebar(cx))
+                } else {
+                    chrome::sidebar::render(
+                        &sidebar_spaces,
+                        emit.clone(),
+                        &self.space_sorter,
+                        window,
+                        cx,
+                    )
+                    .into_any_element()
+                };
                 slot.child(
                     div()
                         .absolute()
-                        .left(px(self.sidebar_width * (chrome_visibility.sidebar - 1.)))
+                        .left(px(sidebar_width * (chrome_visibility.sidebar - 1.)))
                         .top_0()
-                        .w(px(self.sidebar_width))
+                        .w(px(sidebar_width))
                         .h_full()
-                        .child(chrome::sidebar::render(
-                            &sidebar_spaces,
-                            controls,
-                            emit.clone(),
-                            &self.space_sorter,
-                            self.sidebar_width,
-                            window,
-                            cx,
-                        )),
+                        .child(chrome::sidebar_pane::render(sidebar_width, controls, contents, cx)),
                 )
             });
         let body = v_flex()
@@ -202,8 +221,7 @@ impl Render for WorkspaceWindow {
             .text_color(text)
             .on_drag_move::<chrome::DraggedSidebar>(cx.listener(
                 |this, event: &DragMoveEvent<chrome::DraggedSidebar>, _, cx| {
-                    this.sidebar_width = (event.event.position.x / px(1.))
-                        .clamp(chrome::sidebar::MIN_WIDTH, chrome::sidebar::MAX_WIDTH);
+                    this.sidebar.resize(event.event.position.x / px(1.), this.mode);
                     cx.notify();
                 },
             ))

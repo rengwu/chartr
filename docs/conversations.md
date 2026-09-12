@@ -11,6 +11,13 @@ the session’s original terminal, including its input, scrollback, selection,
 clipboard, terminal search, and interactive agent UI. There is no separate chat
 renderer, composer, prompt injection, or chat approval interface.
 
+Inbox and Sidebar share the same resizable pane and saved width. Drag its right
+edge to resize it. Inbox needs at least 120 px; entering Inbox from a narrower
+Sidebar smoothly expands the pane. The expanded width stays when returning to
+Sidebar, where the pane can be narrowed again. Reduce motion disables the animation.
+During view transitions and automatic sidebar expansion, terminal grids keep their
+current size and resize once to the final dimensions when the animation finishes.
+
 Selecting a live entry mounts the same terminal used by Sidebar and Tabbed.
 Switching views does not start, resume, or stop an agent. When its terminal is
 no longer available, the entry remains with a **Session ended** state. Inbox
@@ -19,11 +26,13 @@ same terminal starts a different native conversation, the old entry cannot
 control it. When mobile owns a session’s terminal geometry, Inbox displays its
 mobile status until control returns to desktop.
 
-The space picker offers **All spaces** in Inbox. It mixes history from every
-space in recency order; choosing a single space filters that same list. Every
-row shows its space beneath its title, and search matches space names too. All
-spaces is remembered across restart and view changes without replacing the
-active terminal space.
+Inbox uses a simple chat list, with newest conversations first. **All spaces**
+mixes conversations from every space, including Free sessions, in that same
+recency order. Choosing a single space filters the list. Each row shows its
+agent adapter (such as **claude** or **codex**) beneath the title; All spaces also
+shows the owning space on that line. Search matches conversation details and
+space names. All spaces is remembered across restart and view changes without
+replacing the active terminal space.
 
 Ordinary shells, lazygit, and other tools keep running without becoming history
 entries. Archiving a conversation, including with `Cmd/Ctrl+W` in Inbox, keeps
