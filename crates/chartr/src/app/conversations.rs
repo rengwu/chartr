@@ -13,13 +13,13 @@ impl WorkspaceWindow {
             {
                 return Some((
                     None,
-                    Some("Session ended. This conversation remains in Inbox.".to_owned()),
+                    Some("Session ended. This conversation remains in Chats.".to_owned()),
                 ));
             }
             if item.session.ended().is_some() {
                 return Some((
                     None,
-                    Some("Session ended. This conversation remains in Inbox.".to_owned()),
+                    Some("Session ended. This conversation remains in Chats.".to_owned()),
                 ));
             }
             if let Some(lease) = self.companion_leases.get(runtime) {

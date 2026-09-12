@@ -50,6 +50,7 @@ pub struct SegmentedControl {
     options: Vec<SegmentedControlOption>,
     disabled: bool,
     full_width: bool,
+    large: bool,
 }
 
 impl SegmentedControl {
@@ -62,11 +63,18 @@ impl SegmentedControl {
             options: options.into_iter().collect(),
             disabled: false,
             full_width: false,
+            large: false,
         }
     }
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// A taller picker with slightly larger labels for prominent navigation.
+    pub fn large(mut self) -> Self {
+        self.large = true;
         self
     }
 
@@ -78,6 +86,8 @@ impl SegmentedControl {
 
 impl RenderOnce for SegmentedControl {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let height = if self.large { ButtonSize::Medium } else { ButtonSize::Default }.rems();
+        let label_size = if self.large { crate::fonts::UI_LABEL_DEFAULT } else { LabelSize::Small };
         let option_count = self.options.len();
         let colors = cx.theme().colors();
         let border = colors.border.opacity(0.8);
@@ -99,8 +109,8 @@ impl RenderOnce for SegmentedControl {
                     .role(Role::RadioButton)
                     .aria_label(option.label.clone())
                     .aria_selected(selected)
-                    .h(ButtonSize::Default.rems())
-                    .px_3()
+                    .h(height)
+                    .when_else(self.large, |item| item.px_2p5(), |item| item.px_3())
                     .when(self.full_width, |item| item.flex_1().min_w_0().justify_center())
                     .when(index + 1 < option_count, |item| item.border_r_1().border_color(border))
                     .when(selected, |item| item.bg(colors.ghost_element_selected))
@@ -115,7 +125,7 @@ impl RenderOnce for SegmentedControl {
                     )
                     .child(
                         Label::new(option.label)
-                            .size(LabelSize::Small)
+                            .size(label_size)
                             .when(self.full_width, |label| label.truncate())
                             .when(!selected, |label| {
                                 label.color(if self.disabled {

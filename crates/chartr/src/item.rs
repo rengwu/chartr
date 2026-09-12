@@ -114,7 +114,11 @@ impl Item {
         match self {
             Self::Plugin(item) => Some(item.icon_path.clone()),
             Self::PluginLauncher { .. } => Some(crate::assets::PLUGIN_LAUNCHER_ICON_PATH.into()),
-            Self::Session(_) => None,
+            Self::Session(item) => crate::agent_icons::session_icon(
+                item.session.info.agent.as_deref(),
+                item.session.info.running.as_deref(),
+            )
+            .map(Into::into),
         }
     }
 

@@ -140,6 +140,9 @@ impl Store {
             if let Some(native) = &observation.native {
                 match self.reader.read(provider, native, &self.paths) {
                     Ok(transcript) => {
+                        if let Some(updated) = transcript.updated {
+                            row.updated = updated;
+                        }
                         // Stream deltas must not keep moving rows under the pointer.
                         if transcript
                             .messages
@@ -172,6 +175,18 @@ impl Store {
             }
             self.runtimes.insert(observation.runtime.clone(), id.clone());
             self.rows.insert(id, row);
+        }
+        // Only the completed snapshot establishes which sessions have ended.
+        // In particular, opening saved history must not archive live sessions
+        // before their runtimes have been rediscovered.
+        let ended: Vec<_> = self
+            .rows
+            .values()
+            .filter(|row| row.status == Status::Ended && !row.archived)
+            .map(|row| row.id.clone())
+            .collect();
+        for id in ended {
+            self.archive(&id, true)?;
         }
         Ok(())
     }
@@ -231,7 +246,62 @@ mod tests {
             claude: root.join("claude"),
             opencode: root.join("opencode"),
             pi: root.join("pi"),
+            kimi: root.join("kimi"),
         }
+    }
+
+    #[test]
+    fn ended_sessions_are_archived_without_losing_history_or_archiving_idle_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("db");
+        let mut store = Store::open(&file, paths(dir.path())).unwrap();
+        let live = observation("live", Some("live"));
+        store.reconcile(vec![live.clone(), observation("ending", Some("ending"))], 10).unwrap();
+        let live_id = store.for_runtime("live").unwrap().to_owned();
+        let ended_id = store.for_runtime("ending").unwrap().to_owned();
+        store.rename(&ended_id, "Saved conversation".into()).unwrap();
+        store.edit(&ended_id, |row| row.draft = "Retained draft".into()).unwrap();
+
+        store.reconcile(vec![live.clone()], 20).unwrap();
+        assert!(!store.get(&live_id).unwrap().archived, "idle is still a live session");
+        let ended = store.get(&ended_id).unwrap();
+        assert!(ended.archived);
+        assert_eq!(ended.status, Status::Ended);
+        assert!(ended.runtime.is_none());
+        assert_eq!(ended.display_title(), "Saved conversation");
+        assert_eq!(ended.draft, "Retained draft");
+        assert_eq!(ended.updated, 10, "archiving must not change conversation recency");
+
+        // Repeated snapshots are harmless, and the archive flag survives restart.
+        store.reconcile(vec![live], 30).unwrap();
+        drop(store);
+        let reopened = Store::open(&file, paths(dir.path())).unwrap();
+        assert!(reopened.get(&ended_id).unwrap().archived);
+        assert!(!reopened.get(&live_id).unwrap().archived);
+        assert_eq!(reopened.list().len(), 2);
+    }
+
+    #[test]
+    fn startup_waits_for_rediscovery_before_archiving_missing_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("db");
+        let mut store = Store::open(&file, paths(dir.path())).unwrap();
+        let live = observation("live", None);
+        let manual = observation("manual", None);
+        store.reconcile(vec![live.clone(), manual.clone(), observation("gone", None)], 1).unwrap();
+        let live_id = store.for_runtime("live").unwrap().to_owned();
+        let manual_id = store.for_runtime("manual").unwrap().to_owned();
+        let gone_id = store.for_runtime("gone").unwrap().to_owned();
+        store.archive(&manual_id, true).unwrap();
+        drop(store);
+
+        let mut reopened = Store::open(&file, paths(dir.path())).unwrap();
+        assert!(!reopened.get(&live_id).unwrap().archived);
+        assert!(!reopened.get(&gone_id).unwrap().archived);
+        reopened.reconcile(vec![live, manual], 2).unwrap();
+        assert!(!reopened.get(&live_id).unwrap().archived);
+        assert!(reopened.get(&manual_id).unwrap().archived, "preserve manual archives");
+        assert!(reopened.get(&gone_id).unwrap().archived, "also archive older ended history");
     }
 
     #[test]
@@ -303,6 +373,81 @@ mod tests {
         let reopened = Store::open(&file, paths(dir.path())).unwrap();
         assert_eq!(reopened.list().len(), 4);
         assert!(reopened.list().iter().all(|row| row.status == Status::Ended));
+    }
+
+    #[test]
+    fn kimi_recency_tracks_exact_session_prompts_across_polling_and_restart() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("db");
+        let provider_paths = paths(dir.path());
+        let session = provider_paths.kimi.join("sessions/workspace/session-a");
+        let other = provider_paths.kimi.join("sessions/workspace/session-b");
+        for (path, id, time) in [(&session, "session-a", 10), (&other, "session-b", 20)] {
+            std::fs::create_dir_all(path.join("agents/main")).unwrap();
+            std::fs::write(path.join("state.json"), serde_json::json!({"id":id}).to_string())
+                .unwrap();
+            std::fs::write(path.join("agents/main/wire.jsonl"), format!("{}\n", serde_json::json!({"type":"prompt.accepted","agentId":"main","promptId":"first","time":time}))).unwrap();
+        }
+        let mut store = Store::open(&file, provider_paths.clone()).unwrap();
+        let mut a = observation("a", Some("session-a"));
+        a.provider = Provider::Kimi;
+        a.title = Some("hi kimi".into());
+        let mut b = a.clone();
+        b.runtime = "b".into();
+        b.terminal = "terminal-b".into();
+        b.native.as_mut().unwrap().id = "session-b".into();
+        let observations = vec![a, b];
+        store.reconcile(observations.clone(), 100).unwrap();
+        let id = store.for_runtime("a").unwrap().to_owned();
+        assert_eq!(store.get(&id).unwrap().updated, 10);
+        assert_ne!(store.list()[0].id, id);
+        store.rename(&id, "My Kimi chat".into()).unwrap();
+        let mut log = std::fs::OpenOptions::new()
+            .append(true)
+            .open(session.join("agents/main/wire.jsonl"))
+            .unwrap();
+        // A complete prompt/response between polls must still refresh the row.
+        writeln!(log, "{}", serde_json::json!({"type":"prompt.accepted","agentId":"main","promptId":"second","time":200})).unwrap();
+        writeln!(log, "{}", serde_json::json!({"type":"turn.ended","agentId":"main","time":210}))
+            .unwrap();
+        store.reconcile(observations.clone(), 300).unwrap();
+        assert_eq!(store.list()[0].id, id);
+        assert_eq!(store.get(&id).unwrap().updated, 200);
+        assert_eq!(store.get(&id).unwrap().display_title(), "My Kimi chat");
+        assert!(store.get(&id).unwrap().messages.is_empty());
+        // Output, subagent prompts and partial appends cannot move the timestamp.
+        writeln!(log, "{}", serde_json::json!({"type":"context.append_message","time":310}))
+            .unwrap();
+        writeln!(log, "{}", serde_json::json!({"type":"prompt.accepted","agentId":"agent-0","promptId":"child","time":320})).unwrap();
+        write!(
+            log,
+            "{}",
+            r#"{"type":"prompt.accepted","agentId":"main","promptId":"third","time":"#
+        )
+        .unwrap();
+        store.reconcile(observations.clone(), 400).unwrap();
+        assert_eq!(store.get(&id).unwrap().updated, 200);
+        writeln!(log, "450}}").unwrap();
+        store.reconcile(observations.clone(), 500).unwrap();
+        assert_eq!(store.get(&id).unwrap().updated, 450);
+        store.reconcile(observations.clone(), 600).unwrap();
+        assert_eq!(store.get(&id).unwrap().updated, 450);
+        drop(store);
+        let mut store = Store::open(&file, provider_paths).unwrap();
+        store.reconcile(observations.clone(), 700).unwrap();
+        assert_eq!(store.get(&id).unwrap().updated, 450);
+        // Verify identity even when the unchanged wire log would hit the cache.
+        std::fs::write(session.join("state.json"), r#"{"id":"session-b"}"#).unwrap();
+        store.reconcile(observations.clone(), 800).unwrap();
+        assert!(store.get(&id).unwrap().problem.is_some());
+        assert_eq!(store.get(&id).unwrap().updated, 450);
+        std::fs::write(session.join("state.json"), r#"{"id":"session-a"}"#).unwrap();
+        let duplicate = paths(dir.path()).kimi.join("sessions/another-workspace/session-a");
+        std::fs::create_dir_all(duplicate).unwrap();
+        store.reconcile(observations, 900).unwrap();
+        assert!(store.get(&id).unwrap().problem.is_some());
+        assert_eq!(store.get(&id).unwrap().updated, 450);
     }
 
     #[test]

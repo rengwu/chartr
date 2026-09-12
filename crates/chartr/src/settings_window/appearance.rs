@@ -195,11 +195,11 @@ impl SettingsWindow {
             setting_field("Font size", "Adjust the size of interface text.", font_size),
             setting_field(
                 "Reduce motion",
-                "Disable movement animations when space cards are sorted.",
+                "Disable movement animations when switching views, resizing sidebars, and rearranging items.",
                 Switch::new("reduce-motion", reduce_motion.into())
                     .tab_index(0isize)
                     .aria_label("Reduce motion")
-                    .aria_description("Disable movement animations when space cards are sorted.")
+                    .aria_description("Disable movement animations when switching views, resizing sidebars, and rearranging items.")
                     .on_click(move |state, _, cx| {
                         let reduce_motion = state.selected();
                         let _ = reduce_motion_setting

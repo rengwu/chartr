@@ -164,9 +164,9 @@ impl PaletteCommand {
         (Self::NewSurface, "Workspace: New surface tab", ""),
         (Self::NewSurfacePane, "Workspace: New surface pane", ""),
         (Self::Ungroup, "Workspace: Ungroup current group", ""),
-        (Self::SidebarMode, "Workspace: Switch to sidebar mode", ""),
-        (Self::TabbedMode, "Workspace: Switch to tabbed mode", ""),
-        (Self::ConversationMode, "Workspace: Switch to inbox view", ""),
+        (Self::SidebarMode, "Workspace: Switch to Spaces view", ""),
+        (Self::TabbedMode, "Workspace: Switch to Tabs view", ""),
+        (Self::ConversationMode, "Workspace: Switch to Chats view", ""),
         (Self::CycleViewMode, "Workspace: Cycle view modes", ""),
         (Self::ToggleStatusBar, "Workspace: Toggle status bar", ""),
         (Self::NewSpace, "Workspace: Open new space", ""),
@@ -208,6 +208,7 @@ pub struct WorkspaceWindow {
     registry: Option<Registry>,
     spaces: Vec<Entity<Space>>,
     space_sorter: chrome::sidebar::SpaceSorter,
+    collapsed_spaces: HashSet<EntityId>,
     pane_drop_preview: pane_drop_preview::PaneDropPreview,
     active_pane_size: Rc<std::cell::Cell<Option<shortcuts::MeasuredPane>>>,
     active: Option<Entity<Space>>,
@@ -324,6 +325,7 @@ impl WorkspaceWindow {
             registry: None,
             spaces: Vec::new(),
             space_sorter: chrome::sidebar::SpaceSorter::new(chrome::sidebar::CARD_GAP),
+            collapsed_spaces: HashSet::new(),
             pane_drop_preview: pane_drop_preview::PaneDropPreview::default(),
             active: None,
             mode: Mode::default(),
@@ -458,6 +460,9 @@ impl WorkspaceWindow {
         for space in &spaces {
             let key = space.read(cx).persisted().key;
             if let Some(saved_space) = saved.spaces.iter().find(|saved| saved.key == key) {
+                if !saved_space.expanded {
+                    this.collapsed_spaces.insert(space.entity_id());
+                }
                 space.update(cx, |space, _| space.restore_saved(saved_space));
             }
         }
@@ -598,7 +603,15 @@ impl WorkspaceWindow {
                 bounds: self.window_bounds,
                 ..WindowState::default()
             },
-            spaces: self.spaces.iter().map(|space| space.read(cx).persisted()).collect(),
+            spaces: self
+                .spaces
+                .iter()
+                .map(|space| {
+                    let mut saved = space.read(cx).persisted();
+                    saved.expanded = !self.collapsed_spaces.contains(&space.entity_id());
+                    saved
+                })
+                .collect(),
         }
     }
 
@@ -723,7 +736,7 @@ impl WorkspaceWindow {
                 SpaceEntries {
                     id: space.entity_id(),
                     name: read.name().to_owned(),
-                    is_free: read.kind() == SpaceKind::AdHoc,
+                    collapsed: self.collapsed_spaces.contains(&space.entity_id()),
                     active: self.active.as_ref() == Some(space),
                     removable: read.kind() == SpaceKind::Registered,
                     available: read.available(),
@@ -747,11 +760,9 @@ impl WorkspaceWindow {
         }
         match action {
             Action::BeginSpaceDrag { at } => self.space_sorter.press(at),
-            Action::ActivateSpace { space } => {
-                if let Some(target) =
-                    self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
-                {
-                    self.activate(target, window, cx);
+            Action::ToggleSpaceCollapsed { space } => {
+                if !self.collapsed_spaces.remove(&space) {
+                    self.collapsed_spaces.insert(space);
                 }
             }
             Action::SwitchToTabs => self.settings_set_mode(Mode::Tabs, cx),
@@ -774,6 +785,7 @@ impl WorkspaceWindow {
                 }
             }
             Action::NewPluginPaneInSpace { space } => {
+                self.collapsed_spaces.remove(&space);
                 if let Some(target) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
                 {
@@ -784,6 +796,7 @@ impl WorkspaceWindow {
                 }
             }
             Action::NewInSpace { space } => {
+                self.collapsed_spaces.remove(&space);
                 if matches!(self.backend, Backend::Ready)
                     && let Some(target) =
                         self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
@@ -896,43 +909,13 @@ impl WorkspaceWindow {
         else {
             return false;
         };
-        if self.spaces[from].read(cx).kind() == SpaceKind::AdHoc {
-            return false;
-        }
-
-        // The sorter only sees folder-backed cards; Free sessions is outside
-        // its scroll container. Translate that card-relative target back to
-        // the complete model without changing where the synthetic space is
-        // stored.
-        let movable_count = self
-            .spaces
-            .iter()
-            .filter(|candidate| candidate.read(cx).kind() != SpaceKind::AdHoc)
-            .count();
-        let target = target.min(movable_count.saturating_sub(1));
-        let from_movable = self.spaces[..from]
-            .iter()
-            .filter(|candidate| candidate.read(cx).kind() != SpaceKind::AdHoc)
-            .count();
-        if from_movable == target {
+        let target = target.min(self.spaces.len().saturating_sub(1));
+        if from == target {
             return true;
         }
-
         let mut candidate = self.spaces.clone();
         let moved = candidate.remove(from);
-        let movable_positions: Vec<_> = candidate
-            .iter()
-            .enumerate()
-            .filter_map(|(index, candidate)| {
-                (candidate.read(cx).kind() != SpaceKind::AdHoc).then_some(index)
-            })
-            .collect();
-        let insertion_index = movable_positions
-            .get(target)
-            .copied()
-            .or_else(|| movable_positions.last().map(|index| index + 1))
-            .unwrap_or(candidate.len());
-        candidate.insert(insertion_index, moved);
+        candidate.insert(target, moved);
 
         let Some(registry) = self.registry.as_ref() else {
             self.problem = Some("the space registry is unavailable".into());

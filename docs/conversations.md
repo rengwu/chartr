@@ -20,8 +20,13 @@ current size and resize once to the final dimensions when the animation finishes
 
 Selecting a live entry mounts the same terminal used by Sidebar and Tabbed.
 Switching views does not start, resume, or stop an agent. When its terminal is
-no longer available, the entry remains with a **Session ended** state. Inbox
-does not resume an ended session or show a reconstructed transcript. If the
+no longer available, a successful runtime refresh automatically moves the entry
+to **Archive** with a **Session ended** state, preserving its title, recency, and
+saved history. This also archives older ended entries after the first successful
+refresh on startup. Idle sessions remain in Inbox; a backend disconnection alone
+does not archive anything. If the selected Inbox entry ends, its selection clears
+without switching the history filter. Chats does not resume an ended session or
+show a reconstructed transcript. If the
 same terminal starts a different native conversation, the old entry cannot
 control it. When mobile owns a session’s terminal geometry, Inbox displays its
 mobile status until control returns to desktop.
@@ -77,7 +82,14 @@ not retroactively load new hooks.
 
 Local, read-only Codex/Claude/Pi JSONL and OpenCode database readers supply titles
 and recency. The running CLI’s terminal title also supplies titles before native
-identity arrives; Grok and Kimi use this observed metadata. Pi uses its saved
+identity arrives; Grok and Kimi use this observed metadata. Kimi Code recency
+uses the last main-agent `prompt.accepted` timestamp from the exact native
+session's `agents/main/wire.jsonl`, after verifying `state.json` identity.
+Its data root is `$KIMI_CODE_HOME` or `~/.kimi-code`, following the
+[Kimi Code storage layout](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/guides/sessions.md).
+This catches turns completed between refreshes and messages sent while Chartr
+was closed, without treating replies, tools, or subagent events as new prompts.
+Legacy Python Kimi logs are not read by this adapter. Pi uses its saved
 session name or first user prompt, with its exact reported JSONL path and a
 matching session header. The launcher adapts Pi’s managed hook for older
 `hasUI`/`agent_end` and newer `mode`/`agent_settled` extension APIs. Existing Pi

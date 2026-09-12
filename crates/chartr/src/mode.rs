@@ -23,6 +23,12 @@ pub enum Mode {
 
 const TRANSITION_DURATION: Duration = Duration::from_millis(500);
 
+fn transition_easing(progress: f32) -> f32 {
+    // Exponential ease-out: a quick initial slide followed by a long settle.
+    // Normalize the curve so it reaches the destination without a final snap.
+    (1. - 2_f32.powf(-10. * progress)) / (1. - 2_f32.powi(-10))
+}
+
 /// Each surface owns its reveal amount; modes only choose the destinations.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ChromeVisibility {
@@ -43,6 +49,26 @@ impl From<Mode> for ChromeVisibility {
 pub(crate) struct ModeTransition {
     motion: Option<Motion>,
     sidebar_mode: Mode,
+    sidebar_motion: Option<SidebarMotion>,
+}
+
+// Spaces occupies page 0 and Chats page 1 within the shared sidebar.
+struct SidebarMotion {
+    from: f32,
+    to: f32,
+    started: Instant,
+}
+
+impl SidebarMotion {
+    fn sample(&self, now: Instant) -> (f32, bool) {
+        let progress = now.saturating_duration_since(self.started).as_secs_f32()
+            / TRANSITION_DURATION.as_secs_f32();
+        if progress >= 1. || self.from == self.to {
+            return (self.to, false);
+        }
+        let eased = transition_easing(progress);
+        (self.from + (self.to - self.from) * eased, true)
+    }
 }
 
 struct Motion {
@@ -58,9 +84,7 @@ impl Motion {
             return (self.to, false);
         }
         let progress = elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32();
-        // Exponential ease-out: a quick initial slide followed by a long settle.
-        // Normalize the curve so it reaches the destination without a final snap.
-        let eased = (1. - 2_f32.powf(-10. * progress)) / (1. - 2_f32.powi(-10));
+        let eased = transition_easing(progress);
         (
             ChromeVisibility {
                 sidebar: self.from.sidebar + (self.to.sidebar - self.from.sidebar) * eased,
@@ -77,6 +101,11 @@ impl ModeTransition {
         self.sidebar_mode
     }
 
+    /// Horizontal page position, independent of pane geometry and terminal resizing.
+    pub fn sidebar_position(&self, now: Instant) -> (f32, bool) {
+        self.sidebar_motion.as_ref().map_or((0., false), |motion| motion.sample(now))
+    }
+
     pub fn advance(
         &mut self,
         mode: Mode,
@@ -85,6 +114,18 @@ impl ModeTransition {
     ) -> (ChromeVisibility, bool) {
         if mode != Mode::Tabs {
             self.sidebar_mode = mode;
+        }
+        let sidebar_target = if self.sidebar_mode() == Mode::Inbox { 1. } else { 0. };
+        // Only Spaces <-> Chats slides the contents. Any switch involving Tabs
+        // settles the page immediately, even if the pane is still moving.
+        let snap_sidebar = reduce_motion
+            || mode == Mode::Tabs
+            || self.motion.as_ref().is_none_or(|motion| motion.to.tabs == 1.);
+        if snap_sidebar
+            || self.sidebar_motion.as_ref().is_none_or(|motion| motion.to != sidebar_target)
+        {
+            let from = if snap_sidebar { sidebar_target } else { self.sidebar_position(now).0 };
+            self.sidebar_motion = Some(SidebarMotion { from, to: sidebar_target, started: now });
         }
         let target = ChromeVisibility::from(mode);
         if self.motion.as_ref().is_none_or(|motion| motion.to != target) || reduce_motion {
@@ -185,6 +226,77 @@ mod tests {
             transition.advance(Mode::Sidebar, midway + TRANSITION_DURATION, false),
             (Mode::Sidebar.into(), false)
         );
+    }
+
+    #[test]
+    fn sidebar_pages_slide_in_both_directions_without_resizing_the_pane() {
+        for (from, to, start, end) in
+            [(Mode::Sidebar, Mode::Inbox, 0., 1.), (Mode::Inbox, Mode::Sidebar, 1., 0.)]
+        {
+            let now = Instant::now();
+            let mut transition = ModeTransition::default();
+            transition.advance(from, now, false);
+            assert_eq!(transition.sidebar_position(now), (start, false));
+            assert_eq!(transition.advance(to, now, false), (to.into(), false));
+            assert_eq!(transition.sidebar_position(now), (start, true));
+            let midway = now + TRANSITION_DURATION / 2;
+            transition.advance(to, midway, false);
+            let (position, animating) = transition.sidebar_position(midway);
+            assert!(animating && position > 0. && position < 1.);
+            assert!((position - end).abs() < (position - start).abs());
+            let finished = now + TRANSITION_DURATION;
+            transition.advance(to, finished, false);
+            assert_eq!(transition.sidebar_position(finished), (end, false));
+        }
+    }
+
+    #[test]
+    fn sidebar_page_reversals_preserve_the_current_position() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        transition.advance(Mode::Sidebar, now, false);
+        transition.advance(Mode::Inbox, now, false);
+        let midway = now + TRANSITION_DURATION / 3;
+        let (position, _) = transition.sidebar_position(midway);
+        transition.advance(Mode::Sidebar, midway, false);
+        assert_eq!(transition.sidebar_position(midway), (position, true));
+        let later = midway + TRANSITION_DURATION / 3;
+        let (returning, _) = transition.sidebar_position(later);
+        assert!(returning < position);
+        transition.advance(Mode::Inbox, later, false);
+        assert_eq!(transition.sidebar_position(later), (returning, true));
+    }
+
+    #[test]
+    fn sidebar_pages_do_not_animate_when_switching_to_or_from_tabs() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        transition.advance(Mode::Sidebar, now, false);
+        transition.advance(Mode::Inbox, now, false);
+        let midway = now + TRANSITION_DURATION / 3;
+        assert!(transition.sidebar_position(midway).1);
+        transition.advance(Mode::Tabs, midway, false);
+        assert_eq!(transition.sidebar_position(midway), (1., false));
+        transition.advance(Mode::Sidebar, midway, false);
+        assert_eq!(transition.sidebar_position(midway), (0., false));
+        transition.advance(Mode::Tabs, midway, false);
+        let hidden = midway + TRANSITION_DURATION;
+        transition.advance(Mode::Tabs, hidden, false);
+        transition.advance(Mode::Inbox, hidden, false);
+        assert_eq!(transition.sidebar_position(hidden), (1., false));
+    }
+
+    #[test]
+    fn reduced_motion_finishes_sidebar_page_switches() {
+        let now = Instant::now();
+        let mut transition = ModeTransition::default();
+        transition.advance(Mode::Inbox, now, false);
+        transition.advance(Mode::Sidebar, now, false);
+        let midway = now + TRANSITION_DURATION / 2;
+        transition.advance(Mode::Sidebar, midway, true);
+        assert_eq!(transition.sidebar_position(midway), (0., false));
+        transition.advance(Mode::Inbox, midway, true);
+        assert_eq!(transition.sidebar_position(midway), (1., false));
     }
 
     #[test]

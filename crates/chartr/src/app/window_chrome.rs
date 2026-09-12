@@ -2,6 +2,26 @@
 
 use super::*;
 
+pub(super) const TITLE_CONTROLS_LEFT: f32 = 78.;
+pub(super) const TITLE_CONTROLS_RIGHT: f32 = 6.;
+pub(super) const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
+
+// Measure a separate tree so the displayed controls retain their normal layout
+// lifecycle. Max-content measurement includes the current font, scale and notices.
+fn chrome_controls_width(content: AnyElement, window: &mut Window, cx: &mut App) -> Pixels {
+    div()
+        .id("chrome-controls-size-probe")
+        .font(theme::theme_settings(cx).ui_font(cx).clone())
+        .child(content)
+        .into_any_element()
+        .layout_as_root(
+            gpui::size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MaxContent),
+            window,
+            cx,
+        )
+        .width
+}
+
 impl WorkspaceWindow {
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self
@@ -47,8 +67,8 @@ impl WorkspaceWindow {
                         .iter()
                         .filter(|(_, _, kind)| *kind == SpaceKind::Registered)
                         .collect();
-                    if !registered.is_empty() {
-                        menu = menu.separator().header("Project Spaces");
+                    if !spaces.is_empty() {
+                        menu = menu.separator();
                     }
                     for (space, name, _) in registered {
                         let target = space.clone();
@@ -67,7 +87,6 @@ impl WorkspaceWindow {
                         );
                     }
 
-                    menu = menu.separator();
                     for (space, name, _kind) in
                         spaces.iter().filter(|(_, _, kind)| *kind == SpaceKind::AdHoc)
                     {
@@ -94,13 +113,16 @@ impl WorkspaceWindow {
 
     pub(super) fn visible_space_switcher(
         &mut self,
+        visibility: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.mode != Mode::Tabs {
+        if visibility <= 0. {
             gpui::Empty.into_any_element()
         } else {
-            self.space_switcher(window, cx)
+            // Keep the picker mounted throughout its exit, including reversals.
+            // The shared mode transition also handles reduced motion.
+            div().opacity(visibility).child(self.space_switcher(window, cx)).into_any_element()
         }
     }
 
@@ -247,17 +269,24 @@ impl WorkspaceWindow {
         &self,
         on: chrome::Emit,
         notices: Vec<ErrorNotice>,
-        cx: &Context<Self>,
+        available_width: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> AnyElement {
-        let has_notices = !notices.is_empty();
-        h_flex()
-            .gap_1()
-            .when(self.settings.resolved().show_view_mode_picker, |controls| {
-                controls.child(self.presentation_toggle(on.clone()))
-            })
-            .when(has_notices, |controls| controls.child(self.error_menu(notices, cx)))
-            .child(self.settings_button(on))
-            .into_any_element()
+        let build = |show_picker, cx: &Context<Self>| {
+            h_flex()
+                .flex_none()
+                .gap_1()
+                .when(show_picker, |controls| controls.child(self.presentation_toggle(on.clone())))
+                .when(!notices.is_empty(), |controls| {
+                    controls.child(self.error_menu(notices.clone(), cx))
+                })
+                .child(self.settings_button(on.clone()))
+                .into_any_element()
+        };
+        let show_picker = self.settings.resolved().show_view_mode_picker
+            && chrome_controls_width(build(true, cx), window, cx) <= available_width;
+        build(show_picker, cx)
     }
 
     fn presentation_toggle(&self, on: chrome::Emit) -> AnyElement {
@@ -268,20 +297,20 @@ impl WorkspaceWindow {
             "Session list presentation",
             [
                 SegmentedControlOption::new(
-                    "presentation-sidebar",
-                    "Sidebar",
-                    self.mode == Mode::Sidebar,
-                    move |_, window, cx| use_sidebar(Action::SwitchToSidebar, window, cx),
-                ),
-                SegmentedControlOption::new(
                     "presentation-tabs",
-                    "Tabbed",
+                    "Tabs",
                     self.mode == Mode::Tabs,
                     move |_, window, cx| use_tabs(Action::SwitchToTabs, window, cx),
                 ),
                 SegmentedControlOption::new(
+                    "presentation-sidebar",
+                    "Spaces",
+                    self.mode == Mode::Sidebar,
+                    move |_, window, cx| use_sidebar(Action::SwitchToSidebar, window, cx),
+                ),
+                SegmentedControlOption::new(
                     "presentation-conversations",
-                    "Inbox",
+                    "Chats",
                     self.mode == Mode::Inbox,
                     move |_, window, cx| {
                         use_conversations(Action::SwitchToConversations, window, cx)
@@ -307,53 +336,15 @@ impl WorkspaceWindow {
         visibility: crate::mode::ChromeVisibility,
         window: &Window,
         cx: &App,
-    ) -> AnyElement {
+    ) -> (AnyElement, AnyElement) {
         if !cfg!(target_os = "macos") {
-            return self.title_bar.clone().into_any_element();
+            return (self.title_bar.clone().into_any_element(), gpui::Empty.into_any_element());
         }
 
-        let colors = cx.theme().colors();
+        let background = cx.theme().colors().panel_background;
         let window_active = window.is_window_active();
-        let mut overlays = Vec::with_capacity(3);
-        overlays.push(
-            div()
-                .absolute()
-                .top_0()
-                .right_0()
-                .bottom_0()
-                .left_0()
-                .bg(colors.panel_background)
-                .into_any_element(),
-        );
-        if let Some((space_switcher, view_menu)) = controls {
-            overlays.push(
-                h_flex()
-                    .absolute()
-                    // Clear the native macOS traffic-light cluster.
-                    .left(px(78.))
-                    .top_0()
-                    .h(px(crate::title_bar::HEIGHT))
-                    .max_w(px(200.))
-                    .when(!window_active, |controls| controls.opacity(0.65))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(space_switcher)
-                    .into_any_element(),
-            );
-            overlays.push(
-                h_flex()
-                    .absolute()
-                    .right(px(6.))
-                    .top_0()
-                    .h(px(crate::title_bar::HEIGHT))
-                    .when(!window_active, |controls| controls.opacity(0.65))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(view_menu)
-                    .into_any_element(),
-            );
-        }
-
-        div()
-            .id("workspace-title-bar-with-controls")
+        let title_bar = div()
+            .id("workspace-title-bar-background")
             .relative()
             .w_full()
             .h(px(crate::title_bar::HEIGHT))
@@ -361,8 +352,65 @@ impl WorkspaceWindow {
             .mb(px(-4. * visibility.tabs))
             .flex_none()
             .child(self.title_bar.clone())
-            .children(overlays)
-            .into_any_element()
+            .child(div().absolute().inset_0().bg(background))
+            .into_any_element();
+
+        // Paint this after the body: tabs sit beneath the stationary gradient,
+        // then title-bar controls sit above both. The canvas has no hitbox and
+        // only covers the upper row, leaving the rest of the tab strip crisp.
+        let mut foreground = div()
+            .id("workspace-title-bar-with-controls")
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h(px(crate::title_bar::HEIGHT))
+            .when(visibility.tabs > 0. && visibility.tabs < 1., |bar| {
+                bar.child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            window.paint_quad(gpui::fill(
+                                bounds,
+                                gpui::linear_gradient(
+                                    180.,
+                                    gpui::linear_color_stop(background, 0.),
+                                    gpui::linear_color_stop(background.opacity(0.), 1.),
+                                ),
+                            ));
+                        },
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            });
+        if let Some((space_switcher, view_menu)) = controls {
+            foreground = foreground
+                .child(
+                    h_flex()
+                        .absolute()
+                        // Clear the native macOS traffic-light cluster.
+                        .left(px(TITLE_CONTROLS_LEFT))
+                        .top_0()
+                        .h(px(crate::title_bar::HEIGHT))
+                        .max_w(px(SPACE_SWITCHER_MAX_WIDTH))
+                        .when(!window_active, |controls| controls.opacity(0.65))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(space_switcher),
+                )
+                .child(
+                    h_flex()
+                        .absolute()
+                        .right(px(TITLE_CONTROLS_RIGHT))
+                        .top_0()
+                        .h(px(crate::title_bar::HEIGHT))
+                        .when(!window_active, |controls| controls.opacity(0.65))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(view_menu),
+                );
+        }
+
+        (title_bar, foreground.into_any_element())
     }
 
     pub(super) fn new_item_button(&self, cx: &Context<Self>) -> AnyElement {
@@ -402,5 +450,73 @@ impl WorkspaceWindow {
             chrome::NewItemKind::Plugin,
             button,
         )
+    }
+}
+
+#[cfg(test)]
+mod responsive_controls_tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    struct Harness {
+        width: Pixels,
+        rem_size: Pixels,
+    }
+
+    impl Render for Harness {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            window.set_rem_size(self.rem_size);
+            let controls = |picker| {
+                h_flex()
+                    .flex_none()
+                    .gap_1()
+                    .when(picker, |row| {
+                        row.child(div().debug_selector(|| "VIEW_PICKER".into()).child(
+                            SegmentedControl::new(
+                                "Session list presentation",
+                                ["Tabs", "Spaces", "Chats"].map(|label| {
+                                    SegmentedControlOption::new(
+                                        label,
+                                        label,
+                                        label == "Tabs",
+                                        |_, _, _| {},
+                                    )
+                                }),
+                            ),
+                        ))
+                    })
+                    .child(
+                        IconButton::new("settings", IconName::Settings).icon_size(IconSize::Small),
+                    )
+                    .into_any_element()
+            };
+            let width = chrome_controls_width(controls(true), window, cx);
+            div().w(self.width).child(controls(width <= self.width))
+        }
+    }
+
+    #[gpui::test]
+    fn picker_hides_and_returns_as_available_width_and_scale_change(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+        let (view, cx) = cx.add_window_view(|_, _| Harness { width: px(500.), rem_size: px(14.) });
+        for (width, rem_size, visible) in [
+            (500., 14., true),
+            (80., 14., false),
+            (500., 14., true),
+            (500., 42., false),
+            (500., 14., true),
+        ] {
+            view.update(cx, |view, cx| {
+                view.width = px(width);
+                view.rem_size = px(rem_size);
+                cx.notify();
+            });
+            cx.run_until_parked();
+            assert_eq!(cx.debug_bounds("VIEW_PICKER").is_some(), visible);
+        }
     }
 }

@@ -10,6 +10,8 @@ use std::{
     time::SystemTime,
 };
 
+mod kimi;
+
 const MAX_TRANSCRIPT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_MESSAGES: usize = 300;
 
@@ -19,6 +21,7 @@ pub struct ProviderPaths {
     pub claude: PathBuf,
     pub opencode: PathBuf,
     pub pi: PathBuf,
+    pub kimi: PathBuf,
 }
 
 impl ProviderPaths {
@@ -28,6 +31,10 @@ impl ProviderPaths {
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".local/share"));
         Self {
+            kimi: std::env::var_os("KIMI_CODE_HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".kimi-code")),
             codex: std::env::var_os("CODEX_HOME")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".codex")),
@@ -63,6 +70,8 @@ impl ProviderPaths {
 pub(crate) struct Transcript {
     pub title: Option<String>,
     pub messages: Vec<Message>,
+    /// Provider-recorded time of the last submitted prompt, not output activity.
+    pub updated: Option<u64>,
 }
 
 #[derive(Default)]
@@ -87,8 +96,11 @@ impl Reader {
         if provider == Provider::OpenCode {
             return read_opencode(&paths.opencode.join("opencode.db"), &native.id);
         }
-        if matches!(provider, Provider::Grok | Provider::Kimi) {
-            // These providers supply titles through the observed terminal. A local
+        if provider == Provider::Kimi {
+            return self.read_kimi(native, paths);
+        }
+        if provider == Provider::Grok {
+            // Grok supplies titles through the observed terminal. A local
             // transcript reader is not required for Inbox detection or terminal use.
             return Ok(Transcript::default());
         }
@@ -382,7 +394,7 @@ fn read_opencode(path: &Path, id: &str) -> Result<Transcript> {
     } else {
         Some(title)
     };
-    Ok(Transcript { title, messages })
+    Ok(Transcript { title, messages, updated: None })
 }
 
 #[cfg(test)]
@@ -433,6 +445,7 @@ mod tests {
             claude: dir.path().join("claude"),
             opencode: dir.path().join("opencode"),
             pi: dir.path().join("pi"),
+            kimi: dir.path().join("kimi"),
         };
         let sessions = paths.pi.join("sessions/--same-project--");
         fs::create_dir_all(&sessions).unwrap();

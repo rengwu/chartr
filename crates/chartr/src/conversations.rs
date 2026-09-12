@@ -22,6 +22,7 @@ pub struct Conversations {
     title_input: Entity<TextInput>,
     renaming: Option<String>,
     show_archived: bool,
+    history_scroll: gpui::ScrollHandle,
     connected: bool,
     refreshing: bool,
     pending: Option<Vec<Observation>>,
@@ -83,6 +84,7 @@ impl Conversations {
             rows,
             selected,
             show_archived: false,
+            history_scroll: gpui::ScrollHandle::new(),
             connected: false,
             refreshing: false,
             pending: None,
@@ -228,7 +230,20 @@ impl Conversations {
                                 this.selected = Some(new);
                                 cx.emit(Event::SelectionChanged);
                             }
+                            let selected_was_in_inbox =
+                                this.selected_row().is_some_and(|row| !row.archived);
                             this.rows = rows;
+                            if !this.show_archived
+                                && selected_was_in_inbox
+                                && this
+                                    .selected_row()
+                                    .is_some_and(|row| row.archived && row.status == Status::Ended)
+                            {
+                                this.selected = None;
+                                this.renaming = None;
+                                this.clear_terminal();
+                                cx.emit(Event::SelectionChanged);
+                            }
                             if let Some(runtime) = this.pending_runtime.take() {
                                 this.select_runtime(&runtime, cx);
                             }
@@ -322,8 +337,8 @@ mod tests {
     }
 
     impl Render for InboxHarness {
-        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let contents = self.inbox.update(cx, |inbox, cx| inbox.render_sidebar(cx));
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let contents = self.inbox.update(cx, |inbox, cx| inbox.render_sidebar(window, cx));
             h_flex()
                 .size_full()
                 .child(sidebar_pane::render(self.sidebar.width(), None, contents, cx))
@@ -350,6 +365,7 @@ mod tests {
             claude: dir.path().join("claude"),
             opencode: dir.path().join("opencode"),
             pi: dir.path().join("pi"),
+            kimi: dir.path().join("kimi"),
         };
         let mut store = Store::open(&dir.path().join("history.sqlite"), paths).unwrap();
         store
@@ -453,5 +469,31 @@ mod tests {
         inbox.update(cx, |inbox, cx| inbox.disconnected(cx));
         cx.run_until_parked();
         assert!(inbox.read_with(cx, |inbox, cx| inbox.terminal(cx)).is_none());
+        inbox.read_with(cx, |inbox, _| {
+            assert!(inbox.selected.is_some());
+            assert!(inbox.rows.iter().all(|row| !row.archived));
+        });
+
+        // A lost connection is not exit evidence. A successful empty snapshot
+        // is, and it removes the selected ended chat from the Inbox view.
+        inbox.update(cx, |inbox, cx| inbox.observe(vec![], cx));
+        cx.run_until_parked();
+        inbox.read_with(cx, |inbox, _| {
+            assert!(inbox.problem.is_none(), "{:?}", inbox.problem);
+            assert!(inbox.selected.is_none());
+            assert!(!inbox.show_archived);
+            assert_eq!(inbox.rows.len(), 1);
+            assert!(inbox.rows[0].archived);
+            assert_eq!(inbox.rows[0].status, Status::Ended);
+        });
+
+        // Viewing archived history must survive subsequent refreshes.
+        inbox.update(cx, |inbox, cx| {
+            inbox.show_archived = true;
+            inbox.selected = Some(inbox.rows[0].id.clone());
+            inbox.observe(vec![], cx);
+        });
+        cx.run_until_parked();
+        assert!(inbox.read_with(cx, |inbox, _| inbox.selected.is_some()));
     }
 }

@@ -621,7 +621,7 @@ impl Space {
             | Action::NewSpace
             | Action::NewPluginPane
             | Action::NewPluginPaneInSpace { .. }
-            | Action::ActivateSpace { .. }
+            | Action::ToggleSpaceCollapsed { .. }
             | Action::NewInSpace { .. }
             | Action::MoveWorkspaceTab { .. }
             | Action::CloseGroup { .. }

@@ -18,16 +18,6 @@ impl SettingsWindow {
         let middle_click_setting = cx.weak_entity();
         let sidebar_middle_click_setting = cx.weak_entity();
         let view_mode_picker_setting = cx.weak_entity();
-        let use_sidebar = cx.listener(move |this, _, _, cx| {
-            if runtime_available {
-                this.set_mode(Mode::Sidebar, cx);
-            }
-        });
-        let use_tabs = cx.listener(move |this, _, _, cx| {
-            if runtime_available {
-                this.set_mode(Mode::Tabs, cx);
-            }
-        });
         let mut fields = vec![
             setting_field(
                 "Terminate sessions on exit",
@@ -46,12 +36,12 @@ impl SettingsWindow {
             ),
             setting_field(
                 "Middle click to close tab",
-                "Close tabs in tabbed mode and pane tab bars with the middle mouse button.",
+                "Close tabs in Tabs view and pane tab bars with the middle mouse button.",
                 Switch::new("middle-click-closes-tab", middle_click_closes_tab.into())
                     .tab_index(0isize)
                     .aria_label("Middle click to close tab")
                     .aria_description(
-                        "Close tabs in tabbed mode and pane tab bars with the middle mouse button.",
+                        "Close tabs in Tabs view and pane tab bars with the middle mouse button.",
                     )
                     .on_click(move |state, _, cx| {
                         let enabled = state.selected();
@@ -62,16 +52,16 @@ impl SettingsWindow {
         ];
         if middle_click_closes_tab {
             fields.push(setting_field(
-                "Middle click to close tab on sidebar",
-                "Also close tabs from sidebar session rows with the middle mouse button.",
+                "Middle click to close tab in Spaces",
+                "Also close tabs from session rows in Spaces view with the middle mouse button.",
                 Switch::new(
                     "middle-click-closes-sidebar-tab",
                     middle_click_closes_sidebar_tab.into(),
                 )
                 .tab_index(0isize)
-                .aria_label("Middle click to close tab on sidebar")
+                .aria_label("Middle click to close tab in Spaces")
                 .aria_description(
-                    "Also close tabs from sidebar session rows with the middle mouse button.",
+                    "Also close tabs from session rows in Spaces view with the middle mouse button.",
                 )
                 .on_click(move |state, _, cx| {
                     let enabled = state.selected();
@@ -83,11 +73,11 @@ impl SettingsWindow {
         }
         fields.push(setting_field(
             "Show view mode picker",
-            "Show the Sidebar/Tabbed toggle in the workspace title bar.",
+            "Show the Tabs/Spaces/Chats picker in the workspace title bar.",
             Switch::new("show-view-mode-picker", show_view_mode_picker.into())
                 .tab_index(0isize)
                 .aria_label("Show view mode picker")
-                .aria_description("Show the Sidebar/Tabbed toggle in the workspace title bar.")
+                .aria_description("Show the Tabs/Spaces/Chats picker in the workspace title bar.")
                 .on_click(move |state, _, cx| {
                     let show = state.selected();
                     let _ = view_mode_picker_setting
@@ -107,24 +97,27 @@ impl SettingsWindow {
                 }),
         ));
         fields.push(setting_field(
-            "Session list",
-            "Choose where sessions appear in the workspace.",
+            "View mode",
+            "Choose how to browse sessions: Tabs, Spaces, or Chats.",
             SegmentedControl::new(
-                "Session list presentation",
+                "Workspace view mode",
                 [
+                    ("presentation-tabs", "Tabs", Mode::Tabs),
+                    ("presentation-sidebar", "Spaces", Mode::Sidebar),
+                    ("presentation-conversations", "Chats", Mode::Inbox),
+                ]
+                .map(|(id, label, target)| {
                     SegmentedControlOption::new(
-                        "presentation-sidebar",
-                        "Sidebar",
-                        mode == Mode::Sidebar,
-                        use_sidebar,
-                    ),
-                    SegmentedControlOption::new(
-                        "presentation-tabs",
-                        "Tabbed",
-                        mode == Mode::Tabs,
-                        use_tabs,
-                    ),
-                ],
+                        id,
+                        label,
+                        mode == target,
+                        cx.listener(move |this, _, _, cx| {
+                            if runtime_available {
+                                this.set_mode(target, cx);
+                            }
+                        }),
+                    )
+                }),
             )
             .disabled(!runtime_available),
         ));

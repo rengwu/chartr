@@ -4,6 +4,7 @@ mod form;
 mod list_sorter;
 mod modal;
 mod popup;
+mod scrolling_list;
 mod selection;
 
 pub use form::{FORM_CONTROL_SIZE, form_button, form_picker, form_row, input_field};
@@ -14,3 +15,7 @@ pub use selection::{
     SegmentedControl, SegmentedControlOption, SelectionRowBackgrounds, selection_list,
     selection_row,
 };
+
+#[cfg(test)]
+pub(crate) use scrolling_list::scrollbar_thumb_colors;
+pub(crate) use scrolling_list::scrolling_list;

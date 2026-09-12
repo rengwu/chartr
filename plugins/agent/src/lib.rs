@@ -902,46 +902,11 @@ fn context_item(icon: IconName, text: impl Into<SharedString>) -> AnyElement {
         .into_any_element()
 }
 
-const GENERIC_AGENT_ICON: &str = "icons/agent_ai_programming.svg";
+use crate::agent_icons::{GENERIC_AGENT_ICON, known_agent_icon};
 
-/// Pick one of the bundled Hugeicons glyphs from a registered display name,
-/// falling back to the executable when the name is intentionally generic.
+/// Infer from the registered name, then the configured executable.
 fn inferred_agent_icon(name: &str, adapter: &str) -> &'static str {
     known_agent_icon(name).or_else(|| known_agent_icon(adapter)).unwrap_or(GENERIC_AGENT_ICON)
-}
-
-fn known_agent_icon(value: &str) -> Option<&'static str> {
-    let value = value.to_ascii_lowercase();
-    let terms: Vec<_> = value
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|term| !term.is_empty())
-        .collect();
-    let has = |aliases: &[&str]| terms.iter().any(|term| aliases.contains(term));
-    let compact: String = value.chars().filter(char::is_ascii_alphanumeric).collect();
-
-    if has(&["claude", "anthropic"]) {
-        Some("icons/agent_claude.svg")
-    } else if has(&["codex", "openai", "chatgpt"]) {
-        Some("icons/agent_chat_gpt.svg")
-    } else if has(&["grok", "xai"]) {
-        Some("icons/agent_grok.svg")
-    } else if compact.contains("opencode") {
-        Some(GENERIC_AGENT_ICON)
-    } else if compact.contains("deepseek") {
-        Some("icons/agent_deepseek.svg")
-    } else if has(&["gemini"]) {
-        Some("icons/agent_google_gemini.svg")
-    } else if has(&["mistral"]) {
-        Some("icons/agent_mistral.svg")
-    } else if has(&["qwen"]) {
-        Some("icons/agent_qwen.svg")
-    } else if has(&["copilot"]) {
-        Some("icons/agent_copilot.svg")
-    } else if has(&["pi"]) {
-        Some("icons/agent_pi.svg")
-    } else {
-        None
-    }
 }
 
 fn valid_agent_name(name: &str) -> bool {
@@ -1333,7 +1298,7 @@ mod tests {
     fn agent_icons_are_inferred_from_names_then_adapters() {
         assert_eq!(inferred_agent_icon("codex-sol-xhigh", "custom"), "icons/agent_chat_gpt.svg");
         assert_eq!(inferred_agent_icon("opus", "/usr/local/bin/claude"), "icons/agent_claude.svg");
-        assert_eq!(inferred_agent_icon("open-code", "custom"), GENERIC_AGENT_ICON);
+        assert_eq!(inferred_agent_icon("open-code", "custom"), "icons/agent_opencode.svg");
         assert_eq!(inferred_agent_icon("pi", "custom"), "icons/agent_pi.svg");
         assert_eq!(inferred_agent_icon("grok-fast", "custom"), "icons/agent_grok.svg");
     }

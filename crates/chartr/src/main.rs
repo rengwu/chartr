@@ -11,6 +11,7 @@ use gpui::{
 use gpui_platform::application;
 
 mod actions;
+mod agent_icons;
 #[path = "../../../plugins/agent/src/lib.rs"]
 mod agent_plugin;
 mod app;

@@ -36,10 +36,15 @@ standalone item and every pane group as one outer entry. Sidebar mode always sho
 all spaces; tabbed mode keeps the active space's outer
 entries beside its name. Selecting a group reveals its Zed-style draggable
 pane-local tab bars, while a standalone has no duplicate inner bar. Switching
-presentation never reparents or recreates an item. In All Spaces, drag a space
-heading to reorder its whole card. The card stays locked to the sidebar's X axis,
-continues tracking vertically outside the sidebar, autoscrolls at the list edges,
-and settles into the closest legal slot at release.
+presentation never reparents or recreates an item. The sidebar presents one
+scrollable tree, including Free sessions. Click a space name or chevron to
+collapse or expand its indented sessions; this state survives relaunch. Empty
+spaces show a muted **Space is empty** message; the heading's plus and surface
+buttons remain available. Drag any space
+heading, including Free sessions, to reorder the whole space. It stays locked
+to the sidebar's X axis, continues tracking vertically outside the sidebar,
+autoscrolls at the list edges, and settles into the closest legal slot at release.
+Space order survives relaunch.
 
 **Conversations** is a third projection: searchable agent history and rich chat,
 with no terminal panes. It preserves the same running terminals and saved layout.
@@ -131,7 +136,7 @@ contract.
 
 In Tabbed mode, the trailing plus button opens a new terminal session directly;
 it has no context menu. A dedicated plugin-pane button beside it opens the plugin
-picker. Pane-local tab bars and sidebar space cards use the same direct plus and
+picker. Pane-local tab bars and sidebar space headings use the same direct plus and
 plugin-pane actions, so the picker opens in that pane or space. Choosing a surface
 replaces the picker in place, so the plugin opens in that same tab. Drag either
 creation button directly onto a pane in its space to create there: the center

@@ -382,10 +382,10 @@ impl<'a> ItemTab<'a> {
             .gap(DynamicSpacing::Base04.rems(cx))
             .rounded_full()
             .border_1()
-            .border_color(if hovered {
+            .border_color(if self.selected {
+                colors.border_selected
+            } else if hovered {
                 colors.border_variant
-            } else if self.selected {
-                colors.border_variant.opacity(0.5)
             } else {
                 transparent_black()
             })
@@ -427,8 +427,8 @@ pub struct Entry {
     pub pane: PaneId,
     pub index: usize,
     pub title: String,
-    /// A plugin's package-owned Hugeicons SVG, or the embedded plugin-launcher
-    /// icon. Sessions and groups use their live status indicator instead.
+    /// A provider glyph for recognized sessions, a plugin's package-owned SVG,
+    /// or the embedded plugin-launcher icon. Groups have no provider icon.
     pub icon_path: Option<SharedString>,
     /// Herdr's agent state. Plugins and grouped outer tabs have no aggregate
     /// session state of their own.
@@ -468,9 +468,7 @@ pub(crate) struct Activity {
 pub struct SpaceEntries {
     pub id: EntityId,
     pub name: String,
-    /// The synthetic folderless space is a fixed sidebar section rather than
-    /// one of the sortable space cards.
-    pub is_free: bool,
+    pub collapsed: bool,
     pub active: bool,
     pub removable: bool,
     pub available: bool,
@@ -480,7 +478,7 @@ pub struct SpaceEntries {
 /// What the user did to the chrome.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
-    ActivateSpace { space: EntityId },
+    ToggleSpaceCollapsed { space: EntityId },
     Select { space: Option<EntityId>, item: ItemId },
     Close { space: Option<EntityId>, item: ItemId },
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
@@ -631,7 +629,7 @@ pub fn item_indicator(
     grouped: bool,
     space: &str,
     key: ItemId,
-    cx: &App,
+    _cx: &App,
 ) -> AnyElement {
     let slot = || div().flex_none().size(px(12.)).flex().items_center().justify_center();
     let icon = |name, color| Icon::new(name).size(IconSize::XSmall).color(color);
@@ -669,11 +667,7 @@ pub fn item_indicator(
                 ))
                 .into_any_element()
         }
-        Some(SessionStatus::Idle | SessionStatus::Unknown) => slot()
-            .child(
-                div().size(px(5.)).rounded_full().bg(cx.theme().colors().text_muted.opacity(0.28)),
-            )
-            .into_any_element(),
+        Some(SessionStatus::Idle | SessionStatus::Unknown) => gpui::Empty.into_any_element(),
         None => match icon_path {
             Some(path) => {
                 let icon = if path.starts_with("icons/") {

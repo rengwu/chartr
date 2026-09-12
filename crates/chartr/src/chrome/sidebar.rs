@@ -1,14 +1,7 @@
-//! Sidebar mode: standalone tabs and pane groups down the left.
-//!
-//! The mode for many long-lived sessions. There is room here for the things a
-//! tab cannot hold — the agent's name under the title, and a close button that
-//! is not fighting the title for space — so this chrome shows them.
+//! Sidebar mode: collapsible spaces with indented, sortable session rows.
 
-use gpui::{
-    Bounds, BoxShadow, ContentMask, EntityId, MouseButton, Rems, Role, canvas, deferred, fill,
-    linear_color_stop, linear_gradient, point, px, relative, size, transparent_black,
-};
-use ui::{IconButtonShape, ScrollAxes, Scrollbars, Tooltip, WithScrollbar, prelude::*};
+use gpui::{EntityId, MouseButton, Rems, Role, deferred, px, transparent_black};
+use ui::{IconButtonShape, Tooltip, prelude::*};
 
 use super::Emit;
 use super::tab_sorter::{SortableTab, SortableTabList};
@@ -22,19 +15,9 @@ use crate::components::{ContextMenu, SelectionRowBackgrounds, selection_list, se
 use crate::fonts::{UI_LABEL_DEFAULT, UI_LABEL_SMALL};
 use crate::settings::{SettingsStore, sidebar_theme_colors};
 
-/// One shared value for layout and FLIP arithmetic. `gap_2` is half a rem;
-/// spelling that out keeps card travel equal to the distance layout actually
-/// moved it.
-pub(crate) const CARD_GAP: Rems = Rems(0.5);
+/// Keep the compact space gap shared by layout and drag-sort animation.
+pub(crate) const CARD_GAP: Rems = Rems(0.125);
 pub type SpaceSorter = crate::components::ListSorter<EntityId>;
-
-pub(super) fn scrollbar_thumb_colors(colors: &theme::ThemeColors) -> [gpui::Hsla; 3] {
-    [
-        colors.panel_background.blend(colors.text.alpha(0.7)).alpha(1.),
-        colors.text.alpha(1.),
-        colors.text.alpha(1.),
-    ]
-}
 
 pub fn render(
     spaces: &[SpaceEntries],
@@ -44,15 +27,13 @@ pub fn render(
     cx: &mut App,
 ) -> impl IntoElement {
     let colors = cx.theme().colors();
-    let [thumb, hovered_thumb, active_thumb] = scrollbar_thumb_colors(colors);
     let sidebar_colors = sidebar_theme_colors(cx.theme());
     let session_backgrounds = SelectionRowBackgrounds {
         hover: sidebar_colors.session_hover,
         selected: sidebar_colors.session_active,
     };
     let mut cards = Vec::with_capacity(spaces.len());
-    let mut free_sessions = None;
-    let movable_space_count = spaces.iter().filter(|space| !space.is_free).count();
+    let movable_space_count = spaces.len();
     let add_space = on.clone();
     let spaces_header = h_flex()
         .id("spaces-header")
@@ -62,7 +43,7 @@ pub fn render(
         .justify_between()
         .child(Label::new("Spaces").size(UI_LABEL_SMALL).color(Color::Muted))
         .child(
-            IconButton::new("new-space", IconName::FolderAdd)
+            IconButton::new("new-space", IconName::Plus)
                 .shape(IconButtonShape::Square)
                 .size(ButtonSize::None)
                 .icon_size(IconSize::Small)
@@ -71,14 +52,12 @@ pub fn render(
                 .tooltip(Tooltip::text("New Space"))
                 .on_click(move |_, window, cx| add_space(Action::NewSpace, window, cx)),
         );
-    let scroll_handle = sorter.scroll_handle().clone();
-    let scroll_background = colors.panel_background;
     let mut index = 0;
     let now = cx.background_executor().now();
     let reduce_motion = cx.reduce_motion();
     for (space_index, space) in spaces.iter().enumerate() {
         let mut contents = Vec::with_capacity(space.entries.len() + 1);
-        let activate = on.clone();
+        let toggle = on.clone();
         let add = on.clone();
         let add_plugin = on.clone();
         let actions = on.clone();
@@ -90,23 +69,51 @@ pub fn render(
         let begin_drag = on.clone();
         let dragging = cx.has_active_drag();
         let title_bar = h_flex()
-            .id(("space-drag", space_index))
+            .id(format!("space-heading-{space_id:?}"))
             .group("space-heading")
             .w_full()
             .min_w_0()
             .pl_1()
-            // Keep card actions clear of the overlaid scrollbar's hit target.
-            .when(!space.is_free, |heading| heading.pr_2())
-            .pt_0()
-            .pb_1()
+            // Keep heading actions clear of the overlaid scrollbar's hit target.
+            .pr_2()
+            .py_1()
+            .rounded_sm()
+            .role(Role::TreeItem)
+            .aria_label(space.name.clone())
+            .aria_expanded(!space.collapsed)
+            .hover(|style| style.bg(session_backgrounds.hover))
+            .on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                toggle(Action::ToggleSpaceCollapsed { space: space_id }, window, cx)
+            })
             .justify_between()
-            .child(h_flex().min_w_0().flex_1().child(
-                Label::new(space.name.clone()).size(UI_LABEL_SMALL).color(Color::Muted).truncate(),
-            ))
             .child(
                 h_flex()
+                    .min_w_0()
+                    .flex_1()
+                    .gap_1()
+                    .child(
+                        Icon::new(if space.collapsed {
+                            IconName::ChevronRight
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .size(IconSize::Small)
+                        .color(Color::Muted),
+                    )
+                    .child(
+                        Label::new(space.name.clone())
+                            .size(UI_LABEL_DEFAULT)
+                            .weight(gpui::FontWeight::MEDIUM)
+                            .truncate(),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .id(format!("space-heading-actions-{space_id:?}"))
                     .gap_px()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(|_, _, cx| cx.stop_propagation())
                     .child(super::new_item_drag_handle(
                         ("new-in-space", space_index),
                         Some(space_id),
@@ -131,7 +138,7 @@ pub fn render(
                         }),
                     )),
             )
-            .when(!space.is_free && movable_space_count > 1, |handle| {
+            .when(movable_space_count > 1, |handle| {
                 handle
                     .when(!dragging, |handle| handle.cursor_grab())
                     .when(dragging, |handle| handle.cursor_grabbing())
@@ -182,33 +189,33 @@ pub fn render(
             title_bar.into_any_element()
         };
         contents.push(title_bar);
-        let mut tabs = Vec::with_capacity(space.entries.len());
-        for (target_index, entry) in space.entries.iter().enumerate() {
-            let dragged = DraggedItem {
-                space: entry.space_key.clone(),
-                tab: entry.tab,
-                pane: entry.pane,
-                index: target_index,
-                item: entry.key,
-                top_level: true,
-                grouped: entry.grouped,
-            };
-            let row = row(
-                index,
-                target_index,
-                entry,
-                space.active && entry.selected,
-                entry.grouped,
-                session_backgrounds,
-                on.clone(),
-                cx,
-            );
-            tabs.push(SortableTab::new(dragged, entry.selected, move |_, _| row));
-            index += 1;
-        }
-        let move_tab = on.clone();
-        contents.push(
-            SortableTabList::new(
+        if !space.collapsed {
+            let mut tabs = Vec::with_capacity(space.entries.len());
+            for (target_index, entry) in space.entries.iter().enumerate() {
+                let dragged = DraggedItem {
+                    space: entry.space_key.clone(),
+                    tab: entry.tab,
+                    pane: entry.pane,
+                    index: target_index,
+                    item: entry.key,
+                    top_level: true,
+                    grouped: entry.grouped,
+                };
+                let row = row(
+                    index,
+                    target_index,
+                    entry,
+                    space.active && entry.selected,
+                    entry.grouped,
+                    session_backgrounds,
+                    on.clone(),
+                    cx,
+                );
+                tabs.push(SortableTab::new(dragged, entry.selected, move |_, _| row));
+                index += 1;
+            }
+            let move_tab = on.clone();
+            let sessions = SortableTabList::new(
                 format!("sidebar-tab-sorter-{space_id:?}"),
                 v_flex().id(format!("sidebar-tab-list-{space_id:?}")).w_full().flex_none(),
                 SortAxis::Vertical,
@@ -225,38 +232,40 @@ pub fn render(
                         cx,
                     );
                 },
-            )
-            .into_any_element(),
-        );
-
-        if space.is_free {
-            // Free sessions is a permanent footer, not a space card. Its top
-            // border belongs to the sidebar itself and remains visible while
-            // the folder-backed cards above it scroll independently.
-            free_sessions = Some(
-                selection_list()
-                    .id("free-sessions")
+            );
+            contents.push(
+                v_flex()
+                    // Rows fill the tree; only their contents are indented.
+                    .relative()
                     .w_full()
-                    .flex_none()
-                    .px_1p5()
-                    .py_1()
-                    .border_t_1()
-                    .border_color(colors.border)
-                    .cursor_pointer()
-                    .on_click(move |_, window, cx| {
-                        activate(Action::ActivateSpace { space: space_id }, window, cx)
+                    .when(space.entries.is_empty(), |tree| {
+                        tree.child(
+                            div().ml(px(9.)).child(
+                                div().px_1p5().py_1().child(
+                                    Label::new("Space is empty")
+                                        .size(UI_LABEL_SMALL)
+                                        .color(Color::Muted)
+                                        .truncate(),
+                                ),
+                            ),
+                        )
                     })
-                    .children(contents)
+                    .when(!space.entries.is_empty(), |tree| tree.child(sessions))
+                    // A passive guide paints over the full-width row backgrounds.
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(8.))
+                            .top_0()
+                            .bottom_0()
+                            .w(px(1.))
+                            .bg(colors.border_variant),
+                    )
                     .into_any_element(),
             );
-            continue;
         }
 
-        // A space and its sessions are one object in the sidebar. Keep the
-        // plate restrained so it separates neighbouring spaces without
-        // turning every session into a nested card; the stronger row fill is
-        // then free to keep meaning "selected session". A transparent resting
-        // border reserves the active-space ring without changing geometry.
+        // Move the entire expanded or collapsed tree with its heading.
         let held = sorter.holds(space.id);
         let offset = sorter.offset_of(space.id, now, reduce_motion);
         let card = selection_list()
@@ -264,21 +273,9 @@ pub fn render(
             .relative()
             .w_full()
             .flex_none()
-            .cursor_pointer()
-            .p_1()
-            .rounded_md()
-            .border_1()
-            .border_color(if space.active { colors.border_selected } else { transparent_black() })
-            .bg(if space.active {
-                sidebar_colors.card_active
-            } else {
-                sidebar_colors.card_inactive
-            })
-            .when(held, |card| card.border_color(colors.drop_target_border).shadow_md())
-            .when(offset != px(0.), |card| card.top(offset))
-            .on_click(move |_, window, cx| {
-                activate(Action::ActivateSpace { space: space_id }, window, cx)
-            })
+            .rounded_sm()
+            .when(held, |tree| tree.bg(colors.panel_background).shadow_md())
+            .when(offset != px(0.), |tree| tree.top(offset))
             .children(contents);
         cards.push(
             div()
@@ -303,80 +300,13 @@ pub fn render(
         .h_full()
         .bg(colors.panel_background)
         .child(spaces_header)
-        .child(
-            v_flex()
-                .relative()
-                .flex_1()
-                .min_h_0()
-                .child(
-                    v_flex()
-                        .id("sessions")
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .track_scroll(sorter.scroll_handle())
-                        .pb_2()
-                        .px_1p5()
-                        .gap(CARD_GAP)
-                        .children(cards),
-                )
-                .child(
-                    // Read the clamped offset at paint time. This passive overlay
-                    // adds no hitbox, layout shift, timer, or scroll subscription.
-                    canvas(
-                        |_, _, _| {},
-                        move |bounds, _, window, _| {
-                            let strength = (-scroll_handle.offset().y / px(12.)).clamp(0., 1.);
-                            if strength == 0. {
-                                return;
-                            }
-                            window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                                // A small, theme-colored blurred veil gives the
-                                // edge a frosted appearance. GPUI has no element
-                                // backdrop blur; this needs no offscreen capture.
-                                let veil = Bounds::new(
-                                    point(bounds.left(), bounds.top() - px(8.)),
-                                    size(bounds.size.width, px(8.)),
-                                );
-                                window.paint_drop_shadows(
-                                    veil,
-                                    Default::default(),
-                                    &[BoxShadow::new(
-                                        px(0.),
-                                        px(4.),
-                                        scroll_background.opacity(0.35 * strength),
-                                    )
-                                    .blur_radius(px(12.))],
-                                );
-                                window.paint_quad(fill(
-                                    bounds,
-                                    linear_gradient(
-                                        180.,
-                                        linear_color_stop(scroll_background.opacity(strength), 0.),
-                                        linear_color_stop(scroll_background.opacity(0.), 1.),
-                                    ),
-                                ));
-                            });
-                        },
-                    )
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w_full()
-                    .h(px(28.))
-                    .max_h(relative(1.)),
-                )
-                .custom_scrollbars(
-                    Scrollbars::on_hover(ScrollAxes::Vertical)
-                        .id("spaces-scrollbar")
-                        .thumb_colors(thumb, hovered_thumb, active_thumb)
-                        .tracked_scroll_handle(sorter.scroll_handle())
-                        .notify_content(),
-                    window,
-                    cx,
-                ),
-        )
-        .children(free_sessions)
+        .child(crate::components::scrolling_list(
+            "spaces-scrollbar",
+            v_flex().id("sessions").pb_2().px_1p5().gap(CARD_GAP).children(cards),
+            sorter.scroll_handle(),
+            window,
+            cx,
+        ))
 }
 
 fn row(
@@ -438,6 +368,13 @@ fn row(
         .group("session")
         .w_full()
         .flex_none()
+        .rounded_sm()
+        .border_1()
+        .border_color(if selected {
+            cx.theme().colors().border_selected
+        } else {
+            transparent_black()
+        })
         // Like both earlier chartr clients, sorting stays within the card/space
         // where the drag began. Pane-local tab drags are rejected as well: this
         // surface only reorders top-level workspace tabs.
@@ -461,15 +398,28 @@ fn row(
                 .on_click(move |_, window, cx| {
                     on(Action::Select { space: Some(space), item: select }, window, cx)
                 })
-                .start_slot(item_indicator(
-                    entry.activity(),
-                    entry.icon_path.clone(),
+                .start_slot(div().ml(px(9.)).child(item_indicator(
+                    super::Activity::default(),
+                    entry.icon_path.clone().or_else(|| Some("icons/tool_terminal.svg".into())),
                     entry.grouped,
                     &entry.space_key,
                     entry.key,
                     cx,
-                ))
+                )))
                 .child(Label::new(entry.title.clone()).size(UI_LABEL_DEFAULT).truncate())
+                .when(
+                    entry.status.is_some() || entry.ended || entry.bell || entry.process_running,
+                    |row| {
+                        row.child(item_indicator(
+                            entry.activity(),
+                            None,
+                            false,
+                            &entry.space_key,
+                            entry.key,
+                            cx,
+                        ))
+                    },
+                )
                 .end_slot(end_slot),
         )
         .when(middle_click_closes_tab, |row| {

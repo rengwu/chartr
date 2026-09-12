@@ -36,6 +36,9 @@ const ICONS: &[(&str, &str)] = &[
     ("icons/agent_mistral.svg", include_str!("../assets/icons/agent_mistral.svg")),
     ("icons/agent_pi.svg", include_str!("../assets/icons/agent_pi.svg")),
     ("icons/agent_qwen.svg", include_str!("../assets/icons/agent_qwen.svg")),
+    ("icons/agent_antigravity.svg", include_str!("../assets/icons/agent_antigravity.svg")),
+    ("icons/agent_kimi.svg", include_str!("../assets/icons/agent_kimi.svg")),
+    ("icons/agent_opencode.svg", include_str!("../assets/icons/agent_opencode.svg")),
 ];
 
 impl AssetSource for Assets {
@@ -81,6 +84,9 @@ mod tests {
             "icons/agent_mistral.svg",
             "icons/agent_pi.svg",
             "icons/agent_qwen.svg",
+            "icons/agent_antigravity.svg",
+            "icons/agent_kimi.svg",
+            "icons/agent_opencode.svg",
         ] {
             assert!(Assets.load(path).expect("load").is_some(), "missing {path}");
         }

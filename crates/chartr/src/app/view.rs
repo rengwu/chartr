@@ -18,7 +18,8 @@ impl Render for WorkspaceWindow {
         let (chrome_visibility, mode_animating) =
             self.mode_transition.advance(self.mode, now, cx.reduce_motion());
         let (sidebar_width, sidebar_animating) = self.sidebar.advance(now, cx.reduce_motion());
-        if mode_animating || sidebar_animating {
+        let (sidebar_position, sidebar_switching) = self.mode_transition.sidebar_position(now);
+        if mode_animating || sidebar_animating || sidebar_switching {
             window.request_animation_frame();
         }
         // The pane keeps sliding, but each terminal reflows only once, after
@@ -54,11 +55,25 @@ impl Render for WorkspaceWindow {
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
         let title_controls = cfg!(target_os = "macos").then(|| {
             (
-                self.visible_space_switcher(window, cx),
-                self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+                self.visible_space_switcher(chrome_visibility.tabs, window, cx),
+                self.chrome_end_controls(
+                    emit.clone(),
+                    error_notices.clone(),
+                    window.viewport_size().width
+                        - px(window_chrome::TITLE_CONTROLS_LEFT
+                            + window_chrome::TITLE_CONTROLS_RIGHT)
+                        - if chrome_visibility.tabs > 0. {
+                            px(window_chrome::SPACE_SWITCHER_MAX_WIDTH) + window.rem_size() * 0.25
+                        } else {
+                            px(0.)
+                        },
+                    window,
+                    cx,
+                ),
             )
         });
-        let title_bar = self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
+        let (title_bar, title_bar_foreground) =
+            self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
 
         let workspace = v_flex()
             .id("mode-workspace")
@@ -82,24 +97,29 @@ impl Render for WorkspaceWindow {
             });
 
         let tab_height = chrome::tabs::height(cx);
-        let reveal_edge_height = px(14.);
-        let reveal_edge_strength =
-            (tab_height * (1. - chrome_visibility.tabs) / reveal_edge_height).clamp(0., 1.);
-        let reveal_edge_color = cx.theme().colors().panel_background;
         // Keep one layout and one workspace subtree throughout the transition.
-        // Fixed-size surfaces slide within shrinking slots, so labels never squash.
+        // Fixed-size surfaces slide as their layout slots shrink, so labels never
+        // squash. Tabs overflow upward beneath the title bar gradient and controls.
         let tab_slot = div()
             .id("mode-tab-slot")
             .relative()
             .w_full()
             .h(tab_height * chrome_visibility.tabs)
             .flex_none()
-            .overflow_hidden()
             .when(chrome_visibility.tabs > 0., |slot| {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
                     (
-                        self.visible_space_switcher(window, cx),
-                        self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+                        self.visible_space_switcher(1., window, cx),
+                        self.chrome_end_controls(
+                            emit.clone(),
+                            error_notices.clone(),
+                            window.viewport_size().width
+                                - px(window_chrome::SPACE_SWITCHER_MAX_WIDTH)
+                                - chrome::ItemTab::min_width(true, cx)
+                                - window.rem_size() * 5.,
+                            window,
+                            cx,
+                        ),
                     )
                 });
                 slot.child(
@@ -109,6 +129,9 @@ impl Render for WorkspaceWindow {
                         .left_0()
                         .w_full()
                         .h(tab_height)
+                        // Leave a visible trail after the quick initial slide,
+                        // then dissolve it completely before removing the strip.
+                        .opacity(chrome_visibility.tabs.sqrt())
                         .child(chrome::tabs::render(
                             chrome_entries,
                             controls,
@@ -117,35 +140,13 @@ impl Render for WorkspaceWindow {
                             emit.clone(),
                             window,
                             cx,
-                        )),
-                )
-            })
-            .when(chrome_visibility.tabs > 0. && reveal_edge_strength > 0., |slot| {
-                // A short, passive veil softens the actual clipping edge beneath
-                // the title bar. Let it recede as the strip settles into view so
-                // the resting tabs stay crisp, without fading the whole surface.
-                slot.child(
-                    gpui::canvas(
-                        |_, _, _| {},
-                        move |bounds, _, window, _| {
-                            window.paint_quad(gpui::fill(
-                                bounds,
-                                gpui::linear_gradient(
-                                    180.,
-                                    gpui::linear_color_stop(
-                                        reveal_edge_color.opacity(reveal_edge_strength),
-                                        0.,
-                                    ),
-                                    gpui::linear_color_stop(reveal_edge_color.opacity(0.), 1.),
-                                ),
-                            ));
-                        },
-                    )
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w_full()
-                    .h(reveal_edge_height),
+                        ))
+                        .when(self.mode != Mode::Tabs, |strip| {
+                            // The outgoing strip is visual only. Cover its full
+                            // moving bounds to block clicks, drags, hover and scroll
+                            // immediately, while title-bar controls stay above it.
+                            strip.child(div().absolute().inset_0().occlude())
+                        }),
                 )
             });
         let sidebar_slot = div()
@@ -159,22 +160,64 @@ impl Render for WorkspaceWindow {
             .when(chrome_visibility.sidebar > 0., |slot| {
                 let controls = (!cfg!(target_os = "macos")).then(|| {
                     (
-                        self.visible_space_switcher(window, cx),
-                        self.chrome_end_controls(emit.clone(), error_notices.clone(), cx),
+                        gpui::Empty.into_any_element(),
+                        self.chrome_end_controls(
+                            emit.clone(),
+                            error_notices.clone(),
+                            px(sidebar_width) - window.rem_size(),
+                            window,
+                            cx,
+                        ),
                     )
                 });
-                let contents = if self.mode_transition.sidebar_mode() == Mode::Inbox {
-                    self.conversations.update(cx, |inbox, cx| inbox.render_sidebar(cx))
-                } else {
-                    chrome::sidebar::render(
-                        &sidebar_spaces,
-                        emit.clone(),
-                        &self.space_sorter,
-                        window,
-                        cx,
-                    )
-                    .into_any_element()
-                };
+                // Both pages keep their full width while sliding through the
+                // same clipped viewport. Spaces is left of Chats; controls and
+                // the resize handle stay fixed outside this moving content.
+                let sidebar_page_stride = sidebar_width + 32.;
+                let contents = div()
+                    .relative()
+                    .size_full()
+                    .overflow_hidden()
+                    .when(sidebar_position < 1., |pages| {
+                        pages.child(
+                            div()
+                                .id("sidebar-spaces-page")
+                                .absolute()
+                                .top_0()
+                                .left(px(-sidebar_page_stride * sidebar_position))
+                                .w(px(sidebar_width))
+                                .h_full()
+                                .child(chrome::sidebar::render(
+                                    &sidebar_spaces,
+                                    emit.clone(),
+                                    &self.space_sorter,
+                                    window,
+                                    cx,
+                                ))
+                                .when(self.mode != Mode::Sidebar, |page| {
+                                    page.child(div().absolute().inset_0().occlude())
+                                }),
+                        )
+                    })
+                    .when(sidebar_position > 0., |pages| {
+                        pages.child(
+                            div()
+                                .id("sidebar-chats-page")
+                                .absolute()
+                                .top_0()
+                                .left(px(sidebar_page_stride * (1. - sidebar_position)))
+                                .w(px(sidebar_width))
+                                .h_full()
+                                .child(
+                                    self.conversations
+                                        .update(cx, |inbox, cx| inbox.render_sidebar(window, cx)),
+                                )
+                                .when(self.mode != Mode::Inbox, |page| {
+                                    page.child(div().absolute().inset_0().occlude())
+                                }),
+                        )
+                    })
+                    .into_any_element();
                 slot.child(
                     div()
                         .absolute()
@@ -228,12 +271,7 @@ impl Render for WorkspaceWindow {
             .on_drag_move::<chrome::DraggedSpace>(cx.listener(
                 |this, event: &DragMoveEvent<chrome::DraggedSpace>, window, cx| {
                     let dragged = event.drag(cx).0;
-                    let order = this
-                        .spaces
-                        .iter()
-                        .filter(|space| space.read(cx).kind() != SpaceKind::AdHoc)
-                        .map(|space| space.entity_id())
-                        .collect();
+                    let order = this.spaces.iter().map(|space| space.entity_id()).collect();
                     if this.space_sorter.drag_move(
                         dragged,
                         order,
@@ -378,6 +416,7 @@ impl Render for WorkspaceWindow {
             .child(title_bar)
             .child(body)
             .when(self.settings.resolved().show_status_bar, |view| view.child(self.status_bar(cx)))
+            .child(title_bar_foreground)
             .children(rename)
     }
 }
