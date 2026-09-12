@@ -3,9 +3,8 @@ mod launcher;
 mod scope;
 pub use scope::SpaceChoice;
 mod view;
-pub use view::init;
 
-use crate::text_input::{InputEvent, TextInput};
+use crate::text_input::TextInput;
 use chartr_conversations::{Conversation, Observation, ProviderPaths, Status, Store};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable};
 use std::sync::{Arc, Mutex};
@@ -20,8 +19,6 @@ pub struct Conversations {
     store: Option<Arc<Mutex<Store>>>,
     rows: Vec<Conversation>,
     selected: Option<String>,
-    search: Entity<TextInput>,
-    query: String,
     title_input: Entity<TextInput>,
     renaming: Option<String>,
     show_archived: bool,
@@ -72,12 +69,6 @@ impl Conversations {
         loaded: anyhow::Result<Store>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let search = cx.new(|cx| TextInput::new("Search…", cx));
-        cx.subscribe(&search, |this, input, _: &InputEvent, cx| {
-            this.query = input.read(cx).text().to_owned();
-            cx.notify();
-        })
-        .detach();
         let (store, rows, problem) = match loaded {
             Ok(store) => {
                 let rows = store.list();
@@ -92,8 +83,6 @@ impl Conversations {
             store,
             rows,
             selected,
-            search,
-            query: String::new(),
             show_archived: false,
             connected: false,
             refreshing: false,
@@ -168,8 +157,6 @@ impl Conversations {
             self.selected = Some(row.id.clone());
             self.focus_terminal = true;
             self.show_archived = row.archived;
-            self.query.clear();
-            self.search.update(cx, |input, cx| input.clear(cx));
             cx.emit(Event::SelectionChanged);
         } else {
             self.pending_runtime = Some(runtime.to_owned());
@@ -360,7 +347,6 @@ mod tests {
             ::settings::init(cx);
             theme::init(theme::LoadThemes::JustBase, cx);
             crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
-            view::init(cx);
         });
         let dir = tempfile::tempdir().unwrap();
         let paths = ProviderPaths {
@@ -458,12 +444,16 @@ mod tests {
             sidebar_pane::INBOX_MIN_WIDTH,
         );
 
-        // Search still routes from the terminal to the separately mounted sidebar.
-        inbox.update_in(cx, |inbox, window, cx| inbox.focus_handle(cx).focus(window, cx));
-        cx.simulate_keystrokes(if cfg!(target_os = "macos") { "cmd-f" } else { "ctrl-f" });
-        inbox.update_in(cx, |inbox, window, cx| {
-            assert!(inbox.search.focus_handle(cx).is_focused(window));
-        });
+        // Both history tabs remain usable at the minimum width and leave the
+        // selected session's terminal mounted while changing the list filter.
+        cx.simulate_click(point(px(90.), px(12.)), Modifiers::none());
+        cx.run_until_parked();
+        assert!(inbox.read_with(cx, |inbox, _| inbox.show_archived));
+        assert_eq!(inbox.read_with(cx, |inbox, cx| inbox.terminal(cx)), Some(terminal.clone()));
+        cx.simulate_click(point(px(30.), px(12.)), Modifiers::none());
+        cx.run_until_parked();
+        assert!(!inbox.read_with(cx, |inbox, _| inbox.show_archived));
+
         inbox.update(cx, |inbox, cx| inbox.disconnected(cx));
         cx.run_until_parked();
         assert!(inbox.read_with(cx, |inbox, cx| inbox.terminal(cx)).is_none());

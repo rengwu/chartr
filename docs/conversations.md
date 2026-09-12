@@ -5,8 +5,9 @@ Choose **Inbox** in the window’s view selector or command palette
 preferences migrate to Inbox, with the same selected history entry and space
 scope. Existing custom `workspace.conversation_mode` shortcuts remain valid.
 
-Inbox keeps a searchable history sidebar, the agent launcher, and a header with
-the conversation title, owning space, rename, and archive actions. The body is
+Inbox keeps a history sidebar with **Inbox** and **Archive** tabs, the agent
+launcher, and a header with the conversation title, owning space, rename, and
+archive actions. The body is
 the session’s original terminal, including its input, scrollback, selection,
 clipboard, terminal search, and interactive agent UI. There is no separate chat
 renderer, composer, prompt injection, or chat approval interface.
@@ -28,23 +29,24 @@ mobile status until control returns to desktop.
 
 Inbox uses a simple chat list, with newest conversations first. **All spaces**
 mixes conversations from every space, including Free sessions, in that same
-recency order. Choosing a single space filters the list. Each row shows its
-agent adapter (such as **claude** or **codex**) beneath the title; All spaces also
-shows the owning space on that line. Search matches conversation details and
-space names. All spaces is remembered across restart and view changes without
-replacing the active terminal space.
+recency order. Choosing a single space filters the list. Each compact row shows
+its status, title, and timestamp on one line. Hover for the full title, agent
+adapter, owning space, and working directory. All spaces is remembered across
+restart and view changes without replacing the active terminal space.
 
 Ordinary shells, lazygit, and other tools keep running without becoming history
 entries. Archiving a conversation, including with `Cmd/Ctrl+W` in Inbox, keeps
-its process running. The sidebar archive button switches between recent and
-archived entries; the header’s archive button restores an archived entry.
+its process running. The **Inbox** tab shows **Recent chats** with a **+** launcher;
+the **Archive** tab shows **Archived chats** without the launcher. The conversation
+header’s archive button restores an archived entry.
 Pane move/join/close commands do not affect hidden terminal panes. Explicitly
 creating a terminal or plugin returns to the previous terminal layout.
 
 ## Launching agents
 
-**Inbox → +** opens the compact **New conversation** panel. Choose a registered
-**Agent** and press **Launch** to start it directly in a new terminal in Inbox.
+The **+** beside **Recent chats** opens the compact **New conversation** panel.
+Choose a registered **Agent** and press **Launch** to start it directly in a new
+terminal in Inbox.
 There is no opening-message step: type in the agent’s own terminal. In All
 spaces, the panel also offers a **Space** picker; in a single space, it uses
 that space. **Manage agents…** opens the Agent registry settings.

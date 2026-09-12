@@ -49,6 +49,7 @@ pub struct SegmentedControl {
     label: SharedString,
     options: Vec<SegmentedControlOption>,
     disabled: bool,
+    full_width: bool,
 }
 
 impl SegmentedControl {
@@ -56,11 +57,21 @@ impl SegmentedControl {
         label: impl Into<SharedString>,
         options: impl IntoIterator<Item = SegmentedControlOption>,
     ) -> Self {
-        Self { label: label.into(), options: options.into_iter().collect(), disabled: false }
+        Self {
+            label: label.into(),
+            options: options.into_iter().collect(),
+            disabled: false,
+            full_width: false,
+        }
     }
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    pub fn full_width(mut self) -> Self {
+        self.full_width = true;
         self
     }
 }
@@ -79,15 +90,18 @@ impl RenderOnce for SegmentedControl {
             .overflow_hidden()
             .border_1()
             .border_color(border)
+            .when(self.full_width, |control| control.w_full())
             .when(self.disabled, |control| control.opacity(0.5))
             .children(self.options.into_iter().enumerate().map(|(index, option)| {
                 let selected = option.selected;
                 h_flex()
                     .id(option.id)
                     .role(Role::RadioButton)
+                    .aria_label(option.label.clone())
                     .aria_selected(selected)
                     .h(ButtonSize::Default.rems())
                     .px_3()
+                    .when(self.full_width, |item| item.flex_1().min_w_0().justify_center())
                     .when(index + 1 < option_count, |item| item.border_r_1().border_color(border))
                     .when(selected, |item| item.bg(colors.ghost_element_selected))
                     .when(!selected && !self.disabled, |item| {
@@ -99,12 +113,18 @@ impl RenderOnce for SegmentedControl {
                         |item| item.cursor_not_allowed(),
                         |item| item.cursor_pointer().on_click(option.on_click),
                     )
-                    .child(Label::new(option.label).size(LabelSize::Small).when(
-                        !selected,
-                        |label| {
-                            label.color(if self.disabled { Color::Disabled } else { Color::Muted })
-                        },
-                    ))
+                    .child(
+                        Label::new(option.label)
+                            .size(LabelSize::Small)
+                            .when(self.full_width, |label| label.truncate())
+                            .when(!selected, |label| {
+                                label.color(if self.disabled {
+                                    Color::Disabled
+                                } else {
+                                    Color::Muted
+                                })
+                            }),
+                    )
             }))
     }
 }
