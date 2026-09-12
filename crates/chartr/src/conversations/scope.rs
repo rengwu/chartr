@@ -9,41 +9,11 @@ pub struct SpaceChoice {
 }
 
 impl Conversations {
-    pub fn set_spaces(
-        &mut self,
-        spaces: Vec<SpaceChoice>,
-        all: bool,
-        active: Option<String>,
-    ) -> bool {
-        let scope = if all { None } else { Some(active.clone().unwrap_or_default()) };
-        let changed = self.scope != scope;
-        let notify = changed || self.spaces != spaces || self.active_space != active;
+    pub fn set_spaces(&mut self, spaces: Vec<SpaceChoice>, active: Option<String>) -> bool {
+        let changed = self.spaces != spaces || self.active_space != active;
         self.spaces = spaces;
         self.active_space = active;
-        self.scope = scope;
-        if changed {
-            self.clear_terminal();
-            self.pending_runtime = None;
-            self.new_agent = None;
-            self.new_space = None;
-            self.launch_runtime = None;
-            if self.store.is_some() {
-                self.problem = None;
-            }
-            if !self
-                .selected
-                .as_ref()
-                .and_then(|id| self.rows.iter().find(|r| &r.id == id))
-                .is_some_and(|row| self.in_scope(row))
-            {
-                self.selected = None;
-            }
-        }
-        notify
-    }
-
-    pub(super) fn in_scope(&self, row: &Conversation) -> bool {
-        self.scope.as_ref().is_none_or(|scope| owner_key(row, &self.spaces) == *scope)
+        changed
     }
 
     pub(super) fn space_label(&self, row: &Conversation) -> String {

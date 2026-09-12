@@ -32,7 +32,6 @@ pub struct Conversations {
     new_agent: Option<String>,
     new_space: Option<String>,
     spaces: Vec<SpaceChoice>,
-    scope: Option<String>,
     active_space: Option<String>,
     last_launch_agent: Option<String>,
     last_launch_space: Option<String>,
@@ -94,7 +93,6 @@ impl Conversations {
             new_agent: None,
             new_space: None,
             spaces: Vec::new(),
-            scope: None,
             active_space: None,
             last_launch_agent: None,
             last_launch_space: None,
@@ -111,9 +109,7 @@ impl Conversations {
     }
 
     pub fn selected_row(&self) -> Option<&Conversation> {
-        self.selected
-            .as_ref()
-            .and_then(|id| self.rows.iter().find(|row| &row.id == id && self.in_scope(row)))
+        self.selected.as_ref().and_then(|id| self.rows.iter().find(|row| &row.id == id))
     }
 
     pub fn terminal(&self, cx: &App) -> Option<Entity<terminal::Terminal>> {

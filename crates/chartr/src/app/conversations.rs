@@ -49,7 +49,7 @@ impl WorkspaceWindow {
             .collect();
         let active = self.active.as_ref().map(|space| space.read(cx).key());
         self.conversations.update(cx, |view, cx| {
-            if view.set_spaces(choices, self.conversation_all_spaces, active) {
+            if view.set_spaces(choices, active) {
                 cx.notify();
             }
         });

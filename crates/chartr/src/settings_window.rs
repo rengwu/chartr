@@ -615,23 +615,9 @@ impl SettingsWindow {
         self.original.upgrade().map(|origin| origin.read(cx).settings_mode())
     }
 
-    fn show_space_picker(&self, cx: &App) -> Option<bool> {
-        self.original.upgrade().map(|origin| origin.read(cx).settings_show_space_picker())
-    }
-
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) {
         if let Some(origin) = self.original.upgrade() {
             origin.update(cx, |origin, cx| origin.settings_set_mode(mode, cx));
-            self.problem = None;
-        } else {
-            self.problem = Some("The originating chartr window is no longer available.".into());
-        }
-        cx.notify();
-    }
-
-    fn set_show_space_picker(&mut self, show: bool, cx: &mut Context<Self>) {
-        if let Some(origin) = self.original.upgrade() {
-            origin.update(cx, |origin, cx| origin.settings_set_show_space_picker(show, cx));
             self.problem = None;
         } else {
             self.problem = Some("The originating chartr window is no longer available.".into());

@@ -26,7 +26,7 @@ chartr Light. Capture and compare:
 
 - empty Free sessions startup, one folder, and several spaces;
 - several variable-height space cards before, during, and after a reorder;
-- Sidebar / All Spaces, Sidebar / Active Space, and Tabbed mode;
+- Sidebar and Inbox with all spaces, and Tabbed mode;
 - empty space, one standalone tab, nested horizontal/vertical panes, resized dividers,
   and automatic split collapse after its last item moves or closes;
 - terminal and plugin close buttons, active/hover/focus states, two standalone
@@ -87,9 +87,9 @@ while sidebar rows do not. Enable the sidebar checkbox and confirm its standalon
 and grouped rows close as well. Disable the parent and confirm none of these
 surfaces close from a middle click.
 
-Confirm "Show space picker in sidebar mode" appears in General settings. Turning
-it off hides the title-bar picker in sidebar mode without hiding any space cards;
-turning it on restores the picker, and the choice survives relaunch.
+Confirm Sidebar and Inbox always show all spaces and have no title-bar space
+picker. General settings must not offer a space-picker visibility switch.
+Relaunch with older saved space preferences and confirm this behavior persists.
 
 Exercise the terminal as a terminal, not only as a shell prompt:
 
@@ -120,8 +120,8 @@ Repeat the input and scrolling checks in standalone, grouped, and split panes,
 including after detach/reattach and window resize. Reject any duplicate input,
 stale viewport, focus loss, or interaction that works only in one pane shape.
 
-Confirm the space picker sits in the macOS title bar immediately after the
-traffic lights. At the far-right corner in both chrome modes, confirm the
+In Tabbed mode, confirm the space picker sits in the macOS title bar immediately
+after the traffic lights. At the far-right corner in both chrome modes, confirm the
 `Sidebar` / `Tabbed` segmented control reflects and changes the presentation,
 and the adjacent gear button opens Settings without the workspace reclaiming
 window focus. With a web plugin or browser pane visible, test clicking the gear
@@ -129,8 +129,7 @@ both before its tooltip appears and while the tooltip is already visible. Leave
 the pointer over the gear and wait at least one second: Settings must stay in
 front and no workspace tooltip should appear over it. Repeat with `Cmd/Ctrl+,`
 while the gear is hovered, including when Settings is already open. Switching
-presentation or picker visibility updates immediately
-and survives relaunch.
+presentation updates immediately and survives relaunch.
 On platforms with a native system title bar, confirm both controls retain
 their in-app chrome positions.
 

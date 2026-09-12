@@ -12,11 +12,8 @@ use crate::settings::sidebar_theme_colors;
 impl Render for Conversations {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = cx.theme().colors().clone();
-        let selected = self
-            .selected
-            .as_ref()
-            .and_then(|id| self.rows.iter().find(|r| &r.id == id && self.in_scope(r)))
-            .cloned();
+        let selected =
+            self.selected.as_ref().and_then(|id| self.rows.iter().find(|r| &r.id == id)).cloned();
 
         if self.focus_terminal
             && let Some(terminal) = self.terminal_view.as_ref()
@@ -104,12 +101,8 @@ impl Render for Conversations {
 impl Conversations {
     pub(crate) fn render_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors().clone();
-        let rows: Vec<_> = self
-            .rows
-            .iter()
-            .filter(|row| self.in_scope(row) && row.archived == self.show_archived)
-            .cloned()
-            .collect();
+        let rows: Vec<_> =
+            self.rows.iter().filter(|row| row.archived == self.show_archived).cloned().collect();
         v_flex()
             .id("conversation-history")
             .key_context("Inbox")

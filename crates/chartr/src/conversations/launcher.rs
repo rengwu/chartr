@@ -58,9 +58,6 @@ impl Conversations {
         if !self.spaces.iter().any(|candidate| candidate.key == space) {
             return Err("The selected space is no longer available.".into());
         }
-        if self.scope.as_ref().is_some_and(|scope| scope != &space) {
-            return Err("The current space changed. Open the launcher again.".into());
-        }
         let names = self
             .services
             .get::<Agents>(AGENT_SERVICE)
@@ -106,7 +103,6 @@ struct LaunchPanel {
     owner: Entity<Conversations>,
     space: Option<String>,
     agent: Option<String>,
-    scope: Option<String>,
     focus: FocusHandle,
     space_menu: ui::PopoverMenuHandle<ui::ContextMenu>,
     agent_menu: ui::PopoverMenuHandle<ui::ContextMenu>,
@@ -129,13 +125,9 @@ impl LaunchPanel {
             .and_then(|s| s.list(cx).ok())
             .unwrap_or_default();
         let space = view
-            .scope
+            .last_launch_space
             .clone()
-            .or_else(|| {
-                view.last_launch_space
-                    .clone()
-                    .filter(|key| view.spaces.iter().any(|s| &s.key == key))
-            })
+            .filter(|key| view.spaces.iter().any(|s| &s.key == key))
             .or_else(|| view.active_space.clone());
         let agent = view
             .last_launch_agent
@@ -143,7 +135,6 @@ impl LaunchPanel {
             .filter(|name| names.contains(name))
             .or_else(|| names.first().cloned());
         Self {
-            scope: view.scope.clone(),
             owner,
             space,
             agent,
@@ -155,11 +146,6 @@ impl LaunchPanel {
     }
 
     fn launch(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.scope != self.owner.read(cx).scope {
-            self.problem = Some("The current space changed. Open the launcher again.".into());
-            cx.notify();
-            return;
-        }
         let (Some(space), Some(agent)) = (self.space.clone(), self.agent.clone()) else { return };
         let result = self.owner.update(cx, |owner, cx| owner.begin_conversation(agent, space, cx));
         match result {
@@ -174,7 +160,6 @@ impl LaunchPanel {
 
 impl Render for LaunchPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let choose_space = self.scope.is_none();
         let owner = self.owner.read(cx);
         let spaces = owner.spaces.clone();
         let names = owner
@@ -266,7 +251,7 @@ impl Render for LaunchPanel {
         .full_width(true)
         .attach(Anchor::BottomLeft)
         .aria_label("Conversation agent")
-        .tab_index(if choose_space { 1 } else { 0 })
+        .tab_index(1)
         .handle(self.agent_menu.clone());
         let colors = cx.theme().colors();
         v_flex()
@@ -303,14 +288,12 @@ impl Render for LaunchPanel {
                 }
             }))
             .child(Label::new("New conversation"))
-            .when(choose_space, |panel| {
-                panel.child(
-                    v_flex()
-                        .gap_1()
-                        .child(Label::new("Space").size(LabelSize::Small).color(Color::Muted))
-                        .child(space_picker),
-                )
-            })
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(Label::new("Space").size(LabelSize::Small).color(Color::Muted))
+                    .child(space_picker),
+            )
             .child(
                 v_flex()
                     .gap_1()

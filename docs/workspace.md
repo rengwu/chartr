@@ -32,8 +32,8 @@ when its last item leaves; an outer tab disappears when its final item closes.
 An empty space remains usable through its New action.
 
 Sidebar and tabbed modes are projections over that same model. Both list every
-standalone item and every pane group as one outer entry. Sidebar mode can show
-all spaces or only the active space; tabbed mode keeps the active space's outer
+standalone item and every pane group as one outer entry. Sidebar mode always shows
+all spaces; tabbed mode keeps the active space's outer
 entries beside its name. Selecting a group reveals its Zed-style draggable
 pane-local tab bars, while a standalone has no duplicate inner bar. Switching
 presentation never reparents or recreates an item. In All Spaces, drag a space

@@ -4,16 +4,11 @@ use super::*;
 
 impl WorkspaceWindow {
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let all_spaces = self.mode == Mode::Inbox && self.conversation_all_spaces;
-        let conversations = self.mode == Mode::Inbox;
-        let current = if all_spaces {
-            "All spaces".to_owned()
-        } else {
-            self.active
-                .as_ref()
-                .map(|space| space.read(cx).name().to_owned())
-                .unwrap_or_else(|| "No space".to_owned())
-        };
+        let current = self
+            .active
+            .as_ref()
+            .map(|space| space.read(cx).name().to_owned())
+            .unwrap_or_else(|| "No space".to_owned());
         let active_id = self.active.as_ref().map(Entity::entity_id);
         let weak = cx.weak_entity();
         let spaces: Vec<_> = self
@@ -48,22 +43,6 @@ impl WorkspaceWindow {
                         let _ = add.update(cx, |this, cx| this.pick_a_folder(window, cx));
                     });
 
-                    if conversations {
-                        let all = weak.clone();
-                        menu = menu.separator().toggleable_entry(
-                            "All spaces",
-                            all_spaces,
-                            IconPosition::End,
-                            None,
-                            move |_, cx| {
-                                let _ = all.update(cx, |this, cx| {
-                                    this.conversation_all_spaces = true;
-                                    cx.notify();
-                                });
-                            },
-                        );
-                    }
-
                     let registered: Vec<_> = spaces
                         .iter()
                         .filter(|(_, _, kind)| *kind == SpaceKind::Registered)
@@ -76,14 +55,11 @@ impl WorkspaceWindow {
                         let select = weak.clone();
                         menu = menu.toggleable_entry(
                             name.clone(),
-                            !all_spaces && active_id == Some(space.entity_id()),
+                            active_id == Some(space.entity_id()),
                             IconPosition::End,
                             None,
                             move |window, cx| {
                                 let _ = select.update(cx, |this, cx| {
-                                    if conversations {
-                                        this.conversation_all_spaces = false;
-                                    }
                                     this.activate(target.clone(), window, cx);
                                     cx.notify();
                                 });
@@ -99,14 +75,11 @@ impl WorkspaceWindow {
                         let select = weak.clone();
                         menu = menu.toggleable_entry(
                             name.clone(),
-                            !all_spaces && active_id == Some(space.entity_id()),
+                            active_id == Some(space.entity_id()),
                             IconPosition::End,
                             None,
                             move |window, cx| {
                                 let _ = select.update(cx, |this, cx| {
-                                    if conversations {
-                                        this.conversation_all_spaces = false;
-                                    }
                                     this.activate(target.clone(), window, cx);
                                     cx.notify();
                                 });
@@ -124,7 +97,7 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.mode == Mode::Sidebar && !self.show_space_picker {
+        if self.mode != Mode::Tabs {
             gpui::Empty.into_any_element()
         } else {
             self.space_switcher(window, cx)

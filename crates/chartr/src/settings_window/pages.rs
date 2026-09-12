@@ -12,13 +12,11 @@ impl SettingsWindow {
         let show_status_bar = settings.show_status_bar;
         let status_bar_setting = cx.weak_entity();
         let mode = self.mode(cx);
-        let show_space_picker = self.show_space_picker(cx).unwrap_or(true);
         let runtime_available = mode.is_some();
         let mode = mode.unwrap_or_default();
         let terminate_setting = cx.weak_entity();
         let middle_click_setting = cx.weak_entity();
         let sidebar_middle_click_setting = cx.weak_entity();
-        let space_picker_setting = cx.weak_entity();
         let view_mode_picker_setting = cx.weak_entity();
         let use_sidebar = cx.listener(move |this, _, _, cx| {
             if runtime_available {
@@ -83,22 +81,6 @@ impl SettingsWindow {
                 }),
             ));
         }
-        fields.push(setting_field(
-            "Show space picker in sidebar mode",
-            "Show the current space selector in the title bar while using the sidebar.",
-            Switch::new("show-space-picker-in-sidebar-mode", show_space_picker.into())
-                .tab_index(0isize)
-                .disabled(!runtime_available)
-                .aria_label("Show space picker in sidebar mode")
-                .aria_description(
-                    "Show the current space selector in the title bar while using the sidebar.",
-                )
-                .on_click(move |state, _, cx| {
-                    let show = state.selected();
-                    let _ = space_picker_setting
-                        .update(cx, |this, cx| this.set_show_space_picker(show, cx));
-                }),
-        ));
         fields.push(setting_field(
             "Show view mode picker",
             "Show the Sidebar/Tabbed toggle in the workspace title bar.",

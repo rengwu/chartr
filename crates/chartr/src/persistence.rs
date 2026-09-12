@@ -21,10 +21,6 @@ pub const STATE_FILE: &str = "state.sqlite";
 const SCHEMA_VERSION: i64 = 1;
 const IMPLICIT_ROOT_CLEANUP: &str = "migration.implicit-root-space";
 
-const fn default_show_space_picker() -> bool {
-    true
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowState {
     pub chrome: Mode,
@@ -32,10 +28,6 @@ pub struct WindowState {
     pub terminal_mode: Mode,
     #[serde(default)]
     pub selected_conversation: Option<String>,
-    #[serde(default)]
-    pub conversation_all_spaces: bool,
-    #[serde(default = "default_show_space_picker")]
-    pub show_space_picker: bool,
     pub sidebar_width: f32,
     pub active_space: Option<String>,
     pub bounds: Option<WindowBounds>,
@@ -47,8 +39,6 @@ impl Default for WindowState {
             chrome: Mode::Sidebar,
             terminal_mode: Mode::Sidebar,
             selected_conversation: None,
-            conversation_all_spaces: false,
-            show_space_picker: false,
             sidebar_width: 280.,
             active_space: Some("ad-hoc".to_owned()),
             bounds: None,
@@ -350,7 +340,6 @@ mod tests {
     fn a_new_window_uses_the_shipped_chrome_defaults() {
         let window = WindowState::default();
         assert_eq!(window.chrome, Mode::Sidebar);
-        assert!(!window.show_space_picker);
     }
 
     #[test]
@@ -360,8 +349,6 @@ mod tests {
             window: WindowState {
                 chrome: Mode::Inbox,
                 terminal_mode: Mode::Tabs,
-                conversation_all_spaces: true,
-                show_space_picker: false,
                 sidebar_width: 312.,
                 active_space: Some("two".to_owned()),
                 ..WindowState::default()
@@ -455,14 +442,17 @@ mod tests {
     }
 
     #[test]
-    fn older_window_state_keeps_the_space_picker_visible() {
+    fn older_window_state_ignores_removed_space_preferences() {
         let restored: WindowState = serde_json::from_str(
-            r#"{"chrome":"sidebar","sidebar_scope":"all_spaces","sidebar_width":280.0,"active_space":null,"bounds":null}"#,
+            r#"{"chrome":"sidebar","sidebar_scope":"active_space","show_space_picker":true,"conversation_all_spaces":false,"sidebar_width":280.0,"active_space":null,"bounds":null}"#,
         )
         .unwrap();
 
-        assert!(restored.show_space_picker);
-        assert!(!restored.conversation_all_spaces);
+        assert_eq!(restored.chrome, Mode::Sidebar);
+        assert_eq!(restored.sidebar_width, 280.);
+        let saved = serde_json::to_value(restored).unwrap();
+        assert!(saved.get("show_space_picker").is_none());
+        assert!(saved.get("conversation_all_spaces").is_none());
     }
 
     #[test]

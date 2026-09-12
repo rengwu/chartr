@@ -57,15 +57,6 @@ impl WorkspaceWindow {
         cx.notify();
     }
 
-    pub(crate) fn settings_show_space_picker(&self) -> bool {
-        self.show_space_picker
-    }
-
-    pub(crate) fn settings_set_show_space_picker(&mut self, show: bool, cx: &mut Context<Self>) {
-        self.show_space_picker = show;
-        cx.notify();
-    }
-
     pub(crate) fn settings_retry_backend(&mut self, cx: &mut Context<Self>) {
         self.retry_backend(false, cx);
     }
