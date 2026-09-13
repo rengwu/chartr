@@ -97,6 +97,8 @@ pub fn decorate(
                 merge_adjacent: false,
                 render: Arc::new(move |fold_id, anchors, cx| {
                     let weak = weak.clone();
+                    let remove_editor = weak.clone();
+                    let remove_anchors = anchors.clone();
                     let label = title.clone();
                     let tooltip = format!(
                         "{} · {}",
@@ -104,12 +106,11 @@ pub fn decorate(
                         if unavailable {
                             "Unavailable — enable its provider or remove this item"
                         } else {
-                            "Template · select and delete like text"
+                            "Template · select, drag or remove with ×"
                         }
                     );
                     chartr_plugin::ui::template_chip(unavailable, cx)
                         .id(fold_id)
-                        .px_1()
                         .cursor_default()
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
@@ -127,7 +128,49 @@ pub fn decorate(
                         })
                         .on_drag(drag.clone(), |drag, _, _, cx| cx.new(|_| drag.clone()))
                         .tooltip(Tooltip::text(tooltip))
-                        .child(chartr_plugin::ui::label(label))
+                        .child(chartr_plugin::ui::label(label).color(if unavailable {
+                            ui::Color::Error
+                        } else {
+                            ui::Color::Muted
+                        }))
+                        .child(
+                            gpui::div()
+                                .debug_selector(|| "REMOVE_TEMPLATE".into())
+                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation()
+                                })
+                                .child(
+                                    chartr_plugin::ui::template_remove_action("remove-template")
+                                        .aria_label("Remove template")
+                                        .on_click(move |_, window, cx| {
+                                            cx.stop_propagation();
+                                            if let Some(editor) = remove_editor.upgrade() {
+                                                window.focus(&editor.focus_handle(cx), cx);
+                                                editor.update(cx, |editor, cx| {
+                                                    editor.finalize_last_transaction(cx);
+                                                    editor.transact(
+                                                        window,
+                                                        cx,
+                                                        |editor, window, cx| {
+                                                            editor.change_selections(
+                                                                SelectionEffects::no_scroll(),
+                                                                window,
+                                                                cx,
+                                                                |s| {
+                                                                    s.select_anchor_ranges([
+                                                                        remove_anchors.clone(),
+                                                                    ])
+                                                                },
+                                                            );
+                                                            editor.insert("", window, cx);
+                                                        },
+                                                    );
+                                                    editor.finalize_last_transaction(cx);
+                                                });
+                                            }
+                                        }),
+                                ),
+                        )
                         .into_any_element()
                 }),
                 ..FoldPlaceholder::default()
@@ -324,6 +367,16 @@ mod editing_tests {
             window.focus(&editor.focus_handle(cx), cx);
         });
         cx.simulate_keystrokes("backspace");
+        assert_eq!(
+            cx.read_entity(&editor, |editor, cx| editor.text(cx)),
+            "Before 🦀  after\nnext line"
+        );
+        cx.simulate_keystrokes("cmd-z");
+        assert_eq!(cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx))), initial);
+        cx.update(|window, cx| decorate(&editor, &[], window, cx));
+        cx.run_until_parked();
+        let remove = cx.debug_bounds("REMOVE_TEMPLATE").unwrap();
+        cx.simulate_click(remove.center(), gpui::Modifiers::none());
         assert_eq!(
             cx.read_entity(&editor, |editor, cx| editor.text(cx)),
             "Before 🦀  after\nnext line"

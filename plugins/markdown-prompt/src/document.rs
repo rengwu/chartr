@@ -14,22 +14,16 @@ pub enum Part {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Document {
     pub version: u32,
-    pub enabled: bool,
-    pub append: bool,
-    #[serde(default)]
-    pub create_if_missing: bool,
     pub filename: String,
     pub parts: Vec<Part>,
-    #[serde(default)]
+    // Legacy whole-file receipts, used only to migrate older compositions safely.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub managed_files: HashMap<String, String>,
 }
 impl Default for Document {
     fn default() -> Self {
         Self {
             version: 1,
-            enabled: true,
-            append: false,
-            create_if_missing: false,
             filename: "CHARTR.md".into(),
             parts: vec![Part::Text { text: String::new() }],
             managed_files: HashMap::new(),
@@ -52,20 +46,37 @@ pub fn compose(parts: &[Part], bodies: &Bodies) -> Result<String, String> {
 }
 const START: &str = "<!--chartr-markdown-prompt-begin-->";
 const END: &str = "<!--chartr-markdown-prompt-end-->";
+fn marked_range(existing: &str) -> Result<Option<std::ops::Range<usize>>, String> {
+    let starts: Vec<_> = existing.match_indices(START).collect();
+    let ends: Vec<_> = existing.match_indices(END).collect();
+    match (starts.as_slice(), ends.as_slice()) {
+        ([], []) => Ok(None),
+        ([(start, _)], [(end, _)]) if start < end => Ok(Some(*start..end + END.len())),
+        _ => Err("The file has ambiguous or damaged Markdown Prompt markers. Repair them before applying.".into()),
+    }
+}
 pub fn appended(existing: &str, body: &str) -> Result<String, String> {
     if body.contains(START) || body.contains(END) {
         return Err("The prompt contains reserved section markers.".into());
     }
-    let starts: Vec<_> = existing.match_indices(START).collect();
-    let ends: Vec<_> = existing.match_indices(END).collect();
     let section = format!("{START}\n{body}\n{END}");
-    match (starts.as_slice(), ends.as_slice()) {
-        ([], []) => Ok(format!("{existing}{}{section}\n", if existing.is_empty() || existing.ends_with("\n\n") { "" } else if existing.ends_with('\n') { "\n" } else { "\n\n" })),
-        ([(start, _)], [(end, _)]) if start < end => Ok(format!("{}{}{}", &existing[..*start], section, &existing[end + END.len()..])),
-        _ => Err("The file has ambiguous or damaged Markdown Prompt markers. Repair them before applying.".into()),
+    match marked_range(existing)? {
+        None => Ok(format!(
+            "{existing}{}{section}\n",
+            if existing.is_empty() || existing.ends_with("\n\n") {
+                ""
+            } else if existing.ends_with('\n') {
+                "\n"
+            } else {
+                "\n\n"
+            }
+        )),
+        Some(range) => {
+            Ok(format!("{}{}{}", &existing[..range.start], section, &existing[range.end..]))
+        }
     }
 }
-fn target(root: &Path, filename: &str) -> Result<PathBuf, String> {
+pub fn validate_filename(filename: &str) -> Result<(), String> {
     let path = Path::new(filename);
     if filename.trim().is_empty()
         || path.components().any(|c| !matches!(c, Component::Normal(_)))
@@ -73,6 +84,11 @@ fn target(root: &Path, filename: &str) -> Result<PathBuf, String> {
     {
         return Err("Use a project-relative .md filename without '..'.".into());
     }
+    Ok(())
+}
+fn target(root: &Path, filename: &str) -> Result<PathBuf, String> {
+    validate_filename(filename)?;
+    let path = Path::new(filename);
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let full = root.join(path);
     let parent = full
@@ -88,51 +104,124 @@ fn target(root: &Path, filename: &str) -> Result<PathBuf, String> {
     }
     Ok(parent.join(full.file_name().unwrap()))
 }
-pub fn apply(root: &Path, doc: &Document, body: &str) -> Result<PathBuf, String> {
-    if !doc.enabled {
-        return Err("Markdown Prompt is disabled.".into());
+struct Change {
+    path: PathBuf,
+    original: Option<Vec<u8>>,
+    content: Option<String>,
+}
+fn read_file(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    match std::fs::read(path) {
+        Ok(bytes) if bytes.len() > 4 * 1024 * 1024 => Err("The destination exceeds 4 MiB.".into()),
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", path.display())),
     }
-    let path = target(root, &doc.filename)?;
-    let (content, original) = if doc.append {
-        let original = match std::fs::read(&path) {
-            Ok(bytes) => Some(bytes),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound && doc.create_if_missing => None,
-            Err(e) => return Err(format!("Append needs an existing Markdown file: {e}")),
+}
+fn markdown(bytes: &Option<Vec<u8>>) -> Result<&str, String> {
+    std::str::from_utf8(bytes.as_deref().unwrap_or_default())
+        .map_err(|_| "The destination is not UTF-8 Markdown.".into())
+}
+fn cleaned(existing: &str, receipt: Option<&String>) -> Result<Option<String>, String> {
+    if let Some(range) = marked_range(existing)? {
+        // Include the marker's trailing line ending, but preserve surrounding user text.
+        let tail = &existing[range.end..];
+        let tail = tail.strip_prefix("\r\n").or_else(|| tail.strip_prefix('\n')).unwrap_or(tail);
+        return Ok(Some(format!("{}{tail}", &existing[..range.start])));
+    }
+    if let Some(receipt) = receipt {
+        if receipt != existing {
+            return Err("A previously managed file was edited outside Markdown Prompt. Restore its last applied content or add section markers around the content to replace.".into());
+        }
+        return Ok(Some(String::new()));
+    }
+    Ok(None)
+}
+/// Plan and validate every file before touching any output. For the same target,
+/// replace in place so the section keeps its position and repeated saves are stable.
+pub fn apply(
+    root: &Path,
+    doc: &Document,
+    previous: Option<&Document>,
+    body: &str,
+) -> Result<PathBuf, String> {
+    validate_filename(&doc.filename)?;
+    let empty = body.trim().is_empty();
+    let path = if empty { root.join(&doc.filename) } else { target(root, &doc.filename)? };
+    if body.contains(START) || body.contains(END) {
+        return Err("The prompt contains reserved section markers.".into());
+    }
+    let mut changes = Vec::new();
+    let mut old_files = std::collections::BTreeMap::new();
+    if let Some(previous) = previous {
+        old_files.insert(previous.filename.clone(), None);
+        for (filename, receipt) in &previous.managed_files {
+            old_files.insert(filename.clone(), Some(receipt));
+        }
+    }
+    let mut destination_receipt = None;
+    for (filename, receipt) in old_files {
+        validate_filename(&filename)?;
+        if std::fs::symlink_metadata(root.join(&filename))
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+        {
+            continue;
+        }
+        let old_path = target(root, &filename)?;
+        if !empty && old_path == path {
+            destination_receipt = receipt;
+            continue;
+        }
+        let original = read_file(&old_path)?;
+        if original.is_none() {
+            continue;
+        }
+        if let Some(content) = cleaned(markdown(&original)?, receipt)? {
+            let content = (!content.trim().is_empty()).then_some(content);
+            changes.push(Change { path: old_path, original, content });
+        }
+    }
+    if !empty {
+        let original = read_file(&path)?;
+        let existing = markdown(&original)?;
+        let existing = if original.is_some()
+            && destination_receipt.is_some()
+            && marked_range(existing)?.is_none()
+        {
+            cleaned(existing, destination_receipt)?;
+            ""
+        } else {
+            existing
         };
-        let bytes = original.as_deref().unwrap_or_default();
-        if bytes.len() > 4 * 1024 * 1024 {
-            return Err("The destination exceeds 4 MiB.".into());
-        }
-        let existing =
-            std::str::from_utf8(bytes).map_err(|_| "The destination is not UTF-8 Markdown.")?;
-        (appended(existing, body)?, original)
-    } else {
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                if !doc.managed_files.get(&doc.filename).is_some_and(|old| old.as_bytes() == bytes)
-                {
-                    return Err("This file is not owned by Markdown Prompt, or was edited outside it. Choose another filename or use append mode.".into());
-                }
-                (body.to_owned(), Some(bytes))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (body.to_owned(), None),
-            Err(e) => return Err(e.to_string()),
-        }
-    };
-    if original.as_ref().is_some_and(|bytes| bytes == content.as_bytes()) {
-        return Ok(path);
+        let content = Some(appended(existing, body)?);
+        changes.push(Change { path: path.clone(), original, content });
     }
-    let staged =
-        chartr_storage::StagedWrite::new(&path, content.as_bytes()).map_err(|e| e.to_string())?;
-    if let Some(original) = original {
-        if std::fs::read(&path).map_err(|e| e.to_string())? != original {
-            return Err("The destination changed while applying. Try again.".into());
+    // Stage all writes before cleanup, catching permissions and staging failures early.
+    let mut staged = Vec::new();
+    for change in changes {
+        if change.original.as_deref() == change.content.as_ref().map(|s| s.as_bytes()) {
+            continue;
         }
-        staged.replace().map_err(|e| e.to_string())?;
-    } else {
-        staged.create_new().map_err(|e| {
-            format!("New file could not be created (existing files are never overwritten): {e}")
-        })?;
+        let write = change
+            .content
+            .as_ref()
+            .map(|content| {
+                chartr_storage::StagedWrite::new(&change.path, content.as_bytes())
+                    .map_err(|e| e.to_string())
+            })
+            .transpose()?;
+        staged.push((change, write));
+    }
+    for (change, write) in staged {
+        if read_file(&change.path)? != change.original {
+            return Err("A Markdown file changed while applying. Try again.".into());
+        }
+        match write {
+            Some(write) if change.original.is_some() => {
+                write.replace().map_err(|e| e.to_string())?
+            }
+            Some(write) => write.create_new().map_err(|e| e.to_string())?,
+            None => std::fs::remove_file(&change.path).map_err(|e| e.to_string())?,
+        }
     }
     Ok(path)
 }
@@ -157,6 +246,8 @@ pub fn save(path: &Path, doc: &Document) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
     #[test]
     fn references_are_exact_and_bodies_are_literal() {
         let parts = vec![
@@ -170,93 +261,149 @@ mod tests {
         bodies.insert(("a".into(), "one".into()), "{{literal}}".into());
         assert_eq!(compose(&parts, &bodies).unwrap(), "Before {{literal}} after");
     }
+
     #[test]
-    fn append_is_idempotent_and_preserves_surrounding_text() {
-        let first = appended("# Existing\n", "hello").unwrap();
-        assert_eq!(appended(&first, "hello").unwrap(), first);
-        let with_tail = format!("{first}User tail\n");
-        let changed = appended(&with_tail, "updated").unwrap();
-        assert!(changed.starts_with("# Existing\n\n"));
-        assert!(changed.ends_with("User tail\n"));
-        assert!(!changed.contains("hello"));
-        assert!(appended(START, "x").is_err());
-        assert!(appended(&format!("{first}{first}"), "x").is_err());
-        assert!(appended("", END).is_err());
-    }
-    #[test]
-    fn writes_respect_mode_project_boundary_and_disabled_state() {
+    fn creates_appends_and_updates_in_place_without_rewriting_unchanged_output() {
         let root = tempfile::tempdir().unwrap();
-        let mut doc = Document::default();
-        let path = apply(root.path(), &doc, "one").unwrap();
-        assert!(apply(root.path(), &doc, "two").is_err());
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "one");
-        doc.append = true;
-        apply(root.path(), &doc, "two").unwrap();
-        apply(root.path(), &doc, "three").unwrap();
-        let content = std::fs::read_to_string(path).unwrap();
-        assert!(content.starts_with("one\n\n"));
-        assert!(!content.contains("two"));
-        doc.filename = "../outside.md".into();
-        assert!(apply(root.path(), &doc, "x").is_err());
-        doc.filename = "missing.md".into();
-        assert!(apply(root.path(), &doc, "x").is_err());
-        doc.enabled = false;
-        doc.append = false;
-        assert!(apply(root.path(), &doc, "x").is_err());
+        let doc = Document::default();
+        let path = apply(root.path(), &doc, None, "one").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), appended("", "one").unwrap());
+        let existing =
+            format!("# User instructions\r\n\r\n{}User tail\r\n", appended("", "one").unwrap());
+        fs::write(&path, &existing).unwrap();
+        apply(root.path(), &doc, Some(&doc), "two").unwrap();
+        let expected = existing.replace("one", "two");
+        assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        apply(root.path(), &doc, Some(&doc), "two").unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), modified);
+        fs::write(&path, "Unmarked instructions").unwrap();
+        apply(root.path(), &doc, Some(&doc), "three").unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            appended("Unmarked instructions", "three").unwrap()
+        );
     }
+
+    #[test]
+    fn changing_filename_cleans_previous_and_preserves_surrounding_text() {
+        let root = tempfile::tempdir().unwrap();
+        let old = Document::default();
+        let old_path = apply(root.path(), &old, None, "old").unwrap();
+        let old_section = fs::read_to_string(&old_path).unwrap();
+        fs::write(&old_path, format!("Before\n{old_section}After\n")).unwrap();
+        let new = Document { filename: "AGENTS.md".into(), ..Document::default() };
+        fs::write(root.path().join(&new.filename), appended("Existing", "stale").unwrap()).unwrap();
+        let new_path = apply(root.path(), &new, Some(&old), "new").unwrap();
+        assert_eq!(fs::read_to_string(&old_path).unwrap(), "Before\nAfter\n");
+        assert_eq!(fs::read_to_string(&new_path).unwrap(), appended("Existing", "new").unwrap());
+        apply(root.path(), &old, Some(&new), "back").unwrap();
+        assert_eq!(fs::read_to_string(&new_path).unwrap(), "Existing\n\n");
+        assert_eq!(
+            fs::read_to_string(&old_path).unwrap(),
+            appended("Before\nAfter\n", "back").unwrap()
+        );
+    }
+
+    #[test]
+    fn cleanup_deletes_empty_files_and_empty_prompts_stop_before_destination() {
+        let root = tempfile::tempdir().unwrap();
+        let old = Document::default();
+        let path = apply(root.path(), &old, None, "old").unwrap();
+        let new = Document { filename: "missing/future.md".into(), ..Document::default() };
+        apply(root.path(), &new, Some(&old), " \n\t").unwrap();
+        assert!(!path.exists());
+        assert!(!root.path().join("missing").exists());
+        apply(root.path(), &old, None, "old").unwrap();
+        let untouched = root.path().join("unrelated.md");
+        fs::write(&untouched, START).unwrap();
+        let new = Document { filename: "unrelated.md".into(), ..Document::default() };
+        apply(root.path(), &new, Some(&old), "").unwrap();
+        assert!(!path.exists());
+        assert_eq!(fs::read_to_string(&untouched).unwrap(), START);
+        // Unmarked user content (including empty files) is never deleted by cleanup.
+        fs::write(&path, "").unwrap();
+        apply(root.path(), &old, Some(&old), "").unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn invalid_filenames_and_content_leave_last_applied_file_untouched() {
+        let root = tempfile::tempdir().unwrap();
+        let old = Document::default();
+        let path = apply(root.path(), &old, None, "keep").unwrap();
+        let original = fs::read(&path).unwrap();
+        for filename in
+            ["", "bad.txt", "file.md.txt", "../outside.md", "/absolute.md", "missing/file.md"]
+        {
+            let new = Document { filename: filename.into(), ..Document::default() };
+            assert!(apply(root.path(), &new, Some(&old), "new").is_err(), "{filename}");
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+        let new = Document { filename: "new.md".into(), ..Document::default() };
+        for content in
+            [START.to_owned(), format!("{END}{START}"), appended("", "one").unwrap().repeat(2)]
+        {
+            fs::write(root.path().join(&new.filename), &content).unwrap();
+            assert!(apply(root.path(), &new, Some(&old), "new").is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(fs::read_to_string(root.path().join(&new.filename)).unwrap(), content);
+        }
+        fs::write(root.path().join(&new.filename), [0xff]).unwrap();
+        assert!(apply(root.path(), &new, Some(&old), "new").is_err());
+        assert!(apply(root.path(), &old, Some(&old), END).is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let bad = Document { filename: "invalid.txt".into(), ..Document::default() };
+        assert!(apply(root.path(), &bad, Some(&old), "").is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn malformed_previous_markers_block_cleanup_and_missing_previous_folder_is_ok() {
+        let root = tempfile::tempdir().unwrap();
+        let old = Document { filename: "old/file.md".into(), ..Document::default() };
+        fs::create_dir(root.path().join("old")).unwrap();
+        fs::write(root.path().join(&old.filename), START).unwrap();
+        let new = Document::default();
+        assert!(apply(root.path(), &new, Some(&old), "new").is_err());
+        assert!(!root.path().join(&new.filename).exists());
+        fs::remove_dir_all(root.path().join("old")).unwrap();
+        apply(root.path(), &new, Some(&old), "new").unwrap();
+    }
+
+    #[test]
+    fn legacy_owned_files_migrate_only_when_receipts_match() {
+        let root = tempfile::tempdir().unwrap();
+        let mut old = Document::default();
+        old.managed_files.insert(old.filename.clone(), "legacy body".into());
+        let path = root.path().join(&old.filename);
+        fs::write(&path, "external edit").unwrap();
+        assert!(apply(root.path(), &old, Some(&old), "new").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "external edit");
+        fs::write(&path, "legacy body").unwrap();
+        apply(root.path(), &old, Some(&old), "new").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), appended("", "new").unwrap());
+        fs::write(&path, "legacy body").unwrap();
+        let new = Document { filename: "new.md".into(), ..Document::default() };
+        apply(root.path(), &new, Some(&old), "moved").unwrap();
+        assert!(!path.exists());
+    }
+
     #[cfg(unix)]
     #[test]
-    fn rejects_symlink_destinations_and_parent_escape() {
+    fn rejects_symlinks_in_both_destination_and_cleanup() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        std::fs::write(outside.path().join("a.md"), "private").unwrap();
-        std::os::unix::fs::symlink(outside.path().join("a.md"), root.path().join("a.md")).unwrap();
+        let private = outside.path().join("private.md");
+        fs::write(&private, appended("", "private").unwrap()).unwrap();
+        std::os::unix::fs::symlink(&private, root.path().join("link.md")).unwrap();
         std::os::unix::fs::symlink(outside.path(), root.path().join("escape")).unwrap();
-        let mut doc = Document { append: true, filename: "a.md".into(), ..Document::default() };
-        assert!(apply(root.path(), &doc, "x").is_err());
-        doc.filename = "escape/a.md".into();
-        assert!(apply(root.path(), &doc, "x").is_err());
-        assert_eq!(std::fs::read_to_string(outside.path().join("a.md")).unwrap(), "private");
-    }
-
-    #[test]
-    fn append_can_create_missing_file_and_then_preserve_surrounding_content() {
-        let root = tempfile::tempdir().unwrap();
-        let mut doc = Document { append: true, ..Document::default() };
-        let path = root.path().join(&doc.filename);
-        assert!(apply(root.path(), &doc, "first").is_err());
-        assert!(!path.exists());
-
-        doc.create_if_missing = true;
-        apply(root.path(), &doc, "first").unwrap();
-        let first = format!("{START}\nfirst\n{END}\n");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
-        std::fs::write(&path, format!("# Instructions\n\n{first}User notes\n")).unwrap();
-        apply(root.path(), &doc, "updated").unwrap();
-        let expected = format!("# Instructions\n\n{START}\nupdated\n{END}\nUser notes\n");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
-        apply(root.path(), &doc, "updated").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
-
-        std::fs::write(&path, [0xff]).unwrap();
-        assert!(apply(root.path(), &doc, "x").is_err());
-        assert_eq!(std::fs::read(&path).unwrap(), [0xff]);
-        doc.filename = "missing-parent/file.md".into();
-        assert!(apply(root.path(), &doc, "x").is_err());
-        assert!(!root.path().join("missing-parent").exists());
-    }
-
-    #[test]
-    fn create_if_missing_defaults_off_for_old_drafts_and_is_persisted() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("composition.json");
-        let mut legacy = serde_json::to_value(Document::default()).unwrap();
-        legacy.as_object_mut().unwrap().remove("create_if_missing");
-        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
-        let mut doc = load(&path).unwrap();
-        assert!(!doc.create_if_missing);
-        doc.create_if_missing = true;
-        save(&path, &doc).unwrap();
-        assert_eq!(load(&path).unwrap(), doc);
+        let doc = Document::default();
+        for filename in ["link.md", "escape/private.md"] {
+            let link = Document { filename: filename.into(), ..Document::default() };
+            assert!(apply(root.path(), &link, None, "new").is_err());
+            assert!(apply(root.path(), &doc, Some(&link), "").is_err());
+        }
+        assert_eq!(fs::read_to_string(&private).unwrap(), appended("", "private").unwrap());
     }
 }
