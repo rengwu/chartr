@@ -2288,6 +2288,9 @@ impl Render for ContextMenu {
                 .font_family(ui_font_family.clone())
                 .line_height(line_height)
                 .elevation_2(cx)
+                // The requested width includes the border. Giving it to the
+                // inner list makes that list overflow the right-hand inset.
+                .when_some(self.fixed_width, |this, width| this.w(width))
                 .flex()
                 .flex_row()
                 .flex_shrink_0()
@@ -2301,8 +2304,8 @@ impl Render for ContextMenu {
                         })
                         .flex_shrink_0()
                         .child(menu_bounds_measure)
-                        .when_some(self.fixed_width, |this, width| {
-                            this.w(width).overflow_x_hidden()
+                        .when(self.fixed_width.is_some(), |this| {
+                            this.w_full().min_w_0().overflow_x_hidden()
                         })
                         .when(self.fixed_width.is_none(), |this| {
                             this.min_w(px(200.)).flex_1()

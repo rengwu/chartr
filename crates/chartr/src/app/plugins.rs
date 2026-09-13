@@ -403,6 +403,11 @@ impl WorkspaceWindow {
                 else {
                     continue;
                 };
+                // Companion's former controls pane moved entirely into Settings.
+                // Let placeholder cleanup retire saved tabs without a restore error.
+                if plugin == "com.chartr.companion" && pane == "main" {
+                    continue;
+                }
                 let key = chartr_plugin::PaneKey { plugin: plugin.clone(), key: pane.clone() };
                 let descriptor = self.catalog.get(plugin).and_then(|loaded| {
                     loaded.panes.iter().find(|candidate| candidate.key == key).map(|candidate| {

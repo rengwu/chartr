@@ -793,15 +793,16 @@ impl SkillsView {
         };
         let content = plugin_ui::DialogSurface::new("delete-skill-source-dialog")
             .compact()
-            .child(plugin_ui::heading("Delete skill source?"))
-            .child(plugin_ui::label(format!("Delete “{name}”? {detail}")))
-            .when_some(self.form_error.clone(), |view, error| {
-                view.child(plugin_ui::notice(error, true))
-            })
+            .child(plugin_ui::dialog_header("Delete skill source?", div(), cx))
             .child(
-                h_flex()
-                    .justify_end()
-                    .gap_2()
+                plugin_ui::dialog_body()
+                    .child(plugin_ui::label(format!("Delete “{name}”? {detail}")))
+                    .when_some(self.form_error.clone(), |view, error| {
+                        view.child(plugin_ui::notice(error, true))
+                    }),
+            )
+            .child(
+                plugin_ui::dialog_actions(cx)
                     .child(
                         plugin_ui::action("cancel-delete-skill-source", "Cancel")
                             .disabled(busy)

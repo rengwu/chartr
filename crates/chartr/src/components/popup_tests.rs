@@ -107,6 +107,49 @@ impl Render for TooltipMenuHarness {
 }
 
 #[gpui::test]
+fn anchored_menu_highlight_has_uniform_border_insets(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        ::settings::init(cx);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+    });
+    let (_, cx) = cx.add_window_view(|_, _| MenuHarness { invoked: Rc::new(Cell::new(false)) });
+    let parent = cx.window_handle();
+    cx.simulate_click(point(px(10.), px(10.)), Modifiers::none());
+    let popup = cx.windows().into_iter().find(|window| *window != parent).unwrap();
+    let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+    popup.run_until_parked();
+    let entry = popup.debug_bounds("MENU_ITEM-Run").unwrap();
+    popup.simulate_mouse_move(entry.center(), None, Modifiers::none());
+    popup.run_until_parked();
+    popup.update(|window, cx| {
+        let quads = window.painted_quads();
+        let border = quads
+            .iter()
+            .find(|quad| quad.border_color == cx.theme().colors().border_variant)
+            .expect("menu border")
+            .bounds;
+        let highlight = quads
+            .iter()
+            .find(|quad| {
+                quad.background == cx.theme().colors().ghost_element_hover.into()
+                    || quad.background == cx.theme().colors().ghost_element_selected.into()
+            })
+            .expect("highlighted menu entry")
+            .bounds;
+        let insets = [
+            highlight.left() - border.left(),
+            border.right() - highlight.right(),
+            highlight.top() - border.top(),
+            border.bottom() - highlight.bottom(),
+        ];
+        for inset in insets {
+            assert!((inset - insets[0]).as_f32().abs() < 0.1, "unequal menu insets: {insets:?}");
+        }
+    });
+}
+
+#[gpui::test]
 fn anchored_menu_entries_receive_clicks_and_close(cx: &mut TestAppContext) {
     cx.update(|cx| {
         ::settings::init(cx);

@@ -75,6 +75,10 @@ impl Render for WorkspaceWindow {
         let (title_bar, title_bar_foreground) =
             self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
 
+        // Dissolve the left divider as it meets the native window edge. Tie the
+        // fade to distance so interrupted slides and reduced motion stay in sync.
+        let edge_distance = (sidebar_width * chrome_visibility.sidebar / 32.).clamp(0., 1.);
+        let left_border_opacity = edge_distance * edge_distance * (3. - 2. * edge_distance);
         let workspace = v_flex()
             .id("mode-workspace")
             .relative()
@@ -83,10 +87,18 @@ impl Render for WorkspaceWindow {
             .h_full()
             .overflow_hidden()
             .bg(workspace_background)
-            // Keep the frame on the workspace as the surrounding chrome slides.
+            // Keep the top frame and reserve the left divider's pixel throughout
+            // the fade so terminal content never shifts when the border vanishes.
             .border_t_1()
-            .border_l_1()
+            .pl(px(1.))
             .border_color(cx.theme().colors().border)
+            .child(
+                div().absolute().left_0().top_0().bottom_0().w(px(1.)).bg(cx
+                    .theme()
+                    .colors()
+                    .border
+                    .opacity(left_border_opacity)),
+            )
             .child(if self.mode == Mode::Inbox {
                 self.conversations.clone().into_any_element()
             } else {

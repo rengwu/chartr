@@ -165,9 +165,9 @@ fn rename_dialog(
 
     chartr_plugin::ui::DialogSurface::new(dialog_id)
         .compact()
-        .child(Label::new(title).size(UI_LABEL_LARGE))
+        .child(chartr_plugin::ui::dialog_header(title, div(), cx))
         .child(
-            v_flex()
+            chartr_plugin::ui::dialog_body()
                 .gap_1()
                 .child(crate::components::input_field(format!("{dialog_id}-input"), input, cx))
                 .children(help.map(|help| {
@@ -175,11 +175,9 @@ fn rename_dialog(
                 })),
         )
         .child(
-            h_flex()
-                .justify_end()
-                .gap_1()
-                .child(Button::new(cancel_id, "Cancel").on_click(cancel))
-                .child(Button::new(save_id, "Rename").on_click(save)),
+            chartr_plugin::ui::dialog_actions(cx)
+                .child(chartr_plugin::ui::action(cancel_id, "Cancel").on_click(cancel))
+                .child(chartr_plugin::ui::action(save_id, "Rename").on_click(save)),
         )
 }
 

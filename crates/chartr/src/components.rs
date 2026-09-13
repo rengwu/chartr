@@ -16,6 +16,5 @@ pub use selection::{
     selection_row,
 };
 
-#[cfg(test)]
 pub(crate) use scrolling_list::scrollbar_thumb_colors;
 pub(crate) use scrolling_list::scrolling_list;

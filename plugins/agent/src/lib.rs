@@ -857,14 +857,12 @@ impl AgentView {
             .child(
                 plugin_ui::DialogSurface::new("delete-agent-dialog")
                     .compact()
-                    .child(plugin_ui::heading("Delete agent?"))
-                    .child(plugin_ui::label(format!(
+                    .child(plugin_ui::dialog_header("Delete agent?", div(), cx))
+                    .child(plugin_ui::dialog_body().child(plugin_ui::label(format!(
                         "Delete “{name}”? This does not close sessions already running with it."
-                    )))
+                    ))))
                     .child(
-                        h_flex()
-                            .justify_end()
-                            .gap_2()
+                        plugin_ui::dialog_actions(cx)
                             .child(
                                 plugin_ui::action("cancel-agent-delete", "Cancel").on_click(cancel),
                             )

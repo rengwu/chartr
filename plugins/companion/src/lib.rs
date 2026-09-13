@@ -3,7 +3,7 @@ use crate::text_input::TextInput;
 use chartr_companion::{Operation, Server};
 use chartr_plugin::ui as plugin_ui;
 use chartr_plugin::{Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar};
-use gpui::{App, AppContext, Context, Entity, Global, Render, Window};
+use gpui::{App, AppContext, Context, Entity, Global, Window};
 use std::sync::{Arc, atomic::AtomicBool, mpsc};
 use ui::prelude::*;
 
@@ -74,13 +74,13 @@ impl Plugin for CompanionPlugin {
             };
             (
                 label,
-                format!("Sharing on {}. Open Companion controls.", server.address),
+                format!("Sharing on {}. Open Companion settings.", server.address),
                 BackgroundState::Running,
             )
         } else {
             (
                 "Companion: off".into(),
-                "Open Companion controls to start sharing.".into(),
+                "Open Companion settings to start sharing.".into(),
                 BackgroundState::Idle,
             )
         };
@@ -88,7 +88,7 @@ impl Plugin for CompanionPlugin {
     }
 
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
-        registrar.add_pane("main", "Companion").add_settings();
+        registrar.add_settings();
     }
     fn view(
         &mut self,
@@ -97,7 +97,7 @@ impl Plugin for CompanionPlugin {
         _: &mut Window,
         _: &mut App,
     ) -> gpui::AnyView {
-        self.state.clone().into()
+        unreachable!("Companion contributes settings only")
     }
     fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<chartr_plugin::SettingsView> {
         Some(chartr_plugin::SettingsView::new(self.state.clone(), cx))
@@ -209,15 +209,6 @@ impl chartr_plugin::RenderSettings for State {
     }
 }
 
-impl Render for State {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .p_6()
-            .child(chartr_plugin::RenderSettings::render_settings(self, window, cx))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,7 +278,7 @@ mod tests {
         let address = server.lock().unwrap().as_ref().unwrap().address;
         drop(plugin);
         assert!(server.lock().unwrap().is_none());
-        // A retained settings/pane view must not keep the network service running.
+        // A retained settings view must not keep the network service running.
         assert!(std::net::TcpListener::bind(address).is_ok());
         drop(view);
     }

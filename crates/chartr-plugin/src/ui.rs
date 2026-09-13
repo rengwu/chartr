@@ -328,8 +328,6 @@ impl RenderOnce for DialogSurface {
             .w(self.width)
             .max_w(relative(0.92))
             .max_h(relative(0.9))
-            .p_4()
-            .gap_3()
             .rounded_lg()
             .border_1()
             .border_color(cx.theme().colors().border)
@@ -352,22 +350,27 @@ pub fn dialog_header(
 ) -> impl IntoElement {
     h_flex()
         .w_full()
+        .flex_none()
+        .gap_2()
         .justify_between()
-        .pb_3()
+        .px_3()
+        .py_2()
         .border_b_1()
         .border_color(cx.theme().colors().border)
-        .child(heading(title))
+        .child(div().flex_1().min_w_0().child(label(title).truncate()))
         .child(close)
 }
 pub fn dialog_body() -> gpui::Div {
-    v_flex().w_full().gap_3()
+    v_flex().w_full().min_h_0().p_3().gap_2()
 }
 pub fn dialog_actions(cx: &App) -> gpui::Div {
     h_flex()
         .w_full()
+        .flex_none()
         .justify_end()
         .gap_2()
-        .pt_3()
+        .px_3()
+        .py_2()
         .border_t_1()
         .border_color(cx.theme().colors().border)
 }
@@ -391,16 +394,28 @@ pub fn outlined_content(cx: &App) -> gpui::Div {
 }
 
 pub fn template_chip(unavailable: bool, cx: &App) -> gpui::Div {
-    div()
-        .rounded_sm()
-        .border_1()
-        .border_color(if unavailable {
+    h_flex()
+        .h(gpui::rems(20. / 14.))
+        .px(gpui::rems(6. / 14.))
+        .gap_1()
+        .rounded_md()
+        .bg(cx.theme().colors().element_hover)
+        .hover(|chip| chip.bg(cx.theme().colors().element_selected))
+        .text_color(if unavailable {
             cx.theme().status().error
         } else {
-            cx.theme().colors().border
+            cx.theme().colors().text_muted
         })
-        .bg(cx.theme().colors().element_background)
-        .text_color(cx.theme().colors().text)
+}
+
+pub fn template_remove_action(id: impl Into<ElementId>) -> IconAction {
+    IconAction {
+        button: ::ui::IconButton::new(id, ::ui::IconName::Close)
+            .size(ButtonSize::None)
+            .shape(::ui::IconButtonShape::Square)
+            .icon_size(::ui::IconSize::XSmall)
+            .icon_color(Color::Muted),
+    }
 }
 
 pub fn data_row(row: gpui::Div, index: usize, held: bool, cx: &App) -> gpui::Div {
@@ -480,7 +495,7 @@ pub fn form_row(
         .w_full()
         .flex_none()
         .items_start()
-        .gap_4()
+        .gap_3()
         .child(
             h_flex()
                 .w(px(112.))

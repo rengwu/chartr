@@ -21,38 +21,31 @@ impl Render for Conversations {
             self.focus_terminal = false;
             terminal.focus_handle(cx).focus(window, cx);
         }
-        let content =
-            if let Some(row) = selected {
-                self.conversation(&row, cx)
-            } else if self.new_agent.is_some() {
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .child(self.terminal_content(
-                        if self.busy {
-                            "Starting agent…"
-                        } else {
-                            "The agent has not connected yet."
-                        },
-                        cx,
-                    ))
-                    .into_any_element()
-            } else {
-                v_flex()
-                    .flex_1()
-                    .size_full()
-                    .items_center()
-                    .justify_center()
-                    .gap_3()
-                    .child(Icon::new(IconName::Chat).size(IconSize::Medium).color(Color::Muted))
-                    .child(Label::new("Pick up a conversation").size(LabelSize::Large))
-                    .child(div().max_w(px(380.)).text_center().text_color(colors.text_muted).child(
-                        "Choose a conversation from Chats, or launch an agent to get started.",
-                    ))
-                    .child(self.agent_picker(true, cx))
-                    .into_any_element()
-            };
+        let content = if let Some(row) = selected {
+            self.conversation(&row, cx)
+        } else if self.new_agent.is_some() {
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .child(self.terminal_content(
+                    if self.busy {
+                        "Starting agent…"
+                    } else {
+                        "The agent has not connected yet."
+                    },
+                    cx,
+                ))
+                .into_any_element()
+        } else {
+            v_flex()
+                .flex_1()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .child(Label::new("Choose a conversation from Chats to begin.").color(Color::Muted))
+                .into_any_element()
+        };
 
         v_flex()
             .id("inbox-mode")
@@ -120,7 +113,7 @@ impl Conversations {
                                 )
                             }),
                     )
-                    .large()
+                    .list_row()
                     .full_width(),
                 ),
             )
@@ -298,7 +291,7 @@ impl Conversations {
             })
             .child(self.terminal_content(
                 if row.runtime.is_none() {
-                    "Session ended. This conversation remains in Chats."
+                    "Session ended."
                 } else {
                     "Connecting to session terminal…"
                 },
@@ -325,22 +318,19 @@ impl Conversations {
             .w_full()
             .items_center()
             .justify_center()
-            .gap_2()
             .p_4()
-            .child(Icon::new(IconName::Terminal).size(IconSize::Medium).color(Color::Muted))
             .child(
-                div()
-                    .max_w(px(480.))
-                    .text_center()
-                    .text_color(cx.theme().colors().text_muted)
-                    .child(
+                div().max_w(px(480.)).text_center().child(
+                    Label::new(
                         if !self.connected {
                             "Reconnecting to terminal service…"
                         } else {
                             self.terminal_notice.as_deref().unwrap_or(empty)
                         }
                         .to_owned(),
-                    ),
+                    )
+                    .color(Color::Muted),
+                ),
             )
             .into_any_element()
     }

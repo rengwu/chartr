@@ -4,7 +4,7 @@ The bundled `com.chartr.companion` plugin connects [Chartr Mobile](../../../char
 
 ## Connect
 
-Open **New surface → Companion**, choose the bind address, and press **Start sharing**. The default `0.0.0.0:9847` listens on IPv4 interfaces. Enter the computer’s reachable LAN or Tailscale address and port in the app. This development build accepts all connections without a pairing code or authentication. TLS encrypts traffic; the phone does not verify the server certificate.
+Open **Settings → Plugins → Companion settings**, choose the bind address, and press **Start sharing**. Companion runs in the background and has no workspace surface; its status-bar button also opens these settings. The default `0.0.0.0:9847` listens on IPv4 interfaces. Enter the computer’s reachable LAN or Tailscale address and port in the app. This development build accepts all connections without a pairing code or authentication. TLS encrypts traffic; the phone does not verify the server certificate.
 
 Sharing remembers its enabled state and address in the plugin’s data directory and resumes after a restart. **Stop sharing** saves the disabled state. Disabling/unloading the plugin or closing the window stops its listener and active connections.
 

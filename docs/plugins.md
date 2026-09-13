@@ -266,6 +266,12 @@ Dialog content and behavior remain plugin-owned. Native popup hosting stays
 with the host so dialogs continue to appear above embedded webviews. The host's
 existing form and font exports delegate to these same definitions.
 
+`DialogSurface` owns the outline and clipping; compose its contents with
+`dialog_header`, `dialog_body`, and `dialog_actions`. These sections own their
+compact padding, so header and footer dividers reach the surface edges. Dialog
+titles use normal label typography. Keep overflowing content in the body so
+the header and actions remain visible.
+
 The core SDK remains usable without `ui` (see the Hello example). A module that
 builds native UI opts into it in its dependency:
 

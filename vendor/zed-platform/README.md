@@ -21,6 +21,8 @@ menus:
   their parent loses focus, preventing them from raising a background workspace.
   Scrollbars also support container-hover visibility that retains input handling
   during thumb drags, plus surface-specific thumb colors for sidebar contrast.
+  Fixed-width context menus size the bordered surface, keeping their item
+  highlights equally inset on both sides of a native popup.
 
 The root Cargo patch table selects these crates, so builds do not depend on a
 modified Cargo checkout.
