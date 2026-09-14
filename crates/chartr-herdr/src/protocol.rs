@@ -222,6 +222,10 @@ pub struct ProcessInfo {
 }
 
 impl ProcessInfo {
+    pub fn shell_program(&self) -> Option<&Process> {
+        self.foreground_processes.iter().find(|process| process.pid == self.shell_pid)
+    }
+
     /// Prefer the actual agent over transient helpers in its foreground group.
     pub fn agent_program(&self) -> Option<&Process> {
         self.foreground_processes
@@ -251,6 +255,15 @@ pub struct Process {
     pub name: Option<String>,
     #[serde(default)]
     pub argv0: Option<String>,
+}
+
+impl Process {
+    pub fn display_name(&self) -> Option<&str> {
+        [self.name.as_deref(), self.argv0.as_deref()].into_iter().flatten().find_map(|name| {
+            let name = name.trim().rsplit(['/', '\\']).next()?.trim_start_matches('-');
+            (!name.is_empty()).then_some(name)
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]

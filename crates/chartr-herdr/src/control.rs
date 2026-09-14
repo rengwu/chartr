@@ -61,7 +61,7 @@ pub struct Session {
     /// The persistent PTY identifier consumed by `herdr terminal attach`.
     pub terminal: TerminalId,
     pub workspace: WorkspaceId,
-    /// Herdr's persistent tab label/number, used when nothing is running.
+    /// A custom tab label or the idle shell name; never Herdr's tab number.
     pub label: String,
     /// The detected agent or non-shell foreground process, if one is running.
     pub running: Option<String>,
@@ -119,8 +119,9 @@ fn conversation_title(pane: &protocol::Pane, agent: Option<&str>) -> Option<Stri
 impl Session {
     fn from_pane(pane: protocol::Pane, label: Option<String>, running: Option<String>) -> Self {
         let label = label
-            .or_else(|| pane.title.as_deref().and_then(non_blank).map(str::to_owned))
-            .unwrap_or_else(|| pane.pane_id.clone());
+            .filter(|label| meaningful_label(label).is_some())
+            .or_else(|| pane.title.as_deref().and_then(meaningful_label).map(str::to_owned))
+            .unwrap_or_else(|| "Terminal".to_owned());
         let agent = pane
             .agent
             .as_deref()
@@ -143,9 +144,9 @@ impl Session {
         }
     }
 
-    /// What the tab says: the live agent/process name, or its persistent label.
+    /// What the tab says: the live agent/process name, custom label, or idle shell.
     pub fn title(&self) -> &str {
-        self.running.as_deref().unwrap_or(&self.label)
+        self.running.as_deref().or_else(|| meaningful_label(&self.label)).unwrap_or("Terminal")
     }
 
     /// Whether an ordinary (non-agent) process currently owns the PTY's
@@ -488,7 +489,7 @@ impl Client {
     }
 
     /// Decorate Herdr panes with the same live titles used by chartr-rs:
-    /// detected agent, foreground process, then persistent tab label.
+    /// detected agent, foreground process, then custom tab label or idle shell.
     ///
     /// These are presentation questions. A failed `tab.list` or
     /// `pane.process_info` must not hide an otherwise attachable terminal, so
@@ -518,27 +519,24 @@ impl Client {
                     chartr_agent::Provider::detect(name)
                         .is_some_and(|provider| provider.needs_process_identity())
                 };
-                let process = if pane.agent.as_deref().is_some_and(needs_identity)
+                let process_info = if pane.agent.as_deref().is_some_and(needs_identity)
                     || agent.is_none()
                     || agent.as_deref().is_some_and(needs_identity)
                 {
                     let params = protocol::PaneProcessParams { pane_id: &pane.pane_id };
                     self.call::<_, protocol::PaneProcess>("pane.process_info", &params)
                         .ok()
-                        .and_then(|info| {
-                            info.process_info
-                                .agent_program()
-                                .map(|process| (process.pid, process.name.clone()))
-                        })
+                        .map(|info| info.process_info)
                 } else {
                     None
                 };
-                let running = agent.clone().or_else(|| {
-                    process.as_ref()?.1.as_deref().and_then(non_blank).map(str::to_owned)
+                let process = process_info.as_ref().and_then(|info| info.agent_program());
+                let running = agent.clone().or_else(|| process?.display_name().map(str::to_owned));
+                let label = tabs.get(&pane.tab_id).and_then(tab_label).or_else(|| {
+                    process_info.as_ref()?.shell_program()?.display_name().map(str::to_owned)
                 });
-                let label = tabs.get(&pane.tab_id).map(tab_label);
                 let mut session = Session::from_pane(pane, label, running);
-                session.foreground_pid = process.map(|(pid, _)| pid);
+                session.foreground_pid = process.map(|process| process.pid);
                 session
             })
             .collect()
@@ -817,12 +815,12 @@ fn non_blank(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
-fn tab_label(tab: &protocol::Tab) -> String {
-    match tab.label.as_deref().and_then(non_blank) {
-        Some(label) => label.to_owned(),
-        None if tab.number > 0 => tab.number.to_string(),
-        None => tab.tab_id.clone(),
-    }
+fn meaningful_label(label: &str) -> Option<&str> {
+    non_blank(label).filter(|label| !label.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+fn tab_label(tab: &protocol::Tab) -> Option<String> {
+    tab.label.as_deref().and_then(meaningful_label).map(str::to_owned)
 }
 
 /// Request ids only have to be unique within one connection, and there is one
@@ -1032,16 +1030,16 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_prefers_an_agent_then_falls_back_to_title_and_id() {
+    fn a_tab_prefers_an_agent_then_falls_back_to_title_or_terminal() {
         assert_eq!(Session::from(pane("p1", Some("build"), Some("claude"))).title(), "claude");
         assert_eq!(Session::from(pane("p1", None, Some("claude"))).title(), "claude");
         assert_eq!(Session::from(pane("p1", Some("build"), None)).title(), "build");
-        assert_eq!(Session::from(pane("p1", None, None)).title(), "p1");
+        assert_eq!(Session::from(pane("p1", None, None)).title(), "Terminal");
     }
 
     #[test]
     fn a_blank_title_is_not_a_title() {
-        assert_eq!(Session::from(pane("p1", Some("   "), None)).title(), "p1");
+        assert_eq!(Session::from(pane("p1", Some("   "), None)).title(), "Terminal");
     }
 
     #[test]
@@ -1063,17 +1061,48 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_label_falls_back_to_its_number_then_id() {
+    fn default_tab_numbers_are_never_display_labels() {
         let mut tab = protocol::Tab {
             tab_id: "w1:t2".to_owned(),
             number: 2,
             label: Some("build".to_owned()),
         };
-        assert_eq!(tab_label(&tab), "build");
+        assert_eq!(tab_label(&tab).as_deref(), Some("build"));
         tab.label = Some("  ".to_owned());
-        assert_eq!(tab_label(&tab), "2");
+        assert_eq!(tab_label(&tab), None);
+        tab.label = Some("13".to_owned());
+        assert_eq!(tab_label(&tab), None);
         tab.number = 0;
-        assert_eq!(tab_label(&tab), "w1:t2");
+        tab.label = None;
+        assert_eq!(tab_label(&tab), None);
+        assert_eq!(Session::from(pane("13", Some("13"), None)).title(), "Terminal");
+    }
+
+    #[test]
+    fn idle_shell_names_do_not_mark_sessions_as_running_processes() {
+        for (name, expected) in [
+            ("zsh", "zsh"),
+            ("/bin/bash", "bash"),
+            ("-fish", "fish"),
+            (r"C:\Windows\System32\cmd.exe", "cmd.exe"),
+            ("powershell", "powershell"),
+            ("pwsh", "pwsh"),
+        ] {
+            let info = protocol::ProcessInfo {
+                shell_pid: 10,
+                foreground_processes: vec![protocol::Process {
+                    pid: 10,
+                    name: None,
+                    argv0: Some(name.to_owned()),
+                }],
+            };
+            let shell = info.shell_program().and_then(|process| process.display_name());
+            let session =
+                Session::from_pane(pane("13", None, None), shell.map(str::to_owned), None);
+            assert_eq!(session.title(), expected);
+            assert!(info.agent_program().is_none());
+            assert!(!session.process_running());
+        }
     }
 
     #[test]
