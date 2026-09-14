@@ -165,7 +165,8 @@ impl SettingsWindow {
                         system_mode,
                     ),
                 ],
-            ),
+            )
+            .list_row(),
         )];
         match mode {
             ThemeMode::Fixed => fields.push(setting_field(

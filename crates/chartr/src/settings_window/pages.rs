@@ -8,7 +8,7 @@ impl SettingsWindow {
         let terminate = settings.terminate_sessions_on_exit;
         let middle_click_closes_tab = settings.middle_click_closes_tab;
         let middle_click_closes_sidebar_tab = settings.middle_click_closes_sidebar_tab;
-        let show_view_mode_picker = settings.show_view_mode_picker;
+        let hide_view_mode_picker = !settings.show_view_mode_picker;
         let show_status_bar = settings.show_status_bar;
         let status_bar_setting = cx.weak_entity();
         let mode = self.mode(cx);
@@ -72,14 +72,14 @@ impl SettingsWindow {
             ));
         }
         fields.push(setting_field(
-            "Show view mode picker",
-            "Show the Tabs/Spaces/Chats picker in the workspace title bar.",
-            Switch::new("show-view-mode-picker", show_view_mode_picker.into())
+            "Hide view mode picker",
+            "Hide the Tabs/Spaces/Chats picker in the workspace title bar.",
+            Switch::new("hide-view-mode-picker", hide_view_mode_picker.into())
                 .tab_index(0isize)
-                .aria_label("Show view mode picker")
-                .aria_description("Show the Tabs/Spaces/Chats picker in the workspace title bar.")
+                .aria_label("Hide view mode picker")
+                .aria_description("Hide the Tabs/Spaces/Chats picker in the workspace title bar.")
                 .on_click(move |state, _, cx| {
-                    let show = state.selected();
+                    let show = !state.selected();
                     let _ = view_mode_picker_setting
                         .update(cx, |this, cx| this.set_show_view_mode_picker(show, cx));
                 }),
@@ -119,6 +119,7 @@ impl SettingsWindow {
                     )
                 }),
             )
+            .list_row()
             .disabled(!runtime_available),
         ));
         settings_fields(fields, cx.theme().colors().border_variant)

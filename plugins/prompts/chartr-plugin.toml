@@ -5,7 +5,3 @@ description = "Save and reuse prompts across your work."
 version = "0.1.0"
 kind = "native"
 icon = "BookOpen01Icon"
-
-[capabilities]
-multiplicity = "per_space"
-restorable = true

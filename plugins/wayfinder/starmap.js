@@ -323,6 +323,14 @@ class MapRenderer {
   #labelEpoch = 0;
   #labelSide = new Map();
   #bg = DEFAULT_BG;
+  #appearance = {
+    font: "system-ui, sans-serif",
+    mono: "ui-monospace, monospace",
+    size: 12,
+    small: 10,
+    text: "#d5d8de",
+    muted: "#9da5b4",
+  };
   #onSelect = () => {};
   #ro = null;
   #detach = [];
@@ -474,6 +482,12 @@ class MapRenderer {
   }
   setBackground(color) {
     this.#bg = color || DEFAULT_BG;
+    this.invalidate();
+  }
+  setAppearance(appearance) {
+    this.#appearance = { ...this.#appearance, ...appearance };
+    this.#labelEpoch++;
+    this.invalidate();
   }
   destroy() {
     clearTimeout(this.#tickerTimer);
@@ -867,9 +881,9 @@ class MapRenderer {
       gradient.addColorStop(1, "rgba(126,145,97,0)");
       g.fillStyle = gradient;
       g.fillRect(x - r, y - r, r * 2, r * 2);
-      g.font = "italic 10px system-ui,sans-serif";
+      g.font = `italic ${this.#appearance.small}px ${this.#appearance.font}`;
       g.textAlign = "center";
-      g.fillStyle = "#909b80";
+      g.fillStyle = this.#appearance.muted;
       const maxWidth = Math.max(40, 210 * this.#cam.s);
       let budget = Math.min(45, fog.title.length);
       let title = clipTitle(fog.title, budget);
@@ -1108,9 +1122,9 @@ class MapRenderer {
     const a = this.#tickerAlpha();
     if (a <= 0) return;
     const { cx } = this.#freeRect();
-    g.font = "11px ui-monospace,SFMono-Regular,Menlo,monospace";
+    g.font = `${this.#appearance.small}px ${this.#appearance.mono}`;
     g.textAlign = "center";
-    g.shadowColor = "rgba(0,0,0,0.85)";
+    g.shadowColor = this.#bg;
     g.shadowBlur = 4;
     g.fillStyle = hexA(SESSION_HUE.gold, a);
     g.fillText("▸ " + this.#tickerText, cx, this.#insets.top + 20);
@@ -1136,8 +1150,8 @@ class MapRenderer {
       this.#labelCache = cache;
     }
     g.textAlign = "center";
-    g.font = cache.fs.toFixed(1) + "px ui-sans-serif,system-ui,sans-serif";
-    g.shadowColor = "rgba(0,0,0,0.85)";
+    g.font = `${cache.fs.toFixed(1)}px ${this.#appearance.font}`;
+    g.shadowColor = this.#bg;
     g.shadowBlur = 4;
     for (const it of cache.items) {
       g.fillStyle = it.fill;
@@ -1148,8 +1162,9 @@ class MapRenderer {
   #solveLabels(g, key) {
     const numOnly = this.#cam.s < TITLE_MIN_SCALE;
     const budget = titleBudget(this.#cam.s);
-    const fs = clamp(11 * Math.pow(this.#cam.s, 0.3), 8, 13);
-    g.font = fs.toFixed(1) + "px ui-sans-serif,system-ui,sans-serif";
+    const size = this.#appearance.size;
+    const fs = clamp(size * Math.pow(this.#cam.s, 0.3), (size * 2) / 3, size);
+    g.font = `${fs.toFixed(1)}px ${this.#appearance.font}`;
     const s = this.#cam.s;
     const gap = 4;
     const step = fs + 4;
@@ -1210,7 +1225,14 @@ class MapRenderer {
         }
         if (!ok) continue;
         obstacles.push(box);
-        items.push({ text, x: v.sx, y: c.y, fill: LABEL[v.n.vstate] });
+        items.push({
+          text,
+          x: v.sx,
+          y: c.y,
+          fill: this.#selected === v.n.num
+            ? this.#appearance.text
+            : this.#appearance.muted,
+        });
         this.#labelSide.set(v.n.num, c.side);
         break;
       }
@@ -1263,7 +1285,6 @@ export class StarMap {
     this.host = host;
     this.renderer = new MapRenderer();
     this.renderer.mount(host);
-    this.renderer.setBackground("#10110e");
     this.renderer.onSelect(onSelect);
     this.poses = new Map();
     this.selected = null;

@@ -31,6 +31,10 @@ fn plugin_settings_inherit_the_host_surface_after_theme_changes(cx: &mut TestApp
     cx.update(|cx| catalog.enable_requested(&paths, |_| true, cx));
     assert!(catalog.rejected.is_empty());
     assert!(catalog.disabled.is_empty());
+    let prompts = catalog.get("com.chartr.prompts").unwrap();
+    assert!(prompts.panes.is_empty(), "Saved Prompts is managed in settings");
+    assert!(prompts.has_settings);
+    assert!(!catalog.get("com.chartr.markdown-prompt").unwrap().has_settings);
     let (harness, cx) = cx.add_window_view(|_, _| SettingsHarness {
         content: None,
         background: rgb(0x172331).into(),

@@ -198,7 +198,7 @@ commit history preserved. The Go implementation at v0.2.4 remains on
 [`legacy/v0.2.4`](https://github.com/rengwu/chartr/tree/legacy/v0.2.4).
 
 The Rust workspace, persistent terminals, native Settings, plugin host, and
-bundled Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder surfaces are implemented. CI builds
+bundled Agent, Skills, Markdown Prompt, and Wayfinder surfaces, plus Saved Prompts settings, are implemented. CI builds
 and tests the workspace and native plugin example on macOS and Ubuntu.
 
 Before the first Rust release:

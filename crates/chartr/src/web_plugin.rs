@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use crate::item::PluginView;
 use crate::session::SessionAccess;
 
+mod appearance;
 mod host;
 use host::{fetch, read_file, run_process};
 
@@ -160,6 +161,7 @@ fn create_view(
 }
 
 struct WebPluginView {
+    appearance: Rc<RefCell<String>>,
     webview: NativeWebViewHandle,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     visibility: NativeViewLeaseOwner,
@@ -182,11 +184,13 @@ impl WebPluginView {
         window: &Window,
         _cx: &mut Context<Self>,
     ) -> Self {
+        let appearance = Rc::new(RefCell::new(appearance::script(window, _cx)));
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         {
             let _ = (document, broker, permissions, session, on_focus, context, window, _cx);
             return Self {
                 webview: webview_handle,
+                appearance,
                 error: Some("Web plugins are supported on macOS and Linux.".into()),
             };
         }
@@ -209,6 +213,7 @@ impl WebPluginView {
             if let Err(error) = gtk::init() {
                 return Self {
                     webview: webview_handle,
+                    appearance,
                     visibility,
                     _gtk_pump: gtk_pump,
                     _focus_task: focus_task,
@@ -221,6 +226,7 @@ impl WebPluginView {
                 Err(error) => {
                     return Self {
                         webview: webview_handle,
+                        appearance,
                         visibility,
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
@@ -231,6 +237,8 @@ impl WebPluginView {
             };
             let webview_slot = Rc::new(RefCell::new(None::<Weak<wry::WebView>>));
             let responder = webview_slot.clone();
+            let appearance_view = webview_slot.clone();
+            let document_appearance = appearance.clone();
             // One bounded worker per instance preserves request ordering without
             // making native WebKit callbacks wait for filesystem/network/process I/O.
             let (request_tx, mut request_rx) = mpsc::channel::<(String, u64)>(16);
@@ -290,6 +298,15 @@ impl WebPluginView {
                     asset_response(&root_for_protocol, request.uri().path())
                 })
                 .with_initialization_script(BRIDGE)
+                .with_initialization_script(appearance.borrow().clone())
+                .with_on_page_load_handler(move |event, _| {
+                    if matches!(event, wry::PageLoadEvent::Finished)
+                        && let Some(webview) =
+                            appearance_view.borrow().as_ref().and_then(Weak::upgrade)
+                    {
+                        let _ = webview.evaluate_script(&document_appearance.borrow());
+                    }
+                })
                 .with_ipc_handler(move |request| {
                     if request.body().len() <= host::MAX_REQUEST_BYTES
                         && is_focus_request(request.body())
@@ -346,6 +363,7 @@ impl WebPluginView {
                 Err(error) => {
                     return Self {
                         webview: webview_handle,
+                        appearance,
                         visibility,
                         #[cfg(target_os = "linux")]
                         _gtk_pump: gtk_pump,
@@ -358,6 +376,7 @@ impl WebPluginView {
             webview_handle.install(webview);
             Self {
                 webview: webview_handle,
+                appearance,
                 visibility,
                 #[cfg(target_os = "linux")]
                 _gtk_pump: gtk_pump,
@@ -391,10 +410,15 @@ impl WebPluginView {
 }
 
 impl Render for WebPluginView {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut root = div().size_full();
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if let Some(webview) = self.webview.get() {
+            let appearance = appearance::script(window, cx);
+            if appearance != *self.appearance.borrow() {
+                *self.appearance.borrow_mut() = appearance;
+                let _ = webview.evaluate_script(&self.appearance.borrow());
+            }
             root = root.child(NativeWebViewElement::new(
                 webview,
                 "chartr-web-plugin",

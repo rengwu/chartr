@@ -201,8 +201,9 @@ impl chartr_plugin::RenderSettings for State {
         let info = self.server.lock().unwrap().as_ref().map(|s| s.address.to_string());
         chartr_plugin::SettingsPage::fill("companion-settings")
             .child(plugin_ui::PageHeader::new("Chartr, within reach").description("Open Chartr Mobile and enter this computer’s LAN or Tailscale IP and port."))
-            .child(crate::components::input_field("companion-address", self.address.clone(), cx))
-            .child(plugin_ui::action("companion-toggle", if info.is_some() { "Stop sharing" } else { "Start sharing" }).on_click(cx.listener(|this, _, _, cx| this.toggle(cx))))
+            .child(h_flex().gap_2()
+                .child(div().w_full().max_w(px(280.)).min_w_0().child(crate::components::input_field("companion-address", self.address.clone(), cx)))
+                .child(div().flex_none().child(plugin_ui::action("companion-toggle", if info.is_some() { "Stop sharing" } else { "Start sharing" }).on_click(cx.listener(|this, _, _, cx| this.toggle(cx))))))
             .when_some(info, |view, address| view.child(plugin_ui::label(format!("Sharing on {address}"))))
             .child(plugin_ui::label("Open access: connections need no pairing code. A mobile viewer controls terminal sizing until it leaves or disconnects.").color(Color::Muted))
             .when_some(self.problem.clone(), |view, error| view.child(plugin_ui::notice(error, true)))

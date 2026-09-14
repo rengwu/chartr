@@ -9,7 +9,7 @@ use gpui::{
 ///
 /// Native webviews are composited above their parent window's GPUI scene, so an in-window modal
 /// can never cover them regardless of its elevation. A parent-anchored native popup establishes
-/// the correct platform stacking order while still letting GPUI render the scrim and dialog.
+/// the correct platform stacking order while GPUI renders the dialog above a transparent input layer.
 pub fn open_native_modal<V: Render + 'static>(
     parent_window: &mut Window,
     cx: &mut App,

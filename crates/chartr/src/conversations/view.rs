@@ -161,9 +161,12 @@ impl Conversations {
                     .min_h_0()
                     .w_full()
                     .px_1p5()
-                    .pb_2()
+                    // An empty padded scroll element reports its padding as overflow.
+                    .when(!rows.is_empty() || self.show_archived, |list| list.pb_2())
                     .children(rows.iter().map(|row| self.history_row(row, cx)))
-                    .when(rows.is_empty(), |list| list.child(self.empty_history(cx))),
+                    .when(rows.is_empty() && self.show_archived, |list| {
+                        list.child(self.empty_history())
+                    }),
                 &self.history_scroll,
                 window,
                 cx,
@@ -171,16 +174,16 @@ impl Conversations {
             .into_any_element()
     }
 
-    fn empty_history(&self, cx: &App) -> AnyElement {
+    fn empty_history(&self) -> AnyElement {
         div()
             .px_1()
             .py_2()
-            .text_color(cx.theme().colors().text_muted)
-            .child(if self.show_archived {
-                "No archived chats."
-            } else {
-                "Conversations will appear here as you use your agents."
-            })
+            .child(
+                Label::new("No archived chats.")
+                    .size(UI_LABEL_SMALL)
+                    .color(Color::Muted)
+                    .truncate(),
+            )
             .into_any_element()
     }
 

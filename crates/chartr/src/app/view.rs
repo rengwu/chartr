@@ -373,9 +373,9 @@ impl Render for WorkspaceWindow {
             .on_action(cx.listener(|this, _: &actions::workspace::CycleViewMode, _, cx| {
                 this.settings_set_mode(
                     match this.mode {
-                        Mode::Tabs => Mode::Inbox,
-                        Mode::Sidebar => Mode::Tabs,
-                        Mode::Inbox => Mode::Sidebar,
+                        Mode::Tabs => Mode::Sidebar,
+                        Mode::Sidebar => Mode::Inbox,
+                        Mode::Inbox => Mode::Tabs,
                     },
                     cx,
                 )

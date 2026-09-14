@@ -29,6 +29,22 @@ const ticket = () =>
     : null;
 export const stars = new StarMap($("map"), (n) => select(n));
 
+function applyAppearance() {
+  const style = getComputedStyle(document.documentElement);
+  const token = (name) => style.getPropertyValue(name).trim();
+  stars.renderer.setBackground(token("--bg"));
+  stars.renderer.setAppearance({
+    font: token("--ui-font"),
+    mono: token("--mono"),
+    size: parseFloat(token("--font-body")),
+    small: parseFloat(token("--font-small")),
+    text: token("--text"),
+    muted: token("--muted"),
+  });
+}
+applyAppearance();
+window.addEventListener("chartr:theme", applyAppearance);
+
 function notice(message) {
   $("notice").hidden = !message;
   $("notice").querySelector("span").textContent = message || "";

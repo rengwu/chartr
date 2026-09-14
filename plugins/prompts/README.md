@@ -1,18 +1,18 @@
 # Saved Prompts
 
 Saved Prompts is a bundled native Chartr plugin for a library of reusable prompts.
-Open **Saved Prompts** from the surface picker. Its table shows a title, a preview of
+Open **Settings → Plugins → Saved Prompts** using its settings gear. Its table shows a title, a preview of
 the prompt, and Copy, Edit, and Delete actions. Search matches both fields.
 New prompt and Edit open a multiline editor; Cancel discards the draft, and
 deletion requires a second click. Copy puts only the full prompt text on the
 clipboard, preserving whitespace and line breaks. The title is display metadata.
 
-The library is shared across spaces and panes. It lives at
+The library is shared across spaces and settings windows. It lives at
 `$XDG_DATA_HOME/chartr/plugin-data/com.chartr.prompts/prompts.json` (by default
 `~/.local/share/chartr/plugin-data/com.chartr.prompts/prompts.json`). Saves replace
 the file atomically. Invalid or newer storage versions are reported and never
 overwritten. Reload rereads the file after a manual repair or external edit.
-Edits made in another pane are reflected immediately; stale drafts cannot
+Edits made in another settings window are reflected immediately; stale drafts cannot
 silently overwrite or delete a changed record.
 
 Each record has a stable `id`, `title`, and `prompt`. Renaming preserves its ID;
@@ -38,7 +38,8 @@ Saved Prompts also exports the common `PromptTemplates` service. Markdown Prompt
 consumes those stable IDs alongside templates from other enabled plugins.
 Only the saved body is expanded, without the title or added markup. The original
 `com.chartr.prompts` ID and storage location are retained so existing libraries
-and restored panes continue to work. This plugin does not write project files
+continue to work. Old Saved Prompts tabs are retired on restoration; the library is
+managed in plugin settings. This plugin does not write project files
 or launch agents.
 
 Successful saves, deletions and reloads notify template consumers. Markdown

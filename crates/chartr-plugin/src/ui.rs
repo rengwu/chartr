@@ -249,7 +249,7 @@ impl RenderOnce for PageHeader {
     }
 }
 
-/// Shared modal paint and input boundary; the caller chooses content, not colors.
+/// Transparent modal input boundary; preserves the host background across themes.
 #[derive(IntoElement)]
 pub struct ModalOverlay {
     id: ElementId,
@@ -279,7 +279,6 @@ impl RenderOnce for ModalOverlay {
             .items_start()
             .justify_center()
             .pt_8()
-            .bg(gpui::black().opacity(0.35))
             .on_mouse_down(gpui::MouseButton::Left, self.dismiss)
             .children(self.children)
     }
@@ -363,6 +362,7 @@ pub fn dialog_header(
 pub fn dialog_body() -> gpui::Div {
     v_flex().w_full().min_h_0().p_3().gap_2()
 }
+/// Optional action footer. Read-only dialogs can use a header close control instead.
 pub fn dialog_actions(cx: &App) -> gpui::Div {
     h_flex()
         .w_full()

@@ -18,7 +18,7 @@ WebKit gestures are supported, along with touch panning and two-finger pinch.
 Camera moves ease with the original 120 ms time constant. Fog, including patches
 without a valid ticket anchor, moves and scales in world coordinates.
 
-Selecting a star centers it in the space beside the translucent detail pane.
+Selecting a star centers it in the space beside the full-height detail pane.
 Drag the shared seam to resize the pane, or focus the seam and use arrow keys
 (Home/End set its limits; double-click resets its size). It docks right in wide
 panes and below the map in narrow or tall panes, remembering each side's size.
@@ -121,11 +121,14 @@ The tab and interface icons use Hugeicons' free Stroke Rounded collection.
 no icon package or remote request is needed at runtime. Attribution and the
 MIT license are in [icons/HUGEICONS_NOTICE.md](icons/HUGEICONS_NOTICE.md).
 
-Interface controls share a 32 px height, 16 px icons, a 4 px spacing scale and
-16 px detail-pane gutters. Body text is 13 px, controls and labels are 12 px,
-and detail titles are 16 px. Blocker and frontier rows keep ticket numbers and
-statuses in fixed columns while titles wrap. The legend has an opaque surface
-to stay legible over map labels, and launcher actions stack in narrow panes.
+Wayfinder inherits Chartr's active theme, interface and monospace fonts, and UI
+scale through the host's CSS tokens. At the default scale, body text and detail
+titles are 12 px, form controls are 28 px, icons are 14 px, and spacing follows
+Chartr's 3.5 px increments. Headers and action bars use the shared compact dialog
+spacing. The right-hand detail pane fills the full height; narrow windows retain
+the resizable bottom dock. Overflowing reading panes keep visible scrollbars.
+Map labels also follow the interface font and scale. Blocker and frontier rows
+keep ticket numbers and statuses in fixed columns while titles wrap.
 
 Run `cargo test --workspace` and `node --test plugins/wayfinder/tests/layout.test.mjs`.
 For browser QA, install Playwright in a separate dev environment and run

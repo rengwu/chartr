@@ -1,11 +1,12 @@
-//! Saved prompts: one shared library, a table surface, and a read service.
+//! Saved prompts: one shared library, a settings page, and a read service.
 mod store;
 
 use chartr_plugin::ui as plugin_ui;
 use std::{collections::HashMap, path::PathBuf};
 
 use chartr_plugin::{
-    Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar,
+    Host, InstanceContext, PaneKey, Plugin, PluginObject, Registrar, RenderSettings, SettingsPage,
+    SettingsView,
     services::{Prompts, SavedPrompt, ServiceExport},
 };
 use editor::Editor;
@@ -64,7 +65,7 @@ impl Plugin for PromptsPlugin {
     }
 
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
-        registrar.add_pane("main", "Saved Prompts");
+        registrar.add_settings();
     }
 
     fn services(&self) -> Vec<ServiceExport> {
@@ -98,9 +99,14 @@ impl Plugin for PromptsPlugin {
         _: &PaneKey,
         _: &InstanceContext,
         _: &mut Window,
-        cx: &mut App,
+        _: &mut App,
     ) -> gpui::AnyView {
-        cx.new(|cx| PromptsView::new(self.registry.clone(), cx)).into()
+        unreachable!("Saved Prompts contributes settings only")
+    }
+
+    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<SettingsView> {
+        let view = cx.new(|cx| PromptsView::new(self.registry.clone(), cx));
+        Some(SettingsView::new(view, cx))
     }
 }
 
@@ -441,18 +447,19 @@ fn columns([title, prompt, actions]: [AnyElement; 3]) -> gpui::Div {
         .child(div().w(px(180.)).flex_none().child(actions))
 }
 
+impl RenderSettings for PromptsView {
+    fn render_settings(&mut self, _: &mut Window, cx: &mut Context<Self>) -> SettingsPage {
+        SettingsPage::fill("prompts-settings").child(
+            v_flex().key_context("Prompts").size_full().min_h_0().child(
+                if let Some(draft) = &self.draft { self.editor(draft, cx) } else { self.table(cx) },
+            ),
+        )
+    }
+}
+
 impl Render for PromptsView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        plugin_ui::pane_surface("prompts-pane", cx)
-            .key_context("Prompts")
-            .size_full()
-            .min_h_0()
-            .p_4()
-            .child(if let Some(draft) = &self.draft {
-                self.editor(draft, cx)
-            } else {
-                self.table(cx)
-            })
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.render_settings(window, cx)
     }
 }
 
@@ -473,11 +480,17 @@ mod tests {
             crate::text_input::init(cx);
             init(cx);
         });
-        let plugin = cx.update(|cx| {
+        let mut plugin = cx.update(|cx| {
             PromptsPlugin::new(
                 Host { data_dir: root.path().into(), plugin_dir: root.path().into() },
                 cx,
             )
+        });
+        cx.update(|cx| {
+            let mut registrar = Registrar::new(<PromptsPlugin as Plugin>::ID);
+            Plugin::activate(&mut plugin, &mut registrar, cx);
+            assert!(registrar.panes().is_empty(), "Saved Prompts has no standalone surface");
+            assert!(registrar.has_settings());
         });
         let registry = plugin.registry.clone();
         let services = Services::default();

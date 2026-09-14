@@ -79,6 +79,7 @@ struct Composer {
     warnings: Vec<String>,
     error: Option<String>,
     preview: Option<String>,
+    preview_scroll: gpui::ScrollHandle,
     preview_focus: gpui::FocusHandle,
     busy: bool,
     invalid_config: bool,
@@ -140,6 +141,7 @@ impl Composer {
             warnings: vec![],
             error,
             preview: None,
+            preview_scroll: gpui::ScrollHandle::new(),
             preview_focus: cx.focus_handle(),
             busy: false,
             invalid_config,
@@ -316,6 +318,7 @@ impl Composer {
         match document::compose(&self.snapshot(cx).parts, &self.bodies) {
             Ok(body) => {
                 self.preview = Some(body);
+                self.preview_scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
                 self.error = None;
                 window.focus(&self.preview_focus, cx);
             }
@@ -477,23 +480,34 @@ impl Render for Composer {
             )
             .child(
                 plugin_ui::outlined_content(cx)
-                    .id("template-list")
+                    .id("template-list-frame")
                     .debug_selector(|| "MARKDOWN_TEMPLATE_LIST".into())
                     .relative()
+                    .flex()
+                    .flex_col()
                     .flex_1()
                     .min_h_0()
                     .w_full()
-                    .p_2()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.templates_scroll)
-                    .child(v_flex().items_start().gap_2().children(templates))
-                    .when(self.templates.is_empty(), |view| {
-                        view.child(plugin_ui::label("No templates").color(Color::Muted))
-                    })
-                    .children(
-                        self.warnings
-                            .iter()
-                            .map(|warning| plugin_ui::notice(warning.clone(), true)),
+                    .p_0()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .id("template-list")
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .p_2()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.templates_scroll)
+                            .child(v_flex().items_start().gap_2().children(templates))
+                            .when(self.templates.is_empty(), |view| {
+                                view.child(plugin_ui::label("No templates").color(Color::Muted))
+                            })
+                            .children(
+                                self.warnings
+                                    .iter()
+                                    .map(|warning| plugin_ui::notice(warning.clone(), true)),
+                            ),
                     )
                     .custom_scrollbars(
                         Scrollbars::always_visible(ScrollAxes::Vertical)
@@ -640,19 +654,37 @@ impl Render for Composer {
                     .child(
                         plugin_ui::DialogSurface::new("markdown-preview-dialog")
                             .child(plugin_ui::dialog_header(
-                                "Expanded preview",
-                                plugin_ui::action("close-markdown-preview", "Close").on_click(
-                                    cx.listener(|this, _, window, cx| {
+                                "Preview",
+                                plugin_ui::icon_action("close-markdown-preview", ui::IconName::Close)
+                                    .aria_label("Close preview")
+                                    .on_click(cx.listener(|this, _, window, cx| {
                                         this.dismiss_preview(window, cx)
-                                    }),
-                                ),
+                                    })),
                                 cx,
                             ))
                             .child(
-                                plugin_ui::dialog_body()
-                                    .id("markdown-preview-contents")
-                                    .overflow_y_scroll()
-                                    .child(plugin_ui::label(text)),
+                                v_flex()
+                                    .relative()
+                                    .min_h_0()
+                                    .w_full()
+                                    .overflow_hidden()
+                                    .child(
+                                        plugin_ui::dialog_body()
+                                            .id("markdown-preview-contents")
+                                            .debug_selector(|| "MARKDOWN_PREVIEW_CONTENTS".into())
+                                            .overflow_y_scroll()
+                                            .track_scroll(&self.preview_scroll)
+                                            .child(plugin_ui::label(text)),
+                                    )
+                                    .custom_scrollbars(
+                                        Scrollbars::always_visible(ScrollAxes::Vertical)
+                                            .id("markdown-preview-scrollbar")
+                                            .thumb_colors(thumb, hovered_thumb, active_thumb)
+                                            .tracked_scroll_handle(&self.preview_scroll)
+                                            .notify_content(),
+                                        window,
+                                        cx,
+                                    ),
                             ),
                     ),
                 )
@@ -689,6 +721,57 @@ mod tests {
             services,
             plugin_settings: PluginSettings::new(|_, _, _| {}),
         }
+    }
+
+    #[gpui::test]
+    fn long_preview_has_a_draggable_scrollbar_and_reopens_at_the_top(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init(cx);
+        let root = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let context = context(root.path(), Services::default());
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            Composer::new(context, data.path().join("composition.json"), window, cx)
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |this, window, cx| {
+            this.editor.update(cx, |editor, cx| {
+                editor.set_text("Preview line\n".repeat(100), window, cx);
+            });
+        });
+        cx.run_until_parked();
+        view.update_in(cx, |this, window, cx| this.show_preview(window, cx));
+        cx.run_until_parked();
+        let contents = cx.debug_bounds("MARKDOWN_PREVIEW_CONTENTS").unwrap();
+        let thumb = cx.update(|window, cx| {
+            let [color, _, _] = crate::components::scrollbar_thumb_colors(cx.theme().colors());
+            let scale = window.scale_factor();
+            window
+                .painted_quads()
+                .into_iter()
+                .filter(|quad| quad.background == color.into())
+                .map(|quad| {
+                    let center = quad.bounds.center();
+                    gpui::point(
+                        gpui::px(center.x.as_f32() / scale),
+                        gpui::px(center.y.as_f32() / scale),
+                    )
+                })
+                .find(|center| contents.contains(center))
+                .expect("long preview must paint a visible scrollbar thumb")
+        });
+        cx.simulate_mouse_down(thumb, gpui::MouseButton::Left, gpui::Modifiers::none());
+        let destination = thumb + gpui::point(gpui::px(0.), gpui::px(60.));
+        cx.simulate_mouse_move(destination, gpui::MouseButton::Left, gpui::Modifiers::none());
+        cx.simulate_mouse_up(destination, gpui::MouseButton::Left, gpui::Modifiers::none());
+        assert!(view.read_with(cx, |this, _| this.preview_scroll.offset().y) < gpui::px(0.));
+        view.update_in(cx, |this, window, cx| {
+            this.dismiss_preview(window, cx);
+            this.show_preview(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(view.read_with(cx, |this, _| this.preview_scroll.offset().y), gpui::px(0.));
     }
 
     #[gpui::test]

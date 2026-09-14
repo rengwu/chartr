@@ -50,7 +50,7 @@ use crate::{
     actions,
     chrome::{self, Action, DraggedItem, Entry, SpaceEntries},
     components::{ContextMenu, PopupMenu, SegmentedControl, SegmentedControlOption},
-    fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
+    fonts::{Fonts, UI_LABEL_DEFAULT, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     item::{PluginItem, PluginView},
     mode::Mode,
     persistence::{Snapshot, SpaceKind as PersistedSpaceKind, StateStore, WindowState},

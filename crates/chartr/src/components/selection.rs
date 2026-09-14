@@ -93,6 +93,7 @@ const PILL_DURATION: Duration = Duration::from_millis(250);
 
 #[derive(Default)]
 struct PillState {
+    selected: Option<ElementId>,
     motion: Option<PillMotion>,
 }
 
@@ -125,21 +126,30 @@ impl PillState {
     fn advance(
         &mut self,
         target: Option<Bounds<Pixels>>,
+        selected: &ElementId,
         now: Instant,
         reduce_motion: bool,
     ) -> Option<(Bounds<Pixels>, bool)> {
         let Some(target) = target else {
+            self.selected = None;
             self.motion = None;
             return None;
         };
-        if reduce_motion || self.motion.as_ref().is_none_or(|motion| motion.to != target) {
-            let from = if reduce_motion {
-                target
-            } else {
+        let selection_changed = self.selected.as_ref() != Some(selected);
+        if reduce_motion
+            || selection_changed
+            || self.motion.as_ref().is_none_or(|motion| motion.to != target)
+        {
+            // Animate choice changes only. Resizing the same option must track
+            // layout immediately, including during an unfinished selection slide.
+            let from = if selection_changed && !reduce_motion {
                 self.motion.as_ref().map_or(target, |motion| motion.sample(now).0)
+            } else {
+                target
             };
             self.motion = Some(PillMotion { from, to: target, started: now });
         }
+        self.selected = Some(selected.clone());
         Some(self.motion.as_ref().unwrap().sample(now))
     }
 }
@@ -169,6 +179,8 @@ impl RenderOnce for SegmentedControl {
         let target = Rc::new(Cell::new(None));
         let measured_origin = origin.clone();
         let painted_target = target.clone();
+        let selected =
+            self.options.iter().find(|option| option.selected).map(|option| option.id.clone());
         let colors = cx.theme().colors();
         let border = colors.border.opacity(0.8);
         let selected_background = colors.ghost_element_selected;
@@ -190,8 +202,13 @@ impl RenderOnce for SegmentedControl {
                 canvas(
                     move |bounds, _, _| measured_origin.set(bounds.origin),
                     move |bounds, _, window, cx| {
+                        let Some(selected) = selected.as_ref() else {
+                            *motion.borrow_mut() = PillState::default();
+                            return;
+                        };
                         if let Some((mut pill, animating)) = motion.borrow_mut().advance(
                             painted_target.get(),
+                            selected,
                             cx.background_executor().now(),
                             cx.reduce_motion(),
                         ) {
@@ -417,31 +434,40 @@ mod tests {
         let first = Bounds::new(point(px(2.), px(2.)), size(px(44.), px(20.)));
         let second = Bounds::new(point(px(50.), px(2.)), size(px(100.), px(20.)));
         let mut state = PillState::default();
-        assert_eq!(state.advance(Some(first), now, false), Some((first, false)));
-        assert_eq!(state.advance(Some(second), now, false), Some((first, true)));
+        let first_id: ElementId = "first".into();
+        let second_id: ElementId = "second".into();
+        assert_eq!(state.advance(Some(first), &first_id, now, false), Some((first, false)));
+        assert_eq!(state.advance(Some(second), &second_id, now, false), Some((first, true)));
         let midway = now + PILL_DURATION / 2;
-        let (moving, active) = state.advance(Some(second), midway, false).unwrap();
+        let (moving, active) = state.advance(Some(second), &second_id, midway, false).unwrap();
         assert!(active && moving.left() > first.left() && moving.left() < second.left());
         assert!(moving.size.width > first.size.width && moving.size.width < second.size.width);
-        assert_eq!(state.advance(Some(first), midway, false), Some((moving, true)));
-        assert_eq!(state.advance(Some(first), midway, false), Some((moving, true)));
-        assert_eq!(state.advance(Some(first), midway + PILL_DURATION, false), Some((first, false)),);
+        assert_eq!(state.advance(Some(first), &first_id, midway, false), Some((moving, true)));
+        assert_eq!(state.advance(Some(first), &first_id, midway, false), Some((moving, true)));
         assert_eq!(
-            state.advance(Some(second), midway + PILL_DURATION, true),
+            state.advance(Some(first), &first_id, midway + PILL_DURATION, false),
+            Some((first, false)),
+        );
+        assert_eq!(
+            state.advance(Some(second), &second_id, midway + PILL_DURATION, true),
             Some((second, false))
         );
-        assert_eq!(state.advance(None, midway + PILL_DURATION, false), None);
-        assert_eq!(state.advance(Some(first), midway + PILL_DURATION, false), Some((first, false)));
+        assert_eq!(state.advance(None, &first_id, midway + PILL_DURATION, false), None);
+        assert_eq!(
+            state.advance(Some(first), &first_id, midway + PILL_DURATION, false),
+            Some((first, false))
+        );
     }
 
     struct AnimatedPickerHarness {
         selected: usize,
         disabled: bool,
+        width: Option<Pixels>,
     }
 
     impl Render for AnimatedPickerHarness {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            h_flex().child(
+            h_flex().when_some(self.width, |row, width| row.w(width)).child(
                 SegmentedControl::new(
                     "Animated picker",
                     ["Tabs", "A much longer choice"].into_iter().enumerate().map(
@@ -458,7 +484,8 @@ mod tests {
                         },
                     ),
                 )
-                .disabled(self.disabled),
+                .disabled(self.disabled)
+                .when(self.width.is_some(), |control| control.full_width()),
             )
         }
     }
@@ -490,8 +517,11 @@ mod tests {
             theme::init(theme::LoadThemes::JustBase, cx);
             crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
         });
-        let (view, cx) =
-            cx.add_window_view(|_, _| AnimatedPickerHarness { selected: 0, disabled: false });
+        let (view, cx) = cx.add_window_view(|_, _| AnimatedPickerHarness {
+            selected: 0,
+            disabled: false,
+            width: None,
+        });
         cx.run_until_parked();
         let first = painted_pill(cx);
         let outer = cx.update(|window, cx| {
@@ -558,6 +588,57 @@ mod tests {
         cx.run_until_parked();
         cx.simulate_click(second.center(), gpui::Modifiers::none());
         assert_eq!(view.read_with(cx, |view, _| view.selected), 0);
+    }
+
+    #[gpui::test]
+    fn picker_resize_tracks_layout_immediately_even_during_selection_motion(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+        });
+        let (view, cx) = cx.add_window_view(|_, _| AnimatedPickerHarness {
+            selected: 0,
+            disabled: false,
+            width: Some(px(240.)),
+        });
+        cx.run_until_parked();
+        let first = painted_pill(cx);
+        for width in [400., 280.] {
+            view.update(cx, |view, cx| {
+                view.width = Some(px(width));
+                cx.notify();
+            });
+            cx.run_until_parked();
+            let pill = painted_pill(cx);
+            assert_eq!(pill.origin, first.origin);
+            assert_eq!(pill.size.width, first.size.width + px((width - 240.) / 2.));
+        }
+
+        let before_switch = painted_pill(cx);
+        view.update(cx, |view, cx| {
+            view.selected = 1;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert_eq!(painted_pill(cx), before_switch, "switching options still animates");
+        cx.executor().advance_clock(PILL_DURATION / 2);
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+
+        for width in [360., 240.] {
+            view.update(cx, |view, cx| {
+                view.width = Some(px(width));
+                cx.notify();
+            });
+            cx.run_until_parked();
+            let pill = painted_pill(cx);
+            let option_width = first.size.width + px((width - 240.) / 2.);
+            assert_eq!(pill.size.width, option_width);
+            assert_eq!(pill.left(), first.left() + option_width + px(PILL_INSET));
+        }
     }
 
     struct RowSizingHarness {

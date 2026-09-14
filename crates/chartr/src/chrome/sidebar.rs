@@ -238,6 +238,16 @@ pub fn render(
                     // Rows fill the tree; only their contents are indented.
                     .relative()
                     .w_full()
+                    // Paint the guide first so row selections cover it.
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(8.))
+                            .top_0()
+                            .bottom_0()
+                            .w(px(1.))
+                            .bg(colors.border_variant),
+                    )
                     .when(space.entries.is_empty(), |tree| {
                         tree.child(
                             div().ml(px(9.)).child(
@@ -251,16 +261,6 @@ pub fn render(
                         )
                     })
                     .when(!space.entries.is_empty(), |tree| tree.child(sessions))
-                    // A passive guide paints over the full-width row backgrounds.
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(8.))
-                            .top_0()
-                            .bottom_0()
-                            .w(px(1.))
-                            .bg(colors.border_variant),
-                    )
                     .into_any_element(),
             );
         }

@@ -615,15 +615,17 @@ impl SettingsWindow {
                             this.open_plugin_information(information_id.clone(), cx)
                         })),
                 )
-                .child(
-                    IconButton::new(format!("plugin-settings-{id}"), IconName::Settings)
-                        .aria_label(format!("Configure {name}"))
-                        .tooltip(Tooltip::text(format!("Configure {name}")))
-                        .disabled(!origin_available || busy)
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.open_plugin_settings(settings_id.clone(), window, cx)
-                        })),
-                )
+                .when(id != "com.chartr.markdown-prompt", |controls| {
+                    controls.child(
+                        IconButton::new(format!("plugin-settings-{id}"), IconName::Settings)
+                            .aria_label(format!("Configure {name}"))
+                            .tooltip(Tooltip::text(format!("Configure {name}")))
+                            .disabled(!origin_available || busy)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_plugin_settings(settings_id.clone(), window, cx)
+                            })),
+                    )
+                })
                 .child(enabled_control);
             fields.push(
                 v_flex()

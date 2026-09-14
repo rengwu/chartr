@@ -3,6 +3,30 @@ use crate::conversations::Event;
 use chartr_conversations::{NativeSession, Observation, Provider, Status};
 
 impl WorkspaceWindow {
+    pub(super) fn activate_selected_conversation(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.backend, Backend::Ready) {
+            return;
+        }
+        let target = self.conversations.read(cx).selected_row().and_then(|row| {
+            let pane = chartr_herdr::PaneId(row.runtime.as_ref()?.clone());
+            let space = self.spaces.iter().find(|space| {
+                space.read(cx).session_item(&pane).is_some_and(|item| {
+                    item.session.ended().is_none() && matches_session(row, &item.session.info)
+                })
+            })?;
+            Some((space.clone(), pane))
+        });
+        let Some((space, pane)) = target else {
+            return;
+        };
+        // Activate the existing item in its group/split; mode_focus_pending gives its
+        // terminal keyboard focus once the destination workspace has rendered.
+        if space.update(cx, |space, cx| space.activate_session(&pane, cx)) {
+            self.collapsed_spaces.remove(&space.entity_id());
+            self.active = Some(space);
+        }
+    }
+
     pub(super) fn sync_inbox_terminal(&mut self, cx: &mut Context<Self>) {
         let inbox = self.conversations.read(cx);
         let target = inbox.selected_runtime().and_then(|runtime| {

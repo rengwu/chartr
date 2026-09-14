@@ -99,6 +99,65 @@ mod tests {
         handle: ScrollHandle,
     }
 
+    struct HistoryHarness {
+        handle: ScrollHandle,
+        rows: usize,
+    }
+
+    impl Render for HistoryHarness {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            v_flex().size(px(200.)).child(scrolling_list(
+                "history-test-scrollbar",
+                crate::components::selection_list()
+                    .id("history-test-list")
+                    .px_1p5()
+                    .when(self.rows > 0, |list| list.pb_2())
+                    .children((0..self.rows).map(|_| div().h(px(30.)).flex_none())),
+                &self.handle,
+                window,
+                cx,
+            ))
+        }
+    }
+
+    #[gpui::test]
+    fn empty_and_fitting_history_has_no_scrollbar_even_on_hover(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+        });
+        let handle = ScrollHandle::new();
+        let (view, cx) =
+            cx.add_window_view(|_, _| HistoryHarness { handle: handle.clone(), rows: 0 });
+        cx.simulate_mouse_move(point(px(100.), px(100.)), None, Modifiers::none());
+        for rows in [0, 1, 20, 0] {
+            view.update(cx, |view, cx| {
+                view.rows = rows;
+                cx.notify();
+            });
+            cx.run_until_parked();
+            let overflow = rows == 20;
+            assert_eq!(
+                handle.max_offset().y > px(0.),
+                overflow,
+                "rows={rows}, offset={:?}",
+                handle.max_offset()
+            );
+            let has_thumb = cx.update(|window, cx| {
+                let [normal, hover, active] = scrollbar_thumb_colors(cx.theme().colors());
+                window.painted_quads().iter().any(|quad| {
+                    [normal, hover, active].iter().any(|color| quad.background == (*color).into())
+                })
+            });
+            assert_eq!(has_thumb, overflow, "scrollbar visibility for {rows} rows");
+            if overflow {
+                handle.set_offset(point(px(0.), px(-50.)));
+            } else {
+                assert_eq!(handle.offset().y, px(0.), "emptying the list clears its scroll offset");
+            }
+        }
+    }
+
     impl Render for Harness {
         fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             v_flex().size(px(200.)).child(scrolling_list(

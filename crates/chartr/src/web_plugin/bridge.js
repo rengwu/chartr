@@ -1,4 +1,16 @@
 (() => {
+  let theme = {};
+  const applyTheme = () => {
+    if (!window.document.documentElement) return;
+    for (const [name, value] of Object.entries(theme))
+      window.document.documentElement.style.setProperty(name, value);
+    window.dispatchEvent(new CustomEvent("chartr:theme", { detail: theme }));
+  };
+  window.__chartrApplyTheme = tokens => {
+    theme = Object.freeze({ ...tokens });
+    applyTheme();
+  };
+  window.document.addEventListener("DOMContentLoaded", applyTheme, { once: true });
   let next = 1;
   const document = Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16)).join("-");
   const pending = new Map();

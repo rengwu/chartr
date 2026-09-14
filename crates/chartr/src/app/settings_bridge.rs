@@ -49,6 +49,9 @@ impl WorkspaceWindow {
                 self.conversations.update(cx, |view, cx| view.select_runtime(&runtime, cx));
             }
         } else {
+            if self.mode == Mode::Inbox {
+                self.activate_selected_conversation(cx);
+            }
             self.terminal_mode = mode;
         }
         self.mode = mode;

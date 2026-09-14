@@ -267,7 +267,9 @@ with the host so dialogs continue to appear above embedded webviews. The host's
 existing form and font exports delegate to these same definitions.
 
 `DialogSurface` owns the outline and clipping; compose its contents with
-`dialog_header`, `dialog_body`, and `dialog_actions`. These sections own their
+`dialog_header`, `dialog_body`, and optional `dialog_actions`. Include a footer
+only when the dialog needs actions such as Save, Cancel, or Delete. Read-only
+previews can use just a header with a close control and a body. These sections own their
 compact padding, so header and footer dividers reach the surface edges. Dialog
 titles use normal label typography. Keep overflowing content in the body so
 the header and actions remain visible.
@@ -300,11 +302,11 @@ conflict checks, and authorization of project paths. Use `create_new()` when
 replacement is forbidden; it must not clobber a concurrently created file.
 
 The bundled Saved Prompts plugin exports `services::Prompts` from
-`com.chartr.prompts`. It owns a shared saved-prompt library and a table pane.
+`com.chartr.prompts`. It owns a shared saved-prompt library managed in its plugin settings page.
 `list(cx)` returns records with stable IDs, display titles, and prompt text;
 `resolve(id, cx)` reads a current record by ID. Consumers inject only the
 `prompt` field. The title is never part of the injection payload. See
-[Saved Prompts](../plugins/prompts/README.md) for persistence and surface behavior.
+[Saved Prompts](../plugins/prompts/README.md) for persistence and settings behavior.
 
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
 `PreparedTerminal` with a real session `id`; `send` delivers the validated input
@@ -312,6 +314,27 @@ and reports errors. This lets a consumer claim a ticket before the agent starts.
 `terminal.focus(id, window, cx)` selects that session in its owning space.
 These Rust capabilities stay host-side. The narrow Wayfinder web API below
 uses them without exposing arbitrary service calls or shell input to JavaScript.
+
+## Web appearance
+
+The host sets opt-in `--chartr-*` CSS custom properties on the document root and
+refreshes them when Chartr's theme or UI scale changes. Web panes retain their
+own stylesheet; consuming the tokens lets them match native controls.
+
+- Typography: `--chartr-ui-font`, `--chartr-mono-font`, `--chartr-font-size`,
+  `--chartr-font-small`, and `--chartr-font-large`.
+- Sizing: `--chartr-space-1` through `--chartr-space-6`, `--chartr-control-height`,
+  `--chartr-icon-size`, `--chartr-icon-button-size`, and `--chartr-radius`.
+  All dimensions are CSS pixels resolved at the current UI scale.
+- Colors: `--chartr-bg`, `--chartr-panel`, `--chartr-surface`, `--chartr-text`,
+  `--chartr-muted`, `--chartr-border`, `--chartr-border-variant`, `--chartr-control`,
+  `--chartr-hover`, `--chartr-selected`, `--chartr-accent`, `--chartr-focus`,
+  `--chartr-warning`, `--chartr-error`, `--chartr-success`, `--chartr-scrollbar`,
+  and `--chartr-scrollbar-hover`. `--chartr-color-scheme` is `light` or `dark`.
+
+For canvas rendering, read computed styles at startup and listen for the
+`chartr:theme` window event to refresh colors and font metrics. Its `detail`
+contains the current token values.
 
 ## Web host operations
 

@@ -1346,6 +1346,52 @@ mod tests {
     }
 
     #[gpui::test]
+    fn activating_a_session_preserves_its_group_and_split(cx: &mut gpui::TestAppContext) {
+        let temporary = tempfile::tempdir().unwrap();
+        let sidecar = temporary.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            chartr_herdr::Sidecar::at(sidecar).unwrap(),
+            chartr_herdr::Namespace::rooted(temporary.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new("Test".into(), temporary.path().to_owned(), Kind::AdHoc, client, cx)
+        });
+        space.update(cx, |space, cx| {
+            let first = space.open_plugin_launcher(cx);
+            let (group, pane) = space.layout.location(first).unwrap();
+            let builder = terminal::TerminalBuilder::new_display_only(
+                Default::default(),
+                terminal::terminal_settings::AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                util::paths::PathStyle::local(),
+            );
+            let info = backend_session("chat", temporary.path());
+            let backend = info.id.clone();
+            let session = Session::from_builder(info, builder, cx);
+            let item =
+                space.insert_session_in(session, group, pane, Some(SplitDirection::Right)).unwrap();
+            let location = space.layout.location(item).unwrap();
+            let sibling = space.open_plugin_launcher_in(group, location.1, cx);
+            let other = space.open_plugin_launcher(cx);
+            assert_eq!(space.active(), Some(other));
+
+            assert!(space.activate_session(&backend, cx));
+            assert_eq!(space.active_session_id(), Some(backend));
+            assert_eq!(space.active_tab_id(), Some(group));
+            assert_eq!(space.layout.location(item), Some(location));
+            assert_eq!(space.layout.location(sibling), Some(location));
+            assert_eq!(space.layout.location(first), Some((group, pane)));
+            assert_eq!(space.layout.tabs().len(), 2);
+            assert_eq!(space.layout.workspace(group).unwrap().center.panes().len(), 2);
+            assert!(!space.activate_session(&PaneId("missing".into()), cx));
+            assert_eq!(space.active(), Some(item));
+        });
+    }
+
+    #[gpui::test]
     fn plugin_launcher_opens_in_the_requested_existing_pane(cx: &mut gpui::TestAppContext) {
         let temporary = tempfile::tempdir().unwrap();
         let sidecar = temporary.path().join("herdr");

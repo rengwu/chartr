@@ -620,9 +620,9 @@ impl Render for DraggedItemPreview {
 
 /// The fixed leading mark used by sidebar rows, outer tabs, and pane-local tabs.
 ///
-/// Sessions show live Herdr/process state and plugins show the Hugeicon named
-/// by their manifest. A plain foreground process gets a slower neutral spinner
-/// so it cannot be mistaken for an agent actively working.
+/// Sessions show live Herdr/process state, with a provider icon when idle;
+/// plugins show the Hugeicon named by their manifest. A plain foreground process
+/// gets a slower neutral spinner so it cannot be mistaken for an agent actively working.
 pub fn item_indicator(
     activity: Activity,
     icon_path: Option<SharedString>,
@@ -667,8 +667,8 @@ pub fn item_indicator(
                 ))
                 .into_any_element()
         }
-        Some(SessionStatus::Idle | SessionStatus::Unknown) => gpui::Empty.into_any_element(),
-        None => match icon_path {
+        Some(SessionStatus::Unknown) => gpui::Empty.into_any_element(),
+        Some(SessionStatus::Idle) | None => match icon_path {
             Some(path) => {
                 let icon = if path.starts_with("icons/") {
                     Icon::from_path(path)
