@@ -46,7 +46,7 @@ own tools that live alongside your agents.
   and launch agents without leaving the view. [Inbox details](docs/conversations.md).
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
-- **Tools beside your terminals** — Agent, Skills, Saved Prompts, Markdown Prompt, and Wayfinder are
+- **Tools beside your terminals** — Agent, Skill sources, Saved Prompts, Markdown Prompt, and Wayfinder are
   bundled. Install additional web and hosted plugins, including the Browser surface.
 - **Make it yours** — Choose themes and fonts, follow the system appearance,
   rebind shortcuts, and configure plugins in native Settings.
@@ -141,7 +141,7 @@ to put the image elsewhere.
    outside a project. The `+` button opens a terminal.
 2. **Register an agent.** Open **Settings → Plugins → Agent → Configure** and
    add an installed CLI agent and its launch settings.
-3. **Register your skills.** Open **Settings → Plugins → Skills → Configure**
+3. **Register your skills.** Open **Settings → Plugins → Skill sources → Configure**
    and add local folders or Git repositories containing your skills.
 4. **Chart your work.** Open the Agent surface using the **New surface** button
    beside `+`. Work with your agent to write a plan under `.plan/maps/`, following
@@ -180,7 +180,7 @@ imported automatically.
 - [Workspace reference](docs/workspace.md) — spaces, panes, terminals, settings,
   persistence, and plugin behavior
 - [Plugin packages](docs/plugins.md) — installation, permissions, and host APIs
-- [Skills](plugins/skills/README.md) — source registration and discovery
+- [Skill sources](plugins/skills/README.md) — source registration and discovery
 - [Saved Prompts](plugins/prompts/README.md) — saved prompts and reusable prompt data
 - [Markdown Prompt](plugins/markdown-prompt/README.md) — compose and maintain Markdown from text and plugin templates
 - [Wayfinder](plugins/wayfinder/README.md) — maps, prompts, and ticket launches
@@ -198,7 +198,7 @@ commit history preserved. The Go implementation at v0.2.4 remains on
 [`legacy/v0.2.4`](https://github.com/rengwu/chartr/tree/legacy/v0.2.4).
 
 The Rust workspace, persistent terminals, native Settings, plugin host, and
-bundled Agent, Skills, Markdown Prompt, and Wayfinder surfaces, plus Saved Prompts settings, are implemented. CI builds
+bundled Agent, Markdown Prompt, and Wayfinder surfaces, plus Skill sources and Saved Prompts settings, are implemented. CI builds
 and tests the workspace and native plugin example on macOS and Ubuntu.
 
 Before the first Rust release:

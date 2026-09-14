@@ -1,4 +1,4 @@
-//! Bundled Skills plugin: an empty pane and an ordered source-management page.
+//! Bundled Skill sources plugin: settings and shared skill/template services.
 mod sources;
 
 use crate::{
@@ -13,7 +13,6 @@ use chartr_plugin::{
         Anchor, AnyElement, App, Context, Entity, Focusable, IntoElement, MouseButton, Render,
         Window, div, px, relative,
     },
-    services::PluginSettings,
 };
 use sources::{Kind, Operation, Source, State, Store};
 use std::{
@@ -53,7 +52,7 @@ impl Plugin for SkillsPlugin {
         Self { registry }
     }
     fn activate(&mut self, registrar: &mut Registrar, _: &mut App) {
-        registrar.add_pane("main", "Skills").add_settings();
+        registrar.add_settings();
     }
     fn services(&self) -> Vec<chartr_plugin::services::ServiceExport> {
         use chartr_plugin::services::{ServiceExport, Skills};
@@ -62,7 +61,7 @@ impl Plugin for SkillsPlugin {
         vec![
             ServiceExport::new(chartr_plugin::services::PromptTemplates::new(move |_, cx| {
                 let Some(registry) = template_registry.upgrade() else {
-                    return gpui::Task::ready(Err("Skills is unavailable.".into()));
+                    return gpui::Task::ready(Err("Skill sources are unavailable.".into()));
                 };
                 let registry = registry.read(cx);
                 if registry.load_failed || registry.busy.is_some() {
@@ -76,7 +75,7 @@ impl Plugin for SkillsPlugin {
             })),
             ServiceExport::new(Skills::new(move |cx| {
                 let Some(registry) = registry.upgrade() else {
-                    return gpui::Task::ready(Err("Skills is unavailable.".into()));
+                    return gpui::Task::ready(Err("Skill sources are unavailable.".into()));
                 };
                 let registry = registry.read(cx);
                 if registry.load_failed {
@@ -96,44 +95,17 @@ impl Plugin for SkillsPlugin {
     fn view(
         &mut self,
         _: &PaneKey,
-        context: &InstanceContext,
+        _: &InstanceContext,
         _: &mut Window,
-        cx: &mut App,
+        _: &mut App,
     ) -> gpui::AnyView {
-        cx.new(|_| SkillsPane { settings: context.plugin_settings.clone() }).into()
+        unreachable!("Skill sources contributes settings only")
     }
     fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<chartr_plugin::SettingsView> {
         Some(chartr_plugin::SettingsView::new(
             cx.new(|cx| SkillsView::new(self.registry.clone(), cx)),
             cx,
         ))
-    }
-}
-
-struct SkillsPane {
-    settings: PluginSettings,
-}
-
-impl Render for SkillsPane {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let settings = self.settings.clone();
-        let menu = PopupMenu::new("skills-pane-menu")
-            .trigger(
-                plugin_ui::icon_action("skills-pane-menu-trigger", IconName::ChevronDown)
-                    .aria_label("Skills pane menu"),
-            )
-            .anchor(Anchor::TopRight)
-            .menu(move |window, cx| {
-                let settings = settings.clone();
-                Some(ContextMenu::build_popup(window, cx, move |menu| {
-                    menu.entry("Skill source settings", None, move |window, cx| {
-                        settings.open(Some(SkillsPlugin::ID), window, cx);
-                    })
-                }))
-            });
-        plugin_ui::pane_surface("skills-pane", cx)
-            .child(div().absolute().top_3().right_3().child(menu))
-            .into_any_element()
     }
 }
 
@@ -926,27 +898,6 @@ mod tests {
             let second = SkillsPlugin::new(host, cx);
             assert_eq!(first.registry, second.registry);
         });
-    }
-
-    #[gpui::test]
-    fn pane_menu_opens_host_settings_in_the_owning_window(cx: &mut TestAppContext) {
-        init(cx);
-        let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-        let requests = opened.clone();
-        let settings = PluginSettings::new(move |plugin, window, _| {
-            requests.borrow_mut().push((plugin.map(str::to_owned), window.window_handle()));
-        });
-        let (_, cx) = cx.add_window_view(|_, _| SkillsPane { settings });
-        cx.run_until_parked();
-        let trigger = cx.debug_bounds("ICON-ChevronDown").unwrap();
-        cx.simulate_click(trigger.center(), Modifiers::none());
-        let popup = cx.windows().into_iter().find(|window| *window != cx.window_handle()).unwrap();
-        let mut popup = gpui::VisualTestContext::from_window(popup, cx);
-        popup.run_until_parked();
-        let item = popup.debug_bounds("MENU_ITEM-Skill source settings").unwrap();
-        popup.simulate_click(item.center(), Modifiers::none());
-        cx.run_until_parked();
-        assert_eq!(&*opened.borrow(), &[(Some(SkillsPlugin::ID.into()), cx.window_handle())]);
     }
 
     #[gpui::test]

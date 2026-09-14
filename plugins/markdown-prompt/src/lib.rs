@@ -411,6 +411,17 @@ impl Composer {
 }
 impl Render for Composer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.context.project_dir.is_none() {
+            return plugin_ui::pane_surface("markdown-prompt", cx)
+                .items_center()
+                .justify_center()
+                .p_4()
+                .text_center()
+                .child(
+                    plugin_ui::label("Markdown Prompt only works in a space.").color(Color::Muted),
+                )
+                .into_any_element();
+        }
         if self.templates_dirty && !self.busy {
             self.templates_dirty = false;
             self.refresh(window, cx);
@@ -689,6 +700,7 @@ impl Render for Composer {
                     ),
                 )
             })
+            .into_any_element()
     }
 }
 
