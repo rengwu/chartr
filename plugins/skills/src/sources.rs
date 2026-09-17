@@ -532,7 +532,10 @@ mod tests {
         assert!(templates[0].prompt.contains("Source warning: Missing is unavailable."));
         assert_eq!(
             templates[1].prompt,
-            format!("### bag-of-skills\n`{}`\n\n- `shared` — `shared/SKILL.md`\n", first.display()),
+            format!(
+                "### Skill source: bag-of-skills ({})\n- `shared` — `shared/SKILL.md`\n",
+                first.display()
+            ),
         );
         assert!(!templates[1].prompt.contains("Matt Pocock"));
         assert!(!templates[1].prompt.contains("only-second"));

@@ -12,6 +12,9 @@ function page() {
   const window = {
     ipc: { postMessage(encoded) { sent.push(JSON.parse(encoded)); } },
     addEventListener(event, callback) { events.set(event, callback); },
+    document: {
+      addEventListener(event, callback) { events.set(event, callback); },
+    },
   };
   vm.runInNewContext(bridge, {
     window, TextEncoder, crypto: webcrypto,
