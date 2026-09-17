@@ -152,6 +152,10 @@
         </form>
         <footer id="claim" hidden>
           <p id="claim-label"></p>
+          <div class="claim-actions">
+            <button id="focus-session" type="button">Open session</button>
+            <button id="release" type="button">Release claim…</button>
+          </div>
         </footer>
       </aside>
       <footer class="map-footer" hidden>
@@ -200,6 +204,18 @@
               <use href="icons/ui.svg#ArrowUpRight01Icon"></use>
             </svg>
           </button>
+        </footer>
+      </dialog>
+      <dialog id="release-dialog" aria-labelledby="release-title" aria-describedby="release-description">
+        <header><h2 id="release-title">Release claim?</h2></header>
+        <div class="release-body">
+          <p id="release-ticket"></p>
+          <p id="release-description">Remove this ticket’s claim so it can be launched again when ready. This does not stop the claimed session. Release its claim only when the work has stopped.</p>
+          <p id="release-status" role="status"></p>
+        </div>
+        <footer>
+          <button id="cancel-release" type="button" autofocus>Cancel</button>
+          <button id="confirm-release" type="button" class="primary">Release claim</button>
         </footer>
       </dialog>
     </main>

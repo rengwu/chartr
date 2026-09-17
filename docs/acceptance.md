@@ -257,6 +257,15 @@ Skill source rows must use an Edit icon and show no up/down order buttons.
 Drag rows to reorder; confirm dropping persists the order and Escape cancels it.
 Inbox must offer no conversation rename action or title editing form.
 
+In Wayfinder, launch a ready ticket with a multiline prompt. The terminal should
+start the registered agent without inserting the full prompt into shell history.
+If a claimed session has ended, **Open session** reports that it is unavailable;
+**Release claim…** opens a confirmation naming the ticket and session. Cancel
+keeps the claim, and confirmation clears it and restores the ticket's readiness
+when blockers permit. Change the claim while confirmation is open: release must
+show an error and preserve the newer claim. Release must also work with Agent or
+Skills disabled and must never terminate a running session.
+
 ## Persistence and lifecycle
 
 Relaunch after changing window bounds, sidebar width/scope, mode, full space

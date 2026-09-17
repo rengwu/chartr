@@ -1038,13 +1038,13 @@ impl Space {
                         };
                         if let Some(id) = inserted {
                             if !initial_input.is_empty()
-                                && let Err(error) = input.send(&initial_input)
+                                && let Err(error) = input.send_shell_launch(&initial_input)
                             {
                                 this.problem = Some(error.to_string());
                             }
                             cx.emit(SpaceEvent::TerminalReady(id));
                             Ok(chartr_plugin::PreparedTerminal::new(session_id, move |bytes| {
-                                input.send(bytes).map_err(|error| error.to_string())
+                                input.send_shell_launch(bytes).map_err(|error| error.to_string())
                             }))
                         } else {
                             Err("The new terminal could not be inserted into its space.".into())

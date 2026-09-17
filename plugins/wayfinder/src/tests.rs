@@ -145,6 +145,50 @@ async fn failed_delivery_releases_only_its_own_claim(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn release_recovers_a_dead_session_and_rejects_a_changed_claim(cx: &mut TestAppContext) {
+    let root = fixture();
+    let map = model::discover(root.path()).unwrap().remove(0);
+    model::claim(root.path(), &map, 1, "ended-session").unwrap();
+    let context = context(root.path(), |_| panic!("releasing must not send terminal input"));
+    // Recovery must work even when launch providers are disabled or the session is gone.
+    context.services.remove(AGENT_SERVICE);
+    context.services.remove(SKILLS_SERVICE);
+    let mut bridge = Bridge::new(context);
+    let window = window(cx);
+    let cx = &mut cx.to_async();
+    let release = |session: &str| Action::Release {
+        slug: "design".into(),
+        ticket: 1,
+        session: session.into(),
+    };
+    assert!(
+        bridge
+            .handle(release("different-session"), "document", window, || true, cx)
+            .await
+            .unwrap_err()
+            .contains("claim changed")
+    );
+    assert_eq!(model::discover(root.path()).unwrap()[0].tickets[0].claimed_by, "ended-session");
+    bridge.handle(release("ended-session"), "document", window, || true, cx).await.unwrap();
+    let current = model::discover(root.path()).unwrap().remove(0);
+    assert!(current.tickets[0].claimed_by.is_empty());
+    assert!(current.tickets[0].frontier);
+    assert!(!current.tickets[0].raw.contains("claimed_at:"));
+    model::claim(root.path(), &current, 1, "replacement-session").unwrap();
+    assert!(
+        bridge
+            .handle(release("ended-session"), "document", window, || true, cx)
+            .await
+            .unwrap_err()
+            .contains("claim changed")
+    );
+    assert_eq!(
+        model::discover(root.path()).unwrap()[0].tickets[0].claimed_by,
+        "replacement-session"
+    );
+}
+
+#[gpui::test]
 async fn changed_sources_or_files_reject_stale_web_previews(cx: &mut TestAppContext) {
     let root = fixture();
     let context = context(root.path(), |_| panic!("Stale input must not launch"));

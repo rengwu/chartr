@@ -19,6 +19,7 @@ const state = {
   busy: false,
   refreshing: false,
   preview: null,
+  release: null,
   dock: null,
   pane: { right: 0, bottom: 0 },
 };
@@ -369,6 +370,8 @@ function render() {
   $("claim-label").textContent = t?.claimed_by
     ? `Claimed by ${t.claimed_by}`
     : "";
+  $("focus-session").disabled = state.busy;
+  $("release").disabled = state.busy;
 }
 
 async function refresh() {
@@ -423,13 +426,66 @@ $("body").addEventListener("click", (e) => {
   if (target && !target.startsWith("#")) openFile(target);
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("prompt-dialog").open) {
+  if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
     if (state.mode !== null) {
       select(null);
       stars.focus();
     } else if (map() && !e.target.matches("input,textarea,select")) back();
   }
 });
+$("focus-session").onclick = async () => {
+  const t = ticket();
+  if (state.busy || !t?.claimed_by) return;
+  try {
+    await invoke("focus", { slug: state.slug, ticket: t.number });
+  } catch (error) {
+    notice(error.message);
+  }
+};
+$("release").onclick = () => {
+  const t = ticket();
+  if (state.busy || !t?.claimed_by) return;
+  // Bind confirmation to this exact claim even if a snapshot changes beneath it.
+  state.release = { slug: state.slug, ticket: t.number, session: t.claimed_by };
+  $("release-title").textContent = `Release ticket ${String(t.number).padStart(2, "0")}?`;
+  $("release-ticket").textContent = `${t.title} · Claimed by ${t.claimed_by}`;
+  $("release-status").textContent = "";
+  $("confirm-release").disabled = false;
+  $("cancel-release").disabled = false;
+  $("release-dialog").showModal();
+};
+$("cancel-release").onclick = () => {
+  if (state.busy) return;
+  $("release-dialog").close();
+  state.release = null;
+};
+$("release-dialog").addEventListener("cancel", (e) => {
+  if (state.busy) e.preventDefault();
+  else state.release = null;
+});
+$("confirm-release").onclick = async () => {
+  if (state.busy || !state.release) return;
+  state.busy = true;
+  $("confirm-release").disabled = true;
+  $("cancel-release").disabled = true;
+  $("release-status").textContent = "Releasing claim…";
+  render();
+  try {
+    await invoke("release", state.release);
+    $("release-dialog").close();
+    state.release = null;
+    state.preview = null;
+    notice("Claim released.");
+  } catch (error) {
+    $("release-status").textContent = error.message;
+  } finally {
+    state.busy = false;
+    $("confirm-release").disabled = false;
+    $("cancel-release").disabled = false;
+    await refresh();
+    render();
+  }
+};
 $("launcher").onsubmit = async (e) => {
   e.preventDefault();
   if (state.busy) return;
@@ -474,7 +530,7 @@ $("launch").onclick = async () => {
       agent: state.preview.agent,
     });
     $("prompt-dialog").close();
-    notice("Agent launched. The ticket is claimed by its session.");
+    notice("Agent launch started. If the session ends, use Release claim to retry.");
   } catch (error) {
     $("preview-status").textContent = error.message;
   } finally {

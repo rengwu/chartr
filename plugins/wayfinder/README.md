@@ -79,14 +79,21 @@ under an OS lock, then atomically records the actual session ID in `claimed_by`
 and an RFC 3339 `claimed_at`. Agent supplies the adapter-specific input; the host
 delivers it to the normal terminal in the same space. No external agent runs
 until these steps succeed. A failed delivery releases only the claim it created.
+Long or multiline launch commands are sourced from an owner-only temporary
+script, avoiding interactive-shell history limits. The script unlinks itself
+when read; session cleanup removes it if the shell never reads it.
 The prepared shell may remain open after a failure so the failure does not
 silently destroy a terminal.
 
 One claimed ticket is permitted per space, including across maps. Work is
 explicitly launched; there is no automatic queue or worktree manager. A
 non-empty Answer or Ruled out closes the ticket, so a leftover claim on a closed
-ticket does not block the frontier. Claimed tickets show their session identity
-in the detail pane.
+ticket does not block the frontier. Claimed tickets show their session identity,
+**Open session**, and **Release claim…** in the detail pane. Release opens a
+confirmation dialog and clears only the claim that was shown when it opened;
+a newer claim cannot be cleared by a stale confirmation. This works after the
+session has ended and with Agent/Skills disabled. Releasing a claim does not stop
+a running agent. The ticket becomes launchable again when its blockers allow it.
 
 The complete file contract is [TRACKER-CONVENTION.md](TRACKER-CONVENTION.md).
 Ordinary agent sessions outside Wayfinder are not serialized by this plugin;

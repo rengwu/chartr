@@ -5,6 +5,8 @@
 //! ordinary terminal bytes and owns emulation, rendering, resizing, keyboard,
 //! paste, selection, and mouse reporting as one coherent implementation.
 
+mod launch;
+
 use std::{
     sync::{Arc, Mutex, Weak},
     time::Duration,
@@ -89,7 +91,11 @@ impl Session {
             }
         });
 
-        let endpoint = Arc::new(Mutex::new(SessionEndpoint { info: info.clone(), input_tx }));
+        let endpoint = Arc::new(Mutex::new(SessionEndpoint {
+            info: info.clone(),
+            input_tx,
+            launch_scripts: Vec::new(),
+        }));
         Self { info, terminal, ended: None, endpoint, _input_task: input_task }
     }
 
@@ -127,7 +133,11 @@ impl Session {
     /// Keep plugin capabilities attached to the same persistent session when
     /// its local terminal and input task are replaced.
     pub fn replace_attachment(&mut self, mut replacement: Self) {
-        *self.endpoint.lock().unwrap() = replacement.endpoint.lock().unwrap().clone();
+        let mut endpoint = self.endpoint.lock().unwrap();
+        let mut next = replacement.endpoint.lock().unwrap().clone();
+        next.launch_scripts = std::mem::take(&mut endpoint.launch_scripts);
+        *endpoint = next;
+        drop(endpoint);
         replacement.endpoint = self.endpoint.clone();
         *self = replacement;
     }
@@ -141,6 +151,9 @@ pub struct SessionAccess(Weak<Mutex<SessionEndpoint>>);
 struct SessionEndpoint {
     info: control::Session,
     input_tx: mpsc::UnboundedSender<Vec<u8>>,
+    // Keep unsent/unconsumed launch scripts alive across attachment replacement.
+    // Sourcing removes each file immediately; dropping the session cleans up failures.
+    launch_scripts: Vec<Arc<tempfile::TempPath>>,
 }
 
 impl SessionAccess {
@@ -157,6 +170,19 @@ impl SessionAccess {
             .input_tx
             .unbounded_send(bytes.to_vec())
             .map_err(|_| session_unavailable())
+    }
+
+    /// Launch commands are shell input; ordinary terminal keystrokes remain raw.
+    pub fn send_shell_launch(&self, bytes: &[u8]) -> chartr_herdr::Result<()> {
+        let endpoint = self.0.upgrade().ok_or_else(session_unavailable)?;
+        let mut endpoint = endpoint.lock().unwrap();
+        let (input, script) = launch::stage(bytes).map_err(|error| {
+            chartr_herdr::Error::Protocol(format!("Preparing agent launch: {error}"))
+        })?;
+        endpoint.input_tx.unbounded_send(input).map_err(|_| session_unavailable())?;
+        endpoint.launch_scripts.retain(|script| script.exists());
+        endpoint.launch_scripts.extend(script);
+        Ok(())
     }
 }
 
@@ -204,7 +230,11 @@ mod tests {
                 .subscribe(cx)
             });
             let (input_tx, input_rx) = mpsc::unbounded();
-            let endpoint = Arc::new(Mutex::new(SessionEndpoint { info: info.clone(), input_tx }));
+            let endpoint = Arc::new(Mutex::new(SessionEndpoint {
+                info: info.clone(),
+                input_tx,
+                launch_scripts: Vec::new(),
+            }));
             (
                 Session { info, terminal, ended: None, endpoint, _input_task: Task::ready(()) },
                 input_rx,
@@ -218,14 +248,23 @@ mod tests {
         info.label = "after".into();
         session.update_info(info.clone());
         assert_eq!(access.info().unwrap().title(), "after");
+        access
+            .send_shell_launch(format!("printf '%s' '{}'\r", "x".repeat(5000)).as_bytes())
+            .unwrap();
+        let script = session.endpoint.lock().unwrap().launch_scripts[0].to_path_buf();
+        let launch_input = futures::executor::block_on(original_rx.next()).unwrap();
+        assert!(launch_input.starts_with(b". ") && launch_input.len() < 1024);
+        assert!(script.exists());
         let (replacement, mut replacement_rx) = attachment(info);
         let replacement_terminal = replacement.terminal().entity_id();
         session.replace_attachment(replacement);
+        assert!(script.exists(), "reattaching must not discard a pending launch");
         assert_eq!(session.terminal().entity_id(), replacement_terminal);
         access.send(b"replacement").unwrap();
         assert_eq!(futures::executor::block_on(replacement_rx.next()).unwrap(), b"replacement");
         assert_eq!(futures::executor::block_on(original_rx.next()), None);
         drop(session);
+        assert!(!script.exists(), "closing the session cleans up an unconsumed launch");
         assert!(access.send(b"closed").is_err());
         assert!(access.info().is_err());
     }

@@ -180,6 +180,17 @@ try {
           t.frontier = false;
           return { session: "new-session" };
         }
+        if (action === "wayfinder.release") {
+          const t = window.fixture.maps.find((m) => m.slug === options.slug)
+            .tickets.find((t) => t.number === options.ticket);
+          if (t.claimed_by !== options.session)
+            throw new Error("The claim changed. Refresh before releasing it.");
+          t.state = "Ready";
+          t.claimed_by = "";
+          t.frontier = true;
+        }
+        if (action === "wayfinder.focus")
+          throw new Error("That session is no longer open in this space. Release its claim only if the work has stopped.");
         return true;
       },
     };
@@ -369,15 +380,32 @@ try {
   );
   assert.equal(await page.locator("#claim").isVisible(), true);
   assert.equal(await page.locator("#launcher").isVisible(), false);
-  assert.equal(await page.locator("#release, #focus-session").count(), 0);
-  // A subsequent host snapshot can update a claim without detail-pane actions.
+  assert.equal(await page.locator("#release").isVisible(), true);
+  await page.click("#focus-session");
+  assert.match(await page.locator("#notice span").textContent(), /no longer open/);
+  await page.click("#release");
+  assert.equal(await page.locator("#release-dialog").isVisible(), true);
+  assert.match(await page.locator("#release-ticket").textContent(), /new-session/);
+  await page.click("#cancel-release");
+  assert.equal(await page.evaluate(() => window.calls.filter((c) => c.action === "wayfinder.release").length), 0);
+  await page.click("#release");
+  // A refreshed/replaced claim must not be cleared by an old confirmation.
   await page.evaluate(() => {
-    const t = window.fixture.maps[0].tickets[2];
-    t.state = "Ready";
-    t.claimed_by = "";
-    t.frontier = true;
+    window.fixture.maps[0].tickets[2].claimed_by = "replacement-session";
   });
+  await page.click("#confirm-release");
+  await page.waitForFunction(() => document.querySelector("#release-status").textContent.includes("claim changed"));
+  assert.equal(await page.locator("#release-dialog").isVisible(), true);
+  await page.click("#cancel-release");
+  await page.waitForFunction(() => document.querySelector("#claim-label").textContent.includes("replacement-session"));
+  await page.click("#release");
+  await page.click("#confirm-release");
+  await page.waitForFunction(() => !document.querySelector("#release-dialog").open);
   await page.waitForFunction(() => document.querySelector("#claim").hidden);
+  assert.equal(await page.locator("#launcher").isVisible(), true);
+  assert.deepEqual(await page.evaluate(() => window.calls.filter((c) => c.action === "wayfinder.release").at(-1).options), {
+    slug: "observatory", ticket: 3, session: "replacement-session",
+  });
   await page.click("#agent-setup");
   assert.equal(
     await page.evaluate(() => window.calls.at(-1).options.provider),
@@ -523,7 +551,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Web smoke passed: picker/back, camera easing and memory, anchored pinch (wheel/WebKit), world fog, selection centering, both resize seams, responsive layouts, reduced motion, preview/launch, claim updates, setup, empty space.",
+    "Web smoke passed: picker/back, camera easing and memory, anchored pinch (wheel/WebKit), world fog, selection centering, both resize seams, responsive layouts, reduced motion, preview/launch, claim release/cancel/conflicts, setup, empty space.",
   );
 } finally {
   await browser.close();
