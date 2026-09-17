@@ -84,8 +84,8 @@ when their provider returns. Missing, disabled, or cyclic prerequisites block
 enabling, including during startup. These rules apply to all plugin tiers.
 
 Hosted and web packages are architecture-independent and need no release
-binary. Installing chartr Browser is therefore only a shallow clone or folder
-copy, manifest validation, confirmation, and atomic rename. Browser uses
+binary. Browser ships in the bundled catalog with its manifest and icon;
+installed overrides use the same validation and installation flow. Browser uses
 ephemeral web-engine storage and persists only each pane's last URL.
 
 chartr may link native plugin modules at application build time, but it rejects
@@ -110,8 +110,7 @@ a `BackgroundStatus` with a short label, tooltip detail, and `Idle`, `Running`, 
 checks for changes once per second, independently of pane visibility. Clicking
 a status opens the plugin’s settings; disabling the plugin removes its status.
 The bar can be hidden without stopping any service, and its visibility is saved
-as `[general] show_status_bar` in `settings.toml`. Companion contributes its
-listener and connection state through this API.
+as `[general] show_status_bar` in `settings.toml`.
 
 ## Manifest
 
@@ -442,7 +441,10 @@ and no project Markdown executes in the web document.
 
 ## Android companion
 
-The bundled native [Companion](../plugins/companion/README.md) plugin provides an opt-in, encrypted direct-IP connection for the Android app in `../chartr-mobile`. It shares open spaces and their existing terminal sessions through a flat mobile interface. Its listener starts only from the plugin's **Start sharing** control and stops when disabled or unloaded. See the [wire protocol](companion-protocol.md) for its bounded host operations.
+[Companion](../plugins/companion/README.md) is excluded from current desktop
+builds, including its listener dependency and host bridge. Its source and the
+[wire protocol](companion-protocol.md) are retained for future development of
+the Android app in `../chartr-mobile`.
 
 
 ## Prompt template providers

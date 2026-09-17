@@ -16,15 +16,15 @@ use gpui::{
     actions, px, size,
 };
 use ui::{
-    Button, ColumnWidthConfig, DropdownMenu, DropdownStyle, Icon, IconButton, PopoverMenu,
-    RedistributableColumnsState, Switch, Table, TableResizeBehavior, Tooltip, prelude::*,
+    Button, ColumnWidthConfig, Icon, IconButton, RedistributableColumnsState, Switch, Table,
+    TableResizeBehavior, Tooltip, prelude::*,
 };
 
 use crate::{
     app::WorkspaceWindow,
     components::{
-        ContextMenu, FORM_CONTROL_SIZE, SegmentedControl, SegmentedControlOption, form_button,
-        input_field, selection_list, selection_row,
+        ContextMenu, FORM_CONTROL_SIZE, PopupMenu, SegmentedControl, SegmentedControlOption,
+        form_button, form_picker, input_field, selection_list, selection_row,
     },
     fonts::{self, Fonts, UI_LABEL_DEFAULT, UI_LABEL_LARGE, UI_LABEL_SMALL, UI_TEXT_DEFAULT},
     keymap::{KeymapAction, KeymapStore},
@@ -157,6 +157,9 @@ pub struct SettingsWindow {
     plugin_information: Option<String>,
     git_install_open: bool,
     git_url_input: Entity<TextInput>,
+    git_install_trigger_focus: FocusHandle,
+    git_install_cancel_focus: FocusHandle,
+    git_install_confirm_focus: FocusHandle,
     plugin_operation: Option<String>,
     plugin_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     plugin_restart_required: bool,
@@ -253,6 +256,9 @@ impl SettingsWindow {
             plugin_information: None,
             git_install_open: false,
             git_url_input,
+            git_install_trigger_focus: cx.focus_handle(),
+            git_install_cancel_focus: cx.focus_handle(),
+            git_install_confirm_focus: cx.focus_handle(),
             plugin_operation: None,
             plugin_cancel: None,
             plugin_restart_required: crate::plugin_installer::has_pending(
@@ -598,7 +604,10 @@ impl SettingsWindow {
             cx.notify();
             return;
         }
-        if event.keystroke.modifiers.control && event.keystroke.key == "tab" {
+        if !self.git_install_open
+            && event.keystroke.modifiers.control
+            && event.keystroke.key == "tab"
+        {
             cx.stop_propagation();
             self.cycle_page(event.keystroke.modifiers.shift, cx);
         }
@@ -665,7 +674,7 @@ impl SettingsWindow {
         }
         match self.page {
             SettingsPage::General => self.general_page(cx),
-            SettingsPage::Appearance => self.appearance_page(window, cx),
+            SettingsPage::Appearance => self.appearance_page(cx),
             SettingsPage::Terminal => self.terminal_page(cx),
             SettingsPage::Hotkeys => self.hotkeys_page(cx),
             SettingsPage::Plugins => self.plugins_page(window, cx),
@@ -709,11 +718,13 @@ impl Render for SettingsWindow {
         let show_page_title = self.page != SettingsPage::Plugins
             || (self.plugin_settings.is_none() && self.plugin_information.is_none());
         let content = self.content(window, cx);
+        let git_install = self.git_install_modal(window, cx);
 
         div()
             .id("settings-window")
             .key_context("chartrSettings")
             .track_focus(&self.focus)
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -726,6 +737,9 @@ impl Render for SettingsWindow {
                 window.activate_window()
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
+            .capture_key_down(
+                cx.listener(|this, event, window, cx| this.on_git_install_key(event, window, cx)),
+            )
             .child(self.title_bar.clone())
             .child(
                 h_flex()
@@ -770,14 +784,18 @@ impl Render for SettingsWindow {
                                         .when_some(unreadable, |view, problem| {
                                             view.child(chartr_plugin::ui::notice(problem, true))
                                         })
-                                        .when_some(self.problem.clone(), |view, problem| {
-                                            view.child(chartr_plugin::ui::notice(problem, true))
-                                        })
+                                        .when_some(
+                                            self.problem.clone().filter(|_| !self.git_install_open),
+                                            |view, problem| {
+                                                view.child(chartr_plugin::ui::notice(problem, true))
+                                            },
+                                        )
                                         .child(content),
                                 ),
                             ),
                     ),
             )
+            .children(git_install)
     }
 }
 
@@ -1065,5 +1083,77 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(cancel.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[gpui::test]
+    fn git_install_modal_contains_input_and_preserves_the_plugins_page(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let mut view = SettingsWindow::new(None, WeakEntity::new_invalid(), window, cx);
+            view.page = SettingsPage::Plugins;
+            view
+        });
+        cx.simulate_resize(size(px(720.), px(420.)));
+        cx.run_until_parked();
+        let actions = cx.debug_bounds("PLUGIN_INSTALL_ACTIONS").unwrap();
+        let trigger = actions.origin + gpui::point(px(12.), px(12.));
+        cx.simulate_click(trigger, gpui::Modifiers::none());
+        cx.run_until_parked();
+        let dialog = cx.debug_bounds("GIT_INSTALL_DIALOG").unwrap();
+        assert_eq!(actions, cx.debug_bounds("PLUGIN_INSTALL_ACTIONS").unwrap());
+        assert!(dialog.left() >= px(0.) && dialog.right() <= px(720.));
+        assert!(dialog.top() >= px(0.) && dialog.bottom() <= px(420.));
+        cx.update(|window, cx| {
+            assert!(view.read(cx).git_url_input.focus_handle(cx).is_focused(window));
+        });
+
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let view = view.read(cx);
+            assert!(view.git_install_open);
+            assert_eq!(view.problem.as_deref(), Some("Enter a Git repository URL."));
+            assert!(view.plugin_operation.is_none());
+        });
+        cx.simulate_keystrokes("shift-tab");
+        cx.update(|window, cx| {
+            assert!(view.read(cx).git_install_confirm_focus.is_focused(window));
+        });
+        cx.simulate_keystrokes("tab");
+        cx.update(|window, cx| {
+            assert!(view.read(cx).git_url_input.focus_handle(cx).is_focused(window));
+        });
+        cx.simulate_keystrokes("ctrl-tab");
+        cx.update(|window, cx| {
+            let view = view.read(cx);
+            assert_eq!(view.page, SettingsPage::Plugins);
+            assert!(view.git_install_cancel_focus.is_focused(window));
+        });
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("GIT_INSTALL_DIALOG").is_none());
+        cx.update(|window, cx| {
+            assert!(view.read(cx).git_install_trigger_focus.is_focused(window));
+        });
+
+        cx.simulate_click(trigger, gpui::Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_click(dialog.origin + gpui::point(px(24.), px(12.)), gpui::Modifiers::none());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("GIT_INSTALL_DIALOG").is_some());
+        // Clicking over the sidebar dismisses without activating the page beneath it.
+        cx.simulate_click(gpui::point(px(24.), px(150.)), gpui::Modifiers::none());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("GIT_INSTALL_DIALOG").is_none());
+        cx.update(|_, cx| assert_eq!(view.read(cx).page, SettingsPage::Plugins));
+
+        cx.simulate_click(trigger, gpui::Modifiers::none());
+        cx.run_until_parked();
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("GIT_INSTALL_DIALOG").is_none());
+        cx.update(|window, cx| {
+            assert!(view.read(cx).git_install_trigger_focus.is_focused(window));
+        });
     }
 }

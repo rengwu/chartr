@@ -55,13 +55,17 @@ impl gpui::RenderOnce for LauncherSurface {
 }
 
 fn launcher_cards(cards: Vec<AnyElement>) -> gpui::Div {
-    let columns = if cards.len() < 5 { 2. } else { 3. };
+    let columns = match cards.len() {
+        0 | 1 => 1.,
+        2..=4 => 2.,
+        _ => 3.,
+    };
     h_flex()
         .w_full()
         .max_w(rems(LAUNCHER_CARD_WIDTH_REMS * columns + 0.5 * (columns - 1.)))
         .mx_auto()
         .flex_wrap()
-        .justify_center()
+        .justify_start()
         .items_start()
         .content_start()
         .gap_2()
@@ -97,7 +101,9 @@ mod launcher_layout_tests {
     }
 
     #[gpui::test]
-    fn launcher_cards_wrap_center_each_row_and_respect_the_size_cap(cx: &mut gpui::TestAppContext) {
+    fn launcher_cards_keep_incomplete_rows_on_the_grid_and_respect_the_size_cap(
+        cx: &mut gpui::TestAppContext,
+    ) {
         let (view, cx) = cx.add_window_view(|_, _| LauncherGrid { count: 5 });
         for (width, columns) in [(665., 3), (600., 2), (441., 2), (400., 1), (217., 1), (160., 1)] {
             cx.simulate_resize(gpui::size(px(width), px(600.)));
@@ -111,14 +117,10 @@ mod launcher_layout_tests {
                 let card = cx.debug_bounds(selector).unwrap();
                 assert_eq!(card.size, first.size);
                 assert!(card.left() >= px(0.) && card.right() <= px(width));
-                let row_count = columns.min(5 - (index / columns) * columns);
-                let row_width =
-                    first.size.width * row_count as f32 + px(7. * (row_count - 1) as f32);
-                let row_left = (px(width) - row_width) / 2.;
                 assert_eq!(
                     card.left(),
-                    row_left + (first.size.width + px(7.)) * (index % columns) as f32,
-                    "each wrapped row must remain centered at {width}px",
+                    (first.size.width + px(7.)) * (index % columns) as f32,
+                    "each wrapped row must keep the same columns at {width}px",
                 );
                 assert_eq!(card.top(), px((index / columns) as f32 * 84.));
             }
@@ -130,21 +132,22 @@ mod launcher_layout_tests {
                 cx.notify();
             });
             cx.run_until_parked();
-            let columns = if count < 5 { 2 } else { 3 };
+            let columns = match count {
+                1 => 1,
+                2..=4 => 2,
+                _ => 3,
+            };
+            let grid_width = 217. * columns as f32 + 7. * (columns - 1) as f32;
+            let grid_left = (700. - grid_width) / 2.;
             for (index, selector) in ["CARD-0", "CARD-1", "CARD-2", "CARD-3", "CARD-4", "CARD-5"]
                 .into_iter()
                 .take(count)
                 .enumerate()
             {
                 let card = cx.debug_bounds(selector).unwrap();
-                let row_count = columns.min(count - (index / columns) * columns);
-                let row_width = 217. * row_count as f32 + 7. * (row_count - 1) as f32;
                 assert_eq!(card.size, gpui::size(px(217.), px(77.)));
                 assert_eq!(card.top(), px((index / columns) as f32 * 84.));
-                assert_eq!(
-                    card.left(),
-                    px((700. - row_width) / 2. + (index % columns) as f32 * 224.)
-                );
+                assert_eq!(card.left(), px(grid_left + (index % columns) as f32 * 224.));
             }
         }
     }
@@ -186,7 +189,7 @@ mod launcher_layout_tests {
         cx.run_until_parked();
         let first = cx.debug_bounds("CARD-0").unwrap();
         let last = cx.debug_bounds("CARD-3").unwrap();
-        assert_eq!(first.left(), (px(300.) - first.size.width) / 2.);
+        assert_eq!(first.left(), last.left(), "wrapped cards stay on the first grid column");
         assert_eq!(first.top(), px(600.) - last.bottom(), "center vertically when content fits");
         assert!(scrollbar_thumb(cx).is_none());
 
@@ -573,7 +576,7 @@ impl WorkspaceWindow {
                 else {
                     continue;
                 };
-                // These former management panes moved entirely into Settings.
+                // Companion is excluded from this build; Prompts is settings-only.
                 // Let placeholder cleanup retire saved tabs without a restore error.
                 if matches!(plugin.as_str(), "com.chartr.companion" | "com.chartr.prompts")
                     && pane == "main"

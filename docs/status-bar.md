@@ -1,12 +1,16 @@
 # Workspace status bar
 
-The bottom bar shows terminal service health, the number of running terminal sessions across open spaces, and persistent plugin services. Companion reports whether sharing is off, active, connected to clients, or needs attention. A separate count shows sessions currently viewed on mobile.
+The bottom bar shows persistent plugin services. Mobile Companion is excluded
+from the current app build, so its sharing status and mobile session count are
+absent.
 
-Click a service to open its controls. Companion opens directly in Settings, so its pane does not need to stay open. Close the bar with its × button; restore it from Settings → General → Show status bar or the “Workspace: Toggle status bar” command. Visibility is saved globally as `[general] show_status_bar` and hiding it does not stop services.
+Click a service to open its settings. Right-click the bar and choose Hide Status Bar; restore it from Settings → General → Show status bar or the “Workspace: Toggle status bar” command. Visibility is saved globally as `[general] show_status_bar` and hiding it does not stop services.
 
 Bundled native plugins can contribute a status with `Plugin::background_status`. The host refreshes these once per second and redraws only when their reported values change. See [plugin documentation](plugins.md#background-status).
 
 ## Verification — 2026-09-08
+
+Historical verification, before Companion was excluded from the build:
 
 - Normal desktop build and `cargo check -p chartr` succeeded.
 - `cargo test -p chartr -p chartr-plugin -p chartr-plugin-host -p chartr-companion`: 267 tests passed.

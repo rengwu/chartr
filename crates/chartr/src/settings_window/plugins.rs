@@ -380,13 +380,132 @@ impl SettingsWindow {
         .detach();
     }
 
+    fn open_git_install(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.plugin_operation.is_some() {
+            return;
+        }
+        self.git_install_open = true;
+        self.problem = None;
+        window.focus(&self.git_url_input.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    fn dismiss_git_install(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.git_install_open = false;
+        self.problem = None;
+        window.focus(&self.git_install_trigger_focus, cx);
+        cx.notify();
+    }
+
+    pub(super) fn on_git_install_key(
+        &mut self,
+        event: &gpui::KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.git_install_open {
+            return;
+        }
+        match event.keystroke.key.as_str() {
+            "escape" => {
+                cx.stop_propagation();
+                self.dismiss_git_install(window, cx);
+            }
+            "enter" => {
+                cx.stop_propagation();
+                if self.git_install_cancel_focus.is_focused(window) {
+                    self.dismiss_git_install(window, cx);
+                } else {
+                    self.install_from_git(window, cx);
+                }
+            }
+            "tab" => {
+                cx.stop_propagation();
+                // Keep keyboard navigation within this task, including Ctrl-Tab.
+                let fields = [
+                    self.git_url_input.focus_handle(cx),
+                    self.git_install_cancel_focus.clone(),
+                    self.git_install_confirm_focus.clone(),
+                ];
+                let current = fields.iter().position(|focus| focus.is_focused(window)).unwrap_or(0);
+                let next = (current + if event.keystroke.modifiers.shift { 2 } else { 1 }) % 3;
+                window.focus(&fields[next], cx);
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn git_install_modal(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if !self.git_install_open {
+            return None;
+        }
+        let dialog =
+            chartr_plugin::ui::DialogSurface::new("install-plugin-git-dialog")
+                .debug_selector("GIT_INSTALL_DIALOG")
+                .height_limit((window.viewport_size().height - px(64.)).max(px(0.)))
+                .child(chartr_plugin::ui::dialog_header("Install from Git", div(), cx))
+                .child(
+                    chartr_plugin::ui::dialog_body()
+                        .id("install-plugin-git-body")
+                        .overflow_y_scroll()
+                        .child(Label::new("Git repository URL").size(UI_LABEL_DEFAULT))
+                        .child(input_field("plugin-git-url", self.git_url_input.clone(), cx))
+                        .when_some(self.problem.clone(), |view, problem| {
+                            view.child(chartr_plugin::ui::notice(problem, true))
+                        }),
+                )
+                .child(
+                    chartr_plugin::ui::dialog_actions(cx)
+                        .child(
+                            settings_button("cancel-install-plugin-git", "Cancel")
+                                .track_focus(&self.git_install_cancel_focus)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.dismiss_git_install(window, cx)
+                                })),
+                        )
+                        .child(
+                            settings_button("confirm-install-plugin-git", "Install")
+                                .track_focus(&self.git_install_confirm_focus)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.install_from_git(window, cx)
+                                })),
+                        ),
+                );
+        Some(
+            div()
+                .id("install-plugin-git-modal")
+                .role(Role::Dialog)
+                .aria_label("Install from Git")
+                .absolute()
+                .inset_0()
+                .occlude()
+                .child(
+                    chartr_plugin::ui::ModalOverlay::new(
+                        "install-plugin-git-scrim",
+                        cx.listener(|this, _, window, cx| this.dismiss_git_install(window, cx)),
+                    )
+                    .child(dialog),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn install_from_git(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.plugin_operation.is_some() {
+            return;
+        }
         let url = self.git_url_input.read(cx).text().trim().to_owned();
         if url.is_empty() {
             self.problem = Some("Enter a Git repository URL.".into());
+            window.focus(&self.git_url_input.focus_handle(cx), cx);
             cx.notify();
             return;
         }
+        self.dismiss_git_install(window, cx);
         self.begin_plugin_install(crate::plugin_installer::Source::Git(url), window, cx);
     }
 
@@ -515,30 +634,19 @@ impl SettingsWindow {
     ) -> AnyElement {
         let origin_available = self.original.upgrade().is_some();
         let busy = self.plugin_operation.is_some();
-        let show_git = self.git_install_open;
         let open_git = cx.listener(|this, _, window, cx| {
-            this.git_install_open = true;
-            this.problem = None;
-            window.focus(&this.git_url_input.focus_handle(cx), cx);
-            cx.notify();
-        });
-        let install_git = cx.listener(|this, _, window, cx| {
-            this.install_from_git(window, cx);
-        });
-        let cancel_git = cx.listener(|this, _, _, cx| {
-            this.git_install_open = false;
-            this.problem = None;
-            cx.notify();
+            this.open_git_install(window, cx);
         });
         let pick_folder = cx.listener(|this, _, window, cx| {
             this.pick_plugin_folder(window, cx);
         });
         let restart = cx.listener(|_, _, _, cx| cx.restart());
-        let colors = cx.theme().colors();
         let install_actions = h_flex()
+            .debug_selector(|| "PLUGIN_INSTALL_ACTIONS".into())
             .gap_2()
             .child(
                 settings_button("install-plugin-git", "Install from Git…")
+                    .track_focus(&self.git_install_trigger_focus)
                     .disabled(busy)
                     .on_click(open_git),
             )
@@ -546,25 +654,6 @@ impl SettingsWindow {
                 settings_button("install-plugin-folder", "Install from Folder…")
                     .disabled(busy)
                     .on_click(pick_folder),
-            );
-        let git_form = v_flex()
-            .gap_2()
-            .p_3()
-            .border_1()
-            .border_color(colors.border_variant)
-            .rounded_md()
-            .child(Label::new("Git repository URL").size(UI_LABEL_DEFAULT))
-            .child(input_field("plugin-git-url", self.git_url_input.clone(), cx))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        settings_button("confirm-install-plugin-git", "Install")
-                            .on_click(install_git),
-                    )
-                    .child(
-                        settings_button("cancel-install-plugin-git", "Cancel").on_click(cancel_git),
-                    ),
             );
         let (descriptors, rejected) = self
             .original
@@ -717,7 +806,6 @@ impl SettingsWindow {
         v_flex()
             .gap_4()
             .child(install_actions)
-            .when(show_git, |view| view.child(git_form))
             .when_some(self.plugin_operation.clone(), |view, status| {
                 view.child(chartr_plugin::ui::notice(status, false).when(
                     self.plugin_cancel.is_some(),

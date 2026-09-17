@@ -5,10 +5,20 @@ use super::*;
 pub(super) const TITLE_CONTROLS_LEFT: f32 = 78.;
 pub(super) const TITLE_CONTROLS_RIGHT: f32 = 6.;
 pub(super) const SPACE_SWITCHER_MAX_WIDTH: f32 = 200.;
+pub(super) const TITLE_BRAND_RESERVED_WIDTH: f32 = 60.;
+const TITLE_BRAND_WIDTH: f32 = 52.;
+const TITLE_BRAND_HEIGHT: f32 = 15.;
+// macOS places the traffic-light centers one logical pixel above the center
+// of our 34 px title-bar surface.
+const TITLE_CONTROLS_TOP: f32 = -1.;
 
 // Measure a separate tree so the displayed controls retain their normal layout
 // lifecycle. Max-content measurement includes the current font, scale and notices.
-fn chrome_controls_width(content: AnyElement, window: &mut Window, cx: &mut App) -> Pixels {
+pub(super) fn chrome_controls_width(
+    content: AnyElement,
+    window: &mut Window,
+    cx: &mut App,
+) -> Pixels {
     div()
         .id("chrome-controls-size-probe")
         .font(theme::theme_settings(cx).ui_font(cx).clone())
@@ -22,7 +32,41 @@ fn chrome_controls_width(content: AnyElement, window: &mut Window, cx: &mut App)
         .width
 }
 
+fn prioritized_title_visibility(
+    wants_picker: bool,
+    full_width: Pixels,
+    compact_width: Pixels,
+    available_width: Pixels,
+) -> (bool, bool) {
+    if wants_picker {
+        (
+            full_width <= available_width,
+            full_width + px(TITLE_BRAND_RESERVED_WIDTH) <= available_width,
+        )
+    } else {
+        (false, compact_width + px(TITLE_BRAND_RESERVED_WIDTH) <= available_width)
+    }
+}
+
 impl WorkspaceWindow {
+    fn chrome_end_controls_content(
+        &self,
+        on: chrome::Emit,
+        notices: Vec<ErrorNotice>,
+        show_picker: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        h_flex()
+            .flex_none()
+            .gap_1()
+            .when(show_picker, |controls| controls.child(self.presentation_toggle(on.clone())))
+            .when(!notices.is_empty(), |controls| {
+                controls.child(self.error_menu(notices.clone(), cx))
+            })
+            .child(self.settings_button(on))
+            .into_any_element()
+    }
+
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self
             .active
@@ -273,20 +317,45 @@ impl WorkspaceWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let build = |show_picker, cx: &Context<Self>| {
-            h_flex()
-                .flex_none()
-                .gap_1()
-                .when(show_picker, |controls| controls.child(self.presentation_toggle(on.clone())))
-                .when(!notices.is_empty(), |controls| {
-                    controls.child(self.error_menu(notices.clone(), cx))
-                })
-                .child(self.settings_button(on.clone()))
-                .into_any_element()
-        };
         let show_picker = self.settings.resolved().show_view_mode_picker
-            && chrome_controls_width(build(true, cx), window, cx) <= available_width;
-        build(show_picker, cx)
+            && chrome_controls_width(
+                self.chrome_end_controls_content(on.clone(), notices.clone(), true, cx),
+                window,
+                cx,
+            ) <= available_width;
+        self.chrome_end_controls_content(on, notices, show_picker, cx)
+    }
+
+    pub(super) fn title_bar_end_controls(
+        &self,
+        on: chrome::Emit,
+        notices: Vec<ErrorNotice>,
+        available_width: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, bool) {
+        let wants_picker = self.settings.resolved().show_view_mode_picker;
+        let full_width = wants_picker
+            .then(|| {
+                chrome_controls_width(
+                    self.chrome_end_controls_content(on.clone(), notices.clone(), true, cx),
+                    window,
+                    cx,
+                )
+            })
+            .unwrap_or_default();
+        let compact_width = (!wants_picker)
+            .then(|| {
+                chrome_controls_width(
+                    self.chrome_end_controls_content(on.clone(), notices.clone(), false, cx),
+                    window,
+                    cx,
+                )
+            })
+            .unwrap_or_default();
+        let (show_picker, show_brand) =
+            prioritized_title_visibility(wants_picker, full_width, compact_width, available_width);
+        (self.chrome_end_controls_content(on, notices, show_picker, cx), show_brand)
     }
 
     fn presentation_toggle(&self, on: chrome::Emit) -> AnyElement {
@@ -332,7 +401,7 @@ impl WorkspaceWindow {
 
     pub(super) fn workspace_title_bar(
         &self,
-        controls: Option<(AnyElement, AnyElement)>,
+        controls: Option<(AnyElement, AnyElement, bool)>,
         visibility: crate::mode::ChromeVisibility,
         window: &Window,
         cx: &App,
@@ -384,14 +453,33 @@ impl WorkspaceWindow {
                     .inset_0(),
                 )
             });
-        if let Some((space_switcher, view_menu)) = controls {
+        if let Some((space_switcher, view_menu, show_brand)) = controls {
+            // Keep the brand paint-only: without an id or listeners it inserts
+            // no hitbox, so the underlying title bar still owns window dragging.
+            foreground = foreground.when(show_brand, |bar| {
+                bar.child(
+                    h_flex()
+                        .absolute()
+                        .left(px(TITLE_CONTROLS_LEFT))
+                        .top(px(TITLE_CONTROLS_TOP))
+                        .h(px(crate::title_bar::HEIGHT))
+                        .when(!window_active, |brand| brand.opacity(0.65))
+                        .child(
+                            img(crate::assets::TITLE_BRAND_PATH)
+                                .w(px(TITLE_BRAND_WIDTH))
+                                .h(px(TITLE_BRAND_HEIGHT))
+                                .flex_none(),
+                        ),
+                )
+            });
             foreground = foreground
                 .child(
                     h_flex()
                         .absolute()
                         // Clear the native macOS traffic-light cluster.
-                        .left(px(TITLE_CONTROLS_LEFT))
-                        .top_0()
+                        .left(px(TITLE_CONTROLS_LEFT
+                            + if show_brand { TITLE_BRAND_RESERVED_WIDTH } else { 0. }))
+                        .top(px(TITLE_CONTROLS_TOP))
                         .h(px(crate::title_bar::HEIGHT))
                         .max_w(px(SPACE_SWITCHER_MAX_WIDTH))
                         .when(!window_active, |controls| controls.opacity(0.65))
@@ -402,7 +490,7 @@ impl WorkspaceWindow {
                     h_flex()
                         .absolute()
                         .right(px(TITLE_CONTROLS_RIGHT))
-                        .top_0()
+                        .top(px(TITLE_CONTROLS_TOP))
                         .h(px(crate::title_bar::HEIGHT))
                         .when(!window_active, |controls| controls.opacity(0.65))
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -457,6 +545,27 @@ impl WorkspaceWindow {
 mod responsive_controls_tests {
     use super::*;
     use gpui::TestAppContext;
+
+    #[test]
+    fn brand_yields_before_the_view_picker() {
+        let full = px(300.);
+        let compact = px(32.);
+        let brand = px(TITLE_BRAND_RESERVED_WIDTH);
+
+        assert_eq!(prioritized_title_visibility(true, full, compact, full + brand), (true, true));
+        assert_eq!(
+            prioritized_title_visibility(true, full, compact, full + brand - px(1.)),
+            (true, false)
+        );
+        assert_eq!(
+            prioritized_title_visibility(true, full, compact, full - px(1.)),
+            (false, false)
+        );
+        assert_eq!(
+            prioritized_title_visibility(false, full, compact, compact + brand),
+            (false, true)
+        );
+    }
 
     struct Harness {
         width: Pixels,

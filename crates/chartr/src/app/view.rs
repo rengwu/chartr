@@ -54,22 +54,30 @@ impl Render for WorkspaceWindow {
             cx.listener(|this, action: &Action, window, cx| this.act(action.clone(), window, cx));
         let emit: chrome::Emit = Rc::new(move |action, window, cx| on_action(&action, window, cx));
         let title_controls = cfg!(target_os = "macos").then(|| {
-            (
-                self.visible_space_switcher(chrome_visibility.tabs, window, cx),
-                self.chrome_end_controls(
-                    emit.clone(),
-                    error_notices.clone(),
-                    window.viewport_size().width
-                        - px(window_chrome::TITLE_CONTROLS_LEFT
-                            + window_chrome::TITLE_CONTROLS_RIGHT)
-                        - if chrome_visibility.tabs > 0. {
-                            px(window_chrome::SPACE_SWITCHER_MAX_WIDTH) + window.rem_size() * 0.25
-                        } else {
-                            px(0.)
-                        },
+            let space_switcher_width = if chrome_visibility.tabs > 0. {
+                window_chrome::chrome_controls_width(
+                    self.visible_space_switcher(chrome_visibility.tabs, window, cx),
                     window,
                     cx,
-                ),
+                )
+                .min(px(window_chrome::SPACE_SWITCHER_MAX_WIDTH))
+                    + window.rem_size() * 0.25
+            } else {
+                px(0.)
+            };
+            let (end_controls, show_brand) = self.title_bar_end_controls(
+                emit.clone(),
+                error_notices.clone(),
+                window.viewport_size().width
+                    - px(window_chrome::TITLE_CONTROLS_LEFT + window_chrome::TITLE_CONTROLS_RIGHT)
+                    - space_switcher_width,
+                window,
+                cx,
+            );
+            (
+                self.visible_space_switcher(chrome_visibility.tabs, window, cx),
+                end_controls,
+                show_brand,
             )
         });
         let (title_bar, title_bar_foreground) =

@@ -46,12 +46,6 @@ impl WorkspaceWindow {
                     Some("Session ended. This conversation remains in Chats.".to_owned()),
                 ));
             }
-            if let Some(lease) = self.companion_leases.get(runtime) {
-                return Some((
-                    None,
-                    Some(format!("Viewing on mobile · {} × {}", lease.columns, lease.rows)),
-                ));
-            }
             Some((item.terminal_view(), None))
         });
         let (view, notice) = target.unwrap_or_default();

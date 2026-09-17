@@ -2,9 +2,12 @@
 
 Saved Prompts is a bundled native Chartr plugin for a library of reusable prompts.
 Open **Settings → Plugins → Saved Prompts** using its settings gear. Its table shows a title, a preview of
-the prompt, and Copy, Edit, and Delete actions. Search matches both fields.
-New prompt and Edit open a multiline editor; Cancel discards the draft, and
-deletion requires a second click. Copy puts only the full prompt text on the
+the prompt, and Copy, Edit, and Delete icon buttons with tooltips. Search matches both fields.
+New prompt and Edit open a multiline editor modal above Settings; Cancel or
+Escape discards the draft. Tab stays within the dialog, Enter inserts a new line
+in the prompt, and Cmd+Enter (macOS) or Ctrl+Enter (Linux) saves. Delete opens a
+confirmation modal naming the prompt. Validation and conflict errors stay in the
+dialog. Copy puts only the full prompt text on the
 clipboard, preserving whitespace and line breaks. The title is display metadata.
 
 The library is shared across spaces and settings windows. It lives at

@@ -9,7 +9,6 @@
 mod backend;
 mod bundled_plugins;
 mod command_palette;
-mod companion;
 mod conversations;
 mod pane_drop_preview;
 mod panes;
@@ -39,7 +38,7 @@ use chartr_plugin::{InstanceContext, manifest::Multiplicity};
 use chartr_plugin_host::{Catalog, FileBroker, HostedSurface, PaneSource, Paths, SettingsSource};
 use gpui::{
     Anchor, AnyView, AnyWindowHandle, ClickEvent, DragMoveEvent, Entity, EntityId, FocusHandle,
-    Focusable, MouseButton, PathPromptOptions, Role, WeakEntity,
+    Focusable, MouseButton, PathPromptOptions, Role, WeakEntity, img,
 };
 use ui::{
     Banner, ButtonLike, ButtonSize, IconButtonShape, IconPosition, ListItem, ListItemSpacing,
@@ -219,9 +218,6 @@ pub struct WorkspaceWindow {
     mode_transition: crate::mode::ModeTransition,
     catalog: Catalog,
     background_statuses: Vec<(String, chartr_plugin::BackgroundStatus)>,
-    companion_bridge: Option<crate::companion_plugin::Bridge>,
-    companion_history: chartr_companion::History,
-    companion_leases: HashMap<String, companion::MobileLease>,
     plugins_restored: bool,
     settings: SettingsStore,
     command_palette_window: Option<AnyWindowHandle>,
@@ -335,9 +331,6 @@ impl WorkspaceWindow {
             mode_transition: crate::mode::ModeTransition::default(),
             catalog: Catalog::default(),
             background_statuses: Vec::new(),
-            companion_bridge: None,
-            companion_history: chartr_companion::History::default(),
-            companion_leases: HashMap::new(),
             plugins_restored: false,
             settings,
             command_palette_window: None,
@@ -485,7 +478,6 @@ impl WorkspaceWindow {
             })
             .or_else(|| spaces.first().cloned());
 
-        this.bind_companion(window, cx);
         let catalog = load_plugin_catalog(&this.settings, cx);
         this.client = Some(client);
         this.registry = registry;
@@ -579,7 +571,6 @@ impl WorkspaceWindow {
                 space.active().and_then(|id| space.item(id))
             })
             .and_then(crate::item::Item::as_session)
-            .filter(|item| !self.companion_leases.contains_key(&item.session.id().0))
             .and_then(crate::item::SessionItem::terminal_view)
         else {
             return false;

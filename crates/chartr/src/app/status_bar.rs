@@ -43,30 +43,7 @@ impl WorkspaceWindow {
     }
 
     pub(super) fn status_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let sessions = self
-            .spaces
-            .iter()
-            .map(|space| {
-                let space = space.read(cx);
-                space
-                    .all_item_ids()
-                    .into_iter()
-                    .filter(|id| {
-                        space
-                            .item(*id)
-                            .and_then(|item| item.as_session())
-                            .is_some_and(|session| session.session.ended().is_none())
-                    })
-                    .count()
-            })
-            .sum::<usize>();
-        let (backend, color) = match &self.backend {
-            Backend::Ready => ("Terminal service ready", Color::Muted),
-            Backend::Starting => ("Terminal service starting…", Color::Warning),
-            Backend::Recovering(_) => ("Terminal service reconnecting…", Color::Warning),
-            Backend::Failed(_) => ("Terminal service unavailable", Color::Error),
-        };
-        let detail = self.settings_backend_label();
+        let weak = cx.weak_entity();
         let items = self.background_statuses.iter().enumerate().map(|(index, (id, status))| {
             let plugin = id.clone();
             let detail = status.detail.clone();
@@ -92,7 +69,7 @@ impl WorkspaceWindow {
                     }
                 }))
         });
-        h_flex()
+        let bar = h_flex()
             .id("workspace-status-bar")
             .w_full()
             .h(rems(1.75))
@@ -103,22 +80,6 @@ impl WorkspaceWindow {
             .border_color(cx.theme().colors().border)
             .bg(cx.theme().colors().panel_background)
             .child(
-                Button::new("backend-status", backend)
-                    .label_size(UI_LABEL_SMALL)
-                    .color(color)
-                    .tab_index(0isize)
-                    .tooltip(Tooltip::text(detail))
-                    .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
-            )
-            .child(
-                Label::new(format!(
-                    "{sessions} running session{}",
-                    if sessions == 1 { "" } else { "s" }
-                ))
-                .size(UI_LABEL_SMALL)
-                .color(Color::Muted),
-            )
-            .child(
                 h_flex()
                     .id("background-status-items")
                     .flex_1()
@@ -127,24 +88,18 @@ impl WorkspaceWindow {
                     .justify_end()
                     .gap_1()
                     .children(items),
-            )
-            .when(!self.companion_leases.is_empty(), |bar| {
-                bar.child(
-                    Label::new(format!("{} on mobile", self.companion_leases.len()))
-                        .size(UI_LABEL_SMALL)
-                        .color(Color::Muted),
-                )
+            );
+
+        crate::components::popup_right_click_menu("status-bar-menu")
+            .trigger(move |_, _, _| bar)
+            .menu(move |window, cx| {
+                let hide = weak.clone();
+                ContextMenu::build_popup(window, cx, move |menu| {
+                    menu.entry("Hide Status Bar", None, move |_, cx| {
+                        let _ = hide.update(cx, |this, cx| this.toggle_status_bar(cx));
+                    })
+                })
             })
-            .child(
-                IconButton::new("hide-status-bar", IconName::Close)
-                    .icon_size(IconSize::Small)
-                    .tab_index(0isize)
-                    .aria_label("Hide status bar")
-                    .tooltip(Tooltip::text(
-                        "Hide status bar · Restore in Settings or the command palette",
-                    ))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_status_bar(cx))),
-            )
             .into_any_element()
     }
 }

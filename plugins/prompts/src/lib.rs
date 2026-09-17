@@ -1,4 +1,5 @@
 //! Saved prompts: one shared library, a settings page, and a read service.
+mod dialog;
 mod store;
 
 use chartr_plugin::ui as plugin_ui;
@@ -9,14 +10,14 @@ use chartr_plugin::{
     SettingsView,
     services::{Prompts, SavedPrompt, ServiceExport},
 };
-use editor::Editor;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, Entity, Focusable, KeyBinding, Render, WeakEntity,
     Window, div, px,
 };
-use ui::{Color, Icon, IconName, prelude::*};
+use ui::{Color, Icon, IconButton, IconName, Tooltip, prelude::*};
 
 use crate::{components::input_field, text_input::TextInput};
+use dialog::PromptDialog;
 use store::Store;
 
 /// Reuse the pinned editor's platform editing keys. Project/workspace actions
@@ -104,8 +105,8 @@ impl Plugin for PromptsPlugin {
         unreachable!("Saved Prompts contributes settings only")
     }
 
-    fn settings(&mut self, _: &mut Window, cx: &mut App) -> Option<SettingsView> {
-        let view = cx.new(|cx| PromptsView::new(self.registry.clone(), cx));
+    fn settings(&mut self, window: &mut Window, cx: &mut App) -> Option<SettingsView> {
+        let view = cx.new(|cx| PromptsView::new(self.registry.clone(), window, cx));
         Some(SettingsView::new(view, cx))
     }
 }
@@ -143,76 +144,73 @@ impl Registry {
     }
 }
 
-struct Draft {
-    original: Option<SavedPrompt>,
-    title: Entity<TextInput>,
-    body: Entity<Editor>,
-}
-
 struct PromptsView {
     registry: Entity<Registry>,
     search: Entity<TextInput>,
-    draft: Option<Draft>,
-    deleting: Option<SavedPrompt>,
+    dialog: Option<gpui::WindowHandle<PromptDialog>>,
     error: Option<String>,
     copied: Option<String>,
 }
 
 impl PromptsView {
-    fn new(registry: Entity<Registry>, cx: &mut Context<Self>) -> Self {
+    fn new(registry: Entity<Registry>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&registry, |_, _, cx| cx.notify()).detach();
         let search = cx.new(|cx| TextInput::new("Search prompts…", cx));
         cx.observe(&search, |_, _, cx| cx.notify()).detach();
-        Self { registry, search, draft: None, deleting: None, error: None, copied: None }
-    }
-
-    fn edit(&mut self, original: Option<SavedPrompt>, window: &mut Window, cx: &mut Context<Self>) {
-        let title = cx.new(|cx| {
-            let mut input = TextInput::new("A short title", cx);
-            input.set_text(
-                original.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
-                false,
-                cx,
-            );
-            input
-        });
-        let body = cx.new(|cx| {
-            let mut input = Editor::auto_height(10, 24, window, cx);
-            input.set_soft_wrap();
-            input.set_autoindent(false);
-            input.set_use_autoclose(false);
-            input.set_show_wrap_guides(false, cx);
-            input.set_show_indent_guides(false, cx);
-            input.set_placeholder_text("Write the prompt you want to reuse…", window, cx);
-            input.set_text(
-                original.as_ref().map(|p| p.prompt.clone()).unwrap_or_default(),
-                window,
-                cx,
-            );
-            input
-        });
-        window.focus(&title.focus_handle(cx), cx);
-        self.draft = Some(Draft { original, title, body });
-        self.deleting = None;
-        self.error = None;
-        self.copied = None;
-        cx.notify();
-    }
-
-    fn save(&mut self, cx: &mut Context<Self>) {
-        let Some(draft) = &self.draft else { return };
-        let title = draft.title.read(cx).text().to_owned();
-        let body = draft.body.read(cx).text(cx);
-        let original = draft.original.clone();
-        let result = self.registry.update(cx, |registry, cx| {
-            registry.modify(|store| store.save(original.as_ref(), title, body), cx)
-        });
-        match result {
-            Ok(()) => {
-                self.draft = None;
-                self.error = None;
+        cx.observe_window_bounds(window, |this, window, cx| {
+            if let Some(dialog) = this.dialog {
+                let size = window.viewport_size();
+                let _ = dialog.update(cx, |_, window, _| window.resize(size));
             }
-            Err(error) => self.error = Some(error),
+        })
+        .detach();
+        cx.on_release(|this, cx| {
+            if let Some(dialog) = this.dialog.take() {
+                let _ = dialog.update(cx, |_, window, _| window.remove_window());
+            }
+        })
+        .detach();
+        Self { registry, search, dialog: None, error: None, copied: None }
+    }
+
+    fn open_dialog(
+        &mut self,
+        original: Option<SavedPrompt>,
+        deleting: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(dialog) = self.dialog {
+            let _ = dialog.update(cx, |_, window, _| window.activate_window());
+            return;
+        }
+        let registry = self.registry.clone();
+        let parent = window.window_handle();
+        let owner = cx.weak_entity();
+        let opened = crate::components::open_native_modal(window, cx, move |window, cx| {
+            let view = cx.new(|cx| {
+                cx.on_release(move |_, cx| {
+                    let _ = parent.update(cx, |_, window, cx| {
+                        let _ = owner.update(cx, |owner, cx| {
+                            owner.dialog = None;
+                            window.focus(&owner.search.focus_handle(cx), cx);
+                            cx.notify();
+                        });
+                    });
+                })
+                .detach();
+                PromptDialog::new(registry, original, deleting, window, cx)
+            });
+            window.focus(&view.read(cx).initial_focus(cx), cx);
+            view
+        });
+        match opened {
+            Ok(dialog) => {
+                self.dialog = Some(dialog);
+                self.error = None;
+                self.copied = None;
+            }
+            Err(error) => self.error = Some(format!("Could not open prompt dialog: {error}")),
         }
         cx.notify();
     }
@@ -242,65 +240,44 @@ impl PromptsView {
                 let editing = prompt.clone();
                 let copying = prompt.clone();
                 let deleting = prompt.clone();
-                let confirming = self.deleting.as_ref().is_some_and(|p| p.id == prompt.id);
-                let actions = if confirming {
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            plugin_ui::action(("confirm-delete-prompt", index), "Delete?")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let Some(original) = this.deleting.clone() else { return };
-                                    let result = this.registry.update(cx, |registry, cx| {
-                                        registry.modify(|store| store.delete(&original), cx)
-                                    });
-                                    this.error = result.err();
-                                    this.deleting = None;
-                                    cx.notify();
-                                })),
+                let copied = self.copied.as_ref() == Some(&prompt.id);
+                let copy_label = if copied { "Copied prompt" } else { "Copy prompt" };
+                let actions = h_flex()
+                    .gap_1()
+                    .child(
+                        IconButton::new(
+                            ("copy-prompt", index),
+                            if copied { IconName::Check } else { IconName::Copy },
                         )
-                        .child(
-                            plugin_ui::action(("cancel-delete-prompt", index), "Cancel").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.deleting = None;
-                                    cx.notify();
-                                }),
-                            ),
-                        )
-                } else {
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            plugin_ui::action(
-                                ("copy-prompt", index),
-                                if self.copied.as_ref() == Some(&prompt.id) {
-                                    "Copied"
-                                } else {
-                                    "Copy"
-                                },
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(
-                                        copying.prompt.clone(),
-                                    ));
-                                    this.copied = Some(copying.id.clone());
-                                    cx.notify();
-                                },
-                            )),
-                        )
-                        .child(plugin_ui::action(("edit-prompt", index), "Edit").on_click(
-                            cx.listener(move |this, _, window, cx| {
-                                this.edit(Some(editing.clone()), window, cx)
-                            }),
-                        ))
-                        .child(plugin_ui::action(("delete-prompt", index), "Delete").on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.deleting = Some(deleting.clone());
-                                this.error = None;
-                                cx.notify();
-                            }),
-                        ))
-                };
+                        .icon_size(IconSize::Small)
+                        .aria_label(format!("{copy_label}: {}", prompt.title))
+                        .tooltip(Tooltip::text(copy_label))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                copying.prompt.clone(),
+                            ));
+                            this.copied = Some(copying.id.clone());
+                            cx.notify();
+                        })),
+                    )
+                    .child(
+                        IconButton::new(("edit-prompt", index), IconName::Pencil)
+                            .icon_size(IconSize::Small)
+                            .aria_label(format!("Edit prompt: {}", prompt.title))
+                            .tooltip(Tooltip::text("Edit prompt"))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_dialog(Some(editing.clone()), false, window, cx)
+                            })),
+                    )
+                    .child(
+                        IconButton::new(("delete-prompt", index), IconName::Trash)
+                            .icon_size(IconSize::Small)
+                            .aria_label(format!("Delete prompt: {}", prompt.title))
+                            .tooltip(Tooltip::text("Delete prompt"))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_dialog(Some(deleting.clone()), true, window, cx)
+                            })),
+                    );
                 let preview = prompt.prompt.split_whitespace().collect::<Vec<_>>().join(" ");
                 plugin_ui::separated_row(
                     columns([
@@ -326,7 +303,6 @@ impl PromptsView {
                     .action(plugin_ui::action("reload-prompts", "Reload").on_click(cx.listener(
                         |this, _, _, cx| {
                             this.registry.update(cx, |registry, cx| registry.reload(cx));
-                            this.deleting = None;
                             this.error = None;
                             this.copied = None;
                             cx.notify();
@@ -336,9 +312,9 @@ impl PromptsView {
                         plugin_ui::action("new-prompt", "New prompt")
                             .disabled(blocked)
                             .start_icon(Icon::new(IconName::Plus))
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.edit(None, window, cx)),
-                            ),
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_dialog(None, false, window, cx)
+                            })),
                     ),
             )
             .when_some(registry.store.as_ref().err().cloned(), |view, error| {
@@ -382,60 +358,6 @@ impl PromptsView {
             )
             .into_any_element()
     }
-
-    fn editor(&self, draft: &Draft, cx: &mut Context<Self>) -> AnyElement {
-        v_flex()
-            .size_full()
-            .min_h_0()
-            .gap_3()
-            .child(
-                plugin_ui::PageHeader::new(if draft.original.is_some() {
-                    "Edit prompt"
-                } else {
-                    "New prompt"
-                })
-                .action(plugin_ui::action("cancel-prompt-edit", "Cancel").on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.draft = None;
-                        this.error = None;
-                        cx.notify();
-                    },
-                )))
-                .action(
-                    plugin_ui::action("save-prompt", "Save prompt")
-                        .primary()
-                        .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
-                ),
-            )
-            .when_some(self.error.clone(), |view, error| view.child(plugin_ui::notice(error, true)))
-            .child(
-                v_flex()
-                    .id("prompt-fields")
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .gap_3()
-                    .overflow_y_scroll()
-                    .child(plugin_ui::label("Title"))
-                    .child(input_field("prompt-title", draft.title.clone(), cx))
-                    .child(
-                        plugin_ui::caption("For your reference. Not included in the prompt.")
-                            .color(Color::Muted),
-                    )
-                    .child(plugin_ui::label("Prompt"))
-                    .child(
-                        plugin_ui::outlined_content(cx)
-                            .w_full()
-                            .flex_none()
-                            .child(draft.body.clone()),
-                    )
-                    .child(
-                        plugin_ui::caption("Only this text is copied or used as the prompt.")
-                            .color(Color::Muted),
-                    ),
-            )
-            .into_any_element()
-    }
 }
 
 fn columns([title, prompt, actions]: [AnyElement; 3]) -> gpui::Div {
@@ -444,85 +366,18 @@ fn columns([title, prompt, actions]: [AnyElement; 3]) -> gpui::Div {
         .gap_3()
         .child(div().w(px(150.)).flex_none().overflow_hidden().child(title))
         .child(div().flex_1().min_w_0().overflow_hidden().child(prompt))
-        .child(div().w(px(180.)).flex_none().child(actions))
+        .child(div().w(px(100.)).flex_none().child(actions))
 }
 
 impl RenderSettings for PromptsView {
     fn render_settings(&mut self, _: &mut Window, cx: &mut Context<Self>) -> SettingsPage {
-        SettingsPage::fill("prompts-settings").child(
-            v_flex().key_context("Prompts").size_full().min_h_0().child(
-                if let Some(draft) = &self.draft { self.editor(draft, cx) } else { self.table(cx) },
-            ),
-        )
+        SettingsPage::fill("prompts-settings")
+            .child(v_flex().key_context("Prompts").size_full().min_h_0().child(self.table(cx)))
     }
 }
 
 impl Render for PromptsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.render_settings(window, cx)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chartr_plugin::services::{PROMPTS_SERVICE, Services};
-
-    #[gpui::test]
-    fn multiline_editing_saves_only_body_and_service_sees_live_renames(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let root = tempfile::tempdir().unwrap();
-        cx.update(|cx| {
-            ::settings::init(cx);
-            theme::init(theme::LoadThemes::JustBase, cx);
-            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
-            crate::text_input::init(cx);
-            init(cx);
-        });
-        let mut plugin = cx.update(|cx| {
-            PromptsPlugin::new(
-                Host { data_dir: root.path().into(), plugin_dir: root.path().into() },
-                cx,
-            )
-        });
-        cx.update(|cx| {
-            let mut registrar = Registrar::new(<PromptsPlugin as Plugin>::ID);
-            Plugin::activate(&mut plugin, &mut registrar, cx);
-            assert!(registrar.panes().is_empty(), "Saved Prompts has no standalone surface");
-            assert!(registrar.has_settings());
-        });
-        let registry = plugin.registry.clone();
-        let services = Services::default();
-        services.publish(PROMPTS_SERVICE, Plugin::services(&plugin));
-        let service = services.get::<Prompts>(PROMPTS_SERVICE).unwrap();
-        let (view, cx) = cx.add_window_view(|_, cx| PromptsView::new(registry.clone(), cx));
-        view.update_in(cx, |view, window, cx| view.edit(None, window, cx));
-        cx.simulate_input("Review code");
-        let body = cx.read_entity(&view, |view, _| view.draft.as_ref().unwrap().body.clone());
-        cx.update(|window, cx| window.focus(&body.focus_handle(cx), cx));
-        cx.simulate_input("First line");
-        cx.simulate_keystrokes("enter");
-        cx.simulate_input("Second line 🦀");
-        view.update(cx, |view, cx| view.save(cx));
-        let saved = cx.update(|_, cx| service.list(cx).unwrap().remove(0));
-        assert_eq!(saved.title, "Review code");
-        assert_eq!(saved.prompt, "First line\nSecond line 🦀");
-        assert!(cx.read_entity(&view, |view, _| view.draft.is_none()));
-
-        view.update_in(cx, |view, window, cx| view.edit(Some(saved.clone()), window, cx));
-        view.update(cx, |view, cx| {
-            view.draft
-                .as_ref()
-                .unwrap()
-                .title
-                .update(cx, |input, cx| input.set_text("Renamed", false, cx));
-            view.save(cx);
-        });
-        let renamed = cx.update(|_, cx| service.resolve(&saved.id, cx).unwrap());
-        assert_eq!(renamed.title, "Renamed");
-        assert_eq!(renamed.prompt, saved.prompt);
-        let reloaded = Store::load(root.path().join("prompts.json")).unwrap();
-        assert_eq!(reloaded.prompts(), &[renamed]);
     }
 }

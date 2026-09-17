@@ -1,10 +1,15 @@
-# Companion
+# Mobile Companion
 
-The bundled `com.chartr.companion` plugin connects [Chartr Mobile](../../../chartr-mobile) to the terminal sessions in its desktop window.
+Mobile Companion is excluded from the current desktop app build. Its plugin,
+listener dependency, settings controls, and terminal bridge are not compiled
+into chartr. Source and saved sharing data are retained for future development;
+saved sharing settings cannot start a listener in this build.
+
+The retained `com.chartr.companion` implementation connects [Chartr Mobile](../../../chartr-mobile) to desktop terminal sessions. The sections below describe that implementation before it was disabled.
 
 ## Connect
 
-Open **Settings → Plugins → Companion settings**, choose the bind address, and press **Start sharing**. Companion runs in the background and has no workspace surface; its status-bar button also opens these settings. The default `0.0.0.0:9847` listens on IPv4 interfaces. Enter the computer’s reachable LAN or Tailscale address and port in the app. This development build accepts all connections without a pairing code or authentication. TLS encrypts traffic; the phone does not verify the server certificate.
+Open **Settings → Plugins → Mobile Companion settings**, choose the bind address, and press **Start sharing**. Mobile Companion runs in the background and has no workspace surface; its status-bar button also opens these settings. The default `0.0.0.0:9847` listens on IPv4 interfaces. Enter the computer’s reachable LAN or Tailscale address and port in the app. This development build accepts all connections without a pairing code or authentication. TLS encrypts traffic; the phone does not verify the server certificate.
 
 Sharing remembers its enabled state and address in the plugin’s data directory and resumes after a restart. **Stop sharing** saves the disabled state. Disabling/unloading the plugin or closing the window stops its listener and active connections.
 
@@ -20,4 +25,6 @@ The desktop remains the only Herdr attachment. Mobile never spawns a competing t
 
 See [the protocol](../../docs/companion-protocol.md). Transport tests cover open-access TLS, framing, request ordering, separate connection lifetimes, and revocation. GPUI tests cover plugin shutdown and saved sharing state. Android instrumentation exercises the real host and PTY.
 
-For isolated tests, build with `companion-test-host`, set `CHARTR_COMPANION_TEST_READY` to a new file under an absolute directory named `chartr-companion-test`, and place all three XDG config/data/state roots beneath it. The fixture listens on `127.0.0.1:19847`. It is excluded from normal builds.
+The desktop `companion-test-host` feature is also removed while Companion is
+excluded. The standalone transport crate remains a workspace member for source
+development and its own tests; it is not a dependency of the desktop app.

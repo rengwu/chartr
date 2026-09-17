@@ -1249,7 +1249,6 @@ dependencies = [
  "anyhow",
  "assets",
  "chartr-agent",
- "chartr-companion",
  "chartr-conversations",
  "chartr-herdr",
  "chartr-plugin",

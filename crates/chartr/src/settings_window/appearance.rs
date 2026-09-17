@@ -10,63 +10,63 @@ impl SettingsWindow {
         current: String,
         target: ThemeTarget,
         themes: Vec<theme::ThemeMeta>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let weak = cx.weak_entity();
         let selected = current.clone();
-        let menu = ContextMenu::build(window, cx, move |menu, _, _| {
-            let mut menu = menu;
-            let has_dark = themes.iter().any(|theme| theme.appearance == theme::Appearance::Dark);
-            let has_light = themes.iter().any(|theme| theme.appearance == theme::Appearance::Light);
+        PopupMenu::new(id)
+            .trigger(form_picker(format!("{id}-trigger"), current).aria_label(label))
+            .anchor(Anchor::TopLeft)
+            .menu(move |window, cx| {
+                let weak = weak.clone();
+                let themes = themes.clone();
+                let selected = selected.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
+                    let mut menu = menu;
+                    let has_dark =
+                        themes.iter().any(|theme| theme.appearance == theme::Appearance::Dark);
+                    let has_light =
+                        themes.iter().any(|theme| theme.appearance == theme::Appearance::Light);
 
-            for (appearance, heading) in [
-                (theme::Appearance::Dark, "Dark themes"),
-                (theme::Appearance::Light, "Light themes"),
-            ] {
-                let choices: Vec<_> =
-                    themes.iter().filter(|theme| theme.appearance == appearance).collect();
-                if choices.is_empty() {
-                    continue;
-                }
-                if has_dark && has_light {
-                    if appearance == theme::Appearance::Light {
-                        menu = menu.separator();
+                    for (appearance, heading) in [
+                        (theme::Appearance::Dark, "Dark themes"),
+                        (theme::Appearance::Light, "Light themes"),
+                    ] {
+                        let choices: Vec<_> =
+                            themes.iter().filter(|theme| theme.appearance == appearance).collect();
+                        if choices.is_empty() {
+                            continue;
+                        }
+                        if has_dark && has_light {
+                            if appearance == theme::Appearance::Light {
+                                menu = menu.separator();
+                            }
+                            menu = menu.header(heading);
+                        }
+                        for choice in choices {
+                            let name = choice.name.to_string();
+                            let checked = name == selected;
+                            let update = weak.clone();
+                            menu = menu.toggleable_entry(
+                                name.clone(),
+                                checked,
+                                IconPosition::End,
+                                None,
+                                move |_, cx| {
+                                    let name = name.clone();
+                                    let _ = update
+                                        .update(cx, |this, cx| this.set_theme(target, name, cx));
+                                },
+                            );
+                        }
                     }
-                    menu = menu.header(heading);
-                }
-                for choice in choices {
-                    let name = choice.name.to_string();
-                    let checked = name == selected;
-                    let update = weak.clone();
-                    menu = menu.toggleable_entry(
-                        name.clone(),
-                        checked,
-                        IconPosition::End,
-                        None,
-                        move |_, cx| {
-                            let name = name.clone();
-                            let _ = update.update(cx, |this, cx| this.set_theme(target, name, cx));
-                        },
-                    );
-                }
-            }
-            menu
-        });
-
-        DropdownMenu::new(id, current, menu)
-            .style(DropdownStyle::Outlined)
-            .trigger_size(FORM_CONTROL_SIZE)
-            .attach(Anchor::BottomLeft)
-            .aria_label(label)
+                    menu
+                }))
+            })
             .into_any_element()
     }
 
-    pub(super) fn appearance_page(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub(super) fn appearance_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let settings = self.settings(cx);
         let mode = settings.theme_mode;
         let mut themes = theme::ThemeRegistry::global(cx).list();
@@ -96,7 +96,6 @@ impl SettingsWindow {
             settings.fixed_theme.clone(),
             ThemeTarget::Fixed,
             themes,
-            window,
             cx,
         );
         let light_picker = self.theme_dropdown(
@@ -105,7 +104,6 @@ impl SettingsWindow {
             settings.light_theme.clone(),
             ThemeTarget::Light,
             light_themes,
-            window,
             cx,
         );
         let dark_picker = self.theme_dropdown(
@@ -114,25 +112,29 @@ impl SettingsWindow {
             settings.dark_theme.clone(),
             ThemeTarget::Dark,
             dark_themes,
-            window,
             cx,
         );
-        let font_picker = PopoverMenu::new("ui-font-menu")
-            .trigger(
-                settings_button("ui-font-family", settings.ui_font_family)
-                    .end_icon(Icon::new(IconName::ChevronDown)),
-            )
-            .anchor(Anchor::BottomLeft)
+        let selected_font = settings.ui_font_family.clone();
+        let font_picker = PopupMenu::new("ui-font-menu")
+            .trigger(form_picker("ui-font-family", settings.ui_font_family))
+            .anchor(Anchor::TopLeft)
             .menu(move |window, cx| {
                 let font = font.clone();
-                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                let selected_font = selected_font.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
                     fonts::UI_FONTS.iter().fold(menu, |menu, ui_font| {
                         let family = ui_font.family;
                         let set = font.clone();
-                        menu.entry(family, None, move |_, cx| {
-                            let _ =
-                                set.update(cx, |this, cx| this.set_ui_font(family.to_owned(), cx));
-                        })
+                        menu.toggleable_entry(
+                            family,
+                            family == selected_font,
+                            IconPosition::End,
+                            None,
+                            move |_, cx| {
+                                let _ = set
+                                    .update(cx, |this, cx| this.set_ui_font(family.to_owned(), cx));
+                            },
+                        )
                     })
                 }))
             });

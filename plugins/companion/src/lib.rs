@@ -64,23 +64,23 @@ impl Plugin for CompanionPlugin {
         let state = self.state.read(cx);
         let server = self.server.lock().unwrap();
         let (label, detail, status) = if let Some(problem) = &state.problem {
-            ("Companion: needs attention".into(), problem.clone(), BackgroundState::Error)
+            ("Mobile Companion: needs attention".into(), problem.clone(), BackgroundState::Error)
         } else if let Some(server) = server.as_ref() {
             let count = server.connection_count();
             let label = if count == 0 {
-                "Companion: sharing".into()
+                "Mobile Companion: sharing".into()
             } else {
-                format!("Companion: {count} connected")
+                format!("Mobile Companion: {count} connected")
             };
             (
                 label,
-                format!("Sharing on {}. Open Companion settings.", server.address),
+                format!("Sharing on {}. Open Mobile Companion settings.", server.address),
                 BackgroundState::Running,
             )
         } else {
             (
-                "Companion: off".into(),
-                "Open Companion settings to start sharing.".into(),
+                "Mobile Companion: off".into(),
+                "Open Mobile Companion settings to start sharing.".into(),
                 BackgroundState::Idle,
             )
         };

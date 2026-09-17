@@ -1,6 +1,6 @@
 manifest_version = 2
 id = "com.chartr.companion"
-name = "Companion"
+name = "Mobile Companion"
 description = "Connect Chartr Mobile to your spaces and live terminals over LAN or Tailscale."
 version = "0.1.0"
 kind = "native"

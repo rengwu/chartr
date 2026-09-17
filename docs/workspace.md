@@ -198,9 +198,9 @@ dispatcher follows the ticket type, with an optional source/skill override and
 full prompt preview. Missing prerequisites leave the map available and link to
 setup. See [Wayfinder](../plugins/wayfinder/README.md) for the workflow and claim rules.
 
-`plugins/browser` is the code-free package for the separately released,
-first-party **Browser** plugin. It is deliberately absent from the bundled
-catalog and activates chartr's host-owned browser surface only after install.
+`plugins/browser` is the code-free package for the bundled **Browser** plugin.
+Its manifest and icon ship with chartr and activate the host-owned browser
+surface without a separate installation.
 Each instance owns one page and uses the operating-system WebKit view behind a
 small, theme-adaptive Back/Forward/Stop/Reload/address toolbar; chartr's own
 tabs and splits provide multi-page layout.

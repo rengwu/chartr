@@ -59,9 +59,9 @@ rejects it without executing or loading the library. Confirm **Restart**
 persists the workspace, relaunches chartr, and exposes a newly installed web or
 hosted contribution.
 
-Install the separately packaged `com.chartr.browser` plugin and exercise it in
-standalone, grouped, and split panes on macOS and Linux/X11. Confirm its
-manifest-only package installs with no compiler or platform binary. Verify the
+Open the bundled `com.chartr.browser` plugin and exercise it in standalone,
+grouped, and split panes on macOS and Linux/X11. Confirm it is available on a
+fresh profile without installation and has its packaged icon. Verify the
 themed toolbar, URL/search interpretation, redirects, Back/Forward, Stop/Reload,
 keyboard shortcuts, one page per pane, current-pane handling of new-window
 links, native file uploads, system-browser download handoff, denied site
@@ -142,7 +142,7 @@ pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
 a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Confirm Agent, Skills, Prompts, Wayfinder, and any installed Browser or Clock show their
+Confirm Agent, Skills, Prompts, Wayfinder, Browser, and any installed Clock show their
 manifest-selected Hugeicons in sidebar rows, standalone outer tabs, and pane-local
 tabs. Grouped outer tabs continue to show the split indicator instead of one
 representative plugin icon.
@@ -240,14 +240,22 @@ Skills → Configure**, reusing the same Settings window. Source registration,
 editing, ordering, and deletion are available only there; the workspace pane
 must never switch to a source-management page.
 
-In Prompts, create a titled prompt containing multiple lines, blank lines, and
-Unicode. Confirm the table previews it, search matches title and body, and Copy
-places only the full prompt text on the clipboard. Edit the title and body,
-cancel a draft, and cancel then confirm deletion. Open Prompts in another space
+In Saved Prompts settings, create a titled prompt containing multiple lines, blank
+lines, and Unicode. New/Edit must open a modal above Settings with a scrolling
+body and visible Cancel/Save actions. Tab stays in the modal, Enter adds a new line
+in the body, and Cmd+Enter (macOS) or Ctrl+Enter (Linux) saves. Confirm the table
+previews it, search matches title and body, and the Copy icon places only the full
+prompt text on the clipboard. Copy, Edit, and Delete must be icon buttons with
+tooltips; Copy changes to a checkmark after copying. Edit the title and body,
+cancel a draft, and cancel then confirm the named deletion modal. Open Prompts in another space
 and confirm both panes share changes. Editing the same record in both panes
 must report a conflict instead of overwriting the first save. Relaunch and
 confirm the library and pane return. At narrow pane widths, the table must
 scroll horizontally with its actions reachable.
+
+Skill source rows must use an Edit icon and show no up/down order buttons.
+Drag rows to reorder; confirm dropping persists the order and Escape cancels it.
+Inbox must offer no conversation rename action or title editing form.
 
 ## Persistence and lifecycle
 

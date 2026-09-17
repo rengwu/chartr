@@ -9,6 +9,7 @@ const BUNDLED_AGENT_ID: &str = "com.chartr.agent";
 const BUNDLED_SKILLS_ID: &str = "com.chartr.skills";
 const BUNDLED_PROMPTS_ID: &str = "com.chartr.prompts";
 const BUNDLED_WAYFINDER_ID: &str = "com.chartr.wayfinder";
+const BUNDLED_BROWSER_ID: &str = "com.chartr.browser";
 
 pub(super) fn load_plugin_catalog(settings: &SettingsStore, cx: &mut App) -> Catalog {
     load_plugin_catalog_at(settings, &plugin_paths(), cx)
@@ -93,39 +94,33 @@ fn load_plugin_catalog_at(settings: &SettingsStore, paths: &Paths, cx: &mut App)
             Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
         }
     }
-    let id = "com.chartr.companion";
-    if !catalog.contains(id) && !settings.resolved().plugin(id).uninstalled {
-        let dir = paths.bundled.join(id);
-        let result = (|| -> Result<chartr_plugin::Manifest, String> {
-            std::fs::create_dir_all(dir.join("icons")).map_err(|e| e.to_string())?;
-            for (name, bytes) in [
-                (
-                    "chartr-plugin.toml",
-                    include_bytes!("../../../../plugins/companion/chartr-plugin.toml").as_slice(),
-                ),
-                (
-                    "icons/ChipIcon.svg",
-                    include_bytes!("../../../../plugins/companion/icons/ChipIcon.svg").as_slice(),
-                ),
-            ] {
-                write_bundled_file(&dir.join(name), bytes).map_err(|e| e.to_string())?;
-            }
-            chartr_plugin::Manifest::read(&dir).map_err(|e| e.to_string())
-        })();
-        match result {
-            Ok(manifest) => catalog.add_bundled_native(
-                manifest,
-                dir,
-                paths,
-                false,
-                crate::companion_plugin::bundled,
-                cx,
-            ),
+    if !catalog.contains(BUNDLED_BROWSER_ID)
+        && !settings.resolved().plugin(BUNDLED_BROWSER_ID).uninstalled
+    {
+        let dir = paths.bundled.join(BUNDLED_BROWSER_ID);
+        match materialize_bundled_browser(&dir) {
+            Ok(_) => catalog.add_directory(&dir, paths, false, cx),
             Err(why) => catalog.rejected.push(chartr_plugin_host::Rejected { dir, why }),
         }
     }
     catalog.enable_requested(paths, |id| settings.resolved().plugin(id).enabled, cx);
     catalog
+}
+
+fn materialize_bundled_browser(dir: &std::path::Path) -> Result<chartr_plugin::Manifest, String> {
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(dir.join("icons"))?;
+        write_bundled_file(
+            &dir.join("chartr-plugin.toml"),
+            include_bytes!("../../../../plugins/browser/chartr-plugin.toml"),
+        )?;
+        write_bundled_file(
+            &dir.join("icons/InternetIcon.svg"),
+            include_bytes!("../../../../plugins/browser/icons/InternetIcon.svg"),
+        )
+    };
+    write().map_err(|why| format!("cannot prepare the bundled Browser plugin: {why}"))?;
+    chartr_plugin::Manifest::read(dir).map_err(|why| why.to_string())
 }
 
 pub(super) fn materialize_bundled_wayfinder(
@@ -274,13 +269,79 @@ mod tests {
     ) {
         let scratch = tempfile::tempdir().unwrap();
         let paths = Paths::under(scratch.path());
-        let directory = paths.installed.join(BUNDLED_WAYFINDER_ID);
-        std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join("chartr-plugin.toml"), "invalid manifest").unwrap();
+        for id in [BUNDLED_WAYFINDER_ID, BUNDLED_BROWSER_ID] {
+            let directory = paths.installed.join(id);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join("chartr-plugin.toml"), "invalid manifest").unwrap();
+        }
         let catalog = cx.update(|cx| load_plugin_catalog_at(&SettingsStore::bare(), &paths, cx));
-        assert!(catalog.get(BUNDLED_WAYFINDER_ID).is_none());
-        assert!(!catalog.disabled.contains_key(BUNDLED_WAYFINDER_ID));
-        assert_eq!(catalog.rejected.iter().filter(|rejected| rejected.dir == directory).count(), 1);
+        for id in [BUNDLED_WAYFINDER_ID, BUNDLED_BROWSER_ID] {
+            let directory = paths.installed.join(id);
+            assert!(catalog.get(id).is_none());
+            assert!(!catalog.disabled.contains_key(id));
+            assert_eq!(
+                catalog.rejected.iter().filter(|rejected| rejected.dir == directory).count(),
+                1
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn browser_is_bundled_and_old_companion_sharing_is_not_loaded(cx: &mut gpui::TestAppContext) {
+        let scratch = tempfile::tempdir().unwrap();
+        let paths = Paths::under(scratch.path());
+        let companion_id = "com.chartr.companion";
+        let old_bundle = paths.bundled.join(companion_id);
+        std::fs::create_dir_all(&old_bundle).unwrap();
+        std::fs::write(
+            old_bundle.join("chartr-plugin.toml"),
+            include_str!("../../../../plugins/companion/chartr-plugin.toml"),
+        )
+        .unwrap();
+        let companion_data = paths.data.join(companion_id);
+        std::fs::create_dir_all(&companion_data).unwrap();
+        let saved_sharing = br#"{"enabled":true,"address":"0.0.0.0:9847"}"#;
+        std::fs::write(companion_data.join("sharing.json"), saved_sharing).unwrap();
+
+        let mut catalog =
+            cx.update(|cx| load_plugin_catalog_at(&SettingsStore::bare(), &paths, cx));
+        assert!(catalog.rejected.is_empty());
+        assert!(!catalog.contains(companion_id));
+        assert_eq!(std::fs::read(companion_data.join("sharing.json")).unwrap(), saved_sharing);
+        let browser = catalog.get_mut(BUNDLED_BROWSER_ID).unwrap();
+        assert_eq!(browser.dir, paths.bundled.join(BUNDLED_BROWSER_ID));
+        assert!(browser.dir.join("icons/InternetIcon.svg").is_file());
+        assert!(browser.manifest.capabilities.restorable);
+        assert!(matches!(
+            browser.pane(&chartr_plugin::PaneKey::new(BUNDLED_BROWSER_ID, "main")),
+            Some(chartr_plugin_host::PaneSource::Hosted(
+                chartr_plugin_host::HostedSurface::Browser
+            ))
+        ));
+    }
+
+    #[gpui::test]
+    fn bundled_browser_respects_disabled_and_uninstalled_preferences(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let scratch = tempfile::tempdir().unwrap();
+        let paths = Paths::under(scratch.path().join("data"));
+        let file = scratch.path().join("settings.toml");
+        let mut settings = SettingsStore::load(&file);
+        for uninstalled in [false, true] {
+            settings
+                .update(|content| {
+                    let browser = content.plugins.entry(BUNDLED_BROWSER_ID.into()).or_default();
+                    browser.enabled = Some(false);
+                    browser.uninstalled = Some(uninstalled);
+                })
+                .unwrap();
+            let reloaded = SettingsStore::load(&file);
+            let catalog = cx.update(|cx| load_plugin_catalog_at(&reloaded, &paths, cx));
+            assert!(catalog.get(BUNDLED_BROWSER_ID).is_none());
+            assert_eq!(catalog.disabled.contains_key(BUNDLED_BROWSER_ID), !uninstalled);
+            assert_eq!(catalog.contains(BUNDLED_BROWSER_ID), !uninstalled);
+        }
     }
 
     #[gpui::test]

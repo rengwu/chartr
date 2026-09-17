@@ -22,7 +22,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use ui::{Color, Icon, IconName, IconPosition, Switch, prelude::*};
+use ui::{Color, Icon, IconButton, IconName, IconPosition, Switch, Tooltip, prelude::*};
 
 pub struct SkillsPlugin {
     registry: Entity<Registry>,
@@ -486,7 +486,10 @@ impl SkillsView {
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(
-                    plugin_ui::action(("edit-skill-source", index), "Edit")
+                    IconButton::new(("edit-skill-source", index), IconName::Pencil)
+                        .icon_size(IconSize::Small)
+                        .aria_label(format!("Edit {name}"))
+                        .tooltip(Tooltip::text("Edit skill source"))
                         .disabled(blocked)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_editor(Some(edit_source.clone()), window, cx)
@@ -499,32 +502,6 @@ impl SkillsView {
                         .disabled(blocked)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.run(Operation::Refresh(refresh_name.clone()), cx)
-                        })),
-                );
-            }
-            // Keyboard-accessible order controls complement dragging a source row.
-            for (offset, icon, label) in
-                [(-1isize, IconName::ArrowUp, "Move up"), (1, IconName::ArrowDown, "Move down")]
-            {
-                let adjacent = position
-                    .checked_add_signed(offset)
-                    .and_then(|i| rows.get(i))
-                    .map(|(_, source, _)| source.name.clone());
-                let move_name = name.clone();
-                actions = actions.child(
-                    plugin_ui::icon_action(format!("source-order-{index}-{offset}"), icon)
-                        .aria_label(format!("{label}: {name}"))
-                        .disabled(blocked || adjacent.is_none())
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(before) = &adjacent {
-                                this.run(
-                                    Operation::Move {
-                                        name: move_name.clone(),
-                                        before: before.clone(),
-                                    },
-                                    cx,
-                                );
-                            }
                         })),
                 );
             }

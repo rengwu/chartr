@@ -86,7 +86,7 @@ impl SettingsWindow {
         ));
         fields.push(setting_field(
             "Show status bar",
-            "Show persistent services and running sessions at the bottom of the workspace.",
+            "Show persistent plugin and Mobile Companion activity at the bottom of the workspace.",
             Switch::new("show-status-bar", show_status_bar.into())
                 .tab_index(0isize)
                 .aria_label("Show status bar")
@@ -134,23 +134,28 @@ impl SettingsWindow {
         let retry = cx.listener(|this, _, _, cx| this.retry_backend(cx));
         let restart = cx.listener(|this, _, _, cx| this.restart_backend(cx));
         let runtime_available = self.original.upgrade().is_some();
-        let font_picker = PopoverMenu::new("terminal-font-menu")
-            .trigger(
-                settings_button("terminal-font-family", settings.terminal_font_family)
-                    .end_icon(Icon::new(IconName::ChevronDown)),
-            )
-            .anchor(Anchor::BottomLeft)
+        let selected_font = settings.terminal_font_family.clone();
+        let font_picker = PopupMenu::new("terminal-font-menu")
+            .trigger(form_picker("terminal-font-family", settings.terminal_font_family))
+            .anchor(Anchor::TopLeft)
             .menu(move |window, cx| {
                 let font = font.clone();
-                Some(ContextMenu::build(window, cx, move |menu, _, _| {
+                let selected_font = selected_font.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
                     fonts::TERMINAL_FONTS.iter().fold(menu, |menu, terminal_font| {
                         let family = terminal_font.family;
                         let set = font.clone();
-                        menu.entry(family, None, move |_, cx| {
-                            let _ = set.update(cx, |this, cx| {
-                                this.set_terminal_font(family.to_owned(), cx)
-                            });
-                        })
+                        menu.toggleable_entry(
+                            family,
+                            family == selected_font,
+                            IconPosition::End,
+                            None,
+                            move |_, cx| {
+                                let _ = set.update(cx, |this, cx| {
+                                    this.set_terminal_font(family.to_owned(), cx)
+                                });
+                            },
+                        )
                     })
                 }))
             });

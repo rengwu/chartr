@@ -12,11 +12,13 @@ pub struct Assets;
 
 /// The shared icon for every entry point and placeholder associated with opening a plugin pane.
 pub const PLUGIN_LAUNCHER_ICON_PATH: &str = "icons/full_screen.svg";
+pub const TITLE_BRAND_PATH: &str = "icons/title_brand.svg";
 
 /// Icons chartr draws, by the path `IconName::path` derives.
 const ICONS: &[(&str, &str)] = &[
     ("icons/plus.svg", include_str!("../assets/icons/plus.svg")),
     (PLUGIN_LAUNCHER_ICON_PATH, include_str!("../assets/icons/full_screen.svg")),
+    (TITLE_BRAND_PATH, include_str!("../assets/icons/title_brand.svg")),
     ("icons/close.svg", include_str!("../assets/icons/close.svg")),
     ("icons/tab.svg", include_str!("../assets/icons/tab.svg")),
     ("icons/menu.svg", include_str!("../assets/icons/menu.svg")),
@@ -69,6 +71,19 @@ mod tests {
     #[test]
     fn chartrs_plugin_launcher_icon_is_embedded() {
         assert!(Assets.load(PLUGIN_LAUNCHER_ICON_PATH).expect("load").is_some());
+    }
+
+    #[test]
+    fn title_brand_is_embedded() {
+        let bytes = Assets.load(TITLE_BRAND_PATH).expect("load").expect("embedded title brand");
+        let image = gpui::SvgRenderer::new(std::sync::Arc::new(Assets))
+            .render_single_frame(&bytes, 1.)
+            .expect("render title brand");
+        assert!(
+            image
+                .as_bytes(0)
+                .is_some_and(|pixels| pixels.chunks_exact(4).any(|pixel| { pixel[3] != 0 }))
+        );
     }
 
     #[test]

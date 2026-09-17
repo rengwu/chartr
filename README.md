@@ -37,17 +37,16 @@ own tools that live alongside your agents.
   horizontally or vertically, and switch between sidebar and tabbed layouts.
 - **Persistent sessions** — By default, your shells survive closing and reopening
   the app. Closing a terminal tab ends that session.
-- **Persistent activity status** — A hideable status bar shows running sessions,
-  terminal service health, and Companion sharing/connections even after its pane closes.
-  Click a service for controls; restore the bar in Settings → General or with
-  “Workspace: Toggle status bar” in the command palette.
+- **Persistent activity status** — A hideable status bar shows background plugin activity.
+  Click a service for controls, or right-click the bar to hide it; restore it in
+  Settings → General or with “Workspace: Toggle status bar” in the command palette.
 - **Inbox** — Browse detected agent sessions in a searchable history sidebar,
-  with the selected session’s original terminal on the right. Rename, archive,
+  with the selected session’s original terminal on the right. Browse, archive,
   and launch agents without leaving the view. [Inbox details](docs/conversations.md).
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
-- **Tools beside your terminals** — Agent, Skill sources, Saved Prompts, Markdown Prompt, and Wayfinder are
-  bundled. Install additional web and hosted plugins, including the Browser surface.
+- **Tools beside your terminals** — Agent, Skill sources, Saved Prompts, Markdown Prompt,
+  Wayfinder, and Browser are bundled. Install additional web and hosted plugins.
 - **Make it yours** — Choose themes and fonts, follow the system appearance,
   rebind shortcuts, and configure plugins in native Settings.
 - **Bring your CLI agents** — Register the agents you already use and launch
@@ -153,8 +152,7 @@ Wayfinder can browse existing maps before agents or skills are configured. It
 allows one claimed ticket per space at a time; ordinary agent sessions and
 terminals remain independent.
 
-To add the optional Browser surface from this checkout, choose `plugins/browser`
-under **Settings → Plugins → Install from Folder…**, then restart when prompted.
+Open the bundled Browser from the workspace’s **New surface** menu.
 See [Browser](plugins/browser/README.md) for its capabilities and limits.
 
 ## Your data

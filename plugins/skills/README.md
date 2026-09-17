@@ -16,10 +16,10 @@ installable through the Git plugin installer.
   branch is recorded on initial checkout. Refresh is explicit and records the
   current commit. Each registration has its own checkout, so the same repository
   can be registered at different refs without affecting another source.
-- Edit reuses the registration modal, preserving position and enabled state.
+- The Edit icon reuses the registration modal, preserving position and enabled state.
   Changing a remote URL or ref prepares a replacement checkout. Renaming a
   remote source preserves its checkout.
-- Enable/disable and drag to reorder sources; arrow buttons also change order.
+- Enable/disable and drag to reorder sources.
   Dragging uses the sidebar's live FLIP sorter: the held row follows the pointer,
   neighbouring rows slide into their new positions, and list edges autoscroll.
   Dropping saves the previewed order; Escape or a failed save restores the

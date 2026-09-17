@@ -83,7 +83,6 @@ enum PopupItem {
 /// non-selectable gap between adjacent actions while leaving separators and
 /// headers as distinct group boundaries.
 pub struct ContextMenu {
-    inner: Option<UiContextMenu>,
     popup_items: Vec<PopupItem>,
     has_item_in_group: bool,
     metrics: PopupMetrics,
@@ -92,29 +91,6 @@ pub struct ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn build(
-        window: &mut Window,
-        cx: &mut App,
-        build: impl FnOnce(Self, &mut Window, &mut Context<UiContextMenu>) -> Self,
-    ) -> Entity<UiContextMenu> {
-        UiContextMenu::build(window, cx, |menu, window, cx| {
-            build(
-                Self {
-                    inner: Some(menu),
-                    popup_items: Vec::new(),
-                    has_item_in_group: false,
-                    metrics: PopupMetrics::default(),
-                    popup_width: POPUP_CONTENT_WIDTH,
-                    has_custom_rows: false,
-                },
-                window,
-                cx,
-            )
-            .inner
-            .expect("in-window context menus keep their UI menu")
-        })
-    }
-
     /// Entry handlers are routed back to `window`; the anchored popup is only
     /// a host for the stock UI context menu.
     pub fn build_popup(
@@ -124,7 +100,6 @@ impl ContextMenu {
     ) -> AnchoredContextMenu {
         let target_window = window.window_handle();
         let built = build(Self {
-            inner: None,
             popup_items: Vec::new(),
             has_item_in_group: false,
             metrics: PopupMetrics::default(),
@@ -142,11 +117,7 @@ impl ContextMenu {
 
     fn before_item(mut self) -> Self {
         if self.has_item_in_group {
-            if let Some(inner) = self.inner.take() {
-                self.inner = Some(inner.custom_row(|_, _| div().h_1().into_any_element()));
-            } else {
-                self.popup_items.push(PopupItem::Gap);
-            }
+            self.popup_items.push(PopupItem::Gap);
             self.metrics.inter_item_gaps += 1;
         }
         self.has_item_in_group = true;
@@ -161,18 +132,14 @@ impl ContextMenu {
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         let mut this = self.before_item();
-        if let Some(inner) = this.inner.take() {
-            this.inner = Some(inner.entry(label, action, handler));
-        } else {
-            this.popup_items.push(PopupItem::Entry(PopupEntry {
-                label: label.into(),
-                toggle: None,
-                icon_path: None,
-                label_color: None,
-                action,
-                handler: Rc::new(handler),
-            }));
-        }
+        this.popup_items.push(PopupItem::Entry(PopupEntry {
+            label: label.into(),
+            toggle: None,
+            icon_path: None,
+            label_color: None,
+            action,
+            handler: Rc::new(handler),
+        }));
         this
     }
 
@@ -184,23 +151,14 @@ impl ContextMenu {
     ) -> Self {
         let mut this = self.before_item();
         let label = label.into();
-        if let Some(inner) = this.inner.take() {
-            this.inner = Some(inner.custom_entry(
-                move |_, _| {
-                    Label::new(label.clone()).color(Color::Error).truncate().into_any_element()
-                },
-                handler,
-            ));
-        } else {
-            this.popup_items.push(PopupItem::Entry(PopupEntry {
-                label,
-                toggle: None,
-                icon_path: None,
-                label_color: Some(Color::Error),
-                action: None,
-                handler: Rc::new(handler),
-            }));
-        }
+        this.popup_items.push(PopupItem::Entry(PopupEntry {
+            label,
+            toggle: None,
+            icon_path: None,
+            label_color: Some(Color::Error),
+            action: None,
+            handler: Rc::new(handler),
+        }));
         this
     }
 
@@ -213,18 +171,14 @@ impl ContextMenu {
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         let mut this = self.before_item();
-        if let Some(inner) = this.inner.take() {
-            this.inner = Some(inner.toggleable_entry(label, toggled, position, action, handler));
-        } else {
-            this.popup_items.push(PopupItem::Entry(PopupEntry {
-                label: label.into(),
-                toggle: Some((position, toggled)),
-                icon_path: None,
-                label_color: None,
-                action,
-                handler: Rc::new(handler),
-            }));
-        }
+        this.popup_items.push(PopupItem::Entry(PopupEntry {
+            label: label.into(),
+            toggle: Some((position, toggled)),
+            icon_path: None,
+            label_color: None,
+            action,
+            handler: Rc::new(handler),
+        }));
         this
     }
 
@@ -239,27 +193,14 @@ impl ContextMenu {
         let mut this = self.before_item();
         let label = label.into();
         let icon_path = icon_path.into();
-        if let Some(inner) = this.inner.take() {
-            this.inner = Some(
-                inner.item(
-                    UiContextMenuEntry::new(label)
-                        .custom_icon_path(icon_path)
-                        .icon_position(IconPosition::Start)
-                        .icon_size(IconSize::Small)
-                        .toggle(IconPosition::End, toggled)
-                        .handler(handler),
-                ),
-            );
-        } else {
-            this.popup_items.push(PopupItem::Entry(PopupEntry {
-                label,
-                toggle: Some((IconPosition::End, toggled)),
-                icon_path: Some(icon_path),
-                label_color: None,
-                action: None,
-                handler: Rc::new(handler),
-            }));
-        }
+        this.popup_items.push(PopupItem::Entry(PopupEntry {
+            label,
+            toggle: Some((IconPosition::End, toggled)),
+            icon_path: Some(icon_path),
+            label_color: None,
+            action: None,
+            handler: Rc::new(handler),
+        }));
         this
     }
 
@@ -269,12 +210,7 @@ impl ContextMenu {
         render: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
     ) -> Self {
         let render: PopupRowRenderer = Rc::new(render);
-        if let Some(inner) = self.inner.take() {
-            let render = render.clone();
-            self.inner = Some(inner.custom_row(move |window, cx| render(window, cx)));
-        } else {
-            self.popup_items.push(PopupItem::CustomRow(render));
-        }
+        self.popup_items.push(PopupItem::CustomRow(render));
         self.has_custom_rows = true;
         self
     }
@@ -282,29 +218,18 @@ impl ContextMenu {
     /// Set the content width of an anchored native popup.
     pub fn popup_width(mut self, width: Pixels) -> Self {
         self.popup_width = width.max(px(1.));
-        if let Some(inner) = self.inner.take() {
-            self.inner = Some(inner.fixed_width(self.popup_width.into()));
-        }
         self
     }
 
     pub fn separator(mut self) -> Self {
-        if let Some(inner) = self.inner.take() {
-            self.inner = Some(inner.separator());
-        } else {
-            self.popup_items.push(PopupItem::Separator);
-        }
+        self.popup_items.push(PopupItem::Separator);
         self.has_item_in_group = false;
         self.metrics.separators += 1;
         self
     }
 
     pub fn header(mut self, title: impl Into<SharedString>) -> Self {
-        if let Some(inner) = self.inner.take() {
-            self.inner = Some(inner.header(title));
-        } else {
-            self.popup_items.push(PopupItem::Header(title.into()));
-        }
+        self.popup_items.push(PopupItem::Header(title.into()));
         self.has_item_in_group = false;
         self.metrics.headers += 1;
         self
