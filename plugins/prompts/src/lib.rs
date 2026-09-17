@@ -14,7 +14,7 @@ use gpui::{
     AnyElement, App, ClipboardItem, Context, Entity, Focusable, KeyBinding, Render, WeakEntity,
     Window, div, px,
 };
-use ui::{Color, Icon, IconButton, IconName, Tooltip, prelude::*};
+use ui::{Color, Icon, IconName, prelude::*};
 
 use crate::{components::input_field, text_input::TextInput};
 use dialog::PromptDialog;
@@ -245,13 +245,12 @@ impl PromptsView {
                 let actions = h_flex()
                     .gap_1()
                     .child(
-                        IconButton::new(
+                        plugin_ui::icon_action(
                             ("copy-prompt", index),
                             if copied { IconName::Check } else { IconName::Copy },
                         )
-                        .icon_size(IconSize::Small)
                         .aria_label(format!("{copy_label}: {}", prompt.title))
-                        .tooltip(Tooltip::text(copy_label))
+                        .tooltip(copy_label)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(
                                 copying.prompt.clone(),
@@ -261,19 +260,17 @@ impl PromptsView {
                         })),
                     )
                     .child(
-                        IconButton::new(("edit-prompt", index), IconName::Pencil)
-                            .icon_size(IconSize::Small)
+                        plugin_ui::icon_action(("edit-prompt", index), IconName::Pencil)
                             .aria_label(format!("Edit prompt: {}", prompt.title))
-                            .tooltip(Tooltip::text("Edit prompt"))
+                            .tooltip("Edit prompt")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_dialog(Some(editing.clone()), false, window, cx)
                             })),
                     )
                     .child(
-                        IconButton::new(("delete-prompt", index), IconName::Trash)
-                            .icon_size(IconSize::Small)
+                        plugin_ui::icon_action(("delete-prompt", index), IconName::Trash)
                             .aria_label(format!("Delete prompt: {}", prompt.title))
-                            .tooltip(Tooltip::text("Delete prompt"))
+                            .tooltip("Delete prompt")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_dialog(Some(deleting.clone()), true, window, cx)
                             })),

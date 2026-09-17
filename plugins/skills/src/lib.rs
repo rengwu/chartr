@@ -22,7 +22,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use ui::{Color, Icon, IconButton, IconName, IconPosition, Switch, Tooltip, prelude::*};
+use ui::{Color, Icon, IconName, IconPosition, Switch, prelude::*};
 
 pub struct SkillsPlugin {
     registry: Entity<Registry>,
@@ -486,10 +486,9 @@ impl SkillsView {
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(
-                    IconButton::new(("edit-skill-source", index), IconName::Pencil)
-                        .icon_size(IconSize::Small)
+                    plugin_ui::icon_action(("edit-skill-source", index), IconName::Pencil)
                         .aria_label(format!("Edit {name}"))
-                        .tooltip(Tooltip::text("Edit skill source"))
+                        .tooltip("Edit skill source")
                         .disabled(blocked)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_editor(Some(edit_source.clone()), window, cx)

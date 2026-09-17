@@ -123,6 +123,11 @@ pub struct IconAction {
     button: ::ui::IconButton,
 }
 impl IconAction {
+    pub fn tooltip(mut self, text: impl Into<SharedString>) -> Self {
+        let text: SharedString = text.into();
+        self.button = self.button.tooltip(::ui::Tooltip::text(text));
+        self
+    }
     pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.button = self.button.aria_label(label);
         self
