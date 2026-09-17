@@ -237,9 +237,10 @@ resolves a live export in the owning catalog. Disablement removes its entries;
 reenablement publishes fresh exports. Resolve services again before acting.
 Native code is already trusted; these are shared typed contracts, not a sandbox.
 
-The initial contracts are `services::Agents` (registered names and input
-preparation) and `services::Skills` (asynchronous enabled-source scanning,
-method text, directories and commit provenance). Agent and Skills own their
+The contracts include `services::Agents` (registered names and input
+preparation), `ConversationAgents` (registered profiles for the Inbox launcher),
+`services::Skills` (asynchronous enabled-source scanning, method text, directories
+and commit provenance), `Prompts`, and `PromptTemplates`. Agent and Skills own their
 registries. Each plugin has one configuration surface under **Settings → Plugins →
 Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
 that surface instead of rendering another configuration page in the workspace.
@@ -309,7 +310,10 @@ The bundled Saved Prompts plugin exports `services::Prompts` from
 
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
 `PreparedTerminal` with a real session `id`; `send` delivers the validated input
-and reports errors. This lets a consumer claim a ticket before the agent starts.
+and reports queueing errors. Long or multiline shell commands are sourced from
+owner-only temporary scripts; ordinary `session.send` remains raw input. Successful
+queueing does not establish that the agent started or stayed alive. This lets a
+consumer claim a ticket before delivering its launch command.
 `terminal.focus(id, window, cx)` selects that session in its owning space.
 These Rust capabilities stay host-side. The narrow Wayfinder web API below
 uses them without exposing arbitrary service calls or shell input to JavaScript.
@@ -469,13 +473,15 @@ change. Consumers observe `PromptTemplates::changes(cx)` to invalidate cached
 content. Saved Prompts emits this after CRUD/reload; Skills emits it after source
 registration, refresh, reordering, enablement, deletion and rescans. The signal
 is an invalidation notice, not permission for a provider to write project files.
-Markdown Prompt refreshes only compositions explicitly activated with Apply.
+Markdown Prompt refreshes its open template palette after invalidation. Project
+content changes only after **Apply changes → Save**, which resolves referenced
+templates again; notifications never write files in the background.
 
 The host calls `Plugin::connect_services(services, cx)` after publishing exports.
-This lifecycle hook gives background consumers the live catalog without opening
-a pane. Markdown Prompt uses it to resume persisted applied compositions on
-startup. Disabling the plugin drops its worker; provider changes also undergo
-periodic reconciliation for external file edits and provider removal.
+This lifecycle hook gives native consumers the live catalog without opening
+a pane. Markdown Prompt currently has no background synchronization worker:
+opening or closing a pane, restarting the app, and provider changes do not apply
+saved compositions to project files.
 
 Native plugins export the asynchronous typed service from `Plugin::services()`:
 

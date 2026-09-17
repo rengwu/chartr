@@ -60,5 +60,6 @@ skill names, relative `SKILL.md` paths and shadowing information. Markdown Promp
 can include this content in a user-composed file. Skills itself writes no project
 files.
 
-Successful source changes notify template consumers immediately. Applied Markdown
-Prompt compositions update without reopening their panes.
+Successful source changes notify template consumers immediately. Open Markdown
+Prompt panes refresh their palettes; project files change only on explicit
+**Apply changes → Save**.

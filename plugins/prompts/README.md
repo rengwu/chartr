@@ -10,12 +10,12 @@ confirmation modal naming the prompt. Validation and conflict errors stay in the
 dialog. Copy puts only the full prompt text on the
 clipboard, preserving whitespace and line breaks. The title is display metadata.
 
-The library is shared across spaces and settings windows. It lives at
+The library is shared across spaces and app windows through the singleton Settings window. It lives at
 `$XDG_DATA_HOME/chartr/plugin-data/com.chartr.prompts/prompts.json` (by default
 `~/.local/share/chartr/plugin-data/com.chartr.prompts/prompts.json`). Saves replace
 the file atomically. Invalid or newer storage versions are reported and never
 overwritten. Reload rereads the file after a manual repair or external edit.
-Edits made in another settings window are reflected immediately; stale drafts cannot
+Committed edits are reflected in consumers; stale drafts cannot
 silently overwrite or delete a changed record.
 
 Each record has a stable `id`, `title`, and `prompt`. Renaming preserves its ID;
@@ -46,4 +46,5 @@ managed in plugin settings. This plugin does not write project files
 or launch agents.
 
 Successful saves, deletions and reloads notify template consumers. Markdown
-Prompt automatically updates applied compositions that reference changed prompts.
+Prompt refreshes its template palette; existing project files change only on its
+next explicit **Apply changes → Save**.

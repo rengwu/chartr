@@ -1,6 +1,6 @@
 # Inbox
 
-Choose **Inbox** in the window’s view selector or command palette
+Choose **Chats** in the window’s view selector, or **Inbox** in the command palette
 (`Cmd+Shift+3` on macOS, `Ctrl+Shift+3` on Linux). Existing Conversations view
 preferences migrate to Inbox with the same selected history entry. Existing custom `workspace.conversation_mode` shortcuts remain valid.
 
@@ -25,11 +25,10 @@ to **Archive** with a **Session ended** state, preserving its title, recency, an
 saved history. This also archives older ended entries after the first successful
 refresh on startup. Idle sessions remain in Inbox; a backend disconnection alone
 does not archive anything. If the selected Inbox entry ends, its selection clears
-without switching the history filter. Chats does not resume an ended session or
+without switching the history filter. Inbox does not resume an ended session or
 show a reconstructed transcript. If the
 same terminal starts a different native conversation, the old entry cannot
-control it. When mobile owns a session’s terminal geometry, Inbox displays its
-mobile status until control returns to desktop.
+control it. Mobile Companion is excluded from the current desktop build.
 
 For ended sessions, **Open session log** locates the provider's log and opens it
 in the system's associated application. Lookup runs in the background, matches
@@ -37,7 +36,7 @@ the exact native session ID, and reports missing or ambiguous files. Chartr does
 not render the log. The provider determines what the original file contains;
 Chartr does not reconstruct omitted tool output, attachments or compacted turns.
 On macOS, an unsuccessful file open falls back to the default text editor, then
-TextEdit. If all attempts fail, Chats displays the error.
+TextEdit. If all attempts fail, Inbox displays the error.
 
 | Provider | Log opened |
 | --- | --- |
@@ -66,9 +65,9 @@ discoverable. Disabled Cursor transcripts and legacy database-only histories
 report an unavailable log.
 
 OMP, Cursor (`cursor-agent`) and Antigravity CLI (`agy`) use the bundled Herdr
-discovery installers. Their native identities now reach Chats and survive archive
+discovery installers. Their native identities reach Inbox and survive archive
 and restart. Desktop IDE conversation discovery is outside the terminal-based
-Chats workflow. Cursor, Antigravity and OMP have fixture coverage but still need
+Inbox workflow. Cursor, Antigravity and OMP have fixture coverage but still need
 live verification with functioning installations.
 
 Inbox always lists conversations from all spaces, including Free sessions,
@@ -121,7 +120,7 @@ Inbox installs/verifies discovery hooks automatically; existing processes do
 not retroactively load new hooks.
 
 Local, read-only provider metadata and transcript readers supply titles and
-recency. Titles prefer a manual Chartr name, then the provider's saved name,
+recency. Titles prefer a previously saved manual Chartr name, then the provider's saved name,
 then its observed terminal title, then the existing first-prompt excerpt
 (whitespace collapsed, limited to 100 characters). Missing, blank or unreadable
 native metadata leaves the fallback available. A prompt excerpt never replaces
@@ -160,7 +159,7 @@ need additional discovery support.
 
 Each observation records the terminal’s owning space separately from its cwd.
 Ownership survives identity promotion, exit, and restart. Renamed spaces use
-current registered names; removed spaces keep their last label in All spaces.
+current registered names; removed spaces keep their last recorded label.
 Legacy entries without an owner use the most specific registered folder that
 contains their cwd. Duplicate space names include paths in labels/pickers.
 

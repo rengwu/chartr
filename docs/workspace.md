@@ -46,10 +46,11 @@ to the sidebar's X axis, continues tracking vertically outside the sidebar,
 autoscrolls at the list edges, and settles into the closest legal slot at release.
 Space order survives relaunch.
 
-**Conversations** is a third projection: searchable agent history and rich chat,
-with no terminal panes. It preserves the same running terminals and saved layout.
-See [Conversation mode](conversations.md) for provider capabilities, setup, input
-semantics and persistence.
+The title-bar selector labels these views **Spaces** and **Tabs**. **Chats**
+opens Inbox, a third projection with searchable agent history beside the
+selected session's original terminal. It preserves the running sessions and saved
+pane layout. See [Inbox](conversations.md) for discovery, archive behavior,
+launching, and provider log access.
 
 Terminal titles follow Herdr's live view of the PTY, as in chartr-rs: a detected
 agent wins, otherwise the non-shell foreground process is shown, and an idle
@@ -64,9 +65,10 @@ encoding, selection, clipboard, IME, links, and mouse reporting. Its local PTY
 runs Herdr's native `terminal attach <id> --takeover` client; the persistent PTY
 and shell remain owned by the private Herdr daemon. chartr owns only attachment
 lifecycle, pane placement, settings/theme inputs, and platform terminal bindings.
-The pinned view has one documented host extension: chartr can top-align the grid
-instead of moving it by the spare sub-row pixels during pane resize. Zed's
-bottom-alignment policy remains the default inside the vendored crate.
+The pinned view adds host policies for grid alignment, cell-width padding,
+overlay scrollbars, and pausing grid resize during layout animations. Zed's
+bottom-alignment policy remains the default inside the vendored crate; chartr
+selects top alignment. See the [maintained patch](../vendor/zed-terminal-view/chartr-PATCH.md).
 The pinned Zed terminal keymap supplies copy/paste, word navigation, scrollback,
 vi mode, and character-palette behavior; chartr adds terminal-buffer search,
 desktop file drops, filesystem-link opening, and tab bell state at the host
@@ -185,18 +187,24 @@ plugin in `plugins/agent` keeps a private registry of agent launch definitions
 and opens the selected adapter and prompt as an
 ordinary chartr-owned session in the pane's space.
 
-The bundled **Skills** plugin in `plugins/skills` provides ordered local and
+The bundled **Skill sources** plugin in `plugins/skills` provides ordered local and
 remote skill-source registration, editing, enablement, refresh, and confirmed
-removal. Its otherwise empty pane opens source settings through the chevron
-menu. See [its package documentation](../plugins/skills/README.md) for discovery
-rules and storage. It exports ordered source content to dependent native plugins.
+removal through its settings gear in **Settings → Plugins**. It has no workspace
+surface. See [its package documentation](../plugins/skills/README.md) for discovery
+rules and storage. It exports ordered source content and prompt templates.
+
+**Saved Prompts** is also managed only in plugin settings. **Markdown Prompt**
+provides the workspace composer for saved prompts and other template providers;
+project files change only after an explicit **Apply changes → Save**.
 
 The bundled **Wayfinder** plugin reads `.plan/maps/` in a folder space as a live
 web-based star map. Select a ticket to read its Markdown, dependencies and claim;
 launch it using a registered Agent and a method resolved by Skills. A single
 dispatcher follows the ticket type, with an optional source/skill override and
-full prompt preview. Missing prerequisites leave the map available and link to
-setup. See [Wayfinder](../plugins/wayfinder/README.md) for the workflow and claim rules.
+full prompt preview. Empty agent or source registries leave map browsing
+available and link to setup. Agent and Skill sources must be enabled for the
+Wayfinder plugin itself to load. See [Wayfinder](../plugins/wayfinder/README.md)
+for the workflow and claim rules.
 
 `plugins/browser` is the code-free package for the bundled **Browser** plugin.
 Its manifest and icon ship with chartr and activate the host-owned browser
@@ -210,8 +218,12 @@ tabs and splits provide multi-page layout.
 ```text
 crates/chartr/              window, spaces, panes, settings, persistence, UI
 crates/chartr-herdr/        private Herdr protocol and lifecycle
+crates/chartr-agent/        shared provider identity and capabilities
+crates/chartr-conversations/ provider history index and read-only log adapters
+crates/chartr-storage/      atomic file publication
 crates/chartr-plugin/       native and manifest authoring contract
 crates/chartr-plugin-host/  discovery, loading, and web filesystem broker
+crates/chartr-companion/    retained transport; excluded from the desktop app
 plugins/                   bundled and separately installable first-party plugins
 examples/plugins/          optional native and web reference examples
 vendor/herdr/              pinned sidecar fetch and licence

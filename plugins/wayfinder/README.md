@@ -34,7 +34,8 @@ reduced-motion settings remove continuous animation and camera easing.
 
 ## Prerequisites
 
-Map browsing needs only a folder. Agent launching uses the following providers:
+Wayfinder requires Agent and Skill sources to be enabled. Once those plugins are
+available, map browsing needs only a folder; launch also needs their configuration:
 
 - **Agent**: enable it and register a launch definition under **Agents…**.
 - **Skills**: enable it and register an enabled local or Git source under
@@ -42,9 +43,10 @@ Map browsing needs only a folder. Agent launching uses the following providers:
   `https://github.com/rengwu/chartr-skills` through the Skills settings.
 
 Dependencies are listed by feature in `chartr-plugin.toml` and Settings. Nothing
-is installed, fetched or enabled automatically. If a provider is disabled,
-Wayfinder keeps showing maps and explains why launch is unavailable. The setup
-buttons open the provider's configuration, or the Plugins page if it is disabled.
+is installed, fetched or enabled automatically. Missing agent registrations or
+usable skills leave browsing available with setup guidance. Disabling a required
+provider also disables Wayfinder and closes its panes; reenable the providers and
+then Wayfinder in Settings to restore it. The setup buttons open provider settings.
 The source repository and agent definitions remain owned by their providers.
 
 ## One launcher, automatic methods
@@ -92,7 +94,8 @@ ticket does not block the frontier. Claimed tickets show their session identity,
 **Open session**, and **Release claim…** in the detail pane. Release opens a
 confirmation dialog and clears only the claim that was shown when it opened;
 a newer claim cannot be cleared by a stale confirmation. This works after the
-session has ended and with Agent/Skills disabled. Releasing a claim does not stop
+session has ended. The release bridge itself does not need provider services, but
+the bundled pane requires both provider plugins to be enabled. Releasing a claim does not stop
 a running agent. The ticket becomes launchable again when its blockers allow it.
 
 The complete file contract is [TRACKER-CONVENTION.md](TRACKER-CONVENTION.md).
@@ -137,7 +140,7 @@ the resizable bottom dock. Overflowing reading panes keep visible scrollbars.
 Map labels also follow the interface font and scale. Blocker and frontier rows
 keep ticket numbers and statuses in fixed columns while titles wrap.
 
-Run `cargo test --workspace` and `node --test plugins/wayfinder/tests/layout.test.mjs`.
+Run `cargo test --workspace --locked --no-fail-fast` and `node --test plugins/wayfinder/tests/layout.test.mjs`.
 For browser QA, install Playwright in a separate dev environment and run
 `node plugins/wayfinder/tests/browser.mjs`; `PLAYWRIGHT_MODULE` can point to its
 `index.mjs` and `SCREENSHOT_DIR` to an existing output directory. These tests use
