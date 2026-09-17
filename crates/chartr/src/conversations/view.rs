@@ -1,6 +1,6 @@
 use super::*;
 use gpui::{AnyElement, Role, Window, div, px};
-use ui::{Button, ButtonSize, CommonAnimationExt, IconButton, Tooltip, prelude::*};
+use ui::{Button, CommonAnimationExt, IconButton, Tooltip, prelude::*};
 
 use crate::components::{
     SegmentedControl, SegmentedControlOption, SelectionRowBackgrounds, selection_list,
@@ -236,7 +236,6 @@ impl Conversations {
                         this.new_space = None;
                         this.launch_runtime = None;
                         this.selected = Some(id.clone());
-                        this.renaming = None;
                         this.clear_terminal();
                         this.focus_terminal = true;
                         this.pending_runtime = None;
@@ -266,40 +265,36 @@ impl Conversations {
             .flex_1()
             .min_w_0()
             .h_full()
-            .when(self.renaming.as_deref() == Some(&row.id), |view| {
-                view.child(
-                    h_flex()
-                        .px_4()
-                        .py_2()
-                        .gap_2()
-                        .child(div().flex_1().child(crate::components::input_field(
-                            "conversation-title",
-                            self.title_input.clone(),
-                            cx,
-                        )))
-                        .child(
-                            Button::new("save-conversation-title", "Save")
-                                .size(ButtonSize::Compact)
-                                .on_click(cx.listener(|this, _, _, cx| this.save_title(cx))),
+            .child(if row.runtime.is_none() && self.terminal_view.is_none() {
+                v_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .gap_3()
+                    .child(Label::new("Session ended.").color(Color::Muted))
+                    .child(
+                        Button::new(
+                            "open-session-log",
+                            if self.opening_log {
+                                "Opening session log…"
+                            } else {
+                                "Open session log"
+                            },
                         )
-                        .child(
-                            Button::new("cancel-conversation-title", "Cancel")
-                                .size(ButtonSize::Compact)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.renaming = None;
-                                    cx.notify();
-                                })),
-                        ),
+                        .disabled(self.opening_log)
+                        .on_click(cx.listener(|this, _, _, cx| this.open_session_log(cx))),
+                    )
+                    .into_any_element()
+            } else {
+                self.terminal_content(
+                    if row.runtime.is_none() {
+                        "Session ended."
+                    } else {
+                        "Connecting to session terminal…"
+                    },
+                    cx,
                 )
             })
-            .child(self.terminal_content(
-                if row.runtime.is_none() {
-                    "Session ended."
-                } else {
-                    "Connecting to session terminal…"
-                },
-                cx,
-            ))
             .into_any_element()
     }
 

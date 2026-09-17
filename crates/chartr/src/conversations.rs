@@ -1,12 +1,13 @@
 //! Inbox: durable agent history with the original session terminal.
 mod launcher;
 mod scope;
+#[cfg(target_os = "macos")]
+mod session_log;
 pub use scope::SpaceChoice;
 mod view;
 
-use crate::text_input::TextInput;
 use chartr_conversations::{Conversation, Observation, ProviderPaths, Status, Store};
-use gpui::{App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable};
+use gpui::{App, Context, Entity, EventEmitter, FocusHandle, Focusable};
 use std::sync::{Arc, Mutex};
 
 pub enum Event {
@@ -19,8 +20,6 @@ pub struct Conversations {
     store: Option<Arc<Mutex<Store>>>,
     rows: Vec<Conversation>,
     selected: Option<String>,
-    title_input: Entity<TextInput>,
-    renaming: Option<String>,
     show_archived: bool,
     history_scroll: gpui::ScrollHandle,
     connected: bool,
@@ -29,6 +28,7 @@ pub struct Conversations {
     pending_runtime: Option<String>,
     problem: Option<String>,
     busy: bool,
+    opening_log: bool,
     services: chartr_plugin::services::Services,
     new_agent: Option<String>,
     new_space: Option<String>,
@@ -54,6 +54,48 @@ impl Focusable for Conversations {
 }
 
 impl Conversations {
+    fn open_session_log(&mut self, cx: &mut Context<Self>) {
+        if self.opening_log {
+            return;
+        }
+        let Some(row) = self.selected_row().cloned() else { return };
+        let Some(native) = row.native else {
+            self.problem = Some("No native session ID was recorded for this conversation.".into());
+            cx.notify();
+            return;
+        };
+        self.problem = None;
+        self.opening_log = true;
+        let lookup = cx.background_executor().spawn(async move {
+            let path = if row.provider == chartr_conversations::Provider::OpenCode {
+                chartr_conversations::export_opencode_session(&native, row.cwd.as_deref())
+            } else {
+                ProviderPaths::from_environment().session_log(row.provider, &native)
+            }?;
+            #[cfg(target_os = "macos")]
+            session_log::open(&path)?;
+            Ok::<_, anyhow::Error>(path)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = lookup.await;
+            let _ = this.update(cx, |this, cx| {
+                this.opening_log = false;
+                match result {
+                    Ok(_path) => {
+                        #[cfg(not(target_os = "macos"))]
+                        cx.open_with_system(&_path);
+                    }
+                    Err(error) => {
+                        this.problem = Some(format!("Could not open session log: {error}"))
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     pub fn new(selected: Option<String>, cx: &mut Context<Self>) -> Self {
         let loaded = crate::persistence::state_file().and_then(|path| {
             Store::open(
@@ -76,10 +118,7 @@ impl Conversations {
             }
             Err(error) => (None, Vec::new(), Some(error.to_string())),
         };
-        let title_input = cx.new(|cx| TextInput::new("Conversation title", cx));
         Self {
-            title_input,
-            renaming: None,
             store,
             rows,
             selected,
@@ -91,6 +130,7 @@ impl Conversations {
             pending_runtime: None,
             problem,
             busy: false,
+            opening_log: false,
             services: Default::default(),
             new_agent: None,
             new_space: None,
@@ -240,7 +280,6 @@ impl Conversations {
                                     .is_some_and(|row| row.archived && row.status == Status::Ended)
                             {
                                 this.selected = None;
-                                this.renaming = None;
                                 this.clear_terminal();
                                 cx.emit(Event::SelectionChanged);
                             }
@@ -278,7 +317,6 @@ impl Conversations {
                         this.rows = rows;
                         if this.selected.as_ref() == Some(&expected) {
                             this.selected = None;
-                            this.renaming = None;
                             this.clear_terminal();
                             cx.emit(Event::SelectionChanged);
                         }
@@ -290,32 +328,6 @@ impl Conversations {
         })
         .detach();
     }
-
-    fn save_title(&mut self, cx: &mut Context<Self>) {
-        let Some(id) = self.renaming.take() else { return };
-        let title = self.title_input.read(cx).text().to_owned();
-        let Some(store) = self.store.clone() else { return };
-        let executor = cx.background_executor().clone();
-        cx.spawn(async move |this, cx| {
-            let result = executor
-                .spawn(async move {
-                    let mut store =
-                        store.lock().map_err(|_| "Conversation store unavailable".to_owned())?;
-                    store.rename(&id, title).map_err(|e| e.to_string())?;
-                    Ok::<_, String>(store.list())
-                })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                match result {
-                    Ok(rows) => this.rows = rows,
-                    Err(error) => this.problem = Some(error),
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
 }
 
 #[cfg(test)]
@@ -323,7 +335,7 @@ mod tests {
     use super::*;
     use crate::{chrome::sidebar_pane, mode::Mode};
     use chartr_conversations::Provider;
-    use gpui::{DragMoveEvent, Modifiers, MouseButton, Window, point, px, size};
+    use gpui::{AppContext, DragMoveEvent, Modifiers, MouseButton, Window, point, px, size};
     use terminal::{
         TerminalBuilder,
         terminal_settings::{AlternateScroll, CursorShape},
@@ -366,6 +378,11 @@ mod tests {
             opencode: dir.path().join("opencode"),
             pi: dir.path().join("pi"),
             kimi: dir.path().join("kimi"),
+            grok: dir.path().join("grok"),
+            omp: dir.path().join("omp"),
+            cursor: dir.path().join("cursor"),
+            antigravity: dir.path().join("antigravity"),
+            antigravity_cli: dir.path().join("antigravity-cli"),
         };
         let mut store = Store::open(&dir.path().join("history.sqlite"), paths).unwrap();
         store

@@ -3,9 +3,11 @@
 //! This crate never starts, stops or owns a terminal. The host supplies verified
 //! runtime observations; read-only local adapters supply sidebar titles and recency.
 
+mod session_logs;
 mod store;
 mod transcripts;
 
+pub use session_logs::export_opencode_session;
 pub use store::Store;
 pub use transcripts::ProviderPaths;
 
@@ -21,13 +23,13 @@ pub struct NativeSession {
 }
 
 impl NativeSession {
-    /// Pi's hook reports its exact JSONL path rather than an ID. Its filename
-    /// contains the session ID; the reader also verifies the file's header.
+    /// Pi and OMP hooks report exact JSONL paths rather than IDs. Their filenames
+    /// contain the session ID; Pi's history reader also verifies the file's header.
     pub fn from_identity(provider: Provider, kind: &str, value: &str) -> Option<Self> {
         if kind == "id" {
             return Some(Self { id: value.to_owned(), path: None });
         }
-        if provider != Provider::Pi || kind != "path" {
+        if !matches!(provider, Provider::Pi | Provider::Omp) || kind != "path" {
             return None;
         }
         let path = PathBuf::from(value);
@@ -98,6 +100,7 @@ pub struct Conversation {
     pub provider: Provider,
     pub native: Option<NativeSession>,
     pub title: String,
+    /// Retained for histories saved before manual conversation renaming was removed.
     pub custom_title: Option<String>,
     pub cwd: Option<PathBuf>,
     #[serde(default)]

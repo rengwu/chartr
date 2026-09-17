@@ -5,8 +5,8 @@ Choose **Inbox** in the window’s view selector or command palette
 preferences migrate to Inbox with the same selected history entry. Existing custom `workspace.conversation_mode` shortcuts remain valid.
 
 Inbox keeps a history sidebar with **Inbox** and **Archive** tabs, the agent
-launcher, and a header with the conversation title, owning space, rename, and
-archive actions. The body is
+launcher, and automatically detected conversation titles. Conversation renaming
+is unavailable in Chartr. The body is
 the session’s original terminal, including its input, scrollback, selection,
 clipboard, terminal search, and interactive agent UI. There is no separate chat
 renderer, composer, prompt injection, or chat approval interface.
@@ -30,6 +30,46 @@ show a reconstructed transcript. If the
 same terminal starts a different native conversation, the old entry cannot
 control it. When mobile owns a session’s terminal geometry, Inbox displays its
 mobile status until control returns to desktop.
+
+For ended sessions, **Open session log** locates the provider's log and opens it
+in the system's associated application. Lookup runs in the background, matches
+the exact native session ID, and reports missing or ambiguous files. Chartr does
+not render the log. The provider determines what the original file contains;
+Chartr does not reconstruct omitted tool output, attachments or compacted turns.
+On macOS, an unsuccessful file open falls back to the default text editor, then
+TextEdit. If all attempts fail, Chats displays the error.
+
+| Provider | Log opened |
+| --- | --- |
+| Codex | Exact rollout JSONL in `sessions` or `archived_sessions` |
+| Claude | `projects/<project>/<id>.jsonl` |
+| Pi / OMP | Exact reported JSONL path, or `sessions/<project>/<timestamp>_<id>.jsonl` |
+| Kimi | Verified session's `agents/main/wire.jsonl` |
+| Grok Build | `sessions/<project>/<id>/updates.jsonl` |
+| Cursor | `projects/<project>/agent-transcripts/<id>/<id>.jsonl`, or older flat `<id>.jsonl` / `<id>.txt` |
+| Antigravity | `brain/<id>/.system_generated/logs/transcript.jsonl` in the CLI or desktop data root |
+| OpenCode | Full JSON from `opencode export <id>`, opened as an owner-only temporary file |
+
+OpenCode uses the installed executable from PATH or `~/.opencode/bin/opencode`,
+and the recorded project directory when it still exists. Exports time out after
+30 seconds and are checked for the requested session ID before opening. Successful
+temporary exports remain available for the external editor and OS temp cleanup;
+failed exports are removed. No agent conversation is started.
+
+Grok uses `$GROK_HOME` or `~/.grok`; Cursor uses `$CURSOR_CONFIG_DIR` or `~/.cursor`.
+OMP uses its reported file path (including profiles/custom session directories),
+with ID-only fallback under `$PI_CODING_AGENT_DIR` or `$OMP_CONFIG_DIR/agent`
+(default `~/.omp/agent`). Antigravity checks `~/.gemini/antigravity-cli` and
+`~/.gemini/antigravity`. The pinned Herdr integrations retain IDs but discard
+Cursor/Antigravity transcript paths, so nonstandard data locations are not yet
+discoverable. Disabled Cursor transcripts and legacy database-only histories
+report an unavailable log.
+
+OMP, Cursor (`cursor-agent`) and Antigravity CLI (`agy`) use the bundled Herdr
+discovery installers. Their native identities now reach Chats and survive archive
+and restart. Desktop IDE conversation discovery is outside the terminal-based
+Chats workflow. Cursor, Antigravity and OMP have fixture coverage but still need
+live verification with functioning installations.
 
 Inbox always lists conversations from all spaces, including Free sessions,
 with newest conversations first. Sidebar and Inbox have no title-bar space
@@ -74,23 +114,41 @@ not rename or duplicate a conversation. Provisional rows merge transactionally
 when an identity arrives. Manually resuming an existing native ID reconnects its
 history entry.
 
-Herdr detects Codex, Claude Code, OpenCode, Grok, Kimi, and Pi sessions. Detection alone
+Herdr detects Codex, Claude Code, OpenCode, Grok, Kimi, Pi, OMP, Cursor and Antigravity CLI sessions. Detection alone
 produces a provisional entry whose terminal is already usable. A missing native
 session ID does not add setup guidance above the terminal. Launching through
 Inbox installs/verifies discovery hooks automatically; existing processes do
 not retroactively load new hooks.
 
-Local, read-only Codex/Claude/Pi JSONL and OpenCode database readers supply titles
-and recency. The running CLI’s terminal title also supplies titles before native
-identity arrives; Grok and Kimi use this observed metadata. Kimi Code recency
+Local, read-only provider metadata and transcript readers supply titles and
+recency. Titles prefer a manual Chartr name, then the provider's saved name,
+then its observed terminal title, then the existing first-prompt excerpt
+(whitespace collapsed, limited to 100 characters). Missing, blank or unreadable
+native metadata leaves the fallback available. A prompt excerpt never replaces
+an available provider title.
+
+| Provider | Saved title source |
+| --- | --- |
+| Codex | Latest matching `thread_name` in `session_index.jsonl`; otherwise `name`/`title` in the latest versioned `state_*.sqlite` |
+| Claude | `custom-title` first, then `ai-title` in the exact session JSONL |
+| Pi | Latest `session_info.name` in the verified session JSONL |
+| OMP | Current `title` header, with older `title_change`/session title support |
+| OpenCode | Session database title, excluding new/child-session placeholders |
+| Kimi Code | Verified session's `state.json` title |
+| Grok | Verified session's `summary.json` generated title or legacy session summary |
+| Cursor / Antigravity | Observed terminal title |
+
+Separate metadata titles refresh even when the transcript has not changed;
+provider title changes do not change conversation recency. Provider stores are never written
+or migrated. The running CLI’s terminal title also supplies titles before native
+identity arrives. Kimi Code recency
 uses the last main-agent `prompt.accepted` timestamp from the exact native
 session's `agents/main/wire.jsonl`, after verifying `state.json` identity.
 Its data root is `$KIMI_CODE_HOME` or `~/.kimi-code`, following the
 [Kimi Code storage layout](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/guides/sessions.md).
 This catches turns completed between refreshes and messages sent while Chartr
 was closed, without treating replies, tools, or subagent events as new prompts.
-Legacy Python Kimi logs are not read by this adapter. Pi uses its saved
-session name or first user prompt, with its exact reported JSONL path and a
+Legacy Python Kimi logs are not read by this adapter. Pi uses its exact reported JSONL path and a
 matching session header. The launcher adapts Pi’s managed hook for older
 `hasUI`/`agent_end` and newer `mode`/`agent_settled` extension APIs. Existing Pi
 terminals need `/reload` after an integration update to load the corrected hook.
@@ -106,7 +164,8 @@ current registered names; removed spaces keep their last label in All spaces.
 Legacy entries without an owner use the most specific registered folder that
 contains their cwd. Duplicate space names include paths in labels/pickers.
 
-Manual titles win over automatic titles. Search covers title, provider, space,
+Previously saved manual titles are retained for compatibility and take precedence
+over automatic titles. Search covers title, provider, space,
 and project path. New user turns update recency; streaming output does not move
 rows. Selection and archive state persist across restart.
 
@@ -114,7 +173,7 @@ History stays in `conversations.sqlite` beside the workspace database, under
 `$XDG_STATE_HOME/chartr` or `~/.local/state/chartr`. It is owner-readable/writable
 on Unix. Legacy cached messages, drafts, and receipts remain in the existing
 index for compatibility; Inbox never displays or sends those drafts/receipts.
-Archiving hides an entry without deleting it. There is no export/delete UI.
+Archiving hides an entry without deleting it. There is no bulk export/delete UI.
 
 ## Verification
 
@@ -122,6 +181,14 @@ Archiving hides an entry without deleting it. There is no export/delete UI.
 cargo fmt --all --check
 cargo test --workspace --locked --no-fail-fast
 cargo build -p chartr --locked
+```
+
+Optional local checks (require installed tools and existing sessions; do not start
+an agent or open an editor):
+
+```sh
+cargo test -p chartr-conversations installed_opencode_exports_a_real_session -- --ignored
+cargo test -p chartr-conversations installed_grok_log_matches_its_directory_identity -- --ignored
 ```
 
 Coverage includes session identity/promotion, ownership and archive persistence,

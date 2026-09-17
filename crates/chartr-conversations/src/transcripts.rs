@@ -11,6 +11,7 @@ use std::{
 };
 
 mod kimi;
+mod titles;
 
 const MAX_TRANSCRIPT_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_MESSAGES: usize = 300;
@@ -22,9 +23,64 @@ pub struct ProviderPaths {
     pub opencode: PathBuf,
     pub pi: PathBuf,
     pub kimi: PathBuf,
+    pub grok: PathBuf,
+    pub omp: PathBuf,
+    pub cursor: PathBuf,
+    pub antigravity: PathBuf,
+    pub antigravity_cli: PathBuf,
 }
 
 impl ProviderPaths {
+    /// Locate the original log for an external editor, without parsing or truncating it.
+    pub fn session_log(&self, provider: Provider, native: &NativeSession) -> Result<PathBuf> {
+        validate_native_id(&native.id)?;
+        let path = match provider {
+            Provider::Codex => find_transcript_in_roots(
+                &[self.codex.join("sessions"), self.codex.join("archived_sessions")],
+                &native.id,
+                provider,
+            )?,
+            Provider::Claude => {
+                find_exact_transcript(&self.claude.join("projects"), &native.id, provider)?
+            }
+            Provider::Pi | Provider::Omp => match &native.path {
+                Some(path) => {
+                    ensure!(
+                        path.is_absolute(),
+                        "The provider must report an absolute session path"
+                    );
+                    ensure!(
+                        NativeSession::from_identity(provider, "path", &path.to_string_lossy())
+                            .is_some_and(|session| session.id == native.id),
+                        "The reported log path does not match the session ID"
+                    );
+                    path.clone()
+                }
+                None => {
+                    let root = if provider == Provider::Pi { &self.pi } else { &self.omp };
+                    find_exact_transcript(&root.join("sessions"), &native.id, provider)?
+                }
+            },
+            Provider::Kimi => kimi::session_log(self, native)?,
+            Provider::OpenCode => anyhow::bail!(
+                "OpenCode stores chats in a database; no individual session log file is available."
+            ),
+            Provider::Grok => {
+                find_exact_transcript(&self.grok.join("sessions"), &native.id, provider)?
+            }
+            Provider::Cursor => {
+                find_exact_transcript(&self.cursor.join("projects"), &native.id, provider)?
+            }
+            Provider::Antigravity => find_transcript_in_roots(
+                &[self.antigravity.join("brain"), self.antigravity_cli.join("brain")],
+                &native.id,
+                provider,
+            )?,
+        };
+        ensure!(path.is_file(), "The session log file is no longer available.");
+        Ok(path)
+    }
+
     pub fn from_environment() -> Self {
         let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
         let data = std::env::var_os("XDG_DATA_HOME")
@@ -42,6 +98,15 @@ impl ProviderPaths {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".claude")),
             opencode: data.join("opencode"),
+            grok: environment_path("GROK_HOME", home.join(".grok"), &home),
+            omp: environment_path(
+                "PI_CODING_AGENT_DIR",
+                environment_path("OMP_CONFIG_DIR", home.join(".omp"), &home).join("agent"),
+                &home,
+            ),
+            cursor: environment_path("CURSOR_CONFIG_DIR", home.join(".cursor"), &home),
+            antigravity: home.join(".gemini/antigravity"),
+            antigravity_cli: home.join(".gemini/antigravity-cli"),
             pi: std::env::var_os("PI_CODING_AGENT_DIR")
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from)
@@ -60,15 +125,32 @@ impl ProviderPaths {
             Provider::Grok => return "local:grok".to_owned(),
             Provider::Kimi => return "local:kimi".to_owned(),
             Provider::Pi => &self.pi,
+            Provider::Omp => &self.omp,
+            Provider::Cursor => &self.cursor,
+            Provider::Antigravity => &self.antigravity_cli,
         }
         .to_string_lossy()
         .into_owned()
     }
 }
 
+fn environment_path(name: &str, fallback: PathBuf, home: &Path) -> PathBuf {
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(|path| {
+            path.strip_prefix("~")
+                .map(|rest| home.join(rest))
+                .unwrap_or_else(|_| if path.is_absolute() { path } else { home.join(path) })
+        })
+        .unwrap_or(fallback)
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Transcript {
     pub title: Option<String>,
+    /// Prompt excerpts must never replace a provider's own title.
+    pub title_is_fallback: bool,
     pub messages: Vec<Message>,
     /// Provider-recorded time of the last submitted prompt, not output activity.
     pub updated: Option<u64>,
@@ -78,6 +160,7 @@ pub(crate) struct Transcript {
 pub(crate) struct Reader {
     paths: HashMap<(Provider, String), PathBuf>,
     cache: HashMap<(Provider, String, PathBuf), (SystemTime, u64, Transcript)>,
+    title_indexes: HashMap<PathBuf, (SystemTime, u64, HashMap<String, String>)>,
 }
 
 impl Reader {
@@ -87,20 +170,15 @@ impl Reader {
         native: &NativeSession,
         paths: &ProviderPaths,
     ) -> Result<Transcript> {
-        ensure!(
-            !native.id.is_empty()
-                && native.id.len() <= 256
-                && native.id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'),
-            "Unrecognized native conversation ID"
-        );
+        validate_native_id(&native.id)?;
         if provider == Provider::OpenCode {
             return read_opencode(&paths.opencode.join("opencode.db"), &native.id);
         }
         if provider == Provider::Kimi {
             return self.read_kimi(native, paths);
         }
-        if provider == Provider::Grok {
-            // Grok supplies titles through the observed terminal. A local
+        if matches!(provider, Provider::Grok | Provider::Cursor | Provider::Antigravity) {
+            // These providers supply titles through the observed terminal. A local
             // transcript reader is not required for Inbox detection or terminal use.
             return Ok(Transcript::default());
         }
@@ -108,11 +186,14 @@ impl Reader {
             Provider::Claude => paths.claude.join("projects"),
             Provider::Codex => paths.codex.join("sessions"),
             Provider::Pi => paths.pi.join("sessions"),
+            Provider::Omp => paths.omp.join("sessions"),
             _ => unreachable!(),
         };
         let key = (provider, native.id.clone());
-        let path = if let Some(path) = native.path.as_ref().filter(|_| provider == Provider::Pi) {
-            ensure!(path.is_absolute(), "Pi must report an absolute session path");
+        let path = if let Some(path) =
+            native.path.as_ref().filter(|_| matches!(provider, Provider::Pi | Provider::Omp))
+        {
+            ensure!(path.is_absolute(), "The provider must report an absolute session path");
             path.clone()
         } else if let Some(path) = self.paths.get(&key).filter(|p| p.is_file()) {
             path.clone()
@@ -143,7 +224,23 @@ impl Reader {
 }
 
 fn find_exact_transcript(root: &Path, id: &str, provider: Provider) -> Result<PathBuf> {
-    let mut directories = vec![(root.to_owned(), 0)];
+    find_transcript_in_roots(&[root.to_owned()], id, provider)
+}
+
+pub(crate) fn validate_native_id(id: &str) -> Result<()> {
+    ensure!(
+        !id.is_empty()
+            && !id.starts_with('-')
+            && id.len() <= 256
+            && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'),
+        "Unrecognized native conversation ID"
+    );
+    Ok(())
+}
+
+fn find_transcript_in_roots(roots: &[PathBuf], id: &str, provider: Provider) -> Result<PathBuf> {
+    let mut directories: Vec<_> =
+        roots.iter().filter(|root| root.is_dir()).map(|root| (root.clone(), 0)).collect();
     let mut matches = Vec::new();
     let mut visited = 0;
     while let Some((directory, depth)) = directories.pop() {
@@ -166,7 +263,20 @@ fn find_exact_transcript(root: &Path, id: &str, provider: Provider) -> Result<Pa
                 Provider::Codex => {
                     name.starts_with("rollout-") && name.ends_with(&format!("-{id}.jsonl"))
                 }
-                Provider::Pi => name.ends_with(&format!("_{id}.jsonl")),
+                Provider::Pi | Provider::Omp => name.ends_with(&format!("_{id}.jsonl")),
+                Provider::Grok => {
+                    depth == 2
+                        && name == "updates.jsonl"
+                        && entry
+                            .path()
+                            .parent()
+                            .and_then(Path::file_name)
+                            .is_some_and(|name| name == id)
+                }
+                Provider::Cursor => cursor_log_matches(&entry.path(), id),
+                Provider::Antigravity => entry
+                    .path()
+                    .ends_with(Path::new(id).join(".system_generated/logs/transcript.jsonl")),
                 _ => false,
             };
             if matches_id {
@@ -174,11 +284,22 @@ fn find_exact_transcript(root: &Path, id: &str, provider: Provider) -> Result<Pa
             }
         }
     }
-    ensure!(
-        matches.len() == 1,
-        "No unique transcript was found for this native conversation. Continue in terminal."
-    );
+    ensure!(matches.len() == 1, "No unique session log file was found for this conversation.");
     Ok(matches.remove(0))
+}
+
+fn cursor_log_matches(path: &Path, id: &str) -> bool {
+    let Some(parent) = path.parent() else { return false };
+    let file_matches = path.file_name().is_some_and(|name| {
+        name == format!("{id}.jsonl").as_str() || name == format!("{id}.txt").as_str()
+    });
+    file_matches
+        && (parent.file_name().is_some_and(|name| name == "agent-transcripts")
+            || (parent.file_name().is_some_and(|name| name == id)
+                && parent
+                    .parent()
+                    .and_then(Path::file_name)
+                    .is_some_and(|name| name == "agent-transcripts")))
 }
 
 fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Result<Transcript> {
@@ -186,6 +307,8 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
     let mut seen = HashSet::new();
     let mut native_verified = false;
     let mut codex_user_events = false;
+    let mut custom_title = None;
+    let mut omp_header_title = None;
     for (index, line) in reader.lines().enumerate() {
         let line = line?;
         // A provider may be in the middle of appending the final JSON line.
@@ -201,13 +324,30 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
             );
             native_verified = true;
         }
-        if value["type"] == "custom-title" {
-            result.title = value["customTitle"].as_str().map(str::to_owned);
+        if provider == Provider::Claude {
+            if value["type"] == "custom-title" {
+                custom_title = titles::non_blank(&value["customTitle"]);
+            }
+            if value["type"] == "ai-title" {
+                result.title = titles::non_blank(&value["aiTitle"]);
+            }
         }
-        if provider == Provider::Pi {
+        if matches!(provider, Provider::Pi | Provider::Omp) {
             if value["type"] == "session" {
                 ensure!(value["id"] == native_id, "Transcript belongs to another conversation");
                 native_verified = true;
+                if provider == Provider::Omp {
+                    result.title = titles::non_blank(&value["title"]);
+                }
+            }
+            if provider == Provider::Omp {
+                if value["type"] == "title" {
+                    // OMP rewrites this leading record with the current title.
+                    omp_header_title = titles::non_blank(&value["title"]);
+                }
+                if value["type"] == "title_change" {
+                    result.title = titles::non_blank(&value["title"]);
+                }
             }
             if value["type"] == "session_info" {
                 // Pi uses the latest name, including explicit clears, across branches.
@@ -283,7 +423,7 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
                         .unwrap_or_else(|| format!("line-{index}")),
                 )
             }
-            Provider::Pi => {
+            Provider::Pi | Provider::Omp => {
                 if value["type"] != "message" {
                     continue;
                 }
@@ -334,8 +474,10 @@ fn parse_jsonl(reader: impl BufRead, provider: Provider, native_id: &str) -> Res
         }
     }
     ensure!(native_verified, "The transcript did not verify its native conversation identity");
+    result.title = custom_title.or(omp_header_title).or(result.title);
     if result.title.is_none() {
         result.title = crate::prompt_title(&result.messages);
+        result.title_is_fallback = true;
     }
     bound_messages(&mut result.messages);
     Ok(result)
@@ -386,20 +528,156 @@ fn read_opencode(path: &Path, id: &str) -> Result<Transcript> {
     }
     let mut messages = parse_opencode_messages(&json!(data))?;
     bound_messages(&mut messages);
-    let title = if title.trim().is_empty()
+    let title_is_fallback = title.trim().is_empty()
         || title.starts_with("New session - ")
-        || title.starts_with("Child session - ")
-    {
-        crate::prompt_title(&messages)
-    } else {
-        Some(title)
-    };
-    Ok(Transcript { title, messages, updated: None })
+        || title.starts_with("Child session - ");
+    let title = if title_is_fallback { crate::prompt_title(&messages) } else { Some(title) };
+    Ok(Transcript { title, title_is_fallback, messages, updated: None })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub(super) fn log_paths(root: &Path) -> ProviderPaths {
+        ProviderPaths {
+            codex: root.join("codex"),
+            claude: root.join("claude"),
+            opencode: root.join("opencode"),
+            pi: root.join("pi"),
+            kimi: root.join("kimi"),
+            grok: root.join("grok"),
+            omp: root.join("omp"),
+            cursor: root.join("cursor"),
+            antigravity: root.join("antigravity"),
+            antigravity_cli: root.join("antigravity-cli"),
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires existing local Grok sessions; locates files without reading their contents"]
+    fn installed_grok_log_matches_its_directory_identity() {
+        let paths = ProviderPaths::from_environment();
+        for group in fs::read_dir(paths.grok.join("sessions")).unwrap() {
+            let group = group.unwrap();
+            if !group.file_type().unwrap().is_dir() {
+                continue;
+            }
+            for session in fs::read_dir(group.path()).unwrap() {
+                let session = session.unwrap();
+                let log = session.path().join("updates.jsonl");
+                if !log.is_file() {
+                    continue;
+                }
+                let native =
+                    NativeSession { id: session.file_name().to_str().unwrap().into(), path: None };
+                assert_eq!(paths.session_log(Provider::Grok, &native).unwrap(), log);
+                return;
+            }
+        }
+        panic!("A local Grok session is required");
+    }
+
+    #[test]
+    fn additional_provider_logs_match_exact_sessions_and_survive_large_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = log_paths(dir.path());
+        let native = NativeSession { id: "session-a".into(), path: None };
+        for (provider, relative) in [
+            (Provider::Omp, "omp/sessions/project/2026-09-14_session-a.jsonl"),
+            (Provider::Grok, "grok/sessions/project/session-a/updates.jsonl"),
+            (
+                Provider::Cursor,
+                "cursor/projects/project/agent-transcripts/session-a/session-a.jsonl",
+            ),
+            (
+                Provider::Antigravity,
+                "antigravity-cli/brain/session-a/.system_generated/logs/transcript.jsonl",
+            ),
+        ] {
+            let file = dir.path().join(relative);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::File::create(&file).unwrap().set_len(MAX_TRANSCRIPT_BYTES + 1).unwrap();
+            assert_eq!(paths.session_log(provider, &native).unwrap(), file);
+            let other = NativeSession { id: "session-b".into(), path: None };
+            assert!(paths.session_log(provider, &other).is_err());
+        }
+        // OMP's reported path also supports profiles, symlinked projects and custom session roots.
+        let custom = dir.path().join("custom profile/2026-09-14_session-a.jsonl");
+        fs::create_dir_all(custom.parent().unwrap()).unwrap();
+        fs::write(&custom, "").unwrap();
+        let reported =
+            NativeSession::from_identity(Provider::Omp, "path", custom.to_str().unwrap()).unwrap();
+        assert_eq!(paths.session_log(Provider::Omp, &reported).unwrap(), custom);
+        let mismatched = NativeSession { id: "session-b".into(), path: Some(custom) };
+        assert!(paths.session_log(Provider::Omp, &mismatched).is_err());
+    }
+
+    #[test]
+    fn cursor_legacy_logs_are_supported_but_subagents_and_duplicates_are_not_selected() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = log_paths(dir.path());
+        let native = NativeSession { id: "session-a".into(), path: None };
+        let root = paths.cursor.join("projects/project/agent-transcripts");
+        let subagent = root.join("parent/subagents/session-a.jsonl");
+        fs::create_dir_all(subagent.parent().unwrap()).unwrap();
+        fs::write(subagent, "").unwrap();
+        assert!(paths.session_log(Provider::Cursor, &native).is_err());
+        let legacy = root.join("session-a.txt");
+        fs::write(&legacy, "").unwrap();
+        assert_eq!(paths.session_log(Provider::Cursor, &native).unwrap(), legacy);
+        fs::write(root.join("session-a.jsonl"), "").unwrap();
+        assert!(paths.session_log(Provider::Cursor, &native).is_err());
+    }
+
+    #[test]
+    fn antigravity_checks_both_roots_and_rejects_ambiguous_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = log_paths(dir.path());
+        let native = NativeSession { id: "session-a".into(), path: None };
+        for root in [&paths.antigravity, &paths.antigravity_cli] {
+            let file = root.join("brain/session-a/.system_generated/logs/transcript.jsonl");
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, "").unwrap();
+        }
+        assert!(paths.session_log(Provider::Antigravity, &native).is_err());
+        for id in ["../session-a", "--help", "", "session/a"] {
+            let invalid = NativeSession { id: id.into(), path: None };
+            assert!(paths.session_log(Provider::Antigravity, &invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn session_log_finds_archived_codex_logs_and_rejects_ambiguous_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let paths = ProviderPaths {
+            codex: root.to_owned(),
+            claude: root.to_owned(),
+            opencode: root.to_owned(),
+            pi: root.to_owned(),
+            kimi: root.to_owned(),
+            grok: root.to_owned(),
+            omp: root.to_owned(),
+            cursor: root.to_owned(),
+            antigravity: root.join("antigravity"),
+            antigravity_cli: root.join("antigravity-cli"),
+        };
+        let native = NativeSession { id: "session-a".into(), path: None };
+        assert!(paths.session_log(Provider::Codex, &native).is_err());
+        fs::create_dir(root.join("archived_sessions")).unwrap();
+        let archived = root.join("archived_sessions/rollout-2026-09-14-session-a.jsonl");
+        // Opening the original file must not depend on the history reader's size limit.
+        fs::File::create(&archived).unwrap().set_len(MAX_TRANSCRIPT_BYTES + 1).unwrap();
+        assert_eq!(paths.session_log(Provider::Codex, &native).unwrap(), archived);
+        fs::create_dir_all(root.join("sessions/2026/09/14")).unwrap();
+        fs::write(root.join("sessions/2026/09/14/rollout-2026-09-14-session-a.jsonl"), "").unwrap();
+        assert!(paths.session_log(Provider::Codex, &native).is_err());
+        assert!(paths.session_log(Provider::OpenCode, &native).is_err());
+        assert!(paths.session_log(Provider::Grok, &native).is_err());
+        let invalid = NativeSession { id: "../session-a".into(), path: None };
+        assert!(paths.session_log(Provider::Kimi, &invalid).is_err());
+    }
 
     #[test]
     fn pi_uses_first_prompt_or_latest_session_name_and_verifies_identity() {
@@ -446,6 +724,11 @@ mod tests {
             opencode: dir.path().join("opencode"),
             pi: dir.path().join("pi"),
             kimi: dir.path().join("kimi"),
+            grok: dir.path().join("grok"),
+            omp: dir.path().join("omp"),
+            cursor: dir.path().join("cursor"),
+            antigravity: dir.path().join("antigravity"),
+            antigravity_cli: dir.path().join("antigravity-cli"),
         };
         let sessions = paths.pi.join("sessions/--same-project--");
         fs::create_dir_all(&sessions).unwrap();
@@ -508,6 +791,58 @@ mod tests {
         assert_eq!(transcript.title.as_deref(), Some("hi"));
         assert_eq!(transcript.messages.len(), 2);
         assert!(transcript.messages[1].text.contains("user quoted"));
+    }
+
+    #[test]
+    fn claude_native_names_prefer_custom_over_ai_and_ignore_blank_names() {
+        let data = [
+            json!({"sessionId":"a","type":"user","uuid":"u","message":{"content":"Raw prompt"}}),
+            json!({"sessionId":"a","type":"ai-title","aiTitle":"Generated title"}),
+            json!({"sessionId":"a","type":"custom-title","customTitle":"Named in Claude"}),
+            json!({"sessionId":"a","type":"ai-title","aiTitle":"Later generated title"}),
+        ]
+        .into_iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+        let transcript = parse_jsonl(data.as_bytes(), Provider::Claude, "a").unwrap();
+        assert_eq!(transcript.title.as_deref(), Some("Named in Claude"));
+        assert!(!transcript.title_is_fallback);
+        let cleared = format!(
+            "{data}\n{}",
+            json!({"sessionId":"a","type":"custom-title","customTitle":"  "})
+        );
+        let transcript = parse_jsonl(cleared.as_bytes(), Provider::Claude, "a").unwrap();
+        assert_eq!(transcript.title.as_deref(), Some("Later generated title"));
+        let unnamed =
+            format!("{cleared}\n{}", json!({"sessionId":"a","type":"ai-title","aiTitle":""}));
+        let transcript = parse_jsonl(unnamed.as_bytes(), Provider::Claude, "a").unwrap();
+        assert_eq!(transcript.title.as_deref(), Some("Raw prompt"));
+        assert!(transcript.title_is_fallback);
+        assert!(parse_jsonl(data.as_bytes(), Provider::Claude, "other").is_err());
+    }
+
+    #[test]
+    fn omp_current_header_title_wins_over_historical_title_entries() {
+        let data = [
+            json!({"type":"title","title":"Current generated title","source":"auto"}),
+            json!({"type":"session","id":"a","title":"Original title"}),
+            json!({"type":"message","message":{"role":"user","content":"Raw prompt"}}),
+            json!({"type":"title_change","title":"Older branch title"}),
+        ]
+        .into_iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+        let transcript = parse_jsonl(data.as_bytes(), Provider::Omp, "a").unwrap();
+        assert_eq!(transcript.title.as_deref(), Some("Current generated title"));
+        assert!(!transcript.title_is_fallback);
+        assert!(parse_jsonl(data.as_bytes(), Provider::Omp, "other").is_err());
+        let legacy = data.lines().skip(1).collect::<Vec<_>>().join("\n");
+        assert_eq!(
+            parse_jsonl(legacy.as_bytes(), Provider::Omp, "a").unwrap().title.as_deref(),
+            Some("Older branch title")
+        );
     }
 
     #[test]

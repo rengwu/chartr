@@ -324,6 +324,43 @@ mod tests {
     }
 
     #[test]
+    fn inbox_binds_added_provider_identities_and_rejects_a_changed_session() {
+        for (agent, provider, kind, value) in [
+            (
+                "omp",
+                Provider::Omp,
+                "path",
+                "/omp/profile/sessions/project/2026-09-14_native-a.jsonl",
+            ),
+            ("cursor", Provider::Cursor, "id", "native-a"),
+            ("agy", Provider::Antigravity, "id", "native-a"),
+        ] {
+            let mut session = session();
+            session.agent = Some(agent.into());
+            session.agent_session = Some(chartr_herdr::protocol::AgentSession {
+                source: format!("herdr:{}", provider.slug()),
+                agent: agent.into(),
+                kind: kind.into(),
+                value: value.into(),
+            });
+            let native = NativeSession::from_identity(provider, kind, value).unwrap();
+            assert_eq!(native.id, "native-a");
+            let mut row: chartr_conversations::Conversation =
+                serde_json::from_value(serde_json::json!({
+                    "id":"row", "provider":provider, "native":native,
+                    "title":"Task", "cwd":null, "updated":1,
+                    "draft":"", "archived":false, "messages":[]
+                }))
+                .unwrap();
+            row.runtime = Some("pane".into());
+            row.terminal = Some("pty".into());
+            assert!(matches_session(&row, &session));
+            session.agent_session.as_mut().unwrap().value = value.replace("native-a", "native-b");
+            assert!(!matches_session(&row, &session));
+        }
+    }
+
+    #[test]
     fn inbox_binds_pi_path_identities_without_following_another_session() {
         let mut session = session();
         session.agent = Some("pi".into());

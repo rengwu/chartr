@@ -138,6 +138,12 @@ impl Store {
                 row.title = title.clone();
             }
             if let Some(native) = &observation.native {
+                // Metadata titles can arrive after the transcript stops changing,
+                // or remain available when the transcript cannot be read.
+                let native_title = self.reader.native_title(provider, native, &self.paths);
+                if let Some(title) = &native_title {
+                    row.title = title.clone();
+                }
                 match self.reader.read(provider, native, &self.paths) {
                     Ok(transcript) => {
                         if let Some(updated) = transcript.updated {
@@ -153,7 +159,11 @@ impl Store {
                         {
                             row.updated = now;
                         }
-                        if let Some(title) = transcript.title.filter(|s| !s.trim().is_empty()) {
+                        if let Some(title) = transcript.title.filter(|s| !s.trim().is_empty())
+                            && native_title.is_none()
+                            && (!transcript.title_is_fallback
+                                || observation.title.as_ref().is_none_or(|s| s.trim().is_empty()))
+                        {
                             row.title = title;
                         }
                         row.messages = transcript.messages;
@@ -211,11 +221,6 @@ impl Store {
         Ok(())
     }
 
-    pub fn rename(&mut self, id: &str, title: String) -> Result<()> {
-        let title = title.trim().chars().take(150).collect::<String>();
-        self.edit(id, |row| row.custom_title = (!title.is_empty()).then_some(title))
-    }
-
     pub fn archive(&mut self, id: &str, archived: bool) -> Result<()> {
         self.edit(id, |row| row.archived = archived)
     }
@@ -247,6 +252,11 @@ mod tests {
             opencode: root.join("opencode"),
             pi: root.join("pi"),
             kimi: root.join("kimi"),
+            grok: root.join("grok"),
+            omp: root.join("omp"),
+            cursor: root.join("cursor"),
+            antigravity: root.join("antigravity"),
+            antigravity_cli: root.join("antigravity-cli"),
         }
     }
 
@@ -259,7 +269,7 @@ mod tests {
         store.reconcile(vec![live.clone(), observation("ending", Some("ending"))], 10).unwrap();
         let live_id = store.for_runtime("live").unwrap().to_owned();
         let ended_id = store.for_runtime("ending").unwrap().to_owned();
-        store.rename(&ended_id, "Saved conversation".into()).unwrap();
+        store.edit(&ended_id, |row| row.custom_title = Some("Saved conversation".into())).unwrap();
         store.edit(&ended_id, |row| row.draft = "Retained draft".into()).unwrap();
 
         store.reconcile(vec![live.clone()], 20).unwrap();
@@ -325,7 +335,7 @@ mod tests {
         assert_eq!(store.list().len(), 2);
         assert_eq!(store.get(&provisional).unwrap().display_title(), "Axolotls");
         assert_eq!(store.get(store.for_runtime("b").unwrap()).unwrap().display_title(), "Dinner");
-        store.rename(&provisional, "My axolotl notes".into()).unwrap();
+        store.edit(&provisional, |row| row.custom_title = Some("My axolotl notes".into())).unwrap();
         let native_id = store.resolve_id(&provisional);
         store.reconcile(vec![], 3).unwrap();
         drop(store);
@@ -339,19 +349,19 @@ mod tests {
     }
 
     #[test]
-    fn detected_kimi_and_pi_sessions_are_indexed_and_live_titles_replace_fallbacks() {
+    fn detected_providers_are_indexed_and_live_titles_replace_fallbacks() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("db");
         let mut store = Store::open(&file, paths(dir.path())).unwrap();
         let mut observations = Vec::new();
-        for name in ["kimi", "pi", "opencode", "grok"] {
+        for name in ["kimi", "pi", "opencode", "grok", "omp", "cursor-agent", "agy"] {
             let mut observed = observation(name, None);
             observed.provider =
                 Provider::detect(name).expect("Every supported launcher must reach Inbox");
             observations.push(observed);
         }
         store.reconcile(observations.clone(), 1).unwrap();
-        assert_eq!(store.list().len(), 4);
+        assert_eq!(store.list().len(), 7);
         for observed in &mut observations {
             observed.title = Some(format!("Task from {}", observed.provider.name()));
         }
@@ -361,18 +371,108 @@ mod tests {
             assert_eq!(store.get(id).unwrap().display_title(), observed.title.as_ref().unwrap());
         }
         let kimi = store.for_runtime("kimi").unwrap().to_owned();
-        store.rename(&kimi, "My Kimi task".into()).unwrap();
+        store.edit(&kimi, |row| row.custom_title = Some("My Kimi task".into())).unwrap();
         // Provider hooks can attach later; promotion keeps the entry and its manual name.
         for observed in &mut observations {
             observed.native = Some(NativeSession { id: "native".into(), path: None });
         }
         store.reconcile(observations, 3).unwrap();
-        assert_eq!(store.list().len(), 4);
+        assert_eq!(store.list().len(), 7);
         assert_eq!(store.get(&kimi).unwrap().display_title(), "My Kimi task");
         store.reconcile(vec![], 4).unwrap();
         let reopened = Store::open(&file, paths(dir.path())).unwrap();
-        assert_eq!(reopened.list().len(), 4);
+        assert_eq!(reopened.list().len(), 7);
         assert!(reopened.list().iter().all(|row| row.status == Status::Ended));
+    }
+
+    #[test]
+    fn native_titles_arrive_after_cached_prompts_and_preserve_manual_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider_paths = paths(dir.path());
+        let sessions = provider_paths.codex.join("sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let log = sessions.join("rollout-test-a.jsonl");
+        std::fs::write(&log, concat!(
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"a\"}}\n",
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"<image name=[Image #1] path=long-path> remove these two\"}}\n"
+        )).unwrap();
+        let mut store = Store::open(&dir.path().join("db"), provider_paths.clone()).unwrap();
+        let mut observed = observation("a", Some("a"));
+        observed.provider = Provider::Codex;
+        store.reconcile(vec![observed.clone()], 1).unwrap();
+        let id = store.for_runtime("a").unwrap().to_owned();
+        assert!(store.get(&id).unwrap().title.starts_with("<image"));
+        let updated = store.get(&id).unwrap().updated;
+        observed.title = Some("Readable terminal title".into());
+        store.reconcile(vec![observed.clone()], 2).unwrap();
+        assert_eq!(store.get(&id).unwrap().title, "Readable terminal title");
+
+        let index = provider_paths.codex.join("session_index.jsonl");
+        std::fs::write(&index, "{\"id\":\"a\",\"thread_name\":\"Remove two status bar items\"}\n")
+            .unwrap();
+        store.reconcile(vec![observed.clone()], 3).unwrap();
+        assert_eq!(store.get(&id).unwrap().title, "Remove two status bar items");
+        assert_eq!(store.get(&id).unwrap().updated, updated);
+        // The rollout is unchanged, but the provider can rename its conversation.
+        std::fs::write(&index, "{\"id\":\"a\",\"thread_name\":\"Renamed in Codex\"}\n").unwrap();
+        store.reconcile(vec![observed.clone()], 4).unwrap();
+        assert_eq!(store.get(&id).unwrap().title, "Renamed in Codex");
+        // Native metadata still works when history is unavailable.
+        std::fs::remove_file(&log).unwrap();
+        store.reconcile(vec![observed.clone()], 5).unwrap();
+        assert_eq!(store.get(&id).unwrap().title, "Renamed in Codex");
+        assert!(store.get(&id).unwrap().problem.is_some());
+        store.edit(&id, |row| row.custom_title = Some("My manual name".into())).unwrap();
+        store.reconcile(vec![observed.clone()], 6).unwrap();
+        assert_eq!(store.get(&id).unwrap().display_title(), "My manual name");
+        drop(store);
+        let mut store = Store::open(&dir.path().join("db"), provider_paths).unwrap();
+        store.reconcile(vec![observed], 7).unwrap();
+        assert_eq!(store.get(&id).unwrap().display_title(), "My manual name");
+    }
+
+    #[test]
+    fn observed_provider_titles_beat_prompt_fallbacks_for_transcript_readers() {
+        for provider in [Provider::Claude, Provider::Pi, Provider::Omp, Provider::OpenCode] {
+            let dir = tempfile::tempdir().unwrap();
+            let provider_paths = paths(dir.path());
+            let (root, filename, log) = match provider {
+                Provider::Claude => (
+                    provider_paths.claude.join("projects"),
+                    "a.jsonl",
+                    "{\"sessionId\":\"a\",\"type\":\"user\",\"uuid\":\"u\",\"message\":{\"content\":\"Raw prompt\"}}\n",
+                ),
+                Provider::Pi | Provider::Omp => (
+                    if provider == Provider::Pi { &provider_paths.pi } else { &provider_paths.omp }
+                        .join("sessions"),
+                    "timestamp_a.jsonl",
+                    "{\"type\":\"session\",\"id\":\"a\"}\n{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"Raw prompt\"}}\n",
+                ),
+                Provider::OpenCode => (provider_paths.opencode.clone(), "opencode.db", ""),
+                _ => unreachable!(),
+            };
+            std::fs::create_dir_all(&root).unwrap();
+            if provider == Provider::OpenCode {
+                let db = Connection::open(root.join(filename)).unwrap();
+                db.execute_batch("CREATE TABLE session(id TEXT, title TEXT); CREATE TABLE message(id TEXT, session_id TEXT, time_created INTEGER, data TEXT); CREATE TABLE part(id TEXT, message_id TEXT, data TEXT);
+                    INSERT INTO session VALUES ('a', 'New session - today');
+                    INSERT INTO message VALUES ('u', 'a', 1, '{\"role\":\"user\"}');
+                    INSERT INTO part VALUES ('p', 'u', '{\"type\":\"text\",\"text\":\"Raw prompt\"}');").unwrap();
+            } else {
+                std::fs::write(root.join(filename), log).unwrap();
+            }
+            let mut store = Store::open(&dir.path().join("db"), provider_paths).unwrap();
+            let mut observed = observation("a", Some("a"));
+            observed.provider = provider;
+            observed.title = Some("Provider title".into());
+            store.reconcile(vec![observed.clone()], 1).unwrap();
+            let id = store.for_runtime("a").unwrap().to_owned();
+            assert_eq!(store.get(&id).unwrap().title, "Provider title", "{provider:?}");
+            assert!(store.get(&id).unwrap().problem.is_none(), "{provider:?}");
+            observed.title = None;
+            store.reconcile(vec![observed], 2).unwrap();
+            assert_eq!(store.get(&id).unwrap().title, "Raw prompt", "{provider:?}");
+        }
     }
 
     #[test]
@@ -402,7 +502,7 @@ mod tests {
         let id = store.for_runtime("a").unwrap().to_owned();
         assert_eq!(store.get(&id).unwrap().updated, 10);
         assert_ne!(store.list()[0].id, id);
-        store.rename(&id, "My Kimi chat".into()).unwrap();
+        store.edit(&id, |row| row.custom_title = Some("My Kimi chat".into())).unwrap();
         let mut log = std::fs::OpenOptions::new()
             .append(true)
             .open(session.join("agents/main/wire.jsonl"))
@@ -511,7 +611,7 @@ mod tests {
         let b = store.for_runtime("two").unwrap().to_owned();
         assert_ne!(a, b);
         store.edit(&a, |row| row.draft = "keep draft".into()).unwrap();
-        store.rename(&a, "Human title".into()).unwrap();
+        store.edit(&a, |row| row.custom_title = Some("Human title".into())).unwrap();
         store
             .reconcile(vec![observation("one", Some("new")), observation("three", Some("a"))], 2)
             .unwrap();

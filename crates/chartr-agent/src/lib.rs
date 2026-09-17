@@ -38,6 +38,9 @@ providers! {
     Claude => ("Claude", "claude", &["claude", "claude-code", "claude code"], TerminalPrompt, true),
     Kimi => ("Kimi", "kimi", &["kimi", "kimi-cli", "kimi-code"], TerminalOnly, false),
     Pi => ("Pi", "pi", &["pi"], TerminalOnly, false),
+    Omp => ("OMP", "omp", &["omp", "oh-my-pi"], TerminalOnly, false),
+    Cursor => ("Cursor", "cursor", &["cursor", "cursor-agent"], TerminalOnly, false),
+    Antigravity => ("Antigravity", "antigravity_cli", &["agy", "antigravity", "antigravity-cli"], TerminalOnly, false),
     Grok => ("Grok", "grok", &["grok", "grok-build"], TerminalOnly, false),
     OpenCode => ("OpenCode", "opencode", &["opencode", "open code"], OpenCodeApi, false),
 }
@@ -87,6 +90,18 @@ impl Provider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn added_providers_use_the_pinned_herdr_integration_targets() {
+        for (name, target) in
+            [("omp", "omp"), ("cursor-agent", "cursor"), ("agy", "antigravity_cli")]
+        {
+            let provider = Provider::executable(name).unwrap();
+            assert_eq!(provider.slug(), target);
+            assert_eq!(Provider::from_slug(target), Some(provider));
+        }
+        assert_eq!(Provider::detect("antigravity-cli"), Some(Provider::Antigravity));
+    }
 
     #[test]
     fn every_alias_has_one_identity_across_labels_paths_and_integrations() {
