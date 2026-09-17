@@ -2,7 +2,10 @@
 
 The durable behavior contract is the
 [workspace specification](../.plan/maps/chartr-workspace/spec.md). This
-checklist is the release gate, not a second specification.
+checklist is the release gate, not a second specification. It describes checks
+to perform, not a claim that every platform has passed. See the dated
+[documentation audit](research/2026-09-17-documentation-audit.md) for the latest
+source-validation results and known gaps.
 
 ## Automated gate
 
@@ -12,7 +15,7 @@ and GPUI X11 link. Before release, run the real-sidecar suite locally on each
 shipping architecture:
 
 ```sh
-cargo test -p chartr --test live_session -- --ignored --nocapture --test-threads=1
+cargo test -p chartr --test live_session --locked -- --ignored --nocapture --test-threads=1
 ```
 
 That suite must handshake the exact sidecar, create a persistent terminal,
@@ -46,8 +49,9 @@ chartr Light. Capture and compare:
 - command palette, unavailable-folder recovery, closed-attach recovery, rejected
   plugin, visible web permissions, and the top-right Problems menu—including
   timestamps plus retry and restart actions for a backend crash loop;
-- the bundled Agent, Skills, Prompts, and Wayfinder plugins, with no Hello or Clock
-  entry in the default launcher or Settings catalog.
+- the bundled Agent, Markdown Prompt, Wayfinder, and Browser surfaces, plus
+  Skill sources and Saved Prompts in Settings only; no Hello or Clock entry in
+  the default launcher or Settings catalog, and no Mobile Companion in this build.
 
 Install a web plugin (such as `examples/plugins/clock`, including its persisted
 format) from a local folder, and a web plugin from a Git repository in Settings →
@@ -122,7 +126,7 @@ stale viewport, focus loss, or interaction that works only in one pane shape.
 
 In Tabbed mode, confirm the space picker sits in the macOS title bar immediately
 after the traffic lights. At the far-right corner in both chrome modes, confirm the
-`Sidebar` / `Tabbed` segmented control reflects and changes the presentation,
+`Tabs` / `Spaces` / `Chats` segmented control reflects and changes the presentation,
 and the adjacent gear button opens Settings without the workspace reclaiming
 window focus. With a web plugin or browser pane visible, test clicking the gear
 both before its tooltip appears and while the tooltip is already visible. Leave
@@ -142,7 +146,7 @@ pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
 a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Confirm Agent, Skills, Prompts, Wayfinder, Browser, and any installed Clock show their
+Confirm Agent, Markdown Prompt, Wayfinder, Browser, and any installed Clock show their
 manifest-selected Hugeicons in sidebar rows, standalone outer tabs, and pane-local
 tabs. Grouped outer tabs continue to show the split indicator instead of one
 representative plugin icon.
@@ -191,7 +195,8 @@ Scroll space cards upward beneath the **Spaces** heading: a short, theme-colored
 frosted fade should gently hide their top edge, with no horizontal border. The
 fade should ease in over the first few pixels of scrolling and disappear at the
 top. Check light and dark themes, wheel/trackpad scrolling, thumb dragging, and
-clicking rows beneath the fade. The heading and Free sessions footer stay clear,
+clicking rows beneath the fade. The heading stays clear; Free sessions sorts and
+scrolls as an ordinary space card,
 and scrolling should remain smooth with many cards.
 
 Create five standalone tabs in one space. Move tabs 4 and 5 into tab 3, split
@@ -224,10 +229,11 @@ composer, picker, and launch action are disabled;
 the space and Git branch sit above rather than inside the composer; and the prompt
 placeholder uses muted text. Register agents named for Claude, Codex, Grok,
 OpenCode, and Pi, then confirm both the picker trigger and menu infer the matching
-Hugeicons glyph (with the generic AI-programming glyph for OpenCode).
+provider glyph, including OpenCode's bundled logo. Unrecognized agent names and
+adapters use the generic AI-programming glyph.
 **Register your first agent** and the pane chevron's **Manage agents** item must
-open **Settings → Plugins → Agent → Configure**, reusing the existing Settings
-window. The workspace tab stays on the launcher. Use **New agent** to register
+open the Agent configuration page in **Settings → Plugins**, reusing the
+existing Settings window. The workspace tab stays on the launcher. Use **New agent** to register
 an adapter with arguments and each prompt-delivery mode, edit it through the
 same dialog, and confirm deletion is guarded by a confirmation. Close Settings,
 launch a non-empty prompt, and confirm the resulting
@@ -235,10 +241,10 @@ chartr-owned terminal opens in the pane's owning space with the registered
 environment, arguments, and prompt delivery. Relaunch chartr and confirm the
 agent registry remains available in every space.
 
-In the Skills pane, **Skill source settings** must open **Settings → Plugins →
-Skills → Configure**, reusing the same Settings window. Source registration,
-editing, ordering, and deletion are available only there; the workspace pane
-must never switch to a source-management page.
+Open Skill sources through its gear in **Settings → Plugins**. Source
+registration, editing, ordering, and deletion are available there. Neither Skill
+sources nor Saved Prompts should appear in the surface picker; restored legacy
+tabs for those plugins should retire without losing their private data.
 
 In Saved Prompts settings, create a titled prompt containing multiple lines, blank
 lines, and Unicode. New/Edit must open a modal above Settings with a scrolling
@@ -247,10 +253,10 @@ in the body, and Cmd+Enter (macOS) or Ctrl+Enter (Linux) saves. Confirm the tabl
 previews it, search matches title and body, and the Copy icon places only the full
 prompt text on the clipboard. Copy, Edit, and Delete must be icon buttons with
 tooltips; Copy changes to a checkmark after copying. Edit the title and body,
-cancel a draft, and cancel then confirm the named deletion modal. Open Prompts in another space
-and confirm both panes share changes. Editing the same record in both panes
-must report a conflict instead of overwriting the first save. Relaunch and
-confirm the library and pane return. At narrow pane widths, the table must
+cancel a draft, and cancel then confirm the named deletion modal. Change spaces
+and reopen the settings to confirm the library is shared. With a draft open,
+modify its stored record externally; Save must report a conflict. Relaunch and
+confirm the library returns in Settings. At narrow window widths, the table must
 scroll horizontally with its actions reachable.
 
 Skill source rows must use an Edit icon and show no up/down order buttons.
@@ -264,11 +270,21 @@ If a claimed session has ended, **Open session** reports that it is unavailable;
 keeps the claim, and confirmation clears it and restores the ticket's readiness
 when blockers permit. Change the claim while confirmation is open: release must
 show an error and preserve the newer claim. Release must also work with Agent or
-Skills disabled and must never terminate a running session.
+Skills services unavailable at the bridge level and must never terminate a running
+session. The normal catalog disables Wayfinder when either required provider is
+disabled; reenable both providers and Wayfinder to use the recovery UI.
+
+In Markdown Prompt, edit text and insert, move, copy, undo, and remove template
+chips. Preview must show the expanded text without writing a file. **Apply
+changes** opens the filename modal; only **Save** updates marked project content.
+Change a referenced Saved Prompt or skill source, refresh, close/reopen the pane,
+and restart the app: none may rewrite the destination until another explicit Save.
+Check stale drafts, unavailable providers, marker validation, and filename changes
+while preserving surrounding user content.
 
 ## Persistence and lifecycle
 
-Relaunch after changing window bounds, sidebar width/scope, mode, full space
+Relaunch after changing window bounds, sidebar width, mode, full space
 order (including Free sessions and a recovered missing folder), space names,
 outer-tab order, split ratios, active groups/panes/items, plugin Settings, and a
 missing folder. Confirm the sidebar and `spaces.toml` retain the committed order.

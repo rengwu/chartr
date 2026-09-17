@@ -8,11 +8,11 @@ or input path. A Zed-created local PTY runs Herdr's native interactive
 `terminal attach <terminal-id> --takeover` client. Herdr continues to own the
 persistent PTY and process lifetime.
 
-The view source is vendored at the same exact Zed revision with one narrow host
-capability: `TerminalVerticalAlignment`. Upstream behavior remains the default;
-chartr selects `Top` so leftover pixels smaller than a terminal row stay below
-the grid instead of shifting the grid origin during resize. The patch and its
-rebase procedure are recorded beside the vendored crate.
+The view source is vendored at the same exact Zed revision with host policies
+for vertical alignment, cell-width padding, an overlay scrollbar, and paused
+grid resizing during layout animations. chartr selects `Top` alignment so
+leftover pixels stay below the grid. The complete patch and rebase procedure
+are recorded [beside the vendored crate](../../vendor/zed-terminal-view/chartr-PATCH.md).
 
 ## Why the complete stack
 

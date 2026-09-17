@@ -1,11 +1,13 @@
 # Native provider services and a web Wayfinder launcher
 
 Wayfinder is the first pane that needs configured data and behavior owned by
-other plugins. Its map remains useful without an agent or skill source, so
-prerequisites belong to features rather than preventing the whole pane from
-loading. Manifests list provider IDs and the features needing them. Settings
-shows those dependencies; the consumer explains missing configuration and links
-to the provider's setup. There is no automatic installation or enablement.
+other plugins. Its map remains useful with empty agent and skill registries.
+Manifests list provider IDs and the features needing them; the current catalog
+requires these providers to be enabled before activating Wayfinder. Disabling a
+provider disables its dependent plugins and closes their panes. With providers
+enabled, the consumer explains missing configuration and links to setup.
+This supersedes the original feature-only prerequisite behavior. There is no
+automatic installation or enablement.
 
 Trusted native providers export typed services through `Plugin::services`.
 Each catalog owns a live directory passed through `InstanceContext`. Disablement

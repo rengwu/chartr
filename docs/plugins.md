@@ -241,8 +241,8 @@ The contracts include `services::Agents` (registered names and input
 preparation), `ConversationAgents` (registered profiles for the Inbox launcher),
 `services::Skills` (asynchronous enabled-source scanning, method text, directories
 and commit provenance), `Prompts`, and `PromptTemplates`. Agent and Skills own their
-registries. Each plugin has one configuration surface under **Settings → Plugins →
-Configure**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
+registries. Each plugin has one configuration surface opened through its gear in
+**Settings → Plugins**. Pane setup shortcuts use `InstanceContext.plugin_settings` to open
 that surface instead of rendering another configuration page in the workspace.
 
 Native settings return `Option<chartr_plugin::SettingsView>`, created with

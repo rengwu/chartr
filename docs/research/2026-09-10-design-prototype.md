@@ -1,5 +1,8 @@
 # Chartr interface study 01 — prototype record
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 10 September 2026. Historical first-pass record. The owner subsequently rejected its spacing, typography and component design. See [visual calibration 02](2026-09-10-design-calibration-02.md) for the revised prototype and explicit references. No default layout is approved.
 
 - [Open the local prototype](http://127.0.0.1:5187/?prototype=design&variant=A).

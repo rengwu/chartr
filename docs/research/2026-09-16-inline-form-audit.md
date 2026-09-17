@@ -47,8 +47,8 @@ active inline data-entry form that clearly requires a modal conversion.
   use dialogs. Wayfinder's final launch review uses an HTML modal dialog.
 - Wayfinder's launch options belong beside the selected ticket; the Agent
   launch composer is its pane's primary task.
-- Companion's address and Start/Stop sharing controls are persistent service
-  settings. General preferences, declarative plugin settings, search fields,
+- The retained, disabled Companion implementation uses persistent address and
+  Start/Stop service settings; these controls are absent from the current build. General preferences, declarative plugin settings, search fields,
   and the browser address bar should remain directly accessible.
 
 ## Verification
@@ -66,3 +66,7 @@ drag-and-drop tests. The unchanged `sources.rs` has an existing failure in
 `templates_keep_the_combined_id_and_scope_each_enabled_source`: its expected
 Markdown heading differs from the formatter's current heading. No template
 formatting was changed in this work.
+
+The [17 September documentation audit](2026-09-17-documentation-audit.md) later
+corrected that stale heading assertion and moved the new icon buttons through
+the shared semantic helper so the plugin presentation contract also covers them.

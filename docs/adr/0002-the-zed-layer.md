@@ -2,26 +2,27 @@
 
 ## Decision
 
-chartr depends on four crates from one pinned Zed revision: `gpui`,
-`gpui_platform`, `ui`, and `theme`. It does **not** depend on Zed's `workspace`
-crate. The sidebar, the tab strip, and the pane layout are chartr's own, about
-three hundred lines between them.
+chartr uses `gpui`, `gpui_platform`, `ui`, and `theme` from one pinned Zed
+revision while owning its space, tab, and pane models. Subsequent terminal and
+editor integration expanded that dependency graph: Zed's `workspace`, project,
+and editor crates are now transitive dependencies. chartr still does not construct
+a Zed `Workspace` or use it as its application model. See
+[ADR 0004](0004-the-zed-terminal-stack.md) for the terminal boundary.
 
 chartr is therefore GPL-3.0-or-later.
 
 ## Why not `workspace`
 
-`workspace` is where Zed's docks, pane groups, splits, and tab bar live, and
-taking it would have meant not writing any of the chrome. Its transitive closure
-inside Zed is **88 crates** — `client`, `project`, `language`, `remote`, `db`,
-`telemetry`, `node_runtime` among them. Constructing a `Workspace` needs an
+`workspace` is where Zed's docks, pane groups, splits, and tab bar live.
+The original decision avoided adopting its application model and associated
+`client`, `project`, `language`, `remote`, `db`, `telemetry`, and `node_runtime`
+systems. Constructing a `Workspace` needs an
 `AppState` carrying a collab client, a user store, a language registry, and a
-sqlite database, none of which chartr has any use for. The two modes chartr
-actually wants are a fixed-width column and a horizontal strip.
+sqlite database. chartr supplies its own workspace ownership and presentation.
 
-`ui` + `theme` close over 21 crates instead, and that closure is worth it: it is
-what makes chartr's buttons, labels, tabs, and colours Zed's own rather than a
-re-implementation that looks almost right.
+Reusing `ui` and `theme` makes chartr's controls and colors follow the same
+framework. The original small dependency-count comparison no longer describes
+the build after adopting the complete terminal stack and Markdown editor.
 
 ## The licence, stated plainly
 

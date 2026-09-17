@@ -8,7 +8,7 @@ The added families are Asap, Barlow, Cabin, Comic Neue, DM Sans, Fira Sans, Geis
 Hind, Inter, Jim Nightshade, Karla, Lato, Merriweather Sans, Noto Sans, Nunito Sans,
 Open Sans, Oxygen, Playpen Sans, Poppins, PT Sans, PT Serif, Roboto, and Work Sans.
 All are embedded and available offline without system installation.
-`src/fonts.rs` supplies both the picker choices and font registration.
+[the font catalog](../../src/fonts.rs) supplies both the picker choices and font registration.
 
 `ui/` contains unmodified static TrueType files served by the Google Fonts CSS
 API, with regular, bold, italic, and bold italic faces where available. Geist,
@@ -17,7 +17,7 @@ only regular. Static faces avoid variable-axis selection in the native
 font backend. Internal family names and weight metadata were verified against
 the catalog, and the 81 files add approximately 3.83 MiB before packaging.
 DM Sans and Nunito Sans retain optical-size names internally; `native_family`
-in `src/fonts.rs` maps their picker names to those exact names without modifying
+in [the font catalog](../../src/fonts.rs) maps their picker names to those exact names without modifying
 the publisher's files. The manifest records these names as `native_family`.
 
 Each family includes its SIL Open Font License notice from Google Fonts revision
@@ -30,7 +30,7 @@ face's `url` to its `file` path under `ui/` and verify its `sha256` checksum.
 
 The terminal picker has 14 monospaced families. All fonts are embedded in the
 application and available offline, with no system installation required.
-`src/fonts.rs` is the shared catalog for registration and the picker.
+[the font catalog](../../src/fonts.rs) is the shared catalog for registration and the picker.
 
 IBM Plex Mono is the existing default. Lilex is supplied by the pinned Zed asset
 bundle; `.ZedMono` is no longer offered in the terminal picker.

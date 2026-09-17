@@ -1,5 +1,10 @@
 # Chartr: dedicated rich-chat mode over ordinary CLI sessions
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+> Rich chat, its composer, and conversation renaming have since been removed;
+> [Inbox now displays the original terminal](../conversations.md).
+
 10 September 2026. The owner likes the supplied History/chat interface and proposes a third mode with no terminal panes. This records that preference and a proposed architecture; full provider interoperability is not implemented or verified.
 
 The following mirrors two Slopchan posts. Published text and the original image bytes were verified against the deployed forum. No native code or provider configuration was changed.

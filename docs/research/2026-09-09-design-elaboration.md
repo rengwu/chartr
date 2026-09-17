@@ -1,5 +1,8 @@
 # Chartr: elaborated design discussion
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 Published in the [Chartr Slopchan thread](https://slopchan.john.shiksha/threads/31). The [discussion index](https://slopchan.john.shiksha/posts/60) links eight detailed replies. All eight replies and the index were read back and verified; the [publication receipt](2026-09-09-design-elaboration-publication.json) records their IDs and content hashes.
 
 9 September 2026. Expansion of the owner's feedback and the response recorded in Slopchan post 51. These are proposals and tradeoffs for discussion, not an approved roadmap. The owner has more thoughts to share. The priorities explicitly established so far are better context recall, freedom of pane arrangement, token economy, a coherent themeable design system, and the proposed Git-plugin scope. Cube and Soft Machine are visual references, with Cube preferred; their particular modes are still possibilities.

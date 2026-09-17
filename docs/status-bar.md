@@ -8,14 +8,10 @@ Click a service to open its settings. Right-click the bar and choose Hide Status
 
 Bundled native plugins can contribute a status with `Plugin::background_status`. The host refreshes these once per second and redraws only when their reported values change. See [plugin documentation](plugins.md#background-status).
 
-## Verification — 2026-09-08
+## Verification
 
-Historical verification, before Companion was excluded from the build:
-
-- Normal desktop build and `cargo check -p chartr` succeeded.
-- `cargo test -p chartr -p chartr-plugin -p chartr-plugin-host -p chartr-companion`: 267 tests passed.
-- Coverage verifies saved visibility across settings reloads, application-global settings updates, background sharing status without constructing a pane, and connection counts after disconnect.
-- An isolated native window verified the bottom-bar layout, hiding, command-palette restoration, the General settings switch, and opening Companion controls directly from the bar.
-- A real TLS client connected to the isolated host on loopback port 19848, created a test terminal, and viewed it at mobile dimensions. The bar showed one connection, one running session, and one session on mobile with Companion controls closed.
-
-Changes are source edits; restart the rebuilt desktop app to use the new bar.
+Check hiding and restoration from Settings and the command palette, saved
+visibility after restart, and opening a contributed service's settings. A plugin
+without `background_status` contributes no button. Historical Companion counts
+and connection tests do not establish current desktop behavior because Companion
+is excluded. See the [release checklist](acceptance.md).

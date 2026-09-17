@@ -6,6 +6,7 @@ A local theme builder for chartr's native GPUI app. It mirrors the palette model
 ## Run it
 
 ```sh
+cd misc/theme-playground
 npm install
 npm run dev
 ```

@@ -1,5 +1,11 @@
 # chartr workspace rewrite specification
 
+This living contract incorporates the subsequent Inbox, Settings, and plugin
+decisions. The problem statement records the original rewrite motivation, not
+a list of current defects. For implemented behavior and release checks, see the
+[workspace reference](../../../docs/workspace.md) and
+[acceptance checklist](../../../docs/acceptance.md).
+
 ## Problem Statement
 
 chartr's current interface is visually inconsistent and structurally fragile.
@@ -7,7 +13,7 @@ Controls and tab chrome are misaligned, reusable Zed components and semantic the
 tokens are not applied consistently, and some item types—including plugin tabs—do
 not expose expected controls such as close buttons.
 
-The underlying ownership model is also incorrect. Ad-hoc sessions and opened
+The underlying ownership model is also incorrect. Free sessions sessions and opened
 plugin views can appear in every space even though an opened tab must belong to
 exactly one space and one pane. The existing flat active-item model cannot support
 Zed-style nested panes, cross-pane tab drag and drop, directional focus, resizing,
@@ -38,15 +44,14 @@ clone support. Cross-space movement is not supported.
 Offer tabbed and sidebar projections over the same model. Both show every
 standalone item and every pane group as one outer entry. Standalone terminals
 use Herdr's live agent or foreground-process inference before falling back to
-the persistent Herdr tab label; pane groups use the neutral `Grouped Tabs`
-title. Tabbed mode places that collection in a horizontal strip beneath the
+the persistent Herdr tab label; pane groups use an optional saved name or an item-count title such as `5 tabs`. Tabbed mode places that collection in a horizontal strip beneath the
 title bar; sidebar mode places it beneath each visible space. Selecting a group
 renders its local draggable pane tab bars, while selecting a standalone item
 renders no redundant inner bar. Only the active pane exposes compact split/zoom
 controls.
-On macOS, the active space name is selected from the title bar beside the
-traffic lights, and the presentation menu stays in the title bar's far-right
-corner; platforms with a native system title bar retain those controls in the
+In Tabs mode on macOS, the active space picker sits beside the traffic lights.
+Spaces and Chats have no title-bar space picker. The Tabs / Spaces / Chats
+selector stays in the title bar's far-right corner; platforms with a native system title bar retain those controls in the
 in-app chrome. Presentation never changes item ownership.
 
 In the all-spaces sidebar, space headings directly sort their complete cards.
@@ -61,8 +66,8 @@ and drag-and-drop conventions. chartr owns product composition, not replacement
 UI primitives. Go chartr supplies the visual reference through normal semantic
 `chartr Light` and `chartr Dark` themes; `chartr Dark` is the fixed default.
 
-Present Settings inside the main window as chartr-rs does, while implementing a
-focused Zed-shaped typed settings store, page catalog, field renderer registry,
+Present Settings in one application-wide native window, with a focused
+Zed-shaped typed settings store, page catalog, field renderer registry,
 semantic action/keymap system, atomic persistence, live updates, and plugin page
 contributions. Settings are user-global in this version.
 
@@ -80,9 +85,9 @@ namespaces automatically.
 
 1. As a chartr user, I want every open tab to belong to one space, so that switching spaces never duplicates sessions or plugin views.
 2. As a chartr user, I want every tab to belong to one pane, so that its position and focus are unambiguous.
-3. As a chartr user, I want one permanent Ad-hoc space, so that I can open a terminal without first selecting a project folder.
-4. As a chartr user, I want Ad-hoc terminals to start in my home directory by default, so that folderless sessions have a predictable working directory.
-5. As a chartr user, I want to configure the Ad-hoc working directory, so that folderless sessions suit my workflow.
+3. As a chartr user, I want one permanent Free sessions space, so that I can open a terminal without first selecting a project folder.
+4. As a chartr user, I want Free sessions terminals to start in my home directory by default, so that folderless sessions have a predictable working directory.
+5. As a chartr user, I want to configure the Free sessions working directory, so that folderless sessions suit my workflow.
 6. As a chartr user, I want at most one space per canonical folder, so that aliases and symlinks do not create duplicate projects.
 7. As a chartr user, I want to rename a space's displayed label without changing its folder identity, so that my workspace list is understandable.
 8. As a chartr user, I want missing folders retained as unavailable spaces, so that transient mounts or moved folders do not destroy layout state.
@@ -106,9 +111,9 @@ namespaces automatically.
 26. As a chartr user, I want pane layouts and active items restored after relaunch, so that restarting chartr does not destroy organization.
 27. As a chartr user, I want tabbed mode to show only the active space, so that its compact chrome remains focused.
 28. As a chartr user, I want every non-empty workspace pane in either presentation mode to retain its own draggable tab bar, so that tab ownership and movement remain visible like Zed.
-29. As a chartr user, I want sidebar mode to show either all spaces or only the active space, so that I can choose overview or focus.
-30. As a chartr user, I want All Spaces to be the initial sidebar mode, so that a fresh installation exposes the whole cockpit.
-31. As a chartr user, I want standalone tabs and any number of pane groups mixed in one space, with each group collapsed to one outer entry titled `Grouped Tabs`, so that unrelated sessions remain independent without implying one child represents the group.
+29. As a chartr user, I want sidebar mode to show all spaces, so that sessions stay visible across projects.
+30. As a chartr user, I want Spaces to be the initial view, so that a fresh installation exposes the whole cockpit.
+31. As a chartr user, I want standalone tabs and any number of pane groups mixed in one space, with each group collapsed to one outer entry using its saved name or item count, so that unrelated sessions remain independent without implying one child represents the group.
 32. As a chartr user, I want only the active non-empty pane to expose compact Zed-style split and zoom controls while all pane tab bars remain visible, so that advanced operations remain available without hiding the pane structure.
 33. As a chartr user, I want selecting an item in an inactive space to activate its space, pane, and item together, so that selection is one coherent action.
 34. As a chartr user, I want the sidebar width and presentation modes persisted, so that the application retains my preferred chrome.
@@ -143,7 +148,7 @@ namespaces automatically.
 63. As a chartr user, I want permission revocation to close live plugin instances and revoke their broker, so that reduced authority takes effect immediately.
 64. As a chartr user, I want native and web plugin panes both to work, so that no advertised plugin tier ends in a placeholder.
 65. As a chartr user, I want disabling a plugin to remove its contributions and prevent future loading, so that enablement has real effect.
-66. As a chartr user, I want Settings presented inside the main window while retaining the spaces sidebar, so that configuration feels native to chartr-rs.
+66. As a chartr user, I want one shared native Settings window, so that every entry point focuses the same configuration surface.
 67. As a chartr user, I want General, Appearance, Terminal, Hotkeys, and Plugins settings pages, so that the implemented product can be configured coherently.
 68. As a chartr user, I want Settings to show only implemented controls, so that no option is decorative or misleading.
 69. As a chartr user, I want settings changes applied immediately where safe, so that configuration provides direct feedback.
@@ -165,12 +170,17 @@ namespaces automatically.
 85. As a chartr user, I want surviving space layouts and space-bound plugins retained after backend loss, so that one backend crash does not erase unrelated workspace state.
 86. As a chartr user, I want Herdr's live session list to override stale local terminal records, so that the UI reflects processes that actually exist.
 87. As a chartr user, I want orphaned live Herdr sessions adopted into their owning space, so that detached work is not lost from the UI.
-88. As a chartr user, I want a fresh installation to open the empty Ad-hoc space without spawning a terminal, so that startup has no unnecessary process side effect.
+88. As a chartr user, I want a fresh installation to open the empty Free sessions space without spawning a terminal, so that startup has no unnecessary process side effect.
 89. As a chartr user, I want window geometry, pane ratios, expansion state, selection, and chrome restored, so that the entire cockpit returns after relaunch.
 90. As a chartr user, I want configuration, state, and runtime data under the `chartr` namespace, so that the application uses its official name consistently.
 91. As a chartr user, I want to drag-sort every sidebar space, including Free sessions and recovered folders, so that the cockpit order matches my workflow and survives relaunch.
 92. As an accessibility user, I want Reduce Motion to disable space-sort settling without disabling direct manipulation, so that reordering remains usable with less animation.
 93. As a chartr user, I want Zed's wheel and trackpad behavior and terminal-owned scrollback, so that shell output and alternate-screen TUIs respond like a modern terminal.
+
+94. As a chartr user, I want Chats to show searchable Inbox/Archive history beside the original terminal, so that changing views preserves the same running agent.
+95. As a chartr user, I want Skill sources and Saved Prompts managed in plugin settings, so that configuration has one home.
+96. As a chartr user, I want Markdown Prompt to change project files only on explicit Save, so that provider refreshes cannot rewrite my files.
+97. As a chartr user, I want to release an abandoned ticket claim with confirmation, so that a failed launch cannot permanently block the frontier.
 
 ## Implementation Decisions
 
@@ -234,7 +244,7 @@ namespaces automatically.
   multiple live sessions confirms with an exact count.
 - The active item after removal follows Zed's activation-history behavior with a
   positional fallback.
-- The permanent Ad-hoc space has no folder, cannot be renamed or removed, and
+- The permanent Free sessions space has no folder, cannot be renamed or removed, and
   defaults new sessions to the user's home directory or a configured replacement.
 - Folder spaces are deduplicated by canonical path. Display names are metadata and
   do not participate in identity.
@@ -243,7 +253,7 @@ namespaces automatically.
 - Each standalone item and pane group projects to one entry in both chromes.
   Tabbed mode keeps these entries on the space-name row. Closing a group entry
   closes every item in only that group through the normal bulk confirmation.
-- Sidebar mode persists an All Spaces or Active Space submode. Selecting an item
+- Sidebar mode always shows all spaces. Legacy scope preferences do not narrow it. Selecting an item
   from another space activates its space, pane, and item as one operation.
 - The sidebar is resizable with bounded width. Tabbed mode is active-space-only.
   All-Spaces card sorting is a window-owned, space-specific interaction: the
@@ -254,8 +264,9 @@ namespaces automatically.
 - User-visible actions are semantic GPUI actions with contextual keybindings.
   Platform defaults follow Zed except that terminal focus does not override the
   requested `Cmd/Ctrl+W` close behavior.
-- Settings is a main-window workspace that preserves the spaces sidebar and
-  restores the prior focus on close; it is not an item in a pane.
+- Settings is a singleton native window shared by workspace windows, closes with
+  Cmd/Ctrl+W or native controls, and closes when the last workspace closes. It is
+  not an item in a pane.
 - Settings serialization uses sparse optional content; runtime consumers use
   resolved typed settings with complete defaults.
 - One centralized settings store merges defaults and user-global configuration,
@@ -284,9 +295,9 @@ namespaces automatically.
   explicit session and close when that session ends.
 - Plugin restoration is capability-driven. Failed item restoration produces one
   non-blocking summary and collapses invalid empty branches where appropriate.
-- Native plugin libraries remain loaded for process safety. Disabling removes
-  contributions, closes live instances after confirmation, and prevents loading on
-  future launches; the mapped library stays inert until exit.
+- Native plugin modules are compiled into chartr. Separately compiled GPUI
+  dynamic libraries are rejected. Disabling removes contributions and closes
+  live instances; required dependents are disabled through a confirmed cascade.
 - Web plugins are hosted as real pane items in isolated webviews rather than a
   placeholder message.
 - Safe web filesystem access is brokered, manifest-declared, canonicalized, and
@@ -299,8 +310,8 @@ namespaces automatically.
   explicitly bound session.
 - Permission revocation closes active instances and revokes their broker. Native
   trust and web permissions are visible in Plugins settings.
-- The plugin manifest and native ABI may be bumped to encode the new capabilities.
-  Bundled examples move with the contract; incompatible plugins fail clearly.
+- The manifest and build-time native API may change to encode capabilities.
+  Bundled examples move with the contract; incompatible packages fail clearly.
 - Herdr control requests use a fresh Unix connection and exact handshake. There is
   no long-lived reconnecting control client.
 - An attach-client exit renders an actionable notice inside that item. Reattach
@@ -315,7 +326,7 @@ namespaces automatically.
   owning space as standalone outer tabs; stale saved terminal items are dropped.
 - Versioned SQLite persistence stores ordered space identities, ordered outer workspace
   tabs, pane trees, item records, active state, split ratios, window bounds,
-  sidebar width/submode, chrome mode, expansion state, and migrations. A legacy
+  sidebar width, chrome mode, expansion state, and migrations. A legacy
   single pane tree migrates to one outer workspace tab.
 - User-editable settings, keymaps, and themes remain files. All persistent and
   runtime paths are namespaced to chartr; no automatic legacy import occurs.
@@ -339,9 +350,9 @@ namespaces automatically.
 - Lifecycle tests assert that a single session close kills only that session;
   pane join kills none; session-bound plugins cascade; bulk operations confirm;
   space removal kills all owned sessions; and normal application exit detaches.
-- Chrome tests assert that switching Tabbed, Sidebar/All Spaces, and Sidebar/Active
-  Space changes only presentation; both chromes show the same standalone and
-  grouped outer entries. Selecting and creating items from inactive groups must
+- Chrome tests assert that switching Tabs, Spaces, and Chats preserves runtime
+  ownership. Tabs and Spaces show the same standalone and grouped outer entries;
+  Chats mounts the selected history entry's existing terminal. Selecting and creating items from inactive groups must
   activate the correct space, outer tab, and pane without duplication. Sorter
   tests cover variable-height midpoint order, final release Y, interruptible
   FLIP, Reduce Motion, durable relaunch order, and registry-write rollback;
@@ -357,7 +368,7 @@ namespaces automatically.
   legacy single-layout migration.
 - Native plugin tests cover trust labeling, per-space singleton behavior,
   multi-instance opt-in, clone capability, close, disable, settings contribution,
-  serialization, ABI mismatch, and restoration failure.
+  serialization, rejection of external native libraries, and restoration failure.
 - Web plugin tests cover real view hosting, safe project read/write, canonical and
   symlink containment, folderless storage, unsafe per-plugin access, declared
   network/process/session actions, permission display, and immediate revocation.
@@ -368,7 +379,7 @@ namespaces automatically.
   alternate-screen behavior remain release interaction checks because they
   require a real GPUI window and native input devices.
 - Visual acceptance captures chartr Dark and Light at common window sizes for
-  tabbed mode, both sidebar submodes, nested panes, drag targets, empty panes,
+  Tabs, Spaces, Inbox, nested panes, drag targets, empty panes,
   confirmations, errors, settings, command palette, and plugin permissions.
 - Visual review checks alignment, clipping, typography, semantic colors, hover,
   active and focus states, pane ownership grouping, and absence of placeholders.

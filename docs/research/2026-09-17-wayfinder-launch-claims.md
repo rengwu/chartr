@@ -36,8 +36,10 @@ not the later lifetime of the launched process.
   them up when the session closes or delivery fails.
 - Claimed tickets expose **Open session** and **Release claim…**. Release uses
   a confirmation modal bound to the displayed ticket and session ID. It works
-  when the terminal is gone or launch providers are disabled, and rejects a
-  changed claim instead of clearing a newer session's work.
+  when the terminal is gone and rejects a changed claim instead of clearing a
+  newer session's work. The bridge is tested with provider services unavailable;
+  the normal catalog still requires Agent and Skill sources to be enabled to
+  open Wayfinder (disabling either also disables the dependent pane).
 - Release only removes claim metadata; it does not terminate a session or edit
   the ticket's answer. The next snapshot restores the appropriate frontier state.
 

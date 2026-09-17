@@ -1,18 +1,43 @@
-# Chartr research
+# Chartr research and audit records
 
-The dedicated discussion and competitor delta log is [Chartr on Slopchan](https://slopchan.john.shiksha/threads/31). Its [watch index](https://slopchan.john.shiksha/posts/42) links all 16 competitors to their research entries.
+These are dated records. Proposals are not an approved roadmap unless the record
+says so, and past verification counts describe the tested snapshot. Current
+behavior is documented in the [documentation index](../README.md).
 
-- [9 September 2026 strategy report](2026-09-09-chartr-competitive-strategy.md): current Chartr assessment, competitor directions, source-backed comparisons and proposed sequencing.
-- [Owner feedback and open design discussion](2026-09-09-design-discussion.md): subsequent constraints, preferred UI references, Git scope, terminal-backed chat proposal, and revisions to the initial recommendations.
-- [Elaborated design discussion](2026-09-09-design-elaboration.md): eight detailed proposals with examples, ownership boundaries, tradeoffs and validation scenarios; [Slopchan index](https://slopchan.john.shiksha/posts/60).
-- [Native Conversation mode implementation](2026-09-10-conversation-mode-implementation.md): approved first milestone, competitor ownership comparison, tested OpenCode path, Codex/Claude terminal sending, native UI and explicit provider limits; [initial report](https://slopchan.john.shiksha/posts/83), [Codex/Claude send correction and UI proof](https://slopchan.john.shiksha/posts/87), [registered-agent launch correction](https://slopchan.john.shiksha/posts/90), [All spaces and shared launch panel](https://slopchan.john.shiksha/posts/92).
-- [Dedicated rich-chat mode](2026-09-10-rich-chat-mode.md): the owner likes the History/chat interface and proposes a terminal-free third mode; conversation identity, manual CLI discovery, provider limits and a real interoperability milestone. [Product proposal and original image](https://slopchan.john.shiksha/posts/77), [source evidence and implementation proof](https://slopchan.john.shiksha/posts/78).
-- [Visual calibration 02](2026-09-10-design-calibration-02.md): the owner rejected the first pass's visual quality; revision 02 studies the actual Cube/Soft Machine references. The subsequent History/chat preference is recorded above; other compositions and the complete design system remain undecided. [Correction and updated captures](https://slopchan.john.shiksha/posts/68).
-- [Design prototype: three runnable comparisons](2026-09-10-design-prototype.md): project tree, scrolling columns and conversation history, with shared fixtures; [original discussion and captures](https://slopchan.john.shiksha/posts/62). Its visual treatment was subsequently rejected; see calibration 02 above.
-- [Proposed native design-reference milestone](2026-09-10-design-system-next-milestone.md): the next validation stage after choosing a prototype direction.
-- [Git-plugin sketch appendix](https://slopchan.john.shiksha/posts/61): the owner's original image, also preserved in the elaborated discussion's local appendix.
-- [Competitor register](competitors.json): stable product IDs, source availability, snapshots, watch triggers, proposed review dates and forum links.
-- [Source audit](2026-09-09-source-audit.md) and [citation ledger](2026-09-09-source-ledger.json): pinned implementation/test sources and evidence limits.
-- [Publication receipt](slopchan-thread.json): posted IDs and hashes verified against the complete thread response.
+## Recent audits
 
-Earlier strategy/design reports are recommendations unless explicitly approved. The Conversation mode implementation records the owner-approved first milestone. Automatic monitoring is not running. The first proposed weekly review is 16 September 2026; the report describes the cadence and update format. Read the complete Slopchan thread before adding a delta, and correct outdated claims explicitly because its posts are immutable.
+- [17 September: documentation audit](2026-09-17-documentation-audit.md) — scope,
+  corrected contradictions, validation, and remaining gaps.
+- [17 September: Wayfinder launch and claims](2026-09-17-wayfinder-launch-claims.md)
+  — zsh crash evidence, launch staging, and explicit claim recovery.
+- [16 September: inline forms](2026-09-16-inline-form-audit.md) — modal conversions,
+  icon actions, and removal of conversation renaming.
+- [11 September: shared behavior and presentation](2026-09-11-drift-audit.md) —
+  shared settings, controls, persistence, and provider identity refactor.
+
+## Earlier design and implementation snapshots
+
+- [9 September strategy](2026-09-09-chartr-competitive-strategy.md),
+  [owner feedback](2026-09-09-design-discussion.md), and
+  [elaborated proposals](2026-09-09-design-elaboration.md).
+- [10 September design-reference proposal](2026-09-10-design-system-next-milestone.md).
+- [Browser prototype comparison](2026-09-10-design-prototype.md) and
+  [visual calibration 02](2026-09-10-design-calibration-02.md). The first visual
+  treatment was rejected; these are not current UI screenshots or a settled design system.
+- [Rich-chat proposal](2026-09-10-rich-chat-mode.md) and
+  [first native implementation](2026-09-10-conversation-mode-implementation.md).
+  Their chat renderer, composer, title editor, and input-control flows have since
+  been removed. [Inbox](../conversations.md) uses the original terminal instead.
+
+## Research evidence
+
+- [Competitor register](competitors.json) and [source audit](2026-09-09-source-audit.md).
+- [Citation ledger](2026-09-09-source-ledger.json) and
+  [publication receipt](slopchan-thread.json).
+- [Published discussion](https://slopchan.john.shiksha/threads/31) and its
+  [competitor watch index](https://slopchan.john.shiksha/posts/42).
+
+The competitor snapshots and proposed review dates have not been refreshed by the
+documentation audit. No automated monitoring was set up by these reports. The
+proposed 16 September review was a planning date, not evidence of a completed
+review or an active schedule. Publication receipts are preserved unchanged.

@@ -27,6 +27,8 @@ own tools that live alongside your agents.
 
 <img width="1169" height="857" alt="Screenshot 2026-09-08 at 4 11 24 AM" src="https://github.com/user-attachments/assets/8af894fe-4a0f-4247-b733-e9d521fd44a1" />
 
+*Earlier Rust workspace snapshot, 8 September 2026; current controls have changed.*
+
 <br clear="right">
 
 ## Key features
@@ -45,8 +47,9 @@ own tools that live alongside your agents.
   and launch agents without leaving the view. [Inbox details](docs/conversations.md).
 - **Live terminal titles** — See the detected agent or foreground command in
   each tab, with the session label as its fallback.
-- **Tools beside your terminals** — Agent, Skill sources, Saved Prompts, Markdown Prompt,
-  Wayfinder, and Browser are bundled. Install additional web and hosted plugins.
+- **Tools beside your terminals** — Agent, Markdown Prompt, Wayfinder, and Browser
+  provide bundled surfaces. Skill sources and Saved Prompts are managed in
+  Settings. Install additional web and hosted plugins.
 - **Make it yours** — Choose themes and fonts, follow the system appearance,
   rebind shortcuts, and configure plugins in native Settings.
 - **Bring your CLI agents** — Register the agents you already use and launch
@@ -138,9 +141,9 @@ to put the image elsewhere.
 
 1. **Open a space.** Add a project folder, or use Free sessions for a shell
    outside a project. The `+` button opens a terminal.
-2. **Register an agent.** Open **Settings → Plugins → Agent → Configure** and
+2. **Register an agent.** Open the **Agent** settings gear in **Settings → Plugins** and
    add an installed CLI agent and its launch settings.
-3. **Register your skills.** Open **Settings → Plugins → Skill sources → Configure**
+3. **Register your skills.** Open the **Skill sources** settings gear in **Settings → Plugins**
    and add local folders or Git repositories containing your skills.
 4. **Chart your work.** Open the Agent surface using the **New surface** button
    beside `+`. Work with your agent to write a plan under `.plan/maps/`, following
@@ -148,9 +151,11 @@ to put the image elsewhere.
 5. **Drive the map.** Open Wayfinder, choose a map and a ready ticket, then use
    **Review & launch** to inspect the prompt and start its agent session.
 
-Wayfinder can browse existing maps before agents or skills are configured. It
+With the Agent and Skill sources plugins enabled, Wayfinder can browse existing
+maps before their registries are configured. It
 allows one claimed ticket per space at a time; ordinary agent sessions and
-terminals remain independent.
+terminals remain independent. If a launched session ends without completing its
+ticket, use **Release claim…** in the ticket pane before retrying.
 
 Open the bundled Browser from the workspace’s **New surface** menu.
 See [Browser](plugins/browser/README.md) for its capabilities and limits.
@@ -175,6 +180,7 @@ imported automatically.
 
 ## Documentation
 
+- [Documentation index](docs/README.md) — current guides, design contracts, and historical records
 - [Workspace reference](docs/workspace.md) — spaces, panes, terminals, settings,
   persistence, and plugin behavior
 - [Plugin packages](docs/plugins.md) — installation, permissions, and host APIs

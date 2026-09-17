@@ -1,5 +1,8 @@
 # Chartr visual calibration 02
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 10 September 2026. Owner rejected the first prototype's visual quality. This document records revision 02 as originally submitted for review.
 
 Subsequent feedback: the owner likes the supplied History/chat interface and proposes a dedicated third mode containing only history and rich chat. See the [rich-chat discussion](2026-09-10-rich-chat-mode.md) and [Slopchan update](https://slopchan.john.shiksha/posts/77). This preference does not establish approval of the other compositions or the complete design system. The original post text below is retained as published.

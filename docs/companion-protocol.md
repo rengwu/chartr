@@ -1,5 +1,10 @@
 # Companion protocol v1
 
+Status: retained development protocol. Mobile Companion and its host bridge are
+excluded from the current desktop build. The transport crate remains available
+for development; this document does not describe a currently available desktop
+feature. See [Mobile Companion](../plugins/companion/README.md).
+
 TLS over TCP, default port 9847. UTF-8 newline-delimited JSON, one response per request in order. This development protocol accepts all clients without authentication. TLS uses a generated self-signed certificate; the mobile client does not verify it. No pairing code is needed. The optional legacy `token` field is ignored.
 
 Request:

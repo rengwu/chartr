@@ -1,5 +1,8 @@
 # Chartr: competitor research and product direction
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 Published discussion: [Chartr on Slopchan](https://slopchan.john.shiksha/threads/31). Start with the [competitor watch index](https://slopchan.john.shiksha/posts/42). All 13 posts, including the [T3 citation correction](https://slopchan.john.shiksha/posts/44), were read back and verified after publication. Local companions: [competitor register](competitors.json), [source audit](2026-09-09-source-audit.md), and [citation ledger](2026-09-09-source-ledger.json).
 
 Research snapshot: 9 September 2026. Chartr baseline: `rewrite/rust`, commit `5402a35`. Planning assumption: a focused 3–6 month product direction, with the first useful slice in 4–8 weeks; these are sequencing proposals, not delivery estimates.
@@ -265,16 +268,16 @@ The durable artifacts accompanying this report are a machine-readable competitor
 [bb_vision]: https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/docs/VISION.md
 [bb_worktree_plugin]: https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/plugins/environment-git-worktree/host.ts
 [bb_worktrees]: https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/plugins/environment-git-worktree/host/worktree.ts
-[chartr_chrome]: /Users/rengwu/Desktop/Projects/chartr/crates/chartr/src/chrome.rs:432
-[chartr_companion]: /Users/rengwu/Desktop/Projects/chartr/plugins/companion/README.md
-[chartr_companion_code]: /Users/rengwu/Desktop/Projects/chartr/crates/chartr-companion/src/lib.rs
-[chartr_companion_protocol]: /Users/rengwu/Desktop/Projects/chartr/docs/companion-protocol.md
-[chartr_control]: /Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr/src/control.rs:35
-[chartr_plugins]: /Users/rengwu/Desktop/Projects/chartr/docs/plugins.md
-[chartr_prompts]: /Users/rengwu/Desktop/Projects/chartr/plugins/prompts/README.md
-[chartr_readme]: /Users/rengwu/Desktop/Projects/chartr/README.md
-[chartr_wayfinder]: /Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/README.md:50
-[chartr_wayfinder_model]: /Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/src/model.rs:240
+[chartr_chrome]: https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr/src/chrome.rs#L432
+[chartr_companion]: https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/companion/README.md
+[chartr_companion_code]: https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr-companion/src/lib.rs
+[chartr_companion_protocol]: https://github.com/rengwu/chartr/blob/5402a35454c1/docs/companion-protocol.md
+[chartr_control]: https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr-herdr/src/control.rs#L35
+[chartr_plugins]: https://github.com/rengwu/chartr/blob/5402a35454c1/docs/plugins.md
+[chartr_prompts]: https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/prompts/README.md
+[chartr_readme]: https://github.com/rengwu/chartr/blob/5402a35454c1/README.md
+[chartr_wayfinder]: https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/wayfinder/README.md#L50
+[chartr_wayfinder_model]: https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/wayfinder/src/model.rs#L240
 [cube_canvas]: https://github.com/collabs-inc/collab-public/blob/476b8efc942ee5f430a9b8bf832b8560a8cf76c2/collab-electron/src/main/canvas-rpc.ts
 [cube_protocol]: https://github.com/collabs-inc/collab-public/blob/476b8efc942ee5f430a9b8bf832b8560a8cf76c2/collab-electron/src/main/sidecar/protocol.ts
 [cube_releases]: https://github.com/collabs-inc/cube-releases/blob/c765d8eebcde47069c4b02129abcf902f836db88/README.md

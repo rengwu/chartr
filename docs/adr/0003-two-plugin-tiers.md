@@ -5,18 +5,21 @@
 A plugin is `kind = "web"` (a manifest and entry document in a sandboxed
 webview), `kind = "hosted"` (a declarative package activating a reviewed
 chartr-owned surface), or `kind = "native"` (a GPUI module linked into chartr at
-build time). All contribute the same thing: a pane. Nothing above
-`chartr-plugin-host` asks which runtime a pane came from.
+build time). Web and hosted packages contribute a pane. Native modules may
+contribute panes, settings, services, or background status; Skill sources and
+Saved Prompts currently have no workspace surface. Live panes share the host's
+item and lifecycle contract.
 
 ## Why three
 
 The brief was "plugins anyone can author" *and* "a star map plugin". Those are
 different requirements and one runtime cannot honestly serve both.
 
-- Anyone can author a web plugin: a manifest and an HTML file, no toolchain, no
-  ABI, and a sandbox. Its pane is composited rather than painted, so it runs a
-  frame behind the terminal next to it. For a clock, invisible. For a star map
-  being panned, not.
+- Anyone can author a web plugin with a manifest and local assets. Web content
+  uses an operating-system webview and permission-gated host APIs; process and
+  terminal-input grants still carry the user's execution authority. The original
+  preference for a native star map was superseded by the web Wayfinder decision
+  in [ADR 0006](0006-native-plugin-services-and-wayfinder.md).
 - A build-time native module is on chartr's own frame path — the same scrolling, resizing,
   focus, input, and painting as a built-in view, because it *is* an ordinary
   view.

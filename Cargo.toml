@@ -1,14 +1,16 @@
 # chartr — a simple agent multiplexer.
 #
-# Four crates, each one a boundary rather than a bag of helpers:
+# Boundary crates:
+#   chartr-storage       atomic file publication
+#   chartr-agent         shared provider identity and capabilities
+#   chartr-herdr         private Herdr transport and lifecycle
+#   chartr-conversations provider history and read-only metadata/log adapters
+#   chartr-plugin        native and manifest authoring contract
+#   chartr-plugin-host   discovery and runtime isolation
+#   chartr-companion     retained transport, excluded from the desktop app
+#   chartr               the window and pinned Zed terminal/editor host
 #
-#   chartr-herdr        the only code that knows herdr exists
-#   chartr-plugin       the contract a native plugin is written against
-#   chartr-plugin-host  plugin discovery and runtime isolation
-#   chartr              the window and the pinned Zed terminal host
-#
-# Nothing above depends on anything below it out of order, and no crate but
-# `chartr` links GPUI's platform backend.
+# Only `chartr` names GPUI's platform backend as a direct dependency.
 [workspace]
 resolver = "3"
 members = [

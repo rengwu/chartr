@@ -1,5 +1,8 @@
 # Source audit: Chartr competitor research
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 Snapshot: 9 September 2026. Chartr commit: `5402a35454c17bea0dead3437b264e7e2801dd2e`.
 
 This is a targeted source review, not an exhaustive audit. Nine current public product implementations and one historical implementation were examined. Test source was read for all nine current repositories; no competitor tests or applications were executed. A test documents an intended invariant, not an independently verified passing result. Documentation and release evidence are kept distinct from implementation.
@@ -198,16 +201,16 @@ Source boundary: **no-public-implementation-located**. official product claims; 
 
 The local checkout, documentation, Wayfinder model/launch code, Herdr status model, chrome, plugin contracts, and Companion protocol/server were inspected. The running development UI was observed read-only. Screenshots and unrelated terminal contents are not included in the published research.
 
-- [README.md](/Users/rengwu/Desktop/Projects/chartr/README.md) — local commit `5402a35454c1`.
-- [plugins/wayfinder/README.md](/Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/README.md:50) — local commit `5402a35454c1`.
-- [crates/chartr-herdr/src/control.rs](/Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr/src/control.rs:35) — local commit `5402a35454c1`.
-- [crates/chartr/src/chrome.rs](/Users/rengwu/Desktop/Projects/chartr/crates/chartr/src/chrome.rs:432) — local commit `5402a35454c1`.
-- [plugins/wayfinder/src/model.rs](/Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/src/model.rs:240) — local commit `5402a35454c1`.
-- [plugins/prompts/README.md](/Users/rengwu/Desktop/Projects/chartr/plugins/prompts/README.md) — local commit `5402a35454c1`.
-- [docs/plugins.md](/Users/rengwu/Desktop/Projects/chartr/docs/plugins.md) — local commit `5402a35454c1`.
-- [docs/companion-protocol.md](/Users/rengwu/Desktop/Projects/chartr/docs/companion-protocol.md) — local commit `5402a35454c1`.
-- [plugins/companion/README.md](/Users/rengwu/Desktop/Projects/chartr/plugins/companion/README.md) — local commit `5402a35454c1`.
-- [crates/chartr-companion/src/lib.rs](/Users/rengwu/Desktop/Projects/chartr/crates/chartr-companion/src/lib.rs) — local commit `5402a35454c1`.
+- [README.md](https://github.com/rengwu/chartr/blob/5402a35454c1/README.md) — local commit `5402a35454c1`.
+- [plugins/wayfinder/README.md](https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/wayfinder/README.md#L50) — local commit `5402a35454c1`.
+- [crates/chartr-herdr/src/control.rs](https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr-herdr/src/control.rs#L35) — local commit `5402a35454c1`.
+- [crates/chartr/src/chrome.rs](https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr/src/chrome.rs#L432) — local commit `5402a35454c1`.
+- [plugins/wayfinder/src/model.rs](https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/wayfinder/src/model.rs#L240) — local commit `5402a35454c1`.
+- [plugins/prompts/README.md](https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/prompts/README.md) — local commit `5402a35454c1`.
+- [docs/plugins.md](https://github.com/rengwu/chartr/blob/5402a35454c1/docs/plugins.md) — local commit `5402a35454c1`.
+- [docs/companion-protocol.md](https://github.com/rengwu/chartr/blob/5402a35454c1/docs/companion-protocol.md) — local commit `5402a35454c1`.
+- [plugins/companion/README.md](https://github.com/rengwu/chartr/blob/5402a35454c1/plugins/companion/README.md) — local commit `5402a35454c1`.
+- [crates/chartr-companion/src/lib.rs](https://github.com/rengwu/chartr/blob/5402a35454c1/crates/chartr-companion/src/lib.rs) — local commit `5402a35454c1`.
 
 ## Reproducibility and limits
 

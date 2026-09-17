@@ -1,5 +1,10 @@
 # Conversation mode: first native implementation
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+> Rich chat, its composer, and conversation renaming have since been removed;
+> [Inbox now displays the original terminal](../conversations.md).
+
 10 September 2026. Implements the approved first milestone from [the proposal](2026-09-10-rich-chat-mode.md), on the native Rust application. See [usage and compatibility](../conversations.md) and [the published Slopchan update](https://slopchan.john.shiksha/posts/83). The earlier proposal remains a historical record, not a claim of universal CLI interoperability.
 
 The central decision is to keep Herdr as runtime owner. History is a separate projection over verified provider conversations; panes remain the projection over terminals and plugin items. This preserves arbitrary pane organization without requiring a group to have one semantic task name. The third view contains History and chat, while “Show in terminal” returns to the existing workspace item.

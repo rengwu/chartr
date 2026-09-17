@@ -1,6 +1,6 @@
 # Inbox
 
-Choose **Chats** in the window’s view selector, or **Inbox** in the command palette
+Choose **Chats** in the window’s view selector, or **Switch to Chats view** in the command palette
 (`Cmd+Shift+3` on macOS, `Ctrl+Shift+3` on Linux). Existing Conversations view
 preferences migrate to Inbox with the same selected history entry. Existing custom `workspace.conversation_mode` shortcuts remain valid.
 

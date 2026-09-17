@@ -1,5 +1,8 @@
 # Proposed next milestone: Chartr design reference v0
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 Status: proposed next step, not an adopted implementation plan. Prepared 10 September 2026 from the owner's design preferences and the discussion in Slopchan posts 51–61. The implementation remains at commit `5402a35`.
 
 **Subsequent owner steering:** run Matt Pocock's `/prototype` skill first. A [three-variant browser comparison](2026-09-10-design-prototype.md) is now available on a separate throwaway branch. The native reference below becomes the next validation stage after the owner reviews those alternatives. This changes the sequence, not the requirement to prove native behavior and a shared plugin design contract.

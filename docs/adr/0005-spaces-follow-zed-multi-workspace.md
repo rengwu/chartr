@@ -3,7 +3,8 @@
 ## Decision
 
 One window owns several spaces. Tabbed chrome presents the active space;
-sidebar chrome can present either the active space or every space at once. The
+sidebar chrome presents all spaces. Inbox also lists conversations from all
+spaces, alongside the selected original terminal. The
 ownership shape follows the pinned Zed revision's `workspace::MultiWorkspace`:
 
 - the root owns an ordered `Vec<Entity<Space>>` and the active entity;
@@ -17,10 +18,9 @@ ownership shape follows the pinned Zed revision's `workspace::MultiWorkspace`:
 - blocking backend calls run on GPUI's background executor and return owned
   answers to the entity context.
 
-The correspondence is structural, not a dependency on Zed's `workspace`
-crate. ADR 0002's dependency decision still holds: importing that crate would
-also import the editor, project, collaboration, database, language, remote, and
-node-runtime systems that chartr does not use.
+The correspondence is structural: chartr does not construct a Zed `Workspace`.
+The complete terminal and editor stack now brings that crate into the transitive
+dependency graph, as clarified in [ADR 0002](0002-the-zed-layer.md).
 
 ## Persistence
 
@@ -46,8 +46,9 @@ pane group is one entry. Sidebar mode draws those entries beneath each visible
 space; tabbed mode draws the active space's entries beside its name. Selecting a
 group reveals the pane-local Zed tab bars, while a standalone item has no
 duplicate inner bar. Both reuse Zed `ui` components for tabs, buttons, labels,
-icons, colors, focus tracking, and scroll containers. There is no custom popup,
-menu state machine, or parallel widget kit.
+icons, colors, focus tracking, and scroll containers. Shared host popup/modal
+adapters keep those controls above native child webviews; their platform patches
+are documented in [vendor/zed-platform](../../vendor/zed-platform/README.md).
 
 All-Spaces sidebar cards have one focused sorter owned by the root window rather
 than a general drag-and-drop framework. A heading drag carries the whole card on
@@ -71,4 +72,5 @@ reuse another space's selected index, or recreate backend work. Moving a
 standalone outer tab into a selected pane changes ownership once and removes its
 emptied outer entry; changing chrome never does. Adding a third chrome
 arrangement likewise cannot change the space model: it can only draw the active
-child's entries somewhere else.
+child's content through the same ownership boundary. Inbox maintains a separate
+durable history index and mounts the selected session's existing terminal.

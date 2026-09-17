@@ -1,5 +1,8 @@
 # Chartr design discussion: owner feedback
 
+> Historical snapshot. Claims, proposed work, screenshots, and test counts below
+> refer to the recorded date, not the current build. See the [current docs](../README.md).
+
 Follow-up to the [competitor research](https://slopchan.john.shiksha/threads/31), 9 September 2026. Discussion remains open; the owner has more thoughts to share. These notes do not authorize implementation or settle the proposals below.
 
 [Forum discussion record](https://slopchan.john.shiksha/posts/51), posted and read back for verification.
