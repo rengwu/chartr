@@ -121,6 +121,11 @@ impl Space {
         self.problem.as_deref()
     }
 
+    pub(crate) fn report_launch_error(&mut self, error: String, cx: &mut Context<Self>) {
+        self.problem = Some(error);
+        cx.notify();
+    }
+
     pub fn workspace_tabs(&self) -> &WorkspaceTabs {
         &self.layout
     }
@@ -908,21 +913,25 @@ impl Space {
     }
 
     pub fn start_session(&mut self, cx: &mut Context<Self>) {
-        self.start_session_at(None, Vec::new(), cx).detach();
+        self.start_session_at(None, None, cx).detach();
     }
 
     /// Create an ordinary chartr-owned terminal and queue its first shell/TUI
     /// input before publishing the new tab. Native plugins use this path so
     /// launched tools remain part of the owning space's normal lifecycle.
-    pub fn start_session_with_input(&mut self, input: Vec<u8>, cx: &mut Context<Self>) {
-        self.start_session_at(None, input, cx).detach();
+    pub fn start_session_with_input(
+        &mut self,
+        input: chartr_plugin::TerminalLaunch,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_session_at(None, Some(input), cx).detach();
     }
 
     pub fn prepare_plugin_session(
         &mut self,
         cx: &mut Context<Self>,
     ) -> gpui::Task<Result<chartr_plugin::PreparedTerminal, String>> {
-        self.start_session_at(None, Vec::new(), cx)
+        self.start_session_at(None, None, cx)
     }
 
     /// Give a newly allocated CLI a usable grid until Inbox first mounts it.
@@ -952,7 +961,7 @@ impl Space {
         pane: crate::workspace::PaneId,
         cx: &mut Context<Self>,
     ) {
-        self.start_session_at(Some((tab, pane, None)), Vec::new(), cx).detach();
+        self.start_session_at(Some((tab, pane, None)), None, cx).detach();
     }
 
     /// Resolve a dropped terminal's split only after the backend has started it.
@@ -963,13 +972,13 @@ impl Space {
         direction: Option<SplitDirection>,
         cx: &mut Context<Self>,
     ) {
-        self.start_session_at(Some((tab, pane, direction)), Vec::new(), cx).detach();
+        self.start_session_at(Some((tab, pane, direction)), None, cx).detach();
     }
 
     fn start_session_at(
         &mut self,
         destination: Option<(WorkspaceTabId, crate::workspace::PaneId, Option<SplitDirection>)>,
-        initial_input: Vec<u8>,
+        initial_input: Option<chartr_plugin::TerminalLaunch>,
         cx: &mut Context<Self>,
     ) -> gpui::Task<Result<chartr_plugin::PreparedTerminal, String>> {
         if self.starting {
@@ -1037,8 +1046,8 @@ impl Space {
                             this.insert_session(session)
                         };
                         if let Some(id) = inserted {
-                            if !initial_input.is_empty()
-                                && let Err(error) = input.send_shell_launch(&initial_input)
+                            if let Some(launch) = &initial_input
+                                && let Err(error) = input.send_shell_launch(launch)
                             {
                                 this.problem = Some(error.to_string());
                             }

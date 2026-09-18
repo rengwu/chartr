@@ -67,10 +67,19 @@ pub use settings_page::{RenderSettings, SettingsPage, SettingsView};
 
 use std::{path::PathBuf, rc::Rc};
 
-type TerminalLaunchHandler = dyn Fn(Vec<u8>, &mut gpui::App);
+/// A validated POSIX shell command and optional subsequent agent input.
+/// Keep these separate: carriage returns can also occur inside quoted arguments.
+/// The host runs the command in a dedicated shell that exits with the agent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerminalLaunch {
+    pub command: String,
+    pub input: Vec<u8>,
+}
+
+type TerminalLaunchHandler = dyn Fn(TerminalLaunch, &mut gpui::App);
 type TerminalPrepareHandler =
     dyn Fn(&mut gpui::App) -> gpui::Task<Result<PreparedTerminal, String>>;
-type TerminalSendHandler = dyn Fn(&[u8]) -> Result<(), String>;
+type TerminalSendHandler = dyn Fn(&TerminalLaunch) -> Result<(), String>;
 type TerminalFocusHandler = dyn Fn(&str, &mut gpui::Window, &mut gpui::App) -> bool;
 
 /// An attached shell with no agent input yet. A plugin may record a claim using
@@ -81,10 +90,10 @@ pub struct PreparedTerminal {
 }
 
 impl PreparedTerminal {
-    pub fn new(id: String, send: impl Fn(&[u8]) -> Result<(), String> + 'static) -> Self {
+    pub fn new(id: String, send: impl Fn(&TerminalLaunch) -> Result<(), String> + 'static) -> Self {
         Self { id, send: Box::new(send) }
     }
-    pub fn send(&self, input: &[u8]) -> Result<(), String> {
+    pub fn send(&self, input: &TerminalLaunch) -> Result<(), String> {
         (self.send)(input)
     }
 }
@@ -102,7 +111,7 @@ pub struct TerminalLauncher {
 }
 
 impl TerminalLauncher {
-    pub fn new(launch: impl Fn(Vec<u8>, &mut gpui::App) + 'static) -> Self {
+    pub fn new(launch: impl Fn(TerminalLaunch, &mut gpui::App) + 'static) -> Self {
         Self { launch: Rc::new(launch), prepare: None, focus: None }
     }
 
@@ -134,8 +143,8 @@ impl TerminalLauncher {
         self.focus.as_ref().is_some_and(|focus| focus(session, window, cx))
     }
 
-    /// Open a terminal and queue the bytes it should receive first.
-    pub fn launch(&self, initial_input: Vec<u8>, cx: &mut gpui::App) {
+    /// Open a terminal and queue an agent launch, ending the session on exit.
+    pub fn launch(&self, initial_input: TerminalLaunch, cx: &mut gpui::App) {
         (self.launch)(initial_input, cx);
     }
 }

@@ -309,9 +309,12 @@ The bundled Saved Prompts plugin exports `services::Prompts` from
 [Saved Prompts](../plugins/prompts/README.md) for persistence and settings behavior.
 
 `InstanceContext.terminal.prepare(cx)` returns a task resolving to an attached
-`PreparedTerminal` with a real session `id`; `send` delivers the validated input
-and reports queueing errors. Long or multiline shell commands are sourced from
-owner-only temporary scripts; ordinary `session.send` remains raw input. Successful
+`PreparedTerminal` with a real session `id`; `send` accepts a `TerminalLaunch`
+containing a validated POSIX shell `command` and separate optional typed `input`.
+All commands run from owner-only temporary scripts in a dedicated shell. The
+interactive shell is replaced before typed input is delivered, and the terminal
+session ends when the agent exits or fails. Ordinary `session.send` remains raw
+input. Successful
 queueing does not establish that the agent started or stayed alive. This lets a
 consumer claim a ticket before delivering its launch command.
 `terminal.focus(id, window, cx)` selects that session in its owning space.
