@@ -120,12 +120,15 @@ impl Namespace {
     /// `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, and `HERDR_PANE_ID` are cleared
     /// rather than set: they identify the pane a process was *launched from*,
     /// and chartr is not launched from one.
+    /// `NO_COLOR` belongs to the launching command's output, not the new
+    /// interactive terminals. A pane's shell can still opt out of color itself.
     pub fn env(&self) -> Vec<(OsString, Option<OsString>)> {
         let set = |k: &str, v: OsString| (OsString::from(k), Some(v));
         let clear = |k: &str| (OsString::from(k), None);
         vec![
             set("XDG_CONFIG_HOME", self.root.parent().unwrap_or(&self.root).as_os_str().to_owned()),
             set("HERDR_SOCKET_PATH", self.socket().into()),
+            clear("NO_COLOR"),
             clear("HERDR_SESSION"),
             clear("HERDR_CLIENT_SOCKET_PATH"),
             clear("HERDR_CONFIG_PATH"),
@@ -215,6 +218,28 @@ mod tests {
             let entry = env.iter().find(|(k, _)| k == key).expect("key is in the namespace env");
             assert!(entry.1.is_none(), "{key} must be removed, not set");
         }
+    }
+
+    #[test]
+    fn terminal_children_do_not_inherit_the_launchers_no_color() {
+        let ns = Namespace::rooted("/scratch/root");
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "printf '%s:%s' \"${NO_COLOR-unset}\" \"$CHARTR_TEST_ENV\""])
+            .env("NO_COLOR", "1")
+            .env("CHARTR_TEST_ENV", "preserved");
+        crate::control::apply(&mut command, &ns);
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"unset:preserved");
+
+        // An explicit choice inside the new terminal still takes effect.
+        let mut shell = Command::new("/bin/sh");
+        shell.args(["-c", "export NO_COLOR=1; printf '%s' \"$NO_COLOR\""]);
+        crate::control::apply(&mut shell, &ns);
+        let output = shell.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"1");
     }
 
     #[test]

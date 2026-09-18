@@ -74,6 +74,11 @@ vi mode, and character-palette behavior; chartr adds terminal-buffer search,
 desktop file drops, filesystem-link opening, and tab bell state at the host
 boundary. Terminal font changes reflow live through the shared theme provider.
 
+Chartr clears an inherited `NO_COLOR` when launching its private terminal
+backend, so starting the app from an agent or script does not disable colors
+in new terminals. Set `NO_COLOR` in a terminal's shell to disable color explicitly.
+An already-running backend and its sessions retain their existing environment.
+
 Agent-launched terminal sessions end when their agent exits or fails to start;
 they do not return to an interactive shell. Ordinary terminals retain their shell.
 
