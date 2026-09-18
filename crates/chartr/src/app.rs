@@ -236,6 +236,7 @@ pub struct WorkspaceWindow {
     sidebar: chrome::sidebar_pane::SidebarPane,
     window_bounds: Option<crate::persistence::WindowBounds>,
     state: Option<crate::persistence::StateWriter>,
+    state_restore_problem: Option<String>,
     persistence_dirty: bool,
     persistence_task: Option<gpui::Task<()>>,
     title_bar: Entity<crate::title_bar::TitleBar>,
@@ -294,14 +295,9 @@ impl WorkspaceWindow {
             cx.notify();
         })
         .detach();
-        let (mut state, mut saved, mut state_problem) =
-            match crate::persistence::state_file().and_then(StateStore::open) {
-                Ok(store) => match store.load() {
-                    Ok(saved) => (Some(store), saved, None),
-                    Err(error) => (Some(store), Snapshot::default(), Some(error.to_string())),
-                },
-                Err(error) => (None, Snapshot::default(), Some(error.to_string())),
-            };
+        let (mut state, mut saved, state_restore_problem) =
+            persistence::restore_state(crate::persistence::state_file());
+        let mut state_problem = None;
         let persisted = saved.clone();
         let conversations = cx.new(|cx| {
             crate::conversations::Conversations::new(saved.window.selected_conversation.clone(), cx)
@@ -352,11 +348,12 @@ impl WorkspaceWindow {
             ),
             window_bounds: saved.window.bounds,
             state: None,
+            state_restore_problem,
             persistence_dirty: false,
             persistence_task: None,
             title_bar,
             focus,
-            problem: state_problem.clone(),
+            problem: None,
             error_seen_at: HashMap::new(),
             dismissed_errors: HashSet::new(),
         };
@@ -368,7 +365,7 @@ impl WorkspaceWindow {
                 this.backend = Backend::Failed(error.to_string());
                 this.plugins_restored = true;
                 // No spaces were restored: keep the saved workspace intact.
-                this.problem = Some(state_problem.unwrap_or_else(|| error.to_string()));
+                this.problem = Some(error.to_string());
                 return this;
             }
         };
@@ -383,7 +380,9 @@ impl WorkspaceWindow {
                         false
                     }
                 },
-                None => true,
+                // Cleanup needs the restored snapshot to distinguish an empty
+                // legacy space from one whose saved items could not be read.
+                None => false,
             };
             if cleanup_pending {
                 let cleanup = registry

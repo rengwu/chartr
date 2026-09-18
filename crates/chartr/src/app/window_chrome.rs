@@ -239,6 +239,13 @@ impl WorkspaceWindow {
 
     fn current_error_keys(&self, cx: &App) -> Vec<ErrorNoticeKey> {
         let mut errors = Vec::new();
+        if let Some(message) = &self.state_restore_problem {
+            errors.push(ErrorNoticeKey {
+                source: "Workspace restore".to_owned(),
+                message: message.clone(),
+                severity: ErrorSeverity::Warning,
+            });
+        }
         match &self.backend {
             Backend::Recovering(message) => errors.push(ErrorNoticeKey {
                 source: "Terminal backend".to_owned(),

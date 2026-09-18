@@ -110,6 +110,11 @@ file order in `spaces.toml`, so a registry write failure rejects and rolls back
 the drop. Configuration and data from previous development namespaces, Go
 chartr, or chartr-rs are not imported automatically.
 
+If workspace state cannot be restored, Chartr preserves the database and disables
+workspace-state writes for that run, including startup cleanup and shutdown
+saving. A persistent banner explains that layout changes will not be saved.
+Project files and user-editable settings can still be saved normally.
+
 Normal app exit detaches sessions. An optional setting terminates them instead.
 The private Herdr runtime uses an exact socket under
 `$XDG_CONFIG_HOME/chartr/herdr`; inherited Herdr selectors are cleared so

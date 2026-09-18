@@ -446,6 +446,18 @@ impl Render for WorkspaceWindow {
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .child(title_bar)
             .children(app_bar)
+            .when(self.state_restore_problem.is_some(), |view| {
+                view.child(
+                    div().w_full().flex_none().child(
+                        Banner::new().severity(Severity::Warning).child(
+                            Label::new(
+                                "Workspace couldn’t be restored. Layout changes won’t be saved this time.",
+                            )
+                            .size(UI_LABEL_DEFAULT),
+                        ),
+                    ),
+                )
+            })
             .child(body)
             .when(self.settings.resolved().show_status_bar, |view| view.child(self.status_bar(cx)))
             .child(title_bar_foreground)
