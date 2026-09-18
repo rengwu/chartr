@@ -67,6 +67,62 @@ impl WorkspaceWindow {
             .into_any_element()
     }
 
+    /// Linux keeps the native window decorations and places app controls in
+    /// their own row, above either the workspace tabs or the sidebar.
+    pub(super) fn linux_app_bar(
+        &mut self,
+        on: chrome::Emit,
+        notices: Vec<ErrorNotice>,
+        visibility: crate::mode::ChromeVisibility,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let brand = || {
+            h_flex()
+                .flex_none()
+                .gap_1()
+                .child(gpui::img(crate::assets::BRAND_ICON_PATH).size(px(16.)))
+                .child(Label::new("chartr").size(UI_LABEL_DEFAULT).color(Color::Muted))
+                .into_any_element()
+        };
+        let reserved_width = chrome_controls_width(brand(), window, cx)
+            + window.rem_size() * 1.5
+            + if visibility.tabs > 0. {
+                px(SPACE_SWITCHER_MAX_WIDTH) + window.rem_size() * 0.5
+            } else {
+                px(0.)
+            };
+        let controls = self.chrome_end_controls(
+            on,
+            notices,
+            window.viewport_size().width - reserved_width,
+            window,
+            cx,
+        );
+        h_flex()
+            .id("linux-app-bar")
+            .w_full()
+            .h(px(crate::title_bar::HEIGHT))
+            .flex_none()
+            .px_2()
+            .gap_2()
+            .bg(cx.theme().colors().panel_background)
+            .child(h_flex().flex_1().min_w_0().gap_2().overflow_hidden().child(brand()).when(
+                visibility.tabs > 0.,
+                |start| {
+                    start.child(
+                        div()
+                            .min_w_0()
+                            .max_w(px(SPACE_SWITCHER_MAX_WIDTH))
+                            .overflow_hidden()
+                            .child(self.visible_space_switcher(visibility.tabs, window, cx)),
+                    )
+                },
+            ))
+            .child(controls)
+            .into_any_element()
+    }
+
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let current = self
             .active

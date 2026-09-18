@@ -13,6 +13,7 @@ pub struct Assets;
 /// The shared icon for every entry point and placeholder associated with opening a plugin pane.
 pub const PLUGIN_LAUNCHER_ICON_PATH: &str = "icons/full_screen.svg";
 pub const TITLE_BRAND_PATH: &str = "icons/title_brand.svg";
+pub const BRAND_ICON_PATH: &str = "images/chartr.png";
 
 /// Icons chartr draws, by the path `IconName::path` derives.
 const ICONS: &[(&str, &str)] = &[
@@ -45,6 +46,11 @@ const ICONS: &[(&str, &str)] = &[
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+        if path == BRAND_ICON_PATH {
+            return Ok(Some(Cow::Borrowed(include_bytes!(
+                "../../../docs/assets/v4/icon-mac-32.png"
+            ))));
+        }
         if let Some((_, svg)) = ICONS.iter().find(|(name, _)| *name == path) {
             return Ok(Some(Cow::Borrowed(svg.as_bytes())));
         }
@@ -53,6 +59,9 @@ impl AssetSource for Assets {
 
     fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
         let mut assets = zed_assets::Assets.list(path)?;
+        if BRAND_ICON_PATH.starts_with(path) {
+            assets.push(BRAND_ICON_PATH.into());
+        }
         for (name, _) in ICONS.iter().filter(|(name, _)| name.starts_with(path)) {
             let name = SharedString::from(*name);
             if !assets.contains(&name) {

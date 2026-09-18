@@ -82,6 +82,9 @@ impl Render for WorkspaceWindow {
         });
         let (title_bar, title_bar_foreground) =
             self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
+        let app_bar = cfg!(target_os = "linux").then(|| {
+            self.linux_app_bar(emit.clone(), error_notices.clone(), chrome_visibility, window, cx)
+        });
 
         // Dissolve the left divider as it meets the native window edge. Tie the
         // fade to distance so interrupted slides and reduced motion stay in sync.
@@ -126,8 +129,10 @@ impl Render for WorkspaceWindow {
             .w_full()
             .h(tab_height * chrome_visibility.tabs)
             .flex_none()
+            // Linux's app bar occupies its own row. Keep sliding tabs below it.
+            .when(cfg!(target_os = "linux"), |slot| slot.overflow_hidden())
             .when(chrome_visibility.tabs > 0., |slot| {
-                let controls = (!cfg!(target_os = "macos")).then(|| {
+                let controls = (!cfg!(any(target_os = "macos", target_os = "linux"))).then(|| {
                     (
                         self.visible_space_switcher(1., window, cx),
                         self.chrome_end_controls(
@@ -178,7 +183,7 @@ impl Render for WorkspaceWindow {
             // The settled sidebar's resize handle extends into the workspace.
             .when(chrome_visibility.sidebar < 1., |slot| slot.overflow_hidden())
             .when(chrome_visibility.sidebar > 0., |slot| {
-                let controls = (!cfg!(target_os = "macos")).then(|| {
+                let controls = (!cfg!(any(target_os = "macos", target_os = "linux"))).then(|| {
                     (
                         gpui::Empty.into_any_element(),
                         self.chrome_end_controls(
@@ -434,6 +439,7 @@ impl Render for WorkspaceWindow {
             }))
             .on_key_down(cx.listener(|this, event, window, cx| this.on_key(event, window, cx)))
             .child(title_bar)
+            .children(app_bar)
             .child(body)
             .when(self.settings.resolved().show_status_bar, |view| view.child(self.status_bar(cx)))
             .child(title_bar_foreground)
