@@ -51,4 +51,6 @@ gtk = "0.18"
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+terminal = { workspace = true, features = ["test-support"] }
+libc = "0.2"
 tempfile.workspace = true

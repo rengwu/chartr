@@ -66,9 +66,10 @@ runs Herdr's native `terminal attach <id> --takeover` client; the persistent PTY
 and shell remain owned by the private Herdr daemon. chartr owns only attachment
 lifecycle, pane placement, settings/theme inputs, and platform terminal bindings.
 The pinned view adds host policies for grid alignment, cell-width padding,
-overlay scrollbars, and pausing grid resize during layout animations. Zed's
-bottom-alignment policy remains the default inside the vendored crate; chartr
-selects top alignment. See the [maintained patch](../vendor/zed-terminal-view/chartr-PATCH.md).
+overlay scrollbars, backend wheel forwarding, and pausing grid resize during
+layout animations. Zed's bottom-alignment policy remains the default inside the
+vendored crate; chartr selects top alignment. See the
+[maintained patch](../vendor/zed-terminal-view/chartr-PATCH.md).
 The pinned Zed terminal keymap supplies copy/paste, word navigation, scrollback,
 vi mode, and character-palette behavior; chartr adds terminal-buffer search,
 desktop file drops, filesystem-link opening, and tab bell state at the host
@@ -78,6 +79,13 @@ Chartr clears an inherited `NO_COLOR` when launching its private terminal
 backend, so starting the app from an agent or script does not disable colors
 in new terminals. Set `NO_COLOR` in a terminal's shell to disable color explicitly.
 An already-running backend and its sessions retain their existing environment.
+
+Ordinary shell text can be selected by dragging without a modifier. Mouse-aware
+TUIs receive their clicks and drags; Shift-drag temporarily selects text instead.
+The attach client uses a private `chartr-attach.toml` with Herdr's unconditional
+mouse capture disabled, so capture follows the child application. Wheel events
+still reach Herdr independently, preserving its scrollback without reserving
+ordinary clicks for the backend.
 
 Agent-launched terminal sessions end when their agent exits or fails to start;
 they do not return to an interactive shell. Ordinary terminals retain their shell.

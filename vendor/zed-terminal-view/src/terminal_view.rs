@@ -140,6 +140,7 @@ pub struct TerminalView {
     mode: TerminalMode,
     vertical_alignment: TerminalVerticalAlignment,
     grid_padding: bool,
+    report_scroll_events: bool,
     resize_paused: bool,
     // Explicit override for whether workspace-specific context menu actions are shown.
     // When `None`, visibility is derived from `mode` (hidden for embedded terminals).
@@ -307,6 +308,7 @@ impl TerminalView {
             mode: TerminalMode::Standalone,
             vertical_alignment: TerminalVerticalAlignment::default(),
             grid_padding: false,
+            report_scroll_events: false,
             resize_paused: false,
             show_workspace_actions: None,
             workspace_id,
@@ -734,6 +736,13 @@ impl TerminalView {
         max_scroll_top_in_lines as f32 * line_height
     }
 
+    /// Multiplexer hosts can own scrollback even when the child is not capturing
+    /// clicks. Report wheel events independently so native text selection stays
+    /// available. The host must understand SGR wheel reports outside mouse mode.
+    pub fn set_report_scroll_events(&mut self, enabled: bool) {
+        self.report_scroll_events = enabled;
+    }
+
     fn scroll_wheel(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
         let terminal_content = self.terminal.read(cx).last_content();
 
@@ -750,10 +759,18 @@ impl TerminalView {
             }
         }
         self.terminal.update(cx, |term, cx| {
+            // Scope this transport override to the wheel gesture. Keep Zed's
+            // scroll accumulation and encoding, and preserve the child's modes
+            // for subsequent clicks, dragging, context menus, and selection.
+            let mode = term.last_content.mode;
+            if self.report_scroll_events && !mode.intersects(Modes::MOUSE_MODE) {
+                term.last_content.mode |= Modes::MOUSE_REPORT_CLICK | Modes::SGR_MOUSE;
+            }
             term.scroll_wheel(
                 event,
                 TerminalSettings::get_global(cx).scroll_multiplier.max(0.01),
-            )
+            );
+            term.last_content.mode = mode;
         });
     }
 

@@ -623,6 +623,10 @@ impl Client {
         let mut args = Vec::new();
         for (key, value) in self.namespace.env() {
             let key = key.to_string_lossy().into_owned();
+            if key == "HERDR_CONFIG_PATH" {
+                env.insert(key, self.namespace.attach_config().to_string_lossy().into_owned());
+                continue;
+            }
             match value {
                 Some(value) => {
                     env.insert(key, value.to_string_lossy().into_owned());
@@ -1149,6 +1153,11 @@ mod tests {
         assert_eq!(attach.program, PathBuf::from("/usr/bin/env"));
         assert!(attach.args.windows(2).any(|pair| pair == ["-u", "HERDR_PANE_ID"]));
         assert!(attach.args.windows(2).any(|pair| pair == ["-u", "HERDR_SESSION"]));
+        assert!(!attach.args.windows(2).any(|pair| pair == ["-u", "HERDR_CONFIG_PATH"]));
+        assert_eq!(
+            attach.env.get("HERDR_CONFIG_PATH"),
+            Some(&namespace.attach_config().to_string_lossy().into_owned())
+        );
         assert_eq!(
             &attach.args[attach.args.len() - 5..],
             &[

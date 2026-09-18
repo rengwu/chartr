@@ -7,8 +7,9 @@
 //! manufacturing a partial Zed workspace; disabling workspace actions selects
 //! the view's documented non-workspace-host path. chartr uses the maintained
 //! host extensions: top grid alignment, balanced cell padding, an overlay
-//! scrollbar, and pausing grid resizes during workspace mode animations. All
-//! terminal behavior remains Zed's pinned model and view.
+//! scrollbar, and pausing grid resizes during workspace mode animations. Wheel
+//! reports reach Herdr's scrollback even when the child does not capture clicks;
+//! selection and TUI mouse gestures remain Zed's pinned model and view.
 
 use gpui::{
     App, AppContext as _, Div, Entity, Hsla, InteractiveElement as _, ParentElement as _,
@@ -33,6 +34,7 @@ pub fn new_view(
         view.set_show_workspace_actions(false, cx);
         view.set_vertical_alignment(terminal_view::TerminalVerticalAlignment::Top, cx);
         view.set_grid_padding(true, cx);
+        view.set_report_scroll_events(true);
         view
     })
 }
@@ -96,6 +98,89 @@ mod tests {
             theme::init(theme::LoadThemes::JustBase, cx);
             crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
         });
+    }
+
+    #[gpui::test]
+    fn selection_and_wheel_reporting_follow_the_child_mouse_mode(cx: &mut TestAppContext) {
+        use gpui::{MouseButton, ScrollDelta, ScrollWheelEvent, TouchPhase};
+        use terminal::Modes;
+
+        init_test(cx);
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                CursorShape::default(),
+                AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+        let (_, cx) = cx.add_window_view(|window, cx| TestHost {
+            terminal: terminal.clone(),
+            view: new_view(terminal.clone(), window, cx),
+            other_focus: cx.focus_handle(),
+            resize_paused: false,
+            inset: point(px(0.), px(0.)),
+        });
+        cx.simulate_resize(size(px(400.), px(200.)));
+
+        for (capture, shift) in [(false, false), (true, false), (true, true), (false, false)] {
+            terminal.update(cx, |terminal, cx| {
+                terminal.input(Vec::new()); // clear the previous selection
+                let modes = if capture {
+                    b"\x1b[?1002h\x1b[?1006h".as_slice()
+                } else {
+                    b"\x1b[?1002l\x1b[?1006l".as_slice()
+                };
+                terminal.write_output(b"\x1b[?1049h\x1b[2J\x1b[Hhello world", cx);
+                terminal.write_output(modes, cx);
+            });
+            cx.run_until_parked();
+            let bounds =
+                terminal.read_with(cx, |terminal, _| terminal.last_content.terminal_bounds);
+            let start =
+                bounds.bounds.origin + point(bounds.cell_width * 0.1, bounds.line_height * 0.5);
+            let end = start + point(bounds.cell_width * 5., px(0.));
+            let modifiers = Modifiers { shift, ..Modifiers::none() };
+            terminal.update(cx, |terminal, _| terminal.take_pty_write_log());
+            cx.simulate_mouse_down(start, MouseButton::Left, modifiers);
+            cx.simulate_mouse_move(end, Some(MouseButton::Left), modifiers);
+            cx.simulate_mouse_up(end, MouseButton::Left, modifiers);
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, _| {
+                let reports = terminal.take_pty_write_log();
+                if capture && !shift {
+                    assert!(
+                        terminal.last_content.selection_text.as_deref().unwrap_or("").is_empty()
+                    );
+                    assert!(reports.iter().any(|report| report.starts_with(b"\x1b[<0;")));
+                    assert!(reports.iter().any(|report| report.starts_with(b"\x1b[<32;")));
+                    assert!(reports.iter().any(|report| report.ends_with(b"m")));
+                } else {
+                    assert_eq!(terminal.last_content.selection_text.as_deref(), Some("hello"));
+                    assert!(reports.is_empty(), "selection must not send mouse input to the child");
+                }
+            });
+
+            // Scrolling still reaches the multiplexer in shell mode, without
+            // leaking the wheel-only override into subsequent selection.
+            let mode = terminal.read_with(cx, |terminal, _| terminal.last_content.mode);
+            cx.simulate_event(ScrollWheelEvent {
+                position: start,
+                delta: ScrollDelta::Lines(point(0., 1.)),
+                touch_phase: TouchPhase::Moved,
+                ..Default::default()
+            });
+            cx.run_until_parked();
+            terminal.update(cx, |terminal, _| {
+                assert_eq!(terminal.last_content.mode, mode);
+                assert_eq!(mode.intersects(Modes::MOUSE_MODE), capture);
+                let reports = terminal.take_pty_write_log();
+                assert!(reports.iter().any(|report| report.starts_with(b"\x1b[<64;")));
+            });
+        }
     }
 
     #[gpui::test]

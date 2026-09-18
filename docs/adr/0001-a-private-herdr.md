@@ -41,6 +41,12 @@ overriding what it sets. chartr is frequently launched *from* a Herdr pane, and
 an inherited selector would otherwise point an attach client at a daemon the
 control plane is not talking to.
 
+Direct attach overrides `HERDR_CONFIG_PATH` with Chartr's generated
+`chartr-attach.toml`. This client-only config disables Herdr's unconditional mouse
+capture; child TUIs can still request it. The daemon retains its existing config
+and shell setup. The terminal view forwards wheel reports independently so
+Herdr-owned scrollback remains usable alongside native text selection.
+
 ## What this rules out
 
 - Attaching chartr to a session the user started in their own herdr. That is a

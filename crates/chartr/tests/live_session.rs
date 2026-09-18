@@ -12,6 +12,9 @@ use std::{
 
 use chartr_herdr::{Namespace, Sidecar, control::Client};
 
+#[path = "support/mouse.rs"]
+mod mouse;
+
 struct Live {
     client: Client,
     child: Option<Child>,
@@ -20,12 +23,17 @@ struct Live {
 
 impl Live {
     fn start() -> Self {
-        let root = tempfile::tempdir().expect("scratch backend root");
+        // Keep macOS Unix socket paths below sockaddr_un's length limit.
+        let root = tempfile::Builder::new()
+            .prefix("cr-")
+            .tempdir_in("/tmp")
+            .expect("scratch backend root");
         let namespace = Namespace::rooted(root.path().join("chartr/herdr"));
         namespace.prepare().expect("namespace directories");
         let sidecar = sidecar();
         let mut command = Command::new(sidecar.path());
         command.arg("server").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        command.env("HOME", root.path()).env("SHELL", "/bin/sh");
         for (key, value) in namespace.env() {
             match value {
                 Some(value) => command.env(key, value),

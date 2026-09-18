@@ -9,6 +9,8 @@
 
 use std::{ffi::OsString, path::PathBuf};
 
+const ATTACH_CONFIG: &str = "# Chartr owns selection; the child TUI may still request mouse input.\n[ui]\nmouse_capture = false\n";
+
 /// The private locations and environment of chartr's own herdr.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Namespace {
@@ -37,6 +39,11 @@ impl Namespace {
         self.root.join("herdr.sock")
     }
 
+    /// Client-only preferences; never replace the daemon's shell configuration.
+    pub(crate) fn attach_config(&self) -> PathBuf {
+        self.root.join("chartr-attach.toml")
+    }
+
     /// The daemon's log, which is the only thing here a human reads.
     pub fn log(&self) -> PathBuf {
         self.root.join("daemon.log")
@@ -55,6 +62,9 @@ impl Namespace {
     pub fn prepare(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
         self.migrate_session_shell()?;
+        if std::fs::read(self.attach_config()).ok().as_deref() != Some(ATTACH_CONFIG.as_bytes()) {
+            chartr_storage::write_atomic(&self.attach_config(), ATTACH_CONFIG.as_bytes())?;
+        }
         Ok(())
     }
 
@@ -202,6 +212,22 @@ mod tests {
         std::fs::write(&shell, custom).unwrap();
         ns.prepare().unwrap();
         assert_eq!(std::fs::read_to_string(shell).unwrap(), custom);
+    }
+
+    #[test]
+    fn attach_mouse_preferences_do_not_change_the_daemon_configuration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ns = Namespace::rooted(tmp.path());
+        let config = tmp.path().join("config.toml");
+        let custom = "shell = '/bin/zsh'\n[ui]\nmouse_capture = true\n";
+        std::fs::write(&config, custom).unwrap();
+        ns.prepare().unwrap();
+        assert_eq!(std::fs::read_to_string(ns.attach_config()).unwrap(), ATTACH_CONFIG);
+        // Preparing an existing namespace must repair stale client preferences.
+        std::fs::write(ns.attach_config(), "[ui]\nmouse_capture = true\n").unwrap();
+        ns.prepare().unwrap();
+        assert_eq!(std::fs::read_to_string(ns.attach_config()).unwrap(), ATTACH_CONFIG);
+        assert_eq!(std::fs::read_to_string(config).unwrap(), custom);
     }
 
     #[test]
