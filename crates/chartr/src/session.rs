@@ -82,11 +82,39 @@ impl Session {
     ) -> Self {
         let terminal = cx.new(|cx| builder.subscribe(cx));
         let weak_terminal = terminal.downgrade();
-        let (input_tx, mut input_rx) = mpsc::unbounded::<Vec<u8>>();
-        let input_task = cx.spawn(async move |_, cx| {
-            while let Some(bytes) = input_rx.next().await {
+        let (input_tx, mut input_rx) = mpsc::unbounded::<Input>();
+        let executor = cx.background_executor().clone();
+        let input_task = cx.spawn(async move |space, cx| {
+            while let Some(input) = input_rx.next().await {
+                let (bytes, launch) = match input {
+                    Input::Raw(bytes) => (bytes, None),
+                    Input::Launch(launch) => (launch.start.clone(), Some(launch)),
+                };
                 if weak_terminal.update(cx, |terminal, _| terminal.input(bytes)).is_err() {
                     return;
+                }
+                if let Some(launch) = launch {
+                    let deadline = executor.now() + Duration::from_secs(30);
+                    while !launch.files.ready() && executor.now() < deadline {
+                        executor.timer(Duration::from_millis(10)).await;
+                    }
+                    if !launch.files.ready() {
+                        let _ = space.update(cx, |space, cx| {
+                            space.report_launch_error(
+                                "The agent launch did not start; its prompt was not sent.".into(),
+                                cx,
+                            );
+                        });
+                        continue;
+                    }
+                    launch.files.acknowledge();
+                    if !launch.input.is_empty()
+                        && weak_terminal
+                            .update(cx, |terminal, _| terminal.input(launch.input))
+                            .is_err()
+                    {
+                        return;
+                    }
                 }
             }
         });
@@ -150,10 +178,15 @@ pub struct SessionAccess(Weak<Mutex<SessionEndpoint>>);
 #[derive(Clone)]
 struct SessionEndpoint {
     info: control::Session,
-    input_tx: mpsc::UnboundedSender<Vec<u8>>,
+    input_tx: mpsc::UnboundedSender<Input>,
     // Keep unsent/unconsumed launch scripts alive across attachment replacement.
-    // Sourcing removes each file immediately; dropping the session cleans up failures.
-    launch_scripts: Vec<Arc<tempfile::TempPath>>,
+    // The dedicated shell removes its script; dropping the session cleans up failures.
+    launch_scripts: Vec<Arc<launch::LaunchFiles>>,
+}
+
+enum Input {
+    Raw(Vec<u8>),
+    Launch(launch::StagedLaunch),
 }
 
 impl SessionAccess {
@@ -168,20 +201,27 @@ impl SessionAccess {
             .lock()
             .unwrap()
             .input_tx
-            .unbounded_send(bytes.to_vec())
+            .unbounded_send(Input::Raw(bytes.to_vec()))
             .map_err(|_| session_unavailable())
     }
 
     /// Launch commands are shell input; ordinary terminal keystrokes remain raw.
-    pub fn send_shell_launch(&self, bytes: &[u8]) -> chartr_herdr::Result<()> {
+    pub fn send_shell_launch(
+        &self,
+        launch: &chartr_plugin::TerminalLaunch,
+    ) -> chartr_herdr::Result<()> {
         let endpoint = self.0.upgrade().ok_or_else(session_unavailable)?;
         let mut endpoint = endpoint.lock().unwrap();
-        let (input, script) = launch::stage(bytes).map_err(|error| {
+        let staged = launch::stage(launch).map_err(|error| {
             chartr_herdr::Error::Protocol(format!("Preparing agent launch: {error}"))
         })?;
-        endpoint.input_tx.unbounded_send(input).map_err(|_| session_unavailable())?;
-        endpoint.launch_scripts.retain(|script| script.exists());
-        endpoint.launch_scripts.extend(script);
+        let files = staged.files.clone();
+        endpoint
+            .input_tx
+            .unbounded_send(Input::Launch(staged))
+            .map_err(|_| session_unavailable())?;
+        endpoint.launch_scripts.retain(|files| files.pending());
+        endpoint.launch_scripts.push(files);
         Ok(())
     }
 }
@@ -243,17 +283,25 @@ mod tests {
         let (mut session, mut original_rx) = attachment(info.clone());
         let access = session.access();
         access.send(b"first").unwrap();
-        assert_eq!(futures::executor::block_on(original_rx.next()).unwrap(), b"first");
+        assert!(
+            matches!(futures::executor::block_on(original_rx.next()), Some(Input::Raw(bytes)) if bytes == b"first")
+        );
         let mut info = info;
         info.label = "after".into();
         session.update_info(info.clone());
         assert_eq!(access.info().unwrap().title(), "after");
         access
-            .send_shell_launch(format!("printf '%s' '{}'\r", "x".repeat(5000)).as_bytes())
+            .send_shell_launch(&chartr_plugin::TerminalLaunch {
+                command: format!("printf '%s' '{}'", "x".repeat(5000)),
+                input: Vec::new(),
+            })
             .unwrap();
-        let script = session.endpoint.lock().unwrap().launch_scripts[0].to_path_buf();
-        let launch_input = futures::executor::block_on(original_rx.next()).unwrap();
-        assert!(launch_input.starts_with(b". ") && launch_input.len() < 1024);
+        let script = session.endpoint.lock().unwrap().launch_scripts[0].script.to_path_buf();
+        let Some(Input::Launch(staged)) = futures::executor::block_on(original_rx.next()) else {
+            panic!("expected launch")
+        };
+        assert!(staged.start.starts_with(b"exec /bin/sh ") && staged.start.len() < 1024);
+        drop(staged);
         assert!(script.exists());
         let (replacement, mut replacement_rx) = attachment(info);
         let replacement_terminal = replacement.terminal().entity_id();
@@ -261,8 +309,10 @@ mod tests {
         assert!(script.exists(), "reattaching must not discard a pending launch");
         assert_eq!(session.terminal().entity_id(), replacement_terminal);
         access.send(b"replacement").unwrap();
-        assert_eq!(futures::executor::block_on(replacement_rx.next()).unwrap(), b"replacement");
-        assert_eq!(futures::executor::block_on(original_rx.next()), None);
+        assert!(
+            matches!(futures::executor::block_on(replacement_rx.next()), Some(Input::Raw(bytes)) if bytes == b"replacement")
+        );
+        assert!(futures::executor::block_on(original_rx.next()).is_none());
         drop(session);
         assert!(!script.exists(), "closing the session cleans up an unconsumed launch");
         assert!(access.send(b"closed").is_err());

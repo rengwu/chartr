@@ -95,7 +95,7 @@ impl WorkspaceWindow {
                 let owner =
                     self.spaces
                         .iter()
-                        .find(|space| space.read(cx).session_access(&session.id).is_some())
+                        .find(|space| space.read(cx).owns_session(&session.id))
                         .or_else(|| {
                             self.spaces.iter().find(|space| {
                                 session.cwd.as_ref().is_some_and(|cwd| {

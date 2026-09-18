@@ -74,6 +74,12 @@ vi mode, and character-palette behavior; chartr adds terminal-buffer search,
 desktop file drops, filesystem-link opening, and tab bell state at the host
 boundary. Terminal font changes reflow live through the shared theme provider.
 
+Agent-launched terminal sessions end when their agent exits or fails to start;
+they do not return to an interactive shell. Ordinary terminals retain their shell.
+
+A terminal stays in its owning space when its working directory changes,
+including after chartr is reopened.
+
 ## Settings and persistence
 
 Settings uses one application-wide native window, following Zed: every chrome

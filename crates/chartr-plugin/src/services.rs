@@ -131,7 +131,7 @@ impl PartialEq for PluginSettings {
 impl Eq for PluginSettings {}
 
 type AgentList = dyn Fn(&gpui::App) -> Result<Vec<String>, String>;
-type AgentInput = dyn Fn(&str, &str, &gpui::App) -> Result<Vec<u8>, String>;
+type AgentInput = dyn Fn(&str, &str, &gpui::App) -> Result<crate::TerminalLaunch, String>;
 
 /// Agent owns validation, adapters, quoting and prompt delivery.
 pub struct Agents {
@@ -142,7 +142,7 @@ pub struct Agents {
 impl Agents {
     pub fn new(
         list: impl Fn(&gpui::App) -> Result<Vec<String>, String> + 'static,
-        prepare: impl Fn(&str, &str, &gpui::App) -> Result<Vec<u8>, String> + 'static,
+        prepare: impl Fn(&str, &str, &gpui::App) -> Result<crate::TerminalLaunch, String> + 'static,
     ) -> Self {
         Self { list: Box::new(list), prepare: Box::new(prepare) }
     }
@@ -150,7 +150,12 @@ impl Agents {
     pub fn list(&self, cx: &gpui::App) -> Result<Vec<String>, String> {
         (self.list)(cx)
     }
-    pub fn prepare(&self, name: &str, prompt: &str, cx: &gpui::App) -> Result<Vec<u8>, String> {
+    pub fn prepare(
+        &self,
+        name: &str,
+        prompt: &str,
+        cx: &gpui::App,
+    ) -> Result<crate::TerminalLaunch, String> {
         (self.prepare)(name, prompt, cx)
     }
 }
@@ -158,7 +163,7 @@ impl Agents {
 /// Direct Inbox launch preparation. Agent owns quoting and saved profile fields;
 /// the host owns terminal creation and session discovery.
 pub struct InboxLaunch {
-    pub input: Vec<u8>,
+    pub input: crate::TerminalLaunch,
     pub integration: Option<String>,
 }
 

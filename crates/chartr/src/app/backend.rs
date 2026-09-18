@@ -263,30 +263,125 @@ impl WorkspaceWindow {
         cx: &mut Context<Self>,
     ) {
         self.observe_conversations(&infos, cx);
-        let paths_by_workspace: HashMap<WorkspaceId, PathBuf> = infos
+        let owners: Vec<_> = self
+            .spaces
             .iter()
-            .filter_map(|info| info.cwd.clone().map(|cwd| (info.workspace.clone(), cwd)))
-            .collect();
-        let mut by_space: HashMap<EntityId, Vec<chartr_herdr::control::Session>> = HashMap::new();
-
-        for info in infos {
-            let path =
-                info.cwd.clone().or_else(|| paths_by_workspace.get(&info.workspace).cloned());
-            let Some(path) = path else {
-                continue;
-            };
-            let target = self.spaces.iter().find(|space| {
+            .map(|space| {
                 let space = space.read(cx);
-                spaces::same_path(space.path(), &path)
-            });
-            if let Some(target) = target {
-                by_space.entry(target.entity_id()).or_default().push(info);
-            }
-        }
-
-        for space in &self.spaces {
-            let infos = by_space.remove(&space.entity_id()).unwrap_or_default();
+                (space.path().clone(), space.owned_session_ids())
+            })
+            .collect();
+        for (space, infos) in self.spaces.iter().zip(partition_sessions(infos, &owners)) {
             space.update(cx, |space, cx| space.adopt(infos, cx));
+        }
+    }
+}
+
+/// Stable live/saved identities take precedence over cwd, including while an
+/// attachment is being restored. Cwd only discovers otherwise unknown sessions.
+fn partition_sessions(
+    infos: Vec<chartr_herdr::control::Session>,
+    owners: &[(PathBuf, HashSet<chartr_herdr::PaneId>)],
+) -> Vec<Vec<chartr_herdr::control::Session>> {
+    let known_owner = |info: &chartr_herdr::control::Session| {
+        owners.iter().position(|(_, sessions)| sessions.contains(&info.id))
+    };
+    let mut workspaces: HashMap<WorkspaceId, Option<usize>> = HashMap::new();
+    for info in &infos {
+        if let Some(owner) = known_owner(info) {
+            workspaces
+                .entry(info.workspace.clone())
+                .and_modify(|existing| {
+                    if *existing != Some(owner) {
+                        *existing = None;
+                    }
+                })
+                .or_insert(Some(owner));
+        }
+    }
+    let mut partitions = vec![Vec::new(); owners.len()];
+    for info in infos {
+        let owner = known_owner(&info)
+            .or_else(|| workspaces.get(&info.workspace).copied().flatten())
+            .or_else(|| {
+                info.cwd.as_ref().and_then(|cwd| {
+                    owners.iter().position(|(path, _)| spaces::same_path(path, cwd))
+                })
+            });
+        if let Some(owner) = owner {
+            partitions[owner].push(info);
+        }
+    }
+    partitions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chartr_herdr::{
+        PaneId, TerminalId,
+        control::{Session, SessionStatus},
+    };
+
+    fn session(id: &str, workspace: &str, cwd: Option<&str>) -> Session {
+        Session {
+            id: PaneId(id.into()),
+            terminal: TerminalId(id.into()),
+            workspace: WorkspaceId(workspace.into()),
+            label: id.into(),
+            running: None,
+            status: SessionStatus::Unknown,
+            agent: None,
+            agent_session: None,
+            conversation_title: None,
+            foreground_pid: None,
+            cwd: cwd.map(PathBuf::from),
+        }
+    }
+
+    #[test]
+    fn live_and_restored_sessions_stay_in_their_space_after_cd() {
+        let owners = vec![
+            (
+                PathBuf::from("/project/a"),
+                HashSet::from([PaneId("live".into()), PaneId("saved".into())]),
+            ),
+            (PathBuf::from("/project/b"), HashSet::new()),
+        ];
+        let partitions = partition_sessions(
+            vec![
+                session("live", "w1", Some("/project/b")),
+                session("saved", "w1", Some("/project/a/subdir")),
+                session("new-sibling", "w1", None),
+                session("new-project", "w2", Some("/project/b")),
+            ],
+            &owners,
+        );
+        assert_eq!(
+            partitions[0].iter().map(|s| s.id.0.as_str()).collect::<Vec<_>>(),
+            ["live", "saved", "new-sibling"]
+        );
+        assert_eq!(partitions[1][0].id.0, "new-project");
+    }
+
+    #[test]
+    fn explicit_ownership_wins_even_when_a_backend_workspace_spans_spaces() {
+        let owners = vec![
+            (PathBuf::from("/a"), HashSet::from([PaneId("one".into())])),
+            (PathBuf::from("/b"), HashSet::from([PaneId("two".into())])),
+        ];
+        let infos = vec![
+            session("one", "w", Some("/b")),
+            session("two", "w", Some("/a")),
+            session("new", "w", Some("/b")),
+        ];
+        for infos in [infos.clone(), infos.into_iter().rev().collect()] {
+            let partitions = partition_sessions(infos, &owners);
+            assert_eq!(partitions[0].len(), 1);
+            assert_eq!(partitions[0][0].id.0, "one");
+            assert_eq!(partitions[1].len(), 2);
+            assert!(partitions[1].iter().any(|s| s.id.0 == "two"));
+            assert!(partitions[1].iter().any(|s| s.id.0 == "new"));
         }
     }
 }

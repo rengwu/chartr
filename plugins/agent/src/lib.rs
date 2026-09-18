@@ -972,7 +972,10 @@ fn format_args(arguments: &[String]) -> String {
 /// Turn one registered-agent launch into exactly what the new shell receives.
 /// Every word is quoted independently so fields stay data rather than shell
 /// fragments.
-fn opening_input(agent: &AgentRecord, prompt: &str) -> Result<Vec<u8>, String> {
+fn opening_input(
+    agent: &AgentRecord,
+    prompt: &str,
+) -> Result<chartr_plugin::TerminalLaunch, String> {
     let program = agent.adapter.trim();
     if program.is_empty() {
         return Err("an agent launch needs an adapter".to_owned());
@@ -1011,13 +1014,12 @@ fn opening_input(agent: &AgentRecord, prompt: &str) -> Result<Vec<u8>, String> {
         line.push_str(&shell_quoted(prompt));
     }
 
-    let mut input = line.into_bytes();
-    input.push(b'\r');
+    let mut input = Vec::new();
     if delivery == PromptDelivery::Typed && !prompt.is_empty() {
         input.extend_from_slice(prompt.as_bytes());
         input.push(b'\r');
     }
-    Ok(input)
+    Ok(chartr_plugin::TerminalLaunch { command: line, input })
 }
 
 fn inbox_input(agent: &AgentRecord) -> Result<chartr_plugin::services::InboxLaunch, String> {
@@ -1210,7 +1212,7 @@ mod tests {
                     record(&executable, &["--profile", "saved"], &["AGENT_MODE=work"], "default");
                 let launch = inbox_input(&agent).unwrap();
                 assert_eq!(launch.integration.as_deref(), Some(definition.slug));
-                let input = String::from_utf8(launch.input).unwrap();
+                let input = launch.input.command;
                 assert!(input.contains(&shell_quoted(&executable)), "{alias}: {input}");
                 assert!(input.contains("saved") && input.contains("AGENT_MODE='work'"));
             }
@@ -1222,8 +1224,8 @@ mod tests {
         let agent = record("codex", &[], &[], "argv");
         assert!(valid_stored_agent(&agent));
         assert_eq!(
-            String::from_utf8(opening_input(&agent, "inspect this").unwrap()).unwrap(),
-            "'codex' 'inspect this'\r"
+            opening_input(&agent, "inspect this").unwrap().command,
+            "'codex' 'inspect this'"
         );
     }
 
@@ -1238,7 +1240,7 @@ mod tests {
             );
             let launch = inbox_input(&agent).unwrap();
             assert_eq!(launch.input, opening_input(&agent, "").unwrap());
-            let input = String::from_utf8(launch.input).unwrap();
+            let input = launch.input.command;
             assert!(!input.contains("--port"));
             assert!(!input.contains("--hostname"));
         }
@@ -1252,28 +1254,36 @@ mod tests {
             &["AGENT_HOME=/agent data"],
             "argv",
         );
-        let input =
-            String::from_utf8(opening_input(&agent, "fix the 'quoted' test").unwrap()).unwrap();
+        let input = opening_input(&agent, "fix the 'quoted' test").unwrap().command;
         assert!(input.starts_with("AGENT_HOME='/agent data' "));
         assert!(input.contains("'codex' '--model' 'a model' 'it'\\''s-safe'"));
-        assert!(input.ends_with("'fix the '\\''quoted'\\'' test'\r"));
+        assert!(input.ends_with("'fix the '\\''quoted'\\'' test'"));
     }
 
     #[test]
-    fn typed_delivery_puts_the_prompt_after_the_command() {
+    fn typed_delivery_keeps_the_prompt_separate_from_the_command() {
         let agent = record("opencode", &["--fast"], &[], "type");
-        assert_eq!(
-            String::from_utf8(opening_input(&agent, "inspect this").unwrap()).unwrap(),
-            "'opencode' '--fast'\rinspect this\r"
-        );
+        assert_eq!(opening_input(&agent, "inspect this").unwrap().input, b"inspect this\r");
+        assert_eq!(opening_input(&agent, "inspect this").unwrap().command, "'opencode' '--fast'");
+    }
+
+    #[test]
+    fn carriage_returns_and_editing_characters_do_not_delimit_launch_commands() {
+        let agent = record("agent-cli", &["arg\r\nwith CRLF"], &["VALUE=\u{15}literal"], "argv");
+        let prompt = "\u{15}printf unwanted; : \\\r\nnext line";
+        let launch = opening_input(&agent, prompt).unwrap();
+        assert!(launch.input.is_empty());
+        assert!(launch.command.ends_with(&shell_quoted(prompt)));
+        assert!(launch.command.contains(&shell_quoted("arg\r\nwith CRLF")));
+        assert!(launch.command.contains("VALUE='\u{15}literal'"));
     }
 
     #[test]
     fn a_named_prompt_flag_precedes_registered_arguments() {
         let agent = record("agent-cli", &["--model", "large"], &[], "--prompt");
         assert_eq!(
-            String::from_utf8(opening_input(&agent, "inspect this").unwrap()).unwrap(),
-            "'agent-cli' '--prompt' 'inspect this' '--model' 'large'\r"
+            opening_input(&agent, "inspect this").unwrap().command,
+            "'agent-cli' '--prompt' 'inspect this' '--model' 'large'"
         );
     }
 

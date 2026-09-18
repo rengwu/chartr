@@ -30,7 +30,7 @@ fn context(root: &Path, send: impl Fn(&[u8]) -> Result<(), String> + 'static) ->
                 if name != "Test agent" {
                     return Err("Unknown agent".into());
                 }
-                Ok(prompt.as_bytes().to_vec())
+                Ok(chartr_plugin::TerminalLaunch { command: prompt.into(), input: Vec::new() })
             },
         ))],
     );
@@ -61,7 +61,7 @@ fn context(root: &Path, send: impl Fn(&[u8]) -> Result<(), String> + 'static) ->
             move |_| {
                 let send = send.clone();
                 gpui::Task::ready(Ok(PreparedTerminal::new("test-session".into(), move |input| {
-                    send(input)
+                    send(input.command.as_bytes())
                 })))
             },
         ),
