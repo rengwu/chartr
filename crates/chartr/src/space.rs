@@ -45,6 +45,7 @@ pub struct Space {
     layout: WorkspaceTabs,
     items: HashMap<ItemId, Item>,
     sessions: HashMap<PaneId, ItemId>,
+    attaching_sessions: HashSet<PaneId>,
     starting: bool,
     closing: HashSet<ItemId>,
     /// Pane ids successfully closed during this daemon lifetime. A backend
@@ -80,6 +81,7 @@ impl Space {
             layout: WorkspaceTabs::new(),
             items: HashMap::new(),
             sessions: HashMap::new(),
+            attaching_sessions: HashSet::new(),
             starting: false,
             closing: HashSet::new(),
             retired_sessions: HashSet::new(),
@@ -124,6 +126,22 @@ impl Space {
     pub(crate) fn report_launch_error(&mut self, error: String, cx: &mut Context<Self>) {
         self.problem = Some(error);
         cx.notify();
+    }
+
+    /// A foreground cwd is presentation metadata, never a change of ownership.
+    pub fn owns_session(&self, id: &PaneId) -> bool {
+        self.sessions.contains_key(id)
+            || self.restoring_sessions.contains_key(&id.0)
+            || self.attaching_sessions.contains(id)
+    }
+
+    pub fn owned_session_ids(&self) -> HashSet<PaneId> {
+        self.sessions
+            .keys()
+            .cloned()
+            .chain(self.restoring_sessions.keys().cloned().map(PaneId))
+            .chain(self.attaching_sessions.iter().cloned())
+            .collect()
     }
 
     pub fn workspace_tabs(&self) -> &WorkspaceTabs {
@@ -853,7 +871,7 @@ impl Space {
                 if let Some(session) = self.items.get_mut(&item).and_then(Item::as_session_mut) {
                     session.session.update_info(info);
                 }
-            } else {
+            } else if !self.starting && !self.attaching_sessions.contains(&info.id) {
                 discovered.push(info);
             }
         }
@@ -861,10 +879,18 @@ impl Space {
         let restored_ids: HashMap<_, _> = infos
             .iter()
             .filter_map(|info| {
-                self.restoring_sessions.remove(&info.id.0).map(|item| (info.id.clone(), item))
+                self.restoring_sessions.get(&info.id.0).copied().map(|item| (info.id.clone(), item))
             })
             .collect();
-        let stale: Vec<_> = self.restoring_sessions.drain().map(|(_, item)| item).collect();
+        let mut stale = Vec::new();
+        self.restoring_sessions.retain(|backend, item| {
+            let id = PaneId(backend.clone());
+            let keep = snapshot_ids.contains(&id) || self.attaching_sessions.contains(&id);
+            if !keep {
+                stale.push(*item);
+            }
+            keep
+        });
         for item in stale {
             let _ = self.layout.remove_item(item);
         }
@@ -876,6 +902,7 @@ impl Space {
         let pending = infos
             .into_iter()
             .map(|info| {
+                self.attaching_sessions.insert(info.id.clone());
                 let restored = restored_ids.get(&info.id).copied();
                 let attach = Session::attach_builder(&client, &info, window_id, cx);
                 (restored, info, attach)
@@ -888,6 +915,8 @@ impl Space {
             }
             let _ = this.update(cx, |this, cx| {
                 for (restored, info, result) in attached {
+                    this.attaching_sessions.remove(&info.id);
+                    this.restoring_sessions.remove(&info.id.0);
                     if this.retired_sessions.contains(&info.id) {
                         continue;
                     }
@@ -1027,14 +1056,16 @@ impl Space {
                     return Err(message);
                 }
             };
-            let Ok(attach) =
-                this.update(cx, |_, cx| Session::attach_builder(&client, &info, window_id, cx))
-            else {
+            let Ok(attach) = this.update(cx, |this, cx| {
+                this.attaching_sessions.insert(info.id.clone());
+                Session::attach_builder(&client, &info, window_id, cx)
+            }) else {
                 return Err("The owning space was closed.".into());
             };
             let result = attach.await;
             this.update(cx, |this, cx| {
                 this.starting = false;
+                this.attaching_sessions.remove(&info.id);
                 let result = match result {
                     Ok(builder) => {
                         let session = this.session_from_builder(info, builder, cx);
@@ -1217,6 +1248,7 @@ impl Space {
             .chain(self.restoring_sessions.values().copied())
             .collect();
         self.restoring_sessions.clear();
+        self.attaching_sessions.clear();
         for id in terminal_items {
             self.remove_item(id);
         }
@@ -1287,6 +1319,51 @@ mod tests {
     }
 
     struct LauncherReplacementView;
+
+    #[gpui::test]
+    fn restored_ownership_and_layout_survive_snapshots_during_attachment(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let root = tempfile::tempdir().unwrap();
+        let sidecar = root.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            chartr_herdr::Sidecar::at(sidecar).unwrap(),
+            chartr_herdr::Namespace::rooted(root.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new("Project".into(), root.path().into(), Kind::Registered, client, cx)
+        });
+        space.update(cx, |space, cx| {
+            let mut saved = space.persisted();
+            let item = saved.layout.alloc_item();
+            saved.layout.push_standalone(item).unwrap();
+            let tab = saved.layout.active_tab_id().unwrap();
+            let pane = saved.layout.active_workspace().unwrap().active_pane();
+            let right = saved
+                .layout
+                .workspace_mut(tab)
+                .unwrap()
+                .split_pane(pane, SplitDirection::Right)
+                .unwrap();
+            saved.layout.workspace_mut(tab).unwrap().move_item(item, right, None).unwrap();
+            saved
+                .items
+                .push(PersistedItem::Terminal { item_id: item.get(), backend_id: "saved".into() });
+            space.restore_saved(&saved);
+            let backend = PaneId("saved".into());
+            assert!(space.owns_session(&backend));
+            assert!(space.owned_session_ids().contains(&backend));
+            space.attaching_sessions.insert(backend.clone());
+            let info = backend_session("saved", &root.path().join("subdir"));
+            space.adopt(vec![info.clone()], cx);
+            space.adopt(vec![info], cx);
+            assert!(space.owns_session(&backend));
+            assert_eq!(space.persisted().layout, saved.layout);
+            assert_eq!(space.persisted().items, saved.items);
+            assert_eq!(space.attaching_sessions.len(), 1);
+        });
+    }
 
     impl gpui::Render for LauncherReplacementView {
         fn render(
