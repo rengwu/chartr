@@ -1,0 +1,85 @@
+name: Build smoke test
+
+on:
+  push:
+    branches: [ci/build-smoke]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.os }} release and package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sh scripts/install-linux-deps.sh
+
+      - name: Install the pinned Rust toolchain
+        run: rustup show
+
+      - name: Check release scripts
+        run: python3 -B -m unittest discover -s scripts/tests -v
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.os }}-${{ runner.arch }}
+          cache-on-failure: true
+
+      - uses: ./.github/actions/setup-herdr
+        with:
+          platform: ${{ matrix.os }}
+
+      - name: Compile Linux release
+        if: runner.os == 'Linux'
+        run: cargo build --release --locked -p chartr --bin chartr --timings
+
+      - name: Package Linux tar.gz and deb
+        if: runner.os == 'Linux'
+        run: scripts/package-linux.sh
+
+      - name: Package and check Arch Linux
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            archlinux:base-devel bash scripts/package-arch.sh
+
+      - name: Build and verify macOS DMG
+        if: runner.os == 'macOS'
+        run: scripts/build-dev-dmg.sh
+
+      - name: Upload test packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-packages-${{ matrix.os }}
+          path: |
+            target/packages/*
+            target/*.dmg
+            target/*.dmg.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Save build timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-timings-${{ matrix.os }}
+          path: |
+            target/cargo-timings/*.html
+            vendor/herdr/.build/target/cargo-timings/*.html
+          include-hidden-files: true
+          retention-days: 7
