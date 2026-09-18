@@ -90,7 +90,7 @@ impl Default for ResolvedSettings {
             middle_click_closes_tab: true,
             middle_click_closes_sidebar_tab: true,
             show_view_mode_picker: true,
-            show_status_bar: true,
+            show_status_bar: false,
             reduce_motion: false,
             theme_mode: ThemeMode::Fixed,
             fixed_theme: DEFAULT_DARK_THEME.to_owned(),
@@ -1119,6 +1119,7 @@ mod tests {
         let scratch = tempfile::tempdir().unwrap();
         let store = SettingsStore::load(scratch.path().join(SETTINGS_FILE));
         assert!(!store.resolved().terminate_sessions_on_exit);
+        assert!(!store.resolved().show_status_bar);
         assert!(store.resolved().middle_click_closes_tab);
         assert!(store.resolved().middle_click_closes_sidebar_tab);
         assert_eq!(store.resolved().theme_mode, ThemeMode::Fixed);
@@ -1138,7 +1139,7 @@ mod tests {
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, DEFAULT_DARK_THEME);
         assert!(!resolved.reduce_motion);
-        assert!(resolved.show_status_bar);
+        assert!(!resolved.show_status_bar);
         assert!(resolved.middle_click_closes_tab);
         assert!(resolved.middle_click_closes_sidebar_tab);
     }
@@ -1153,7 +1154,7 @@ mod tests {
                 content.terminal.get_or_insert_default().font_size = Some(17.);
                 content.appearance.get_or_insert_default().reduce_motion = Some(true);
                 let general = content.general.get_or_insert_default();
-                general.show_status_bar = Some(false);
+                general.show_status_bar = Some(true);
                 general.middle_click_closes_tab = Some(true);
                 general.middle_click_closes_sidebar_tab = Some(true);
             })
@@ -1161,7 +1162,7 @@ mod tests {
         let relaunched = SettingsStore::load(&file);
         assert_eq!(relaunched.resolved().terminal_font_size, 17.);
         assert!(relaunched.resolved().reduce_motion);
-        assert!(!relaunched.resolved().show_status_bar);
+        assert!(relaunched.resolved().show_status_bar);
         assert!(relaunched.resolved().middle_click_closes_tab);
         assert!(relaunched.resolved().middle_click_closes_sidebar_tab);
         assert!(fs::read_to_string(file).unwrap().starts_with("# chartr"));

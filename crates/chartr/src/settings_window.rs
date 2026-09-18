@@ -1013,14 +1013,14 @@ mod tests {
         cx.update(|cx| {
             settings
                 .update(cx, |settings, _, cx| {
-                    settings.set_show_status_bar(false, cx);
+                    settings.set_show_status_bar(true, cx);
                     settings.set_terminate_on_exit(true, cx);
                     settings.set_middle_click_closes_tab(true, cx);
                     settings.set_middle_click_closes_sidebar_tab(true, cx);
                 })
                 .unwrap();
             let resolved = cx.global::<SettingsStore>().resolved();
-            assert!(!resolved.show_status_bar);
+            assert!(resolved.show_status_bar);
             assert!(resolved.terminate_sessions_on_exit);
             assert!(resolved.middle_click_closes_tab);
             assert!(resolved.middle_click_closes_sidebar_tab);

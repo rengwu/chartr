@@ -1,6 +1,8 @@
 # Workspace status bar
 
-The bottom bar shows persistent plugin services. Mobile Companion is excluded
+The bottom bar is hidden by default in shipped builds. Enable it from
+Settings → General → Show status bar or the “Workspace: Toggle status bar”
+command to see persistent plugin services. Mobile Companion is excluded
 from the current app build, so its sharing status and mobile session count are
 absent.
 

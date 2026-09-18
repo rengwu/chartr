@@ -39,9 +39,10 @@ own tools that live alongside your agents.
   horizontally or vertically, and switch between sidebar and tabbed layouts.
 - **Persistent sessions** — By default, your shells survive closing and reopening
   the app. Closing a terminal tab ends that session.
-- **Persistent activity status** — A hideable status bar shows background plugin activity.
-  Click a service for controls, or right-click the bar to hide it; restore it in
-  Settings → General or with “Workspace: Toggle status bar” in the command palette.
+- **Persistent activity status** — An optional status bar shows background plugin activity.
+  It ships hidden by default; enable it in Settings → General or with
+  “Workspace: Toggle status bar” in the command palette. Click a service for
+  controls, or right-click the bar to hide it.
 - **Inbox** — Browse detected agent sessions in a searchable history sidebar,
   with the selected session’s original terminal on the right. Browse, archive,
   and launch agents without leaving the view. [Inbox details](docs/conversations.md).
