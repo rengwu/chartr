@@ -76,7 +76,7 @@ impl WorkspaceWindow {
         visibility: crate::mode::ChromeVisibility,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> (AnyElement, AnyElement) {
         let brand = || {
             h_flex()
                 .flex_none()
@@ -99,14 +99,24 @@ impl WorkspaceWindow {
             window,
             cx,
         );
-        h_flex()
-            .id("linux-app-bar")
+        // Reserve and paint the bar behind the body so sliding tabs can overflow
+        // into it. Paint only the controls afterward, above the fading tab strip
+        // and its outgoing input blocker, without an opaque foreground surface.
+        let background = div()
             .w_full()
             .h(px(crate::title_bar::HEIGHT))
             .flex_none()
+            .bg(cx.theme().colors().panel_background)
+            .into_any_element();
+        let foreground = h_flex()
+            .id("linux-app-bar")
+            .absolute()
+            .top_0()
+            .left_0()
+            .w_full()
+            .h(px(crate::title_bar::HEIGHT))
             .px_2()
             .gap_2()
-            .bg(cx.theme().colors().panel_background)
             .child(h_flex().flex_1().min_w_0().gap_2().overflow_hidden().child(brand()).when(
                 visibility.tabs > 0.,
                 |start| {
@@ -120,7 +130,8 @@ impl WorkspaceWindow {
                 },
             ))
             .child(controls)
-            .into_any_element()
+            .into_any_element();
+        (background, foreground)
     }
 
     fn space_switcher(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

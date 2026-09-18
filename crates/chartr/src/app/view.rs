@@ -82,9 +82,17 @@ impl Render for WorkspaceWindow {
         });
         let (title_bar, title_bar_foreground) =
             self.workspace_title_bar(title_controls, chrome_visibility, window, cx);
-        let app_bar = cfg!(target_os = "linux").then(|| {
-            self.linux_app_bar(emit.clone(), error_notices.clone(), chrome_visibility, window, cx)
-        });
+        let (app_bar, app_bar_foreground) = cfg!(target_os = "linux")
+            .then(|| {
+                self.linux_app_bar(
+                    emit.clone(),
+                    error_notices.clone(),
+                    chrome_visibility,
+                    window,
+                    cx,
+                )
+            })
+            .unzip();
 
         // Dissolve the left divider as it meets the native window edge. Tie the
         // fade to distance so interrupted slides and reduced motion stay in sync.
@@ -129,8 +137,6 @@ impl Render for WorkspaceWindow {
             .w_full()
             .h(tab_height * chrome_visibility.tabs)
             .flex_none()
-            // Linux's app bar occupies its own row. Keep sliding tabs below it.
-            .when(cfg!(target_os = "linux"), |slot| slot.overflow_hidden())
             .when(chrome_visibility.tabs > 0., |slot| {
                 let controls = (!cfg!(any(target_os = "macos", target_os = "linux"))).then(|| {
                     (
@@ -443,6 +449,7 @@ impl Render for WorkspaceWindow {
             .child(body)
             .when(self.settings.resolved().show_status_bar, |view| view.child(self.status_bar(cx)))
             .child(title_bar_foreground)
+            .children(app_bar_foreground)
             .children(rename)
     }
 }
