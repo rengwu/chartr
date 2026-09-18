@@ -65,6 +65,21 @@ The container installs Arch runtime dependencies, then runs `makepkg` as an
 unprivileged user. The PKGBUILD copies the existing installation tree. Docker
 must be available to your user. This does not install anything on the host.
 
+## macOS development DMG
+
+After installing the [build prerequisites](installation.md#build-from-source)
+and fetching the sidecar, run this from the repository root:
+
+```sh
+scripts/build-dev-dmg.sh
+```
+
+The script builds in release mode and produces a `chartr.app` DMG and SHA-256
+checksum under `target/`. The bundle uses the macOS app artwork in
+`docs/assets/v4/`, including the dedicated small-size variants. The app is
+ad-hoc signed and unnotarized. Pass an output path as the script's only argument
+to put the image elsewhere.
+
 ## Caches and build time
 
 The shared `setup-herdr` action caches the finished sidecar by runner image,

@@ -1,7 +1,8 @@
 # Workspace reference
 
 Detailed behavior of the Rust workspace, terminals, settings, and plugin host.
-For an introduction and build instructions, see the [README](../README.md).
+Start with [Getting started](getting-started.md) and the
+[installation guide](installation.md).
 
 ## Spaces, panes, and items
 
@@ -135,6 +136,24 @@ The private Herdr runtime uses an exact socket under
 chartr cannot attach to a user's standalone daemon. Closed attach clients become
 item-local recovery states, and unexpected daemon death receives one clean
 restart before entering a stable crash-loop state with Retry.
+
+## Your data
+
+chartr runs locally and does not require a chartr account. Maps and tickets are
+Markdown files in your project. The application keeps its other data under the
+`chartr` namespace:
+
+| Data                                      | Default location                    |
+| ----------------------------------------- | ----------------------------------- |
+| Settings, shortcuts, and registered spaces | `~/.config/chartr/`                  |
+| Window and workspace state                | `~/.local/state/chartr/state.sqlite` |
+| Installed plugins and plugin data         | `~/.local/share/chartr/`             |
+| Private Herdr runtime                     | `~/.config/chartr/herdr/`            |
+
+`XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and `XDG_DATA_HOME` override the corresponding
+base directories. These defaults apply on both macOS and Linux. Configuration
+and data from previous development namespaces, Go chartr, or chartr-rs are not
+imported automatically.
 
 ## Plugins
 

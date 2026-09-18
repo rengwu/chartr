@@ -1,13 +1,15 @@
 # Documentation
 
-These guides describe the current Rust working tree. Start with the repository
-[README](../README.md) for installation and the first launch.
+These guides describe the current Rust working tree. Start with
+[Installation](installation.md) and [Getting started](getting-started.md).
 
 ## Current guides
 
 | Topic | Guide |
 | --- | --- |
-| Spaces, panes, terminals, settings, and persistence | [Workspace](workspace.md) |
+| Source builds, supported platforms, and package installation | [Installation](installation.md) |
+| First space, agent setup, and the Wayfinder workflow | [Getting started](getting-started.md) |
+| Spaces, panes, terminals, settings, persistence, and data locations | [Workspace](workspace.md) |
 | Chats view, Inbox/Archive, agent discovery, and session logs | [Inbox](conversations.md) |
 | Package installation, prerequisites, permissions, and SDK contracts | [Plugins](plugins.md) |
 | Persistent plugin activity | [Status bar](status-bar.md) |
@@ -21,7 +23,8 @@ These guides describe the current Rust working tree. Start with the repository
 ## Development and design
 
 - [Code map](code-map.md): implementation owners and entry points.
-- [Release builds](releasing.md): Linux packages, build caches, and timings.
+- [Release builds](releasing.md): Linux packages, macOS development DMGs, build
+  caches, and timings.
 - [Release acceptance](acceptance.md): automated commands and hands-on checks.
   A checklist is not a record that those checks have passed.
 - [Workspace specification](../.plan/maps/chartr-workspace/spec.md): the living

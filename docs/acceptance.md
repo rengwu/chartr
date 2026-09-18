@@ -9,9 +9,21 @@ source-validation results and known gaps.
 
 ## Automated gate
 
-Both macOS and Ubuntu must pass `.github/workflows/ci.yml`, including formatting,
-the locked workspace suite, the native plugin contract build, and the Linux Wry
-and GPUI X11 link. Before release, run the real-sidecar suite locally on each
+Both macOS and Ubuntu must pass [CI](../.github/workflows/ci.yml), including
+formatting, the locked workspace suite, the native plugin contract build, and
+the Linux Wry and GPUI X11 link. After [setting up a source build](installation.md),
+run these development checks from the repository root:
+
+```sh
+cargo fmt --all --check
+cargo test --workspace --locked --no-fail-fast
+cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
+node --test crates/chartr/tests/plugin_bridge.cjs
+node --test plugins/wayfinder/tests/layout.test.mjs
+```
+
+The JavaScript checks require Node.js. The real-sidecar tests are ignored by the
+default suite; after fetching Herdr, run them explicitly before release on each
 shipping architecture:
 
 ```sh
