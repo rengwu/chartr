@@ -1,0 +1,51 @@
+<script lang="ts">
+	import { boxWith, mergeProps } from "svelte-toolbelt";
+	import { NavigationMenuContentState } from "../navigation-menu.svelte.js";
+	import NavigationMenuContentImpl from "./navigation-menu-content-impl.svelte";
+	import { createId } from "../../../internal/create-id.js";
+	import { getDataTransitionAttrs } from "../../../internal/attrs.js";
+	import type { NavigationMenuContentProps } from "../../../types.js";
+	import Portal from "../../utilities/portal/portal.svelte";
+	import PresenceLayer from "../../utilities/presence-layer/presence-layer.svelte";
+	import Mounted from "../../utilities/mounted.svelte";
+
+	const uid = $props.id();
+
+	let {
+		ref = $bindable(null),
+		id = createId(uid),
+		children,
+		child,
+		forceMount = false,
+		...restProps
+	}: NavigationMenuContentProps = $props();
+
+	const contentState = NavigationMenuContentState.create({
+		id: boxWith(() => id),
+		ref: boxWith(
+			() => ref,
+			(v) => (ref = v)
+		),
+	});
+
+	const mergedProps = $derived(mergeProps(restProps, contentState.props));
+</script>
+
+<Portal
+	to={contentState.context.viewportRef.current || undefined}
+	disabled={!contentState.context.viewportRef.current}
+>
+	<PresenceLayer
+		open={forceMount || contentState.open || contentState.isLastActiveValue}
+		ref={contentState.opts.ref}
+	>
+		{#snippet presence({ transitionStatus })}
+			<NavigationMenuContentImpl
+				{...mergeProps(mergedProps, getDataTransitionAttrs(transitionStatus))}
+				{children}
+				{child}
+			/>
+			<Mounted bind:mounted={contentState.mounted} />
+		{/snippet}
+	</PresenceLayer>
+</Portal>

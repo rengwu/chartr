@@ -1,0 +1,19 @@
+import type { Component } from "svelte";
+import type { IconComponentProps } from "./shared.d.ts";
+
+/**
+ * @deprecated Use `PasswordIcon` instead.
+ *
+ * @example
+ * ```svelte
+ * <Password color="white" weight="fill" size="20px" mirrored={false} />
+ * ```
+ *
+ * @prop {string} color
+ * @prop {number | string} size
+ * @prop {"bold" | "duotone" | "fill" | "light" | "thin" | "regular"} weight
+ * @prop {boolean} mirrored
+ */
+declare const Password: Component<IconComponentProps, {}, "">;
+type Password = ReturnType<typeof Password>;
+export default Password;

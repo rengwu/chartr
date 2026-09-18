@@ -1,0 +1,69 @@
+<script lang="ts">
+	import { type WritableBox, boxWith, mergeProps } from "svelte-toolbelt";
+	import { AccordionRootState } from "../accordion.svelte.js";
+	import type { AccordionRootProps } from "../types.js";
+	import { noop } from "../../../internal/noop.js";
+	import { watch } from "runed";
+	import { createId } from "../../../internal/create-id.js";
+
+	const uid = $props.id();
+
+	let {
+		disabled = false,
+		children,
+		child,
+		type,
+		value = $bindable(),
+		ref = $bindable(null),
+		id = createId(uid),
+		onValueChange = noop,
+		loop = true,
+		orientation = "vertical",
+		...restProps
+	}: AccordionRootProps = $props();
+
+	function handleDefaultValue() {
+		if (value !== undefined) return;
+		value = type === "single" ? "" : [];
+	}
+
+	// SSR
+	handleDefaultValue();
+
+	watch.pre(
+		() => value,
+		() => {
+			handleDefaultValue();
+		}
+	);
+
+	const rootState = AccordionRootState.create({
+		type,
+		value: boxWith(
+			() => value!,
+			(v) => {
+				value = v;
+				// oxlint-disable-next-line no-explicit-any
+				onValueChange(v as any);
+			}
+		) as WritableBox<string> | WritableBox<string[]>,
+		id: boxWith(() => id),
+		disabled: boxWith(() => disabled),
+		loop: boxWith(() => loop),
+		orientation: boxWith(() => orientation),
+		ref: boxWith(
+			() => ref,
+			(v) => (ref = v)
+		),
+	});
+
+	const mergedProps = $derived(mergeProps(restProps, rootState.props));
+</script>
+
+{#if child}
+	{@render child({ props: mergedProps })}
+{:else}
+	<div {...mergedProps}>
+		{@render children?.()}
+	</div>
+{/if}

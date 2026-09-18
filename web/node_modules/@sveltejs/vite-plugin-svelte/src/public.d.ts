@@ -1,0 +1,278 @@
+import type { InlineConfig, ResolvedConfig } from 'vite';
+import type { CompileOptions, Warning, PreprocessorGroup } from 'svelte/compiler';
+
+export type Options = Omit<SvelteConfig, 'vitePlugin'> & PluginOptionsInline;
+
+interface PluginOptionsInline extends PluginOptions {
+	/**
+	 * Path to a svelte config file, either absolute or relative to Vite root
+	 *
+	 * set to `false` to ignore the svelte config file
+	 *
+	 * @see https://vitejs.dev/config/#root
+	 */
+	configFile?: string | false;
+}
+
+export interface PluginOptions {
+	/**
+	 * A `picomatch` pattern, or array of patterns, which specifies the files the plugin should
+	 * operate on. By default, all svelte files are included.
+	 *
+	 * @see https://github.com/micromatch/picomatch
+	 */
+	include?: Arrayable<string | RegExp>;
+	/**
+	 * A `picomatch` pattern, or array of patterns, which specifies the files to be ignored by the
+	 * plugin. By default, no files are ignored.
+	 *
+	 * @see https://github.com/micromatch/picomatch
+	 */
+	exclude?: Arrayable<string | RegExp>;
+	/**
+	 * Emit Svelte styles as virtual CSS files for Vite and other plugins to process
+	 *
+	 * @default true
+	 */
+	emitCss?: boolean;
+
+	/**
+	 * vite-plugin-svelte automatically handles excluding svelte libraries and reinclusion of their dependencies
+	 * in vite.optimizeDeps.
+	 *
+	 * `disableDependencyReinclusion: true` disables all reinclusions
+	 * `disableDependencyReinclusion: ['foo','bar']` disables reinclusions for dependencies of foo and bar
+	 *
+	 * This should be used for hybrid packages that contain both node and browser dependencies, eg Routify
+	 *
+	 * @default false
+	 */
+	disableDependencyReinclusion?: boolean | string[];
+	/**
+	 * Enable support for Vite's dependency optimization to prebundle Svelte libraries.
+	 *
+	 * To disable prebundling for a specific library, add it to `optimizeDeps.exclude`.
+	 *
+	 * @default true for dev, false for build
+	 */
+	prebundleSvelteLibraries?: boolean;
+	/**
+	 * toggle/configure Svelte Inspector
+	 *
+	 * @default unset for dev, always false for build
+	 */
+	inspector?: InspectorOptions | boolean;
+
+	/**
+	 * A function to update `compilerOptions` before compilation
+	 *
+	 * `data.filename` - The file to be compiled
+	 * `data.code` - The preprocessed Svelte code
+	 * `data.compileOptions` - The current compiler options
+	 *
+	 * To change part of the compiler options, return an object with the changes you need.
+	 *
+	 * @example
+	 * ```
+	 * ({ filename, compileOptions }) => {
+	 *   // Dynamically set runes mode per Svelte file
+	 *   if (forceRunesMode(filename) && !compileOptions.runes) {
+	 *     return { runes: true };
+	 *   }
+	 * }
+	 * ```
+	 */
+	dynamicCompileOptions?: (data: {
+		filename: string;
+		code: string;
+		compileOptions: Partial<CompileOptions>;
+	}) => Promise<Partial<CompileOptions> | void> | Partial<CompileOptions> | void;
+
+	/**
+	 * These options are considered experimental and breaking changes to them can occur in any release
+	 */
+	experimental?: ExperimentalOptions;
+}
+
+export interface SvelteConfig {
+	/**
+	 * A list of file extensions to be compiled by Svelte
+	 *
+	 * @default ['.svelte']
+	 */
+	extensions?: string[];
+	/**
+	 * An array of preprocessors to transform the Svelte source code before compilation
+	 *
+	 * @see https://svelte.dev/docs/svelte/svelte-compiler#PreprocessorGroup
+	 */
+	preprocess?: Arrayable<PreprocessorGroup>;
+	/**
+	 * The options to be passed to the Svelte compiler. A few options are set by default,
+	 * including `dev` and `css`. However, some options are non-configurable, like
+	 * `filename`, `format`, `generate`, and `cssHash` (in dev).
+	 *
+	 * @see https://svelte.dev/docs/svelte/svelte-compiler#CompileOptions
+	 */
+	compilerOptions?: Omit<CompileOptions, 'filename' | 'format' | 'generate'>;
+
+	/**
+	 * Handles warning emitted from the Svelte compiler
+	 *
+	 * warnings emitted for files in node_modules are logged at the debug level, to see them run
+	 * `DEBUG=vite-plugin-svelte:node-modules-onwarn pnpm build`
+	 *
+	 * @example
+	 * ```
+	 * (warning, defaultHandler) => {
+	 *   // ignore some warnings
+	 *   if (!['foo','bar'].includes(warning.code)) {
+	 *     defaultHandler(warning);
+	 *   }
+	 * }
+	 * ```
+	 *
+	 */
+	onwarn?: (warning: Warning, defaultHandler: (warning: Warning) => void) => void;
+	/**
+	 * Options for vite-plugin-svelte
+	 */
+	vitePlugin?: PluginOptions;
+}
+
+/**
+ * These options are considered experimental and breaking changes to them can occur in any release
+ */
+interface ExperimentalOptions {
+	/**
+	 * send a websocket message with svelte compiler warnings during dev
+	 *
+	 */
+	sendWarningsToBrowser?: boolean;
+	/**
+	 * disable svelte field resolve warnings
+	 *
+	 * @default false
+	 */
+	disableSvelteResolveWarnings?: boolean;
+
+	compileModule?: CompileModuleOptions;
+}
+
+interface CompileModuleOptions {
+	/**
+	 * infix that must be present in filename
+	 * @default ['.svelte.']
+	 */
+	infixes?: string[];
+	/**
+	 * module extensions
+	 * @default ['.ts','.js']
+	 */
+	extensions?: string[];
+	include?: Arrayable<string | RegExp>;
+	exclude?: Arrayable<string | RegExp>;
+}
+
+type Arrayable<T> = T | T[];
+
+export interface VitePreprocessOptions {
+	/**
+	 * preprocess script block with vite pipeline.
+	 * Since svelte5 this is not needed for typescript anymore
+	 *
+	 * @default false
+	 */
+	script?: boolean;
+	/**
+	 * preprocess style blocks with vite pipeline
+	 */
+	style?: boolean | InlineConfig | ResolvedConfig;
+}
+
+export interface InspectorOptions {
+	/**
+	 * define a key combo to toggle inspector,
+	 * @default 'alt-x'
+	 *
+	 * any number of modifiers `control` `shift` `alt` `meta` followed by zero or one regular key, separated by -
+	 * examples: control-shift, control-o, control-alt-s  meta-x control-meta
+	 * Some keys have native behavior (e.g. alt-s opens history menu on firefox).
+	 * To avoid conflicts or accidentally typing into inputs, modifier only combinations are recommended.
+	 */
+	toggleKeyCombo?: string;
+
+	/**
+	 * define keys to select elements with via keyboard
+	 * @default {parent: 'ArrowUp', child: 'ArrowDown', next: 'ArrowRight', prev: 'ArrowLeft' }
+	 *
+	 * improves accessibility and also helps when you want to select elements that do not have a hoverable surface area
+	 * due to tight wrapping
+	 *
+	 * A note for users of screen-readers:
+	 * If you are using arrow keys to navigate the page itself, change the navKeys to avoid conflicts.
+	 * e.g. navKeys: {parent: 'w', prev: 'a', child: 's', next: 'd'}
+	 *
+	 *
+	 * parent: select closest parent
+	 * child: select first child (or grandchild)
+	 * next: next sibling (or parent if no next sibling exists)
+	 * prev: previous sibling (or parent if no prev sibling exists)
+	 */
+	navKeys?: { parent: string; child: string; next: string; prev: string };
+
+	/**
+	 * define key to open the editor for the currently selected dom node
+	 *
+	 * @default 'Enter'
+	 */
+	openKey?: string;
+
+	/**
+	 * define key to open the context menu for the currently selected dom node
+	 *
+	 * @default ' '
+	 */
+	openMenuKey?: string;
+
+	/**
+	 * define keys to close the inspector
+	 * @default ['Backspace', 'Escape']
+	 */
+	escapeKeys?: string[];
+
+	/**
+	 * inspector is automatically disabled when releasing toggleKeyCombo after holding it for a longpress
+	 * @default true
+	 */
+	holdMode?: boolean;
+
+	/**
+	 * when to show the toggle button
+	 * @default 'active'
+	 */
+	showToggleButton?: 'always' | 'active' | 'never';
+
+	/**
+	 * where to display the toggle button
+	 * @default 'top-right'
+	 */
+	toggleButtonPos?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+
+	/**
+	 * inject custom styles when inspector is active
+	 */
+	customStyles?: boolean;
+
+	/**
+	 * internal options that are automatically set, not to be set or used by users
+	 * @internal
+	 */
+	__internal?: {
+		// vite base url
+		base: string;
+	};
+}
+
+// eslint-disable-next-line n/no-missing-import
+export * from './index.js';

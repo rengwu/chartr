@@ -1,0 +1,42 @@
+{
+	"version": 3,
+	"file": "index.d.ts",
+	"names": [
+		"BaseNode",
+		"NodeOf",
+		"SpecialisedVisitors",
+		"Visitor",
+		"Visitors",
+		"Location",
+		"Command",
+		"PrintOptions",
+		"print",
+		"Context",
+		"Node",
+		"ts",
+		"EXPRESSIONS_PRECEDENCE",
+		"TSOptions",
+		"Position",
+		"BaseComment",
+		"Comment",
+		"tsx"
+	],
+	"sources": [
+		"../src/types.d.ts",
+		"../src/index.js",
+		"../src/context.js",
+		"../src/languages/ts/public.d.ts",
+		"../src/languages/types.d.ts",
+		"../src/languages/tsx/public.d.ts"
+	],
+	"sourcesContent": [
+		null,
+		null,
+		null,
+		null,
+		null,
+		null
+	],
+	"mappings": ";MAEYA,QAAQA;;;;;;;;MAQfC,MAAMA;;MAENC,mBAAmBA;;;;MAIZC,OAAOA;;aAEPC,QAAQA;;;;WAWHC,QAAQA;;;;;;MAWbC,OAAOA;;kBAEFC,YAAYA;;;;;;;;;iBCWbC,KAAKA;;;;cC7CRC,OAAOA;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;aCLRC,IAAIA;yBACQC,EAAEA;;cAELC,sBAAsBA;MHJ/BZ,QAAQA;;;;;;;;MAQfC,MAAMA;;MAENC,mBAAmBA;;;;MAIZC,OAAOA;;MAEPC,QAAQA;;;MIhBRS,SAASA;;;;;;;;;;;;;;;WAeXC,QAAQA;;;;;;;kBAODC,WAAWA;;;;;;;kBAOXC,OAAOA;;;;;;;;;;;;aC5BZN,IAAIA;yBACQO,GAAGA;MLFfjB,QAAQA;;;;;;;;MAQfC,MAAMA;;MAENC,mBAAmBA;;;;MAIZC,OAAOA;;MAEPC,QAAQA;;;MIhBRS,SAASA;;;;;;;;;;;;;;;WAeXC,QAAQA;;;;;;;kBAODC,WAAWA;;;;;;;kBAOXC,OAAOA",
+	"ignoreList": []
+}

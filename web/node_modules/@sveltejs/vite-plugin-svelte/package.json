@@ -1,0 +1,56 @@
+{
+  "name": "@sveltejs/vite-plugin-svelte",
+  "version": "7.2.0",
+  "license": "MIT",
+  "files": [
+    "src",
+    "types"
+  ],
+  "type": "module",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "engines": {
+    "node": "^20.19 || ^22.12 || >=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sveltejs/vite-plugin-svelte.git",
+    "directory": "packages/vite-plugin-svelte"
+  },
+  "keywords": [
+    "vite-plugin",
+    "vite plugin",
+    "vite",
+    "svelte"
+  ],
+  "bugs": {
+    "url": "https://github.com/sveltejs/vite-plugin-svelte/issues"
+  },
+  "homepage": "https://github.com/sveltejs/vite-plugin-svelte#readme",
+  "dependencies": {
+    "deepmerge": "^4.3.1",
+    "magic-string": "^0.30.21",
+    "obug": "^2.1.0",
+    "vitefu": "^1.1.2"
+  },
+  "peerDependencies": {
+    "svelte": "^5.46.4",
+    "vite": "^8.0.0-beta.7 || ^8.0.0"
+  },
+  "devDependencies": {
+    "@types/debug": "^4.1.12",
+    "sass": "^1.94.2",
+    "svelte": "^5.45.4",
+    "vite": "^8.0.9"
+  },
+  "scripts": {
+    "check:publint": "publint --strict",
+    "check:types": "tsc --noEmit",
+    "generate:types": "dts-buddy -m \"@sveltejs/vite-plugin-svelte:src/public.d.ts\""
+  }
+}

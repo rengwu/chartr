@@ -1,0 +1,69 @@
+/** @import { InspectorOptions } from '../../public.js' */
+/** @import { ResolvedConfig } from 'vite' */
+
+import process from 'node:process';
+import { loadEnv } from 'vite';
+import { log } from '../../utils/log.js';
+
+/** @type {InspectorOptions} */
+export const defaultInspectorOptions = {
+	toggleKeyCombo: 'alt-x',
+	navKeys: { parent: 'ArrowUp', child: 'ArrowDown', next: 'ArrowRight', prev: 'ArrowLeft' },
+	escapeKeys: ['Backspace', 'Escape'],
+	openKey: 'Enter',
+	openMenuKey: ' ',
+	holdMode: true,
+	showToggleButton: 'active',
+	toggleButtonPos: 'top-right',
+	customStyles: true
+};
+
+/**
+ * @param {ResolvedConfig} config
+ * @returns {Partial<InspectorOptions> | boolean | void}
+ */
+export function parseEnvironmentOptions(config) {
+	const env = loadEnv(config.mode, config.envDir ?? process.cwd(), 'SVELTE_INSPECTOR');
+	const options = env?.SVELTE_INSPECTOR_OPTIONS;
+	const toggle = env?.SVELTE_INSPECTOR_TOGGLE;
+	if (options) {
+		try {
+			const parsed = JSON.parse(options);
+			const parsedType = typeof parsed;
+			if (parsedType === 'boolean') {
+				return parsed;
+			} else if (parsedType === 'object') {
+				if (Array.isArray(parsed)) {
+					throw new Error('invalid type, expected object map but got array');
+				}
+				const parsedKeys = Object.keys(parsed);
+				const defaultKeys = Object.keys(defaultInspectorOptions);
+				const unknownKeys = parsedKeys.filter((k) => !defaultKeys.includes(k));
+				if (unknownKeys.length) {
+					log.warn(
+						`[vite-plugin-svelte-inspector] ignoring unknown options in environment SVELTE_INSPECTOR_OPTIONS: ${unknownKeys.join(
+							', '
+						)}`,
+						null,
+						'inspector'
+					);
+					for (const key of unknownKeys) {
+						delete parsed[key];
+					}
+				}
+				log.debug('loaded environment config', parsed, 'inspector');
+				return parsed;
+			}
+		} catch (e) {
+			config.logger.error(
+				`[vite-plugin-svelte-inspector] failed to parse inspector options from environment SVELTE_INSPECTOR_OPTIONS="${options}"\n${e}`
+			);
+		}
+	} else if (toggle) {
+		const keyConfig = {
+			toggleKeyCombo: toggle
+		};
+		log.debug('loaded environment config', keyConfig, 'inspector');
+		return keyConfig;
+	}
+}
