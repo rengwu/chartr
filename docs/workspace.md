@@ -105,10 +105,11 @@ written atomically; hotkeys are semantic GPUI actions with conflict detection.
 chartr Dark is the fixed default. Appearance exposes the same Ayu, Catppuccin,
 Gruvbox, One, and VS Code catalog as chartr-rs, plus chartr Dark and chartr
 Light. Fixed mode chooses one theme; Match System keeps independent light and
-dark selections. IBM Plex Sans and the bundled IBM Plex Mono are configurable
-defaults. Reduce Motion disables the short space-sort settle animation while
-retaining direct pointer tracking. General can opt into middle-click tab closing
-for both tabbed and pane-local tabs, with a dependent option for sidebar rows.
+dark selections. Geist and IBM Plex Mono are the bundled defaults for the
+configurable interface and terminal fonts. Reduce Motion disables the short
+space-sort settle animation while retaining direct pointer tracking. General can
+opt into middle-click tab closing for both tabbed and pane-local tabs, with a
+dependent option for sidebar rows.
 
 User-editable data remains text:
 

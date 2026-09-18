@@ -96,7 +96,7 @@ impl Default for ResolvedSettings {
             fixed_theme: DEFAULT_DARK_THEME.to_owned(),
             light_theme: DEFAULT_LIGHT_THEME.to_owned(),
             dark_theme: DEFAULT_DARK_THEME.to_owned(),
-            ui_font_family: "IBM Plex Sans".to_owned(),
+            ui_font_family: "Geist".to_owned(),
             ui_font_size: 14.,
             terminal_font_family: "IBM Plex Mono".to_owned(),
             terminal_font_size: 13.,
@@ -1135,7 +1135,7 @@ mod tests {
         .unwrap();
         let resolved = content.resolve();
         assert_eq!(resolved.ui_font_size, 16.);
-        assert_eq!(resolved.ui_font_family, "IBM Plex Sans");
+        assert_eq!(resolved.ui_font_family, "Geist");
         assert_eq!(resolved.terminal_font_family, "Monaspace Neon");
         assert_eq!(resolved.fixed_theme, DEFAULT_DARK_THEME);
         assert!(!resolved.reduce_motion);

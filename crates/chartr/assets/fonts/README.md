@@ -1,8 +1,9 @@
 # Interface fonts
 
 The interface picker offers IBM Plex Sans, System UI, and 23 additional Google
-Fonts families. `.ZedSans` is no longer offered; saved Zed Sans preferences
-resolve to IBM Plex Sans. IBM Plex Sans remains supplied by Zed's asset bundle.
+Fonts families, with Geist selected by default. `.ZedSans` is no longer offered;
+saved Zed Sans preferences resolve to the default interface font. IBM Plex Sans
+remains supplied by Zed's asset bundle.
 
 The added families are Asap, Barlow, Cabin, Comic Neue, DM Sans, Fira Sans, Geist,
 Hind, Inter, Jim Nightshade, Karla, Lato, Merriweather Sans, Noto Sans, Nunito Sans,
