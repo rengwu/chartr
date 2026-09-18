@@ -79,9 +79,8 @@ Install Git, Rustup, a C/C++ build toolchain, CMake, and pkg-config. On macOS,
 install the Xcode Command Line Tools. Rustup reads the pinned Rust version and
 components from [rust-toolchain.toml](rust-toolchain.toml).
 
-Keep two Zig versions available: **0.15.2** for building the pinned Herdr sidecar,
-and **0.16.0** on your `PATH` for the workspace build. The `ZIG` assignment below
-selects the older compiler for the sidecar command only.
+Install **Zig 0.15.2** to build the pinned Herdr sidecar. Chartr itself does not
+require Zig. A matching sidecar is reused on subsequent builds.
 
 <details>
 <summary>Ubuntu 24.04 build dependencies</summary>
@@ -96,7 +95,8 @@ sudo apt-get install -y \
 ```
 
 These are the same system packages used by [CI](.github/workflows/ci.yml).
-Rustup and the two Zig versions must be installed separately.
+Rustup and Zig 0.15.2 must be installed separately. On Ubuntu 24.04, you can
+also install the system dependencies with `sh scripts/install-linux-deps.sh`.
 
 </details>
 
@@ -108,7 +108,7 @@ rustup show
 # Replace this path with your Zig 0.15.2 executable.
 ZIG=/absolute/path/to/zig-0.15.2/zig sh vendor/herdr/fetch.sh
 
-# The workspace uses Zig 0.16.0 from PATH.
+# Chartr reuses the sidecar; no Zig compiler is needed for this step.
 cargo run -p chartr --locked
 ```
 
@@ -123,6 +123,24 @@ cargo run -p chartr --locked -- /path/to/project
 ```
 
 No frontend build is needed. The bundled web surfaces ship with their assets.
+
+### Linux release packages
+
+The [Linux release workflow](.github/workflows/release-linux.yml) builds native
+x86_64 and ARM64 binaries on Ubuntu 24.04. Each build produces a `.tar.gz` and
+`.deb`; x86_64 also produces an Arch Linux `.pkg.tar.zst`, using the same binaries.
+Run the workflow manually for downloadable artifacts. A `v<workspace-version>`
+tag creates a **draft** GitHub release after both architectures finish.
+
+Install a downloaded package with `sudo apt install ./chartr_*.deb` on Ubuntu
+24.04 or newer, or `sudo pacman -U ./chartr-*.pkg.tar.zst` on current Arch Linux.
+For the tarball, extract it and run `./usr/bin/chartr` from the extracted folder;
+system GTK/WebKitGTK and graphics libraries are still required. Keep the
+`chartr` and `herdr` executables together. Updating the package replaces the
+binaries and leaves your user configuration and sessions on disk intact.
+
+See [Release builds](docs/releasing.md) for the local commands, cache behavior,
+and timing reports.
 
 ### macOS development DMG
 
@@ -210,7 +228,8 @@ Before the first Rust release:
 
 - Complete hands-on terminal, plugin, persistence, and recovery acceptance on
   each shipping architecture.
-- Prepare distributable macOS and Linux packages and a release workflow.
+- Validate the Linux packages on both shipping architectures and complete
+  production macOS packaging/signing.
 - Document installation and upgrade behavior, then publish a release candidate.
 
 Native Wayland web panes and Windows support remain outside the current target.

@@ -1,9 +1,9 @@
 #!/bin/sh
 # Vendors the herdr executable chartr ships as its backend.
 #
-# A maintenance step, run by hand when the pin moves — never by a build. This is
-# the only thing in chartr that reaches the network, and it is not on the path of
-# `cargo build`.
+# Run explicitly or by CI, never from `cargo build`. An already matching native
+# executable is reused without requiring Zig. Set HERDR_REBUILD=1 to rebuild it.
+# Source and compilation outputs survive under .build/ for subsequent builds.
 #
 #     sh vendor/herdr/fetch.sh              # this machine's target
 #     sh vendor/herdr/fetch.sh <triple>…    # named targets (cross toolchain required)
@@ -55,7 +55,37 @@ host_target() {
     esac
 }
 
-targets=${*:-$(host_target)}
+# macOS may reject a restored/copied linker signature before --version runs.
+sign_native_sidecar() {
+    case "$host" in
+    *-apple-darwin) codesign --force --sign - "$1" ;;
+    esac
+}
+
+host=$(host_target)
+targets=${*:-$host}
+pending=""
+for target in $targets; do
+    supported_target "$target" || {
+        echo "unsupported Herdr target: $target" >&2
+        exit 1
+    }
+    binary="$here/$target/herdr"
+    if [ "$target" = "$host" ] && [ -x "$binary" ]; then
+        sign_native_sidecar "$binary"
+    fi
+    if [ "${HERDR_REBUILD:-0}" != 1 ] && [ "$target" = "$host" ] && [ -x "$binary" ] &&
+        [ "$("$binary" --version 2>/dev/null || true)" = "herdr $version" ]; then
+        echo "reusing Herdr $version for $target"
+    else
+        pending="$pending $target"
+    fi
+done
+[ -n "$pending" ] || exit 0
+
+# Do not accidentally build with the user's default Rust toolchain after cd.
+toolchain=$(sed -n 's/^channel = "\([^" ]*\)"$/\1/p' "$root/rust-toolchain.toml")
+[ -n "$toolchain" ] || { echo "cannot read pinned Rust toolchain" >&2; exit 1; }
 
 zig_bin=${ZIG:-}
 if [ -z "$zig_bin" ] && command -v brew >/dev/null 2>&1; then
@@ -79,15 +109,22 @@ case $("$zig_bin" version) in
     ;;
 esac
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/chartr-herdr.XXXXXX")
-trap 'rm -rf "$work"' EXIT HUP INT TERM
-source_dir="$work/source"
-mkdir -p "$source_dir"
-
-echo "fetching Herdr source $revision"
-curl -fsSL "https://github.com/herdrdev/herdr/archive/$revision.tar.gz" \
-    -o "$work/herdr.tar.gz"
-tar -xzf "$work/herdr.tar.gz" -C "$source_dir" --strip-components=1
+work="$here/.build"
+source_dir="$work/source/$revision"
+mkdir -p "$work/source"
+if [ ! -d "$source_dir" ]; then
+    download=$(mktemp -d "$work/source/download.XXXXXX")
+    trap 'rm -rf "$download"' EXIT
+    trap 'exit 1' HUP INT TERM
+    echo "fetching Herdr source $revision"
+    curl --retry 3 -fsSL "https://github.com/herdrdev/herdr/archive/$revision.tar.gz" \
+        -o "$download/herdr.tar.gz"
+    mkdir "$download/source"
+    tar -xzf "$download/herdr.tar.gz" -C "$download/source" --strip-components=1
+    mv "$download/source" "$source_dir"
+    rm -rf "$download"
+    trap - EXIT HUP INT TERM
+fi
 
 actual_upstream_version=$(sed -n \
     's/^version = "\(.*\)"$/\1/p' "$source_dir/Cargo.toml" | head -1)
@@ -97,12 +134,7 @@ actual_upstream_version=$(sed -n \
 }
 
 build_id=$(printf '%s' "$revision" | cut -c1-12)
-for target in $targets; do
-    supported_target "$target" || {
-        echo "unsupported Herdr target: $target" >&2
-        exit 1
-    }
-
+for target in $pending; do
     echo "building Herdr $version for $target"
     (
         cd "$source_dir"
@@ -111,15 +143,24 @@ for target in $targets; do
             HERDR_BUILD_ID="$build_id" \
             HERDR_BUILD_COMMIT="$revision" \
             ZIG="$zig_bin" \
-            cargo build --release --locked --target "$target"
+            cargo "+$toolchain" build --release --locked --target "$target" --timings
     )
 
     dir="$here/$target"
     mkdir -p "$dir"
-    cp "$work/target/$target/release/herdr" "$dir/herdr"
-    chmod +x "$dir/herdr"
+    # Publish only a complete executable; preserve the old one if a build fails.
+    cp "$work/target/$target/release/herdr" "$dir/herdr.tmp"
+    chmod +x "$dir/herdr.tmp"
+    if [ "$target" = "$host" ]; then
+        sign_native_sidecar "$dir/herdr.tmp"
+        [ "$("$dir/herdr.tmp" --version)" = "herdr $version" ] || {
+            echo "built Herdr does not match $version" >&2
+            rm -f "$dir/herdr.tmp"
+            exit 1
+        }
+    fi
+    mv -f "$dir/herdr.tmp" "$dir/herdr"
 done
 
-curl -fsSL "https://raw.githubusercontent.com/herdrdev/herdr/$revision/LICENSE" \
-    -o "$here/LICENSE"
+cp "$source_dir/LICENSE" "$here/LICENSE"
 echo "vendored Herdr $version from $revision"

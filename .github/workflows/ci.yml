@@ -7,6 +7,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
 jobs:
   test:
     name: ${{ matrix.os }}
@@ -21,40 +29,39 @@ jobs:
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential clang cmake pkg-config \
-            libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev \
-            libva-dev libvulkan1 libwayland-dev libx11-xcb-dev \
-            libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev
+        run: sh scripts/install-linux-deps.sh
 
       - name: Install the pinned Rust toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Install Zig for Herdr
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-        with:
-          version: 0.15.2
-
-      - name: Fetch the pinned Herdr sidecar
-        run: ZIG="$(command -v zig)" sh vendor/herdr/fetch.sh
-
-      # The workspace's terminal encoder requires a newer Zig than Herdr.
-      - name: Install Zig for the workspace
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-        with:
-          version: 0.16.0
-
       - name: Check formatting
         run: cargo fmt --all --check
 
+      - name: Check release scripts
+        run: python3 -B -m unittest discover -s scripts/tests -v
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test-${{ matrix.os }}-${{ runner.arch }}
+          cache-on-failure: true
+
+      - uses: ./.github/actions/setup-herdr
+        with:
+          platform: ${{ matrix.os }}
+
       - name: Build and test
-        run: cargo test --workspace --locked --no-fail-fast
+        run: cargo test --workspace --locked --no-fail-fast --timings
 
       - name: Build the build-time native module example
         run: cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
+
+      - name: Save build timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-timings-${{ matrix.os }}
+          path: |
+            target/cargo-timings/*.html
+            vendor/herdr/.build/target/cargo-timings/*.html
+          include-hidden-files: true
+          retention-days: 14

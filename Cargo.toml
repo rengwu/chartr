@@ -24,6 +24,8 @@ members = [
     "crates/chartr-plugin-host",
 ]
 exclude = [
+    # Persistent upstream sidecar source is its own Cargo project.
+    "vendor/herdr/.build",
     "vendor/zed-platform/gpui_linux",
     "vendor/zed-platform/gpui_macos",
     "vendor/zed-platform/ui",

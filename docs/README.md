@@ -21,6 +21,7 @@ These guides describe the current Rust working tree. Start with the repository
 ## Development and design
 
 - [Code map](code-map.md): implementation owners and entry points.
+- [Release builds](releasing.md): Linux packages, build caches, and timings.
 - [Release acceptance](acceptance.md): automated commands and hands-on checks.
   A checklist is not a record that those checks have passed.
 - [Workspace specification](../.plan/maps/chartr-workspace/spec.md): the living

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=chartr
+Comment=Agent multiplexer
+Exec=chartr %f
+Icon=chartr
+Terminal=false
+Categories=Development;TerminalEmulator;
+StartupNotify=true

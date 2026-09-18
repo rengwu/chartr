@@ -1,0 +1,37 @@
+# Repackage the Ubuntu-built release archive. No compilation takes place here.
+# package-arch.sh supplies the version and checksum for this exact build.
+pkgname=chartr
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='Agent multiplexer with persistent terminals'
+arch=('x86_64')
+url='https://github.com/rengwu/chartr'
+license=('GPL-3.0-or-later' 'Apache-2.0')
+depends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'libxcb'
+         'libxkbcommon-x11' 'fontconfig' 'vulkan-icd-loader' 'xdg-utils')
+optdepends=('xorg-xwayland: run under a Wayland desktop'
+            'vulkan-driver: GPU rendering')
+options=('!strip' '!debug')
+source=("chartr-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('SKIP')
+
+check() {
+    local binary linkage
+    for binary in chartr herdr; do
+        if ! linkage=$(LC_ALL=C ldd "$srcdir/chartr-$pkgver-linux-x86_64/usr/lib/chartr/$binary" 2>&1); then
+            printf '%s\n' "$linkage" >&2
+            return 1
+        fi
+        if [[ "$linkage" == *'not found'* ]]; then
+            printf '%s\n' "$linkage" >&2
+            return 1
+        fi
+    done
+    "$srcdir/chartr-$pkgver-linux-x86_64/usr/lib/chartr/herdr" --version
+}
+
+package() {
+    cp -a "$srcdir/chartr-$pkgver-linux-x86_64/usr" "$pkgdir/"
+    install -Dm644 "$srcdir/chartr-$pkgver-linux-x86_64/BUILD-INFO.txt" \
+        "$pkgdir/usr/share/doc/chartr/BUILD-INFO.txt"
+}

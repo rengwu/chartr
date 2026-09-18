@@ -22,6 +22,19 @@ That suite must handshake the exact sidecar, create a persistent terminal,
 produce a namespace-safe native attach target, hard-kill Herdr, replace the
 daemon, and reject the stale session identity.
 
+## Linux package gate
+
+The [release workflow](releasing.md) must finish for x86_64 and ARM64. Verify the
+published checksums. On Ubuntu 24.04, install the `.deb`, launch `chartr` from
+both a terminal and the application menu, and exercise a native terminal and
+web pane. Repeat on current Arch Linux x86_64 using the `.pkg.tar.zst`. The
+Arch packaging job checks shared-library resolution, not window rendering.
+Also extract the tarball and launch its `usr/bin/chartr` without installing it.
+Confirm Herdr is found beside the real executable through that symlink.
+
+A draft release is a collection of build artifacts, not a record that CI or
+hands-on acceptance passed. Complete the existing gates before publishing it.
+
 ## Visual matrix
 
 Review at 700×900, 1100×720, and a maximized window in both chartr Dark and
