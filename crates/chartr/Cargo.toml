@@ -59,3 +59,6 @@ libc = "0.2"
 gpui = { workspace = true, features = ["test-support"] }
 terminal = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11-dl = "2.21"

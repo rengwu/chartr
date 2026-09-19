@@ -75,6 +75,20 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo test -p gpui_linux --lib xim_preserves_native_and_forwarded --locked
 
+      - name: Test GTK webview scaling and lifecycle
+        if: runner.os == 'Linux'
+        env:
+          GDK_BACKEND: x11
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          for scale in 1 2; do
+            GDK_SCALE="$scale" xvfb-run -a cargo test -p chartr --bin chartr --locked \
+              gtk_content_tracks_host_scale -- --ignored --test-threads=1
+            GDK_SCALE="$scale" xvfb-run -a cargo test -p chartr --bin chartr --locked \
+              native_child_shutdown -- --ignored --test-threads=1
+          done
+
       - name: Build the build-time native module example
         run: cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
 

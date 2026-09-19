@@ -28,6 +28,8 @@ use crate::session::SessionAccess;
 
 mod appearance;
 mod host;
+#[cfg(all(test, target_os = "linux"))]
+mod linux_tests;
 use host::{fetch, read_file, run_process};
 
 #[derive(Clone)]
@@ -66,14 +68,14 @@ pub(crate) struct NativeViewLease {
 /// Closing a plugin pane clears this slot synchronously, even if GPUI keeps the
 /// entity from the previous frame alive for a little longer.
 #[derive(Clone, Default)]
-pub(crate) struct NativeWebViewHandle(Rc<RefCell<Option<Rc<wry::WebView>>>>);
+pub(crate) struct NativeWebViewHandle(Rc<RefCell<Option<Rc<ChildWebView>>>>);
 
 impl NativeWebViewHandle {
-    pub(crate) fn install(&self, webview: Rc<wry::WebView>) {
+    pub(crate) fn install(&self, webview: Rc<ChildWebView>) {
         *self.0.borrow_mut() = Some(webview);
     }
 
-    pub(crate) fn get(&self) -> Option<Rc<wry::WebView>> {
+    pub(crate) fn get(&self) -> Option<Rc<ChildWebView>> {
         self.0.borrow().clone()
     }
 
@@ -111,7 +113,7 @@ impl NativeViewLease {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-use crate::native_webview::NativeFrame;
+use crate::native_webview::{ChildWebView, NativeFrame};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use wry::{
@@ -238,7 +240,7 @@ impl WebPluginView {
                     };
                 }
             };
-            let webview_slot = Rc::new(RefCell::new(None::<Weak<wry::WebView>>));
+            let webview_slot = Rc::new(RefCell::new(None::<Weak<ChildWebView>>));
             let responder = webview_slot.clone();
             let appearance_view = webview_slot.clone();
             let document_appearance = appearance.clone();
@@ -671,7 +673,7 @@ fn handle_request(
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct NativeWebViewElement {
-    webview: Rc<wry::WebView>,
+    webview: Rc<ChildWebView>,
     id: ElementId,
     visibility: NativeViewLeaseOwner,
 }
@@ -679,7 +681,7 @@ struct NativeWebViewElement {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 impl NativeWebViewElement {
     fn new(
-        webview: Rc<wry::WebView>,
+        webview: Rc<ChildWebView>,
         id: impl Into<ElementId>,
         visibility: NativeViewLeaseOwner,
     ) -> Self {
@@ -697,7 +699,7 @@ impl IntoElement for NativeWebViewElement {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 struct VisibleWebView {
-    webview: Weak<wry::WebView>,
+    webview: Weak<ChildWebView>,
     lease: NativeViewLease,
     frame: Option<NativeFrame>,
     visible: bool,
@@ -749,7 +751,8 @@ impl Element for NativeWebViewElement {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let id = id.expect("native webview elements always have an id");
-        let frame = NativeFrame::snapped(bounds, window.scale_factor());
+        let scale = window.scale_factor();
+        let frame = NativeFrame::snapped(bounds, scale);
         window.with_element_state(id, |lease: Option<VisibleWebView>, _| {
             let is_new = lease.is_none();
             let mut lease = lease.unwrap_or_else(|| VisibleWebView {
@@ -765,6 +768,10 @@ impl Element for NativeWebViewElement {
                 let _ = self.webview.set_visible(true);
                 lease.visible = true;
                 lease.frame = None;
+            }
+            #[cfg(target_os = "linux")]
+            if let Err(error) = crate::native_webview::sync_content_scale(&self.webview, scale) {
+                eprintln!("Could not synchronize the plugin webview scale: {error}");
             }
             if lease.frame != Some(frame) {
                 let _ = self.webview.set_bounds(frame.wry());

@@ -1286,6 +1286,7 @@ dependencies = [
  "url",
  "util",
  "wry",
+ "x11-dl",
 ]
 
 [[package]]

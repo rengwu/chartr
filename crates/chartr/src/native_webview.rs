@@ -1,5 +1,7 @@
 //! Compatibility between GPUI's native windows and Wry child webviews.
 
+use std::ops::Deref;
+
 use gpui::{Bounds, Pixels};
 #[cfg(not(target_os = "linux"))]
 use wry::dpi::{LogicalPosition, LogicalSize, Position, Size as WrySize};
@@ -7,11 +9,55 @@ use wry::dpi::{LogicalPosition, LogicalSize, Position, Size as WrySize};
 use wry::dpi::{Position, Size as WrySize};
 use wry::{Rect, WebView, WebViewBuilder, raw_window_handle::HasWindowHandle};
 
+/// A Wry child whose native lifecycle does not depend on another GTK tick.
+pub(crate) struct ChildWebView(Option<WebView>);
+
+impl Deref for ChildWebView {
+    type Target = WebView;
+
+    fn deref(&self) -> &WebView {
+        self.0.as_ref().expect("live child webview")
+    }
+}
+
+impl ChildWebView {
+    pub(crate) fn set_visible(&self, visible: bool) -> wry::Result<()> {
+        self.deref().set_visible(visible)?;
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            use wry::WebViewExtUnix;
+
+            // Wry queues XMapWindow/XUnmapWindow on GTK's connection. GPUI's
+            // connection cannot flush it, and closing the final web pane stops
+            // its GTK pump. Finish the request before the host repaints below it.
+            self.webview().display().sync();
+        }
+        Ok(())
+    }
+}
+
+impl Drop for ChildWebView {
+    fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            use wry::WebViewExtUnix;
+
+            let display = self.webview().display();
+            // Wry also buffers XDestroyWindow. The last Rc may belong to an old
+            // GPUI frame and disappear after the pane's GTK pump has stopped.
+            drop(self.0.take());
+            display.sync();
+        }
+    }
+}
+
 /// Creates a hidden child view; its pane controls visibility and bounds.
 pub(crate) fn build_child(
     builder: WebViewBuilder<'_>,
     parent: &impl HasWindowHandle,
-) -> wry::Result<WebView> {
+) -> wry::Result<ChildWebView> {
     #[cfg(target_os = "linux")]
     {
         let handle = parent.window_handle()?;
@@ -20,14 +66,14 @@ pub(crate) fn build_child(
         // This changes only its representation, not the window or connection.
         // The original parent remains borrowed throughout child construction.
         let parent = unsafe { wry::raw_window_handle::WindowHandle::borrow_raw(raw) };
-        let webview = builder.build_as_child(&parent)?;
+        let webview = ChildWebView(Some(builder.build_as_child(&parent)?));
         // Wry installs its X11 container after applying `with_visible(false)`.
         // Hide it again now so inactive tabs don't leave a mapped child window.
         webview.set_visible(false)?;
         Ok(webview)
     }
     #[cfg(not(target_os = "linux"))]
-    builder.build_as_child(parent)
+    builder.build_as_child(parent).map(|webview| ChildWebView(Some(webview)))
 }
 
 #[cfg(target_os = "linux")]
@@ -46,6 +92,24 @@ fn xlib_handle(
         RawWindowHandle::Xlib(_) => Ok(handle),
         _ => Err(wry::Error::UnsupportedWindowHandle),
     }
+}
+
+/// Match CSS pixels to GPUI logical pixels, independently of GTK's desktop scale.
+#[cfg(target_os = "linux")]
+pub(crate) fn sync_content_scale(webview: &WebView, host_scale: f32) -> wry::Result<()> {
+    use gtk::prelude::*;
+    use wry::WebViewExtUnix;
+
+    let widget = webview.webview();
+    // Physical bounds only size the container. WebKit also multiplies page
+    // content by the GTK widget scale, which can differ from the GPUI scale
+    // (for example GDK_SCALE=2 with a 1x X11 host). Compensate with page zoom
+    // so layout, canvas resolution, and pointer coordinates agree with GPUI.
+    let zoom = f64::from(host_scale) / f64::from(widget.scale_factor());
+    if widget.property::<f64>("zoom-level") != zoom {
+        webview.zoom(zoom)?;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -92,6 +156,87 @@ mod tests {
     use wry::raw_window_handle::{
         RawWindowHandle, WaylandWindowHandle, XcbWindowHandle, XlibWindowHandle,
     };
+
+    // Run in a separate process for each GTK scale; GTK reads GDK_SCALE at init:
+    // GDK_BACKEND=x11 GDK_SCALE=2 cargo test -p chartr --bin chartr
+    //   gtk_content_tracks_host_scale -- --ignored --test-threads=1
+    #[test]
+    #[ignore = "requires an X11 display and a real WebKit renderer"]
+    fn gtk_content_tracks_host_scale() {
+        use gtk::prelude::*;
+        use std::{
+            sync::mpsc,
+            time::{Duration, Instant},
+        };
+        use wry::{WebViewBuilderExtUnix, WebViewExtUnix};
+
+        fn wait<T>(result: &mpsc::Receiver<T>) -> T {
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                while gtk::events_pending() {
+                    gtk::main_iteration_do(false);
+                }
+                if let Ok(value) = result.try_recv() {
+                    return value;
+                }
+                assert!(Instant::now() < deadline, "WebKit did not answer the layout probe");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        fn evaluate(webview: &WebView, script: &str) -> serde_json::Value {
+            let (output, result) = mpsc::channel();
+            webview
+                .evaluate_script_with_callback(script, move |value| {
+                    output.send(value).unwrap();
+                })
+                .unwrap();
+            serde_json::from_str(&wait(&result)).expect("JavaScript result")
+        }
+
+        gtk::init().unwrap();
+        let window = gtk::Window::new(gtk::WindowType::Toplevel);
+        window.set_default_size(400, 300);
+        let (loaded_tx, loaded_rx) = mpsc::channel();
+        let webview = WebViewBuilder::new()
+            .with_on_page_load_handler(move |event, _| {
+                if matches!(event, wry::PageLoadEvent::Finished) {
+                    let _ = loaded_tx.send(());
+                }
+            })
+            .with_html("<html><body style='margin:0'><button style='width:120px;height:28px'>Probe</button></body></html>")
+            .build_gtk(&window).unwrap();
+        window.show_all();
+        wait(&loaded_rx);
+        let widget = webview.webview();
+        let gtk_scale = f64::from(widget.scale_factor());
+        if let Ok(expected) = std::env::var("GDK_SCALE") {
+            assert_eq!(gtk_scale, expected.parse::<f64>().unwrap());
+        }
+        // Confirm this renderer actually applies GTK scaling before the fix.
+        let initial = evaluate(&webview, "window.devicePixelRatio");
+        assert_eq!(initial.as_f64().unwrap(), gtk_scale);
+
+        // Include a fractional host scale and a return to 1x to exercise updates.
+        for host_scale in [1.0_f32, 1.5, 2.0, 1.0] {
+            sync_content_scale(&webview, host_scale).unwrap();
+            let probe = evaluate(
+                &webview,
+                "(() => { const r = document.querySelector('button').getBoundingClientRect(); return [devicePixelRatio, innerWidth, r.width, r.height]; })()",
+            );
+            let dpr = probe[0].as_f64().unwrap();
+            let host_scale = f64::from(host_scale);
+            assert!((dpr - host_scale).abs() < 0.001, "GTK {gtk_scale}: {probe}");
+            let physical_width = f64::from(widget.allocated_width()) * gtk_scale;
+            assert!(
+                (probe[1].as_f64().unwrap() * dpr - physical_width).abs() <= host_scale,
+                "CSS viewport must fill the physical allocation: {probe}"
+            );
+            assert_eq!(probe[2].as_f64().unwrap() * dpr, 120.0 * host_scale);
+            assert_eq!(probe[3].as_f64().unwrap() * dpr, 28.0 * host_scale);
+        }
+        window.close();
+    }
 
     #[test]
     fn xcb_preserves_window_and_optional_visual_ids() {
