@@ -11,9 +11,11 @@ binaries=$(realpath "${1:-target/release}")
 mkdir -p "${2:-target/packages}"
 output=$(realpath "${2:-target/packages}")
 version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -1)
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo "expected a numeric workspace release version" >&2; exit 1;
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$ ]] || {
+    echo "expected a stable or release-candidate workspace version" >&2; exit 1;
 }
+# Debian's tilde makes the candidate sort before the eventual stable release.
+deb_version=${version/-rc./~rc.}
 case "$(uname -m)" in
     x86_64) arch=x86_64; deb_arch=amd64; elf_machine='Advanced Micro Devices X86-64' ;;
     aarch64) arch=aarch64; deb_arch=arm64; elf_machine='AArch64' ;;
@@ -79,7 +81,7 @@ deps=$(cd "$stage" && dpkg-shlibdeps -O -e"$bundle/usr/lib/chartr/chartr" -e"$bu
 deps=${deps#shlibs:Depends=}
 cat > "$bundle/DEBIAN/control" <<CONTROL
 Package: chartr
-Version: $version
+Version: $deb_version
 Architecture: $deb_arch
 Maintainer: chartr maintainers <noreply@github.com>
 Section: utils
@@ -94,9 +96,9 @@ CONTROL
 rm "$bundle/INSTALL.txt"
 install -Dm644 "$bundle/BUILD-INFO.txt" "$bundle/usr/share/doc/chartr/BUILD-INFO.txt"
 rm "$bundle/BUILD-INFO.txt"
-dpkg-deb --root-owner-group -Zgzip -z1 --build "$bundle" "$output/chartr_${version}_${deb_arch}.deb"
+dpkg-deb --root-owner-group -Zgzip -z1 --build "$bundle" "$output/chartr_${deb_version}_${deb_arch}.deb"
 (
     cd "$output"
-    sha256sum "$name.tar.gz" "chartr_${version}_${deb_arch}.deb" > "SHA256SUMS-$arch"
+    sha256sum "$name.tar.gz" "chartr_${deb_version}_${deb_arch}.deb" > "SHA256SUMS-$arch"
 )
 echo "Packages written to $output"

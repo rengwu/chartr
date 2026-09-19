@@ -1,6 +1,7 @@
 """Package tiny native ELF fixtures using the actual Debian packaging tools."""
 import hashlib
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -50,6 +51,14 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive, = self.output.glob('*.tar.gz')
         deb, = self.output.glob('*.deb')
+        version = re.search(r'^version = "([^"]+)"', (ROOT / 'Cargo.toml').read_text(),
+                            re.MULTILINE).group(1)
+        packaged_version = subprocess.check_output(
+            ['dpkg-deb', '-f', str(deb), 'Version'], text=True).strip()
+        self.assertEqual(packaged_version, version.replace('-rc.', '~rc.'))
+        if '-rc.' in version:
+            subprocess.run(['dpkg', '--compare-versions', packaged_version, 'lt',
+                            version.split('-rc.')[0]], check=True)
         unpacked = self.work / 'archive'
         with tarfile.open(archive) as tar:
             tar.extractall(unpacked, filter='data')

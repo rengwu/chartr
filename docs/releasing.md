@@ -7,9 +7,12 @@ job. Existing CI and hands-on [acceptance](acceptance.md) remain release gates.
 
 ## GitHub Actions
 
-`Linux release` runs on default-branch pushes (warming the release cache),
-manual dispatches, and `v*` tags. A tag must exactly match `v` plus the numeric
-workspace version in `Cargo.toml`, for example `v0.3.0`.
+`Release packages` runs on default-branch pushes (warming the release cache),
+manual dispatches, and `v*` tags. A tag must exactly match `v` plus the
+workspace version in `Cargo.toml`, for example `v0.3.0` or `v0.3.0-rc.1`.
+The [workflow](../.github/workflows/release.yml) builds Linux x86_64/ARM64 and
+macOS Intel/Apple silicon before assembling a draft release. Candidate tags
+create prereleases; publishing them must not update the latest stable release.
 
 1. Install Ubuntu system dependencies and the pinned Rust toolchain.
 2. Restore the release dependency cache and the exact pinned Herdr executable.
@@ -19,7 +22,8 @@ workspace version in `Cargo.toml`, for example `v0.3.0`.
    container checks dynamic-library resolution and makes a `.pkg.tar.zst`
    without compiling anything.
 5. Upload packages, per-architecture SHA-256 checksums, and timing reports.
-   Tag builds also create/update a **draft** release. Reruns refuse to replace
+   Tag builds also create/update a **draft** release after the macOS jobs finish.
+   Reruns refuse to replace
    assets on an already published release.
 
 Ubuntu 24.04 is the build and minimum Ubuntu runtime baseline. These are glibc
@@ -34,6 +38,11 @@ No frontend build, Zig 0.16 installation, cross-compilation setup, whole-program
 LTO, or per-format recompilation is involved. Release compiler settings retain
 Cargo's defaults; the optimization comes from eliminating repeated work without
 changing application behavior or taking on a fork of Zed's dependency graph.
+
+Candidate versions keep their `-rc.N` suffix in Cargo and tarball/DMG names.
+Debian maps that suffix to `~rc.N`, and Arch maps it to `rcN`; both package
+managers must sort the candidate before the matching stable release. The Debian
+fixture test and the real Arch packaging job verify that ordering.
 
 ## Local Linux build
 
@@ -79,6 +88,13 @@ checksum under `target/`. The bundle uses the macOS app artwork in
 `docs/assets/v4/`, including the dedicated small-size variants. The app is
 ad-hoc signed and unnotarized. Pass an output path as the script's only argument
 to put the image elsewhere.
+
+Release automation uses the same verified bundle path with
+`CHARTR_BUNDLE_ID=io.github.rengwu.chartr`, retaining the production identifier
+from earlier releases. Local builds default to `dev.chartr.dev`. The full
+candidate version is recorded in `chartrReleaseVersion`; Apple's numeric
+`CFBundleShortVersionString` uses the corresponding base version. Release DMGs
+remain ad-hoc signed and unnotarized, and the release notes must say so.
 
 ## Caches and build time
 

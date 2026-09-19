@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "chartr"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "assets",
@@ -1285,14 +1285,14 @@ dependencies = [
 
 [[package]]
 name = "chartr-agent"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "chartr-companion"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "rcgen",
  "rustls",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "chartr-conversations"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "anyhow",
  "chartr-agent",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "chartr-herdr"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "chartr-agent",
  "chartr-storage",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "chartr-plugin"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "gpui",
  "serde",
@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "chartr-plugin-host"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "chartr-plugin",
  "gpui",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "chartr-storage"
-version = "0.3.0"
+version = "0.3.0-rc.1"
 dependencies = [
  "tempfile",
 ]

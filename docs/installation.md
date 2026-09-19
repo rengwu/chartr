@@ -1,8 +1,9 @@
 # Installation
 
-The Rust rewrite is currently built from source. Production release packages
-are still being prepared; the [v0.2.4 downloads](https://github.com/rengwu/chartr/releases/tag/v0.2.4)
-are for the legacy Go/Svelte version. You can also build a
+The [v0.3.0-rc.1 release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.1)
+provides test packages for the Rust rewrite. It is a prerelease; the
+[v0.2.4 downloads](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remain the
+stable legacy Go/Svelte version. You can also build a
 [development DMG](releasing.md#macos-development-dmg) locally on macOS.
 
 | Platform | Current support                                                    |
@@ -39,7 +40,7 @@ also install the system dependencies with `sh scripts/install-linux-deps.sh`.
 </details>
 
 ```sh
-git clone --branch rewrite/rust https://github.com/rengwu/chartr.git
+git clone https://github.com/rengwu/chartr.git
 cd chartr
 rustup show
 
@@ -62,13 +63,24 @@ cargo run -p chartr --locked -- /path/to/project
 
 No frontend build is needed. The bundled web surfaces ship with their assets.
 
+## macOS release candidates
+
+Download the `macos-arm64.dmg` for Apple silicon or `macos-x86_64.dmg` for Intel
+from the release candidate page, open the disk image, and drag `chartr.app` to
+Applications. These builds are ad-hoc signed and not notarized. If macOS blocks
+opening the app, review the download source and use **System Settings → Privacy
+& Security → Open Anyway** after attempting to open it.
+
 ## Linux release packages
 
-The [Linux release workflow](../.github/workflows/release-linux.yml) builds native
+The [release workflow](../.github/workflows/release.yml) builds native
 x86_64 and ARM64 binaries on Ubuntu 24.04. Each build produces a `.tar.gz` and
 `.deb`; x86_64 also produces an Arch Linux `.pkg.tar.zst`, using the same binaries.
 Run the workflow manually for downloadable artifacts. A `v<workspace-version>`
-tag creates a **draft** GitHub release after both architectures finish.
+tag creates a **draft** GitHub release after all four platform builds finish.
+Candidate tags such as `v0.3.0-rc.1` are marked as prereleases. Debian candidates
+use a version such as `0.3.0~rc.1`; Arch uses `0.3.0rc1`, so stable `0.3.0` sorts
+after its candidates.
 
 Install a downloaded package with `sudo apt install ./chartr_*.deb` on Ubuntu
 24.04 or newer, or `sudo pacman -U ./chartr-*.pkg.tar.zst` on current Arch Linux.

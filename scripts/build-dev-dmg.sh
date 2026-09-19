@@ -4,6 +4,7 @@
 # The application uses Cargo's release profile so the GPUI terminal is
 # representative of a distributable build. Local packages use the production
 # app name, with a separate bundle identifier, ad-hoc signing, and no notarization.
+# Release automation sets CHARTR_BUNDLE_ID to the production identifier.
 
 set -eu
 
@@ -16,6 +17,7 @@ if [ "$#" -gt 1 ]; then
 fi
 
 version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$root/Cargo.toml" | head -1)
+bundle_id=${CHARTR_BUNDLE_ID:-dev.chartr.dev}
 [ -n "$version" ] || {
     echo "cannot read the workspace version from Cargo.toml" >&2
     exit 1
@@ -40,7 +42,7 @@ case "$output" in
 esac
 
 echo "building chartr $version ($revision)"
-cargo build --manifest-path "$root/Cargo.toml" --release -p chartr --locked
+cargo build --manifest-path "$root/Cargo.toml" --release -p chartr --bin chartr --locked --timings
 
 binary="$root/target/release/chartr"
 sidecar="$root/target/release/herdr"
@@ -99,11 +101,12 @@ plutil -insert CFBundleDevelopmentRegion -string en "$plist"
 plutil -insert CFBundleDisplayName -string chartr "$plist"
 plutil -insert CFBundleExecutable -string chartr "$plist"
 plutil -insert CFBundleIconFile -string chartr.icns "$plist"
-plutil -insert CFBundleIdentifier -string dev.chartr.dev "$plist"
+plutil -insert CFBundleIdentifier -string "$bundle_id" "$plist"
 plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$plist"
 plutil -insert CFBundleName -string chartr "$plist"
 plutil -insert CFBundlePackageType -string APPL "$plist"
-plutil -insert CFBundleShortVersionString -string "$version" "$plist"
+plutil -insert CFBundleShortVersionString -string "${version%%-*}" "$plist"
+plutil -insert chartrReleaseVersion -string "$version" "$plist"
 plutil -insert CFBundleVersion -string "$build_number" "$plist"
 plutil -insert chartrGitRevision -string "$revision" "$plist"
 plutil -insert LSApplicationCategoryType -string public.app-category.developer-tools "$plist"
@@ -115,11 +118,11 @@ plutil -insert LSMinimumSystemVersion -string "$minimum_macos" "$plist"
 plutil -lint "$plist"
 
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.dev.herdr "$macos/herdr"
+    --identifier "$bundle_id.herdr" "$macos/herdr"
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.dev "$macos/chartr"
+    --identifier "$bundle_id" "$macos/chartr"
 codesign --force --sign - --timestamp=none \
-    --identifier dev.chartr.dev "$app"
+    --identifier "$bundle_id" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 ln -s /Applications "$image_root/Applications"

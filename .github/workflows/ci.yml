@@ -55,6 +55,16 @@ jobs:
       - name: Build the build-time native module example
         run: cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked
 
+      - name: Test real terminal sessions
+        run: cargo test -p chartr --test live_session --locked -- --ignored --nocapture --test-threads=1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test web plugin bridges and layouts
+        run: node --test crates/chartr/tests/plugin_bridge.cjs plugins/wayfinder/tests/layout.test.mjs
+
       - name: Save build timings
         if: always()
         uses: actions/upload-artifact@v4
