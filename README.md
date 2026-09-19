@@ -17,9 +17,7 @@ spaces, arrange terminals and tools side by side, and make the workspace your ow
 > are being prepared. [v0.2.4](https://github.com/rengwu/chartr/releases/tag/v0.2.4)
 > is the legacy Go/Svelte version.
 
-<img width="1169" height="857" alt="Screenshot 2026-09-08 at 4 11 24 AM" src="https://github.com/user-attachments/assets/8af894fe-4a0f-4247-b733-e9d521fd44a1" />
-
-*Earlier Rust workspace snapshot, 8 September 2026; current controls have changed.*
+<img width="1169" alt="Chartr in Spaces view with a Claude terminal and Wayfinder side by side" src="./docs/assets/demo.png" />
 
 <br clear="right">
 
