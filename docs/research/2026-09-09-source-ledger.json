@@ -1,0 +1,666 @@
+{
+  "checked_on": "2026-09-09",
+  "chartr_commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+  "method": "Primary websites, docs, releases and selected pinned source/test reading. Competitor tests and applications not run. Source availability is limited to located official repositories.",
+  "sources": {
+    "superset_site": {
+      "url": "https://superset.sh/",
+      "kind": "primary-publication"
+    },
+    "paseo_site": {
+      "url": "https://paseo.sh/",
+      "kind": "primary-publication"
+    },
+    "emdash_site": {
+      "url": "https://emdash.com/",
+      "kind": "primary-publication"
+    },
+    "synara_site": {
+      "url": "https://www.trysynara.com/",
+      "kind": "primary-publication"
+    },
+    "t3_site": {
+      "url": "https://t3.codes/",
+      "kind": "primary-publication"
+    },
+    "bb_site": {
+      "url": "https://github.com/get-bb/bb",
+      "kind": "primary-publication"
+    },
+    "deepseek_site": {
+      "url": "https://github.com/deepseek-ai/deepseek-harness",
+      "kind": "primary-publication"
+    },
+    "moshi_site": {
+      "url": "https://getmoshi.app/",
+      "kind": "primary-publication"
+    },
+    "cube_site": {
+      "url": "https://cube.computer/",
+      "kind": "primary-publication"
+    },
+    "soft_site": {
+      "url": "https://soft-machine.io/landing",
+      "kind": "primary-publication"
+    },
+    "superlogical_site": {
+      "url": "https://www.superlogical.com/",
+      "kind": "primary-publication"
+    },
+    "diri_site": {
+      "url": "https://diri.sh/",
+      "kind": "primary-publication"
+    },
+    "sshhip_site": {
+      "url": "https://sshhip.com/",
+      "kind": "primary-publication"
+    },
+    "unpeel_site": {
+      "url": "https://github.com/unpeel-com/unpeel",
+      "kind": "primary-publication"
+    },
+    "nimble_site": {
+      "url": "https://gitnimble.com/",
+      "kind": "primary-publication"
+    },
+    "fork_site": {
+      "url": "https://git-fork.com/",
+      "kind": "primary-publication"
+    },
+    "almonk_profile": {
+      "url": "https://x.com/almonk",
+      "kind": "primary-publication"
+    },
+    "mitchell_profile": {
+      "url": "https://x.com/mitchellh",
+      "kind": "primary-publication"
+    },
+    "paseo_security": {
+      "url": "https://paseo.sh/docs/security",
+      "kind": "primary-publication"
+    },
+    "paseo_plugins_docs": {
+      "url": "https://paseo.sh/docs/plugins",
+      "kind": "primary-publication"
+    },
+    "emdash_tasks": {
+      "url": "https://emdash.com/docs/tasks",
+      "kind": "primary-publication"
+    },
+    "emdash_review": {
+      "url": "https://emdash.com/docs/diff-view",
+      "kind": "primary-publication"
+    },
+    "emdash_providers": {
+      "url": "https://emdash.com/docs/providers",
+      "kind": "primary-publication"
+    },
+    "moshi_desktop": {
+      "url": "https://getmoshi.app/docs/install-desktop",
+      "kind": "primary-publication"
+    },
+    "moshi_security": {
+      "url": "https://getmoshi.app/docs/security-sync",
+      "kind": "primary-publication"
+    },
+    "superlogical_founder": {
+      "url": "https://mitchellh.com/writing/superlogical",
+      "kind": "primary-publication"
+    },
+    "mitchell_demo": {
+      "url": "https://x.com/mitchellh/status/2097424868203758046",
+      "kind": "primary-publication"
+    },
+    "almonk_demo": {
+      "url": "https://x.com/almonk/status/2097439320076403125",
+      "kind": "primary-publication"
+    },
+    "sshhip_store": {
+      "url": "https://apps.apple.com/us/app/sshhip/id6785186457",
+      "kind": "primary-publication"
+    },
+    "superset_repo": {
+      "url": "https://github.com/superset-sh/superset",
+      "kind": "primary-publication"
+    },
+    "superset_release": {
+      "url": "https://github.com/superset-sh/superset/releases/tag/desktop-v1.27.0",
+      "kind": "primary-publication"
+    },
+    "paseo_release": {
+      "url": "https://github.com/getpaseo/paseo/releases/tag/v0.8.0-beta.1",
+      "kind": "primary-publication"
+    },
+    "emdash_release": {
+      "url": "https://github.com/generalaction/emdash/releases/tag/v1.2.4",
+      "kind": "primary-publication"
+    },
+    "synara_release": {
+      "url": "https://github.com/Emanuele-web04/synara/releases/tag/v0.8.3",
+      "kind": "primary-publication"
+    },
+    "t3_repo": {
+      "url": "https://github.com/pingdotgg/t3code",
+      "kind": "primary-publication"
+    },
+    "t3_releases": {
+      "url": "https://github.com/pingdotgg/t3code/releases",
+      "kind": "primary-publication"
+    },
+    "bb_repo": {
+      "url": "https://github.com/get-bb/bb",
+      "kind": "primary-publication"
+    },
+    "bb_release": {
+      "url": "https://github.com/get-bb/bb/releases/tag/desktop-v0.42.1",
+      "kind": "primary-publication"
+    },
+    "deepseek_release": {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.5-alpha.1",
+      "kind": "primary-publication"
+    },
+    "diri_release": {
+      "url": "https://github.com/cristicretu/diri/releases/tag/v0.6.3",
+      "kind": "primary-publication"
+    },
+    "chartr_readme": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/README.md",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "README.md",
+      "line": 1
+    },
+    "chartr_wayfinder": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/README.md:50",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "plugins/wayfinder/README.md",
+      "line": 50
+    },
+    "chartr_control": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr/src/control.rs:35",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "crates/chartr-herdr/src/control.rs",
+      "line": 35
+    },
+    "chartr_chrome": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/crates/chartr/src/chrome.rs:432",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "crates/chartr/src/chrome.rs",
+      "line": 432
+    },
+    "chartr_wayfinder_model": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/plugins/wayfinder/src/model.rs:240",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "plugins/wayfinder/src/model.rs",
+      "line": 240
+    },
+    "chartr_prompts": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/plugins/prompts/README.md",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "plugins/prompts/README.md",
+      "line": 1
+    },
+    "chartr_plugins": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/docs/plugins.md",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "docs/plugins.md",
+      "line": 1
+    },
+    "chartr_companion_protocol": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/docs/companion-protocol.md",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "docs/companion-protocol.md",
+      "line": 1
+    },
+    "chartr_companion": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/plugins/companion/README.md",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "plugins/companion/README.md",
+      "line": 1
+    },
+    "chartr_companion_code": {
+      "url": "/Users/rengwu/Desktop/Projects/chartr/crates/chartr-companion/src/lib.rs",
+      "kind": "local-chartr-source",
+      "repo": "rengwu/chartr",
+      "commit": "5402a35454c17bea0dead3437b264e7e2801dd2e",
+      "path": "crates/chartr-companion/src/lib.rs",
+      "line": 1
+    },
+    "superset_schema": {
+      "repo": "superset-sh/superset",
+      "commit": "397c4c2bcab279e694271f4311725cff46865118",
+      "path": "packages/host-service/src/db/schema.ts",
+      "url": "https://github.com/superset-sh/superset/blob/397c4c2bcab279e694271f4311725cff46865118/packages/host-service/src/db/schema.ts",
+      "lines": 380,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "superset_daemon": {
+      "repo": "superset-sh/superset",
+      "commit": "397c4c2bcab279e694271f4311725cff46865118",
+      "path": "apps/desktop/src/main/lib/terminal/daemon/daemon-manager.ts",
+      "url": "https://github.com/superset-sh/superset/blob/397c4c2bcab279e694271f4311725cff46865118/apps/desktop/src/main/lib/terminal/daemon/daemon-manager.ts",
+      "lines": 1001,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "superset_tests": {
+      "repo": "superset-sh/superset",
+      "commit": "397c4c2bcab279e694271f4311725cff46865118",
+      "path": "apps/desktop/src/main/lib/terminal/daemon/daemon-manager.test.ts",
+      "url": "https://github.com/superset-sh/superset/blob/397c4c2bcab279e694271f4311725cff46865118/apps/desktop/src/main/lib/terminal/daemon/daemon-manager.test.ts",
+      "lines": 567,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "paseo_worktrees": {
+      "repo": "getpaseo/paseo",
+      "commit": "da8c1b5c94e752b01d451645e5fa52aba2c1b2f0",
+      "path": "packages/server/src/server/paseo-worktree-service.ts",
+      "url": "https://github.com/getpaseo/paseo/blob/da8c1b5c94e752b01d451645e5fa52aba2c1b2f0/packages/server/src/server/paseo-worktree-service.ts",
+      "lines": 288,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "paseo_tests": {
+      "repo": "getpaseo/paseo",
+      "commit": "da8c1b5c94e752b01d451645e5fa52aba2c1b2f0",
+      "path": "packages/app/e2e/browser/worktree-restore-after-restart.spec.ts",
+      "url": "https://github.com/getpaseo/paseo/blob/da8c1b5c94e752b01d451645e5fa52aba2c1b2f0/packages/app/e2e/browser/worktree-restore-after-restart.spec.ts",
+      "lines": 142,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "paseo_plugins_code": {
+      "repo": "getpaseo/paseo",
+      "commit": "da8c1b5c94e752b01d451645e5fa52aba2c1b2f0",
+      "path": "packages/app/src/plugins/registry.ts",
+      "url": "https://github.com/getpaseo/paseo/blob/da8c1b5c94e752b01d451645e5fa52aba2c1b2f0/packages/app/src/plugins/registry.ts",
+      "lines": 185,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "emdash_task_service": {
+      "repo": "generalaction/emdash",
+      "commit": "9eb050ca7a184b1411a7f3a1e9705fb1632a7253",
+      "path": "apps/emdash-desktop/src/core/features/tasks/api/node/task-service.ts",
+      "url": "https://github.com/generalaction/emdash/blob/9eb050ca7a184b1411a7f3a1e9705fb1632a7253/apps/emdash-desktop/src/core/features/tasks/api/node/task-service.ts",
+      "lines": 633,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "emdash_schema": {
+      "repo": "generalaction/emdash",
+      "commit": "9eb050ca7a184b1411a7f3a1e9705fb1632a7253",
+      "path": "apps/emdash-desktop/src/core/services/app-db/node/schema.ts",
+      "url": "https://github.com/generalaction/emdash/blob/9eb050ca7a184b1411a7f3a1e9705fb1632a7253/apps/emdash-desktop/src/core/services/app-db/node/schema.ts",
+      "lines": 562,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "emdash_worktrees": {
+      "repo": "generalaction/emdash",
+      "commit": "9eb050ca7a184b1411a7f3a1e9705fb1632a7253",
+      "path": "packages/core/src/runtimes/workspace-registry/node/create-worktree.ts",
+      "url": "https://github.com/generalaction/emdash/blob/9eb050ca7a184b1411a7f3a1e9705fb1632a7253/packages/core/src/runtimes/workspace-registry/node/create-worktree.ts",
+      "lines": 293,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "emdash_tests": {
+      "repo": "generalaction/emdash",
+      "commit": "9eb050ca7a184b1411a7f3a1e9705fb1632a7253",
+      "path": "packages/core/src/runtimes/workspace-registry/node/create-worktree.test.ts",
+      "url": "https://github.com/generalaction/emdash/blob/9eb050ca7a184b1411a7f3a1e9705fb1632a7253/packages/core/src/runtimes/workspace-registry/node/create-worktree.test.ts",
+      "lines": 293,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "emdash_plugin_host": {
+      "repo": "generalaction/emdash",
+      "commit": "9eb050ca7a184b1411a7f3a1e9705fb1632a7253",
+      "path": "packages/core/src/services/agent-plugins/api/plugins/plugin-host.ts",
+      "url": "https://github.com/generalaction/emdash/blob/9eb050ca7a184b1411a7f3a1e9705fb1632a7253/packages/core/src/services/agent-plugins/api/plugins/plugin-host.ts",
+      "lines": 360,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "synara_handoff": {
+      "repo": "Emanuele-web04/synara",
+      "commit": "4bb3dccfa2cfdafb432bc4cdbc474921a379f6be",
+      "path": "apps/server/src/orchestration/handoff.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/4bb3dccfa2cfdafb432bc4cdbc474921a379f6be/apps/server/src/orchestration/handoff.ts",
+      "lines": 236,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "synara_tests": {
+      "repo": "Emanuele-web04/synara",
+      "commit": "4bb3dccfa2cfdafb432bc4cdbc474921a379f6be",
+      "path": "apps/server/src/orchestration/handoff.test.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/4bb3dccfa2cfdafb432bc4cdbc474921a379f6be/apps/server/src/orchestration/handoff.test.ts",
+      "lines": 204,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "synara_worktrees": {
+      "repo": "Emanuele-web04/synara",
+      "commit": "4bb3dccfa2cfdafb432bc4cdbc474921a379f6be",
+      "path": "apps/server/src/managedWorktrees.ts",
+      "url": "https://github.com/Emanuele-web04/synara/blob/4bb3dccfa2cfdafb432bc4cdbc474921a379f6be/apps/server/src/managedWorktrees.ts",
+      "lines": 385,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "t3_settlement": {
+      "repo": "pingdotgg/t3code",
+      "commit": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+      "path": "apps/server/src/orchestration/ThreadSettlementPolicy.ts",
+      "url": "https://github.com/pingdotgg/t3code/blob/08463e2c401ce87858aaaebcb70ed86fb002fb5f/apps/server/src/orchestration/ThreadSettlementPolicy.ts",
+      "lines": 113,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "t3_tests": {
+      "repo": "pingdotgg/t3code",
+      "commit": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+      "path": "apps/server/src/orchestration/ThreadSettlementPolicy.test.ts",
+      "url": "https://github.com/pingdotgg/t3code/blob/08463e2c401ce87858aaaebcb70ed86fb002fb5f/apps/server/src/orchestration/ThreadSettlementPolicy.test.ts",
+      "lines": 215,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "t3_engine": {
+      "repo": "pingdotgg/t3code",
+      "commit": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+      "path": "apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "url": "https://github.com/pingdotgg/t3code/blob/08463e2c401ce87858aaaebcb70ed86fb002fb5f/apps/server/src/orchestration/Layers/OrchestrationEngine.ts",
+      "lines": 450,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "t3_plan": {
+      "repo": "pingdotgg/t3code",
+      "commit": "08463e2c401ce87858aaaebcb70ed86fb002fb5f",
+      "path": "apps/server/src/orchestration/ThreadPlanProgress.ts",
+      "url": "https://github.com/pingdotgg/t3code/blob/08463e2c401ce87858aaaebcb70ed86fb002fb5f/apps/server/src/orchestration/ThreadPlanProgress.ts",
+      "lines": 76,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "bb_schema": {
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "packages/db/src/schema.ts",
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/packages/db/src/schema.ts",
+      "lines": 1111,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "bb_worktree_plugin": {
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "plugins/environment-git-worktree/host.ts",
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/plugins/environment-git-worktree/host.ts",
+      "lines": 123,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "bb_worktrees": {
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "plugins/environment-git-worktree/host/worktree.ts",
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/plugins/environment-git-worktree/host/worktree.ts",
+      "lines": 732,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "bb_tests": {
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "plugins/environment-git-worktree/host.test.ts",
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/plugins/environment-git-worktree/host.test.ts",
+      "lines": 362,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "bb_contract": {
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "packages/plugin-sdk/src/host-contract.ts",
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/packages/plugin-sdk/src/host-contract.ts",
+      "lines": 179,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "deepseek_session": {
+      "repo": "deepseek-ai/deepseek-harness",
+      "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "path": "packages/core/session/src/index.ts",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/session/src/index.ts",
+      "lines": 1274,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "deepseek_inbox": {
+      "repo": "deepseek-ai/deepseek-harness",
+      "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "path": "packages/core/agent-loop/src/inbox.ts",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/agent-loop/src/inbox.ts",
+      "lines": 247,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "deepseek_tests": {
+      "repo": "deepseek-ai/deepseek-harness",
+      "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "path": "packages/core/agent-loop/tests/inbox.spec.ts",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/agent-loop/tests/inbox.spec.ts",
+      "lines": 266,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "deepseek_scope": {
+      "repo": "deepseek-ai/deepseek-harness",
+      "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "path": "packages/core/scope/src/index.ts",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/5dda764ed3aa172535a7967b06ff95d9cbfe536a/packages/core/scope/src/index.ts",
+      "lines": 204,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "diri_status": {
+      "repo": "cristicretu/diri",
+      "commit": "c564784199cfbeabd29f011bac28467a2b12fccf",
+      "path": "diri/crates/diri-engine/src/status/mod.rs",
+      "url": "https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/diri/crates/diri-engine/src/status/mod.rs",
+      "lines": 1002,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "diri_holders": {
+      "repo": "cristicretu/diri",
+      "commit": "c564784199cfbeabd29f011bac28467a2b12fccf",
+      "path": "diri/crates/diri-engine/src/holder/manager.rs",
+      "url": "https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/diri/crates/diri-engine/src/holder/manager.rs",
+      "lines": 294,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "diri_tests": {
+      "repo": "cristicretu/diri",
+      "commit": "c564784199cfbeabd29f011bac28467a2b12fccf",
+      "path": "diri/crates/diri-engine/tests/holder_session.rs",
+      "url": "https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/diri/crates/diri-engine/tests/holder_session.rs",
+      "lines": 419,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "diri_worktrees": {
+      "repo": "cristicretu/diri",
+      "commit": "c564784199cfbeabd29f011bac28467a2b12fccf",
+      "path": "diri/crates/diri-app/src/worktrees.rs",
+      "url": "https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/diri/crates/diri-app/src/worktrees.rs",
+      "lines": 277,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "unpeel_supervisor": {
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "crates/unpeel-serve/src/pty_core_supervisor.rs",
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/crates/unpeel-serve/src/pty_core_supervisor.rs",
+      "lines": 1198,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "unpeel_core": {
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "crates/unpeel-core/src/pty_core.rs",
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/crates/unpeel-core/src/pty_core.rs",
+      "lines": 1285,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "unpeel_tests": {
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "crates/unpeel-cli/tests/cases/pty_core_handoff.py",
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/crates/unpeel-cli/tests/cases/pty_core_handoff.py",
+      "lines": 493,
+      "kind": "test-source",
+      "review_scope": "Selected test cases and assertions inspected; tests not run."
+    },
+    "unpeel_gate": {
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "crates/unpeel-core/src/mcp_gate.rs",
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/crates/unpeel-core/src/mcp_gate.rs",
+      "lines": 209,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "unpeel_pairing": {
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "crates/unpeel-serve/src/pairing.rs",
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/crates/unpeel-serve/src/pairing.rs",
+      "lines": 970,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "cube_canvas": {
+      "repo": "collabs-inc/collab-public",
+      "commit": "476b8efc942ee5f430a9b8bf832b8560a8cf76c2",
+      "path": "collab-electron/src/main/canvas-rpc.ts",
+      "url": "https://github.com/collabs-inc/collab-public/blob/476b8efc942ee5f430a9b8bf832b8560a8cf76c2/collab-electron/src/main/canvas-rpc.ts",
+      "lines": 292,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "cube_protocol": {
+      "repo": "collabs-inc/collab-public",
+      "commit": "476b8efc942ee5f430a9b8bf832b8560a8cf76c2",
+      "path": "collab-electron/src/main/sidecar/protocol.ts",
+      "url": "https://github.com/collabs-inc/collab-public/blob/476b8efc942ee5f430a9b8bf832b8560a8cf76c2/collab-electron/src/main/sidecar/protocol.ts",
+      "lines": 135,
+      "kind": "implementation",
+      "review_scope": "Selected implementation paths inspected; not a whole-file or whole-repository audit."
+    },
+    "bb_vision": {
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/docs/VISION.md",
+      "kind": "repository-documentation",
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "docs/VISION.md"
+    },
+    "bb_system": {
+      "url": "https://github.com/get-bb/bb/blob/a3ac7a5025f1e7fac927313c928d5add5e90f800/docs/system-overview.md",
+      "kind": "repository-documentation",
+      "repo": "get-bb/bb",
+      "commit": "a3ac7a5025f1e7fac927313c928d5add5e90f800",
+      "path": "docs/system-overview.md"
+    },
+    "deepseek_architecture": {
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/5dda764ed3aa172535a7967b06ff95d9cbfe536a/docs/architecture.md",
+      "kind": "repository-documentation",
+      "repo": "deepseek-ai/deepseek-harness",
+      "commit": "5dda764ed3aa172535a7967b06ff95d9cbfe536a",
+      "path": "docs/architecture.md"
+    },
+    "diri_roadmap": {
+      "url": "https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/ROADMAP.md",
+      "kind": "repository-documentation",
+      "repo": "cristicretu/diri",
+      "commit": "c564784199cfbeabd29f011bac28467a2b12fccf",
+      "path": "ROADMAP.md"
+    },
+    "unpeel_runtime": {
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/runtimes/README.md",
+      "kind": "repository-documentation",
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "runtimes/README.md"
+    },
+    "unpeel_mcp": {
+      "url": "https://github.com/unpeel-com/unpeel/blob/a058275f1ff4433e73e477109a135276bacaf17f/docs/agents/sessions-mcp.md",
+      "kind": "repository-documentation",
+      "repo": "unpeel-com/unpeel",
+      "commit": "a058275f1ff4433e73e477109a135276bacaf17f",
+      "path": "docs/agents/sessions-mcp.md"
+    },
+    "cube_repo": {
+      "url": "https://github.com/collabs-inc/collab-public/blob/476b8efc942ee5f430a9b8bf832b8560a8cf76c2/README.md",
+      "kind": "repository-documentation",
+      "repo": "collabs-inc/collab-public",
+      "commit": "476b8efc942ee5f430a9b8bf832b8560a8cf76c2",
+      "path": "README.md"
+    },
+    "cube_releases": {
+      "url": "https://github.com/collabs-inc/cube-releases/blob/c765d8eebcde47069c4b02129abcf902f836db88/README.md",
+      "kind": "repository-documentation",
+      "repo": "collabs-inc/cube-releases",
+      "commit": "c765d8eebcde47069c4b02129abcf902f836db88",
+      "path": "README.md"
+    },
+    "soft_repo": {
+      "url": "https://github.com/Soft-Machine-io/desktop-releases/blob/6ec22ff3d91bc13fd67223179f1848d2f743e737/README.md",
+      "kind": "repository-documentation",
+      "repo": "Soft-Machine-io/desktop-releases",
+      "commit": "6ec22ff3d91bc13fd67223179f1848d2f743e737",
+      "path": "README.md"
+    },
+    "moshi_repo": {
+      "url": "https://github.com/rjyo/homebrew-moshi/blob/a65d0c51e9664a34b088fff5591d40ba7e9761b5/README.md",
+      "kind": "repository-documentation",
+      "repo": "rjyo/homebrew-moshi",
+      "commit": "a65d0c51e9664a34b088fff5591d40ba7e9761b5",
+      "path": "README.md"
+    },
+    "nimble_repo": {
+      "url": "https://github.com/RobSwish/nimble-updates/blob/33b43f462cc79038605c91c60eeb1cd9892fa00d/README.md",
+      "kind": "repository-documentation",
+      "repo": "RobSwish/nimble-updates",
+      "commit": "33b43f462cc79038605c91c60eeb1cd9892fa00d",
+      "path": "README.md"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+manifest_version = 2
+id = "com.chartr.browser"
+name = "Browser"
+description = "Browse the web alongside your terminals and tools."
+version = "0.1.0"
+kind = "hosted"
+icon = "InternetIcon"
+surface = "browser"
+
+[capabilities]
+multiplicity = "multiple"
+restorable = true

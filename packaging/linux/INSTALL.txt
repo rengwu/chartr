@@ -1,0 +1,13 @@
+chartr for Linux
+
+This archive contains an application directory tree, not a static binary.
+Keep usr/lib/chartr/chartr and usr/lib/chartr/herdr together.
+Run ./usr/bin/chartr from this extracted directory, or use the .deb / Arch
+package for desktop integration and automatic dependency installation.
+
+Supported baseline: Ubuntu 24.04 or newer, and current Arch Linux x86_64.
+Requires X11 or XWayland, GTK 3, WebKitGTK 4.1, libxkbcommon-x11, and a
+working Vulkan driver. The release packages declare the runtime dependencies.
+
+The source revision and build platform are recorded in BUILD-INFO.txt.
+Source and installation guide: https://github.com/rengwu/chartr

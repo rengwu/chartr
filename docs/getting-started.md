@@ -1,91 +1,28 @@
 # Getting started
 
-This guide shows how to configure chartr, create a map, and start a ticket
-session.
+Build and launch chartr using the [installation guide](installation.md), then
+set up your workspace:
 
-Before you begin, install:
+1. **Open a space.** Add a project folder, or use Free sessions for a shell
+   outside a project. The `+` button opens a terminal.
+2. **Register an agent.** Open the **Agent** settings gear in **Settings → Plugins** and
+   add an installed CLI agent and its launch settings.
+3. **Register your skills.** Open the **Skill sources** settings gear in **Settings → Plugins**
+   and add local folders or Git repositories containing your skills.
+4. **Chart your work.** Open the Agent surface using the **New surface** button
+   beside `+`. Work with your agent to write a plan under `.plan/maps/`, following
+   the [tracker convention](../plugins/wayfinder/TRACKER-CONVENTION.md).
+5. **Drive the map.** Open Wayfinder, choose a map and a ready ticket, then use
+   **Review & launch** to inspect the prompt and start its agent session.
 
-- chartr for your platform. See [Installation](../README.md#installation).
-- At least one agent CLI, such as Claude Code, Codex, or OpenCode. Confirm that
-  the CLI runs from your shell before you add it to chartr.
+With the Agent and Skill sources plugins enabled, Wayfinder can browse existing
+maps before their registries are configured. It allows one claimed ticket per
+space at a time; ordinary agent sessions and terminals remain independent. If a
+launched session ends without completing its ticket, use **Release claim…** in
+the ticket pane before retrying.
 
-## 1. Launch chartr
+Open the bundled Browser from the workspace’s **New surface** menu.
+See [Browser](../plugins/browser/README.md) for its capabilities and limits.
 
-Open the desktop app, or start the CLI:
-
-```sh
-chartr   // serves chartr at http://127.0.0.1:8787
-```
-
-chartr does not provide authentication. Keep the server bound to the default
-loopback address unless you intend to make it accessible over a network. See
-[CLI and source builds](cli-and-source-builds.md) for command-line options.
-
-## 2. Register an agent
-
-Register an installed agent CLI before using it with chartr.
-
-1. Open **Settings**.
-2. Under **Agents**, select **New Agent**.
-3. Enter a name for the agent and the CLI executable in **adapter**.
-4. Add any required arguments, environment variables, or prompt-delivery
-   settings.
-5. Select **Save**.
-
-See [Agent registration templates](agent-registration-templates.md) for tested examples.
-
-## 3. Add a space
-
-A space is a project folder that contains your terminal sessions and maps.
-
-On the first-run screen, select **Choose a folder**. If a folder picker is not
-available, enter the absolute path to the project and select **Register**.
-
-chartr creates `CHARTR.md` in each space. Ask agents to read it for available
-skills and chartr's map and ticket conventions.
-
-## 4. Configure skills and roles
-
-Ticket sessions use skills assigned to four roles: grill, prototype, research,
-and implement.
-
-A fresh installation normally registers the `chartr-skills` repository as a
-skill source. Open **Settings** and check the following:
-
-1. Under **Skill sources**, confirm that an enabled source contains the skills
-   you want to use. Add a source if the list is empty.
-2. Under **Role bindings**, select **no preference** for each role, or assign a
-   specific skill.
-
-Free sessions do not require role bindings. Ticket sessions require a binding
-for the selected role.
-
-## 5. Create a map
-
-1. Select a space.
-2. Open the menu next to **New Shell** and select a registered agent. This starts
-   a free session in the space.
-3. Ask the agent to use `wayfinder` to plan the work.
-4. Review the plan with the agent.
-5. Ask the agent to run `to-tickets` when the plan is ready.
-
-The agent writes the map to `.plan/maps/<slug>/`. chartr watches this directory
-and displays valid maps automatically.
-
-## 6. Work a ticket
-
-1. Select an unblocked ticket on the map.
-2. Select a role and an agent.
-3. Start the session.
-
-The session receives the map, the selected ticket, and the resolved answers from
-its blockers. Work with the agent in its terminal tab.
-
-A ticket is complete when its file contains a non-empty `## Answer` or
-`## Ruled out` section. chartr updates the map and makes newly unblocked tickets
-available.
-
-## Related documentation
-
-- [CLI and source builds](cli-and-source-builds.md)
-- [Security](../SECURITY.md)
+See the [workspace reference](workspace.md) for views, panes, settings, and
+[data locations](workspace.md#your-data).

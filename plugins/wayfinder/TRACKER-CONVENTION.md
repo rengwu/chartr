@@ -1,0 +1,70 @@
+# Wayfinder map format
+
+Maps live at `.plan/maps/<slug>/map.md`, with numbered Markdown tickets in
+`tickets/` and optional supporting files in `assets/`. A map is a dependency
+graph, not a stored list of statuses. Discovery reads exactly this location.
+
+## Map
+
+Use an H1 title followed by these five H2 sections, in this order:
+Destination, Notes, Decisions so far, Not yet specified, Out of scope.
+Destination defines completion; Notes holds context and standing constraints.
+Decisions so far contains one linked, gisted bullet per resolved ticket, using
+`[Ticket title](./tickets/01-ticket-slug.md)`. Out of scope indexes ruled-out
+tickets the same way. Not yet specified holds bold-lead fog bullets, optionally
+ending in `<clears-with: 01>`. Do not store progress counts or list open tickets
+in the map. Derive those from ticket files.
+
+## Tickets
+
+Use `tickets/NN-kebab-case-slug.md`, two-digit numbers below 100, natural width
+thereafter. Never reuse or renumber an identity. Every file starts with YAML
+frontmatter, followed by an H1 title, `## Question`, and `## Done when`:
+
+```markdown
+---
+type: research
+blocked_by: [01, 02]
+undermined_by: []
+assets: []
+---
+# Ticket title
+
+## Question
+One precise question or unit of work, with the context to work it.
+
+## Done when
+Concrete completion criteria.
+```
+
+Types are `grilling`, `prototype`, `research`, and `task`. `blocked_by` contains
+premise ticket numbers. `undermined_by` flags answers that may be invalidated;
+it does not reopen a ticket. Assets are relative to this map's `assets/`.
+Unknown fields are preserved. Never write a `status` field.
+
+## Closure and frontier
+
+Add a non-empty `## Answer` to resolve a ticket, or `## Ruled out` to close it
+outside the destination. Never write both. An empty heading closes nothing;
+headings quoted inside code fences are examples, not structural sections.
+
+Status is derived in order: non-empty Answer → resolved; non-empty Ruled out →
+out of scope; non-empty `claimed_by` → claimed; otherwise open. Only a resolved
+blocker clears an edge; missing and out-of-scope blockers do not. The frontier
+is the open, unclaimed tickets whose blockers all resolve. Cycles and duplicate
+ticket numbers need correction before launching the affected work.
+
+## Claims and agent sessions
+
+The Wayfinder plugin writes `claimed_by` (a real terminal session ID) and
+`claimed_at` (RFC 3339) before sending the prompt. Agents must preserve those
+fields. A closed ticket's leftover claim is inert. If a session was abandoned,
+the operator can explicitly release its claim in the ticket panel. Work one
+ticket at a time per space; this plugin does not create worktrees or run an
+automatic queue. Starting an agent does not establish that it finished.
+
+Record the outcome in the ticket, update the map's linked decision or boundary
+index, graduate fog only when a question becomes precise, and mark undermined
+answers where appropriate. Check filenames, edges and closing sections before
+committing. Follow the repository's version-control instructions; do not push
+unless the operator separately asks.

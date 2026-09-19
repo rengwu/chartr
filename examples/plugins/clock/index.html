@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Clock</title>
+<!--
+  The smallest complete web chartr plugin: this file and a manifest. No Rust, no
+  toolchain, no ABI to match — the whole of the web tier's authoring contract is
+  a directory anyone can write by hand.
+
+  The trade is real and is why the web and native runtimes stay distinct: this pane is composited
+  by a webview rather than painted on chartr's own frame path, so it is a frame
+  behind the terminal beside it. For a clock that is invisible. For a star map
+  it would not be, and that is what `kind = "native"` is for.
+-->
+<style>
+  :root { color-scheme: dark light; }
+  body {
+    margin: 0;
+    height: 100vh;
+    display: grid;
+    place-items: center;
+    font: 500 64px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #1e1e1e;
+    color: #d0d0d0;
+  }
+  @media (prefers-color-scheme: light) {
+    body { background: #fafafa; color: #303030; }
+  }
+</style>
+<output id="now">--:--:--</output>
+<script>
+  const now = document.getElementById("now");
+  const tick = async () => {
+    let hour12 = false;
+    try {
+      const saved = await window.chartr.invoke("data.read", { path: "settings.json" });
+      hour12 = JSON.parse(saved).format === "12";
+    } catch (_) {}
+    now.textContent = new Date().toLocaleTimeString([], { hour12 });
+  };
+  tick();
+  setInterval(tick, 1000);
+</script>

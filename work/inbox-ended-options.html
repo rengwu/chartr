@@ -1,0 +1,164 @@
+<div id="inbox-ended-options" aria-label="Ended conversation design options">
+  <style>
+    #inbox-ended-options {
+      --inbox-bg: light-dark(#fafafa, #242833);
+      --inbox-panel: light-dark(#f0f1f3, #2b303d);
+      --inbox-text: light-dark(#262a32, #d8d7d3);
+      --inbox-muted: light-dark(#626977, #afb6c3);
+      --inbox-border: light-dark(#d4d7de, #4b5364);
+      --inbox-action: light-dark(#333c4f, #d3d9e6);
+      --inbox-action-text: light-dark(#fff, #242833);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--inbox-text);
+    }
+    #inbox-ended-options * { box-sizing: border-box; }
+    #inbox-ended-options [hidden] { display: none !important; }
+    #inbox-ended-options .inbox-window { background: var(--inbox-bg); border: 1px solid var(--inbox-border); }
+    #inbox-ended-options .inbox-header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 17px 20px; border-bottom: 1px solid var(--inbox-border); }
+    #inbox-ended-options .inbox-title { font-weight: 500; flex: 1; min-width: 140px; }
+    #inbox-ended-options .inbox-muted { color: var(--inbox-muted); }
+    #inbox-ended-options .inbox-state { border: 1px solid var(--inbox-border); border-radius: 5px; padding: 3px 7px; color: var(--inbox-muted); }
+    #inbox-ended-options .inbox-body { padding: 24px; min-height: 290px; }
+    #inbox-ended-options .inbox-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--inbox-muted); margin-bottom: 26px; }
+    #inbox-ended-options .inbox-message { margin: 0 0 24px; }
+    #inbox-ended-options .inbox-speaker { margin-bottom: 8px; font-weight: 500; }
+    #inbox-ended-options .inbox-message p { margin: 0; }
+    #inbox-ended-options .inbox-details { border-top: 1px solid var(--inbox-border); padding-top: 16px; color: var(--inbox-muted); }
+    #inbox-ended-options summary { cursor: pointer; }
+    #inbox-ended-options pre { margin: 18px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--inbox-text); font-family: "SFMono-Regular", Consolas, monospace; }
+    #inbox-ended-options .inbox-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--inbox-border); padding: 16px 20px; }
+    #inbox-ended-options .inbox-footer-note { flex: 1; min-width: 130px; color: var(--inbox-muted); }
+    #inbox-ended-options button { font: inherit; cursor: pointer; background: transparent; color: var(--inbox-text); border: 1px solid var(--inbox-border); border-radius: 6px; padding: 8px 12px; }
+    #inbox-ended-options button.inbox-primary { background: var(--inbox-action); color: var(--inbox-action-text); border-color: var(--inbox-action); }
+    #inbox-ended-options .inbox-recap { background: var(--inbox-panel); padding: 20px; border-radius: 7px; margin-bottom: 22px; }
+    #inbox-ended-options .inbox-recap p { margin: 8px 0 0; }
+    #inbox-ended-options .inbox-empty { padding: 24px 0; }
+    #inbox-ended-options .inbox-empty p { margin: 8px 0 20px; color: var(--inbox-muted); }
+    #inbox-ended-options .inbox-empty dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; }
+    #inbox-ended-options dt { color: var(--inbox-muted); }
+    #inbox-ended-options dd { margin: 0; }
+    #inbox-ended-options .inbox-preview-label { margin-top: 10px; color: var(--inbox-muted); }
+    @media (max-width: 450px) {
+      #inbox-ended-options .inbox-header { padding: 14px; gap: 8px; }
+      #inbox-ended-options .inbox-body { padding: 20px 16px; }
+      #inbox-ended-options .inbox-space { display: none; }
+      #inbox-ended-options .inbox-footer { padding: 14px; }
+      #inbox-ended-options .inbox-footer-note { flex-basis: 100%; }
+    }
+    @media (pointer: coarse) {
+      #inbox-ended-options button, #inbox-ended-options summary { min-height: 44px; }
+    }
+  </style>
+  <div class="inbox-window">
+    <div class="inbox-header">
+      <i data-lucide="messages-square" aria-hidden="true"></i>
+      <span class="inbox-title">Opencode greeting</span>
+      <span class="inbox-state" data-status>Ended</span>
+      <span class="inbox-muted inbox-space">Free sessions</span>
+    </div>
+    <div class="inbox-body" aria-live="polite">
+      <div class="inbox-meta"><span>OpenCode</span><span data-view-label>Saved conversation</span></div>
+      <div data-panel="conversation">
+        <div class="inbox-message">
+          <div class="inbox-speaker">You</div>
+          <p>Hello! What can you help me with?</p>
+        </div>
+        <div class="inbox-message">
+          <div class="inbox-speaker">OpenCode</div>
+          <p>I can help you explore a project, make changes, and run checks. What would you like to work on?</p>
+        </div>
+        <details class="inbox-details">
+          <summary>Captured terminal output</summary>
+          <pre>› Hello! What can you help me with?
+
+I can help you explore a project, make changes,
+and run checks. What would you like to work on?</pre>
+        </details>
+      </div>
+      <div data-panel="terminal" hidden>
+        <pre>› Hello! What can you help me with?
+
+I can help you explore a project, make changes,
+and run checks. What would you like to work on?</pre>
+      </div>
+      <div data-panel="recap" hidden>
+        <div class="inbox-recap">
+          <div class="inbox-speaker">Where you left off</div>
+          <p>OpenCode introduced what it can help with. No project task was started.</p>
+        </div>
+        <details class="inbox-details">
+          <summary>View saved conversation</summary>
+          <div class="inbox-message" style="margin-top:18px"><div class="inbox-speaker">You</div><p>Hello! What can you help me with?</p></div>
+          <div class="inbox-message"><div class="inbox-speaker">OpenCode</div><p>I can help you explore a project, make changes, and run checks. What would you like to work on?</p></div>
+        </details>
+      </div>
+      <div data-panel="unavailable" hidden>
+        <div class="inbox-empty">
+          <div class="inbox-speaker">No saved history available</div>
+          <p>The conversation entry is saved, but its messages and terminal output aren't available.</p>
+          <dl><dt>Agent</dt><dd>OpenCode</dd><dt>Space</dt><dd>Free sessions</dd></dl>
+        </div>
+      </div>
+      <div data-panel="resumed" hidden>
+        <pre data-terminal-preview>OpenCode
+Opencode greeting
+
+› </pre>
+      </div>
+    </div>
+    <div class="inbox-footer">
+      <span class="inbox-footer-note" data-footer-note>Read only</span>
+      <button type="button" data-archive>Archive</button>
+      <button class="inbox-primary" type="button" data-resume>Resume session</button>
+    </div>
+  </div>
+  <div class="inbox-preview-label">Illustrative content · Proposed interactions</div>
+  <script>
+    (() => {
+      const root = document.getElementById('inbox-ended-options');
+      const state = { presentation: 'conversation', resumable: true };
+      let resumed = false;
+      let archived = false;
+      const resume = root.querySelector('[data-resume]');
+      const archive = root.querySelector('[data-archive]');
+      const labels = {
+        conversation: 'Saved conversation',
+        terminal: 'Captured terminal output',
+        recap: 'Conversation recap',
+        unavailable: 'Conversation details',
+        resumed: 'Resumed terminal · Preview'
+      };
+      function render() {
+        const panel = resumed ? 'resumed' : state.presentation;
+        root.querySelectorAll('[data-panel]').forEach(element => {
+          element.hidden = element.dataset.panel !== panel;
+        });
+        root.querySelector('[data-status]').textContent = resumed ? 'Active' : 'Ended';
+        root.querySelector('[data-view-label]').textContent = resumed && !state.resumable ? 'New terminal · Preview' : labels[panel];
+        root.querySelector('[data-terminal-preview]').textContent = state.resumable ? 'OpenCode\nOpencode greeting\n\n› ' : 'OpenCode\nNew conversation\n\n› ';
+        root.querySelector('[data-footer-note]').textContent = resumed ? 'Terminal preview' : 'Read only';
+        resume.textContent = resumed ? 'Back to history' : state.resumable ? 'Resume session' : 'Start new session';
+        archive.textContent = archived ? 'Restore to Inbox' : 'Archive';
+      }
+      resume.addEventListener('click', () => {
+        resumed = !resumed;
+        render();
+      });
+      archive.addEventListener('click', () => { archived = !archived; render(); });
+      render();
+      if (globalThis.Tweak) {
+        const tweak = new Tweak({ container: root, onChange: () => { resumed = false; render(); } });
+        tweak.addSelect(state, 'presentation', {
+          label: 'Ended-session view',
+          options: [
+            { label: 'Readable conversation', value: 'conversation' },
+            { label: 'Frozen terminal', value: 'terminal' },
+            { label: 'Recap first', value: 'recap' },
+            { label: 'History unavailable', value: 'unavailable' }
+          ]
+        });
+        tweak.addToggle(state, 'resumable', { label: 'Provider supports resuming' });
+      }
+    })();
+  </script>
+</div>

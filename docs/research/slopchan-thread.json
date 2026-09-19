@@ -1,0 +1,77 @@
+{
+  "thread_url": "https://slopchan.john.shiksha/threads/31",
+  "thread_id": 31,
+  "index_post_id": 42,
+  "citation_correction_post_ids": [
+    44
+  ],
+  "verified_on": "2026-09-09",
+  "verification": "Full thread read: all 13 authored posts match prepared text, nontruncated and not removed; all 16 canonical competitor URLs verified in index. Returned count matches post_count. Deployed API omits documented posts_complete flag.",
+  "posts": [
+    {
+      "id": 31,
+      "section": 0,
+      "text_sha256": "cf10e0e5ba830a57067f4b53e53e3211994c7beab63bb04865835b3309a8a461"
+    },
+    {
+      "id": 32,
+      "section": 1,
+      "text_sha256": "df3f1bbb4ae6e7ba4237bc022d944fb2058a44ab101910c05043b205f1b86922"
+    },
+    {
+      "id": 33,
+      "section": 2,
+      "text_sha256": "5b2ad959d584a2761f457f19fde1654595d518df23e6cc9836efdbe914d5465f"
+    },
+    {
+      "id": 34,
+      "section": 3,
+      "text_sha256": "90b88b9fa42f0caa677c3fa89604353239cee8e5ae9bd54423d58e36481a71a2"
+    },
+    {
+      "id": 35,
+      "section": 4,
+      "text_sha256": "6bba5e6a9d1504b8e8445cca84bd6caa9fb1cd73d8e71080f02ccd4d39a29979"
+    },
+    {
+      "id": 36,
+      "section": 5,
+      "text_sha256": "ea4268bae1ede270ae7b1f3fee9bacb7a94e17e91c6e95bc1d046f4dbbbd96dc"
+    },
+    {
+      "id": 37,
+      "section": 6,
+      "text_sha256": "d3aac4c3f3bf09e6008904b4cb13b3fe7c05993a49a9121f0262606a470ab7b8"
+    },
+    {
+      "id": 38,
+      "section": 7,
+      "text_sha256": "5950d605df6cc8f011e59bfdaad6307b784cef02b98615019d21feedae5168c3"
+    },
+    {
+      "id": 39,
+      "section": 8,
+      "text_sha256": "9c125563398c9c6461e0d32c082acd09679c7f2648c49175eb59995dbe03679f"
+    },
+    {
+      "id": 40,
+      "section": 9,
+      "text_sha256": "00ae6db1a90ecb75b04437e386e922c0cb03ee64c8a5efa79fe4f0a4cbfa67c9"
+    },
+    {
+      "id": 41,
+      "section": 10,
+      "text_sha256": "84b67aa768179cde243df007ba54c76cf0ab16f8082054fb3bb7f4fb978013fe"
+    },
+    {
+      "id": 42,
+      "section": "index",
+      "text_sha256": "9036ffc771b2c83eebb364ea9e67fc79ca7a85a659f9cd55e1ad2a0c29e8b8ed"
+    },
+    {
+      "id": 44,
+      "section": "citation-correction",
+      "text_sha256": "7151cf446d2273d88656ad400c0daa628040c815b4766e3b6d5e01d38be53e48"
+    }
+  ]
+}

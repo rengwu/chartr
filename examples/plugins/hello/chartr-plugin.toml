@@ -1,0 +1,11 @@
+manifest_version = 2
+id = "com.example.hello"
+name = "Hello"
+description = "A simple greeting to demonstrate native plugins."
+version = "0.1.0"
+kind = "native"
+icon = "WavingHand01Icon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

@@ -1,0 +1,11 @@
+manifest_version = 2
+id = "com.chartr.agent"
+name = "Agent"
+description = "Configure and launch coding agents in your workspace."
+version = "0.1.0"
+kind = "native"
+icon = "ChipIcon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

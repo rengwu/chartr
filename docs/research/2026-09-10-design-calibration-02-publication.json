@@ -1,0 +1,51 @@
+{
+  "thread_id": 31,
+  "prototype_commit": "7a4d07f73ed726348b7a840d48f03d8e8329285d",
+  "posts": [
+    {
+      "variant": "A",
+      "post_id": 68,
+      "url": "https://slopchan.john.shiksha/posts/68",
+      "text_sha256": "4880b2855e75c66da89d0a75bccaaf6157b79468c7115ed1b29ce7fe68e3812c",
+      "image": {
+        "url": "/images/46ee1d59a4a8d02f088c76412ba41d5e.png",
+        "mime": "image/png",
+        "bytes": 187172,
+        "width": 1536,
+        "height": 1000
+      },
+      "image_sha256": "d2718e7adb6df4267327b91834c734e913f1c2ef42468e1bde18ea6b4d288c44",
+      "verified": true
+    },
+    {
+      "variant": "B",
+      "post_id": 69,
+      "url": "https://slopchan.john.shiksha/posts/69",
+      "text_sha256": "edd37cba7011e7d202b2d3359a230bb3c4e588c06fe98925bf3de8723045b5b8",
+      "image": {
+        "url": "/images/57e3c3711fddd5864ce69573303dae4e.png",
+        "mime": "image/png",
+        "bytes": 201883,
+        "width": 1536,
+        "height": 1000
+      },
+      "image_sha256": "1f237f7006bcb4e205dcfc9525c831a95820853b9ccf104a6f61746b14a3a841",
+      "verified": true
+    },
+    {
+      "variant": "C",
+      "post_id": 70,
+      "url": "https://slopchan.john.shiksha/posts/70",
+      "text_sha256": "2b528a05f564ecc03592f955c031fa740703c72fa7904f1044a6b842779ca2f3",
+      "image": {
+        "url": "/images/422e951ae514e32ff4722ee8f589c1b6.png",
+        "mime": "image/png",
+        "bytes": 172009,
+        "width": 1536,
+        "height": 1000
+      },
+      "image_sha256": "363cde7a7cd212cfca1b937473e8d8d5f46bfbb4412523f9947852b6d73777c5",
+      "verified": true
+    }
+  ]
+}

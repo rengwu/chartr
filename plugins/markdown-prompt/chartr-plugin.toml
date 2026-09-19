@@ -1,0 +1,11 @@
+manifest_version = 2
+id = "com.chartr.markdown-prompt"
+name = "Markdown Prompt"
+description = "Compose Markdown from text, saved prompts and plugin templates."
+version = "0.1.0"
+kind = "native"
+icon = "BookOpen01Icon"
+
+[capabilities]
+multiplicity = "per_space"
+restorable = true

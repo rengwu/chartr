@@ -1,0 +1,42 @@
+name: Set up Herdr
+description: Reuse the pinned sidecar, building it only on an exact cache miss.
+inputs:
+  platform:
+    description: Runner image label (also separates Linux ABI baselines).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Read Herdr pins
+      id: pins
+      shell: bash
+      run: |
+        pins=$(sed -n '/^pub const SUPPORTED_HERDR_/p' crates/chartr-herdr/src/lib.rs | shasum -a 256 | cut -d ' ' -f1)
+        echo "hash=$pins" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Herdr executable
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: vendor/herdr/*/herdr
+        key: herdr-${{ inputs.platform }}-${{ runner.arch }}-${{ steps.pins.outputs.hash }}-${{ hashFiles('vendor/herdr/fetch.sh', 'vendor/herdr/LICENSE', 'rust-toolchain.toml', '.github/actions/setup-herdr/action.yml') }}
+
+    - name: Install Zig on a cache miss
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+      with:
+        version: 0.15.2
+        cache-key: herdr-${{ inputs.platform }}-${{ runner.arch }}
+
+    - name: Fetch or validate Herdr
+      shell: bash
+      # Keep the sidecar identical between test and release jobs. These jobs
+      # must not pass application-specific compiler flags to Herdr.
+      run: sh vendor/herdr/fetch.sh
+
+    - name: Save Herdr immediately
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: vendor/herdr/*/herdr
+        key: ${{ steps.cache.outputs.cache-primary-key }}
