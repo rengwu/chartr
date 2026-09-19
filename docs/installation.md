@@ -1,6 +1,6 @@
 # Installation
 
-The [v0.3.0-rc.1 release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.1)
+The [v0.3.0-rc.2 release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.2)
 provides test packages for the Rust rewrite. It is a prerelease; the
 [v0.2.4 downloads](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remain the
 stable legacy Go/Svelte version. You can also build a
