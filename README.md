@@ -5,7 +5,7 @@
 **A fast, organizable terminal-based agentic workspace.**
 
 - [Website](https://chartr.dev/)
-- [Release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.2)
+- [Download v0.3.0](https://github.com/rengwu/chartr/releases/tag/v0.3.0)
 - [Installation](docs/installation.md) (including Arch / Omarchy)
 - [Getting started](docs/getting-started.md)
 - [Documentation](docs/README.md)
@@ -14,10 +14,10 @@ Keep your projects, tools, workflows, and agents together. chartr is an
 open-source native desktop app built with Rust and GPUI. Organize projects into
 spaces, arrange terminals and tools side by side, and make the workspace your own.
 
-> [v0.3.0-rc.2](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.2) is the
-> second Rust release candidate for macOS and Linux, intended for testing.
-> [v0.2.4](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remains the stable
-> legacy Go/Svelte release.
+> [v0.3.0](https://github.com/rengwu/chartr/releases/tag/v0.3.0) is the stable
+> Rust release for macOS and Linux.
+> [v0.2.4](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remains available
+> for users of the legacy Go/Svelte app.
 
 <img width="1169" alt="Chartr in Spaces view with a Claude terminal and Wayfinder side by side" src="./docs/assets/demo.png" />
 

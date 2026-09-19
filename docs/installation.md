@@ -1,9 +1,9 @@
 # Installation
 
-The [v0.3.0-rc.2 release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.2)
-provides test packages for the Rust rewrite. It is a prerelease; the
-[v0.2.4 downloads](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remain the
-stable legacy Go/Svelte version. You can also build a
+The [v0.3.0 release](https://github.com/rengwu/chartr/releases/tag/v0.3.0)
+provides stable packages for the Rust rewrite.
+The [v0.2.4 downloads](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remain
+available for the legacy Go/Svelte app. You can also build a
 [development DMG](releasing.md#macos-development-dmg) locally on macOS.
 
 | Platform | Current support                                                    |
@@ -93,9 +93,9 @@ cargo run -p chartr --locked -- /path/to/project
 
 No frontend build is needed. The bundled web surfaces ship with their assets.
 
-## macOS release candidates
+## macOS release packages
 
-Download the `macos-arm64.dmg` for Apple silicon from the release candidate page,
+Download the `macos-arm64.dmg` for Apple silicon from the release page,
 open the disk image, and drag `chartr.app` to Applications. `v0.3.0-rc.1` also
 includes a `macos-x86_64.dmg` for Intel; this is the final candidate with Intel
 packages. Subsequent macOS releases target Apple silicon only.

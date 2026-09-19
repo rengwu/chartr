@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.3.0-rc.2"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.95"
 # Zed's `ui` and `theme` are GPL-3.0-or-later and chartr links them directly, so
