@@ -2,3 +2,5 @@
 /vendor/herdr/*/
 plugins/*/target
 examples/plugins/*/target
+/web/node_modules/
+/bin/chartr

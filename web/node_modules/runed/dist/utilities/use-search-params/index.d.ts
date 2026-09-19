@@ -1,2 +1,0 @@
-export { useSearchParams, createSearchParamsSchema, validateSearchParams, } from "./use-search-params.svelte.js";
-export type { SearchParamsOptions, StandardSchemaV1, SchemaTypeConfig, ReturnUseSearchParams, } from "./use-search-params.svelte.js";
