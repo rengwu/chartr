@@ -11,7 +11,8 @@ job. Existing CI and hands-on [acceptance](acceptance.md) remain release gates.
 manual dispatches, and `v*` tags. A tag must exactly match `v` plus the
 workspace version in `Cargo.toml`, for example `v0.3.0` or `v0.3.0-rc.1`.
 The [workflow](../.github/workflows/release.yml) builds Linux x86_64/ARM64 and
-macOS Intel/Apple silicon before assembling a draft release. Candidate tags
+macOS Apple silicon before assembling a draft release. Intel macOS packages
+are no longer built. Candidate tags
 create prereleases; publishing them must not update the latest stable release.
 
 1. Install Ubuntu system dependencies and the pinned Rust toolchain.

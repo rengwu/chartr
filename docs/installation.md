@@ -8,7 +8,7 @@ stable legacy Go/Svelte version. You can also build a
 
 | Platform | Current support                                                    |
 | -------- | ------------------------------------------------------------------ |
-| macOS    | Native desktop app; CI runs on Apple silicon.                      |
+| macOS    | Native desktop app for Apple silicon.                             |
 | Linux    | Native desktop app under X11 or XWayland; CI runs on Ubuntu 24.04. |
 | Windows  | Deferred until further notice                                      |
 
@@ -65,9 +65,12 @@ No frontend build is needed. The bundled web surfaces ship with their assets.
 
 ## macOS release candidates
 
-Download the `macos-arm64.dmg` for Apple silicon or `macos-x86_64.dmg` for Intel
-from the release candidate page, open the disk image, and drag `chartr.app` to
-Applications. These builds are ad-hoc signed and not notarized. If macOS blocks
+Download the `macos-arm64.dmg` for Apple silicon from the release candidate page,
+open the disk image, and drag `chartr.app` to Applications. `v0.3.0-rc.1` also
+includes a `macos-x86_64.dmg` for Intel; this is the final candidate with Intel
+packages. Subsequent macOS releases target Apple silicon only.
+
+These builds are ad-hoc signed and not notarized. If macOS blocks
 opening the app, review the download source and use **System Settings → Privacy
 & Security → Open Anyway** after attempting to open it.
 
@@ -77,7 +80,7 @@ The [release workflow](../.github/workflows/release.yml) builds native
 x86_64 and ARM64 binaries on Ubuntu 24.04. Each build produces a `.tar.gz` and
 `.deb`; x86_64 also produces an Arch Linux `.pkg.tar.zst`, using the same binaries.
 Run the workflow manually for downloadable artifacts. A `v<workspace-version>`
-tag creates a **draft** GitHub release after all four platform builds finish.
+tag creates a **draft** GitHub release after all three platform builds finish.
 Candidate tags such as `v0.3.0-rc.1` are marked as prereleases. Debian candidates
 use a version such as `0.3.0~rc.1`; Arch uses `0.3.0rc1`, so stable `0.3.0` sorts
 after its candidates.
