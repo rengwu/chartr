@@ -77,7 +77,8 @@ Package: chartr
 Architecture: any
 Description: Agent multiplexer
 CONTROL
-deps=$(cd "$stage" && dpkg-shlibdeps -O -e"$bundle/usr/lib/chartr/chartr" -e"$bundle/usr/lib/chartr/herdr")
+deps=$(cd "$stage" && dpkg-shlibdeps -O \
+    -e"$bundle/usr/lib/chartr/chartr" -e"$bundle/usr/lib/chartr/herdr")
 deps=${deps#shlibs:Depends=}
 cat > "$bundle/DEBIAN/control" <<CONTROL
 Package: chartr
@@ -90,7 +91,7 @@ Depends: $deps, libvulkan1, libxkbcommon-x11-0, libfontconfig1, xdg-utils
 Recommends: xwayland
 Homepage: https://github.com/rengwu/chartr
 Description: Agent multiplexer with persistent terminals
- Native desktop application with a bundled private Herdr sidecar.
+ Native desktop application with private Herdr runtime.
 CONTROL
 # Package only the installation tree; archive instructions remain in the tarball.
 rm "$bundle/INSTALL.txt"

@@ -1,5 +1,9 @@
 # 0003 — Plugin runtimes
 
+> Historical decision. The hosted tier is superseded by the prebuilt native
+> surface ABI in [ADR 0007](0007-prebuilt-native-surfaces.md). The GPUI dylib
+> rejection and the no-compilation installation rule remain in force.
+
 ## Decision
 
 A plugin is `kind = "web"` (a manifest and entry document in a sandboxed

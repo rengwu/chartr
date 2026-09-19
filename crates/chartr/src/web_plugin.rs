@@ -2,7 +2,7 @@
 //!
 //! A web contribution is an operating-system webview parented to the GPUI
 //! window. The element below follows the same visibility lease used by
-//! chartr-rs's browser pane: GPUI owns layout while Wry owns the native pixels.
+//! native surfaces: GPUI owns layout while Wry owns the native pixels.
 
 #[cfg(target_os = "linux")]
 use std::time::Duration;
@@ -109,6 +109,9 @@ impl NativeViewLease {
         self.current.0.get() == self.generation
     }
 }
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use crate::native_webview::NativeFrame;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use wry::{
@@ -358,7 +361,7 @@ impl WebPluginView {
                 .with_focused(false)
                 .with_url(entry_url);
 
-            let webview = match builder.build_as_child(window) {
+            let webview = match crate::native_webview::build_child(builder, window) {
                 Ok(webview) => Rc::new(webview),
                 Err(error) => {
                     return Self {
@@ -714,33 +717,6 @@ impl Drop for VisibleWebView {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct NativeFrame {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-impl NativeFrame {
-    fn snapped(bounds: Bounds<Pixels>) -> Self {
-        let left = bounds.left().as_f32().round() as i32;
-        let top = bounds.top().as_f32().round() as i32;
-        let right = bounds.right().as_f32().round() as i32;
-        let bottom = bounds.bottom().as_f32().round() as i32;
-        Self { x: left, y: top, width: (right - left).max(0), height: (bottom - top).max(0) }
-    }
-
-    fn wry(self) -> Rect {
-        Rect {
-            position: Position::Logical(LogicalPosition::new(f64::from(self.x), f64::from(self.y))),
-            size: WrySize::Logical(LogicalSize::new(f64::from(self.width), f64::from(self.height))),
-        }
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl Element for NativeWebViewElement {
     type RequestLayoutState = ();
     type PrepaintState = ();
@@ -773,7 +749,7 @@ impl Element for NativeWebViewElement {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let id = id.expect("native webview elements always have an id");
-        let frame = NativeFrame::snapped(bounds);
+        let frame = NativeFrame::snapped(bounds, window.scale_factor());
         window.with_element_state(id, |lease: Option<VisibleWebView>, _| {
             let is_new = lease.is_none();
             let mut lease = lease.unwrap_or_else(|| VisibleWebView {
@@ -782,11 +758,18 @@ impl Element for NativeWebViewElement {
                 frame: None,
                 visible: false,
             });
+            let visible = !cx.has_active_drag();
+            #[cfg(target_os = "linux")]
+            if visible && !lease.visible {
+                // GTK's show_all can reset the allocation; apply bounds after it.
+                let _ = self.webview.set_visible(true);
+                lease.visible = true;
+                lease.frame = None;
+            }
             if lease.frame != Some(frame) {
                 let _ = self.webview.set_bounds(frame.wry());
                 lease.frame = Some(frame);
             }
-            let visible = !cx.has_active_drag();
             if lease.visible != visible {
                 let _ = self.webview.set_visible(visible);
                 lease.visible = visible;

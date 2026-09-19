@@ -251,7 +251,14 @@ impl WorkspaceWindow {
         let session_access =
             bound_session.and_then(|session| space.read(cx).session_access(session));
         let on_focus = Some(Self::web_plugin_focus_handler(space.clone(), cx));
-        let on_title_change = Some(Self::browser_title_handler(space.clone(), item));
+        let title_space = space.downgrade();
+        let on_title: crate::native_plugin::TitleHandler = Rc::new(move |title, cx| {
+            let _ = title_space.update(cx, |space, cx| {
+                if space.set_plugin_title(item, title) {
+                    cx.notify();
+                }
+            });
+        });
         let unsafe_filesystem = self.settings.resolved().plugin(&key.plugin).unsafe_filesystem;
         let loaded = self.catalog.get_mut(&key.plugin)?;
         let permissions = loaded.permissions().clone();
@@ -259,9 +266,16 @@ impl WorkspaceWindow {
         let data = plugin_paths().data.join(&key.plugin);
         Some(match loaded.pane(key)? {
             PaneSource::Native(plugin) => PluginView::new(plugin.view(key, &instance, window, cx)),
-            PaneSource::Hosted(HostedSurface::Browser) => {
-                crate::browser_plugin::view(data, &instance, on_focus, on_title_change, window, cx)
-            }
+            PaneSource::Embedded(library) => crate::native_plugin::pane(
+                package,
+                library.to_path_buf(),
+                data,
+                &instance,
+                on_focus,
+                Some(on_title),
+                window,
+                cx,
+            ),
             PaneSource::Web(entry) => crate::web_plugin::pane(
                 crate::web_plugin::Document { package, entry: entry.to_path_buf() },
                 FileBroker::new(project, data, permissions.project_files, unsafe_filesystem),
@@ -425,19 +439,6 @@ impl WorkspaceWindow {
             let _ = weak.update(cx, |this, cx| {
                 if space.update(cx, |space, _| space.activate_plugin_view(view)) {
                     this.active = Some(space);
-                    cx.notify();
-                }
-            });
-        })
-    }
-
-    fn browser_title_handler(
-        space: Entity<Space>,
-        item: crate::workspace::ItemId,
-    ) -> crate::browser_plugin::TitleHandler {
-        Rc::new(move |title, cx| {
-            space.update(cx, |space, cx| {
-                if space.set_plugin_title(item, title) {
                     cx.notify();
                 }
             });

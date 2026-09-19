@@ -182,7 +182,7 @@ fn rename_dialog(
 }
 
 /// Rename dialogs are hosted in their own parent-anchored window so their scrim and content are
-/// composited above native browser/plugin views. `WorkspaceWindow` remains the state owner; this view only
+/// composited above native plugin views. `WorkspaceWindow` remains the state owner; this view only
 /// routes popup input back to the originating workspace window.
 struct RenameWindow {
     kind: RenameKind,

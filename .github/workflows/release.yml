@@ -64,7 +64,7 @@ jobs:
       - name: Package tar.gz and deb
         run: scripts/package-linux.sh
 
-      - name: Package and check Arch Linux
+      - name: Package and check Arch Linux and AUR recipe
         if: matrix.arch == 'x86_64'
         run: |
           docker run --rm \

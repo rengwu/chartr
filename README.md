@@ -6,7 +6,7 @@
 
 - [Website](https://chartr.dev/)
 - [Release candidate](https://github.com/rengwu/chartr/releases/tag/v0.3.0-rc.1)
-- [Build from source](docs/installation.md)
+- [Installation](docs/installation.md) (including Arch / Omarchy)
 - [Getting started](docs/getting-started.md)
 - [Documentation](docs/README.md)
 

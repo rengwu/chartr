@@ -65,23 +65,8 @@ enum LoadSource {
 /// The runtime-specific half of a loaded plugin.
 enum Tier {
     Native(Native),
-    Hosted(HostedSurface),
     Web { entry: PathBuf },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostedSurface {
-    Browser,
-}
-
-impl HostedSurface {
-    /// Resolve the small, explicit allowlist of surfaces implemented by chartr.
-    pub fn named(name: &str) -> Result<Self, LoadError> {
-        match name {
-            "browser" => Ok(Self::Browser),
-            name => Err(LoadError::UnsupportedSurface(name.to_owned())),
-        }
-    }
+    Embedded { library: PathBuf },
 }
 
 pub enum SettingsSource {
@@ -98,9 +83,9 @@ struct Native {
 pub enum PaneSource<'a> {
     /// Call into the plugin for a GPUI view, mounted directly in the tree.
     Native(&'a mut dyn PluginObject),
-    Hosted(HostedSurface),
     /// Point a webview at this document.
     Web(&'a Path),
+    Embedded(&'a Path),
 }
 
 impl Loaded {
@@ -142,8 +127,8 @@ impl Loaded {
         }
         Some(match &mut self.tier {
             Tier::Native(native) => PaneSource::Native(native.plugin.as_mut()),
-            Tier::Hosted(surface) => PaneSource::Hosted(*surface),
             Tier::Web { entry, .. } => PaneSource::Web(entry.as_path()),
+            Tier::Embedded { library } => PaneSource::Embedded(library.as_path()),
         })
     }
 
@@ -157,7 +142,7 @@ impl Loaded {
         }
         match &mut self.tier {
             Tier::Native(native) => native.plugin.settings(window, cx).map(SettingsSource::Native),
-            Tier::Hosted(_) | Tier::Web { .. } => {
+            Tier::Web { .. } | Tier::Embedded { .. } => {
                 self.manifest.settings.clone().map(SettingsSource::Declarative)
             }
         }
@@ -710,6 +695,8 @@ impl std::error::Error for BrokerError {}
 pub struct Paths {
     /// One directory per plugin id, each with a `chartr-plugin.toml`.
     pub installed: PathBuf,
+    /// Optional system package root. User installations take precedence.
+    pub system: Option<PathBuf>,
     /// One directory per plugin id, owned by the plugin and never by chartr.
     pub data: PathBuf,
     /// Application-owned copies of examples shipped with this build.
@@ -721,13 +708,14 @@ impl Paths {
         let root = root.into();
         Self {
             installed: root.join("plugins"),
+            system: None,
             data: root.join("plugin-data"),
             bundled: root.join("bundled-plugins"),
         }
     }
 }
 
-/// Load every plugin under `paths.installed`.
+/// Discover user and optional system plugins, with user packages taking precedence.
 ///
 /// One bad plugin is recorded and skipped, never fatal: a plugin that fails to
 /// load must not be able to stop chartr from opening.
@@ -741,16 +729,16 @@ pub fn load_all_where(
     cx: &mut gpui::App,
 ) -> Catalog {
     let mut catalog = Catalog::default();
-    let Ok(entries) = std::fs::read_dir(&paths.installed) else {
-        return catalog;
-    };
-
-    let mut dirs: Vec<PathBuf> =
-        entries.flatten().map(|entry| entry.path()).filter(|path| path.is_dir()).collect();
-    dirs.sort();
-
-    for dir in dirs {
-        catalog.add_directory(&dir, paths, false, cx);
+    for root in std::iter::once(&paths.installed).chain(paths.system.iter()) {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        let mut dirs: Vec<PathBuf> =
+            entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        dirs.sort();
+        for dir in dirs {
+            catalog.add_directory(&dir, paths, false, cx);
+        }
     }
     catalog.enable_requested(paths, |id| enabled(id), cx);
     catalog
@@ -791,7 +779,7 @@ impl std::fmt::Display for LoadError {
             }
             Self::ExternalNative => write!(
                 f,
-                "separately compiled native GPUI libraries are not supported because Rust GUI objects are not safe across a dynamic-library boundary. Use a web package or a chartr-hosted surface; installation never compiles plugin source"
+                "separately compiled native GPUI libraries are not supported because Rust GUI objects are not safe across a dynamic-library boundary. Use a web package; installation never compiles plugin source"
             ),
             Self::UnsupportedSurface(surface) => {
                 write!(f, "chartr does not support the hosted surface `{surface}`")
@@ -811,7 +799,12 @@ pub fn validate_package(dir: &Path, manifest: &Manifest) -> Result<(), LoadError
     match manifest.kind {
         Kind::Native => return Err(LoadError::ExternalNative),
         Kind::Hosted => {
-            HostedSurface::named(manifest.surface.as_deref().unwrap_or_default())?;
+            return Err(LoadError::UnsupportedSurface(
+                manifest.surface.clone().unwrap_or_default(),
+            ));
+        }
+        Kind::Embedded => {
+            require_package_file(dir, Path::new(embedded_library(manifest)?))?;
         }
         Kind::Web => {}
     }
@@ -824,6 +817,20 @@ pub fn validate_package(dir: &Path, manifest: &Manifest) -> Result<(), LoadError
         require_package_file(dir, Path::new(entry))?;
     }
     Ok(())
+}
+
+/// Package architecture names are independent of Rust compiler target triples.
+pub fn platform_key() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+pub fn embedded_library(manifest: &Manifest) -> Result<&str, LoadError> {
+    manifest.libraries.get(&platform_key()).map(String::as_str).ok_or_else(|| {
+        LoadError::Prerequisites(format!(
+            "This plugin does not provide a build for {}",
+            platform_key()
+        ))
+    })
 }
 
 fn require_package_file(dir: &Path, relative: &Path) -> Result<(), LoadError> {
@@ -867,12 +874,17 @@ fn load_validated(dir: &Path, paths: &Paths, manifest: Manifest) -> Result<Loade
             return Err(LoadError::ExternalNative);
         }
         Kind::Hosted => {
-            let surface = HostedSurface::named(manifest.surface.as_deref().unwrap_or_default())?;
+            return Err(LoadError::UnsupportedSurface(
+                manifest.surface.clone().unwrap_or_default(),
+            ));
+        }
+        Kind::Embedded => {
+            let library = dir.join(embedded_library(&manifest)?);
             let panes = vec![PaneSpec {
                 key: PaneKey::new(manifest.id.clone(), "main"),
                 title: manifest.name.clone(),
             }];
-            (Tier::Hosted(surface), panes, manifest.settings.is_some())
+            (Tier::Embedded { library }, panes, manifest.settings.is_some())
         }
         Kind::Web => {
             let entry = dir.join(manifest.entry.as_deref().unwrap_or("index.html"));
@@ -1079,6 +1091,33 @@ mod tests {
     }
 
     #[gpui::test]
+    fn system_packages_load_lazily_and_user_installations_take_precedence(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (_temp, mut user) = paths();
+        let (_system_temp, system) = paths();
+        user.system = Some(system.installed.clone());
+        let id = "com.example.viewer";
+        let system_dir = write_web(&system, id, id);
+        // A dummy library proves discovery never executes native code.
+        let manifest = format!(
+            "manifest_version=2\nid='{id}'\nname='Viewer'\nversion='1.0.0'\nkind='embedded'\nicon='NoteIcon'\n[libraries]\n{}='viewer.bin'\n",
+            platform_key()
+        );
+        std::fs::write(system_dir.join("chartr-plugin.toml"), manifest).unwrap();
+        std::fs::write(system_dir.join("viewer.bin"), b"not executable").unwrap();
+        let catalog = cx.update(|cx| load_all(&user, cx));
+        assert_eq!(catalog.get(id).unwrap().dir, system_dir);
+        assert!(matches!(catalog.get(id).unwrap().tier, Tier::Embedded { .. }));
+        let user_dir = write_web(&user, id, id);
+        let catalog = cx.update(|cx| load_all(&user, cx));
+        assert_eq!(catalog.get(id).unwrap().dir, user_dir);
+        let disabled = cx.update(|cx| load_all_where(&user, |_| false, cx));
+        assert!(disabled.loaded.is_empty());
+        assert_eq!(disabled.disabled.get(id).unwrap().dir, user_dir);
+    }
+
+    #[gpui::test]
     fn a_web_plugin_is_discovered_and_contributes_a_pane(cx: &mut gpui::TestAppContext) {
         let (_tmp, paths) = paths();
         write_web(&paths, "com.example.notes", "com.example.notes");
@@ -1261,27 +1300,6 @@ default = true
         cx.update(|cx| catalog.enable(&paths, BundledPlugin::ID, cx)).unwrap();
         assert_eq!(*consumer.get::<u32>(BundledPlugin::ID).unwrap(), 42);
         assert_eq!(catalog.panes()[0].key.plugin, BundledPlugin::ID);
-    }
-
-    #[gpui::test]
-    fn a_hosted_browser_surface_is_discovered_without_loading_code(cx: &mut gpui::TestAppContext) {
-        let (_tmp, paths) = paths();
-        let dir = paths.installed.join("com.chartr.browser");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("chartr-plugin.toml"),
-            "manifest_version = 2\nid = 'com.chartr.browser'\nname = 'Browser'\nversion = '1'\nkind = 'hosted'\nicon = 'InternetIcon'\nsurface = 'browser'\n",
-        )
-        .unwrap();
-        std::fs::create_dir_all(dir.join("icons")).unwrap();
-        std::fs::write(dir.join("icons/InternetIcon.svg"), "<svg/>").unwrap();
-
-        let mut catalog = cx.update(|cx| load_all(&paths, cx));
-        let browser = catalog.get_mut("com.chartr.browser").unwrap();
-        assert!(matches!(
-            browser.pane(&PaneKey::new("com.chartr.browser", "main")),
-            Some(PaneSource::Hosted(HostedSurface::Browser))
-        ));
     }
 
     #[gpui::test]

@@ -21,8 +21,8 @@ space at a time; ordinary agent sessions and terminals remain independent. If a
 launched session ends without completing its ticket, use **Release claim…** in
 the ticket pane before retrying.
 
-Open the bundled Browser from the workspace’s **New surface** menu.
-See [Browser](../plugins/browser/README.md) for its capabilities and limits.
+Install optional plugins through **Settings → Plugins**. Installation uses
+prebuilt packages and never requires a compiler.
 
 See the [workspace reference](workspace.md) for views, panes, settings, and
 [data locations](workspace.md#your-data).

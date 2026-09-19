@@ -20,8 +20,9 @@ create prereleases; publishing them must not update the latest stable release.
    Only a Herdr cache miss installs Zig 0.15.2 and compiles the sidecar.
 3. Run `cargo build --release --locked -p chartr --bin chartr --timings` once.
 4. Package the same binaries as `.tar.gz` and `.deb`. For x86_64, an Arch Linux
-   container checks dynamic-library resolution and makes a `.pkg.tar.zst`
-   without compiling anything.
+   container checks dynamic-library resolution and makes a `chartr-bin`
+   `.pkg.tar.zst` without compiling anything. It also produces
+   `chartr-<version>-aur.tar.gz` with the exact tested `PKGBUILD` and `.SRCINFO`.
 5. Upload packages, per-architecture SHA-256 checksums, and timing reports.
    Tag builds also create/update a **draft** release after the macOS jobs finish.
    Reruns refuse to replace
@@ -76,6 +77,76 @@ The container installs Arch runtime dependencies, then runs `makepkg` as an
 unprivileged user. The PKGBUILD copies the existing installation tree. Docker
 must be available to your user. This does not install anything on the host.
 
+To generate just the AUR recipe on Arch, as a regular user:
+
+```sh
+bash scripts/package-aur.sh \
+  target/packages/chartr-0.3.0-linux-x86_64.tar.gz target/aur/chartr-bin
+```
+
+Use the actual archive version, including `-rc.N` for a candidate. The generator
+uses that archive's SHA-256 checksum and a versioned GitHub release URL.
+`makepkg --printsrcinfo` generates the metadata. The full packaging job tests
+that same recipe with a local copy of the archive before it is publicly
+available. Only `PKGBUILD` and `.SRCINFO` go into the AUR bundle.
+
+## AUR publishing
+
+The [Publish AUR workflow](../.github/workflows/aur.yml) updates `chartr-bin`
+when a **stable GitHub release is published**. Creating a draft, pushing a tag,
+or publishing an RC does not update AUR. Every x86_64 build still includes an
+AUR recipe bundle for inspection or manual testing.
+
+One-time setup:
+
+1. Create an account at [aur.archlinux.org](https://aur.archlinux.org/) and
+   check whether `chartr-bin` already exists. If another maintainer owns it,
+   arrange co-maintainer access before enabling publication.
+2. Create a dedicated, passphrase-free SSH key for release automation and add
+   its **public** key to the AUR account. Keep its private key out of Git.
+3. Store the private key as the GitHub Actions secret `AUR_SSH_PRIVATE_KEY` in
+   `rengwu/chartr`, for example:
+
+   ```sh
+   gh secret set AUR_SSH_PRIVATE_KEY --repo rengwu/chartr < /path/to/aur-private-key
+   ```
+
+4. Store the verified SSH known-hosts entry for `aur.archlinux.org` in the
+   Actions **variable** `AUR_SSH_KNOWN_HOSTS`. Compare the host-key fingerprint
+   against the [AUR authentication documentation](https://wiki.archlinux.org/title/AUR_submission_guidelines#Authentication)
+   before accepting it. The workflow requires strict host-key checking.
+5. Merge the workflow into `main` before tagging the first release that should
+   include AUR artifacts. Publish that release from its draft in the GitHub UI.
+
+Missing publishing configuration fails with an explicit setup error; it does
+not report a successful AUR publication. AUR receives packaging files only.
+GitHub continues to host the binaries and checksums. The first successful push
+creates the AUR package if it does not already exist.
+
+Before pushing, the job verifies the AUR bundle's release checksum, checks that
+its metadata names the exact published binary and checksum, downloads that
+binary through `makepkg --verifysource`, and confirms `.SRCINFO` matches the
+recipe. It never builds Chartr again. Publication is serialized, identical
+retries do nothing, and older or changed same-version recipes cannot overwrite
+the current AUR version. Updating to a new upstream version resets `pkgrel=1`.
+
+To retry after correcting credentials or an interrupted run:
+
+```sh
+gh workflow run aur.yml --ref main -f release_tag=v0.3.0
+```
+
+Use a published stable tag containing the new AUR asset. Existing releases
+without that asset cannot be published by this workflow. The dispatch validates
+the release again, so it cannot publish a draft or RC. If another workflow
+publishes a release using `GITHUB_TOKEN`, GitHub does not emit a new workflow run
+for that event; explicitly dispatch `aur.yml` afterwards. See
+[GitHub's event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
+
+Arch packaging CI tests stable and RC versions using real `makepkg`, validates
+checksums and installed files, and exercises first publication, updates,
+retries, and downgrade rejection against a temporary local Git repository.
+
 ## macOS development DMG
 
 After installing the [build prerequisites](installation.md#build-from-source)
@@ -98,51 +169,8 @@ candidate version is recorded in `chartrReleaseVersion`; Apple's numeric
 `CFBundleShortVersionString` uses the corresponding base version. Release DMGs
 remain ad-hoc signed and unnotarized, and the release notes must say so.
 
-## Caches and build time
+## External native plugins
 
-The shared `setup-herdr` action caches the finished sidecar by runner image,
-CPU architecture, Herdr pins, Rust pin, fetch script, and action definition.
-There is no fallback to a different sidecar cache key. The binary is checked
-with `--version` and saved immediately, so a later application build failure
-does not discard a successful Herdr build. CI and release jobs share this cache.
-
-Locally, `fetch.sh` also reuses an already matching native sidecar. On a miss,
-it retains source under `vendor/herdr/.build/source/<revision>` and Cargo output
-under `vendor/herdr/.build/target`. That directory is excluded from Chartr's
-Cargo workspace so upstream builds remain independent. Rebuilding explicitly is:
-
-```sh
-HERDR_REBUILD=1 ZIG=/path/to/zig-0.15.2/zig sh vendor/herdr/fetch.sh
-```
-
-Use this after changing sidecar compiler flags, or when intentionally rebuilding
-with a different compiler/environment. The Rust toolchain is selected explicitly
-from this repository even after entering the upstream source directory. Failed
-builds leave the previous sidecar intact. Do not run simultaneous fetches into
-the same checkout.
-
-Test and release dependency caches have separate keys. Rust-cache handles Rust
-version, lockfile, manifest and compiler-environment invalidation; unchanged
-registry and Git dependencies are reusable. Workspace code is rebuilt normally.
-GitHub allows a tag to restore default-branch caches, but not a different tag's
-caches. Keeping default-branch builds enabled prevents every release tag from
-starting cold. Caches may still be evicted; every job supports a cold build.
-
-A first build still compiles the large Zed editor/terminal dependency graph.
-The local `.cargo/config.toml` is untracked and does not constrain CI jobs.
-Test CI disables debug symbols to reduce disk and memory use. Release jobs use
-Cargo's normal parallelism and do not inherit the local two-job limit.
-
-Both builds use `--timings`; reports are uploaded even after later steps fail:
-
-- Chartr: `target/cargo-timings/`
-- Herdr: `vendor/herdr/.build/target/cargo-timings/`
-
-Compare a cold run and a subsequent run with unchanged dependency pins. Record
-Herdr cache hits, Cargo compile time, and packaging time separately. A cache hit
-eliminates sidecar compilation entirely; exact wall-clock improvements depend
-on the runner and dependency cache contents.
-
-References: [Cargo timings](https://doc.rust-lang.org/cargo/reference/timings.html),
-[Rust cache](https://github.com/Swatinem/rust-cache), and
-[GitHub cache scope and retention](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
+Application builds contain the generic native surface host, without external
+plugin libraries, engines or assets. Plugin authors publish prebuilt packages
+from their own repositories. Application installation never builds plugins.

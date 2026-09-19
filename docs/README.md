@@ -18,7 +18,6 @@ These guides describe the current Rust working tree. Start with
 | Template composition and explicit project-file saves | [Markdown Prompt](../plugins/markdown-prompt/README.md) |
 | Maps, ticket launch, and claim recovery | [Wayfinder](../plugins/wayfinder/README.md) |
 | Markdown map/ticket format | [Tracker convention](../plugins/wayfinder/TRACKER-CONVENTION.md) |
-| Bundled browser surface | [Browser](../plugins/browser/README.md) |
 
 ## Development and design
 

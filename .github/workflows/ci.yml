@@ -16,6 +16,25 @@ env:
   CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
+  arch-packaging:
+    name: Arch and AUR packaging
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install package test dependencies
+        run: |
+          pacman -Syu --noconfirm --needed python git gtk3 webkit2gtk-4.1 libxcb \
+            libxkbcommon-x11 fontconfig vulkan-icd-loader xdg-utils
+      - uses: actions/checkout@v4
+      - name: Test Arch packages and AUR publication
+        run: |
+          useradd --create-home builder
+          work=$(mktemp -d)
+          cp -a scripts packaging "$work/"
+          chown -R builder:builder "$work"
+          cd "$work"
+          runuser -u builder -- python3 -B -m unittest discover -s scripts/tests -p 'test_aur*.py' -v
+
   test:
     name: ${{ matrix.os }}
     strategy:
@@ -51,6 +70,10 @@ jobs:
 
       - name: Build and test
         run: cargo test --workspace --locked --no-fail-fast --timings
+
+      - name: Test forwarded X11 input-method events
+        if: runner.os == 'Linux'
+        run: cargo test -p gpui_linux --lib xim_preserves_native_and_forwarded --locked
 
       - name: Build the build-time native module example
         run: cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked

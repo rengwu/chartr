@@ -98,7 +98,7 @@ pub fn init(keymap: &KeymapStore, cx: &mut App) {
 ///
 /// GPUI bindings are append-only, with later entries taking precedence. A
 /// targeted `Unbind` disables the prior action/chord without disturbing any
-/// terminal, browser, or text-input bindings installed by other modules.
+/// terminal, plugin, or text-input bindings installed by other modules.
 pub fn rebind(action: KeymapAction, previous_key: &str, new_key: &str, cx: &mut App) {
     let contexts: &[&str] = if action == KeymapAction::OpenSettings {
         &[WORKSPACE_CONTEXT, "chartrSettings"]

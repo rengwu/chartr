@@ -20,18 +20,23 @@ disabled plugins. Declared assets must be regular files inside the package;
 absolute paths, parent traversal, and symlinks escaping the package are rejected.
 Installation rejects source symlinks and omits `.git` and `target` directories.
 
-A hosted package contains only declarative files and names a surface already
-implemented by chartr. Hosted surfaces are intended for first-party plugins
-that need deep operating-system integration without crossing the GPUI dynamic
-library boundary. Browser is the first one: `kind = "hosted"` and
-`surface = "browser"`.
+An embedded package supplies a prebuilt native library using the versioned
+surface ABI. It executes trusted native code with the user's authority, while
+Chartr retains ownership of GPUI objects. See [native plugins](native-plugins.md).
+Legacy `kind = "hosted"` packages are no longer supported.
+
+**Every installed plugin must be prebuilt. Installation never invokes a compiler,
+build script, dependency installer, or package hook.** Web plugins ship ready-to-run
+HTML, JavaScript and assets. Native plugins ship platform binaries; missing builds
+produce an error, never a local compilation fallback.
 
 ## Installation sources
 
 - **Local folder:** chartr copies the selected package into private staging
   before showing the confirmation.
-- **Git repository:** chartr shallow-clones the default branch. No release API,
-  package manager, or build system is involved. Cloning has a two-minute deadline
+- **Git repository:** chartr shallow-clones the default branch. Embedded plugins
+  may declare an HTTPS release directory; Chartr then fetches the platform archive
+  and verifies its SHA-256 checksum. Cloning has a two-minute deadline
   and disables interactive terminal credential prompts. Cancel in Settings, or
   close Settings, to stop preparation and its Git process group.
 
@@ -61,7 +66,7 @@ this layout; plugins cannot add extra rows. The gear opens the plugin's single
 configuration page, combining native settings controls with prerequisite setup
 links and host permissions. The info icon opens **Plugin Information**, which
 contains the package details, access summary, and **Uninstall** button. Build-time native plugins may
-contribute a GPUI view. Web and hosted plugins declare `[settings]` fields;
+contribute a GPUI view. Web and embedded plugins declare `[settings]` fields;
 chartr renders these with the same native controls as its own forms. No plugin
 HTML or JavaScript runs inside the Settings window. Legacy `settings_entry`
 manifests are rejected with a migration message; replace that declaration with
@@ -72,9 +77,10 @@ and removes its installed and bundled packages and any pending update. Source
 repositories, plugin data, and preferences are kept. Bundled removals are saved
 as `uninstalled = true` in that plugin's settings so they stay removed on restart.
 To restore a compiled-in bundle, clear that marker and restart; it remains disabled
-until enabled. Reinstalling a hosted or web package also leaves it disabled.
+until enabled. Reinstalling an embedded or web package also leaves it disabled.
 If removal fails, Settings reports the error and leaves the plugin disabled for
-retry. A newly queued plugin appears in the catalog after restart.
+retry. System packages can be disabled here; remove them with the system package
+manager. A newly queued plugin appears in the catalog after restart.
 
 Disabling or uninstalling a prerequisite first prompts with the complete list of
 dependent plugins, including indirect dependents. Confirmation disables that
@@ -83,17 +89,13 @@ changes nothing. Dependents remain installed and are never enabled implicitly
 when their provider returns. Missing, disabled, or cyclic prerequisites block
 enabling, including during startup. These rules apply to all plugin tiers.
 
-Hosted and web packages are architecture-independent and need no release
-binary. Browser ships in the bundled catalog with its manifest and icon;
-installed overrides use the same validation and installation flow. Browser uses
-ephemeral web-engine storage and persists only each pane's last URL.
+Web packages are architecture-independent. Embedded native packages must publish
+binaries for each supported OS and architecture. Native libraries load only when
+a pane is opened; browsing the plugin catalog never executes plugin code.
 
-chartr may link native plugin modules at application build time, but it rejects
-separately installed GPUI dynamic libraries. Precompiling does not make Rust
-GUI objects or crate-global state ABI-safe across two independently linked
-copies of GPUI. Plugins that need native operating-system integration should
-use a chartr-implemented hosted surface; portable third-party plugins should use the web
-tier.
+Build-time GPUI modules remain part of the application build. Independently built
+GPUI libraries are still rejected: embedded plugins exchange plain data and
+opaque native handles instead of Rust GUI objects or GPUI runtime state.
 
 The bundled Agent plugin is one such native module. Its GPUI pane receives the
 owning space's display context and a host capability that opens a normal
@@ -185,7 +187,7 @@ directory names must match the ID. `version` is a display string; chartr does
 not compare versions or prevent downgrades. This build accepts only manifest
 version 2; unknown TOML fields are ignored.
 
-Web and hosted packages contribute one `main` pane. `per_space` focuses an
+Web and embedded packages contribute one `main` pane. `per_space` focuses an
 existing matching pane when opened again; `multiple` permits additional panes.
 `cloneable` enables opening another instance, and `restorable` enables reopening
 saved panes. Web cloning and restoration create a fresh document; there is no

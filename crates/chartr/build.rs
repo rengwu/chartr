@@ -26,7 +26,9 @@ fn main() {
     }
 
     let beside = out_dir_binary_dir().join("herdr");
-    if let Err(err) = std::fs::copy(&vendored, &beside) {
+    // Publish atomically so an existing Herdr process can keep its executable.
+    let staged = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("herdr");
+    if let Err(err) = std::fs::copy(&vendored, &staged) {
         println!("cargo::error=cannot place herdr at {}: {err}", beside.display());
         return;
     }
@@ -39,7 +41,7 @@ fn main() {
     if target.contains("apple-darwin") {
         let signed = std::process::Command::new("codesign")
             .args(["--force", "--sign", "-"])
-            .arg(&beside)
+            .arg(&staged)
             .status();
         match signed {
             Ok(status) if status.success() => {}
@@ -49,6 +51,9 @@ fn main() {
             ),
             Err(error) => println!("cargo::error=cannot ad-hoc sign {}: {error}", beside.display()),
         }
+    }
+    if let Err(error) = std::fs::rename(&staged, &beside) {
+        println!("cargo::error=cannot publish herdr at {}: {error}", beside.display());
     }
 }
 

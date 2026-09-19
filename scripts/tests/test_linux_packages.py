@@ -35,10 +35,10 @@ class PackageTests(unittest.TestCase):
         rustc.chmod(0o755)
         self.env = dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}')
 
-    def compile(self, name, source):
+    def compile(self, name, source, *flags):
         c = self.work / (name + '.c')
         c.write_text(source)
-        subprocess.run(['cc', str(c), '-o', str(self.binaries / name)], check=True)
+        subprocess.run(['cc', str(c), *flags, '-o', str(self.binaries / name)], check=True)
 
     def package(self):
         return subprocess.run(['bash', str(ROOT / 'scripts/package-linux.sh'),
@@ -46,7 +46,7 @@ class PackageTests(unittest.TestCase):
                               text=True, capture_output=True)
 
     def test_both_formats_preserve_sidecar_layout_and_binary_contents(self):
-        before = {p.name: p.read_bytes() for p in self.binaries.iterdir()}
+        before = {p.name: p.read_bytes() for p in self.binaries.iterdir() if p.is_file()}
         result = self.package()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive, = self.output.glob('*.tar.gz')
@@ -77,6 +77,9 @@ class PackageTests(unittest.TestCase):
         deps = subprocess.check_output(['dpkg-deb', '-f', str(deb), 'Depends'], text=True)
         self.assertIn('libc6', deps)
         self.assertIn('libvulkan1', deps)
+        self.assertNotIn('libcef', deps)
+        for root in (bundle, deb_root):
+            self.assertEqual({p.name for p in (root / 'usr/lib/chartr').iterdir()}, {'chartr', 'herdr'})
         checksums, = self.output.glob('SHA256SUMS-*')
         for line in checksums.read_text().splitlines():
             digest, name = line.split()
@@ -94,6 +97,7 @@ class PackageTests(unittest.TestCase):
         result = self.package()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('missing chartr or herdr', result.stderr)
+
 
 
 if __name__ == '__main__':

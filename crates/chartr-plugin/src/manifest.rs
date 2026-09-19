@@ -94,8 +94,10 @@ pub enum Kind {
     /// A module mounted directly in chartr's element tree at application build
     /// time. Separately compiled GPUI libraries are rejected by the installer.
     Native,
-    /// A separately installed package that activates a surface implemented by
-    /// chartr, such as a child browser webview.
+    /// Independently compiled library using the versioned native surface ABI.
+    Embedded,
+    /// Legacy declarative hosted packages. Parsed for a useful rejection message;
+    /// no hosted surfaces are provided by the application.
     Hosted,
     /// HTML and JavaScript in an OS webview, with declared host API grants.
     /// Process and terminal grants carry user-level execution authority.
@@ -141,6 +143,12 @@ pub struct Manifest {
     /// Hosted only: the chartr-provided surface to activate.
     #[serde(default)]
     pub surface: Option<String>,
+    /// Embedded only: libraries indexed by OS and architecture.
+    #[serde(default)]
+    pub libraries: std::collections::BTreeMap<String, String>,
+    /// Optional HTTPS release directory containing prebuilt platform packages.
+    #[serde(default)]
+    pub release: Option<String>,
     /// Web only: the entry document, relative to the plugin directory.
     #[serde(default)]
     pub entry: Option<String>,
@@ -268,6 +276,11 @@ impl Manifest {
         }
         match self.kind {
             Kind::Native => {}
+            Kind::Embedded => {
+                if self.libraries.is_empty() {
+                    return Err(Invalid::Missing { field: "libraries", kind: self.kind });
+                }
+            }
             Kind::Hosted => {
                 if self.surface.is_none() {
                     return Err(Invalid::Missing { field: "surface", kind: self.kind });
@@ -330,12 +343,12 @@ mod tests {
 
     const HOSTED: &str = r#"
         manifest_version = 2
-        id = "com.chartr.browser"
-        name = "Browser"
+        id = "com.example.legacy"
+        name = "Legacy surface"
         version = "0.1.0"
         kind = "hosted"
         icon = "InternetIcon"
-        surface = "browser"
+        surface = "legacy"
     "#;
 
     #[test]
@@ -372,7 +385,7 @@ mod tests {
         assert!(parse(HOSTED).is_ok());
         let no_entry = WEB.replace("entry = \"index.html\"", "");
         assert_eq!(parse(&no_entry), Err(Invalid::Missing { field: "entry", kind: Kind::Web }));
-        let no_surface = HOSTED.replace("surface = \"browser\"", "");
+        let no_surface = HOSTED.replace("surface = \"legacy\"", "");
         assert_eq!(
             parse(&no_surface),
             Err(Invalid::Missing { field: "surface", kind: Kind::Hosted })

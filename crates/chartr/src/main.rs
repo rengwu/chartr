@@ -16,7 +16,6 @@ mod agent_icons;
 mod agent_plugin;
 mod app;
 mod assets;
-mod browser_plugin;
 mod chrome;
 mod components;
 mod conversations;
@@ -26,6 +25,9 @@ mod keymap;
 #[path = "../../../plugins/markdown-prompt/src/lib.rs"]
 mod markdown_prompt_plugin;
 mod mode;
+mod native_plugin;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod native_webview;
 mod persistence;
 mod plugin_installer;
 mod plugin_settings;
@@ -48,6 +50,23 @@ mod web_plugin;
 mod workspace;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    if Path::new("/sys/module/nvidia").is_dir()
+        && std::env::var_os("WEBKIT_DMABUF_RENDERER_FORCE_SHM").is_none()
+        && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+    {
+        // NVIDIA's X11 GBM buffers can leave WebKit views black. Keep its
+        // compositor enabled, but use shared-memory buffers by default.
+        // SAFETY: this is the first action in main, before GTK, GPUI, or any
+        // application threads start and can read the process environment.
+        unsafe { std::env::set_var("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1") };
+    }
+
+    // GPUI uses X11 on Linux. Wry's child views must use the same backend,
+    // including when the desktop prefers GTK's Wayland backend.
+    #[cfg(target_os = "linux")]
+    gtk::gdk::set_allowed_backends("x11");
+
     for error in plugin_installer::activate_pending(&app::plugin_paths()) {
         eprintln!("Could not activate plugin update: {error:#}");
     }
@@ -85,7 +104,6 @@ fn main() {
         actions::init(&keymap, cx);
         text_input::init(cx);
         prompts_plugin::init(cx);
-        browser_plugin::init(cx);
         settings_window::init(&keymap, cx);
         cx.set_global(settings.clone());
         cx.set_global(keymap);
@@ -147,6 +165,7 @@ fn main() {
             }
         };
         cx.on_app_quit(move |cx| {
+            native_plugin::prepare_to_quit();
             let _ = window.update(cx, |chartr, _, cx| {
                 chartr.apply_exit_policy(cx);
                 chartr.flush_state(cx);
@@ -156,6 +175,7 @@ fn main() {
         .detach();
         cx.activate(true);
     });
+    native_plugin::shutdown();
 }
 
 /// Return only a folder explicitly passed to chartr.

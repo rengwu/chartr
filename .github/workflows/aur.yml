@@ -1,0 +1,74 @@
+name: Publish AUR
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published stable release to retry (for example v0.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-chartr-bin
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'rengwu/chartr' &&
+      (github.event_name == 'workflow_dispatch' || !github.event.release.prerelease)
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check AUR publishing configuration
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_SSH_KNOWN_HOSTS: ${{ vars.AUR_SSH_KNOWN_HOSTS }}
+        run: |
+          if [[ -z "$AUR_SSH_PRIVATE_KEY" || -z "$AUR_SSH_KNOWN_HOSTS" ]]; then
+            echo '::error::Set AUR_SSH_PRIVATE_KEY and AUR_SSH_KNOWN_HOSTS; see docs/releasing.md#aur-publishing.'
+            exit 1
+          fi
+
+      - name: Install publishing tools
+        run: pacman -Syu --noconfirm --needed git openssh github-cli python
+
+      - uses: actions/checkout@v4
+
+      - name: Download and verify published recipe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+        run: python3 scripts/prepare-aur-release.py "$RELEASE_TAG" "$RUNNER_TEMP/aur-recipe"
+
+      - name: Verify public download and AUR metadata
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$RUNNER_TEMP/aur-recipe"
+          cd "$RUNNER_TEMP/aur-recipe"
+          runuser -u builder -- makepkg --verifysource
+          runuser -u builder -- makepkg --printsrcinfo > .SRCINFO.actual
+          cmp .SRCINFO .SRCINFO.actual
+
+      - name: Publish chartr-bin
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_SSH_KNOWN_HOSTS: ${{ vars.AUR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf "$ssh_dir"' EXIT
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$AUR_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+          git -c init.defaultBranch=master clone ssh://aur@aur.archlinux.org/chartr-bin.git "$RUNNER_TEMP/aur-checkout"
+          bash scripts/publish-aur.sh "$RUNNER_TEMP/aur-recipe" "$RUNNER_TEMP/aur-checkout"

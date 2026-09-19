@@ -9,6 +9,16 @@ pub enum XimCallbackEvent {
     XimCommitEvent(xproto::Window, String),
 }
 
+fn forwarded_key_event(xev: xproto::KeyPressEvent) -> Option<XimCallbackEvent> {
+    // XSendEvent sets the high bit; XIM can return it unchanged. It is not part
+    // of the event type, including for keys forwarded by embedded windows.
+    match xev.response_type & 0x7f {
+        xproto::KEY_PRESS_EVENT => Some(XimCallbackEvent::XimXEvent(Event::KeyPress(xev))),
+        xproto::KEY_RELEASE_EVENT => Some(XimCallbackEvent::XimXEvent(Event::KeyRelease(xev))),
+        _ => None,
+    }
+}
+
 pub struct XimHandler {
     pub im_id: u16,
     pub ic_id: u16,
@@ -73,10 +83,8 @@ impl<C: Client<XEvent = xproto::KeyPressEvent>> ClientHandler<C> for XimHandler 
         _input_context_id: u16,
         text: &str,
     ) -> Result<(), ClientError> {
-        self.last_callback_event = Some(XimCallbackEvent::XimCommitEvent(
-            self.window,
-            String::from(text),
-        ));
+        self.last_callback_event =
+            Some(XimCallbackEvent::XimCommitEvent(self.window, String::from(text)));
         Ok(())
     }
 
@@ -88,15 +96,8 @@ impl<C: Client<XEvent = xproto::KeyPressEvent>> ClientHandler<C> for XimHandler 
         _flag: xim::ForwardEventFlag,
         xev: C::XEvent,
     ) -> Result<(), ClientError> {
-        match xev.response_type {
-            x11rb::protocol::xproto::KEY_PRESS_EVENT => {
-                self.last_callback_event = Some(XimCallbackEvent::XimXEvent(Event::KeyPress(xev)));
-            }
-            x11rb::protocol::xproto::KEY_RELEASE_EVENT => {
-                self.last_callback_event =
-                    Some(XimCallbackEvent::XimXEvent(Event::KeyRelease(xev)));
-            }
-            _ => {}
+        if let Some(event) = forwarded_key_event(xev) {
+            self.last_callback_event = Some(event);
         }
         Ok(())
     }
@@ -124,10 +125,49 @@ impl<C: Client<XEvent = xproto::KeyPressEvent>> ClientHandler<C> for XimHandler 
         // XIMPrimary, XIMHighlight, XIMSecondary, XIMTertiary are not specified,
         // but interchangeable as above
         // Currently there's no way to support these.
-        self.last_callback_event = Some(XimCallbackEvent::XimPreeditEvent(
-            self.window,
-            String::from(preedit_string),
-        ));
+        self.last_callback_event =
+            Some(XimCallbackEvent::XimPreeditEvent(self.window, String::from(preedit_string)));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use x11rb::x11_utils::Serialize;
+
+    #[test]
+    fn xim_preserves_native_and_forwarded_key_presses_and_releases() {
+        for flag in [0, 0x80] {
+            for event_type in [xproto::KEY_PRESS_EVENT, xproto::KEY_RELEASE_EVENT] {
+                let key = xproto::KeyPressEvent {
+                    response_type: event_type | flag,
+                    detail: 38,
+                    event: 123,
+                    time: 456,
+                    state: xproto::KeyButMask::CONTROL | xproto::KeyButMask::SHIFT,
+                    ..Default::default()
+                };
+                let Some(XimCallbackEvent::XimXEvent(event)) = forwarded_key_event(key) else {
+                    panic!("XIM dropped key type {event_type} with flag {flag}");
+                };
+                match event {
+                    Event::KeyPress(received) if event_type == xproto::KEY_PRESS_EVENT => {
+                        assert_eq!(received.serialize(), key.serialize());
+                    }
+                    Event::KeyRelease(received) if event_type == xproto::KEY_RELEASE_EVENT => {
+                        assert_eq!(received.serialize(), key.serialize());
+                    }
+                    _ => panic!("XIM changed the key event type"),
+                }
+            }
+        }
+        assert!(
+            forwarded_key_event(xproto::KeyPressEvent {
+                response_type: xproto::FOCUS_IN_EVENT | 0x80,
+                ..Default::default()
+            })
+            .is_none()
+        );
     }
 }

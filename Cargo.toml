@@ -21,6 +21,7 @@ members = [
     "crates/chartr-conversations",
     "crates/chartr-herdr",
     "crates/chartr-plugin",
+    "crates/chartr-native-plugin",
     "crates/chartr-plugin-host",
 ]
 exclude = [

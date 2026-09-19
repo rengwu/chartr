@@ -1,6 +1,6 @@
 # Repackage the Ubuntu-built release archive. No compilation takes place here.
-# package-arch.sh supplies the version and checksum for this exact build.
-pkgname=chartr
+# package-aur.sh supplies the version and checksum for this exact build.
+pkgname=chartr-bin
 pkgver=0.0.0
 _upstream_version=0.0.0
 pkgrel=1
@@ -13,7 +13,9 @@ depends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'libxcb'
 optdepends=('xorg-xwayland: run under a Wayland desktop'
             'vulkan-driver: GPU rendering')
 options=('!strip' '!debug')
-source=("chartr-$_upstream_version-linux-x86_64.tar.gz")
+provides=("chartr=$pkgver")
+conflicts=('chartr')
+source=("$url/releases/download/v$_upstream_version/chartr-$_upstream_version-linux-x86_64.tar.gz")
 sha256sums=('SKIP')
 
 check() {

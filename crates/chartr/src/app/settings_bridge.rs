@@ -118,14 +118,22 @@ impl WorkspaceWindow {
                 installation: loaded.installation.clone(),
                 prerequisite_error: self.catalog.prerequisite_error(&loaded.manifest.id),
                 enabled: true,
+                system: plugin_paths()
+                    .system
+                    .is_some_and(|root| loaded.dir.parent() == Some(root.as_path())),
                 bundled: loaded.dir == plugin_paths().bundled.join(&loaded.manifest.id),
             })
-            .chain(self.catalog.disabled.values().map(|disabled| SettingsPluginDescriptor {
-                manifest: disabled.manifest.clone(),
-                installation: disabled.installation.clone(),
-                prerequisite_error: self.catalog.prerequisite_error(&disabled.manifest.id),
-                enabled: false,
-                bundled: disabled.dir == plugin_paths().bundled.join(&disabled.manifest.id),
+            .chain(self.catalog.disabled.values().map(|disabled| {
+                SettingsPluginDescriptor {
+                    manifest: disabled.manifest.clone(),
+                    installation: disabled.installation.clone(),
+                    prerequisite_error: self.catalog.prerequisite_error(&disabled.manifest.id),
+                    enabled: false,
+                    system: plugin_paths()
+                        .system
+                        .is_some_and(|root| disabled.dir.parent() == Some(root.as_path())),
+                    bundled: disabled.dir == plugin_paths().bundled.join(&disabled.manifest.id),
+                }
             }))
             .collect();
         descriptors.sort_by(|left, right| left.manifest.name.cmp(&right.manifest.name));

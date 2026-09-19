@@ -275,7 +275,9 @@ impl SettingsWindow {
             .map(|origin| origin.read(cx).settings_plugins())
             .unwrap_or_default();
         let name;
+        let system;
         if let Some(descriptor) = descriptors.into_iter().find(|p| p.manifest.id == id) {
+            system = descriptor.system;
             let manifest = descriptor.manifest;
             name = manifest.name.clone();
             let source = descriptor
@@ -290,6 +292,8 @@ impl SettingsWindow {
                 .unwrap_or_else(|| {
                     if descriptor.bundled {
                         "Bundled with chartr".into()
+                    } else if system {
+                        "Installed by the system package manager".into()
                     } else {
                         "Source not recorded".into()
                     }
@@ -298,10 +302,12 @@ impl SettingsWindow {
                 chartr_plugin::manifest::Kind::Native => {
                     "Runs as fully trusted native code.".into()
                 }
-                chartr_plugin::manifest::Kind::Hosted => format!(
-                    "Uses chartr's built-in {} surface.",
-                    manifest.surface.as_deref().unwrap_or("hosted")
-                ),
+                chartr_plugin::manifest::Kind::Embedded => {
+                    "Native code running with your user account’s authority.".to_owned()
+                }
+                chartr_plugin::manifest::Kind::Hosted => {
+                    "Legacy hosted packages are no longer supported.".into()
+                }
                 chartr_plugin::manifest::Kind::Web => {
                     format!("Declared host access: {}.", manifest.permissions.summary())
                 }
@@ -324,8 +330,16 @@ impl SettingsWindow {
             let paths = crate::app::plugin_paths();
             plugin.dir.file_name().and_then(|name| name.to_str()) == Some(id.as_str())
                 && (plugin.dir.parent() == Some(paths.installed.as_path())
-                    || plugin.dir.parent() == Some(paths.bundled.as_path()))
+                    || plugin.dir.parent() == Some(paths.bundled.as_path())
+                    || paths
+                        .system
+                        .as_deref()
+                        .is_some_and(|root| plugin.dir.parent() == Some(root)))
         }) {
+            system = crate::app::plugin_paths()
+                .system
+                .as_deref()
+                .is_some_and(|root| rejected.dir.parent() == Some(root));
             name = id.clone();
             page = page
                 .child(Label::new(name.clone()).size(UI_LABEL_LARGE))
@@ -333,6 +347,17 @@ impl SettingsWindow {
         } else {
             return page
                 .child(Label::new("This plugin is no longer installed."))
+                .into_any_element();
+        }
+        if system {
+            return page
+                .child(
+                    Label::new(
+                        "Disable this plugin here, or remove it with your system package manager.",
+                    )
+                    .size(UI_LABEL_SMALL)
+                    .color(Color::Muted),
+                )
                 .into_any_element();
         }
         page.child(

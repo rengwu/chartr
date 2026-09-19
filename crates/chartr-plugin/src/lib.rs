@@ -46,11 +46,11 @@
 //! chartr hosts it in an OS webview and hands it the same pane slot. See
 //! [`manifest::Kind::Web`].
 //!
-//! # Hosted surfaces
+//! # Embedded native surfaces
 //!
-//! A hosted plugin is a declarative, separately installed package that
-//! activates an operating-system surface implemented by chartr. It carries no
-//! executable plugin code. See [`manifest::Kind::Hosted`].
+//! Prebuilt external libraries use the separate `chartr-native-plugin` ABI.
+//! They exchange plain data and native handles, never these GPUI objects.
+//! Installation never compiles source. See [`manifest::Kind::Embedded`].
 
 #![forbid(unsafe_code)]
 

@@ -5,8 +5,9 @@
 //! same-filesystem staging directory, validated, and only then renamed into
 //! pending plugin root. Startup activates them before any catalog is loaded.
 //! Installation never compiles or executes package
-//! code. Separately installed packages are web content or explicit
-//! chartr-hosted surfaces; Rust/GPUI dylibs are rejected at this boundary.
+//! code. All installed plugins must already be built. Web assets are copied;
+//! embedded packages provide a platform library or a downloadable release.
+//! Source-only GPUI packages are rejected; there is no compilation fallback.
 
 use std::{
     ffi::OsStr,
@@ -21,6 +22,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use chartr_plugin::{Kind, Manifest};
 use chartr_plugin_host::{Installation, Paths, validate_package};
 use tempfile::TempDir;
+mod prebuilt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
@@ -56,13 +58,13 @@ impl Prepared {
             ""
         };
         match self.manifest.kind {
-            Kind::Native => unreachable!("separately installed native plugins are rejected"),
-            Kind::Hosted => format!(
-                "Source: {}. This package activates chartr's built-in `{}` surface and contains no executable plugin code.{}",
+            Kind::Embedded => format!(
+                "Source: {}. This plugin runs native code with your user account’s authority.{}",
                 self.source.label(),
-                self.manifest.surface.as_deref().unwrap_or("unknown"),
                 replacement
             ),
+            Kind::Native => unreachable!("separately installed native plugins are rejected"),
+            Kind::Hosted => unreachable!("legacy hosted packages are rejected"),
             Kind::Web => {
                 format!(
                     "Source: {}. Declared host access: {}.{}",
@@ -127,6 +129,7 @@ pub fn prepare_cancellable(source: Source, paths: &Paths, cancel: &AtomicBool) -
     }
 
     check_cancelled(cancel)?;
+    prebuilt::resolve(&package, cancel)?;
     let manifest = Manifest::read(&package).map_err(|error| anyhow!(error))?;
     validate_package(&package, &manifest)?;
     let replacing = paths.installed.join(&manifest.id).exists()
@@ -351,6 +354,76 @@ mod tests {
     }
 
     #[test]
+    fn embedded_installation_copies_prebuilt_files_without_executing_them_or_hooks() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("ready-package");
+        let manifest = format!(
+            "manifest_version = 2\nid = 'com.example.embedded'\nname = 'Embedded'\nversion = '1'\nkind = 'embedded'\nicon = 'TestIcon'\n[libraries]\n{} = 'plugin.so'\n",
+            chartr_plugin_host::platform_key()
+        );
+        write(source.join("chartr-plugin.toml"), &manifest);
+        write(source.join("icons/TestIcon.svg"), "<svg/>");
+        // These bytes would fail if either discovery or installation tried to
+        // load native code. Build files have no install-time meaning either.
+        write(source.join("plugin.so"), "prebuilt fixture, never executed");
+        write(source.join("Cargo.toml"), "not a Cargo package");
+        write(source.join("build.rs"), "compile_error!(\"installation must never compile\");");
+        write(source.join("install.sh"), "exit 99");
+        let paths = paths(&temp);
+        let prepared = prepare(Source::Local(source), &paths).unwrap();
+        assert!(prepared.trust_detail().contains("native code"));
+        install(prepared, &paths).unwrap();
+        assert!(activate_pending(&paths).is_empty());
+        assert_eq!(
+            fs::read_to_string(paths.installed.join("com.example.embedded/plugin.so")).unwrap(),
+            "prebuilt fixture, never executed"
+        );
+    }
+
+    #[test]
+    fn missing_prebuilt_platform_library_never_falls_back_to_source_compilation() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source-only");
+        write(
+            source.join("chartr-plugin.toml"),
+            &format!(
+                "manifest_version = 2\nid = 'com.example.embedded'\nname = 'Embedded'\nversion = '1'\nkind = 'embedded'\nicon = 'TestIcon'\n[libraries]\n{} = 'plugin.so'\n",
+                chartr_plugin_host::platform_key()
+            ),
+        );
+        write(source.join("icons/TestIcon.svg"), "<svg/>");
+        write(source.join("Cargo.toml"), "not a Cargo package");
+        let paths = paths(&temp);
+        let error = prepare(Source::Local(source), &paths).unwrap_err();
+        assert!(error.to_string().contains("never compiles"));
+        assert!(!has_pending(&paths));
+    }
+
+    #[test]
+    #[ignore = "downloads a real release; set CHARTR_PLUGIN_TEST_REPOSITORY"]
+    fn released_native_package_installs_without_build_tools() {
+        let repository =
+            std::env::var("CHARTR_PLUGIN_TEST_REPOSITORY").expect("release repository URL");
+        let temp = tempfile::tempdir().unwrap();
+        let paths = paths(&temp);
+        let prepared = prepare(Source::Git(repository), &paths).unwrap();
+        assert_eq!(prepared.manifest.kind, Kind::Embedded);
+        let library = chartr_plugin_host::embedded_library(&prepared.manifest).unwrap().to_owned();
+        let id = prepared.manifest.id.clone();
+        assert!(prepared.trust_detail().contains("native code"));
+        install(prepared, &paths).unwrap();
+        assert!(has_pending(&paths));
+        assert!(!paths.installed.join(&id).exists());
+        assert!(activate_pending(&paths).is_empty());
+        let installed = paths.installed.join(&id);
+        assert!(installed.join(library).is_file());
+        assert!(!installed.join(".git").exists());
+        validate_package(&installed, &Manifest::read(&installed).unwrap()).unwrap();
+        uninstall(&id, &paths).unwrap();
+        assert!(!installed.exists());
+    }
+
+    #[test]
     fn confirmation_applies_to_the_staged_bytes_not_later_source_changes() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("notes-source");
@@ -493,31 +566,6 @@ mod tests {
 
         assert!(error.to_string().contains("never compiles"));
         assert!(error.to_string().contains("not safe across a dynamic-library boundary"));
-    }
-
-    #[gpui::test]
-    fn browser_package_installs_and_loads_through_the_real_installer(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let temp = tempfile::tempdir().unwrap();
-        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/browser");
-        let paths = paths(&temp);
-
-        let prepared = prepare(Source::Local(source), &paths).unwrap();
-        assert_eq!(prepared.manifest.kind, Kind::Hosted);
-        assert!(prepared.trust_detail().contains("no executable plugin code"));
-        let installed = install(prepared, &paths).unwrap();
-        assert!(activate_pending(&paths).is_empty());
-        let manifest = Manifest::read(&paths.installed.join(&installed.id)).unwrap();
-
-        assert_eq!(installed.id, "com.chartr.browser");
-        assert_eq!(manifest.surface.as_deref(), Some("browser"));
-        assert!(!paths.installed.join(&installed.id).join("Cargo.toml").exists());
-
-        let catalog = cx.update(|cx| chartr_plugin_host::load_all(&paths, cx));
-        assert!(catalog.rejected.is_empty(), "Browser was rejected: {:?}", catalog.rejected);
-        assert_eq!(catalog.panes()[0].key.plugin, "com.chartr.browser");
-        assert_eq!(catalog.panes()[0].title, "Browser");
     }
 
     #[test]

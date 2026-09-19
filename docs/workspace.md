@@ -168,10 +168,10 @@ root contains that manifest, or from a folder selected with the native picker.
 chartr inspects the manifest, shows the package details and declared web
 permissions, and queues the result for activation at the next startup. Running
 plugins retain their existing package files; startup atomically replaces the
-managed directory. Installation never invokes a compiler or package script. Web and
-hosted packages are architecture-independent and copied directly; separately
-compiled GPUI dynamic libraries are rejected because precompilation does not
-make Rust GUI objects ABI-safe. Plugin data is kept separately and survives
+managed directory. Installation never invokes a compiler or package script. Web assets are copied
+directly. Embedded plugins supply prebuilt platform libraries through the native
+surface ABI. Independently compiled GPUI libraries are rejected because
+precompilation does not make Rust GUI objects ABI-safe. Plugin data is kept separately and survives
 replacement. A successful install offers **Restart** and **Later**; choosing
 Later leaves an in-app restart reminder.
 Settings shows the recorded source and Git commit for new installations.
@@ -219,10 +219,9 @@ views immediately. Plugin settings use native controls: portable plugins declare
 `[settings]` fields in their manifest, and chartr reads and writes their private
 JSON settings file. HTML `settings_entry` pages are rejected.
 
-Hosted plugins are small declarative packages that activate a surface
-implemented inside chartr. They are reserved for integrations—such as
-Browser—that need native operating-system facilities while keeping all GPUI
-objects inside the host process's single framework copy.
+Embedded plugins ship prebuilt libraries using a versioned native surface ABI.
+Chartr owns pane layout and a small optional toolbar; the plugin owns its native
+content. No GPUI objects cross the library boundary. See [native plugins](native-plugins.md).
 
 `examples/plugins/hello` and `examples/plugins/clock` are native and web reference
 examples. Neither is bundled or shown in the default launcher. Clock can be
@@ -249,13 +248,6 @@ full prompt preview. Empty agent or source registries leave map browsing
 available and link to setup. Agent and Skill sources must be enabled for the
 Wayfinder plugin itself to load. See [Wayfinder](../plugins/wayfinder/README.md)
 for the workflow and claim rules.
-
-`plugins/browser` is the code-free package for the bundled **Browser** plugin.
-Its manifest and icon ship with chartr and activate the host-owned browser
-surface without a separate installation.
-Each instance owns one page and uses the operating-system WebKit view behind a
-small, theme-adaptive Back/Forward/Stop/Reload/address toolbar; chartr's own
-tabs and splits provide multi-page layout.
 
 ## Repository boundaries
 

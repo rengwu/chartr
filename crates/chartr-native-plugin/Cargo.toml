@@ -1,0 +1,9 @@
+[package]
+name = "chartr-native-plugin"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Small, versioned native surface interface for Chartr plugins (no GPUI)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

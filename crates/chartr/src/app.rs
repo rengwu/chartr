@@ -35,7 +35,7 @@ use std::{
 
 use chartr_herdr::{Namespace, Sidecar, WorkspaceId, control::Client};
 use chartr_plugin::{InstanceContext, manifest::Multiplicity};
-use chartr_plugin_host::{Catalog, FileBroker, HostedSurface, PaneSource, Paths, SettingsSource};
+use chartr_plugin_host::{Catalog, FileBroker, PaneSource, Paths, SettingsSource};
 use gpui::{
     Anchor, AnyView, AnyWindowHandle, ClickEvent, DragMoveEvent, Entity, EntityId, FocusHandle,
     Focusable, MouseButton, PathPromptOptions, Role, WeakEntity, img,
@@ -100,6 +100,7 @@ pub(crate) struct SettingsPluginDescriptor {
     pub installation: Option<chartr_plugin_host::Installation>,
     pub prerequisite_error: Option<String>,
     pub bundled: bool,
+    pub system: bool,
     pub enabled: bool,
 }
 
@@ -1628,5 +1629,14 @@ pub(crate) fn plugin_paths() -> Paths {
         .unwrap_or_else(|| {
             PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
         });
-    Paths::under(root.join("chartr"))
+    let mut paths = Paths::under(root.join("chartr"));
+    #[cfg(target_os = "linux")]
+    {
+        paths.system = Some(PathBuf::from("/usr/lib/chartr/plugins"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        paths.system = Some(PathBuf::from("/Library/Application Support/chartr/plugins"));
+    }
+    paths
 }

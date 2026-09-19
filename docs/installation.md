@@ -12,9 +12,38 @@ stable legacy Go/Svelte version. You can also build a
 | Linux    | Native desktop app under X11 or XWayland; CI runs on Ubuntu 24.04. |
 | Windows  | Deferred until further notice                                      |
 
+## Arch Linux / Omarchy
+
+Download the x86_64 `.pkg.tar.zst` from the
+[release page](https://github.com/rengwu/chartr/releases) and install it with:
+
+```sh
+sudo pacman -U ./chartr-*.pkg.tar.zst
+```
+
+This installs runtime dependencies, the `chartr` command, the app launcher entry,
+and its icon. New packages are named `chartr-bin`; they provide `chartr` and
+conflict with the older `chartr` package, so pacman can replace it cleanly.
+Select just the package version you want if the download directory contains
+several versions.
+
+Once the first stable Rust release has been published to the AUR, install it on
+Omarchy with:
+
+```sh
+omarchy pkg aur add chartr-bin
+```
+
+On other Arch installations with an AUR helper, use `yay -S chartr-bin`.
+The AUR package downloads the prebuilt release; it does not compile Rust or Zig.
+Updates then come through your AUR helper, including Omarchy's update flow.
+Release candidates remain explicit downloads and do not replace the stable AUR
+package. AUR availability depends on the maintainer completing the
+[publishing setup](releasing.md#aur-publishing).
+
 ## Build from source
 
-Install Git, Rustup, a C/C++ build toolchain, CMake, and pkg-config. On macOS,
+Install Git, Rustup, a C/C++ build toolchain, CMake, Ninja, and pkg-config. On macOS,
 install the Xcode Command Line Tools. Rustup reads the pinned Rust version and
 components from [rust-toolchain.toml](../rust-toolchain.toml).
 
@@ -27,10 +56,11 @@ require Zig. A matching sidecar is reused on subsequent builds.
 ```sh
 sudo apt-get update
 sudo apt-get install -y \
-  build-essential clang cmake pkg-config \
+  build-essential clang cmake ninja-build pkg-config \
   libasound2-dev libfontconfig-dev libglib2.0-dev libssl-dev \
   libva-dev libvulkan1 libwayland-dev libx11-xcb-dev \
-  libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev
+  libxkbcommon-x11-dev libzstd-dev libwebkit2gtk-4.1-dev \
+  libnss3 libcups2t64 libxcomposite1 libxdamage1 libxrandr2 libgbm1
 ```
 
 These are the same system packages used by [CI](../.github/workflows/ci.yml).
@@ -78,7 +108,8 @@ opening the app, review the download source and use **System Settings → Privac
 
 The [release workflow](../.github/workflows/release.yml) builds native
 x86_64 and ARM64 binaries on Ubuntu 24.04. Each build produces a `.tar.gz` and
-`.deb`; x86_64 also produces an Arch Linux `.pkg.tar.zst`, using the same binaries.
+`.deb`; x86_64 also produces an Arch Linux `.pkg.tar.zst` and an
+`aur.tar.gz` containing its `PKGBUILD` and `.SRCINFO`, using the same binaries.
 Run the workflow manually for downloadable artifacts. A `v<workspace-version>`
 tag creates a **draft** GitHub release after all three platform builds finish.
 Candidate tags such as `v0.3.0-rc.1` are marked as prereleases. Debian candidates
@@ -91,6 +122,31 @@ For the tarball, extract it and run `./usr/bin/chartr` from the extracted folder
 system GTK/WebKitGTK and graphics libraries are still required. Keep the
 `chartr` and `herdr` executables together. Updating the package replaces the
 binaries and leaves your user configuration and sessions on disk intact.
+
+### Optional native plugins
+
+Plugin installation only fetches and validates prebuilt packages; it never runs
+a compiler or build script. Plugins with native code must publish a package for
+the current OS and architecture. See [plugin installation](plugins.md).
+
+### Blank Wayfinder webviews on NVIDIA
+
+Chartr automatically uses WebKit's shared-memory buffers when the NVIDIA kernel
+module is loaded. This avoids black Wayfinder views caused by failed
+GBM buffer allocation, while keeping WebKit's compositor enabled. The default
+applies to both `cargo run -p chartr` and installed builds; macOS is unaffected.
+
+If another driver has the same problem, try:
+
+```sh
+WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 chartr
+```
+
+An explicit `WEBKIT_DMABUF_RENDERER_FORCE_SHM` or
+`WEBKIT_DISABLE_DMABUF_RENDERER` value is respected. Set
+`WEBKIT_DMABUF_RENDERER_FORCE_SHM=0` to opt out of the automatic workaround.
+Avoid setting `WEBKIT_DISABLE_DMABUF_RENDERER=1` in launchers: it disables the
+renderer instead of selecting its shared-memory transport.
 
 See [Release builds](releasing.md) for the local commands, cache behavior,
 and timing reports.

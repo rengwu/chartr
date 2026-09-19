@@ -1,8 +1,8 @@
 //! chartr's icon overrides, compiled in, with Zed's assets as a fallback.
 //!
 //! Zed's `ui` components ask an [`AssetSource`] for icons by their `IconName`
-//! path. chartr overrides the handful it owns (including its Hugeicons browser
-//! controls), then delegates every other asset to Zed's bundled catalog.
+//! path. chartr overrides the handful it owns, then delegates every other asset
+//! to Zed's bundled catalog.
 
 use std::borrow::Cow;
 
@@ -23,12 +23,7 @@ const ICONS: &[(&str, &str)] = &[
     ("icons/close.svg", include_str!("../assets/icons/close.svg")),
     ("icons/tab.svg", include_str!("../assets/icons/tab.svg")),
     ("icons/menu.svg", include_str!("../assets/icons/menu.svg")),
-    ("icons/arrow_left.svg", include_str!("../assets/icons/arrow_left.svg")),
-    ("icons/arrow_right.svg", include_str!("../assets/icons/arrow_right.svg")),
     ("icons/rotate_cw.svg", include_str!("../assets/icons/rotate_cw.svg")),
-    ("icons/stop.svg", include_str!("../assets/icons/stop.svg")),
-    ("icons/lock.svg", include_str!("../assets/icons/lock.svg")),
-    ("icons/public.svg", include_str!("../assets/icons/public.svg")),
     ("icons/agent_ai_programming.svg", include_str!("../assets/icons/agent_ai_programming.svg")),
     ("icons/agent_chat_gpt.svg", include_str!("../assets/icons/agent_chat_gpt.svg")),
     ("icons/agent_claude.svg", include_str!("../assets/icons/agent_claude.svg")),

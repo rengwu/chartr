@@ -8,6 +8,11 @@ repository.workspace = true
 default-run = "chartr"
 
 [dependencies]
+chartr-native-plugin = { path = "../chartr-native-plugin" }
+libloading = "0.8"
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
 chartr-agent = { path = "../chartr-agent" }
 chartr-storage = { path = "../chartr-storage" }
 chartr-conversations = { path = "../chartr-conversations" }
@@ -50,7 +55,7 @@ wry.workspace = true
 gtk = "0.18"
 
 [dev-dependencies]
+libc = "0.2"
 gpui = { workspace = true, features = ["test-support"] }
 terminal = { workspace = true, features = ["test-support"] }
-libc = "0.2"
 tempfile.workspace = true

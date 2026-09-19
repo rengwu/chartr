@@ -13,7 +13,9 @@ menus:
   Unfocused anchored popups without a grab are passive panels: they cannot
   become key or main and ignore mouse events, including in transparent margins.
 - `gpui_linux` implements the same contract for the X11 backend. Zed's
-  Wayland backend already supports anchored popups.
+  Wayland backend already supports anchored popups. Its XIM callback also masks
+  X11's synthetic-event flag so keys forwarded by embedded plugins are not
+  dropped when the input method returns them to the application.
 - `ui` lets a content-sized popup override `ContextMenu`'s normal 75%-of-window
   maximum height and hosts button tooltips in passive native child windows so
   they can appear above webviews. Tooltip creation is cancelled on dismissal

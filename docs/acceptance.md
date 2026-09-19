@@ -74,7 +74,7 @@ chartr Light. Capture and compare:
 - command palette, unavailable-folder recovery, closed-attach recovery, rejected
   plugin, visible web permissions, and the top-right Problems menu—including
   timestamps plus retry and restart actions for a backend crash loop;
-- the bundled Agent, Markdown Prompt, Wayfinder, and Browser surfaces, plus
+- the bundled Agent, Markdown Prompt, and Wayfinder surfaces, plus
   Skill sources and Saved Prompts in Settings only; no Hello or Clock entry in
   the default launcher or Settings catalog, and no Mobile Companion in this build.
 
@@ -86,16 +86,13 @@ restart-required banner. Replace that plugin and confirm its data survives.
 Attempt to install a separately compiled native GPUI plugin and confirm chartr
 rejects it without executing or loading the library. Confirm **Restart**
 persists the workspace, relaunches chartr, and exposes a newly installed web or
-hosted contribution.
+embedded contribution.
 
-Open the bundled `com.chartr.browser` plugin and exercise it in standalone,
-grouped, and split panes on macOS and Linux/X11. Confirm it is available on a
-fresh profile without installation and has its packaged icon. Verify the
-themed toolbar, URL/search interpretation, redirects, Back/Forward, Stop/Reload,
-keyboard shortcuts, one page per pane, current-pane handling of new-window
-links, native file uploads, system-browser download handoff, denied site
-permissions, ephemeral web-engine storage, and per-pane last-URL restoration.
-Network/TLS failures may retain the operating system web engine's error page.
+Install a prebuilt embedded plugin. Confirm the source-only variant is rejected
+when no platform build exists, with no attempt to compile. Verify resize, split,
+hide/show, input focus, pane titles, state restoration and close-before-parent
+lifecycle. A fresh profile must contain no external plugin or engine payload.
+Confirm the installer shows native execution authority before activation.
 
 Reject the build for clipping, overlapping hit targets, hard-coded feature
 colors, inconsistent spacing, missing close controls, duplicated tabs, a webview
@@ -153,7 +150,7 @@ In Tabbed mode, confirm the space picker sits in the macOS title bar immediately
 after the traffic lights. At the far-right corner in both chrome modes, confirm the
 `Tabs` / `Spaces` / `Chats` segmented control reflects and changes the presentation,
 and the adjacent gear button opens Settings without the workspace reclaiming
-window focus. With a web plugin or browser pane visible, test clicking the gear
+window focus. With a web or native plugin pane visible, test clicking the gear
 both before its tooltip appears and while the tooltip is already visible. Leave
 the pointer over the gear and wait at least one second: Settings must stay in
 front and no workspace tooltip should appear over it. Repeat with `Cmd/Ctrl+,`
@@ -171,7 +168,7 @@ pane-local tabs within grouped workspaces. Confirm every `+` immediately opens
 a terminal session without presenting a context menu.
 Switch selection across both tab strips and confirm tab edges, following tabs,
 and trailing controls remain stationary without a one-pixel shift.
-Confirm Agent, Markdown Prompt, Wayfinder, Browser, and any installed Clock show their
+Confirm Agent, Markdown Prompt, Wayfinder, and any installed Clock show their
 manifest-selected Hugeicons in sidebar rows, standalone outer tabs, and pane-local
 tabs. Grouped outer tabs continue to show the split indicator instead of one
 representative plugin icon.

@@ -1251,17 +1251,20 @@ dependencies = [
  "chartr-agent",
  "chartr-conversations",
  "chartr-herdr",
+ "chartr-native-plugin",
  "chartr-plugin",
  "chartr-plugin-host",
  "chartr-storage",
  "chrono",
  "collections",
  "editor",
+ "flate2",
  "futures",
  "gpui",
  "gpui_platform",
  "gtk",
  "libc",
+ "libloading",
  "percent-encoding",
  "pulldown-cmark",
  "rusqlite",
@@ -1269,6 +1272,8 @@ dependencies = [
  "serde",
  "serde_json",
  "settings",
+ "sha2 0.10.9",
+ "tar",
  "task",
  "tempfile",
  "terminal",
@@ -1324,6 +1329,13 @@ dependencies = [
  "serde_json",
  "socket2",
  "tempfile",
+]
+
+[[package]]
+name = "chartr-native-plugin"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -9792,6 +9804,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
 ]
 
 [[package]]
