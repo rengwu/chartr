@@ -332,6 +332,12 @@ mod tests {
 #[cfg(test)]
 mod editing_tests {
     use super::*;
+
+    fn shortcut(key: &str) -> String {
+        let modifier = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
+        format!("{modifier}-{key}")
+    }
+
     #[gpui::test]
     fn inline_objects_delete_atomically_and_undo_restores_identity(cx: &mut gpui::TestAppContext) {
         cx.update(|cx| {
@@ -371,7 +377,7 @@ mod editing_tests {
             cx.read_entity(&editor, |editor, cx| editor.text(cx)),
             "Before 🦀  after\nnext line"
         );
-        cx.simulate_keystrokes("cmd-z");
+        cx.simulate_keystrokes(&shortcut("z"));
         assert_eq!(cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx))), initial);
         cx.update(|window, cx| decorate(&editor, &[], window, cx));
         cx.run_until_parked();
@@ -381,7 +387,7 @@ mod editing_tests {
             cx.read_entity(&editor, |editor, cx| editor.text(cx)),
             "Before 🦀  after\nnext line"
         );
-        cx.simulate_keystrokes("cmd-z");
+        cx.simulate_keystrokes(&shortcut("z"));
         assert_eq!(cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx))), initial);
         cx.update(|window, cx| decorate(&editor, &[], window, cx));
         editor.update_in(cx, |editor, window, cx| {
@@ -391,14 +397,14 @@ mod editing_tests {
                 s.select_ranges([start..end])
             });
         });
-        cx.simulate_keystrokes("cmd-c");
+        cx.simulate_keystrokes(&shortcut("c"));
         editor.update_in(cx, |editor, window, cx| {
             let end = MultiBufferOffset(editor.text(cx).len());
             editor.change_selections(SelectionEffects::no_scroll(), window, cx, |s| {
                 s.select_ranges([end..end])
             });
         });
-        cx.simulate_keystrokes("cmd-v");
+        cx.simulate_keystrokes(&shortcut("v"));
         let pasted = cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx)));
         assert_eq!(pasted.last(), Some(&item));
         assert_eq!(pasted.iter().filter(|part| matches!(part, Part::Template { .. })).count(), 2);
@@ -421,7 +427,7 @@ mod editing_tests {
         let moved = cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx)));
         assert_eq!(moved.first(), Some(&item));
         assert_eq!(moved.iter().filter(|part| matches!(part, Part::Template { .. })).count(), 2);
-        cx.simulate_keystrokes("cmd-z");
+        cx.simulate_keystrokes(&shortcut("z"));
         assert_eq!(cx.read_entity(&editor, |editor, cx| decode(&editor.text(cx))), pasted);
     }
 }

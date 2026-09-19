@@ -36,6 +36,7 @@ pub fn init(cx: &mut App) {
             || matches!(name, "Backspace" | "Copy" | "Cut" | "Paste" | "Undo" | "Redo" | "Newline")
     }));
     cx.bind_keys([KeyBinding::new("enter", editor::actions::Newline, Some("Prompts > Editor"))]);
+    dialog::init_keybindings(cx);
 }
 
 pub struct PromptsPlugin {
