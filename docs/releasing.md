@@ -41,7 +41,8 @@ Cargo's defaults; the optimization comes from eliminating repeated work without
 changing application behavior or taking on a fork of Zed's dependency graph.
 
 Candidate versions keep their `-rc.N` suffix in Cargo and tarball/DMG names.
-Debian maps that suffix to `~rc.N`, and Arch maps it to `rcN`; both package
+Debian maps that suffix to `~rc.N` inside the package while keeping `-rc.N` in
+the filename (GitHub normalizes tildes in asset names). Arch maps it to `rcN`; both package
 managers must sort the candidate before the matching stable release. The Debian
 fixture test and the real Arch packaging job verify that ordering.
 

@@ -51,6 +51,9 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive, = self.output.glob('*.tar.gz')
         deb, = self.output.glob('*.deb')
+        for artifact in (archive, deb):
+            self.assertRegex(artifact.name, r'^[A-Za-z0-9._-]+$',
+                             'release filenames must survive GitHub asset normalization')
         version = re.search(r'^version = "([^"]+)"', (ROOT / 'Cargo.toml').read_text(),
                             re.MULTILINE).group(1)
         packaged_version = subprocess.check_output(

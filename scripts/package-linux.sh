@@ -96,9 +96,11 @@ CONTROL
 rm "$bundle/INSTALL.txt"
 install -Dm644 "$bundle/BUILD-INFO.txt" "$bundle/usr/share/doc/chartr/BUILD-INFO.txt"
 rm "$bundle/BUILD-INFO.txt"
-dpkg-deb --root-owner-group -Zgzip -z1 --build "$bundle" "$output/chartr_${deb_version}_${deb_arch}.deb"
+# GitHub normalizes '~' in asset names, so use the Cargo version in filenames.
+# The package's internal Debian version above retains '~rc.N' for ordering.
+dpkg-deb --root-owner-group -Zgzip -z1 --build "$bundle" "$output/chartr_${version}_${deb_arch}.deb"
 (
     cd "$output"
-    sha256sum "$name.tar.gz" "chartr_${deb_version}_${deb_arch}.deb" > "SHA256SUMS-$arch"
+    sha256sum "$name.tar.gz" "chartr_${version}_${deb_arch}.deb" > "SHA256SUMS-$arch"
 )
 echo "Packages written to $output"
