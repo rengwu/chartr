@@ -27,19 +27,10 @@ conflict with the older `chartr` package, so pacman can replace it cleanly.
 Select just the package version you want if the download directory contains
 several versions.
 
-Once the first stable Rust release has been published to the AUR, install it on
-Omarchy with:
-
-```sh
-omarchy pkg aur add chartr-bin
-```
-
-On other Arch installations with an AUR helper, use `yay -S chartr-bin`.
-The AUR package downloads the prebuilt release; it does not compile Rust or Zig.
-Updates then come through your AUR helper, including Omarchy's update flow.
-Release candidates remain explicit downloads and do not replace the stable AUR
-package. AUR availability depends on the maintainer completing the
-[publishing setup](releasing.md#aur-publishing).
+Chartr is not available on the AUR. Install the GitHub release package with
+`pacman -U` as shown above; updates currently require downloading and installing
+a newer release package. The AUR recipe included with releases is for packaging
+and testing only and does not mean an AUR package has been published.
 
 ## Build from source
 

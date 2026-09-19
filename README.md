@@ -5,8 +5,7 @@
 **A fast, organizable terminal-based agentic workspace.**
 
 - [Website](https://chartr.dev/)
-- [Download v0.3.0](https://github.com/rengwu/chartr/releases/tag/v0.3.0)
-- [Installation](docs/installation.md) (including Arch / Omarchy)
+- [Installation](docs/installation.md)
 - [Getting started](docs/getting-started.md)
 - [Documentation](docs/README.md)
 
