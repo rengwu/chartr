@@ -5,6 +5,18 @@ use editor::Editor;
 use gpui::{FocusHandle, KeyDownEvent, Window};
 use ui::{ButtonStyle, TintColor};
 
+gpui::actions!(chartr_prompt_dialog, [Confirm]);
+
+pub(super) fn init_keybindings(cx: &mut App) {
+    let shortcut = if cfg!(target_os = "macos") { "cmd-enter" } else { "ctrl-enter" };
+    cx.bind_keys([
+        KeyBinding::new(shortcut, Confirm, Some("PromptDialog")),
+        // Match at editor depth, after its platform bindings, so Ctrl-Enter
+        // confirms the dialog before the auto-height editor consumes it.
+        KeyBinding::new(shortcut, Confirm, Some("PromptDialog > Editor")),
+    ]);
+}
+
 struct Draft {
     original: Option<SavedPrompt>,
     title: Entity<TextInput>,
@@ -119,13 +131,6 @@ impl PromptDialog {
                 let offset = if key.modifiers.shift { fields.len() - 1 } else { 1 };
                 window.focus(&fields[(current + offset) % fields.len()], cx);
             }
-            "enter"
-                if (cfg!(target_os = "macos") && key.modifiers.platform)
-                    || (!cfg!(target_os = "macos") && key.modifiers.control) =>
-            {
-                cx.stop_propagation();
-                self.submit(window, cx);
-            }
             "enter" | "space" if self.cancel_focus.is_focused(window) => {
                 cx.stop_propagation();
                 window.remove_window();
@@ -206,12 +211,13 @@ impl Render for PromptDialog {
             .id("prompt-modal")
             .role(gpui::Role::Dialog)
             .aria_label(title)
-            .key_context("Prompts")
+            .key_context("Prompts PromptDialog")
             .track_focus(&self.focus)
             .size_full()
             .font(font)
             .text_size(crate::fonts::UI_TEXT_DEFAULT)
             .text_color(cx.theme().colors().text)
+            .on_action(cx.listener(|this, _: &Confirm, window, cx| this.submit(window, cx)))
             .capture_key_down(cx.listener(Self::on_key))
             .child(
                 plugin_ui::ModalOverlay::new("prompt-dialog-scrim", |_, window, _| {
@@ -278,6 +284,15 @@ mod tests {
         assert!(cx.update(|_, cx| service.list(cx).unwrap().is_empty()));
         dialog.simulate_input("Review code");
         dialog.simulate_keystrokes("tab");
+        dialog.simulate_keystrokes(save_shortcut());
+        dialog.run_until_parked();
+        let handle = cx.read_entity(&view, |view, _| view.dialog.unwrap());
+        cx.update(|_, cx| {
+            let dialog = handle.read(cx).unwrap();
+            assert_eq!(dialog.error.as_deref(), Some("Write some prompt text before saving."));
+            let Task::Edit(draft) = &dialog.task else { unreachable!() };
+            assert_eq!(draft.body.read(cx).text(cx), "");
+        });
         dialog.simulate_input("First line");
         dialog.simulate_keystrokes("enter");
         dialog.simulate_input("Second line 🦀");
@@ -301,6 +316,32 @@ mod tests {
         assert_eq!(renamed.title, "Renamed");
         assert_eq!(renamed.prompt, saved.prompt);
         assert_eq!(Store::load(root.path().join("prompts.json")).unwrap().prompts(), &[renamed]);
+    }
+
+    #[gpui::test]
+    fn confirm_binding_preserves_newlines_outside_prompt_dialog(cx: &mut TestAppContext) {
+        struct Composer(Entity<Editor>);
+        impl Render for Composer {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().key_context("Prompts").child(self.0.clone())
+            }
+        }
+
+        init_test(cx);
+        // Markdown Prompt shares the Prompts context but must not confirm a dialog.
+        let (composer, cx) = cx.add_window_view(|window, cx| {
+            Composer(cx.new(|cx| Editor::auto_height(4, 20, window, cx)))
+        });
+        let editor = cx.read_entity(&composer, |composer, _| composer.0.clone());
+        cx.update(|window, cx| window.focus(&editor.focus_handle(cx), cx));
+        cx.simulate_input("First line");
+        // The platform editor uses Ctrl-Enter for a newline on both platforms.
+        cx.simulate_keystrokes("ctrl-enter");
+        cx.simulate_input("Second line");
+        assert_eq!(
+            cx.read_entity(&editor, |editor, cx| editor.text(cx)),
+            "First line\nSecond line"
+        );
     }
 
     #[gpui::test]
