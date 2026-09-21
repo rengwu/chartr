@@ -35,7 +35,7 @@ test("empty, cyclic, and large maps stay finite", () => {
     );
   }
 });
-test("starfield keeps the deterministic ChartrX depth profile", () => {
+test("starfield keeps a deterministic layered depth profile", () => {
   const first = makeStarfield();
   const second = makeStarfield();
   assert.deepEqual(first, second);
