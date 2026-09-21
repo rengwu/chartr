@@ -316,6 +316,7 @@ class MapRenderer {
   #last = 0;
   #raf = 0;
   #motion = null;
+  #hostReducedMotion = false;
   #active = true;
   #fog = [];
   #gesture = null;
@@ -359,12 +360,27 @@ class MapRenderer {
       (typeof window !== "undefined" && window.devicePixelRatio) || 1,
     );
     this.#motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    this.#hostReducedMotion =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--chartr-reduce-motion")
+        .trim() === "1";
     const resume = () => this.invalidate();
+    const applyHostMotion = (event) => {
+      const value =
+        event.detail?.["--chartr-reduce-motion"] ??
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--chartr-reduce-motion",
+        );
+      this.#hostReducedMotion = String(value).trim() === "1";
+      this.invalidate();
+    };
     document.addEventListener("visibilitychange", resume);
     this.#motion.addEventListener("change", resume);
+    window.addEventListener("chartr:theme", applyHostMotion);
     this.#detach.push(
       () => document.removeEventListener("visibilitychange", resume),
       () => this.#motion.removeEventListener("change", resume),
+      () => window.removeEventListener("chartr:theme", applyHostMotion),
     );
     this.#measure();
     if (typeof ResizeObserver !== "undefined") {
@@ -622,7 +638,7 @@ class MapRenderer {
       return;
     }
     // Ease in world-units per pixel so the zoom anchor stays pinned throughout the flight.
-    const a = this.#motion?.matches ? 1 : 1 - Math.exp(-dt / CAM_TAU);
+    const a = this.#reducedMotion() ? 1 : 1 - Math.exp(-dt / CAM_TAU);
     const z = 1 / cam.s,
       zg = 1 / goal.s;
     const fx = -cam.x * z,
@@ -633,6 +649,9 @@ class MapRenderer {
     cam.s = 1 / nz;
     cam.x = -nfx / nz;
     cam.y = -nfy / nz;
+  }
+  #reducedMotion() {
+    return this.#hostReducedMotion || this.#motion?.matches === true;
   }
   #measure() {
     this.#dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -911,17 +930,18 @@ class MapRenderer {
     let dt = t - this.#last;
     if (dt < 0 || dt > 0.1) dt = 0.016;
     this.#last = t;
-    this.#clock = this.#motion?.matches ? 0 : t;
+    const reducedMotion = this.#reducedMotion();
+    this.#clock = reducedMotion ? 0 : t;
     for (const n of this.#nodes) {
       const ph = n.num * 1.7;
       n._x = n.x + Math.sin(this.#clock * 0.7 + ph) * 2.4;
       n._y = n.y + Math.cos(this.#clock * 0.55 + ph) * 2.4;
-      if (this.#motion?.matches) n.flare = 0;
+      if (reducedMotion) n.flare = 0;
       else if (n.flare > 0) n.flare = Math.max(0, n.flare - dt / 1.1);
     }
     this.#easeCamera(dt);
     this.#draw();
-    if (!this.#motion?.matches) this.invalidate();
+    if (!reducedMotion) this.invalidate();
   };
   #draw() {
     const g = this.#ctx;
@@ -945,7 +965,7 @@ class MapRenderer {
       height = this.#h,
       view = this.#cam,
       time = this.#clock,
-      reducedMotion = this.#motion?.matches;
+      reducedMotion = this.#reducedMotion();
     if (width <= 0 || height <= 0) return;
 
     const previous = this.#fieldPrevious;

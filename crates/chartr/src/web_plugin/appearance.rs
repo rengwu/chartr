@@ -15,6 +15,10 @@ pub(super) fn script(window: &Window, cx: &App) -> String {
             "--chartr-color-scheme".to_owned(),
             if theme.appearance().is_light() { "light" } else { "dark" }.to_owned(),
         ),
+        (
+            "--chartr-reduce-motion".to_owned(),
+            if cx.reduce_motion() { "1" } else { "0" }.to_owned(),
+        ),
         ("--chartr-ui-font".into(), format!("{font}, system-ui, sans-serif")),
         ("--chartr-mono-font".into(), format!("{mono}, ui-monospace, monospace")),
         ("--chartr-font-size".into(), pixels(chartr_plugin::ui::UI_TEXT_DEFAULT)),
