@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { layout, palette } from "../starmap.js";
+import { layout, makeStarfield, palette } from "../starmap.js";
 
 test("constellations are deterministic and independent of statuses and input order", () => {
   const nodes = [
@@ -34,6 +34,25 @@ test("empty, cyclic, and large maps stay finite", () => {
       ),
     );
   }
+});
+test("starfield keeps a deterministic layered depth profile", () => {
+  const first = makeStarfield();
+  const second = makeStarfield();
+  assert.deepEqual(first, second);
+  assert.deepEqual(
+    first.map(({ depth, size, alpha, stars }) => ({
+      depth,
+      size,
+      alpha,
+      count: stars.length,
+    })),
+    [
+      { depth: 0.06, size: 0.55, alpha: 0.32, count: 1000 },
+      { depth: 0.24, size: 0.8, alpha: 0.47, count: 550 },
+      { depth: 0.65, size: 1.05, alpha: 0.62, count: 350 },
+      { depth: 1.2, size: 1.5, alpha: 0.8, count: 180 },
+    ],
+  );
 });
 
 const { decideDock, titleBudget, clipTitle } = await import("../starmap.js");

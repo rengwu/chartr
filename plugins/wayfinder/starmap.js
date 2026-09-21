@@ -273,24 +273,29 @@ function mod(a, b) {
 function clamp(v, a, b) {
   return v < a ? a : v > b ? b : v;
 }
-function makeStarfield() {
+export function makeStarfield() {
   const specs = [
-    { f: 0.15, n: 140, sz: 0.7, a: 0.45 },
-    { f: 0.3, n: 80, sz: 1.1, a: 0.65 },
-    { f: 0.5, n: 34, sz: 1.7, a: 0.9 },
+    { depth: 0.06, count: 1000, size: 0.55, alpha: 0.32 },
+    { depth: 0.24, count: 550, size: 0.8, alpha: 0.47 },
+    { depth: 0.65, count: 350, size: 1.05, alpha: 0.62 },
+    { depth: 1.2, count: 180, size: 1.5, alpha: 0.8 },
   ];
-  let t = 9001 >>> 0;
-  const rnd = () => {
-    t += 0x6d2b79f5;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-  return specs.map((sp) => {
-    const stars = [];
-    for (let i = 0; i < sp.n; i++) stars.push({ x: rnd(), y: rnd(), t: rnd() });
-    return { f: sp.f, sz: sp.sz, a: sp.a, stars };
-  });
+  const random = mulberry32(9001);
+  return specs.map(({ count, ...layer }) => ({
+    ...layer,
+    stars: Array.from({ length: count }, () => ({
+      x: random(),
+      y: random(),
+      z: 1 + random() * 2,
+      phase: random() * TAU,
+      tint: Math.floor(random() * 3),
+    })),
+  }));
+}
+const FIELD_TRAVEL = 0.85;
+function alphaColor(color, alpha) {
+  if (/^#[0-9a-f]{6}$/i.test(color)) return hexA(color, alpha);
+  return `color-mix(in srgb, ${color} ${alpha * 100}%, transparent)`;
 }
 class MapRenderer {
   #host = null;
@@ -311,6 +316,7 @@ class MapRenderer {
   #last = 0;
   #raf = 0;
   #motion = null;
+  #hostReducedMotion = false;
   #active = true;
   #fog = [];
   #gesture = null;
@@ -319,6 +325,9 @@ class MapRenderer {
   #tickerAt = -1e9;
   #tickerTimer = 0;
   #starfield = makeStarfield();
+  #fieldPrevious = null;
+  #fieldOffset = { x: 0, y: 0 };
+  #fieldLight = [];
   #labelCache = null;
   #labelEpoch = 0;
   #labelSide = new Map();
@@ -351,12 +360,27 @@ class MapRenderer {
       (typeof window !== "undefined" && window.devicePixelRatio) || 1,
     );
     this.#motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    this.#hostReducedMotion =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--chartr-reduce-motion")
+        .trim() === "1";
     const resume = () => this.invalidate();
+    const applyHostMotion = (event) => {
+      const value =
+        event.detail?.["--chartr-reduce-motion"] ??
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--chartr-reduce-motion",
+        );
+      this.#hostReducedMotion = String(value).trim() === "1";
+      this.invalidate();
+    };
     document.addEventListener("visibilitychange", resume);
     this.#motion.addEventListener("change", resume);
+    window.addEventListener("chartr:theme", applyHostMotion);
     this.#detach.push(
       () => document.removeEventListener("visibilitychange", resume),
       () => this.#motion.removeEventListener("change", resume),
+      () => window.removeEventListener("chartr:theme", applyHostMotion),
     );
     this.#measure();
     if (typeof ResizeObserver !== "undefined") {
@@ -486,6 +510,7 @@ class MapRenderer {
   }
   setAppearance(appearance) {
     this.#appearance = { ...this.#appearance, ...appearance };
+    this.#fieldLight = [];
     this.#labelEpoch++;
     this.invalidate();
   }
@@ -613,7 +638,7 @@ class MapRenderer {
       return;
     }
     // Ease in world-units per pixel so the zoom anchor stays pinned throughout the flight.
-    const a = this.#motion?.matches ? 1 : 1 - Math.exp(-dt / CAM_TAU);
+    const a = this.#reducedMotion() ? 1 : 1 - Math.exp(-dt / CAM_TAU);
     const z = 1 / cam.s,
       zg = 1 / goal.s;
     const fx = -cam.x * z,
@@ -624,6 +649,9 @@ class MapRenderer {
     cam.s = 1 / nz;
     cam.x = -nfx / nz;
     cam.y = -nfy / nz;
+  }
+  #reducedMotion() {
+    return this.#hostReducedMotion || this.#motion?.matches === true;
   }
   #measure() {
     this.#dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -902,17 +930,18 @@ class MapRenderer {
     let dt = t - this.#last;
     if (dt < 0 || dt > 0.1) dt = 0.016;
     this.#last = t;
-    this.#clock = this.#motion?.matches ? 0 : t;
+    const reducedMotion = this.#reducedMotion();
+    this.#clock = reducedMotion ? 0 : t;
     for (const n of this.#nodes) {
       const ph = n.num * 1.7;
       n._x = n.x + Math.sin(this.#clock * 0.7 + ph) * 2.4;
       n._y = n.y + Math.cos(this.#clock * 0.55 + ph) * 2.4;
-      if (this.#motion?.matches) n.flare = 0;
+      if (reducedMotion) n.flare = 0;
       else if (n.flare > 0) n.flare = Math.max(0, n.flare - dt / 1.1);
     }
     this.#easeCamera(dt);
     this.#draw();
-    if (!this.#motion?.matches) this.invalidate();
+    if (!reducedMotion) this.invalidate();
   };
   #draw() {
     const g = this.#ctx;
@@ -932,16 +961,126 @@ class MapRenderer {
     this.#drawTicker(g);
   }
   #drawStarfield(g) {
-    const W = this.#w,
-      H = this.#h;
-    for (const L of this.#starfield) {
-      for (const s of L.stars) {
-        const x = mod(s.x * W + this.#cam.x * L.f, W);
-        const y = mod(s.y * H + this.#cam.y * L.f, H);
+    const width = this.#w,
+      height = this.#h,
+      view = this.#cam,
+      time = this.#clock,
+      reducedMotion = this.#reducedMotion();
+    if (width <= 0 || height <= 0) return;
+
+    const previous = this.#fieldPrevious;
+    const dt = previous ? clamp(time - previous.time, 0, 0.05) : 0;
+    if (
+      previous &&
+      !reducedMotion &&
+      width === previous.width &&
+      height === previous.height
+    ) {
+      const scaleDelta = view.s / previous.view.s - 1;
+      const gain =
+        scaleDelta === 0
+          ? FIELD_TRAVEL
+          : (FIELD_TRAVEL * Math.log1p(scaleDelta)) / scaleDelta;
+      this.#fieldOffset.x +=
+        (view.x - previous.view.x - scaleDelta * (previous.view.x - width / 2)) * gain;
+      this.#fieldOffset.y +=
+        (view.y - previous.view.y - scaleDelta * (previous.view.y - height / 2)) * gain;
+    }
+    this.#fieldPrevious = {
+      width,
+      height,
+      view: { ...view },
+      offset: { ...this.#fieldOffset },
+      time,
+    };
+
+    const tints = [
+      this.#appearance.muted,
+      this.#appearance.text,
+      STAR.resolved.core,
+    ];
+    if (!this.#fieldLight.length) {
+      for (const tint of tints) {
+        const light = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+        light.addColorStop(0, alphaColor(tint, 0.45));
+        light.addColorStop(0.16, alphaColor(tint, 0.16));
+        light.addColorStop(0.45, alphaColor(tint, 0.03));
+        light.addColorStop(1, alphaColor(tint, 0));
+        this.#fieldLight.push(light);
+      }
+    }
+
+    const travel = reducedMotion
+      ? 0
+      : Math.log(clamp(view.s, MIN_SCALE, 6)) * FIELD_TRAVEL;
+    const previousTravel = previous
+      ? Math.log(clamp(previous.view.s, MIN_SCALE, 6)) * FIELD_TRAVEL
+      : travel;
+    const zooming =
+      !reducedMotion &&
+      previous &&
+      dt > 0 &&
+      previous.width === width &&
+      previous.height === height &&
+      Math.abs(travel - previousTravel) > 0.00001;
+
+    for (const layer of this.#starfield) {
+      for (let i = 0; i < layer.stars.length; i++) {
+        if (i % 7 === 0) continue;
+        const star = layer.stars[i];
+        const z = 1 + mod(star.z - 1 - travel * layer.depth, 2);
+        const wx = (star.x - 0.5) * width * 3;
+        const wy = (star.y - 0.5) * height * 3;
+        const dx = reducedMotion ? 0 : this.#fieldOffset.x * layer.depth;
+        const dy = reducedMotion ? 0 : this.#fieldOffset.y * layer.depth;
+        const x = width / 2 + (wx + dx) / z;
+        const y = height / 2 + (wy + dy) / z;
+        const fade = clamp(Math.min(z - 1, 3 - z) * 5, 0, 1);
+        if (x <= -12 || x >= width + 12 || y <= -12 || y >= height + 12)
+          continue;
+        const shimmer = reducedMotion
+          ? 1
+          : 0.92 + 0.08 * Math.sin(time * 0.4 + star.phase);
+        const size = layer.size * (0.7 + 0.7 / z);
         g.globalAlpha =
-          L.a * (0.65 + 0.35 * Math.sin(s.t * TAU + this.#clock * 0.25));
-        g.fillStyle = "rgba(255,255,255,1)";
-        g.fillRect(x, y, L.sz, L.sz);
+          layer.alpha * fade * shimmer * (0.65 + 0.35 * Math.sin(star.phase) ** 2);
+
+        if (layer.depth >= 0.65 && i % 3 === 0) {
+          const halo = size * 5;
+          g.save();
+          g.translate(x, y);
+          g.scale(halo, halo);
+          g.fillStyle = this.#fieldLight[star.tint];
+          g.fillRect(-1, -1, 2, 2);
+          g.restore();
+        }
+        if (zooming && layer.depth >= 0.65) {
+          const previousZ =
+            1 + mod(star.z - 1 - previousTravel * layer.depth, 2);
+          if (Math.abs(z - previousZ) < 1) {
+            const px =
+              width / 2 + (wx + previous.offset.x * layer.depth) / previousZ;
+            const py =
+              height / 2 + (wy + previous.offset.y * layer.depth) / previousZ;
+            const vx = x - px,
+              vy = y - py,
+              distance = Math.hypot(vx, vy);
+            const stretch = Math.min(7, distance * Math.min(1, 0.012 / dt));
+            if (stretch > 0.65 && distance > 0) {
+              g.strokeStyle = alphaColor(tints[star.tint], 0.3);
+              g.lineWidth = size * 0.65;
+              g.beginPath();
+              g.moveTo(x, y);
+              g.lineTo(
+                x - (vx / distance) * stretch,
+                y - (vy / distance) * stretch,
+              );
+              g.stroke();
+            }
+          }
+        }
+        g.fillStyle = tints[star.tint];
+        g.fillRect(x - size / 2, y - size / 2, size, size);
       }
     }
     g.globalAlpha = 1;

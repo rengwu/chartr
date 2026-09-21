@@ -519,8 +519,12 @@ try {
   await page.click("#back");
   await page.click(".map-card:first-child");
   assert.deepEqual(await camera(), closing);
-  // Reduced motion renders on demand and still responds to camera input.
-  await page.emulateMedia({ reducedMotion: "reduce" });
+  // Chartr's appearance setting reaches the web map through theme tokens.
+  await page.evaluate(() => {
+    const detail = { "--chartr-reduce-motion": "1" };
+    document.documentElement.style.setProperty("--chartr-reduce-motion", "1");
+    window.dispatchEvent(new CustomEvent("chartr:theme", { detail }));
+  });
   await settled();
   const stillA = await page.locator("canvas").screenshot();
   await page.waitForTimeout(150);
@@ -534,6 +538,23 @@ try {
   });
   await settled();
   assert.ok((await camera()).s < reducedBefore.s);
+  // The operating-system preference remains an independent fallback.
+  await page.evaluate(() => {
+    const detail = { "--chartr-reduce-motion": "0" };
+    document.documentElement.style.setProperty("--chartr-reduce-motion", "0");
+    window.dispatchEvent(new CustomEvent("chartr:theme", { detail }));
+  });
+  const movingAgain = await page.locator("canvas").screenshot();
+  await page.waitForTimeout(150);
+  assert.notDeepEqual(
+    await page.locator("canvas").screenshot(),
+    movingAgain,
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await settled();
+  const systemStill = await page.locator("canvas").screenshot();
+  await page.waitForTimeout(150);
+  assert.deepEqual(await page.locator("canvas").screenshot(), systemStill);
   await page.click("#back");
   await page.evaluate(() => {
     window.fixture.maps = [];
