@@ -1,0 +1,45 @@
+{
+  "packages": [
+    {
+      "architecture": "x86_64",
+      "binaries": {
+        "chartr": {
+          "sha256": "c79e1e04397df3900872ec690350e1f55b0bea552e7e17ff722108cb699947ac",
+          "elf_machine": 62
+        },
+        "herdr": {
+          "sha256": "07bac33b8a413812f839821cd95e778bf8de2d49185d99bf2ef8ba106af52cbd",
+          "elf_machine": 62
+        }
+      },
+      "tar_deb_binaries_identical": true,
+      "symlink_valid": true,
+      "build_info": "chartr: 0.3.3\ncommit: bdbad6da45b21abca72c74caca09553478ac3f7f\nHerdr: 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a\narchitecture: x86_64\nRust: rustc 1.96.0 (ac68faa20 2026-05-25)\nPRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+      "debian_control": "Package: chartr\nVersion: 0.3.3\nArchitecture: amd64\nMaintainer: chartr maintainers <noreply@github.com>\nSection: utils\nPriority: optional\nDepends: libc6 (>= 2.39), libgcc-s1 (>= 4.2), libglib2.0-0t64 (>= 2.66.0), libgtk-3-0t64 (>= 3.9.10), libjavascriptcoregtk-4.1-0, libsoup-3.0-0 (>= 3.0.3), libwebkit2gtk-4.1-0 (>= 2.35.1), libxcb1 (>= 1.12), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libvulkan1, libxkbcommon-x11-0, libfontconfig1, xdg-utils\nRecommends: xwayland\nHomepage: https://github.com/rengwu/chartr\nDescription: Agent multiplexer with persistent terminals\n Native desktop application with private Herdr runtime.\n"
+    },
+    {
+      "architecture": "aarch64",
+      "binaries": {
+        "chartr": {
+          "sha256": "027325c86706ce2891bfc2608972d7090c760a9314776c87b056cd33518e1a32",
+          "elf_machine": 183
+        },
+        "herdr": {
+          "sha256": "e57fc478e4eac5c3f06635f58153529acdfed305632027a022322b867e7725d4",
+          "elf_machine": 183
+        }
+      },
+      "tar_deb_binaries_identical": true,
+      "symlink_valid": true,
+      "build_info": "chartr: 0.3.3\ncommit: bdbad6da45b21abca72c74caca09553478ac3f7f\nHerdr: 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a\narchitecture: aarch64\nRust: rustc 1.96.0 (ac68faa20 2026-05-25)\nPRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+      "debian_control": "Package: chartr\nVersion: 0.3.3\nArchitecture: arm64\nMaintainer: chartr maintainers <noreply@github.com>\nSection: utils\nPriority: optional\nDepends: libc6 (>= 2.39), libcairo-gobject2 (>= 1.10.0), libcairo2 (>= 1.2.4), libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.2.1), libgcc-s1 (>= 4.2), libgdk-pixbuf-2.0-0 (>= 2.22.0), libglib2.0-0t64 (>= 2.66.0), libgtk-3-0t64 (>= 3.9.10), libjavascriptcoregtk-4.1-0, libpango-1.0-0 (>= 1.14.0), libsoup-3.0-0 (>= 3.0.3), libwebkit2gtk-4.1-0 (>= 2.35.1), libxcb1 (>= 1.12), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libvulkan1, libxkbcommon-x11-0, libfontconfig1, xdg-utils\nRecommends: xwayland\nHomepage: https://github.com/rengwu/chartr\nDescription: Agent multiplexer with persistent terminals\n Native desktop application with private Herdr runtime.\n"
+    }
+  ],
+  "arch_tar_binaries_identical": true,
+  "aur_matches_release_tarball": true,
+  "aur_recipe": {
+    "PKGBUILD": "# Repackage the Ubuntu-built release archive. No compilation takes place here.\n# package-aur.sh supplies the version and checksum for this exact build.\npkgname=chartr-bin\npkgver=0.3.3\n_upstream_version=0.3.3\npkgrel=1\npkgdesc='Agent multiplexer with persistent terminals'\narch=('x86_64')\nurl='https://github.com/rengwu/chartr'\nlicense=('GPL-3.0-or-later' 'Apache-2.0')\ndepends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'libxcb'\n         'libxkbcommon-x11' 'fontconfig' 'vulkan-icd-loader' 'xdg-utils')\noptdepends=('xorg-xwayland: run under a Wayland desktop'\n            'vulkan-driver: GPU rendering')\noptions=('!strip' '!debug')\nprovides=(\"chartr=$pkgver\")\nconflicts=('chartr')\nsource=(\"$url/releases/download/v$_upstream_version/chartr-$_upstream_version-linux-x86_64.tar.gz\")\nsha256sums=('8efa88177701293644d7d7b23dd949217019e5099fcce626515f0ebf9f2a19d2')\n\ncheck() {\n    local binary linkage\n    for binary in chartr herdr; do\n        if ! linkage=$(LC_ALL=C ldd \"$srcdir/chartr-$_upstream_version-linux-x86_64/usr/lib/chartr/$binary\" 2>&1); then\n            printf '%s\\n' \"$linkage\" >&2\n            return 1\n        fi\n        if [[ \"$linkage\" == *'not found'* ]]; then\n            printf '%s\\n' \"$linkage\" >&2\n            return 1\n        fi\n    done\n    \"$srcdir/chartr-$_upstream_version-linux-x86_64/usr/lib/chartr/herdr\" --version\n}\n\npackage() {\n    cp -a \"$srcdir/chartr-$_upstream_version-linux-x86_64/usr\" \"$pkgdir/\"\n    install -Dm644 \"$srcdir/chartr-$_upstream_version-linux-x86_64/BUILD-INFO.txt\" \\\n        \"$pkgdir/usr/share/doc/chartr/BUILD-INFO.txt\"\n}\n",
+    ".SRCINFO": "pkgbase = chartr-bin\n\tpkgdesc = Agent multiplexer with persistent terminals\n\tpkgver = 0.3.3\n\tpkgrel = 1\n\turl = https://github.com/rengwu/chartr\n\tarch = x86_64\n\tlicense = GPL-3.0-or-later\n\tlicense = Apache-2.0\n\tdepends = glibc\n\tdepends = gcc-libs\n\tdepends = gtk3\n\tdepends = webkit2gtk-4.1\n\tdepends = libxcb\n\tdepends = libxkbcommon-x11\n\tdepends = fontconfig\n\tdepends = vulkan-icd-loader\n\tdepends = xdg-utils\n\toptdepends = xorg-xwayland: run under a Wayland desktop\n\toptdepends = vulkan-driver: GPU rendering\n\tprovides = chartr=0.3.3\n\tconflicts = chartr\n\toptions = !strip\n\toptions = !debug\n\tsource = https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-linux-x86_64.tar.gz\n\tsha256sums = 8efa88177701293644d7d7b23dd949217019e5099fcce626515f0ebf9f2a19d2\n\npkgname = chartr-bin\n"
+  },
+  "executables_launched": false
+}

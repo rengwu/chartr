@@ -1,0 +1,36 @@
+{
+  "dmg": "target/release-publish-0.3.3/assets/chartr-0.3.3-macos-arm64.dmg",
+  "sha256": "5b2b5d8064eec7c23e81fb9e874b3244270848c4003d4e2428c15ba1efc81784",
+  "checksum_verified": true,
+  "application_launched": false,
+  "info": {
+    "CFBundleDevelopmentRegion": "en",
+    "CFBundleDisplayName": "chartr",
+    "CFBundleExecutable": "chartr",
+    "CFBundleIconFile": "chartr.icns",
+    "CFBundleIdentifier": "io.github.rengwu.chartr",
+    "CFBundleInfoDictionaryVersion": "6.0",
+    "CFBundleName": "chartr",
+    "CFBundlePackageType": "APPL",
+    "CFBundleShortVersionString": "0.3.3",
+    "CFBundleVersion": "802",
+    "LSApplicationCategoryType": "public.app-category.developer-tools",
+    "LSMinimumSystemVersion": "11.0",
+    "NSHighResolutionCapable": true,
+    "chartrGitRevision": "bdbad6da45b2",
+    "chartrReleaseVersion": "0.3.3"
+  },
+  "binaries": {
+    "chartr": {
+      "architecture": "arm64",
+      "sha256": "329a7d0c32b20ad7288a8d672b0ee8b9ec6336b3adc8bc7c2231af279b275cf8"
+    },
+    "herdr": {
+      "architecture": "arm64",
+      "sha256": "462498521f3d8f796e88f6f41d060e2edbb78a631df65f1dd5ff520e44c32536"
+    }
+  },
+  "sidecar_version": "herdr 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a",
+  "signature_verified": true,
+  "mount_detached": true
+}

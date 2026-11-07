@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Inspect the candidate DMG without opening Finder or launching Chartr."""
+from pathlib import Path
+import hashlib
+import json
+import plistlib
+import subprocess
+
+root = Path(__file__).resolve().parents[4]
+evidence = Path(__file__).resolve().parent
+candidate = json.loads((evidence / "manifest.json").read_text())["commit"]
+dmg = next((root / "target/release-publish-0.3.3/assets").rglob("chartr-0.3.3-macos-arm64.dmg"))
+digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+assert dmg.with_name(dmg.name + ".sha256").read_text().split()[0] == digest
+subprocess.run(["hdiutil", "verify", str(dmg)], check=True, capture_output=True)
+mounted = plistlib.loads(subprocess.check_output([
+    "hdiutil", "attach", "-readonly", "-nobrowse", "-noautoopen", "-plist", str(dmg)
+]))
+volume = next(entity for entity in mounted["system-entities"] if "mount-point" in entity)
+result = {"dmg": str(dmg.relative_to(root)), "sha256": digest,
+          "checksum_verified": True, "application_launched": False}
+try:
+    app = Path(volume["mount-point"]) / "chartr.app"
+    with (app / "Contents/Info.plist").open("rb") as f:
+        info = plistlib.load(f)
+    assert info["chartrReleaseVersion"] == info["CFBundleShortVersionString"] == "0.3.3"
+    assert info["CFBundleIdentifier"] == "io.github.rengwu.chartr"
+    assert candidate.startswith(info["chartrGitRevision"])
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
+    binaries = {}
+    for name in ["chartr", "herdr"]:
+        binary = app / "Contents/MacOS" / name
+        arch = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).strip()
+        assert arch == "arm64", arch
+        binaries[name] = {"architecture": arch, "sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
+    sidecar_version = subprocess.check_output([str(app / "Contents/MacOS/herdr"), "--version"], text=True).strip()
+    assert sidecar_version == "herdr 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a"
+    result.update(info=info, binaries=binaries, sidecar_version=sidecar_version, signature_verified=True)
+finally:
+    subprocess.run(["hdiutil", "detach", volume["mount-point"]], check=True, capture_output=True)
+    result["mount_detached"] = True
+(evidence / "macos-inspection.json").write_text(json.dumps(result, indent=2) + "\n")
+print("Verified macOS version, revision, signature, architecture, sidecar and checksum; detached without launching Chartr.")

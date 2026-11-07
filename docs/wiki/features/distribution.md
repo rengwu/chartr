@@ -50,11 +50,11 @@ run if this recipe is exercised; source inspection alone is not a pass.
 
 ## Coverage and limitations
 
-The [October 21 publication run](../verification/runs/2026-10-21-release-publication.md)
-records the published v0.3.2 release at `204e9a7985ac`, passing tag builds,
-downloaded artifact inspection and public asset availability. The release is
-latest stable; AUR publication was skipped under the accepted deferral. This
-does not expand the accepted focused desktop verification scope.
+The [November 7 publication run](../verification/runs/2026-11-07-release-publication.md)
+records v0.3.3 at `bdbad6da45b2`, with passing source CI, tag builds, downloaded
+artifact inspection and public asset checks. It is the latest stable release;
+AUR publication was skipped under the accepted deferral. This does not expand
+the accepted verification scope or certify the skipped upgrade/native scenarios.
 
 No package was built, installed, published or downloaded during migration. Source configuration does not establish current external release or AUR availability; public status claims were not recertified.
 
@@ -63,6 +63,10 @@ platform, theme, pointer and accessibility coverage. Choose a bounded subset for
 ordinary changes; release requirements remain separate from this advisory workflow.
 
 ## Verification history
+
+The [November 7 publication](../verification/runs/2026-11-07-release-publication.md)
+records all ten final asset digests, seven payload checksums, Linux/macOS package
+identity, latest stable publication, public download links and the skipped AUR job.
 
 [0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3-recheck.md) records
 bounded automated checks, isolated real-terminal checks and candidate package

@@ -1,0 +1,57 @@
+{
+  "tag": "v0.3.3",
+  "commit": "bdbad6da45b21abca72c74caca09553478ac3f7f",
+  "tag_object": "8b350b0a45811fa32be343506c6a36f171bb395d",
+  "prepared_branch": "release/0.3.3",
+  "verified_source_commit": "56ce59cfe7a3f1d2286ebf04c8a6ca652839d1f2",
+  "changes_since_verified_source": [
+    "docs/wiki/development/release-0.3.3.md",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/artifact-downloads.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/build-recheck.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/candidate.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/checksums.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/ci-attempt-1.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/ci-recheck.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/fixture-recheck-identity.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/inspect-linux.py.txt",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/inspect-macos.py.txt",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/linux-inspection.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/live-session-recheck.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/long-prompt-baseline.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/long-prompt-baseline.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/macos-ci-attempt-1.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/macos-inspection.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/mouse-repeat-1.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/mouse-repeat-2.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/mouse-repeat-3.log",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/mouse-repeat-results.json",
+    "docs/wiki/evidence/2026-11-07-release-0.3.3/package-workflow.json",
+    "docs/wiki/features/distribution.md",
+    "docs/wiki/features/panes.md",
+    "docs/wiki/features/session-lifecycle.md",
+    "docs/wiki/features/settings.md",
+    "docs/wiki/features/terminals.md",
+    "docs/wiki/index.html",
+    "docs/wiki/index.md",
+    "docs/wiki/verification/runs/2026-11-07-release-0.3.3-recheck.md",
+    "docs/wiki/verification/runs/2026-11-07-release-0.3.3.md"
+  ],
+  "inspection_host": {
+    "os": "Darwin",
+    "version": "27.0.0",
+    "architecture": "arm64"
+  },
+  "aur_publish_enabled": false,
+  "desktop_controlled": false,
+  "cancelled_duplicate_main_runs": [
+    {
+      "id": 42383977516,
+      "name": "Release packages"
+    },
+    {
+      "id": 42383977490,
+      "name": "CI"
+    }
+  ],
+  "cancellation_reason": "Same revision is covered by successful source CI and the tag workflows; duplicate main builds were cancelled."
+}

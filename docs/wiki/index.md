@@ -28,12 +28,16 @@ locally generated reader.
 
 ## Verification and releases
 
-[0.3.3 preparation](development/release-0.3.3.md) is complete under the user's
+[Chartr v0.3.3](https://github.com/rengwu/chartr/releases/tag/v0.3.3) is the latest
+stable release. The [publication run](verification/runs/2026-11-07-release-publication.md)
+records successful tag builds, final package/checksum inspection, public downloads
+and the skipped AUR publication.
+
+[0.3.3 preparation](development/release-0.3.3.md) completed under the user's
 requested simple checks without desktop takeover; old-to-new upgrade testing is
 explicitly skipped. The [fixture recheck](verification/runs/2026-11-07-release-0.3.3-recheck.md)
 preserves the initial CI assertion failure and records the correction, passing
-platform CI, package checks and remaining native coverage limits. Publication is
-pending.
+platform CI, package checks and remaining native coverage limits.
 
 [Next-release assessment, November 7](discussions/open-questions.md#next-release-assessment-november-7)
 proposes priorities for upgrade preservation, native naming/input checks,
@@ -51,7 +55,7 @@ local/platform gates and package inspection. The user
 [accepted focused verification for 0.3.2](decisions/index.md#dec-release-032-001-focused-verification-is-sufficient-for-0-3-2)
 and deferred the remaining desktop matrix. Notification testing and AUR publication
 remain deferred. [Chartr v0.3.2](https://github.com/rengwu/chartr/releases/tag/v0.3.2)
-is published as the latest stable release. The [publication run](verification/runs/2026-10-21-release-publication.md)
+was published on October 21. The [publication run](verification/runs/2026-10-21-release-publication.md)
 records passing tag builds, package/checksum inspection, public downloads and the
 skipped AUR publication.
 

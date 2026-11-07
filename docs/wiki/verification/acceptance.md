@@ -1,7 +1,7 @@
 ---
 title: Release acceptance
 section: Verification
-updated: 2026-10-19
+updated: 2026-11-07
 recipe: Unvalidated
 ---
 # Release acceptance
@@ -12,6 +12,14 @@ complements each feature's bounded recipe. It describes checks to perform, not
 results. **No chartr acceptance scenario was executed during the documentation
 migration.** Use [shared setup](setup.md) for isolation, build identity, evidence
 and cleanup. Dated [audits](../archive/research/index.md) retain their original limits.
+
+**0.3.3 scope decision, November 7:** the user requested simple checks without
+desktop takeover, explicitly skipped the v0.3.2 upgrade test, and subsequently
+authorized publication after preparation completed. See
+[preparation scope](../decisions/index.md#dec-release-033-001-prepare-0-3-3-with-simple-verification),
+[publication authorization](../decisions/index.md#dec-release-033-002-publish-the-prepared-0-3-3-release)
+and the [fixture recheck](runs/2026-11-07-release-0.3.3-recheck.md). Native coverage
+limits and the AUR deferral remain explicit; the baseline below remains intact.
 
 **0.3.2 scope decision, October 19:** the user accepted the completed focused
 verification and deferred the remaining desktop matrix for this release. See

@@ -2,7 +2,7 @@
 title: Release 0.3.3 preparation
 section: Development
 updated: 2026-11-07
-status: Prepared under accepted verification scope
+status: Published
 ---
 # Release 0.3.3 preparation
 
@@ -12,8 +12,11 @@ uses branch `release/0.3.3`; the workspace and both Cargo lockfiles agree.
 Local checks, platform CI and candidate package inspection are complete. The
 [scope decision](../decisions/index.md#dec-release-033-001-prepare-0-3-3-with-simple-verification)
 and [fixture recheck](../verification/runs/2026-11-07-release-0.3.3-recheck.md) distinguish
-executed checks from remaining native coverage. Publication is not part of this
-preparation request; v0.3.2 remains the published stable release.
+executed checks from remaining native coverage. Publication was outside the
+preparation request. The user subsequently [authorized publication](../decisions/index.md#dec-release-033-002-publish-the-prepared-0-3-3-release),
+and [v0.3.3](https://github.com/rengwu/chartr/releases/tag/v0.3.3) is now the latest
+stable release. The [publication run](../verification/runs/2026-11-07-release-publication.md)
+records the tag builds, final asset checks and public downloads separately.
 
 ## Scope since 0.3.2
 
@@ -89,6 +92,8 @@ including real-terminal sessions and Linux X11/GTK fixture checks. The
 commit. Subsequent preparation-record changes affect documentation and evidence
 only.
 
-The [draft release notes](../evidence/2026-11-07-release-0.3.3/release-notes.txt)
-are ready. Preparation is complete within the accepted scope; publication remains
-pending. No tag or published release is created by this run.
+The [prepared release notes](../evidence/2026-11-07-release-0.3.3/release-notes.txt)
+were used for publication, with a full-changelog link added. Preparation completed
+within the accepted scope without creating a tag or public release. The subsequent
+[publication run](../verification/runs/2026-11-07-release-publication.md) records
+annotated tag `v0.3.3` at `bdbad6da`, final tag packages and publication on November 7.

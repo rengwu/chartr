@@ -1,0 +1,23 @@
+{
+  "conclusion": "skipped",
+  "createdAt": "2026-11-07T15:36:28Z",
+  "databaseId": 42387204177,
+  "event": "release",
+  "headSha": "bdbad6da45b21abca72c74caca09553478ac3f7f",
+  "jobs": [
+    {
+      "completedAt": "2026-11-07T15:36:29Z",
+      "conclusion": "skipped",
+      "databaseId": 128447033900,
+      "name": "publish",
+      "startedAt": "2026-11-07T15:36:39Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/rengwu/chartr/actions/runs/42387204177/job/128447033900"
+    }
+  ],
+  "name": "Publish AUR",
+  "status": "completed",
+  "updatedAt": "2026-11-07T15:36:30Z",
+  "url": "https://github.com/rengwu/chartr/actions/runs/42387204177"
+}

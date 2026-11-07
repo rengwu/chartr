@@ -14,7 +14,7 @@ Keep your projects, tools, workflows, and agents together. chartr is an
 open-source native desktop app built with Rust and GPUI. Organize projects into
 spaces, arrange terminals and tools side by side, and make the workspace your own.
 
-> [v0.3.2](https://github.com/rengwu/chartr/releases/tag/v0.3.2) is the latest stable
+> [v0.3.3](https://github.com/rengwu/chartr/releases/tag/v0.3.3) is the latest stable
 > Rust release for macOS and Linux.
 > [v0.2.4](https://github.com/rengwu/chartr/releases/tag/v0.2.4) remains available
 > for users of the legacy Go/Svelte app.

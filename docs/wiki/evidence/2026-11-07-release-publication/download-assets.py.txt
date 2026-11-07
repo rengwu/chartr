@@ -1,0 +1,99 @@
+"""Download the exact draft assets without retaining credentials or signed URLs."""
+from pathlib import Path
+import concurrent.futures
+import hashlib
+import json
+import re
+import ssl
+import subprocess
+import urllib.error
+import urllib.request
+
+evidence = Path(__file__).resolve().parent
+root = Path(__file__).resolve().parents[4]
+destination = root / "target/release-publish-0.3.3/assets"
+destination.mkdir(parents=True, exist_ok=True)
+release = json.loads((evidence / "draft.json").read_text())
+assert release["draft"] and not release["prerelease"]
+assert release["tag_name"] == "v0.3.3"
+expected = {
+    "SHA256SUMS-aarch64", "SHA256SUMS-x86_64",
+    "chartr-0.3.3-macos-arm64.dmg", "chartr-0.3.3-macos-arm64.dmg.sha256",
+    "chartr-0.3.3-linux-aarch64.tar.gz", "chartr-0.3.3-linux-x86_64.tar.gz",
+    "chartr_0.3.3_arm64.deb", "chartr_0.3.3_amd64.deb",
+    "chartr-bin-0.3.3-1-x86_64.pkg.tar.zst", "chartr-0.3.3-aur.tar.gz",
+}
+assert {a["name"] for a in release["assets"]} == expected
+context = ssl.create_default_context(cafile="/etc/ssl/cert.pem")
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), NoRedirect)
+token = subprocess.check_output(["gh", "auth", "token"], text=True).strip()
+work = []
+for asset in release["assets"]:
+    path = destination / asset["name"]
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", asset["digest"])
+    if path.exists() and path.stat().st_size == asset["size"]:
+        with path.open("rb") as f:
+            if "sha256:" + hashlib.file_digest(f, "sha256").hexdigest() == asset["digest"]:
+                continue
+    assert asset["url"].startswith("https://api.github.com/repos/rengwu/chartr/releases/assets/")
+    request = urllib.request.Request(asset["url"], headers={
+        "Authorization": "Bearer " + token, "Accept": "application/octet-stream",
+    })
+    try:
+        with opener.open(request, timeout=30) as response:
+            data = response.read()
+            assert len(data) == asset["size"]
+            assert "sha256:" + hashlib.sha256(data).hexdigest() == asset["digest"]
+            path.write_bytes(data)
+        continue
+    except urllib.error.HTTPError as error:
+        assert error.code == 302, error.code
+        url = error.headers["Location"]
+        assert url.startswith("https://")
+    with path.open("wb") as f:
+        f.truncate(asset["size"])
+    for start in range(0, asset["size"], 8 * 1024 * 1024):
+        work.append((url, path, asset["size"], start))
+
+
+def part(item):
+    url, path, size, start = item
+    end = min(start + 8 * 1024 * 1024, size) - 1
+    for attempt in range(3):
+        try:
+            request = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
+            with urllib.request.urlopen(request, context=context, timeout=45) as response, path.open("r+b") as f:
+                assert response.status == 206
+                assert response.headers["Content-Range"] == f"bytes {start}-{end}/{size}"
+                f.seek(start)
+                count = 0
+                while chunk := response.read(1024 * 1024):
+                    f.write(chunk)
+                    count += len(chunk)
+                assert count == end - start + 1
+            return
+        except Exception:
+            if attempt == 2:
+                raise RuntimeError(f"Download failed: {path.name}, bytes {start}-{end}") from None
+
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    list(pool.map(part, work))
+receipts = []
+for asset in release["assets"]:
+    path = destination / asset["name"]
+    with path.open("rb") as f:
+        digest = hashlib.file_digest(f, "sha256").hexdigest()
+    assert path.stat().st_size == asset["size"]
+    assert asset["digest"] == "sha256:" + digest, asset["name"]
+    receipts.append({"name": asset["name"], "id": asset["id"], "size": asset["size"],
+                     "sha256": digest, "github_digest_verified": True})
+(evidence / "asset-digests.json").write_text(json.dumps(receipts, indent=2) + "\n")
+print(f"Downloaded and verified all {len(receipts)} draft assets.", flush=True)

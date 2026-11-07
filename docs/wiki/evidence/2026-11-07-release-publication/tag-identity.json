@@ -1,0 +1,36 @@
+{
+  "ref": {
+    "ref": "refs/tags/v0.3.3",
+    "node_id": "REF_kwDOTeyUrbByZWZzL3RhZ3MvdjAuMy4z",
+    "url": "https://api.github.com/repos/rengwu/chartr/git/refs/tags/v0.3.3",
+    "object": {
+      "sha": "8b350b0a45811fa32be343506c6a36f171bb395d",
+      "type": "tag",
+      "url": "https://api.github.com/repos/rengwu/chartr/git/tags/8b350b0a45811fa32be343506c6a36f171bb395d"
+    }
+  },
+  "tag": {
+    "node_id": "TA_kwDOTeyUrdoAKDhiMzUwYjBhNDU4MTFmYTMyYmUzNDM1MDZjNmEzNmYxNzFiYjM5NWQ",
+    "sha": "8b350b0a45811fa32be343506c6a36f171bb395d",
+    "url": "https://api.github.com/repos/rengwu/chartr/git/tags/8b350b0a45811fa32be343506c6a36f171bb395d",
+    "tagger": {
+      "name": "John Goh",
+      "email": "johngohrw@gmail.com",
+      "date": "2026-11-07T14:56:55Z"
+    },
+    "object": {
+      "sha": "bdbad6da45b21abca72c74caca09553478ac3f7f",
+      "type": "commit",
+      "url": "https://api.github.com/repos/rengwu/chartr/git/commits/bdbad6da45b21abca72c74caca09553478ac3f7f"
+    },
+    "tag": "v0.3.3",
+    "message": "chartr v0.3.3\n",
+    "verification": {
+      "verified": false,
+      "reason": "unsigned",
+      "signature": null,
+      "payload": null,
+      "verified_at": null
+    }
+  }
+}

@@ -1,0 +1,75 @@
+[
+  {
+    "name": "chartr-0.3.3-aur.tar.gz",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-aur.tar.gz",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr-0.3.3-linux-aarch64.tar.gz",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-linux-aarch64.tar.gz",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr-0.3.3-linux-x86_64.tar.gz",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-linux-x86_64.tar.gz",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr-0.3.3-macos-arm64.dmg",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-macos-arm64.dmg",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr-0.3.3-macos-arm64.dmg.sha256",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-0.3.3-macos-arm64.dmg.sha256",
+    "status": 200,
+    "method": "GET",
+    "authenticated": false,
+    "digest_verified": true
+  },
+  {
+    "name": "chartr-bin-0.3.3-1-x86_64.pkg.tar.zst",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr-bin-0.3.3-1-x86_64.pkg.tar.zst",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr_0.3.3_amd64.deb",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr_0.3.3_amd64.deb",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "chartr_0.3.3_arm64.deb",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/chartr_0.3.3_arm64.deb",
+    "status": 200,
+    "method": "HEAD",
+    "authenticated": false
+  },
+  {
+    "name": "SHA256SUMS-aarch64",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/SHA256SUMS-aarch64",
+    "status": 200,
+    "method": "GET",
+    "authenticated": false,
+    "digest_verified": true
+  },
+  {
+    "name": "SHA256SUMS-x86_64",
+    "url": "https://github.com/rengwu/chartr/releases/download/v0.3.3/SHA256SUMS-x86_64",
+    "status": 200,
+    "method": "GET",
+    "authenticated": false,
+    "digest_verified": true
+  }
+]

@@ -1,7 +1,7 @@
 ---
 title: Open questions
 updated: 2026-11-07
-status: Release 0.3.3 preparation authorized with simple verification
+status: Release 0.3.3 published under accepted verification scope
 ---
 # Open questions
 
@@ -14,6 +14,9 @@ Reopen this register if implementation uncovers a material ambiguity.
 verification without desktop takeover, followed by preparation of **0.3.3**.
 [DEC-RELEASE-033-001](../decisions/index.md#dec-release-033-001-prepare-0-3-3-with-simple-verification)
 records this scope; [preparation](../development/release-0.3.3.md) tracks execution.
+After preparation completed, the user [authorized publication](../decisions/index.md#dec-release-033-002-publish-the-prepared-0-3-3-release).
+The [publication run](../verification/runs/2026-11-07-release-publication.md)
+records the completed release; the accepted coverage limits remain unchanged.
 The recommendations below remain the historical assessment, not the final scope.
 
 The user requested an opinion on remaining issues and polish. The priorities below

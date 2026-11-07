@@ -4,6 +4,16 @@ updated: 2026-11-07
 ---
 # Decisions
 
+## DEC-RELEASE-033-002 — Publish the prepared 0.3.3 release
+
+Accepted November 7: after preparation completed and its results and limits were
+reported, the user said “lets publish.” Publish the prepared revision as stable
+v0.3.3 using the established tag, package and GitHub release workflow. The
+[accepted verification scope](#dec-release-033-001-prepare-0-3-3-with-simple-verification)
+continues to apply: do not take over the desktop or add the skipped upgrade test.
+AUR publication remains deferred and disabled. This authorization does not turn
+unexecuted native scenarios into passing evidence.
+
 ## DEC-RELEASE-033-001 — Prepare 0.3.3 with simple verification
 
 Accepted November 7: the user said “skip #1. verify others in a simple manner

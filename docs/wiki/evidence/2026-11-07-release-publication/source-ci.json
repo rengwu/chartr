@@ -1,0 +1,446 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-11-07T14:47:43Z",
+  "databaseId": 42383260488,
+  "event": "push",
+  "headSha": "bdbad6da45b21abca72c74caca09553478ac3f7f",
+  "jobs": [
+    {
+      "completedAt": "2026-11-07T14:48:35Z",
+      "conclusion": "success",
+      "databaseId": 128435175494,
+      "name": "Arch and AUR packaging",
+      "startedAt": "2026-11-07T14:47:45Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-07T14:47:46Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-07T14:47:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:00Z",
+          "conclusion": "success",
+          "name": "Initialize containers",
+          "number": 2,
+          "startedAt": "2026-11-07T14:47:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:13Z",
+          "conclusion": "success",
+          "name": "Install package test dependencies",
+          "number": 3,
+          "startedAt": "2026-11-07T14:48:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 4,
+          "startedAt": "2026-11-07T14:48:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:27Z",
+          "conclusion": "success",
+          "name": "Test Arch packages and AUR publication",
+          "number": 5,
+          "startedAt": "2026-11-07T14:48:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 9,
+          "startedAt": "2026-11-07T14:48:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:33Z",
+          "conclusion": "success",
+          "name": "Stop containers",
+          "number": 10,
+          "startedAt": "2026-11-07T14:48:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:33Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-11-07T14:48:33Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/rengwu/chartr/actions/runs/42383260488/job/128435175494"
+    },
+    {
+      "completedAt": "2026-11-07T14:56:55Z",
+      "conclusion": "success",
+      "databaseId": 128435175639,
+      "name": "ubuntu-24.04",
+      "startedAt": "2026-11-07T14:47:45Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-07T14:47:47Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-07T14:47:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:47:49Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-07T14:47:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:15Z",
+          "conclusion": "success",
+          "name": "Install Linux dependencies",
+          "number": 3,
+          "startedAt": "2026-11-07T14:47:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:25Z",
+          "conclusion": "success",
+          "name": "Install the pinned Rust toolchain",
+          "number": 4,
+          "startedAt": "2026-11-07T14:48:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:26Z",
+          "conclusion": "success",
+          "name": "Check formatting",
+          "number": 5,
+          "startedAt": "2026-11-07T14:48:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:28Z",
+          "conclusion": "success",
+          "name": "Check release scripts",
+          "number": 6,
+          "startedAt": "2026-11-07T14:48:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:49:04Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 7,
+          "startedAt": "2026-11-07T14:48:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:49:12Z",
+          "conclusion": "success",
+          "name": "Run ./.github/actions/setup-herdr",
+          "number": 8,
+          "startedAt": "2026-11-07T14:49:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:55:41Z",
+          "conclusion": "success",
+          "name": "Build and test",
+          "number": 9,
+          "startedAt": "2026-11-07T14:49:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:55:44Z",
+          "conclusion": "success",
+          "name": "Test forwarded X11 input-method events",
+          "number": 10,
+          "startedAt": "2026-11-07T14:55:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:55:57Z",
+          "conclusion": "success",
+          "name": "Test GTK webview scaling and lifecycle",
+          "number": 11,
+          "startedAt": "2026-11-07T14:55:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:41Z",
+          "conclusion": "success",
+          "name": "Build the build-time native module example",
+          "number": 12,
+          "startedAt": "2026-11-07T14:55:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:46Z",
+          "conclusion": "success",
+          "name": "Test real terminal sessions",
+          "number": 13,
+          "startedAt": "2026-11-07T14:56:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:52Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 14,
+          "startedAt": "2026-11-07T14:56:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:52Z",
+          "conclusion": "success",
+          "name": "Test web plugin bridges and layouts",
+          "number": 15,
+          "startedAt": "2026-11-07T14:56:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Save build timings",
+          "number": 16,
+          "startedAt": "2026-11-07T14:56:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 29,
+          "startedAt": "2026-11-07T14:56:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Post Run ./.github/actions/setup-herdr",
+          "number": 30,
+          "startedAt": "2026-11-07T14:56:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 31,
+          "startedAt": "2026-11-07T14:56:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 32,
+          "startedAt": "2026-11-07T14:56:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:53Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 33,
+          "startedAt": "2026-11-07T14:56:53Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/rengwu/chartr/actions/runs/42383260488/job/128435175639"
+    },
+    {
+      "completedAt": "2026-11-07T14:58:12Z",
+      "conclusion": "success",
+      "databaseId": 128435175657,
+      "name": "macos-15",
+      "startedAt": "2026-11-07T14:47:46Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-07T14:47:48Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-07T14:47:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:47:52Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-07T14:47:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:47:52Z",
+          "conclusion": "skipped",
+          "name": "Install Linux dependencies",
+          "number": 3,
+          "startedAt": "2026-11-07T14:47:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:00Z",
+          "conclusion": "success",
+          "name": "Install the pinned Rust toolchain",
+          "number": 4,
+          "startedAt": "2026-11-07T14:47:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:02Z",
+          "conclusion": "success",
+          "name": "Check formatting",
+          "number": 5,
+          "startedAt": "2026-11-07T14:48:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:04Z",
+          "conclusion": "success",
+          "name": "Check release scripts",
+          "number": 6,
+          "startedAt": "2026-11-07T14:48:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:36Z",
+          "conclusion": "success",
+          "name": "Run Swatinem/rust-cache@v2",
+          "number": 7,
+          "startedAt": "2026-11-07T14:48:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:48:43Z",
+          "conclusion": "success",
+          "name": "Run ./.github/actions/setup-herdr",
+          "number": 8,
+          "startedAt": "2026-11-07T14:48:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:49Z",
+          "conclusion": "success",
+          "name": "Build and test",
+          "number": 9,
+          "startedAt": "2026-11-07T14:48:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:49Z",
+          "conclusion": "skipped",
+          "name": "Test forwarded X11 input-method events",
+          "number": 10,
+          "startedAt": "2026-11-07T14:56:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:56:49Z",
+          "conclusion": "skipped",
+          "name": "Test GTK webview scaling and lifecycle",
+          "number": 11,
+          "startedAt": "2026-11-07T14:56:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:57:55Z",
+          "conclusion": "success",
+          "name": "Build the build-time native module example",
+          "number": 12,
+          "startedAt": "2026-11-07T14:56:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:05Z",
+          "conclusion": "success",
+          "name": "Test real terminal sessions",
+          "number": 13,
+          "startedAt": "2026-11-07T14:57:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:07Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 14,
+          "startedAt": "2026-11-07T14:58:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:07Z",
+          "conclusion": "success",
+          "name": "Test web plugin bridges and layouts",
+          "number": 15,
+          "startedAt": "2026-11-07T14:58:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:08Z",
+          "conclusion": "success",
+          "name": "Save build timings",
+          "number": 16,
+          "startedAt": "2026-11-07T14:58:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 29,
+          "startedAt": "2026-11-07T14:58:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:08Z",
+          "conclusion": "success",
+          "name": "Post Run ./.github/actions/setup-herdr",
+          "number": 30,
+          "startedAt": "2026-11-07T14:58:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:08Z",
+          "conclusion": "success",
+          "name": "Post Run Swatinem/rust-cache@v2",
+          "number": 31,
+          "startedAt": "2026-11-07T14:58:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:09Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 32,
+          "startedAt": "2026-11-07T14:58:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-07T14:58:11Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 33,
+          "startedAt": "2026-11-07T14:58:09Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/rengwu/chartr/actions/runs/42383260488/job/128435175657"
+    }
+  ],
+  "name": "CI",
+  "status": "completed",
+  "updatedAt": "2026-11-07T14:58:13Z",
+  "url": "https://github.com/rengwu/chartr/actions/runs/42383260488"
+}
