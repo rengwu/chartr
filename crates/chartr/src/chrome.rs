@@ -328,6 +328,7 @@ impl<'a> ItemTab<'a> {
                 colors.tab_inactive_background
             });
         Tab::new(self.id)
+            .tooltip(Tooltip::text(self.aria_label.clone()))
             .fill_width()
             .role(Role::Tab)
             .aria_label(if self.activity.unread {
@@ -376,6 +377,7 @@ impl<'a> ItemTab<'a> {
         };
         h_flex()
             .id(self.id)
+            .tooltip(Tooltip::text(self.aria_label.clone()))
             .group("")
             .role(Role::Tab)
             .aria_label(if self.activity.unread {
@@ -441,6 +443,9 @@ pub struct Entry {
     pub pane: PaneId,
     pub index: usize,
     pub title: String,
+    pub title_detail: Option<String>,
+    pub terminal: bool,
+    pub manual_name: bool,
     /// A provider glyph for recognized sessions, a plugin's package-owned SVG,
     /// or the embedded plugin-launcher icon. Groups have no provider icon.
     pub icon_path: Option<SharedString>,
@@ -502,6 +507,8 @@ pub enum Action {
     CloseGroup { space: EntityId, tab: WorkspaceTabId },
     UngroupPane { space: EntityId, tab: WorkspaceTabId },
     RenameGroup { space: EntityId, tab: WorkspaceTabId },
+    RenameTerminal { space: EntityId, item: ItemId },
+    AutomaticTerminalName { space: EntityId, item: ItemId },
     MoveWorkspaceTab { space: EntityId, tab: WorkspaceTabId, target_index: usize },
     BeginSpaceDrag { at: Pixels },
     CloseSpace { space: EntityId },
@@ -536,6 +543,40 @@ impl Render for DraggedSpace {
 /// `Rc` because both chromes hand the same callback to every row they draw,
 /// and a `cx.listener` closure is not `Clone`.
 pub type Emit = Rc<dyn Fn(Action, &mut Window, &mut App)>;
+
+/// Shared by standalone rows, outer tabs, and pane-local terminal tabs.
+pub(crate) fn terminal_menu(
+    trigger: AnyElement,
+    space: EntityId,
+    item: ItemId,
+    manual_name: bool,
+    on: Emit,
+) -> AnyElement {
+    div()
+        .w_full()
+        .child(
+            crate::components::popup_right_click_menu(format!(
+                "terminal-menu-{space:?}-{}",
+                item.get()
+            ))
+            .trigger(move |_, _, _| trigger)
+            .menu(move |window, cx| {
+                let rename = on.clone();
+                let automatic = on.clone();
+                crate::components::ContextMenu::build_popup(window, cx, move |menu| {
+                    menu.entry("Rename Terminal", None, move |window, cx| {
+                        rename(Action::RenameTerminal { space, item }, window, cx)
+                    })
+                    .when(manual_name, |menu| {
+                        menu.entry("Use automatic name", None, move |window, cx| {
+                            automatic(Action::AutomaticTerminalName { space, item }, window, cx)
+                        })
+                    })
+                })
+            }),
+        )
+        .into_any_element()
+}
 
 #[derive(Clone)]
 pub struct DraggedSidebar;

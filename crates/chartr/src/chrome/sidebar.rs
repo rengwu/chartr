@@ -397,6 +397,7 @@ fn row(
     // the close overlay and fallback drop target; SortableTabList owns sorting.
     let row = div()
         .id(format!("session-drag-{space:?}-{}", entry.tab.get()))
+        .tooltip(Tooltip::text(entry.title_detail.clone().unwrap_or_else(|| entry.title.clone())))
         .debug_selector({
             let tab = entry.tab;
             move || format!("SESSION_TAB_{}", tab.get())
@@ -448,11 +449,14 @@ fn row(
                 })
                 .aria_role(Role::Tab)
                 .aria_label(if entry.unread {
-                    format!("{}, unseen agent attention", entry.title)
+                    format!(
+                        "{}, unseen agent attention",
+                        entry.title_detail.as_ref().unwrap_or(&entry.title)
+                    )
                 } else if grouped {
                     format!("Pane group: {}", entry.title)
                 } else {
-                    entry.title.clone()
+                    entry.title_detail.clone().unwrap_or_else(|| entry.title.clone())
                 })
                 .on_click(move |_, window, cx| {
                     on(Action::Select { space: Some(space), item: select }, window, cx)
@@ -530,6 +534,8 @@ fn row(
                 })
             })
             .into_any_element()
+    } else if entry.terminal {
+        super::terminal_menu(row.into_any_element(), space, entry.key, entry.manual_name, rename)
     } else {
         row.into_any_element()
     }

@@ -39,6 +39,28 @@ pub struct Session {
 }
 
 impl Session {
+    #[cfg(test)]
+    pub(crate) fn display_only(info: control::Session, cx: &mut App) -> Self {
+        let terminal = cx.new(|cx| {
+            TerminalBuilder::new_display_only(
+                terminal::terminal_settings::CursorShape::default(),
+                terminal::terminal_settings::AlternateScroll::On,
+                None,
+                0,
+                cx.background_executor(),
+                PathStyle::local(),
+            )
+            .subscribe(cx)
+        });
+        let (input_tx, _) = mpsc::unbounded();
+        let endpoint = Arc::new(Mutex::new(SessionEndpoint {
+            info: info.clone(),
+            input_tx,
+            launch_scripts: Vec::new(),
+        }));
+        Self { info, terminal, ended: None, endpoint, _input_task: Task::ready(()) }
+    }
+
     /// Build Zed's PTY around Herdr's namespace-safe direct-attach command.
     pub fn attach_builder(
         client: &control::Client,
@@ -145,10 +167,6 @@ impl Session {
 
     /// The live title inferred by the control plane: detected agent, foreground
     /// process, then Herdr's persistent tab label.
-    pub fn title(&self) -> String {
-        self.info.title().to_owned()
-    }
-
     pub fn access(&self) -> SessionAccess {
         SessionAccess(Arc::downgrade(&self.endpoint))
     }

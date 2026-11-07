@@ -22,7 +22,7 @@ impl WorkspaceWindow {
                     Some(_) => None,
                 })
                 .collect();
-            space.update(cx, |space, _| space.finish_bulk_close(&closed));
+            space.update(cx, |space, cx| space.finish_bulk_close(&closed, cx));
         }
     }
 
@@ -177,7 +177,7 @@ impl WorkspaceWindow {
 
     fn drop_dead_terminals(&mut self, cx: &mut Context<Self>) {
         for space in &self.spaces {
-            space.update(cx, |space, _| space.drop_dead_sessions());
+            space.update(cx, |space, cx| space.drop_dead_sessions(cx));
         }
     }
 
@@ -271,13 +271,16 @@ impl WorkspaceWindow {
         infos: Vec<chartr_herdr::control::Session>,
         cx: &mut Context<Self>,
     ) {
+        for info in &infos {
+            self.terminal_names.observe(info, self.settings.resolved().manual_name_lifetime);
+        }
         self.observe_conversations(&infos, cx);
         let owners: Vec<_> = self
             .spaces
             .iter()
             .map(|space| {
                 let space = space.read(cx);
-                (space.path().clone(), space.owned_session_ids())
+                (space.path().clone(), space.owned_session_ids(), space.owned_terminal_ids())
             })
             .collect();
         for (space, infos) in self.spaces.iter().zip(partition_sessions(infos, &owners)) {
@@ -291,10 +294,13 @@ impl WorkspaceWindow {
 /// attachment is being restored. Cwd only discovers otherwise unknown sessions.
 fn partition_sessions(
     infos: Vec<chartr_herdr::control::Session>,
-    owners: &[(PathBuf, HashSet<chartr_herdr::PaneId>)],
+    owners: &[(PathBuf, HashSet<chartr_herdr::PaneId>, HashSet<chartr_herdr::TerminalId>)],
 ) -> Vec<Vec<chartr_herdr::control::Session>> {
     let known_owner = |info: &chartr_herdr::control::Session| {
-        owners.iter().position(|(_, sessions)| sessions.contains(&info.id))
+        owners
+            .iter()
+            .position(|(_, _, terminals)| terminals.contains(&info.terminal))
+            .or_else(|| owners.iter().position(|(_, sessions, _)| sessions.contains(&info.id)))
     };
     let mut workspaces: HashMap<WorkspaceId, Option<usize>> = HashMap::new();
     for info in &infos {
@@ -315,7 +321,7 @@ fn partition_sessions(
             .or_else(|| workspaces.get(&info.workspace).copied().flatten())
             .or_else(|| {
                 info.cwd.as_ref().and_then(|cwd| {
-                    owners.iter().position(|(path, _)| spaces::same_path(path, cwd))
+                    owners.iter().position(|(path, _, _)| spaces::same_path(path, cwd))
                 })
             });
         if let Some(owner) = owner {
@@ -355,8 +361,9 @@ mod tests {
             (
                 PathBuf::from("/project/a"),
                 HashSet::from([PaneId("live".into()), PaneId("saved".into())]),
+                HashSet::new(),
             ),
-            (PathBuf::from("/project/b"), HashSet::new()),
+            (PathBuf::from("/project/b"), HashSet::new(), HashSet::new()),
         ];
         let partitions = partition_sessions(
             vec![
@@ -377,8 +384,8 @@ mod tests {
     #[test]
     fn explicit_ownership_wins_even_when_a_backend_workspace_spans_spaces() {
         let owners = vec![
-            (PathBuf::from("/a"), HashSet::from([PaneId("one".into())])),
-            (PathBuf::from("/b"), HashSet::from([PaneId("two".into())])),
+            (PathBuf::from("/a"), HashSet::from([PaneId("one".into())]), HashSet::new()),
+            (PathBuf::from("/b"), HashSet::from([PaneId("two".into())]), HashSet::new()),
         ];
         let infos = vec![
             session("one", "w", Some("/b")),
@@ -393,5 +400,25 @@ mod tests {
             assert!(partitions[1].iter().any(|s| s.id.0 == "two"));
             assert!(partitions[1].iter().any(|s| s.id.0 == "new"));
         }
+    }
+    #[test]
+    fn terminal_ownership_wins_when_handoff_swaps_panes_between_spaces() {
+        let owners = vec![
+            (
+                PathBuf::from("/a"),
+                HashSet::from([PaneId("one".into())]),
+                HashSet::from([TerminalId("one".into())]),
+            ),
+            (
+                PathBuf::from("/b"),
+                HashSet::from([PaneId("two".into())]),
+                HashSet::from([TerminalId("two".into())]),
+            ),
+        ];
+        let mut one = session("one", "w", Some("/b"));
+        let mut two = session("two", "w", Some("/a"));
+        std::mem::swap(&mut one.id, &mut two.id);
+        let partitions = partition_sessions(vec![two.clone(), one.clone()], &owners);
+        assert_eq!(partitions, vec![vec![one], vec![two]]);
     }
 }

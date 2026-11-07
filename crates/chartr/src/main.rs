@@ -45,6 +45,7 @@ mod skills_plugin;
 mod space;
 mod spaces;
 mod terminal_host;
+mod terminal_names;
 mod text_input;
 mod title_bar;
 #[path = "../../../plugins/wayfinder/src/lib.rs"]

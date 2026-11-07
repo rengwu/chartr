@@ -438,6 +438,24 @@ impl SettingsWindow {
         self.set_ui_font_size(current + delta, cx);
     }
 
+    fn set_manual_name_lifetime(
+        &mut self,
+        lifetime: crate::terminal_names::ManualNameLifetime,
+        cx: &mut Context<Self>,
+    ) {
+        self.update_settings(
+            move |content| {
+                content
+                    .terminal
+                    .get_or_insert_with(TerminalContent::default)
+                    .manual_name_lifetime = Some(lifetime);
+            },
+            false,
+            false,
+            cx,
+        );
+    }
+
     fn set_terminal_font(&mut self, family: String, cx: &mut Context<Self>) {
         self.update_settings(
             move |content| {

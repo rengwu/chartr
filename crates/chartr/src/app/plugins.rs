@@ -528,7 +528,7 @@ impl WorkspaceWindow {
         if capabilities.multiplicity == Multiplicity::PerSpace
             && space.update(cx, |space, _| space.activate_plugin(&key))
         {
-            space.update(cx, |space, _| space.finish_bulk_close(&[launcher]));
+            space.update(cx, |space, cx| space.finish_bulk_close(&[launcher], cx));
             self.problem = None;
             cx.notify();
             return;

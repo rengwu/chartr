@@ -94,6 +94,15 @@ mod tests {
     }
 
     #[test]
+    fn malformed_or_future_terminal_names_disable_saving_without_data_loss() {
+        for value in ["{", r#"{"version":2,"terminals":{}}"#] {
+            assert_failed_restore_preserves_database(&format!(
+                "INSERT INTO app_state (key, value_json) VALUES ('terminal_names', '{value}')\n                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json"
+            ));
+        }
+    }
+
+    #[test]
     fn new_and_healthy_workspaces_remain_writable() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("state.sqlite");

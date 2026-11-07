@@ -17,7 +17,7 @@ impl WorkspaceWindow {
     fn close_plugin_instances(&mut self, plugin: &str, cx: &mut Context<Self>) {
         for space in &self.spaces {
             let ids = space.read(cx).plugin_item_ids(plugin);
-            space.update(cx, |space, _| space.finish_bulk_close(&ids));
+            space.update(cx, |space, cx| space.finish_bulk_close(&ids, cx));
         }
     }
 

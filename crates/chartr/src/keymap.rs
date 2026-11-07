@@ -14,6 +14,7 @@ pub const KEYMAP_FILE: &str = "keymap.toml";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KeymapAction {
     CloseItem,
+    RenameTerminal,
     NewTerminal,
     NewTerminalPane,
     NewSurface,
@@ -37,8 +38,9 @@ pub enum KeymapAction {
 }
 
 impl KeymapAction {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::CloseItem,
+        Self::RenameTerminal,
         Self::NewTerminal,
         Self::NewTerminalPane,
         Self::NewSurface,
@@ -64,6 +66,7 @@ impl KeymapAction {
     pub fn id(self) -> &'static str {
         match self {
             Self::CloseItem => "pane.close_active_item",
+            Self::RenameTerminal => "terminal.rename",
             Self::NewTerminal => "workspace.new_terminal",
             Self::NewTerminalPane => "workspace.new_terminal_pane",
             Self::NewSurface => "workspace.new_surface",
@@ -90,6 +93,7 @@ impl KeymapAction {
     pub fn title(self) -> &'static str {
         match self {
             Self::CloseItem => "Close active item",
+            Self::RenameTerminal => "Rename active terminal",
             Self::NewTerminal => "New terminal",
             Self::NewTerminalPane => "New terminal pane",
             Self::NewSurface => "New surface tab",
@@ -127,6 +131,7 @@ impl KeymapAction {
             Self::Ungroup => "cmd-shift-g",
             Self::NewSpace => "cmd-o",
             Self::CloseSpace => "cmd-shift-w",
+            Self::RenameTerminal => "",
             Self::CloseAllSessions => "",
             Self::ZoomIn => "cmd-=",
             Self::ZoomOut => "cmd--",
@@ -152,6 +157,7 @@ impl KeymapAction {
             Self::Ungroup => "ctrl-shift-g",
             Self::NewSpace => "ctrl-o",
             Self::CloseSpace => "ctrl-shift-w",
+            Self::RenameTerminal => "",
             Self::CloseAllSessions => "",
             Self::ZoomIn => "ctrl-=",
             Self::ZoomOut => "ctrl--",
@@ -330,7 +336,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_valid_unique_chords_with_three_unbound_commands() {
+    fn defaults_are_valid_unique_chords_with_four_unbound_commands() {
         let mut keys = std::collections::HashSet::new();
         let mut ids = std::collections::HashSet::new();
         for action in KeymapAction::ALL {
@@ -342,13 +348,14 @@ mod tests {
                     KeymapAction::NewFreeTerminal
                         | KeymapAction::NewFreeSurface
                         | KeymapAction::CloseAllSessions
+                        | KeymapAction::RenameTerminal
                 ));
             } else {
                 validate_chord(key).unwrap();
                 assert!(keys.insert(key), "duplicate default: {key}");
             }
         }
-        assert_eq!(keys.len(), KeymapAction::ALL.len() - 3);
+        assert_eq!(keys.len(), KeymapAction::ALL.len() - 4);
     }
 
     #[test]
@@ -360,6 +367,7 @@ mod tests {
             KeymapAction::NewFreeTerminal,
             KeymapAction::NewFreeSurface,
             KeymapAction::CloseAllSessions,
+            KeymapAction::RenameTerminal,
         ] {
             assert_eq!(store.shortcut_label(action), "Unbound");
             store.set(action, "ctrl-alt-z".into()).unwrap();

@@ -59,11 +59,18 @@ pub enum Item {
 }
 
 impl Item {
-    pub fn title(&self) -> String {
+    pub fn title(&self, names: &crate::terminal_names::TerminalNames) -> String {
         match self {
-            Self::Session(item) => item.session.title(),
+            Self::Session(item) => names.title(&item.session.info),
             Self::Plugin(item) => item.title.clone(),
             Self::PluginLauncher { .. } => "New surface".to_owned(),
+        }
+    }
+
+    pub fn title_detail(&self, names: &crate::terminal_names::TerminalNames) -> String {
+        match self {
+            Self::Session(item) => names.detail(&item.session.info),
+            _ => self.title(names),
         }
     }
 

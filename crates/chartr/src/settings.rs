@@ -76,6 +76,7 @@ pub struct ResolvedSettings {
     pub dark_theme: String,
     pub ui_font_family: String,
     pub ui_font_size: f32,
+    pub manual_name_lifetime: crate::terminal_names::ManualNameLifetime,
     pub terminal_font_family: String,
     pub terminal_font_size: f32,
     pub ad_hoc_directory: Option<PathBuf>,
@@ -96,6 +97,7 @@ impl Default for ResolvedSettings {
             dark_theme: DEFAULT_DARK_THEME.to_owned(),
             ui_font_family: "Geist".to_owned(),
             ui_font_size: 14.,
+            manual_name_lifetime: crate::terminal_names::ManualNameLifetime::default(),
             terminal_font_family: "IBM Plex Mono".to_owned(),
             terminal_font_size: 13.,
             ad_hoc_directory: None,
@@ -180,6 +182,8 @@ pub struct AppearanceContent {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 pub struct TerminalContent {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub manual_name_lifetime: Option<crate::terminal_names::ManualNameLifetime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_family: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_size: Option<f32>,
@@ -231,6 +235,9 @@ impl SettingsContent {
                 .and_then(|content| content.ui_font_size)
                 .filter(|size| size.is_finite() && *size >= 8. && *size <= 32.)
                 .unwrap_or(defaults.ui_font_size),
+            manual_name_lifetime: terminal
+                .and_then(|content| content.manual_name_lifetime)
+                .unwrap_or_default(),
             terminal_font_family: terminal
                 .and_then(|content| content.font_family.clone())
                 .unwrap_or(defaults.terminal_font_family),
@@ -1125,6 +1132,27 @@ mod tests {
         assert_eq!(store.resolved().theme_mode, ThemeMode::Fixed);
         assert_eq!(store.resolved().fixed_theme, DEFAULT_DARK_THEME);
         assert!(!scratch.path().join(SETTINGS_FILE).exists());
+    }
+
+    #[test]
+    fn manual_name_lifetime_defaults_to_keep_and_persists_both_choices() {
+        use crate::terminal_names::ManualNameLifetime;
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join(SETTINGS_FILE);
+        let mut store = SettingsStore::load(&file);
+        assert_eq!(store.resolved().manual_name_lifetime, ManualNameLifetime::Keep);
+        for lifetime in [ManualNameLifetime::Conversation, ManualNameLifetime::Keep] {
+            store
+                .update(|content| {
+                    content
+                        .terminal
+                        .get_or_insert_with(TerminalContent::default)
+                        .manual_name_lifetime = Some(lifetime);
+                })
+                .unwrap();
+            assert_eq!(store.resolved().manual_name_lifetime, lifetime);
+            assert_eq!(SettingsStore::load(&file).resolved().manual_name_lifetime, lifetime);
+        }
     }
 
     #[test]

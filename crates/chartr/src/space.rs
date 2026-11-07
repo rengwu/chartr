@@ -31,9 +31,10 @@ pub enum Kind {
 /// Window-owned integrations are created in response to these events. A
 /// `Space` can finish attaching a session without access to a GPUI window;
 /// emitting the stable item id keeps that asynchronous model boundary clean.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpaceEvent {
     TerminalReady(ItemId),
+    TerminalRetired(chartr_herdr::TerminalId),
 }
 
 pub struct Space {
@@ -144,6 +145,14 @@ impl Space {
             .collect()
     }
 
+    pub fn owned_terminal_ids(&self) -> HashSet<chartr_herdr::TerminalId> {
+        self.items
+            .values()
+            .filter_map(Item::as_session)
+            .map(|item| item.session.info.terminal.clone())
+            .collect()
+    }
+
     pub fn workspace_tabs(&self) -> &WorkspaceTabs {
         &self.layout
     }
@@ -229,7 +238,6 @@ impl Space {
         builder: terminal::TerminalBuilder,
         cx: &mut Context<Self>,
     ) -> Session {
-        let backend_id = info.id.clone();
         let session = Session::from_builder(info, builder, cx);
         let terminal = session.terminal();
         let terminal_entity = terminal.entity_id();
@@ -237,21 +245,24 @@ impl Space {
             if !matches!(event, terminal::Event::CloseTerminal) {
                 return;
             }
-            let Some(item_id) = this.sessions.get(&backend_id).copied() else {
-                return;
-            };
-            let Some(item) = this.items.get_mut(&item_id).and_then(Item::as_session_mut) else {
-                return;
-            };
-            // A reattach uses `--takeover`, which closes the superseded local
-            // client. Do not let that old client's exit mark the replacement.
-            if item.session.terminal().entity_id() == terminal_entity {
-                item.session.mark_ended();
-                cx.notify();
-            }
+            this.attachment_closed(terminal_entity, cx);
         })
         .detach();
         session
+    }
+
+    fn attachment_closed(&mut self, terminal_entity: gpui::EntityId, cx: &mut Context<Self>) {
+        // Pane numbers can change during handoff. Match the attachment itself;
+        // a superseded takeover client's exit must not mark its replacement.
+        if let Some(item) = self
+            .items
+            .values_mut()
+            .filter_map(Item::as_session_mut)
+            .find(|item| item.session.terminal().entity_id() == terminal_entity)
+        {
+            item.session.mark_ended();
+            cx.notify();
+        }
     }
 
     pub fn reattach(&mut self, id: ItemId, cx: &mut Context<Self>) {
@@ -271,7 +282,16 @@ impl Space {
                 this.reattaching.remove(&id);
                 match result {
                     Ok(builder) => {
-                        let session = this.session_from_builder(info, builder, cx);
+                        let Some(current) = this
+                            .items
+                            .get(&id)
+                            .and_then(Item::as_session)
+                            .filter(|item| item.session.info.terminal == info.terminal)
+                            .map(|item| item.session.info.clone())
+                        else {
+                            return;
+                        };
+                        let session = this.session_from_builder(current, builder, cx);
                         if let Some(item) = this.items.get_mut(&id).and_then(Item::as_session_mut) {
                             item.session.replace_attachment(session);
                             item.clear_terminal_view();
@@ -523,7 +543,12 @@ impl Space {
         }
     }
 
-    pub fn entries(&self, space: gpui::EntityId, cx: &gpui::App) -> Vec<Entry> {
+    pub fn entries(
+        &self,
+        space: gpui::EntityId,
+        names: &crate::terminal_names::TerminalNames,
+        cx: &gpui::App,
+    ) -> Vec<Entry> {
         self.layout
             .tabs()
             .iter()
@@ -546,8 +571,14 @@ impl Space {
                             .map(str::to_owned)
                             .unwrap_or_else(|| format!("{} tabs", tab.layout.item_count()))
                     } else {
-                        item.title()
+                        item.title(names)
                     },
+                    title_detail: (!grouped).then(|| item.title_detail(names)),
+                    terminal: !grouped && item.as_session().is_some(),
+                    manual_name: !grouped
+                        && item.as_session().is_some_and(|item| {
+                            names.manual(&item.session.info.terminal.0).is_some()
+                        }),
                     icon_path: (!grouped).then(|| item.icon_path()).flatten(),
                     status: (!grouped).then(|| item.status()).flatten(),
                     process_running: !grouped && item.process_running(),
@@ -627,9 +658,9 @@ impl Space {
             .collect()
     }
 
-    pub fn finish_bulk_close(&mut self, ids: &[ItemId]) {
+    pub fn finish_bulk_close(&mut self, ids: &[ItemId], cx: &mut Context<Self>) {
         for id in ids {
-            self.retire_item(*id);
+            self.retire_item(*id, cx);
         }
     }
 
@@ -652,6 +683,8 @@ impl Space {
             | Action::CloseGroup { .. }
             | Action::UngroupPane { .. }
             | Action::RenameGroup { .. }
+            | Action::RenameTerminal { .. }
+            | Action::AutomaticTerminalName { .. }
             | Action::CloseSpace { .. }
             | Action::RenameSpace { .. }
             | Action::OpenSpaceFolder { .. }
@@ -852,6 +885,49 @@ impl Space {
     /// Attach sessions discovered by the parent's one backend snapshot.
     /// Local PTY creation stays off the frame thread.
     pub fn adopt(&mut self, infos: Vec<chartr_herdr::control::Session>, cx: &mut Context<Self>) {
+        // Resolve the entire remap before removing anything: two surviving PTYs
+        // may swap pane numbers during handoff. Names belong to the PTY identity.
+        let identities: HashMap<_, _> = self
+            .items
+            .iter()
+            .filter_map(|(id, item)| {
+                item.as_session().map(|item| (item.session.info.terminal.clone(), *id))
+            })
+            .collect();
+        let remapped: HashMap<_, _> = infos
+            .iter()
+            .filter_map(|info| identities.get(&info.terminal).map(|item| (*item, info.id.clone())))
+            .collect();
+        let replaced: Vec<_> = infos
+            .iter()
+            .filter_map(|info| {
+                let item = *self.sessions.get(&info.id)?;
+                (!remapped.contains_key(&item)).then_some(item)
+            })
+            .collect();
+        for item in replaced {
+            self.remove_item(item, cx);
+        }
+        let pane_remaps: HashMap<_, _> = self
+            .sessions
+            .iter()
+            .filter_map(|(old, item)| {
+                remapped.get(item).filter(|new| *new != old).map(|new| (old.clone(), new.clone()))
+            })
+            .collect();
+        for plugin in self.items.values_mut().filter_map(Item::as_plugin_mut) {
+            if let Some(new) = plugin.bound_session.as_ref().and_then(|old| pane_remaps.get(old)) {
+                plugin.bound_session = Some(new.clone());
+            }
+        }
+        self.sessions.retain(|old, item| {
+            let keep = !remapped.contains_key(item);
+            if !keep {
+                self.missing_sessions.remove(old);
+            }
+            keep
+        });
+        self.sessions.extend(remapped.into_iter().map(|(item, pane)| (pane, item)));
         let snapshot_ids: HashSet<_> = infos.iter().map(|info| info.id.clone()).collect();
         let local = self
             .sessions
@@ -861,7 +937,7 @@ impl Space {
         for backend in confirmed_missing_sessions(local, &snapshot_ids, &mut self.missing_sessions)
         {
             if let Some(item) = self.sessions.get(&backend).copied() {
-                self.retire_item(item);
+                self.retire_item(item, cx);
             }
         }
 
@@ -1175,7 +1251,7 @@ impl Space {
             return;
         };
         let Some(backend_id) = item.as_session().map(|item| item.session.id().clone()) else {
-            self.remove_item(id);
+            self.remove_item(id, cx);
             cx.notify();
             return;
         };
@@ -1192,7 +1268,7 @@ impl Space {
                 match result {
                     Ok(()) => {
                         this.retired_sessions.insert(backend_id);
-                        this.remove_item(id);
+                        this.remove_item(id, cx);
                     }
                     Err(error) => this.problem = Some(error.to_string()),
                 }
@@ -1202,11 +1278,12 @@ impl Space {
         .detach();
     }
 
-    fn remove_item(&mut self, id: ItemId) {
+    fn remove_item(&mut self, id: ItemId, cx: &mut Context<Self>) {
         let Some(item) = self.items.remove(&id) else {
             return;
         };
         if let Some(session) = item.as_session() {
+            cx.emit(SpaceEvent::TerminalRetired(session.session.info.terminal.clone()));
             let backend_id = session.session.id().clone();
             self.sessions.remove(&backend_id);
             let dependents: Vec<_> = self
@@ -1219,7 +1296,7 @@ impl Space {
                 })
                 .collect();
             for dependent in dependents {
-                self.remove_item(dependent);
+                self.remove_item(dependent, cx);
             }
         }
         if let Err(error) = self.layout.remove_item(id) {
@@ -1230,20 +1307,20 @@ impl Space {
         }
     }
 
-    fn retire_item(&mut self, id: ItemId) {
+    fn retire_item(&mut self, id: ItemId, cx: &mut Context<Self>) {
         if let Some(backend) =
             self.items.get(&id).and_then(Item::as_session).map(|item| item.session.id().clone())
         {
             self.missing_sessions.remove(&backend);
             self.retired_sessions.insert(backend);
         }
-        self.remove_item(id);
+        self.remove_item(id, cx);
     }
 
     /// Remove terminal items after the daemon that owned their PTYs died.
     /// Plugin items and the space itself survive; no shell is recreated under
     /// a dead tab's identity.
-    pub fn drop_dead_sessions(&mut self) {
+    pub fn drop_dead_sessions(&mut self, cx: &mut Context<Self>) {
         let terminal_items: Vec<_> = self
             .items
             .iter()
@@ -1253,7 +1330,7 @@ impl Space {
         self.restoring_sessions.clear();
         self.attaching_sessions.clear();
         for id in terminal_items {
-            self.remove_item(id);
+            self.remove_item(id, cx);
         }
         self.workspace = None;
         self.starting = false;
@@ -1322,6 +1399,70 @@ mod tests {
     }
 
     struct LauncherReplacementView;
+
+    #[gpui::test]
+    fn handoff_can_swap_pane_numbers_without_replacing_items_or_names(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let root = tempfile::tempdir().unwrap();
+        let sidecar = root.path().join("herdr");
+        std::fs::write(&sidecar, []).unwrap();
+        let client = Client::new(
+            chartr_herdr::Sidecar::at(sidecar).unwrap(),
+            chartr_herdr::Namespace::rooted(root.path().join("namespace")),
+        );
+        let space = cx.new(|cx| {
+            Space::new("Project".into(), root.path().into(), Kind::Registered, client, cx)
+        });
+        let retired = Rc::new(Cell::new(0));
+        cx.update(|cx| {
+            let retired = retired.clone();
+            cx.subscribe(&space, move |_, event, _| {
+                if matches!(event, SpaceEvent::TerminalRetired(_)) {
+                    retired.set(retired.get() + 1);
+                }
+            })
+            .detach();
+        });
+        let entity = space.entity_id();
+        space.update(cx, |space, cx| {
+            let mut one = backend_session("one", root.path());
+            let mut two = backend_session("two", root.path());
+            let mut names = crate::terminal_names::TerminalNames::default();
+            names.rename(&one, "First task").unwrap();
+            names.rename(&two, "Second task").unwrap();
+            let first = Session::display_only(one.clone(), cx);
+            let second = Session::display_only(two.clone(), cx);
+            let first_id = space.insert_session_with_id(first, None).unwrap();
+            let second_id = space.insert_session_with_id(second, None).unwrap();
+            std::mem::swap(&mut one.id, &mut two.id);
+            space.adopt(vec![one.clone(), two.clone()], cx);
+            assert_eq!(space.sessions[&one.id], first_id);
+            assert_eq!(space.sessions[&two.id], second_id);
+            assert_eq!(space.item(first_id).unwrap().as_session().unwrap().session.info, one);
+            assert_eq!(
+                space
+                    .entries(entity, &names, cx)
+                    .iter()
+                    .map(|e| e.title.as_str())
+                    .collect::<Vec<_>>(),
+                ["First task", "Second task"]
+            );
+            let first_attachment =
+                space.item(first_id).unwrap().as_session().unwrap().session.terminal().entity_id();
+            space.attachment_closed(first_attachment, cx);
+            assert!(
+                space.item(first_id).unwrap().ended(),
+                "reader exit still reaches a remapped terminal"
+            );
+            assert!(!space.item(second_id).unwrap().ended());
+            space.finish_bulk_close(&[first_id], cx);
+            assert!(space.item(first_id).is_none());
+            assert!(space.item(second_id).is_some());
+        });
+        cx.run_until_parked();
+        assert_eq!(retired.get(), 1, "only the explicitly closed terminal retired");
+    }
 
     #[gpui::test]
     fn restored_ownership_and_layout_survive_snapshots_during_attachment(
@@ -1616,13 +1757,22 @@ mod tests {
             let space = space.read(cx);
             assert!(replaced);
             assert_eq!(space.workspace_tabs().location(launcher), before);
-            assert_eq!(space.item(launcher).unwrap().title(), "Hello");
+            assert_eq!(
+                space
+                    .item(launcher)
+                    .unwrap()
+                    .title(&crate::terminal_names::TerminalNames::default()),
+                "Hello"
+            );
             assert_eq!(
                 space.item(launcher).unwrap().icon_path().as_deref(),
                 Some("/plugins/hello/icons/WavingHand01Icon.svg")
             );
             assert_eq!(
-                space.entries(space_entity, cx)[0].icon_path.as_deref(),
+                space.entries(space_entity, &crate::terminal_names::TerminalNames::default(), cx)
+                    [0]
+                .icon_path
+                .as_deref(),
                 Some("/plugins/hello/icons/WavingHand01Icon.svg")
             );
             assert!(!space.item(launcher).unwrap().is_plugin_launcher());
@@ -1633,8 +1783,19 @@ mod tests {
         }));
         cx.read(|cx| {
             let space = space.read(cx);
-            assert_eq!(space.item(launcher).unwrap().title(), "Example Page");
-            assert_eq!(space.entries(space_entity, cx)[0].title, "Example Page");
+            assert_eq!(
+                space
+                    .item(launcher)
+                    .unwrap()
+                    .title(&crate::terminal_names::TerminalNames::default()),
+                "Example Page"
+            );
+            assert_eq!(
+                space.entries(space_entity, &crate::terminal_names::TerminalNames::default(), cx)
+                    [0]
+                .title,
+                "Example Page"
+            );
         });
 
         space.update(cx, |space, cx| space.act(Action::Close { space: None, item: launcher }, cx));

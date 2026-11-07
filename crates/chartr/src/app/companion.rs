@@ -116,7 +116,7 @@ impl WorkspaceWindow {
                 let sessions: Vec<_> = space.all_item_ids().into_iter().filter_map(|id| {
                     let item = space.item(id)?.as_session()?;
                     let session = &item.session;
-                    Some(json!({"id":session.id().0,"title":session.title(),"cwd":session.info.cwd,"status":format!("{:?}",session.info.status),"ended":session.ended().is_some()}))
+                    Some(json!({"id":session.id().0,"title":session.info.title(),"cwd":session.info.cwd,"status":format!("{:?}",session.info.status),"ended":session.ended().is_some()}))
                 }).collect();
                 json!({"id":space.key(),"name":space.name(),"path":space.path(),"error":space.problem(),"sessions":sessions})
             }).collect();

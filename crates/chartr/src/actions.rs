@@ -23,6 +23,7 @@ pub mod workspace {
     gpui::actions!(
         chartr_workspace,
         [
+            RenameTerminal,
             NewTerminal,
             NewTerminalPane,
             NewSurface,
@@ -122,6 +123,7 @@ fn binding(action: KeymapAction, key: &str, context: &str) -> KeyBinding {
     let context = Some(context);
     match action {
         KeymapAction::CloseItem => KeyBinding::new(key, pane::CloseActiveItem, context),
+        KeymapAction::RenameTerminal => KeyBinding::new(key, workspace::RenameTerminal, context),
         KeymapAction::NewTerminal => KeyBinding::new(key, workspace::NewTerminal, context),
         KeymapAction::NewTerminalPane => KeyBinding::new(key, workspace::NewTerminalPane, context),
         KeymapAction::NewSurface => KeyBinding::new(key, workspace::NewSurface, context),

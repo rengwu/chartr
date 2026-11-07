@@ -684,12 +684,13 @@ impl WorkspaceWindow {
                 .into_any_element();
                 let tab = chrome::ItemTab::new(
                     format!("pane-{}-item-{}", pane_id.get(), id.get()),
-                    item.title(),
+                    item.title(&self.terminal_names),
                     selected,
                     position,
                     &space_key,
                     *id,
                 )
+                .aria_label(item.title_detail(&self.terminal_names))
                 .activity(chrome::Activity { status, process_running, ended, bell, unread })
                 .icon_path(item.icon_path())
                 .close_slot(Some(close_slot))
@@ -735,13 +736,29 @@ impl WorkspaceWindow {
                         this.handle_item_drop(&dragged, tab_id, pane_id, index, false, window, cx);
                     });
                 });
+                let terminal = item.as_session();
+                let manual_name = terminal.is_some_and(|item| {
+                    self.terminal_names.manual(&item.session.info.terminal.0).is_some()
+                });
+                let menu_space = self
+                    .active
+                    .as_ref()
+                    .filter(|_| terminal.is_some())
+                    .map(|space| space.entity_id());
+                let menu_on = on.clone();
                 Some(SortableTab::new(dragged, selected, move |placement, _| {
-                    tab.position(chrome::tab_position(
-                        placement.index,
-                        placement.count,
-                        placement.active_index,
-                    ))
-                    .into_any_element()
+                    let tab = tab
+                        .position(chrome::tab_position(
+                            placement.index,
+                            placement.count,
+                            placement.active_index,
+                        ))
+                        .into_any_element();
+                    if let Some(space) = menu_space {
+                        chrome::terminal_menu(tab, space, select, manual_name, menu_on)
+                    } else {
+                        tab
+                    }
                 }))
             })
             .collect();

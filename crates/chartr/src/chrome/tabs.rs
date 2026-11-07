@@ -220,8 +220,11 @@ fn tab(
             })
             .into_any_element()
     });
-    let aria_label =
-        if entry.grouped { format!("Pane group: {}", entry.title) } else { entry.title.clone() };
+    let aria_label = if entry.grouped {
+        format!("Pane group: {}", entry.title)
+    } else {
+        entry.title_detail.clone().unwrap_or_else(|| entry.title.clone())
+    };
     let tab = ItemTab::new(
         format!("workspace-tab-{space:?}-{}", entry.tab.get()),
         entry.title.clone(),
@@ -309,6 +312,8 @@ fn tab(
                     }),
             )
             .into_any_element()
+    } else if entry.terminal {
+        super::terminal_menu(tab.into_any_element(), space, entry.key, entry.manual_name, rename)
     } else {
         tab.into_any_element()
     }
@@ -317,12 +322,14 @@ fn tab(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Context, Modifiers, Render, TestAppContext, point};
+    use gpui::{Context, Modifiers, MouseButton, Render, TestAppContext, point};
     use std::rc::Rc;
 
     struct Harness {
         grouped: bool,
         width: f32,
+        manual_name: bool,
+        on: Emit,
     }
 
     impl Render for Harness {
@@ -336,6 +343,9 @@ mod tests {
                 pane: serde_json::from_value(serde_json::json!(1)).unwrap(),
                 index: 0,
                 title: if self.grouped { "2 tabs" } else { "codex" }.into(),
+                title_detail: None,
+                terminal: true,
+                manual_name: self.manual_name,
                 icon_path: None,
                 status: None,
                 process_running: false,
@@ -353,7 +363,7 @@ mod tests {
                 false,
                 &entry,
                 &hovered,
-                Rc::new(|_, _, _| {}),
+                self.on.clone(),
                 cx,
             )))
         }
@@ -368,7 +378,12 @@ mod tests {
             cx.set_global(SettingsStore::bare());
         });
         for grouped in [false, true] {
-            let (view, cx) = cx.add_window_view(|_, _| Harness { grouped, width: 200. });
+            let (view, cx) = cx.add_window_view(|_, _| Harness {
+                grouped,
+                width: 200.,
+                manual_name: false,
+                on: Rc::new(|_, _, _| {}),
+            });
             for width in [200., 110., 200.] {
                 view.update(cx, |view, cx| {
                     view.width = width;
@@ -386,6 +401,52 @@ mod tests {
                 cx.run_until_parked();
                 assert_eq!(cx.debug_bounds("WORKSPACE_TAB_1").unwrap(), before);
             }
+        }
+    }
+    #[gpui::test]
+    fn terminal_context_menu_renames_and_resets_the_exact_item(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            ::settings::init(cx);
+            theme::init(theme::LoadThemes::JustBase, cx);
+            crate::fonts::install(&crate::settings::ResolvedSettings::default(), cx);
+            cx.set_global(SettingsStore::bare());
+        });
+        for (manual_name, selector) in
+            [(false, "MENU_ITEM-Rename Terminal"), (true, "MENU_ITEM-Use automatic name")]
+        {
+            let actions = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let recorded = actions.clone();
+            let (view, cx) = cx.add_window_view(|_, _| Harness {
+                grouped: false,
+                width: 200.,
+                manual_name,
+                on: Rc::new(move |action, _, _| recorded.borrow_mut().push(action)),
+            });
+            let parent = cx.window_handle();
+            cx.run_until_parked();
+            let tab = cx.debug_bounds("WORKSPACE_TAB_1").unwrap();
+            cx.simulate_mouse_down(tab.center(), MouseButton::Right, Modifiers::none());
+            cx.simulate_mouse_up(tab.center(), MouseButton::Right, Modifiers::none());
+            let popup = cx.windows().into_iter().find(|window| *window != parent).unwrap();
+            let mut popup = gpui::VisualTestContext::from_window(popup, cx);
+            popup.run_until_parked();
+            if !manual_name {
+                assert!(popup.debug_bounds("MENU_ITEM-Use automatic name").is_none());
+            }
+            let entry = popup.debug_bounds(selector).unwrap();
+            popup.simulate_click(entry.center(), Modifiers::none());
+            let item = serde_json::from_value(serde_json::json!(1)).unwrap();
+            let space = view.entity_id();
+            assert_eq!(
+                *actions.borrow(),
+                vec![if manual_name {
+                    Action::AutomaticTerminalName { space, item }
+                } else {
+                    Action::RenameTerminal { space, item }
+                }]
+            );
+            assert!(!popup.windows().contains(&popup.window_handle()));
+            parent.update(&mut popup, |_, window, _| window.remove_window()).unwrap();
         }
     }
 }

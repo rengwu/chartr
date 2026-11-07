@@ -112,6 +112,8 @@ impl Render for WorkspaceWindow {
             .flex_1()
             .min_w_0()
             .h_full()
+            // Tabs expose the left window edge; reveal its gutter with the strip.
+            .pl(px(WORKSPACE_INSET * chrome_visibility.tabs))
             .pr(px(WORKSPACE_INSET))
             .pb(px(WORKSPACE_INSET))
             .bg(chrome_background)
@@ -366,6 +368,9 @@ impl Render for WorkspaceWindow {
             }))
             .on_action(cx.listener(|this, _: &actions::workspace::ActivatePaneDown, window, cx| {
                 this.activate_pane_in_direction(SplitDirection::Down, window, cx)
+            }))
+            .on_action(cx.listener(|this, _: &actions::workspace::RenameTerminal, window, cx| {
+                this.rename_active_terminal(window, cx)
             }))
             .on_action(cx.listener(|this, _: &actions::workspace::NewTerminal, window, cx| {
                 this.act(Action::New, window, cx)

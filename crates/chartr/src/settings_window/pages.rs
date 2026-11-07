@@ -118,6 +118,33 @@ impl SettingsWindow {
         let retry = cx.listener(|this, _, _, cx| this.retry_backend(cx));
         let restart = cx.listener(|this, _, _, cx| this.restart_backend(cx));
         let runtime_available = self.original.upgrade().is_some();
+        let lifetime = settings.manual_name_lifetime;
+        let owner = cx.weak_entity();
+        let name_lifetime = PopupMenu::new("manual-name-lifetime-menu")
+            .trigger(form_picker("manual-name-lifetime", lifetime.label()))
+            .anchor(Anchor::TopLeft)
+            .menu(move |window, cx| {
+                let owner = owner.clone();
+                Some(ContextMenu::build_popup(window, cx, move |menu| {
+                    crate::terminal_names::ManualNameLifetime::ALL.into_iter().fold(
+                        menu,
+                        |menu, choice| {
+                            let owner = owner.clone();
+                            menu.toggleable_entry(
+                                choice.label(),
+                                choice == lifetime,
+                                IconPosition::End,
+                                None,
+                                move |_, cx| {
+                                    let _ = owner.update(cx, |this, cx| {
+                                        this.set_manual_name_lifetime(choice, cx)
+                                    });
+                                },
+                            )
+                        },
+                    )
+                }))
+            });
         let selected_font = settings.terminal_font_family.clone();
         let font_picker = PopupMenu::new("terminal-font-menu")
             .trigger(form_picker("terminal-font-family", settings.terminal_font_family))
@@ -165,6 +192,11 @@ impl SettingsWindow {
                     font_picker,
                 ),
                 setting_field("Font size", "Adjust the size of terminal text.", font_size),
+                setting_field(
+                    "Manual task names",
+                    "Automatic reset requires the agent to report its conversation identity.",
+                    name_lifetime,
+                ),
                 setting_field(
                     "Free sessions directory",
                     "Choose the working directory used when a Free session starts.",

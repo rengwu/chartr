@@ -100,6 +100,8 @@ impl PersistedItem {
 pub struct Snapshot {
     pub window: WindowState,
     pub spaces: Vec<PersistedSpace>,
+    #[serde(default)]
+    pub terminal_names: crate::terminal_names::SavedNames,
 }
 
 pub struct StateStore {
@@ -220,7 +222,18 @@ impl StateStore {
         for row in rows {
             spaces.push(serde_json::from_str(&row?).context("decoding a saved space")?);
         }
-        Ok(Snapshot { window, spaces })
+        let terminal_names: crate::terminal_names::SavedNames = self
+            .connection
+            .query_row("SELECT value_json FROM app_state WHERE key = 'terminal_names'", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .optional()?
+            .map(|json| serde_json::from_str(&json))
+            .transpose()
+            .context("decoding saved terminal names")?
+            .unwrap_or_default();
+        terminal_names.validate()?;
+        Ok(Snapshot { window, spaces, terminal_names })
     }
 
     /// App-lifetime attention is independent of window/layout snapshots.
@@ -249,6 +262,12 @@ impl StateStore {
              ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
              WHERE app_state.value_json != excluded.value_json",
             [serde_json::to_string(&snapshot.window)?],
+        )?;
+        transaction.execute(
+            "INSERT INTO app_state (key, value_json) VALUES ('terminal_names', ?1)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
+             WHERE app_state.value_json != excluded.value_json",
+            [serde_json::to_string(&snapshot.terminal_names)?],
         )?;
         let keys: HashSet<_> = snapshot.spaces.iter().map(|space| space.key.as_str()).collect();
         let stored_keys = transaction
@@ -319,6 +338,31 @@ fn state_root_from(xdg: Option<OsString>, home: Option<PathBuf>) -> Result<PathB
 mod tests {
     use super::*;
 
+    fn names(name: &str) -> crate::terminal_names::SavedNames {
+        serde_json::from_value(serde_json::json!({"version": 1, "terminals": {
+            "stable-terminal": {"name": name, "conversation": null}
+        }}))
+        .unwrap()
+    }
+
+    #[test]
+    fn names_survive_incomplete_layouts_and_preserve_independent_attention() {
+        let mut store = StateStore::memory().unwrap();
+        assert_eq!(store.load().unwrap().terminal_names, Default::default());
+        store.save_attention("attention fixture").unwrap();
+        let snapshot = Snapshot { terminal_names: names("123"), ..Snapshot::default() };
+        store.save(&snapshot).unwrap();
+        // No attached items yet: naming state is independent of attachment and layout restoration.
+        assert_eq!(store.load().unwrap(), snapshot);
+        assert_eq!(store.load_attention().unwrap().as_deref(), Some("attention fixture"));
+        store.connection.execute("DELETE FROM app_state WHERE key = 'terminal_names'", []).unwrap();
+        assert_eq!(
+            store.load().unwrap().terminal_names,
+            Default::default(),
+            "older databases load without a migration"
+        );
+    }
+
     fn space(key: &str) -> PersistedSpace {
         let mut layout = WorkspaceTabs::new();
         let item = layout.alloc_item();
@@ -373,6 +417,7 @@ mod tests {
                 ..WindowState::default()
             },
             spaces: vec![space("one"), space("two")],
+            ..Snapshot::default()
         };
         store.save(&snapshot).unwrap();
         let restored = store.load().unwrap();
@@ -425,6 +470,7 @@ mod tests {
         let mut snapshot = Snapshot { spaces: vec![space("one")], ..Snapshot::default() };
         let queued = writer.request(snapshot.clone());
         snapshot.window.sidebar_width = 444.;
+        snapshot.terminal_names = names("Latest name");
         writer.request(snapshot.clone()).save().unwrap();
         std::thread::spawn(move || queued.save()).join().unwrap().unwrap();
         assert_eq!(writer.state.lock().unwrap().store.load().unwrap(), snapshot);
@@ -449,6 +495,7 @@ mod tests {
         let mut changed = initial.clone();
         changed.window.sidebar_width = 555.;
         changed.spaces[0].name = "new name".into();
+        changed.terminal_names = names("Retry name");
         assert!(writer.request(changed.clone()).save().is_err());
         {
             let state = writer.state.lock().unwrap();

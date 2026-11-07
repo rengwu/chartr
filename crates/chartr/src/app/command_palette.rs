@@ -54,6 +54,7 @@ impl WorkspaceWindow {
         cx: &mut Context<Self>,
     ) {
         let action: Box<dyn gpui::Action> = match command {
+            PaletteCommand::RenameTerminal => Box::new(actions::workspace::RenameTerminal),
             PaletteCommand::NewTerminal => Box::new(actions::workspace::NewTerminal),
             PaletteCommand::NewTerminalPane => Box::new(actions::workspace::NewTerminalPane),
             PaletteCommand::NewSurface => Box::new(actions::workspace::NewSurface),
@@ -339,6 +340,16 @@ mod tests {
         popup.simulate_keystrokes("enter");
         popup.run_until_parked();
         assert_eq!(*events.borrow(), vec![Some(PaletteCommand::CloseAllSessions)]);
+        assert_eq!(popup.windows().len(), 1);
+    }
+
+    #[gpui::test]
+    fn rename_terminal_is_available_from_the_palette(cx: &mut gpui::TestAppContext) {
+        let (mut popup, events) = open(cx);
+        popup.simulate_input("rename active terminal");
+        popup.simulate_keystrokes("enter");
+        popup.run_until_parked();
+        assert_eq!(*events.borrow(), vec![Some(PaletteCommand::RenameTerminal)]);
         assert_eq!(popup.windows().len(), 1);
     }
 

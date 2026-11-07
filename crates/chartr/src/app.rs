@@ -119,6 +119,7 @@ struct DraggedPaneDivider {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PaletteCommand {
+    RenameTerminal,
     NewTerminal,
     NewTerminalPane,
     NewSurface,
@@ -150,12 +151,13 @@ enum PaletteCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RenameKind {
+    Terminal,
     Space,
     Group,
 }
 
 impl PaletteCommand {
-    const ALL: [(Self, &'static str, &'static str); 27] = [
+    const ALL: [(Self, &'static str, &'static str); 28] = [
         (Self::NewTerminal, "Workspace: New Terminal", "Ctrl+~"),
         (Self::NewTerminalPane, "Workspace: New terminal pane", ""),
         (Self::NewSurface, "Workspace: New surface tab", ""),
@@ -183,6 +185,7 @@ impl PaletteCommand {
         (Self::FocusUp, "Pane: Focus Up", "Cmd/Ctrl+K ↑"),
         (Self::FocusDown, "Pane: Focus Down", "Cmd/Ctrl+K ↓"),
         (Self::OpenSettings, "chartr: Open Settings", "Cmd/Ctrl+,"),
+        (Self::RenameTerminal, "Terminal: Rename active terminal", ""),
     ];
 }
 
@@ -225,6 +228,8 @@ pub struct WorkspaceWindow {
     terminal_search_target: Option<Entity<terminal::Terminal>>,
     rename_space: Option<EntityId>,
     rename_group: Option<(EntityId, WorkspaceTabId)>,
+    rename_terminal: Option<rename::TerminalRenameTarget>,
+    terminal_names: crate::terminal_names::TerminalNames,
     rename_window: Option<AnyWindowHandle>,
     rename_input: Entity<TextInput>,
     rename_query: String,
@@ -343,6 +348,10 @@ impl WorkspaceWindow {
             terminal_search_target: None,
             rename_space: None,
             rename_group: None,
+            rename_terminal: None,
+            terminal_names: crate::terminal_names::TerminalNames::restore(
+                saved.terminal_names.clone(),
+            ),
             rename_window: None,
             rename_input,
             rename_query: String::new(),
@@ -508,6 +517,7 @@ impl WorkspaceWindow {
                 && !this.terminal_search_open
                 && this.rename_space.is_none()
                 && this.rename_group.is_none()
+                && this.rename_terminal.is_none()
             {
                 this.focus_active_terminal(window, cx);
             }
@@ -515,7 +525,14 @@ impl WorkspaceWindow {
         })
         .detach();
         cx.subscribe_in(space, window, |this, space, event, window, cx| {
-            let SpaceEvent::TerminalReady(id) = *event;
+            let id = match event {
+                SpaceEvent::TerminalReady(id) => *id,
+                SpaceEvent::TerminalRetired(terminal) => {
+                    this.terminal_names.retire(&terminal.0);
+                    cx.notify();
+                    return;
+                }
+            };
             let Some(terminal) = space
                 .read(cx)
                 .item(id)
@@ -567,6 +584,7 @@ impl WorkspaceWindow {
                 && this.command_palette_window.is_none()
                 && this.rename_space.is_none()
                 && this.rename_group.is_none()
+                && this.rename_terminal.is_none()
             {
                 this.focus_active_terminal(window, cx);
             }
@@ -658,6 +676,7 @@ impl WorkspaceWindow {
 
     fn snapshot(&self, cx: &App) -> Snapshot {
         Snapshot {
+            terminal_names: self.terminal_names.saved(),
             window: WindowState {
                 chrome: self.mode,
                 terminal_mode: self.terminal_mode,
@@ -788,7 +807,7 @@ impl WorkspaceWindow {
 
     fn entries(&self, cx: &App) -> Vec<Entry> {
         self.active_space()
-            .map(|space| space.read(cx).entries(space.entity_id(), cx))
+            .map(|space| space.read(cx).entries(space.entity_id(), &self.terminal_names, cx))
             .unwrap_or_default()
     }
 
@@ -804,7 +823,7 @@ impl WorkspaceWindow {
                     active: self.active.as_ref() == Some(space),
                     removable: read.kind() == SpaceKind::Registered,
                     available: read.available(),
-                    entries: read.entries(space.entity_id(), cx),
+                    entries: read.entries(space.entity_id(), &self.terminal_names, cx),
                 }
             })
             .collect()
@@ -890,10 +909,17 @@ impl WorkspaceWindow {
                     space.update(cx, |space, _| space.ungroup_pane(tab));
                 }
             }
+            Action::RenameTerminal { space, item } => {
+                self.begin_terminal_rename(space, item, window, cx)
+            }
+            Action::AutomaticTerminalName { space, item } => {
+                self.automatic_terminal_name(space, item, cx)
+            }
             Action::RenameGroup { space, tab } => {
                 if let Some(target) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space).cloned()
                 {
+                    self.rename_terminal = None;
                     self.rename_space = None;
                     self.rename_group = Some((space, tab));
                     self.rename_query =
@@ -916,6 +942,7 @@ impl WorkspaceWindow {
                 if let Some(target) =
                     self.spaces.iter().find(|candidate| candidate.entity_id() == space)
                 {
+                    self.rename_terminal = None;
                     self.rename_group = None;
                     self.rename_space = Some(space);
                     self.rename_query = target.read(cx).name().to_owned();
@@ -1184,7 +1211,7 @@ impl WorkspaceWindow {
         let (terminal_targets, immediate): (Vec<_>, Vec<_>) =
             targets.into_iter().partition(|(_, backend)| backend.is_some());
         let immediate: Vec<_> = immediate.into_iter().map(|(item, _)| item).collect();
-        space.update(cx, |space, _| space.finish_bulk_close(&immediate));
+        space.update(cx, |space, cx| space.finish_bulk_close(&immediate, cx));
 
         if terminal_targets.is_empty() {
             if remove_space {
@@ -1223,7 +1250,7 @@ impl WorkspaceWindow {
                     .iter()
                     .filter_map(|(_, result)| result.as_ref().err().map(ToString::to_string))
                     .collect();
-                space.update(cx, |space, _| space.finish_bulk_close(&successful));
+                space.update(cx, |space, cx| space.finish_bulk_close(&successful, cx));
                 if !failures.is_empty() {
                     this.problem = Some(failures.join("\n"));
                 } else if remove_space {
@@ -1357,19 +1384,25 @@ impl WorkspaceWindow {
     }
 
     fn on_key(&mut self, event: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.rename_space.is_some() || self.rename_group.is_some() {
+        if self.rename_space.is_some()
+            || self.rename_group.is_some()
+            || self.rename_terminal.is_some()
+        {
             match event.keystroke.key.as_str() {
                 "escape" => {
                     cx.stop_propagation();
                     self.rename_space = None;
                     self.rename_group = None;
+                    self.rename_terminal = None;
                     self.rename_query.clear();
                     self.rename_input.update(cx, |input, cx| input.clear(cx));
                     window.focus(&self.focus, cx);
                 }
                 "enter" => {
                     cx.stop_propagation();
-                    if self.rename_group.is_some() {
+                    if self.rename_terminal.is_some() {
+                        self.commit_terminal_rename(window, cx);
+                    } else if self.rename_group.is_some() {
                         self.commit_group_rename(window, cx);
                     } else {
                         self.commit_space_rename(window, cx);
