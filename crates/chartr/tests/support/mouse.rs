@@ -261,8 +261,27 @@ fn killed_tui_releases_mouse_reporting_before_and_after_reattach() {
         }
         // Reports already queued at exit must be swallowed, not entered as shell text.
         attach.send(b"\x1b[<35;77;19M");
-        run(&live, &session.id, "printf '\\103HARTR_INPUT_OK\\n'");
-        let output = attach.until(|bytes| contains(bytes, b"CHARTR_INPUT_OK"));
-        assert!(!contains(&output, b"77;19"), "mouse motion leaked into the shell");
+        // Attach output is a screen-diff protocol: repaint sequences can split a
+        // marker or omit cells that already match. Observe the shell's result
+        // directly instead of requiring a contiguous string in those diffs.
+        let input_result = live._root.path().join(format!("input-{scenario}"));
+        run(
+            &live,
+            &session.id,
+            &format!("printf 'CHARTR_INPUT_OK\\n' > '{}'", input_result.display()),
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while std::fs::read(&input_result).ok().as_deref() != Some(b"CHARTR_INPUT_OK\n") {
+            assert!(
+                Instant::now() < deadline,
+                "{scenario}: shell input did not complete: {:?}",
+                live.client.read_visible(&session.id)
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            !live.client.read_visible(&session.id).unwrap().contains("77;19"),
+            "{scenario}: mouse motion leaked into the shell"
+        );
     }
 }
