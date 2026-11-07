@@ -179,3 +179,90 @@ fn shell_selection_does_not_capture_mouse_but_tui_gestures_still_arrive() {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+#[test]
+#[ignore = "needs a real herdr daemon and PTY"]
+fn killed_tui_releases_mouse_reporting_before_and_after_reattach() {
+    let live = Live::start();
+    let mut session = live.client.create_workspace(live._root.path(), Some("mouse-crash")).unwrap();
+    let fixture = live._root.path().join("mouse-tui.py");
+    let pid_file = live._root.path().join("tui.pid");
+    std::fs::write(
+        &fixture,
+        "import os, sys, time, tty\n\
+         tty.setraw(0)\n\
+         open(sys.argv[1], 'w').write(str(os.getpid()))\n\
+         os.write(1, b'\\x1b[?1003h\\x1b[?1006hCHARTR_TUI_READY')\n\
+         while True: time.sleep(1)\n",
+    )
+    .unwrap();
+
+    for scenario in ["attached", "detached", "handoff"] {
+        let mut attach = Attach::start(live.client.direct_attach(&session.terminal));
+        run(
+            &live,
+            &session.id,
+            &format!(
+                "python3 '{}' '{}'; stty sane; printf '\\103HARTR_SHELL_READY\\n'",
+                fixture.display(),
+                pid_file.display()
+            ),
+        );
+        attach
+            .until(|bytes| contains(bytes, b"CHARTR_TUI_READY") && contains(bytes, b"\x1b[?1003h"));
+        if scenario == "handoff" {
+            drop(attach);
+            let mut command = Command::new(sidecar().path());
+            command.args(["server", "live-handoff", "--import-exe"]).arg(sidecar().path());
+            for (key, value) in live.client.namespace().env() {
+                match value {
+                    Some(value) => command.env(key, value),
+                    None => command.env_remove(key),
+                };
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            live.client.reconnect(Duration::from_secs(10)).unwrap();
+            session = live
+                .client
+                .sessions(None)
+                .unwrap()
+                .into_iter()
+                .find(|candidate| candidate.terminal == session.terminal)
+                .expect("handoff must preserve the running terminal identity");
+            attach = Attach::start(live.client.direct_attach(&session.terminal));
+            attach.until(|bytes| contains(bytes, b"\x1b[?1003h"));
+        }
+        // Give the backend's normal foreground observer a chance to see the job.
+        std::thread::sleep(Duration::from_millis(700));
+        let detached = scenario == "detached";
+        let mut attach = if detached {
+            drop(attach);
+            None
+        } else {
+            Some(attach)
+        };
+        let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().parse().unwrap();
+        assert!(Command::new("kill").args(["-KILL", &pid.to_string()]).status().unwrap().success());
+        // Reopen only after the shell has regained the PTY while detached.
+        if detached {
+            std::thread::sleep(Duration::from_millis(700));
+            attach = Some(Attach::start(live.client.direct_attach(&session.terminal)));
+        }
+        let attach = attach.as_mut().unwrap();
+        let output = attach.until(|bytes| {
+            contains(bytes, b"CHARTR_SHELL_READY") && contains(bytes, b"\x1b[?1003l")
+        });
+        if detached {
+            assert!(
+                !contains(&output, b"\x1b[?1003h"),
+                "reattach must not revive stale mouse reporting"
+            );
+        }
+        // Reports already queued at exit must be swallowed, not entered as shell text.
+        attach.send(b"\x1b[<35;77;19M");
+        run(&live, &session.id, "printf '\\103HARTR_INPUT_OK\\n'");
+        let output = attach.until(|bytes| contains(bytes, b"CHARTR_INPUT_OK"));
+        assert!(!contains(&output, b"77;19"), "mouse motion leaked into the shell");
+    }
+}

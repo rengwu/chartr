@@ -36,7 +36,7 @@ use std::fmt;
 /// Not a floor and not a range. Direct attachment rides Herdr's command line,
 /// which carries no compatibility promise, so the client and the vendored
 /// executable move together or not at all.
-pub const SUPPORTED_HERDR_VERSION: &str = "0.8.2-chartr.5a2dee700eee.identity.9ed02822c877";
+pub const SUPPORTED_HERDR_VERSION: &str = "0.8.2-chartr.5a2dee700eee.identity.914a955dff8a";
 
 /// The upstream package version used to produce [`SUPPORTED_HERDR_VERSION`].
 pub const SUPPORTED_HERDR_UPSTREAM_VERSION: &str = "0.8.2";
@@ -48,9 +48,9 @@ pub const SUPPORTED_HERDR_UPSTREAM_VERSION: &str = "0.8.2";
 /// child terminal, which makes mouse-aware TUIs such as Claude Code unclickable.
 pub const SUPPORTED_HERDR_REVISION: &str = "5a2dee700eeeea68267a4d16777307632f77172f";
 
-/// SHA-256 of the tracked backend terminal-identity patch.
+/// SHA-256 of the tracked backend identity and terminal-recovery patch.
 pub const SUPPORTED_HERDR_PATCH_SHA256: &str =
-    "9ed02822c8773c63053cf4d42745fff8758ef5aa57ddb5d4c3c55eec56bdaf70";
+    "914a955dff8a09b224d4de41d7b7db72384328f38cc58a36e86d32f2c47b02ff";
 
 /// The socket API protocol version [`SUPPORTED_HERDR_VERSION`] speaks.
 pub const SUPPORTED_PROTOCOL: u32 = 22;

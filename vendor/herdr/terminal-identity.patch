@@ -133,3 +133,137 @@
          let mut import_child = match crate::server::handoff::spawn_handoff_import(
              import_exe.as_deref(),
              &socket_path,
+--- a/src/pane.rs
++++ b/src/pane.rs
+@@ -671,6 +671,7 @@
+ }
+ 
+ #[cfg(unix)]
++#[allow(clippy::too_many_arguments)]
+ fn spawn_basic_detection_task(
+     pane_id: PaneId,
+     child_pid: Arc<AtomicU32>,
+@@ -678,6 +679,8 @@
+     detection_content_seq: Arc<AtomicU64>,
+     full_lifecycle_authority_active: Arc<AtomicBool>,
+     state_events: mpsc::Sender<AppEvent>,
++    render_notify: Arc<Notify>,
++    render_dirty: Arc<RenderSignal>,
+ ) -> (
+     tokio::task::AbortHandle,
+     Arc<Notify>,
+@@ -754,6 +757,11 @@
+             let foreground_pgid = (pid > 0)
+                 .then(|| crate::detect::foreground_process_group_id(pid))
+                 .flatten();
++            if terminal.recover_mouse_reporting(pid, foreground_pgid, last_foreground_pgid)
++                && render_dirty.request_pty(pane_id)
++            {
++                render_notify.notify_one();
++            }
+             let process_group_changed =
+                 foreground_group_changed(foreground_pgid, last_foreground_pgid);
+             let should_check_process = pid > 0 && {
+@@ -1992,6 +2000,8 @@
+             detection_content_seq.clone(),
+             full_lifecycle_authority_active.clone(),
+             events,
++            render_notify,
++            render_dirty,
+         );
+ 
+         Ok(Self {
+@@ -2297,6 +2307,11 @@
+                         let retry =
+                             last_content_seq.is_some() && last_content_seq != Some(content_seq);
+                         last_observation = (now, (!retry).then_some(content_seq));
++                    }
++                    if terminal.recover_mouse_reporting(pid, foreground_pgid, last_foreground_pgid)
++                        && render_dirty.request_pty(pane_id)
++                    {
++                        render_notify.notify_one();
+                     }
+                     let process_group_changed =
+                         foreground_group_changed(foreground_pgid, last_foreground_pgid);
+--- a/src/pane/terminal.rs
++++ b/src/pane/terminal.rs
+@@ -431,6 +431,35 @@
+ 
+     pub fn modify_other_keys_level(&self) -> u8 {
+         self.ghostty.modify_other_keys_level()
++    }
++
++    /// A killed or suspended foreground job cannot undo its mouse modes.
++    /// Only recover on a known return to the owning shell: unknown probes,
++    /// a live job (including a reattachment), and shell-owned modes survive.
++    pub fn recover_mouse_reporting(
++        &self,
++        shell_pid: u32,
++        foreground_pgid: Option<u32>,
++        previous_pgid: Option<u32>,
++    ) -> bool {
++        if shell_pid == 0
++            || foreground_pgid != Some(shell_pid)
++            || !previous_pgid.is_some_and(|previous| previous != shell_pid)
++        {
++            return false;
++        }
++        let Ok(mut core) = self.ghostty.core.lock() else {
++            return false;
++        };
++        if !core.terminal.mouse_tracking_enabled().unwrap_or(false) {
++            return false;
++        }
++        // Change modes directly, without disturbing a partial escape sequence,
++        // the screen, scrollback, or shell settings such as bracketed paste.
++        for mode in [9, 1000, 1002, 1003, 1005, 1006, 1015, 1016] {
++            let _ = core.terminal.mode_set(mode, false);
++        }
++        true
+     }
+ 
+     pub fn sgr_pixel_mouse_enabled(&self) -> bool {
+@@ -4887,6 +4916,43 @@
+     }
+ 
+     #[test]
++    fn shell_regaining_foreground_releases_mouse_without_clearing_screen() {
++        let (tx, _rx) = mpsc::channel(4);
++        let mut terminal = crate::ghostty::Terminal::new(80, 24, 4096).unwrap();
++        terminal.write(b"retained output\x1b[?2004h\x1b[?1003h\x1b[?1006h");
++        let pane = PaneTerminal::new(GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap());
++        let before = pane.visible_text();
++        for (shell, foreground, previous) in [
++            (0, Some(10), Some(20)),
++            (10, None, Some(20)),
++            (10, Some(10), None),
++            (10, Some(10), Some(10)),
++            (10, Some(20), Some(20)),
++            (10, Some(30), Some(20)),
++        ] {
++            assert!(!pane.recover_mouse_reporting(shell, foreground, previous));
++            assert!(pane.mouse_reporting_enabled());
++        }
++        assert!(pane.recover_mouse_reporting(10, Some(10), Some(20)));
++        assert!(!pane.mouse_reporting_enabled());
++        assert!(pane.bracketed_paste_enabled());
++        assert_eq!(pane.visible_text(), before);
++        assert!(pane
++            .encode_mouse_motion(
++                crossterm::event::MouseEventKind::Moved,
++                crate::input::mouse::Position::Cell { column: 4, row: 6 },
++                crossterm::event::KeyModifiers::empty(),
++            )
++            .is_none());
++        assert!(!pane.recover_mouse_reporting(10, Some(10), Some(20)));
++        pane.process_pty_bytes(PaneId::from_raw(1), 0, b"\x1b[?1003h\x1b[?1006h", &tx);
++        assert!(
++            pane.mouse_reporting_enabled(),
++            "the next TUI can enable mouse reporting"
++        );
++    }
++
++    #[test]
+     fn ghostty_mouse_button_encoding_uses_live_terminal_state() {
+         let (tx, _rx) = mpsc::channel(4);
+         let mut terminal = crate::ghostty::Terminal::new(80, 24, 0).unwrap();
