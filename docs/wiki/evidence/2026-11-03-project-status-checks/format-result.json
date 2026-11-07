@@ -1,0 +1,14 @@
+{
+  "name": "format",
+  "argv": [
+    "cargo",
+    "fmt",
+    "--all",
+    "--check"
+  ],
+  "command": "cargo fmt --all --check",
+  "exit_code": 0,
+  "seconds": 1.05,
+  "log": "format.log",
+  "finished": "2026-11-03T01:43:00.980692+08:00"
+}

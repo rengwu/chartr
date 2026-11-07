@@ -1,0 +1,9 @@
+   Compiling chartr-agent v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-agent)
+   Compiling chartr-plugin v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin)
+   Compiling chartr-herdr v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr)
+   Compiling chartr-plugin-host v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin-host)
+   Compiling chartr-conversations v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-conversations)
+   Compiling chartr v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 22.78s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

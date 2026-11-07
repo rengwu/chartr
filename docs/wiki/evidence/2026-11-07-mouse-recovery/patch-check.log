@@ -1,0 +1,6 @@
+patching file 'src/app/mod.rs'
+patching file 'src/server/handoff.rs'
+patching file 'src/server/headless/bootstrap.rs'
+patching file 'src/server/headless/lifecycle.rs'
+patching file 'src/pane.rs'
+patching file 'src/pane/terminal.rs'

@@ -1,0 +1,29 @@
+test_candidate_cannot_be_published_to_stable_aur (test_aur_packages.AurPackageTests.test_candidate_cannot_be_published_to_stable_aur) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_first_publication_update_and_retry (test_aur_packages.AurPackageTests.test_first_publication_update_and_retry) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_older_release_and_changed_same_version_cannot_overwrite_aur (test_aur_packages.AurPackageTests.test_older_release_and_changed_same_version_cannot_overwrite_aur) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_stable_and_candidate_build_from_the_same_aur_recipe (test_aur_packages.AurPackageTests.test_stable_and_candidate_build_from_the_same_aur_recipe) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_tampered_source_fails_checksum_validation (test_aur_packages.AurPackageTests.test_tampered_source_fails_checksum_validation) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_wrong_architecture_or_version_is_rejected (test_aur_packages.AurPackageTests.test_wrong_architecture_or_version_is_rejected) ... skipped 'requires Arch tools on x86_64 and an unprivileged user'
+test_bundle_cannot_write_unexpected_paths (test_aur_release.AurReleaseTests.test_bundle_cannot_write_unexpected_paths) ... ok
+test_drafts_prereleases_and_mismatched_tags_are_rejected (test_aur_release.AurReleaseTests.test_drafts_prereleases_and_mismatched_tags_are_rejected) ... ok
+test_duplicate_checksum_entry_is_rejected (test_aur_release.AurReleaseTests.test_duplicate_checksum_entry_is_rejected) ... ok
+test_metadata_must_match_the_published_binary (test_aur_release.AurReleaseTests.test_metadata_must_match_the_published_binary) ... ok
+test_modified_recipe_archive_is_rejected (test_aur_release.AurReleaseTests.test_modified_recipe_archive_is_rejected) ... ok
+test_published_stable_release_is_accepted (test_aur_release.AurReleaseTests.test_published_stable_release_is_accepted) ... ok
+test_changed_patch_cannot_reuse_old_binary (test_herdr_fetch.FetchTests.test_changed_patch_cannot_reuse_old_binary) ... ok
+test_cold_build_then_reuse_and_forced_rebuild (test_herdr_fetch.FetchTests.test_cold_build_then_reuse_and_forced_rebuild) ... ok
+test_failed_build_preserves_previous_binary (test_herdr_fetch.FetchTests.test_failed_build_preserves_previous_binary) ... ok
+test_invalid_target_fails_before_network (test_herdr_fetch.FetchTests.test_invalid_target_fails_before_network) ... ok
+test_matching_binary_needs_no_zig_or_network (test_herdr_fetch.FetchTests.test_matching_binary_needs_no_zig_or_network) ... ok
+test_patch_failure_preserves_previous_binary_and_does_not_cache_source (test_herdr_fetch.FetchTests.test_patch_failure_preserves_previous_binary_and_does_not_cache_source) ... ok
+test_stale_sidecar_is_replaced (test_herdr_fetch.FetchTests.test_stale_sidecar_is_replaced) ... ok
+test_wrong_built_version_is_not_published (test_herdr_fetch.FetchTests.test_wrong_built_version_is_not_published) ... ok
+test_wrong_zig_fails_before_network (test_herdr_fetch.FetchTests.test_wrong_zig_fails_before_network) ... ok
+test_both_formats_preserve_sidecar_layout_and_binary_contents (test_linux_packages.PackageTests.test_both_formats_preserve_sidecar_layout_and_binary_contents) ... skipped 'requires Ubuntu/Debian packaging tools and a C compiler'
+test_rejects_missing_sidecar (test_linux_packages.PackageTests.test_rejects_missing_sidecar) ... skipped 'requires Ubuntu/Debian packaging tools and a C compiler'
+test_rejects_wrong_sidecar_before_creating_packages (test_linux_packages.PackageTests.test_rejects_wrong_sidecar_before_creating_packages) ... skipped 'requires Ubuntu/Debian packaging tools and a C compiler'
+
+----------------------------------------------------------------------
+Ran 24 tests in 2.195s
+
+OK (skipped=9)

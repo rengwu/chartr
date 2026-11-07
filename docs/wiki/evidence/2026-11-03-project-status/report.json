@@ -1,0 +1,502 @@
+{
+  "schema": "project-status/v1",
+  "id": "chartr-2026-11-03",
+  "project": "Chartr",
+  "checked": "2026-11-03",
+  "revisions": [
+    {
+      "name": "chartr/main",
+      "revision": "369298062bfd5ba00ad0c273d580ce408797b19c",
+      "note": "matches remote main; 24 modified Rust files and 1 new Rust file"
+    },
+    {
+      "name": "latest release v0.3.2",
+      "revision": "204e9a7985ac2944c1478b21602e6ca541226ae3",
+      "note": "published 21 October 2026"
+    },
+    {
+      "name": "Herdr",
+      "revision": "5a2dee700eeeea68267a4d16777307632f77172f",
+      "note": "terminal-identity patch; tested binary recorded in identity.json"
+    }
+  ],
+  "summary": "Chartr is a desktop terminal and agent workspace; its current macOS build, 451 workspace tests and 3 isolated backend tests pass. Since v0.3.2, two styling changes reached main, while terminal naming and the Tabs left inset remain local. Native naming behavior and broader desktop coverage remain unverified.",
+  "findings": [
+    {
+      "id": "local-naming",
+      "kind": "unshipped",
+      "title": "Terminal naming and the Tabs inset are uncommitted",
+      "text": "The working tree adds automatic/manual titles, configurable name lifetime, durable identity handling and a matching Tabs left gap.",
+      "next": "Verify terminal naming in an isolated native app.",
+      "sources": [
+        "docs/wiki/evidence/2026-11-03-project-status-checks/release-delta.json",
+        "docs/wiki/evidence/2026-11-03-project-status-checks/git-status.txt",
+        "docs/wiki/verification/runs/2026-10-30-terminal-task-names.md"
+      ],
+      "features": [
+        "FEAT-terminals-task-names",
+        "FEAT-settings-name-lifetime",
+        "FEAT-session-lifecycle-name-identity",
+        "FEAT-panes-tabs-inset"
+      ],
+      "parts": [
+        "desktop",
+        "state",
+        "herdr"
+      ]
+    },
+    {
+      "id": "unreleased-style",
+      "kind": "unshipped",
+      "title": "2 styling commits are absent from v0.3.2",
+      "text": "Main adds the rounded workspace frame and smaller space headings; its macOS, Ubuntu, Arch and package jobs pass.",
+      "next": "Prepare a next-release checklist covering the committed and local changes.",
+      "sources": [
+        "70dade9eed2cfcc7c91d05638076331b173699e0",
+        "369298062bfd5ba00ad0c273d580ce408797b19c",
+        "https://github.com/rengwu/chartr/actions/runs/39668173424",
+        "https://github.com/rengwu/chartr/actions/runs/39668173443"
+      ],
+      "features": [
+        "FEAT-panes-rounded-frame",
+        "FEAT-spaces-title-style"
+      ],
+      "parts": [
+        "desktop",
+        "packages"
+      ]
+    },
+    {
+      "id": "feature-doc-drift",
+      "kind": "outdated-docs",
+      "title": "2 feature descriptions retain outdated wording",
+      "text": "Settings names IBM Plex Sans instead of Geist, and lifecycle still calls Close All Sessions a dirty addition although v0.3.2 includes it.",
+      "next": "Correct these current-feature descriptions while preserving dated migration evidence.",
+      "sources": [
+        "docs/wiki/features/settings.md:37",
+        "docs/wiki/features/session-lifecycle.md:43",
+        "crates/chartr/src/settings.rs:98",
+        "git show v0.3.2:crates/chartr/src/app/command_palette.rs"
+      ],
+      "features": [
+        "FEAT-settings",
+        "FEAT-session-lifecycle"
+      ],
+      "parts": [
+        "desktop"
+      ]
+    }
+  ],
+  "bugs": "No product bug reproduced by the executed checks. GitHub has no open issues or pull requests.",
+  "features": [
+    {
+      "id": "FEAT-terminals-task-names",
+      "area": "Since v0.3.2: local changes",
+      "name": "Terminal task names",
+      "does": "Shows manual or conversation titles, removes matching project suffixes, and provides rename/reset menus and full label details.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "local",
+      "testedNote": "11 naming tests; palette and context-menu tests"
+    },
+    {
+      "id": "FEAT-settings-name-lifetime",
+      "area": "Since v0.3.2: local changes",
+      "name": "Name lifetime and rename shortcut",
+      "does": "Keeps manual names by default or resets on a known conversation change; supports an optional rename shortcut.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "local",
+      "testedNote": "settings round-trip and keymap tests"
+    },
+    {
+      "id": "FEAT-session-lifecycle-name-identity",
+      "area": "Since v0.3.2: local changes",
+      "name": "Names across restart and handoff",
+      "does": "Stores names by terminal ID and preserves item ownership when backend pane numbers move or swap.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "local",
+      "testedNote": "SQLite, identity-swap and reader-exit fixtures"
+    },
+    {
+      "id": "FEAT-panes-tabs-inset",
+      "area": "Since v0.3.2: local changes",
+      "name": "Tabs left inset",
+      "does": "Adds a matching 4 px left gap in Tabs while keeping Spaces flush with the sidebar.",
+      "built": "done",
+      "tested": "manual",
+      "delivery": "local",
+      "testedNote": "2026-10-30 isolated macOS check; current view.rs hash matches"
+    },
+    {
+      "id": "FEAT-panes-rounded-frame",
+      "area": "Since v0.3.2: committed changes",
+      "name": "Rounded workspace frame",
+      "does": "Wraps the terminal workspace in a rounded outline with right and bottom outer gaps.",
+      "built": "done",
+      "tested": "manual",
+      "delivery": "main",
+      "testedNote": "2026-10-30 macOS frame inspection includes the later left inset"
+    },
+    {
+      "id": "FEAT-spaces-title-style",
+      "area": "Since v0.3.2: committed changes",
+      "name": "Smaller space headings",
+      "does": "Uses 11 px muted, medium-weight space titles at the default interface scale.",
+      "built": "done",
+      "tested": "unknown",
+      "delivery": "main"
+    },
+    {
+      "id": "FEAT-spaces",
+      "area": "Released workspace features",
+      "name": "Spaces and folders",
+      "does": "Organizes folder spaces and Free sessions with ownership, rename, reorder and folder recovery.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "space, sidebar and ownership fixtures"
+    },
+    {
+      "id": "FEAT-panes",
+      "area": "Released workspace features",
+      "name": "Tabs, groups and splits",
+      "does": "Creates and rearranges terminal or plugin panes with drag, split, join, zoom and saved layout.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "workspace, drag/drop and pane fixtures"
+    },
+    {
+      "id": "FEAT-workspace-views",
+      "area": "Released workspace features",
+      "name": "Tabs and Spaces views",
+      "does": "Switches views through Settings and retains workspace selection, geometry and keyboard commands.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "mode, restoration and palette fixtures"
+    },
+    {
+      "id": "FEAT-terminals",
+      "area": "Released workspace features",
+      "name": "Terminal interaction and search",
+      "does": "Runs private Herdr sessions through the pinned Zed terminal with literal search and terminal input.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "literal-search tests; 3 real-backend/PTY checks"
+    },
+    {
+      "id": "FEAT-session-lifecycle",
+      "area": "Released workspace features",
+      "name": "Recovery, close and persistence",
+      "does": "Detaches or terminates sessions, restores layout, closes sessions in bulk and recovers the backend.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "persistence and lifecycle fixtures; real backend crash/recovery"
+    },
+    {
+      "id": "FEAT-settings",
+      "area": "Released workspace features",
+      "name": "Settings, themes and hotkeys",
+      "does": "Persists global appearance, terminal, view and shortcut preferences; defaults to Geist and IBM Plex Mono.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "settings, keymap and responsive-control fixtures"
+    },
+    {
+      "id": "FEAT-panes-attention",
+      "area": "Released workspace features",
+      "name": "Agent attention and notifications",
+      "does": "Tracks unread attention and prepares space/agent notification titles with supported-log reply previews.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "state, focus, stale-event and log-reader fixtures"
+    },
+    {
+      "id": "FEAT-plugin-packages",
+      "area": "Released plugins and tools",
+      "name": "Plugin installation",
+      "does": "Installs prebuilt local or Git packages with permissions, replacement, enablement and restart handling.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "22 installer tests executed; host discovery fixtures"
+    },
+    {
+      "id": "FEAT-plugin-runtime",
+      "area": "Released plugins and tools",
+      "name": "Plugin surfaces and services",
+      "does": "Hosts native, embedded and web surfaces with project permissions and shared Agent/Skills/Prompts services.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "Rust host/permission tests; JavaScript bridge uses mocks"
+    },
+    {
+      "id": "FEAT-agents-inbox",
+      "area": "Released plugins and tools",
+      "name": "Agent launcher",
+      "does": "Configures CLI adapters and starts agents in terminals owned by the selected space.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "launch argument, registry and UI-dispatch fixtures"
+    },
+    {
+      "id": "FEAT-agents-inbox-history",
+      "area": "Released plugins and tools",
+      "name": "Retained conversation history",
+      "does": "Stores session identity and reads supported logs; the Chats view remains disabled by design.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "history binding, log fixtures and legacy-mode restoration"
+    },
+    {
+      "id": "FEAT-skill-sources",
+      "area": "Released plugins and tools",
+      "name": "Skill sources",
+      "does": "Registers local or Git sources and resolves ordered discovery, exact pins and prompt-template exports.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "registry, discovery, conflict and precedence fixtures"
+    },
+    {
+      "id": "FEAT-saved-prompts",
+      "area": "Released plugins and tools",
+      "name": "Saved Prompts",
+      "does": "Creates, edits, copies and deletes a shared prompt library with stable IDs and conflict handling.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "storage and GPUI modal fixtures"
+    },
+    {
+      "id": "FEAT-markdown-prompt",
+      "area": "Released plugins and tools",
+      "name": "Markdown Prompt",
+      "does": "Composes text and template chips and writes marked Markdown sections only on explicit Save.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "real temporary-file saves, conflict and document fixtures"
+    },
+    {
+      "id": "FEAT-wayfinder",
+      "area": "Released plugins and tools",
+      "name": "Wayfinder maps and claims",
+      "does": "Browses .plan maps and launches reviewed tickets through Agent and Skills with session claims.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "file/model/bridge fixtures and JavaScript geometry tests"
+    },
+    {
+      "id": "FEAT-status-bar",
+      "area": "Released plugins and tools",
+      "name": "Status-bar preference",
+      "does": "Shows or hides the background-status bar and retains the choice across restarts.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "settings persistence fixtures"
+    },
+    {
+      "id": "FEAT-status-bar-contributions",
+      "area": "Released plugins and tools",
+      "name": "Background-service buttons",
+      "does": "Polls plugin status and opens the corresponding plugin settings from each button.",
+      "built": "done",
+      "tested": "unknown",
+      "delivery": "released"
+    },
+    {
+      "id": "FEAT-distribution",
+      "area": "Distribution",
+      "name": "macOS and Linux packages",
+      "does": "Publishes Apple silicon macOS and Linux x86_64/ARM64 packages with a pinned Herdr sidecar.",
+      "built": "done",
+      "tested": "automated",
+      "delivery": "released",
+      "testedNote": "local script checks; published assets and main CI confirmed"
+    }
+  ],
+  "parts": [
+    {
+      "id": "desktop",
+      "name": "GPUI desktop workspace"
+    },
+    {
+      "id": "terminal",
+      "name": "Pinned Zed terminal"
+    },
+    {
+      "id": "herdr",
+      "name": "Private Herdr backend"
+    },
+    {
+      "id": "state",
+      "name": "SQLite and settings files"
+    },
+    {
+      "id": "plugin-host",
+      "name": "Plugin host and permissions"
+    },
+    {
+      "id": "native-tools",
+      "name": "Agent, Skills, Prompts, Markdown Prompt"
+    },
+    {
+      "id": "web-tools",
+      "name": "Wayfinder and web surfaces"
+    },
+    {
+      "id": "history",
+      "name": "Conversation and log readers"
+    },
+    {
+      "id": "packages",
+      "name": "macOS and Linux packaging"
+    }
+  ],
+  "links": [
+    {
+      "from": "desktop",
+      "to": "terminal",
+      "label": "renders"
+    },
+    {
+      "from": "terminal",
+      "to": "herdr",
+      "label": "direct attach"
+    },
+    {
+      "from": "desktop",
+      "to": "herdr",
+      "label": "status and lifecycle"
+    },
+    {
+      "from": "desktop",
+      "to": "state",
+      "label": "persists layout and settings"
+    },
+    {
+      "from": "desktop",
+      "to": "plugin-host",
+      "label": "opens surfaces"
+    },
+    {
+      "from": "plugin-host",
+      "to": "native-tools",
+      "label": "bundled modules"
+    },
+    {
+      "from": "plugin-host",
+      "to": "web-tools",
+      "label": "permission bridge"
+    },
+    {
+      "from": "native-tools",
+      "to": "state",
+      "label": "private registries"
+    },
+    {
+      "from": "web-tools",
+      "to": "native-tools",
+      "label": "Agent and Skills services"
+    },
+    {
+      "from": "desktop",
+      "to": "history",
+      "label": "identity and reply previews"
+    },
+    {
+      "from": "packages",
+      "to": "desktop",
+      "label": "bundles app"
+    },
+    {
+      "from": "packages",
+      "to": "herdr",
+      "label": "pins sidecar"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Workspace tests",
+      "result": "451 passed; 7 ignored by default; 3 of those passed in the separate backend run.",
+      "command": "cargo test --workspace --locked --no-fail-fast"
+    },
+    {
+      "name": "Real backend and PTY",
+      "result": "3 passed: direct attach, crash recovery and shell/TUI mouse routing in disposable private namespaces.",
+      "command": "target/debug/deps/live_session-3e4e2f6b3cfb3ed6 --ignored --nocapture --test-threads=1"
+    },
+    {
+      "name": "Desktop build",
+      "result": "Passed on macOS 27 arm64, Rust 1.96.0; normal app built after test compilation.",
+      "command": "cargo build -p chartr --locked"
+    },
+    {
+      "name": "Formatting and plugin example",
+      "result": "Both passed.",
+      "command": "cargo fmt --all --check; cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked"
+    },
+    {
+      "name": "Python release scripts",
+      "result": "15 passed; 9 platform-specific cases skipped.",
+      "command": "python3 -B -m unittest discover -s scripts/tests -v"
+    },
+    {
+      "name": "JavaScript bridge and layout",
+      "result": "10 passed; bridge tests use a mock host.",
+      "command": "node --test crates/chartr/tests/plugin_bridge.cjs plugins/wayfinder/tests/layout.test.mjs"
+    },
+    {
+      "name": "Committed main CI",
+      "result": "macOS, Ubuntu, Arch/AUR checks and all 3 package build jobs succeeded at 36929806; release draft job intentionally skipped.",
+      "command": "gh run view 39668173424; gh run view 39668173443"
+    },
+    {
+      "name": "Changes since latest release",
+      "result": "4 commits: 2 UI changes plus publication records and v0.3.2 installation links; local changes are listed above.",
+      "command": "git log v0.3.2..HEAD; git diff v0.3.2..HEAD; git diff HEAD"
+    },
+    {
+      "name": "Release and remote state",
+      "result": "v0.3.2 remains latest stable; main matches remote; no open issues or PRs.",
+      "command": "gh api repos/rengwu/chartr/releases/latest; git ls-remote origin refs/heads/main"
+    },
+    {
+      "name": "Feature and source evidence",
+      "result": "All 15 existing feature records traced; split rows distinguish newer behavior. Logs, source hashes and per-feature test names are under docs/wiki/evidence/2026-11-03-project-status-checks/.",
+      "command": "feature-evidence.json; identity.json; results.json; release-delta.json"
+    },
+    {
+      "name": "Historical frame evidence",
+      "result": "October 30 native Tabs/Spaces measurements retained; current view.rs and terminal_names.rs match their recorded hashes.",
+      "command": "historical-source-comparison.json"
+    },
+    {
+      "name": "Existing documentation checks",
+      "result": "21 verification reports validated; 101 pages and links passed before adding this status page.",
+      "command": "check-reports.mjs docs/wiki; node docs/wiki/_build.mjs --check"
+    }
+  ],
+  "notChecked": [
+    "Native naming dialogs, embedded-surface focus and frontend restart; automatic-title freshness and reset behavior with real providers",
+    "Native notification appearance and click routing, explicitly deferred until the next release; task names in notifications also remain deferred",
+    "Current-tree Linux/Arch execution and new distributable inspection; committed-main CI does not include the local changes",
+    "Physical input, clipboard/IME, accessibility, full plugin journeys, theme/layout matrix and Low Power Mode latency or power-transition measurements",
+    "Dedicated checks of the space-heading typography and background-service polling/buttons",
+    "4 remaining ignored Rust cases: real plugin download, installed OpenCode export, installed Grok session path and one documentation example",
+    "AUR publication remains deferred while account setup is unavailable; the GitHub AUR recipe is not an AUR listing"
+  ]
+}

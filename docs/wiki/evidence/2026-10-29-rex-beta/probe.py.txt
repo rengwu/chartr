@@ -1,0 +1,44 @@
+import subprocess,json,time,base64,sys
+from pathlib import Path
+p=Path('/tmp/chartr-rex-analysis-20261029')
+cli=['/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex','-S','unix://'+str(p/'server.sock'),'--autostart=false']
+results=[]
+def run(args,ok=True):
+ r=subprocess.run(cli+args,text=True,capture_output=True,timeout=15)
+ if ok and r.returncode:raise RuntimeError(r.stderr)
+ return r
+def j(args):return json.loads(run(args).stdout)
+def record(name,passed,observed):
+ results.append(dict(name=name,passed=bool(passed),observed=observed));(p/'probe-results.json').write_text(json.dumps(results,indent=2));print(name,':',passed,flush=True)
+new=j(['new','chartr-rex-audit','--shell','none','--keep-open','-c',str(p),'--json','--',sys.executable,'-u',str(p/'fixture.py')]);(p/'fixture-session.json').write_text(json.dumps(new,indent=2));s=new['session_id'];b=new['initial_windows'][0]['block_ids'][0]
+def block(m,a={}):return j(['block','call','-s',s,'-b',b,m,json.dumps(a)])
+def api(m,a={}):return j(['api','call','-s',s,m,json.dumps(a)])
+seq=0
+def emit(text):
+ global seq
+ seq+=1;block('write',{'data':json.dumps({'text':text,'seq':seq})+'\n'})
+ deadline=time.monotonic()+5
+ while time.monotonic()<deadline:
+  if 'ACK_'+str(seq) in block('format',{'trim':True})['content']:return
+  time.sleep(.04)
+ raise RuntimeError('fixture acknowledgement not captured')
+def osc(body):emit('\x1b]7501;'+body+'\x1b\\')
+def records():return block('program_status')['records']
+osc('state=working:app=cargo:progress=42:title=QnVpbGQ=:msg=Q29tcGlsaW5n');r=records();record('explicit_working_progress',len(r)==1 and r[0]['progress']==42,r)
+osc('id=build/test:state=blocked:kind=permission:msg=QXBwcm92ZT8=');r=records();record('nested_task_inherits_app',len(r)==2 and r[1]['effective_app']=='cargo' and r[1]['state']=='blocked',r)
+osc('state=idle:app=cargo');r=records();record('idle_parent_preserves_blocked_child',r[0]['state']=='idle' and r[1]['state']=='blocked',r)
+osc('id=build/test:state=working');r=records();record('report_replaces_missing_fields','kind' not in r[1] and 'msg' not in r[1],r)
+osc('id=bad//id:state=error');r=records();record('malformed_id_does_not_replace_root',len(r)==2 and r[0]['state']=='idle',r)
+osc('id=badcontrol:state=error:msg=YmFkCnRleHQ=');r=records();record('control_text_rejected',not any(x.get('id')=='badcontrol' for x in r),r)
+osc('id=unknown:state=unrecognized');r=records();record('unknown_report_state_ignored',not any(x.get('id')=='unknown' for x in r),r)
+osc('id=build:state=clear');r=records();record('clear_parent_removes_descendant',len(r)==1,r)
+osc('id=complete:state=done');osc('id=failed:state=error');osc('id=working:state=working');osc('id=blocked:state=blocked');emit('\x1b]133;A\x1b\\');r=records();record('shell_prompt_preserves_outcomes_clears_inprogress',all(x['state'] not in ('working','blocked') for x in r) and {'complete','failed'}<={x.get('id') for x in r},r)
+osc('id=screen:state=blocked');emit('\x1b[?1049hALTERNATE');r=records();m=block('modes');record('status_survives_alternate_screen',any(x.get('id')=='screen' for x in r),{'records':r,'modes':m});emit('\x1b[?1049l')
+api('session.set_block_label',{'block_id':b,'label':'Stable audit task'});v=api('session.view');record('explicit_block_label','Stable audit task' in json.dumps(v),v)
+split=j(['split','-s',s,'-b',b,'--split','right','--ratio','30','--focus=false','--keep-open','--shell','none','--json','--','/bin/sleep','1200']);b2=split['block_ids'][0];v=api('session.view');record('split_preserves_focus',v['windows'][0]['focused_block_id']==b,{'split':split,'view':v})
+api('session.zoom_block',{'block_id':b});z=api('session.view');api('session.zoom_block',{'block_id':b});un=api('session.view');record('pane_zoom_restores_layout',z!=un,{'zoomed':z,'restored':un})
+api('session.detach_block',{'block_id':b2});det=j(['block','ls','-s',s,'--json']);record('detached_block_survives','detached' in json.dumps(det),det)
+before=len(api('session.view')['windows']);a={'label':'rollback-probe','layout':{'type':'split','direction':'horizontal','ratio':.5,'before':{'type':'block','flavor':'com.superlogical.terminal.shell','options':{'shell':'none','command':['/bin/sleep','30']}},'after':{'type':'block','flavor':'missing.creator.kind'}}};rr=run(['api','call','-s',s,'session.new_window',json.dumps(a)],False);after=len(api('session.view')['windows']);record('invalid_layout_leaves_window_count',rr.returncode!=0 and before==after,{'error':rr.stderr,'before':before,'after':after})
+emit('\x1b[31mRED\x1b[0m\r\n'+'chunk-line-1234567890\r\n'*300);f=block('format',{'trim':True,'max_bytes':200});tail=block('blob_read',{'id':f['id'],'offset':len(f['content'].encode()),'max_bytes':200}) if 'id' in f else {};record('chunked_terminal_capture','id' in f and tail.get('content'),{'first':f,'next':tail});h=block('format',{'format':'html','max_bytes':500});record('html_capture_styles','style=' in h['content'],h)
+osc('id=exiting:state=blocked');block('write',{'data':json.dumps({'exit':7})+'\n'});rr=run(['wait','-s',s,b,'--for','5s','--json'],False);proc=block('process');r=records();record('keep_open_exit_status_and_status_cleanup',proc.get('last_exit',{}).get('exit_code')==7 and not any(x['state'] in ('working','blocked') for x in r),{'wait_code':rr.returncode,'wait_output':rr.stdout,'process':proc,'records':r})
+print(json.dumps({'session':s,'block':b,'passed':sum(x['passed'] for x in results),'total':len(results)}))

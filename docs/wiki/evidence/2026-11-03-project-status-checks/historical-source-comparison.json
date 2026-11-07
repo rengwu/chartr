@@ -1,0 +1,12 @@
+{
+  "crates/chartr/src/app/view.rs": {
+    "recorded": "5e75471c42249a0d126d4621725621230cf6c03cd03f5d9fe5c6b4578cacccd5",
+    "current": "5e75471c42249a0d126d4621725621230cf6c03cd03f5d9fe5c6b4578cacccd5",
+    "matches": true
+  },
+  "crates/chartr/src/terminal_names.rs": {
+    "recorded": "3bcaa397e32c164f6b2b4b1c586f24d8fed09911df733fbdb3f9b89cd9c78281",
+    "current": "3bcaa397e32c164f6b2b4b1c586f24d8fed09911df733fbdb3f9b89cd9c78281",
+    "matches": true
+  }
+}

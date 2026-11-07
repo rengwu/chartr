@@ -1,0 +1,99 @@
+{
+  "checked": "2026-11-03T01:50:02.233215+08:00",
+  "release": {
+    "tag": "v0.3.2",
+    "revision": "204e9a7985ac2944c1478b21602e6ca541226ae3",
+    "published": "2026-10-21T10:47:41Z",
+    "url": "https://github.com/rengwu/chartr/releases/tag/v0.3.2"
+  },
+  "head": "369298062bfd5ba00ad0c273d580ce408797b19c",
+  "branch": "main",
+  "remote_main_matches": true,
+  "commits": [
+    {
+      "revision": "1b23ce9d2d98a13a79ef3ba65947c7c81375a4e0",
+      "change": "Records verified v0.3.2 publication and retained release deferrals.",
+      "kind": "documentation"
+    },
+    {
+      "revision": "7c64b5aed3aaadeeb414e2b7ecffc3c9297a8358",
+      "change": "Updates installation and getting-started links to v0.3.2.",
+      "kind": "documentation"
+    },
+    {
+      "revision": "70dade9eed2cfcc7c91d05638076331b173699e0",
+      "change": "Adds a rounded workspace frame: 12 px corners, 1 px outline, and 4 px right/bottom outer gaps.",
+      "kind": "product"
+    },
+    {
+      "revision": "369298062bfd5ba00ad0c273d580ce408797b19c",
+      "change": "Uses smaller, muted, medium-weight space headings to distinguish them from session labels.",
+      "kind": "product"
+    }
+  ],
+  "local_changes": [
+    {
+      "change": "Terminal task names",
+      "details": "Manual override, available conversation title, then process/shell fallback; rename/reset from sidebar, outer and pane tabs or palette; full label details and optional shortcut. Automatic titles strip a matching project-folder suffix.",
+      "files": [
+        "crates/chartr/src/terminal_names.rs",
+        "crates/chartr/src/app/rename.rs",
+        "crates/chartr/src/chrome.rs",
+        "crates/chartr/src/app/panes.rs"
+      ]
+    },
+    {
+      "change": "Manual-name lifetime and storage",
+      "details": "Keep is the default; optional reset on a known conversation change. Versioned SQLite records follow persistent terminal identity and protect malformed/future storage.",
+      "files": [
+        "crates/chartr/src/settings.rs",
+        "crates/chartr/src/settings_window/pages.rs",
+        "crates/chartr/src/persistence.rs"
+      ]
+    },
+    {
+      "change": "Handoff identity preservation",
+      "details": "Reconciles items and space ownership by terminal identity when backend pane numbers move or swap; reader exit follows the actual attachment.",
+      "files": [
+        "crates/chartr/src/app/backend.rs",
+        "crates/chartr/src/space.rs"
+      ]
+    },
+    {
+      "change": "Tabs frame alignment",
+      "details": "Adds a matching 4 px left inset in Tabs; Spaces remains flush to the sidebar.",
+      "files": [
+        "crates/chartr/src/app/view.rs"
+      ]
+    },
+    {
+      "change": "Development records",
+      "details": "Harp/Rex research, accepted naming decisions, implementation evidence, and frame verification; other proposals remain unselected.",
+      "files": [
+        "docs/wiki/discussions/harp-adoption.md",
+        "docs/wiki/discussions/rex-beta-adoption.md",
+        "docs/wiki/discussions/terminal-task-names.md",
+        "docs/wiki/verification/runs/2026-10-30-terminal-task-names.md",
+        "docs/wiki/verification/runs/2026-10-30-tabs-frame-inset.md"
+      ]
+    }
+  ],
+  "starting_tree": {
+    "tracked_modified": 32,
+    "untracked_files": 51,
+    "modified_rust": 24,
+    "new_rust": 1
+  },
+  "not_new_since_release": [
+    "Settings-only Tabs/Spaces switching",
+    "Space/agent notification titles and supported-log reply previews",
+    "Close All Sessions",
+    "Geist default interface font"
+  ],
+  "commands": [
+    "git log v0.3.2..HEAD",
+    "git diff v0.3.2..HEAD",
+    "git diff HEAD",
+    "git ls-files --others --exclude-standard"
+  ]
+}

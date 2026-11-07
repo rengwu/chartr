@@ -1,0 +1,11 @@
+{
+  "scratch_stop_result": "Rex server stopped.",
+  "scratch_pid": 1989,
+  "scratch_pid_alive": false,
+  "scratch_socket_exists": false,
+  "existing_default_server_pid": 35656,
+  "existing_default_session_count": 3,
+  "expected_original_default_server_pid": 35656,
+  "expected_original_default_session_count": 3,
+  "scope": "Only the explicitly created scratch server was stopped. Existing default server identity and session count are unchanged; no existing session received terminal input or lifecycle mutations."
+}

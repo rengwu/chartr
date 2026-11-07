@@ -1,0 +1,238 @@
+[
+  {
+    "name": "go.superlogical.com/rex/internal/session.(*Session).nextOwnerLocked",
+    "start": "0x100584e40",
+    "end": "0x100585040",
+    "source_file_from_pclntab": "go.superlogical.com/rex/internal/session/ownership.go",
+    "source_line_from_pclntab": 258,
+    "direct_calls": [
+      "runtime.mapIterNext",
+      "runtime.mapIterStart",
+      "runtime.mapaccess2",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).Park",
+    "start": "0x10067fbf0",
+    "end": "0x10067fd00",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/term/ptyreader_unix.go",
+    "source_line_from_pclntab": 113,
+    "direct_calls": [
+      "internal/sync.(*Mutex).lockSlow",
+      "runtime.deferreturn",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).effectiveAppLocked",
+    "start": "0x1006b6cd0",
+    "end": "0x1006b6e30",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/program_status.go",
+    "source_line_from_pclntab": 198,
+    "direct_calls": [
+      "runtime.mapaccess2",
+      "runtime.morestack_noctxt",
+      "runtime.panicBounds"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).removeLocked",
+    "start": "0x1006b6aa0",
+    "end": "0x1006b6cd0",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/program_status.go",
+    "source_line_from_pclntab": 168,
+    "direct_calls": [
+      "runtime.gcWriteBarrier2",
+      "runtime.growslice",
+      "runtime.mapIterNext",
+      "runtime.mapIterStart",
+      "runtime.mapdelete",
+      "runtime.morestack_noctxt",
+      "slices.pdqsortOrdered[go.shape.string]"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).dropIdleCachesLocked",
+    "start": "0x100698c50",
+    "end": "0x100698de0",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/suspend.go",
+    "source_line_from_pclntab": 378,
+    "direct_calls": [
+      "internal/sync.(*Mutex).lockSlow",
+      "internal/sync.(*Mutex).unlockSlow",
+      "runtime.gcWriteBarrier1",
+      "runtime.memclrHasPointers",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal.(*Block).programStatusAPI",
+    "start": "0x1006aa440",
+    "end": "0x1006aa570",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/api.go",
+    "source_line_from_pclntab": 1605,
+    "direct_calls": [
+      "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).recordsLocked",
+      "internal/sync.(*Mutex).lockSlow",
+      "runtime.deferreturn",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/internal/procinfo.scriptArg",
+    "start": "0x1005ed5d0",
+    "end": "0x1005ed8b0",
+    "source_file_from_pclntab": "go.superlogical.com/rex/internal/procinfo/procinfo.go",
+    "source_line_from_pclntab": 127,
+    "direct_calls": [
+      "bytes.Cut",
+      "runtime.morestack_noctxt",
+      "runtime.slicebytetostring"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).restoreLocked",
+    "start": "0x100699200",
+    "end": "0x100699480",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/suspend.go",
+    "source_line_from_pclntab": 469,
+    "direct_calls": [
+      "charm.land/log/v2.(*Logger).Error",
+      "fmt.errorf",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).armIdleTimerLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).closeClientsLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).discardSnapshotLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).resumeFromSnapshotLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).stampActivityLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).ResumeFresh",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).VTWrite",
+      "runtime.convTstring",
+      "runtime.gcWriteBarrier1",
+      "runtime.mallocgcSmallScanNoHeaderSC2",
+      "runtime.mallocgcTinySC2",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).idleCheckLocked",
+    "start": "0x1006984c0",
+    "end": "0x100698630",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/suspend.go",
+    "source_line_from_pclntab": 237,
+    "direct_calls": [
+      "charm.land/log/v2.(*Logger).Warn",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).armIdleTimerLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).suspendLocked",
+      "runtime.gcWriteBarrier1",
+      "runtime.morestack_noctxt",
+      "time.Time.Sub"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).parkTimerFired",
+    "start": "0x1006968b0",
+    "end": "0x100696a20",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/park.go",
+    "source_line_from_pclntab": 75,
+    "direct_calls": [
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).armParkTimerLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).Park",
+      "internal/sync.(*Mutex).lockSlow",
+      "runtime.deferreturn",
+      "runtime.gcWriteBarrier1",
+      "runtime.morestack_noctxt"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).pauseTimerFired",
+    "start": "0x100696d20",
+    "end": "0x100696ed0",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/pause.go",
+    "source_line_from_pclntab": 134,
+    "direct_calls": [
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Client).closeLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).armPauseTimerLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).resumeOutputIfCaughtUpLocked",
+      "internal/sync.(*Mutex).lockSlow",
+      "runtime.deferreturn",
+      "runtime.gcWriteBarrier1",
+      "runtime.morestack_noctxt",
+      "runtime.panicBounds"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal.(*Block).childExited",
+    "start": "0x1006aeb30",
+    "end": "0x1006aedd0",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/block.go",
+    "source_line_from_pclntab": 497,
+    "direct_calls": [
+      "go.superlogical.com/rex/blocks/terminal.(*Block).publishExit",
+      "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).removeLocked",
+      "internal/sync.(*Mutex).lockSlow",
+      "internal/sync.(*Mutex).unlockSlow",
+      "runtime.gcWriteBarrier1",
+      "runtime.gcWriteBarrier3",
+      "runtime.mallocgcSmallScanNoHeaderSC3",
+      "runtime.mallocgcSmallScanNoHeaderSC7",
+      "runtime.morestack_noctxt",
+      "runtime.newproc",
+      "runtime.selectnbrecv",
+      "sync/atomic.StorePointer"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).suspendLocked",
+    "start": "0x100698630",
+    "end": "0x100698c50",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/internal/mux/suspend.go",
+    "source_line_from_pclntab": 279,
+    "direct_calls": [
+      "charm.land/log/v2.(*Logger).Debug",
+      "charm.land/log/v2.(*Logger).Error",
+      "fmt.errorf",
+      "go.mitchellh.com/libghostty.(*Terminal).Pwd",
+      "go.mitchellh.com/libghostty.(*Terminal).Title",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).dropIdleCachesLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.(*Terminal).flushPendingLocked",
+      "go.superlogical.com/rex/blocks/terminal/internal/mux.hasKittyPlacements",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).Modes",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).Park",
+      "go.superlogical.com/rex/blocks/terminal/internal/term.(*Terminal).Suspend",
+      "runtime.convT64",
+      "runtime.gcWriteBarrier1",
+      "runtime.gcWriteBarrier2",
+      "runtime.gcWriteBarrier4",
+      "runtime.mallocgcSmallScanNoHeaderSC2",
+      "runtime.mallocgcSmallScanNoHeaderSC5",
+      "runtime.morestack_noctxt",
+      "runtime.newobject",
+      "runtime.panicBounds",
+      "runtime.typeAssert"
+    ]
+  },
+  {
+    "name": "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).applyLocked",
+    "start": "0x1006b6310",
+    "end": "0x1006b6a10",
+    "source_file_from_pclntab": "go.superlogical.com/rex/blocks/terminal/program_status.go",
+    "source_line_from_pclntab": 98,
+    "direct_calls": [
+      "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).clearLocked",
+      "go.superlogical.com/rex/blocks/terminal.(*programStatusStore).effectiveAppLocked",
+      "runtime.gcWriteBarrier1",
+      "runtime.gcWriteBarrier2",
+      "runtime.makemap_small",
+      "runtime.mallocgcSmallScanNoHeaderSC2",
+      "runtime.mapIterNext",
+      "runtime.mapIterStart",
+      "runtime.mapaccess2",
+      "runtime.mapassign",
+      "runtime.mapdelete",
+      "runtime.morestack_noctxt",
+      "runtime.newobject",
+      "runtime.wbMove"
+    ]
+  }
+]

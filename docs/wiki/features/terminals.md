@@ -1,10 +1,14 @@
 ---
 title: Terminal interaction and search
 section: Features
-updated: 2026-10-16
+updated: 2026-11-07
 basis: Source-reviewed migration baseline
 ---
 # Terminal interaction and search
+
+The [accepted task-name policy](../decisions/index.md#dec-rex-003-automatic-task-names-with-configurable-manual-name-lifetime)
+is implemented in the working tree. The [implementation run](../verification/runs/2026-10-30-terminal-task-names.md)
+records its actual verification and desktop-driver limits.
 
 Feature ID: `FEAT-terminals`
 
@@ -17,7 +21,7 @@ working-tree baseline, not a newly executed product result. See
 
 Architectural basis: [ADR 0001](../decisions/adr/0001-a-private-herdr.md), [ADR 0002](../decisions/adr/0002-the-zed-layer.md), [ADR 0004](../decisions/adr/0004-the-zed-terminal-stack.md). Historical portions of ADRs remain dated rationale.
 
-Implementation owners: [crates/chartr/src/session.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/session.rs), [crates/chartr/src/session/launch.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/session/launch.rs), [crates/chartr/src/app/terminal_search.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/app/terminal_search.rs), [vendor/zed-terminal-view/chartr-PATCH.md](https://github.com/rengwu/chartr/blob/main/vendor/zed-terminal-view/chartr-PATCH.md).
+Implementation owners: [terminal_names.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/terminal_names.rs), [app/rename.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/app/rename.rs), [crates/chartr/src/session.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/session.rs), [crates/chartr/src/session/launch.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/session/launch.rs), [crates/chartr/src/app/terminal_search.rs](https://github.com/rengwu/chartr/blob/main/crates/chartr/src/app/terminal_search.rs), [vendor/zed-terminal-view/chartr-PATCH.md](https://github.com/rengwu/chartr/blob/main/vendor/zed-terminal-view/chartr-PATCH.md).
 
 Legacy story references: 23, 37, 38, 81, 82, 93. See the [complete crosswalk](story-crosswalk.md).
 
@@ -31,10 +35,61 @@ stateful recipes. Related areas are linked from the [feature index](index.md).
 ## Expected outcomes
 
 - The pinned Zed model/view owns emulation, selection, clipboard, IME, mouse reporting and scrollback. Its local PTY runs the private Herdr attach client.
-- Terminal titles follow backend agent/foreground-process identity and fall back after exit. A terminal is non-cloneable.
+- Terminal labels resolve manual name → available agent conversation title → current process/shell fallback. Provider icons and activity remain separate. A terminal is non-cloneable.
 - Literal search navigates matches without leaking search keystrokes into the shell. Font changes reflow the terminal grid live.
 - Long/multiline agent launch commands use private staging rather than entering the complete command into interactive shell history.
 - Attach failure is visible; retry targets the same confirmed session identity rather than silently creating a different one.
+- When a known foreground job returns control to its shell, the backend clears
+  mouse reporting that the job left enabled. Live TUIs retain mouse input across
+  reattachment. The [November 7 run](../verification/runs/2026-11-07-mouse-recovery.md)
+  records the observer's bounds and the killed-TUI regression.
+
+## Terminal task names
+
+Right-click a standalone sidebar row, outer terminal tab, or pane-local terminal
+tab for **Rename Terminal**. The palette offers **Terminal: Rename active terminal**;
+Hotkeys can bind it, with no default chord. Groups and plugins keep their own naming.
+
+Saving trims the name; Unicode, numeric and duplicate names are valid. Control
+characters and line breaks are rejected. An empty save or **Use automatic name**
+removes the override. Cancel/Escape preserves it. The dialog captures the exact
+space, item and persistent terminal identity, so replacement/closure cannot rename
+a successor. Full name, provider/process and cwd appear in tooltip/accessibility
+detail; visible labels truncate.
+
+The [Terminal setting](settings.md) defaults to **Keep until renamed or reset**.
+**Reset for a new conversation** requires a known normalized provider/native ID to
+change. First identity, temporary missing identity and policy toggles preserve the
+name. Keep mode still tracks identity, avoiding a retroactive reset after changing
+the setting. Renames and known identity persist in the existing ordered SQLite
+snapshot writer, keyed by terminal ID; pending attachment and remapped pane IDs do
+not change the key. Confirmed retirement removes the associated metadata.
+
+Automatic titles use existing backend metadata and are not persisted or retained
+after agent exit. A trailing ` | project-folder` is removed when it matches the
+terminal’s working-directory name; manual names and other pipe-separated task
+text are preserved (October 30 screenshot follow-up). Startup/blank/control-character
+titles fall back. A known
+conversation/provider change suppresses an identical carried-over title until a
+different title appears; identical legitimate titles can therefore be hidden.
+Missing identity and frontend restart limit freshness guarantees. This feature
+adds no transcript scanning or generated titles. Notification title formatting
+remains `Space · Agent`.
+
+### Naming recipe
+
+**Native recipe not yet executed.** Use the isolated profile in shared setup.
+
+1. Rename from the sidebar, outer tab, pane-local tab and command palette. Try a
+   numeric and Unicode name, a long name, cancellation and empty-save reset. Expect
+   the same resolved label and full detail across title surfaces.
+2. Split, group, move and ungroup the terminal. Detach/reopen, restart the frontend
+   and hand off the backend. Expect the same terminal ID and name, and usable input.
+3. Close/replace the target while its rename dialog is open. Saving must affect no
+   successor. Repeat beside an embedded plugin to check modal placement and focus.
+4. Select each lifetime policy and reopen Settings. With a supported agent's
+   reported identities, check A→unknown→B and switching policy without clearing.
+   Confirm no automatic name remains after agent exit.
 
 ## Verification recipe
 
@@ -67,8 +122,9 @@ Terminal/group dots share the same state; showing a split or opening a group
 cannot acknowledge its unfocused children. Spaces have no aggregate dot.
 
 The strict October 14 provider/outcome implementation is superseded. Agent
-coverage follows existing upstream detection, including Codex. The backend patch
-now only preserves terminal identity through handoff. The prototype's unreleased
+coverage follows existing upstream detection, including Codex. At the time of
+the October 15 simplification, the backend patch only preserved terminal identity
+through handoff; the November 7 mouse recovery extends that patch. The prototype's unreleased
 version-1 attention storage is reset; version 2 restores its own unread state.
 
 ### Bounded attention recipe
@@ -101,6 +157,17 @@ platform, theme, pointer and accessibility coverage. Choose a bounded subset for
 ordinary changes; release requirements remain separate from this advisory workflow.
 
 ## Verification history
+
+[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3.md) records
+bounded automated checks, isolated real-terminal checks and candidate package
+verification under the user's request to preserve the desktop. Native coverage
+limits remain explicit.
+
+[November 7 mouse recovery](../verification/runs/2026-11-07-mouse-recovery.md)
+records the live incident, manual shell recovery, and automatic recovery checks.
+
+[October 30 task names](../verification/runs/2026-10-30-terminal-task-names.md) records
+the implementation checks and blocked native interaction coverage.
 
 The [0.3.1 candidate follow-up](../verification/runs/2026-10-16-release-candidate.md)
 at `e915365a` passes the macOS, Ubuntu and Arch/AUR CI matrix and all three

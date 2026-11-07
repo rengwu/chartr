@@ -1,0 +1,20 @@
+{
+  "source_files_unchanged": true,
+  "source_file_count": 506,
+  "artifacts": {
+    "target/debug/chartr": "bd1eedde0be0d123b00545f5339e09eb04f1a7a65100ee9b33347bfccfe3983f",
+    "target/debug/deps/chartr-a198ff37b3ec324d": "7b56e53cb5b6ab58448e0f06b90aa948ed382173d617ece95b4c4d15893fc44f",
+    "target/debug/deps/chartr_agent-9f9647dde450c396": "0c5b3aceea38be0dbc9ac5c9df7c689d1f3d7b26574ad12a6457b694f51e89e6",
+    "target/debug/deps/chartr_companion-94797a15f9ec9f47": "1613cd285d5c5c9f48ccba4ba9e8062a62186e943d92e2241041e17e1dd1ba98",
+    "target/debug/deps/chartr_conversations-075bebe2128b067b": "3f3a67bb4a47b8ff0e84d9ba8d8dfbea0cc16504affaedebd6f472150c98da90",
+    "target/debug/deps/chartr_herdr-c4015be6c1acd38e": "56bdf7fe35abee0f1858ebef1bfa74c6a9ccd56ca164e8b3bd5bc2e832940fe4",
+    "target/debug/deps/chartr_native_plugin-155a8c1262a7c635": "dc33c891f68efd1e8d37a9b44fa0b85e6e1e6bf88b7b029308f4a9de3ce7e05c",
+    "target/debug/deps/chartr_plugin-8902183964925b05": "33005e23fb4dee341b6903039617e4e47b40f11b22f7dbd877ce1157d33097c8",
+    "target/debug/deps/chartr_plugin_host-c9a3486c7b27438f": "37e2487c2f1f4c96dbecbfd8168b55ee259f1ac7ee80c6336a4ecbc224bd4faf",
+    "target/debug/deps/chartr_storage-aadb3f5b788377dd": "d89341a2028cb79fc535ad4e745ba0d561f8d0edc2d6ff040693dcef637ad488",
+    "target/debug/deps/live_session-84ac0f43097fc35b": "7b69c56239a92a96356a171c1255b8dea3792506d8ef32f020e6d1226adc722b",
+    "target/debug/deps/plugin_ui_contract-9762b99f186407ae": "656b67e6c977cf1535caf0c571c211ccc472a57187a57717ffe9d4048785557f",
+    "target/debug/herdr": "3a071098e06c38e050b7e0459bfcadd3e7e199e5f0810be50e5d82f025fd8f15"
+  },
+  "sidecar_version": "herdr 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a"
+}

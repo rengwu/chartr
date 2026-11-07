@@ -1,0 +1,15 @@
+{
+  "name": "normal-build",
+  "argv": [
+    "cargo",
+    "build",
+    "-p",
+    "chartr",
+    "--locked"
+  ],
+  "command": "cargo build -p chartr --locked",
+  "exit_code": 0,
+  "seconds": 0.78,
+  "log": "normal-build.log",
+  "finished": "2026-11-03T01:43:10.331823+08:00"
+}

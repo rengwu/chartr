@@ -1,0 +1,16 @@
+{
+  "app_pid": 82586,
+  "app_exited": true,
+  "pane_list_after_quit": {
+    "id": "tabs-inset-cleanup",
+    "result": {
+      "type": "pane_list",
+      "panes": []
+    }
+  },
+  "private_backend_pid": 82591,
+  "sent_backend_sigterm": true,
+  "backend_after_sigterm": "Still running with no child processes; targeted SIGKILL sent after verifying the exact run-owned executable.",
+  "remaining_run_owned_processes": [],
+  "profile_and_bundle_removed": true
+}

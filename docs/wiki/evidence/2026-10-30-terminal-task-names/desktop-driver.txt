@@ -1,0 +1,12 @@
+Native desktop verification attempts during terminal task-name implementation, 2026-10-30.
+
+1. cua.listApps(): Sky Computer Use native pipe startup failed.
+2. User requested "try again". Retried cua.listApps(): same startup failure.
+3. Reset cua_repl successfully, then called cua.getState():
+   {"apps":[],"browsers":[],"errors":["Native apps: Error: Sky Computer Use native pipe startup failed"]}
+
+4. Later recheck while the normal build ran: cua.listApps() returned the same startup failure.
+
+No native Chartr interaction was performed. This is a driver/environment failure,
+not evidence of a Chartr behavior failure. Personal Chartr sessions were not used.
+Notification testing remains deferred by the earlier user instruction.

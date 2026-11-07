@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: replies resolve or reject their request and release its timer
+ok 1 - replies resolve or reject their request and release its timer
+  ---
+  duration_ms: 4.59875
+  type: 'test'
+  ...
+# Subtest: a reply from an old document cannot resolve a new request with the same id
+ok 2 - a reply from an old document cannot resolve a new request with the same id
+  ---
+  duration_ms: 1.464167
+  type: 'test'
+  ...
+# Subtest: missing replies and transport failures reject rather than leak promises
+ok 3 - missing replies and transport failures reject rather than leak promises
+  ---
+  duration_ms: 0.984625
+  type: 'test'
+  ...
+# Subtest: invalid and oversized calls do not reach the host
+ok 4 - invalid and oversized calls do not reach the host
+  ---
+  duration_ms: 7.610625
+  type: 'test'
+  ...
+# Subtest: constellations are deterministic and independent of statuses and input order
+ok 5 - constellations are deterministic and independent of statuses and input order
+  ---
+  duration_ms: 5.361459
+  type: 'test'
+  ...
+# Subtest: empty, cyclic, and large maps stay finite
+ok 6 - empty, cyclic, and large maps stay finite
+  ---
+  duration_ms: 9.4425
+  type: 'test'
+  ...
+# Subtest: starfield keeps a deterministic layered depth profile
+ok 7 - starfield keeps a deterministic layered depth profile
+  ---
+  duration_ms: 4.88025
+  type: 'test'
+  ...
+# Subtest: detail docking uses both shape and width, with a stable resize band
+ok 8 - detail docking uses both shape and width, with a stable resize band
+  ---
+  duration_ms: 0.153291
+  type: 'test'
+  ...
+# Subtest: zoom reveals titles progressively and clips at useful word boundaries
+ok 9 - zoom reveals titles progressively and clips at useful word boundaries
+  ---
+  duration_ms: 0.216791
+  type: 'test'
+  ...
+# Subtest: blocker ordering, missing blockers and duplicate identities cannot reshuffle a map
+ok 10 - blocker ordering, missing blockers and duplicate identities cannot reshuffle a map
+  ---
+  duration_ms: 2.050167
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 127.196917

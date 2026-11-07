@@ -1,6 +1,6 @@
 ---
 title: Chartr development wiki
-updated: 2026-10-21
+updated: 2026-11-07
 ---
 # Chartr development wiki
 
@@ -11,6 +11,13 @@ locally generated reader.
 
 ## Start here
 
+- [Project status, November 3](state/2026-11-03.md): current feature states,
+  automated checks, and committed/local changes since v0.3.2. The
+  [release comparison](evidence/2026-11-03-project-status-checks/release-delta.json),
+  [check results](evidence/2026-11-03-project-status-checks/results.json),
+  [source identity](evidence/2026-11-03-project-status-checks/identity.json), and
+  [feature evidence](evidence/2026-11-03-project-status-checks/feature-evidence.json)
+  retain the inspected snapshot and coverage.
 - [Development workflow](development/workflow.md): choose the jstack skills that
   fit the task; records and interviews are advisory.
 - [Feature map](features/index.md): 15 coherent behavior records, with the complete
@@ -20,6 +27,20 @@ locally generated reader.
   and [open questions](discussions/open-questions.md).
 
 ## Verification and releases
+
+[0.3.3 preparation](development/release-0.3.3.md) uses the user's requested
+simple checks without desktop takeover and explicitly skips old-to-new upgrade
+testing. Its [candidate run](verification/runs/2026-11-07-release-0.3.3.md)
+records passing local checks and the remaining native coverage limits.
+
+[Next-release assessment, November 7](discussions/open-questions.md#next-release-assessment-november-7)
+proposes priorities for upgrade preservation, native naming/input checks,
+notifications, final candidate gates and focused polish. These are recommendations,
+not accepted scope changes or newly executed product results.
+
+[November 7 mouse recovery](verification/runs/2026-11-07-mouse-recovery.md)
+records stale mouse reporting after terminated TUIs, the live imparo recovery,
+and bounded backend regression checks.
 
 [0.3.2 preparation](development/release-0.3.2.md) covers the Settings-only view
 switcher, pane/tab styling and notification context changes. Its
@@ -65,6 +86,26 @@ recorded snapshots.
 
 ## History and migration
 
+- [Rex ideas for Chartr](discussions/rex-beta-adoption.md): October 29 installed-beta
+  investigation ranks 15 proposals, led by task names, workspace search, activity
+  triage, a local control API and reusable workspace recipes. The
+  [technical appendix](discussions/rex-beta-internals.md) records binary analysis,
+  native inspection, isolated experiments and coverage limits. Terminal task
+  names have an [accepted policy and implementation plan](discussions/terminal-task-names.md);
+  implementation was subsequently authorized and is recorded in the
+  [implementation run](verification/runs/2026-10-30-terminal-task-names.md).
+  The [first prioritization response](journal/2026-10-29-grill-8f14b5c8-c08d-4baf-84bc-599282c28304.md)
+  requests individual proposal choices; the
+  [second response](journal/2026-10-30-rex-prioritization-feedback.md) requests
+  multiple selections. The [later answer](journal/2026-10-30-rex-prioritization-feedback.md#accepted-scope-and-next-stage)
+  accepts one focused feature and exploration before implementation. The
+  [final shortlist](journal/2026-10-30-rex-prioritization-feedback.md#selected-target)
+  selects terminal task names. [Design answers](journal/2026-10-30-rex-prioritization-feedback.md#accepted-naming-policy)
+  accept automatic titles, configurable manual-name lifetime and provider icons;
+  task names in notifications are deferred.
+- [Harp ideas for Chartr](discussions/harp-adoption.md): October 21 source comparison
+  recommends task names, space attention summaries, optional set-aside state and
+  usage status. These are proposals; no implementation or adoption is claimed.
 - [Agent attention and notifications](discussions/agent-attention.md): the October 15
   [accepted simplification](discussions/agent-attention.md#accepted-simplification-october-15)
   is implemented using existing Herdr detection and one notification until the

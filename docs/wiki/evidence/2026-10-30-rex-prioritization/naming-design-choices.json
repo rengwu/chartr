@@ -1,0 +1,77 @@
+{
+  "protocol": 1,
+  "kind": "result",
+  "session": "d6d3d0a7e0eadae104564a875c49ad4a",
+  "outcome": "submitted",
+  "data": {
+    "schema": "grill-form/v2",
+    "title": "Terminal task names — design choices",
+    "answers": [
+      {
+        "questionId": "automatic_names",
+        "number": 5,
+        "question": "What should a terminal show before you give it a manual name?",
+        "selection": "single",
+        "choiceIds": [
+          "conversation_fallback"
+        ],
+        "choices": [
+          "Use available conversation titles automatically, with process/shell fallback"
+        ],
+        "notes": "",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "manual_lifetime",
+        "number": 6,
+        "question": "When you start a different conversation in the same terminal, should its manual name stay?",
+        "selection": "single",
+        "choiceIds": [
+          "until_reset"
+        ],
+        "choices": [
+          "Keep it until I rename it or choose Use automatic name"
+        ],
+        "notes": "this could go both ways. make it a setting.",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "provider_display",
+        "number": 7,
+        "question": "How should the provider appear beside a task name?",
+        "selection": "single",
+        "choiceIds": [
+          "icon_name"
+        ],
+        "choices": [
+          "Provider icon + task name"
+        ],
+        "notes": "",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "notification_scope",
+        "number": 8,
+        "question": "Should the first version also put task names in desktop notification titles?",
+        "selection": "single",
+        "choiceIds": [
+          "terminal_ui"
+        ],
+        "choices": [
+          "Terminal labels first; notification naming later"
+        ],
+        "notes": "",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      }
+    ]
+  },
+  "artifacts": []
+}

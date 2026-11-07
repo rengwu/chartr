@@ -1,0 +1,20 @@
+Window: "", App: Chartr Inset Check.
+0 standard window Secondary Actions: Raise
+	1 container
+		2 tab (settable, boolean) zsh · /private/tmp/chartr-verify.1sh4fhoz/project, Value: on
+			3 button
+		4 tab (settable, boolean) zsh · /private/tmp/chartr-verify.1sh4fhoz/project, Value: off
+			5 button
+		6 tab (settable, boolean) zsh · /private/tmp/chartr-verify.1sh4fhoz/project, Value: off
+			7 button
+		8 button New terminal session
+		9 button New surface
+		10 toggle button (settable, boolean) Current space, Value: off
+		11 button Settings
+	12 close button
+	13 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	14 minimize button
+15 menu bar
+	16 Chartr Inset Check
+
+The focused UI element is 0 standard window Secondary Actions: Raise

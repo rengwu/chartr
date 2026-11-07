@@ -1,0 +1,122 @@
+{
+  "sourceSession": "40c4405b-73cf-4ff9-93de-d2c13615fc56",
+  "receivedAt": "2026-10-29T16:39:13.708Z",
+  "originalSpec": {
+    "title": "Rex ideas — 15 individual proposals",
+    "questions": [
+      {
+        "id": "individual_target",
+        "number": 1,
+        "prompt": "Which proposal should we target and explore first?",
+        "context": "Select an individual proposal below. Use Notes if you prefer several, want a different priority order, or want to change a proposal.",
+        "recommendation": "#1: stable terminal task names. This is a relatively contained improvement that makes concurrent work easier to identify and supports later search and activity features.",
+        "options": [],
+        "required": false,
+        "preview": {
+          "html": "<style>\n*{box-sizing:border-box}body{margin:0;padding:16px;background:#19191f;color:#f2f1f6;font:15px/1.45 system-ui,-apple-system,sans-serif}h2{font-size:16px;margin:0 0 6px}p{margin:0 0 16px;color:#b8b6c4;font-size:13px}.ideas{display:grid;grid-template-columns:1fr;gap:9px}.idea{display:flex;gap:12px;padding:14px;border:1px solid #45434f;border-radius:9px;cursor:pointer;background:#232229}.idea:hover{border-color:#a393d9}.idea:has(input:checked){border-color:#bcacff;background:#312941;box-shadow:inset 0 0 0 1px #bcacff}.idea:focus-within{outline:2px solid #bcacff;outline-offset:2px}input{accent-color:#c5b3ff;width:17px;height:17px;flex-shrink:0;margin:3px 0 0}.copy{min-width:0}.title{display:block;font-size:15px;font-weight:650}.num{color:#c8b7ff}.desc{display:block;font-size:13px;line-height:1.4;color:#ceccd7;margin-top:5px}.scope{display:block;color:#a9a5b8;font-size:12px;margin-top:7px}#selection{margin-top:16px;color:#d4c8ff;font-size:14px} @media(min-width:640px){.ideas{grid-template-columns:1fr 1fr}}\n</style><h2>Choose one proposal</h2><p>All 15 ideas are listed individually in the report’s original order. Scope labels are relative, not time estimates.</p><div class=\"ideas\"><label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"1\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">1.</span> Stable task names for individual terminals</span><span class=\"desc\">Give each terminal a lasting task name, so several agents are easy to tell apart.</span><span class=\"scope\">Scope: S–M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"2\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">2.</span> Searchable workspace switcher</span><span class=\"desc\">Search spaces, groups and terminals, then jump directly to the right pane.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"3\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">3.</span> Activity overview and next-unread navigation</span><span class=\"desc\">See what needs attention and move through unread work across spaces.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"4\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">4.</span> Local control API, CLI and agent guide</span><span class=\"desc\">Let agents inspect and operate Chartr through a documented local interface.</span><span class=\"scope\">Scope: L; small initial API</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"5\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">5.</span> Reusable workspace recipes</span><span class=\"desc\">Recreate a useful arrangement of agents, terminals and project tools in one action.</span><span class=\"scope\">Scope: M–L</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"6\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">6.</span> Pane zoom and keyboard resizing</span><span class=\"desc\">Temporarily enlarge a pane and adjust splits without losing the arrangement.</span><span class=\"scope\">Scope: S–M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"7\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">7.</span> Set aside running work</span><span class=\"desc\">Tuck away a live terminal to reduce clutter, then find and restore it later.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"8\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">8.</span> Named jobs with reliable completion and retained failures</span><span class=\"desc\">Give tests and builds a name, record their actual exit result and retain failures for review.</span><span class=\"scope\">Scope: M–L</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"9\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">9.</span> Terminal capture and export</span><span class=\"desc\">Capture designated terminal output for sharing, diagnosis or agent inspection.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"10\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">10.</span> Path picker and directory-aware launches</span><span class=\"desc\">Insert paths safely and start new terminals in the intended working directory.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"11\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">11.</span> Settings search and shortcut explanations</span><span class=\"desc\">Find settings quickly and understand which shortcut mapping takes effect.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"12\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">12.</span> Resource budgets for background terminals</span><span class=\"desc\">Measure large-workspace costs, then reduce proven CPU, memory or rendering overhead.</span><span class=\"scope\">Scope: Measure first</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"13\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">13.</span> Session/backend diagnostics and update state</span><span class=\"desc\">See session health and running backend versions, with useful recovery diagnostics.</span><span class=\"scope\">Scope: M</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"14\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">14.</span> Optional explicit program-status input</span><span class=\"desc\">Let programs report progress, blocked reasons and child work through structured signals.</span><span class=\"scope\">Scope: L; backend-dependent</span></span></label>\n<label class=\"idea\"><input type=\"radio\" name=\"proposal\" value=\"15\"><span class=\"copy\"><span class=\"title\"><span class=\"num\">15.</span> Discoverable plugin commands</span><span class=\"desc\">Expose project-tool actions in the command palette and through automation.</span><span class=\"scope\">Scope: M–L</span></span></label></div><p id=\"selection\" role=\"status\">No proposal selected.</p><script>\nconst titles={\"1\": \"Stable task names for individual terminals\", \"2\": \"Searchable workspace switcher\", \"3\": \"Activity overview and next-unread navigation\", \"4\": \"Local control API, CLI and agent guide\", \"5\": \"Reusable workspace recipes\", \"6\": \"Pane zoom and keyboard resizing\", \"7\": \"Set aside running work\", \"8\": \"Named jobs with reliable completion and retained failures\", \"9\": \"Terminal capture and export\", \"10\": \"Path picker and directory-aware launches\", \"11\": \"Settings search and shortcut explanations\", \"12\": \"Resource budgets for background terminals\", \"13\": \"Session/backend diagnostics and update state\", \"14\": \"Optional explicit program-status input\", \"15\": \"Discoverable plugin commands\"};\nconst radios=[...document.querySelectorAll('input[name=\"proposal\"]')];\nfunction draw(){const chosen=grill.state.primaryProposal;for(const radio of radios)radio.checked=Number(radio.value)===chosen;document.getElementById('selection').textContent=chosen?'Selected: #'+chosen+' '+titles[chosen]:'No proposal selected.';}\nfor(const radio of radios)radio.addEventListener('change',()=>{if(radio.checked){const n=Number(radio.value);grill.setState({primaryProposal:n,primaryTitle:titles[n]});draw();}});\ndraw();\n</script>",
+          "height": 1200,
+          "anchors": [],
+          "state": {
+            "primaryProposal": null,
+            "primaryTitle": null
+          }
+        }
+      },
+      {
+        "id": "first_scope",
+        "number": 2,
+        "prompt": "How broad should the first deliverable be?",
+        "context": "This sets the size of the first step. A foundation can still have a small initial surface; a bundle should solve one connected workflow.",
+        "recommendation": "One focused feature with a complete user workflow. It gives us a clear result to judge before expanding.",
+        "options": [
+          {
+            "id": "single",
+            "label": "One focused feature, finished end to end"
+          },
+          {
+            "id": "bundle",
+            "label": "A small connected bundle of two or three features"
+          },
+          {
+            "id": "foundation",
+            "label": "A reusable foundation, even if visible benefits take longer"
+          },
+          {
+            "id": "delegate",
+            "label": "Recommend the size after investigating my chosen proposal"
+          }
+        ],
+        "required": false
+      },
+      {
+        "id": "next_stage",
+        "number": 3,
+        "prompt": "Once the target and essential choices are clear, what should I do next?",
+        "context": "Exploration produces a concrete behavior proposal and feasibility findings. A disposable prototype helps judge an interaction. Implementation means changing Chartr and verifying the agreed first version.",
+        "recommendation": "Explore the design and feasibility first. Use the findings to settle the important choices before implementation.",
+        "options": [
+          {
+            "id": "explore",
+            "label": "Explore design and feasibility, then bring back a concrete plan"
+          },
+          {
+            "id": "prototype",
+            "label": "Build a disposable prototype for review"
+          },
+          {
+            "id": "implement",
+            "label": "Implement a scoped first version once the essential decisions are settled"
+          }
+        ],
+        "required": false
+      },
+      {
+        "id": "real_workflow",
+        "number": 4,
+        "prompt": "What recent Chartr moment would you most like this work to improve?",
+        "context": "Optional: a short real example helps choose between features that sound equally useful. For example: “I had six Codex terminals open and kept entering the wrong one,” or “I recreated the same review setup three times.” You can also describe an outcome you want even if nothing currently feels broken.",
+        "recommendation": "Describe one recurring moment in your own workflow. We will use it to judge whether the chosen feature actually helps.",
+        "options": [],
+        "required": false
+      }
+    ]
+  },
+  "submission": {
+    "schemaVersion": 1,
+    "sessionId": "40c4405b-73cf-4ff9-93de-d2c13615fc56",
+    "specDigest": "d06d9350fa4c8ced5e07f1eb960e622ce09898454dd13e4af3b76022eabd4069",
+    "answers": [
+      {
+        "questionId": "individual_target",
+        "choiceId": null,
+        "notes": "i want to select multiple",
+        "comments": [],
+        "states": {
+          "main": {
+            "primaryProposal": 1,
+            "primaryTitle": "Stable task names for individual terminals"
+          }
+        },
+        "images": []
+      },
+      {
+        "questionId": "first_scope",
+        "choiceId": null,
+        "notes": "",
+        "comments": []
+      },
+      {
+        "questionId": "next_stage",
+        "choiceId": null,
+        "notes": "",
+        "comments": []
+      },
+      {
+        "questionId": "real_workflow",
+        "choiceId": null,
+        "notes": "",
+        "comments": []
+      }
+    ]
+  }
+}

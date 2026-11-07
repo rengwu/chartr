@@ -1,0 +1,93 @@
+   Compiling gpui v0.2.2 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling rope v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_model_core v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling settings_json v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_core v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling node_runtime v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling path v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zlog v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling sqlez v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling util v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling text v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling ztracing v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling sum_tree v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling sqlez_macros v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling release_channel v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling askpass v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling syntax_theme v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling settings_content v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zed_actions v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling rpc v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling fuzzy v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling credentials_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling gpui_tokio v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling git v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling theme v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling fuzzy_nucleo v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling lsp v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling cloud_api_client v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling task v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling fs v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling component v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zed_credentials_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling menu v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling ui v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/ui)
+   Compiling mermaid_render v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling db v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_model v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling migrator v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling ui_input v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling session v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling file_icons v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling assets v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling feature_flags v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling worktree v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling client v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling dap v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling theme_settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling extension v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling buffer_diff v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling snippet_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling markdown v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling terminal v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling prettier v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling context_server v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling remote v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling git_hosting_providers v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling project v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling gpui_apple v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/gpui_apple)
+   Compiling multi_buffer v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling edit_prediction_types v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling vim_mode_setting v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling gpui_macos v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/gpui_macos)
+   Compiling chartr-plugin v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin)
+   Compiling gpui_platform v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling chartr-plugin-host v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin-host)
+   Compiling agent_settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling workspace v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling breadcrumbs v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling editor v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling terminal_view v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-terminal-view)
+   Compiling chartr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10m 11s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running tests/live_session.rs (target/debug/deps/live_session-7ac6e700ba50f9c3)
+
+running 1 test
+
+thread 'mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach' (38204184) panicked at crates/chartr/tests/support/mouse.rs:73:13:
+attach timed out: [?2026h[?25l]8;;\[3;17H[0;39;49mKilled:[3;25H9[0m[4;1H[?25h[?2026l[4;1H[?25h[?2026h[?25l]8;;\[4;1H[0;39;49mCHARTR_SHELL_READY[5;1HJGRs-MacBook-Pro:~[5;20Hrengwu$[0m[5;28H[?25h[?2026l[5;28H[?25h
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach ... FAILED
+
+failures:
+
+failures:
+    mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 6.22s
+
+error: test failed, to rerun pass `-p chartr --test live_session`

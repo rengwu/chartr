@@ -1,0 +1,81 @@
+   Compiling chartr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.45s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/debug/deps/chartr-86f34180ac427e32)
+
+running 11 tests
+test terminal_names::tests::carried_over_titles_stay_hidden_until_a_different_title_arrives ... ok
+test terminal_names::tests::automatic_titles_omit_the_project_suffix_without_changing_task_text_or_manual_names ... ok
+test terminal_names::tests::keep_mode_updates_identity_and_switching_policy_is_not_retroactive ... ok
+test terminal_names::tests::provider_mismatch_is_missing_identity_and_provider_changes_are_new_conversations ... ok
+test terminal_names::tests::only_known_to_known_identity_changes_reset_a_manual_name ... ok
+test terminal_names::tests::startup_blank_and_invalid_automatic_titles_fall_back ... ok
+test terminal_names::tests::precedence_reset_and_agent_exit_keep_backend_metadata_independent ... ok
+test terminal_names::tests::names_accept_numbers_and_unicode_but_reject_multiline_or_control_input_atomically ... ok
+test terminal_names::tests::normalized_identity_ignores_source_and_log_path_changes ... ok
+test terminal_names::tests::unsupported_saved_versions_and_invalid_names_are_rejected ... ok
+test terminal_names::tests::relaunch_and_pane_remap_keep_names_and_identity_but_new_terminals_do_not_inherit ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.00s
+
+     Running tests/live_session.rs (target/debug/deps/live_session-3e4e2f6b3cfb3ed6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_agent-31fba9cbc2f0457d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_companion-e156a27619321b06)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_conversations-15ab8a210836779c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_herdr-9049b2e107d418a6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_native_plugin-155a8c1262a7c635)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_plugin-aea373f78f15ff5f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/plugin_ui_contract.rs (target/debug/deps/plugin_ui_contract-b99e2be401852e61)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_plugin_host-552c3e2d191b96e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_storage-7b377f84bd3feaf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

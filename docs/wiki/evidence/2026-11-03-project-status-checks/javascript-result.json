@@ -1,0 +1,14 @@
+{
+  "name": "javascript",
+  "argv": [
+    "node",
+    "--test",
+    "crates/chartr/tests/plugin_bridge.cjs",
+    "plugins/wayfinder/tests/layout.test.mjs"
+  ],
+  "command": "node --test crates/chartr/tests/plugin_bridge.cjs plugins/wayfinder/tests/layout.test.mjs",
+  "exit_code": 0,
+  "seconds": 0.14,
+  "log": "javascript.log",
+  "finished": "2026-11-03T01:43:00.068693+08:00"
+}

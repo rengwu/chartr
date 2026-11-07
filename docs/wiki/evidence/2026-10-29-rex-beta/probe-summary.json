@@ -1,0 +1,23 @@
+{
+  "scope": "Synthetic Rex fixture checks, not Chartr verification. All mutations use a dedicated Unix socket, state directory and empty Lua configuration.",
+  "successful_checks": 25,
+  "main_checks": 18,
+  "supplement_checks": 6,
+  "exit_checks": 2,
+  "corrections": [
+    {
+      "attempt": "probe-attempt-1.json",
+      "cause": "A JSON command exceeded canonical PTY input line length. Disabled ICANON in the synthetic fixture and reran. This was a harness failure, not a Rex product failure."
+    },
+    {
+      "attempt": "probe-results.json:chunked_terminal_capture",
+      "cause": "Assertion incorrectly looked for content in blob_read; actual schema uses data. supplement-results.json reassembled every chunk and matched the full capture byte for byte."
+    }
+  ],
+  "limits": [
+    "Server API behavior only for listed checks.",
+    "No remote host, multi-client contention, real provider outcome matrix, native notification delivery, performance benchmark or crash/reboot survival test.",
+    "Rex native settings were inspected without changing preferences. Late menu automation returned stale element IDs and screenshot-unavailable errors; no activity-overview interaction is claimed.",
+    "Chartr was source-reviewed, not built or launched by this analysis."
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 title: Session lifecycle, recovery and persistence
 section: Features
-updated: 2026-10-16
+updated: 2026-11-07
 basis: Source-reviewed migration baseline
 ---
 # Session lifecycle, recovery and persistence
@@ -32,10 +32,14 @@ stateful recipes. Related areas are linked from the [feature index](index.md).
 
 - On macOS, opening the still-running app after its last workspace window closes restores a workspace from saved state. Repeated opens activate an existing workspace rather than duplicating it. Quit policy and persistence apply to the current workspace after reopening. See the bounded October 12 native verification below.
 - Normal app exit detaches sessions by default; the configured exit policy may terminate them. Closing a terminal terminates that session, while closing a plugin destroys its view.
+- Reattachment preserves surviving shells and jobs; it cannot revive terminated
+  TUIs. The [November 7 mouse recovery run](../verification/runs/2026-11-07-mouse-recovery.md)
+  distinguishes surviving shells from killed agents and covers stale mouse modes
+  after a job returns to its shell, including detached and handed-off runtimes.
 - Session-bound plugin items cascade when their subject closes. Bulk operations confirm before terminating multiple sessions.
 - Backend recovery permits one clean restart before a stable crash-loop state; Retry is explicit. Live backend identity overrides stale records while unrelated layout survives.
 - Layout writes coalesce, serialize in the background and flush on shutdown; stale queued revisions cannot overwrite newer state. Missing plugins/sessions are summarized.
-- The pre-existing dirty Close All Sessions action gathers terminal items across spaces, prompts above one target, keeps spaces open and invokes normal close/cascade behavior. This extension is source-observed only.
+- Close All Sessions is included in v0.3.2. It gathers terminal items across spaces, prompts above one target, keeps spaces open and invokes normal close/cascade behavior.
 
 ## Verification recipe
 
@@ -44,7 +48,7 @@ setup first; use actual UI entry points and observe underlying state where relev
 
 1. Start two disposable sessions in different fixture spaces and a bound plugin if available. Quit normally and reopen; expect identity/layout continuity.
 2. Close one terminal and verify the other survives. Cancel and then confirm a multi-session group/space close; verify only selected descendants terminate.
-3. For the dirty Close All Sessions action, use the command palette; cancel first, then confirm in a disposable profile. Expect spaces and unrelated unbound tools to remain.
+3. For Close All Sessions, use the command palette; cancel first, then confirm in a disposable profile. Expect spaces and unrelated unbound tools to remain.
 4. For backend failure scenarios, run the real-sidecar suite from shared setup or exercise only the isolated daemon. Check identity replacement, stale-session rejection and visible recovery states.
 5. On macOS, close the last workspace window without quitting, then open the same app bundle. Verify the PID is unchanged, the workspace is visible, and disposable terminal identity/layout/bounds are restored. Repeat twice, open with a window already present, and minimize/open; expect one workspace. Quit the recreated window with default detach and configured terminate in separate disposable fixtures.
 6. Relaunch after changing layout and verify persisted state and registry order. Never infer persistence solely from the pre-exit screenshot.
@@ -55,13 +59,21 @@ run if this recipe is exercised; source inspection alone is not a pass.
 
 ## Coverage and limitations
 
-No daemon was started or killed during migration. Crash loops, exit-policy variants, dirty bulk-close behavior, stale writes and restoration all need execution. Existing tests do not establish the dirty action passes.
+No daemon was started or killed during migration. At that time, crash loops,
+exit-policy variants, the then-uncommitted bulk-close action, stale writes and
+restoration remained unverified. Later dated runs below record their own scope;
+the migration itself establishes no behavioral pass.
 
 The [release matrix](../verification/acceptance.md) retains broader cross-feature,
 platform, theme, pointer and accessibility coverage. Choose a bounded subset for
 ordinary changes; release requirements remain separate from this advisory workflow.
 
 ## Verification history
+
+[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3.md) records
+bounded automated checks, isolated real-terminal checks and candidate package
+verification under the user's request to preserve the desktop. Native coverage
+limits remain explicit.
 
 The [October 16 desktop follow-up](../verification/runs/2026-10-16-release-desktop.md)
 verifies macOS Cmd+Q with default detach and configured termination after adding

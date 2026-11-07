@@ -1,0 +1,842 @@
+{
+  "note": "Harness interrupted at bulk capture: long JSON command exceeded canonical PTY line discipline. Prior observations retained; not a Rex failure.",
+  "results": [
+    {
+      "name": "explicit_working_progress",
+      "passed": true,
+      "observed": [
+        {
+          "state": "working",
+          "progress": 42,
+          "app": "cargo",
+          "effective_app": "cargo",
+          "title": "Build",
+          "msg": "Compiling",
+          "updated_at": "2026-10-29T22:15:26.962014+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nested_task_inherits_app",
+      "passed": true,
+      "observed": [
+        {
+          "state": "working",
+          "progress": 42,
+          "app": "cargo",
+          "effective_app": "cargo",
+          "title": "Build",
+          "msg": "Compiling",
+          "updated_at": "2026-10-29T22:15:26.962014+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "blocked",
+          "kind": "permission",
+          "effective_app": "cargo",
+          "msg": "Approve?",
+          "updated_at": "2026-10-29T22:15:27.040325+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "idle_parent_preserves_blocked_child",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "blocked",
+          "kind": "permission",
+          "effective_app": "cargo",
+          "msg": "Approve?",
+          "updated_at": "2026-10-29T22:15:27.040325+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "report_replaces_missing_fields",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "working",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.216371+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "malformed_id_does_not_replace_root",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "working",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.216371+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "control_text_rejected",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "working",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.216371+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown_report_state_ignored",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "build/test",
+          "state": "working",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.216371+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clear_parent_removes_descendant",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shell_prompt_preserves_outcomes_clears_inprogress",
+      "passed": true,
+      "observed": [
+        {
+          "state": "idle",
+          "app": "cargo",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.128017+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "complete",
+          "state": "done",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.663208+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        },
+        {
+          "id": "failed",
+          "state": "error",
+          "effective_app": "cargo",
+          "updated_at": "2026-10-29T22:15:27.721953+08:00",
+          "owner": {
+            "pid": 2145,
+            "name": "Python"
+          }
+        }
+      ]
+    },
+    {
+      "name": "status_survives_alternate_screen",
+      "passed": true,
+      "observed": {
+        "records": [
+          {
+            "state": "idle",
+            "app": "cargo",
+            "effective_app": "cargo",
+            "updated_at": "2026-10-29T22:15:27.128017+08:00",
+            "owner": {
+              "pid": 2145,
+              "name": "Python"
+            }
+          },
+          {
+            "id": "complete",
+            "state": "done",
+            "effective_app": "cargo",
+            "updated_at": "2026-10-29T22:15:27.663208+08:00",
+            "owner": {
+              "pid": 2145,
+              "name": "Python"
+            }
+          },
+          {
+            "id": "failed",
+            "state": "error",
+            "effective_app": "cargo",
+            "updated_at": "2026-10-29T22:15:27.721953+08:00",
+            "owner": {
+              "pid": 2145,
+              "name": "Python"
+            }
+          },
+          {
+            "id": "screen",
+            "state": "blocked",
+            "effective_app": "cargo",
+            "updated_at": "2026-10-29T22:15:27.987194+08:00",
+            "owner": {
+              "pid": 2145,
+              "name": "Python"
+            }
+          }
+        ],
+        "modes": {
+          "screen": "alternate",
+          "modes": [
+            {
+              "name": "disable_keyboard",
+              "number": 2,
+              "ansi": true,
+              "set": false
+            },
+            {
+              "name": "insert",
+              "number": 4,
+              "ansi": true,
+              "set": false
+            },
+            {
+              "name": "send_receive_mode",
+              "number": 12,
+              "ansi": true,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "linefeed",
+              "number": 20,
+              "ansi": true,
+              "set": false
+            },
+            {
+              "name": "cursor_keys",
+              "number": 1,
+              "set": false
+            },
+            {
+              "name": "132_column",
+              "number": 3,
+              "set": false
+            },
+            {
+              "name": "slow_scroll",
+              "number": 4,
+              "set": false
+            },
+            {
+              "name": "reverse_colors",
+              "number": 5,
+              "set": false
+            },
+            {
+              "name": "origin",
+              "number": 6,
+              "set": false
+            },
+            {
+              "name": "wraparound",
+              "number": 7,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "autorepeat",
+              "number": 8,
+              "set": false
+            },
+            {
+              "name": "mouse_event_x10",
+              "number": 9,
+              "set": false
+            },
+            {
+              "name": "cursor_blinking",
+              "number": 12,
+              "set": false
+            },
+            {
+              "name": "cursor_visible",
+              "number": 25,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "enable_mode_3",
+              "number": 40,
+              "set": false
+            },
+            {
+              "name": "reverse_wrap",
+              "number": 45,
+              "set": false
+            },
+            {
+              "name": "alt_screen_legacy",
+              "number": 47,
+              "set": false
+            },
+            {
+              "name": "keypad_keys",
+              "number": 66,
+              "set": false
+            },
+            {
+              "name": "backarrow_key_mode",
+              "number": 67,
+              "set": false
+            },
+            {
+              "name": "enable_left_and_right_margin",
+              "number": 69,
+              "set": false
+            },
+            {
+              "name": "mouse_event_normal",
+              "number": 1000,
+              "set": false
+            },
+            {
+              "name": "mouse_event_button",
+              "number": 1002,
+              "set": false
+            },
+            {
+              "name": "mouse_event_any",
+              "number": 1003,
+              "set": false
+            },
+            {
+              "name": "focus_event",
+              "number": 1004,
+              "set": false
+            },
+            {
+              "name": "mouse_format_utf8",
+              "number": 1005,
+              "set": false
+            },
+            {
+              "name": "mouse_format_sgr",
+              "number": 1006,
+              "set": false
+            },
+            {
+              "name": "mouse_alternate_scroll",
+              "number": 1007,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "mouse_format_urxvt",
+              "number": 1015,
+              "set": false
+            },
+            {
+              "name": "mouse_format_sgr_pixels",
+              "number": 1016,
+              "set": false
+            },
+            {
+              "name": "ignore_keypad_with_numlock",
+              "number": 1035,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "alt_esc_prefix",
+              "number": 1036,
+              "set": true,
+              "default": true
+            },
+            {
+              "name": "alt_sends_escape",
+              "number": 1039,
+              "set": false
+            },
+            {
+              "name": "reverse_wrap_extended",
+              "number": 1045,
+              "set": false
+            },
+            {
+              "name": "alt_screen",
+              "number": 1047,
+              "set": false
+            },
+            {
+              "name": "save_cursor",
+              "number": 1048,
+              "set": false
+            },
+            {
+              "name": "alt_screen_save_cursor_clear_enter",
+              "number": 1049,
+              "set": true
+            },
+            {
+              "name": "bracketed_paste",
+              "number": 2004,
+              "set": false
+            },
+            {
+              "name": "synchronized_output",
+              "number": 2026,
+              "set": false
+            },
+            {
+              "name": "grapheme_cluster",
+              "number": 2027,
+              "set": false
+            },
+            {
+              "name": "report_color_scheme",
+              "number": 2031,
+              "set": false
+            },
+            {
+              "name": "report_visibility",
+              "number": 2033,
+              "set": false
+            },
+            {
+              "name": "in_band_size_reports",
+              "number": 2048,
+              "set": false
+            },
+            {
+              "name": "kitty_paste_events",
+              "number": 5522,
+              "set": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "explicit_block_label",
+      "passed": true,
+      "observed": {
+        "revision": 2,
+        "session_id": "session:01a18804-03bc-774f-8471-46e87c002ffa",
+        "label": "chartr-rex-audit",
+        "active_window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+        "windows": [
+          {
+            "window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+            "label": "Window 78a77caa",
+            "focused_block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+            "layers": [
+              {
+                "layer_id": "layer:01a18804-03c7-702e-b88a-4ceba2ae8c9b",
+                "kind": "tiled",
+                "bounds": [
+                  0,
+                  0,
+                  1,
+                  1
+                ],
+                "layout": {
+                  "rect": [
+                    0,
+                    0,
+                    1,
+                    1
+                  ],
+                  "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78"
+                },
+                "blocks": [
+                  {
+                    "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+                    "label": "Stable audit task",
+                    "creator_name": "com.superlogical.terminal",
+                    "flavor": "com.superlogical.terminal.shell",
+                    "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+                    "owner": "client:01a18804-03bb-74da-b592-fd00603087d6"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_preserves_focus",
+      "passed": true,
+      "observed": {
+        "split": {
+          "anchor_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+          "block_ids": [
+            "block:01a18804-090f-7c7f-8618-831fe07c3428"
+          ],
+          "split_ids": [
+            "split:01a18804-0911-78cd-aee0-50174b1b66ed"
+          ],
+          "revision": 3
+        },
+        "view": {
+          "revision": 4,
+          "session_id": "session:01a18804-03bc-774f-8471-46e87c002ffa",
+          "label": "chartr-rex-audit",
+          "active_window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+          "windows": [
+            {
+              "window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+              "label": "Window 78a77caa",
+              "focused_block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+              "layers": [
+                {
+                  "layer_id": "layer:01a18804-03c7-702e-b88a-4ceba2ae8c9b",
+                  "kind": "tiled",
+                  "bounds": [
+                    0,
+                    0,
+                    1,
+                    1
+                  ],
+                  "layout": {
+                    "rect": [
+                      0,
+                      0,
+                      1,
+                      1
+                    ],
+                    "split": {
+                      "split_id": "split:01a18804-0911-78cd-aee0-50174b1b66ed",
+                      "direction": "horizontal",
+                      "ratio": 0.7,
+                      "before": {
+                        "rect": [
+                          0,
+                          0,
+                          0.7,
+                          1
+                        ],
+                        "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78"
+                      },
+                      "after": {
+                        "rect": [
+                          0.7,
+                          0,
+                          0.30000000000000004,
+                          1
+                        ],
+                        "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428"
+                      }
+                    }
+                  },
+                  "blocks": [
+                    {
+                      "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+                      "label": "Stable audit task",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+                      "owner": "client:01a18804-03bb-74da-b592-fd00603087d6"
+                    },
+                    {
+                      "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428",
+                      "label": "shell",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "pane_zoom_restores_layout",
+      "passed": true,
+      "observed": {
+        "zoomed": {
+          "revision": 5,
+          "session_id": "session:01a18804-03bc-774f-8471-46e87c002ffa",
+          "label": "chartr-rex-audit",
+          "active_window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+          "windows": [
+            {
+              "window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+              "label": "Window 78a77caa",
+              "focused_block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+              "zoomed_block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+              "layers": [
+                {
+                  "layer_id": "layer:01a18804-03c7-702e-b88a-4ceba2ae8c9b",
+                  "kind": "tiled",
+                  "bounds": [
+                    0,
+                    0,
+                    1,
+                    1
+                  ],
+                  "layout": {
+                    "rect": [
+                      0,
+                      0,
+                      1,
+                      1
+                    ],
+                    "split": {
+                      "split_id": "split:01a18804-0911-78cd-aee0-50174b1b66ed",
+                      "direction": "horizontal",
+                      "ratio": 0.7,
+                      "before": {
+                        "rect": [
+                          0,
+                          0,
+                          0.7,
+                          1
+                        ],
+                        "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78"
+                      },
+                      "after": {
+                        "rect": [
+                          0.7,
+                          0,
+                          0.30000000000000004,
+                          1
+                        ],
+                        "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428"
+                      }
+                    }
+                  },
+                  "blocks": [
+                    {
+                      "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+                      "label": "Stable audit task",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+                      "owner": "client:01a18804-03bb-74da-b592-fd00603087d6"
+                    },
+                    {
+                      "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428",
+                      "label": "shell",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "restored": {
+          "revision": 6,
+          "session_id": "session:01a18804-03bc-774f-8471-46e87c002ffa",
+          "label": "chartr-rex-audit",
+          "active_window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+          "windows": [
+            {
+              "window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+              "label": "Window 78a77caa",
+              "focused_block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+              "layers": [
+                {
+                  "layer_id": "layer:01a18804-03c7-702e-b88a-4ceba2ae8c9b",
+                  "kind": "tiled",
+                  "bounds": [
+                    0,
+                    0,
+                    1,
+                    1
+                  ],
+                  "layout": {
+                    "rect": [
+                      0,
+                      0,
+                      1,
+                      1
+                    ],
+                    "split": {
+                      "split_id": "split:01a18804-0911-78cd-aee0-50174b1b66ed",
+                      "direction": "horizontal",
+                      "ratio": 0.7,
+                      "before": {
+                        "rect": [
+                          0,
+                          0,
+                          0.7,
+                          1
+                        ],
+                        "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78"
+                      },
+                      "after": {
+                        "rect": [
+                          0.7,
+                          0,
+                          0.30000000000000004,
+                          1
+                        ],
+                        "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428"
+                      }
+                    }
+                  },
+                  "blocks": [
+                    {
+                      "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+                      "label": "Stable audit task",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+                      "owner": "client:01a18804-03bb-74da-b592-fd00603087d6"
+                    },
+                    {
+                      "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428",
+                      "label": "shell",
+                      "creator_name": "com.superlogical.terminal",
+                      "flavor": "com.superlogical.terminal.shell",
+                      "host_id": "58c595a3-83bb-4c86-a120-59de76a21072"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "detached_block_survives",
+      "passed": true,
+      "observed": {
+        "blocks": [
+          {
+            "block_id": "block:01a18804-03bc-7918-978b-554ec484cd78",
+            "label": "Stable audit task",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "placed",
+            "window_id": "window:01a18804-03c6-7f0b-8139-342078a77caa",
+            "owner": "client:01a18804-03bb-74da-b592-fd00603087d6"
+          },
+          {
+            "block_id": "block:01a18804-090f-7c7f-8618-831fe07c3428",
+            "label": "shell",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "detached"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid_layout_leaves_window_count",
+      "passed": true,
+      "observed": {
+        "error": "Error: stream response \"control-3\" failed: input: validating: layout must contain exactly one of block or split (status=400 code=bad_request)\n",
+        "before": 1,
+        "after": 1
+      }
+    }
+  ]
+}

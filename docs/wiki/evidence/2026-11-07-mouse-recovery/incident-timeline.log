@@ -1,0 +1,38 @@
+2026-11-06T16:22:24.488284Z  INFO herdr::pane: agent changed pane=120 previous_agent=Some(Codex) agent=None pgid=Some(4415)
+2026-11-06T16:22:24.488366Z  INFO herdr::pane: agent changed pane=97 previous_agent=Some(Codex) agent=None pgid=Some(14405)
+2026-11-06T16:22:24.487961Z  INFO herdr::pane: agent changed pane=86 previous_agent=Some(Codex) agent=None pgid=Some(16189)
+2026-11-06T16:22:24.487965Z  INFO herdr::pane: agent changed pane=101 previous_agent=Some(Codex) agent=None pgid=Some(23322)
+2026-11-06T16:22:24.487962Z  INFO herdr::pane: agent changed pane=98 previous_agent=Some(Codex) agent=None pgid=Some(14441)
+2026-11-06T16:22:24.491140Z  INFO herdr::pane: agent changed pane=107 previous_agent=Some(Codex) agent=None pgid=Some(11549)
+2026-11-06T16:22:24.491174Z  INFO herdr::pane: agent changed pane=117 previous_agent=Some(Codex) agent=None pgid=Some(72124)
+2026-11-06T16:22:24.487966Z  INFO herdr::pane: agent changed pane=116 previous_agent=Some(Codex) agent=None pgid=Some(61151)
+2026-11-06T16:22:24.489389Z  INFO herdr::pane: agent changed pane=85 previous_agent=Some(Codex) agent=None pgid=Some(15817)
+2026-11-06T16:22:24.491542Z  INFO herdr::pane: agent changed pane=28 previous_agent=Some(Codex) agent=None pgid=Some(34729)
+2026-11-06T16:22:24.492261Z  INFO herdr::pane: agent changed pane=95 previous_agent=Some(Codex) agent=None pgid=Some(55746)
+2026-11-06T16:22:25.393058Z  INFO herdr::pane: agent changed pane=118 previous_agent=Some(Claude) agent=None pgid=Some(73984)
+2026-11-06T16:22:26.901240Z  INFO herdr::pane: agent changed pane=93 previous_agent=Some(Claude) agent=None pgid=Some(54678)
+2026-11-06T16:22:27.499445Z  INFO herdr::pane: agent changed pane=113 previous_agent=Some(Claude) agent=None pgid=Some(47422)
+2026-11-06T16:22:31.419789Z  INFO herdr::pane: agent changed pane=87 previous_agent=Some(Claude) agent=None pgid=Some(19634)
+2026-11-06T16:22:32.325525Z  INFO herdr::pane: agent changed pane=111 previous_agent=Some(Claude) agent=None pgid=Some(12091)
+2026-11-06T16:25:10.088418Z  INFO herdr::server::headless: client detached client_id=184
+2026-11-06T16:25:10.110965Z  INFO herdr::server::headless: client detached client_id=187
+2026-11-06T16:25:10.111102Z  INFO herdr::server::headless: client detached client_id=162
+2026-11-06T16:25:10.111190Z  INFO herdr::server::headless: client detached client_id=183
+2026-11-06T16:25:10.111284Z  INFO herdr::server::headless: client detached client_id=142
+2026-11-06T16:25:10.111382Z  INFO herdr::server::headless: client detached client_id=165
+2026-11-06T16:25:10.111470Z  INFO herdr::server::headless: client detached client_id=182
+2026-11-06T16:25:10.111553Z  INFO herdr::server::headless: client detached client_id=152
+2026-11-06T16:25:10.111673Z  INFO herdr::server::headless: client detached client_id=186
+2026-11-06T16:25:10.111751Z  INFO herdr::server::headless: client detached client_id=188
+2026-11-06T16:25:10.111841Z  INFO herdr::server::headless: client detached client_id=168
+2026-11-06T16:25:10.111926Z  INFO herdr::server::headless: client detached client_id=164
+2026-11-06T16:25:10.112005Z  INFO herdr::server::headless: client detached client_id=174
+2026-11-06T16:25:10.112081Z  INFO herdr::server::headless: client detached client_id=153
+2026-11-06T16:25:13.232001Z  INFO herdr::server::headless: client detached client_id=190
+2026-11-06T16:25:13.237245Z  INFO herdr::server::headless: client detached client_id=189
+2026-11-06T16:25:13.237899Z  INFO herdr::server::headless: client detached client_id=185
+2026-11-06T16:25:13.239168Z  INFO herdr::server::headless: client detached client_id=160
+2026-11-06T16:25:13.239951Z  INFO herdr::server::headless: client detached client_id=154
+2026-11-06T16:25:13.240574Z  INFO herdr::server::headless: client detached client_id=180
+2026-11-06T16:25:13.241042Z  INFO herdr::server::headless: client detached client_id=178
+2026-11-06T16:25:17.128279Z  INFO herdr::server::headless: terminal attach client connected client_id=199 cols=100 rows=6 terminal_id=term_65f1d7be9a91e5f

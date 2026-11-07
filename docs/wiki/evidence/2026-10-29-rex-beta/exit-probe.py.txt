@@ -1,0 +1,12 @@
+import subprocess,json,time
+from pathlib import Path
+p=Path('/tmp/chartr-rex-analysis-20261029');cli=['/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex','-S','unix://'+str(p/'server.sock'),'--autostart=false'];res=[]
+for label,code in [('quick-failure-audit',7),('quick-success-audit',0)]:
+ r=subprocess.run(cli+['new',label,'--shell','none','--json','--','/bin/sh','-c',f'printf "fixture-exit-{code}\\n"; exit {code}'],text=True,capture_output=True,check=True);d=json.loads(r.stdout);s=d['session_id'];b=d['initial_windows'][0]['block_ids'][0]
+ # A short finite wait allows the process lifecycle event to settle.
+ time.sleep(.2)
+ r=subprocess.run(cli+['block','call','-s',s,'-b',b,'process'],text=True,capture_output=True)
+ passed=(r.returncode==0 and json.loads(r.stdout).get('last_exit',{}).get('exit_code')==7) if code==7 else r.returncode!=0
+ res.append({'name':label,'passed':passed,'observed':{'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}})
+ print(label,passed)
+(p/'exit-results.json').write_text(json.dumps(res,indent=2))

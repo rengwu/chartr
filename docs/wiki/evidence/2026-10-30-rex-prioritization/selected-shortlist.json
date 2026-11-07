@@ -1,0 +1,33 @@
+{
+  "protocol": 1,
+  "kind": "result",
+  "session": "b37909d043da533dc224f6aa62d7a7c9",
+  "outcome": "submitted",
+  "data": {
+    "schema": "grill-form/v1",
+    "title": "Choose your proposal shortlist",
+    "answers": [
+      {
+        "questionId": "individual_target",
+        "number": 1,
+        "question": "Which proposals do you want on the shortlist? Select any number.",
+        "choiceId": null,
+        "choice": null,
+        "notes": "",
+        "status": "feedback",
+        "states": {
+          "main": {
+            "selectedProposals": [
+              1
+            ],
+            "selectedTitles": [
+              "Stable task names for individual terminals"
+            ]
+          }
+        },
+        "comments": []
+      }
+    ]
+  },
+  "artifacts": []
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "quick-failure-audit",
+    "passed": true,
+    "observed": {
+      "returncode": 0,
+      "stdout": "{\"last_exit\":{\"exit_code\":7,\"error\":\"exit status 7\"},\"home\":\"/Users/rengwu\"}\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "quick-success-audit",
+    "passed": true,
+    "observed": {
+      "returncode": 3,
+      "stdout": "",
+      "stderr": "Error: block target \"block:01a1880c-f671-787b-b393-57f6de6b66fb\" not found\n"
+    }
+  }
+]

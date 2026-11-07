@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-29",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5368g",
+  "architecture": "arm64",
+  "chartr_head": "369298062bfd5ba00ad0c273d580ce408797b19c",
+  "initial_worktree_status": "M docs/wiki/discussions/open-questions.md\n M docs/wiki/index.html\n M docs/wiki/index.md\n?? docs/wiki/discussions/harp-adoption.md",
+  "initial_diff_sha256": "a052f4fcd914d82d666ce207ca6fc78ea6842193706133ef60a1ef1b5a45f896",
+  "binaries": {
+    "client": {
+      "path": "/Applications/Rex Beta.app/Contents/MacOS/Rex",
+      "bytes": 58543424,
+      "sha256": "3ef7fb6150edec42ae6232d9a51f2dbb1090c6357d1400d46eb1afd778481a0b"
+    },
+    "bundled_server": {
+      "path": "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex",
+      "bytes": 83422064,
+      "sha256": "b666b150e32fdc592349738866dac3e777ae8b1fcb28e113bda26c76923a0e63"
+    },
+    "installed_server": {
+      "path": "/Users/rengwu/Library/Application Support/com.superlogical.rex/RexServer/Versions/1497/Rex Server.app/Contents/MacOS/rex",
+      "bytes": 83422064,
+      "sha256": "b666b150e32fdc592349738866dac3e777ae8b1fcb28e113bda26c76923a0e63"
+    }
+  },
+  "client_identity": {
+    "CFBundleShortVersionString": "0.1.0",
+    "CFBundleVersion": "1497",
+    "RexSourceCommit": "f8c3eac550a507d5069bce3d947fd30aa7fc17ab",
+    "RexReleaseChannel": "preview"
+  },
+  "server_identity": "rex 0.0.1793047680-g2db882\ncommit: 2db882139236ba19730a5a35e172729e1dfc96ee\nbuilt: 2026-10-26T20:48:00Z\napi: revision 7 (supports 0 to 7)",
+  "analysis": {
+    "recovered_go_functions": 47161,
+    "rex_go_functions": 6380,
+    "swift_source_file_names": 377,
+    "disassembled_functions": 14
+  }
+}

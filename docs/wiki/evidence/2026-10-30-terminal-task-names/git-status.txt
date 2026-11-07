@@ -1,0 +1,43 @@
+M crates/chartr/src/actions.rs
+ M crates/chartr/src/app.rs
+ M crates/chartr/src/app/backend.rs
+ M crates/chartr/src/app/command_palette.rs
+ M crates/chartr/src/app/companion.rs
+ M crates/chartr/src/app/panes.rs
+ M crates/chartr/src/app/persistence.rs
+ M crates/chartr/src/app/plugins.rs
+ M crates/chartr/src/app/rename.rs
+ M crates/chartr/src/app/settings_bridge.rs
+ M crates/chartr/src/app/view.rs
+ M crates/chartr/src/chrome.rs
+ M crates/chartr/src/chrome/sidebar.rs
+ M crates/chartr/src/chrome/sidebar_tests.rs
+ M crates/chartr/src/chrome/tabs.rs
+ M crates/chartr/src/item.rs
+ M crates/chartr/src/keymap.rs
+ M crates/chartr/src/main.rs
+ M crates/chartr/src/persistence.rs
+ M crates/chartr/src/session.rs
+ M crates/chartr/src/settings.rs
+ M crates/chartr/src/settings_window.rs
+ M crates/chartr/src/settings_window/pages.rs
+ M crates/chartr/src/space.rs
+ M docs/wiki/decisions/index.md
+ M docs/wiki/discussions/open-questions.md
+ M docs/wiki/features/panes.md
+ M docs/wiki/features/settings.md
+ M docs/wiki/features/terminals.md
+ M docs/wiki/index.html
+ M docs/wiki/index.md
+ M docs/workspace.md
+?? crates/chartr/src/terminal_names.rs
+?? docs/wiki/discussions/harp-adoption.md
+?? docs/wiki/discussions/rex-beta-adoption.md
+?? docs/wiki/discussions/rex-beta-internals.md
+?? docs/wiki/discussions/terminal-task-names.md
+?? docs/wiki/evidence/2026-10-29-rex-beta/
+?? docs/wiki/evidence/2026-10-30-rex-prioritization/
+?? docs/wiki/evidence/2026-10-30-terminal-task-names/
+?? docs/wiki/journal/2026-10-29-grill-8f14b5c8-c08d-4baf-84bc-599282c28304.md
+?? docs/wiki/journal/2026-10-30-rex-prioritization-feedback.md
+?? docs/wiki/verification/runs/2026-10-30-terminal-task-names.md

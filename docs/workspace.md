@@ -53,12 +53,34 @@ shortcuts are removed. **Chats** is disabled; saved Chats preferences reopen in
 Spaces. Existing conversation history is retained. See [Inbox](conversations.md)
 for the retained history reference.
 
-Terminal titles follow Herdr's live view of the PTY, as in chartr-rs: a detected
-agent wins, otherwise the non-shell foreground process is shown, and an idle
-shell falls back to Herdr's persistent tab label or number. The same two-second
-backend refresh that discovers sessions updates and clears these inferred
-titles. Collapsed pane groups can be renamed from their context menu and otherwise
-use their item count as the title, such as **5 tabs**.
+Terminal titles use a **manual task name**, then an available agent conversation
+title, then the current agent/process or shell fallback. Provider icons and activity
+indicators remain visible. Automatic titles omit a trailing project-directory
+suffix such as ` | imparo`; manually entered names remain literal. Automatic
+titles depend on metadata reported by the agent; after it exits, an unnamed terminal returns to its process/shell label.
+
+Right-click a terminal's sidebar row, outer tab, or pane-local tab and choose
+**Rename Terminal**. The command palette also offers **Terminal: Rename active
+terminal**; its shortcut is unbound by default and can be assigned in Hotkeys.
+Names may contain Unicode or numbers and need not be unique. Leave the field
+blank, or choose **Use automatic name** from a named terminal's context menu, to
+remove the override. Cancel/Escape keeps the previous name. Hover for the full
+name, agent/process, and working directory.
+
+**Settings → Terminal → Manual task names** defaults to **Keep until renamed or
+reset**. Names follow the same terminal through rearrangement, reconnection, and
+relaunch. **Reset for a new conversation** clears a manual name only when a known
+provider/conversation identity changes to another known identity. Missing identity
+or the first reported identity preserves it; changing the preference itself does
+not clear names. The TOML preference is `terminal.manual_name_lifetime = "keep"`
+or `"conversation"`. Names are saved in the workspace SQLite database by persistent
+terminal identity, separately from the preference.
+
+Conversation identity and title freshness are best effort. When a known change
+still reports the old title, Chartr uses the process fallback until a different
+title arrives. Automatic title text is not persisted. Desktop notification titles
+continue to use the space and agent. Collapsed pane groups retain separate names
+and otherwise show their item count, such as **5 tabs**.
 
 Every terminal is Zed's pinned `terminal` model and `TerminalView`, used as one
 stack. Zed owns emulation, rendering, scrollback, resizing, keyboard
@@ -131,6 +153,10 @@ saving. A persistent banner explains that layout changes will not be saved.
 Project files and user-editable settings can still be saved normally.
 
 Normal app exit detaches sessions. An optional setting terminates them instead.
+Reopening reattaches to surviving shells and processes; it cannot revive a TUI
+that was killed. When the backend observes a foreground job return control to
+its shell, it clears mouse reporting left behind by that job, including while
+the frontend is detached. Screen contents and scrollback remain available.
 The private Herdr runtime uses an exact socket under
 `$XDG_CONFIG_HOME/chartr/herdr`; inherited Herdr selectors are cleared so
 chartr cannot attach to a user's standalone daemon. Closed attach clients become

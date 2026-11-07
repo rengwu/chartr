@@ -1,0 +1,15 @@
+{
+  "name": "native-plugin",
+  "argv": [
+    "cargo",
+    "check",
+    "--manifest-path",
+    "examples/plugins/hello/Cargo.toml",
+    "--locked"
+  ],
+  "command": "cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked",
+  "exit_code": 0,
+  "seconds": 0.45,
+  "log": "native-plugin.log",
+  "finished": "2026-11-03T01:43:09.550328+08:00"
+}

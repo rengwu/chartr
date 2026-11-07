@@ -1,12 +1,104 @@
 ---
 title: Open questions
-updated: 2026-10-21
-status: Release scope resolved; deferred verification remains
+updated: 2026-11-07
+status: Release 0.3.3 preparation authorized with simple verification
 ---
 # Open questions
 
 There are no remaining consequential scope questions from the migration interview.
 Reopen this register if implementation uncovers a material ambiguity.
+
+## Next-release assessment — November 7
+
+**Subsequent decision:** the user skipped the upgrade check and requested simple
+verification without desktop takeover, followed by preparation of **0.3.3**.
+[DEC-RELEASE-033-001](../decisions/index.md#dec-release-033-001-prepare-0-3-3-with-simple-verification)
+records this scope; [preparation](../development/release-0.3.3.md) tracks execution.
+The recommendations below remain the historical assessment, not the final scope.
+
+The user requested an opinion on remaining issues and polish. The priorities below
+are **recommendations, not accepted release decisions or new verification results**.
+They are based on source review and the existing dated runs at HEAD `36929806`
+with the local naming, frame-inset and mouse-recovery changes. No product tests
+were executed for this assessment.
+
+Recommended scope: finish terminal task names, the workspace styling changes and
+bounded mouse recovery. Keep the other [Rex proposals](rex-beta-adoption.md),
+notification task names and AUR publication outside this release's scope. The
+accepted naming policy does not need another design interview.
+
+| Priority | Remaining work | Basis and completion target |
+| --- | --- | --- |
+| Release-critical verification | Upgrade from the actual v0.3.2 backend with live sessions | The client requests live handoff when the backend version differs. The new mouse fixture hands the new sidecar to another copy of itself; that does not establish old-to-new compatibility. In an isolated profile, open the candidate over a v0.3.2 workspace and verify running jobs, terminal identity, layout, attention and usable input survive. Then rename and relaunch to check new naming persistence. |
+| Release-critical verification | Finish native task-name behavior | The [naming run](../verification/runs/2026-10-30-terminal-task-names.md) leaves native dialogs, focus and reopen untested. Exercise all rename/reset entry points, cancel/Escape, long and Unicode names, split/group moves, target closure during editing, embedded-surface focus and frontend restart. Use real agent metadata to check title updates, missing identity and both lifetime policies. |
+| Release-critical verification and scope clarity | Verify mouse recovery through the native candidate | The [mouse run](../verification/runs/2026-11-07-mouse-recovery.md) passes backend regressions; its installed-app recovery was manual, and a fresh native frontend using the patch was not exercised. Check selection, wheel/trackpad and subsequent TUI input after a killed job. The fixture runs `stty sane`; automatic recovery does not repair extended keyboard modes or termios. Describe this as mouse recovery. If the native shell remains unusable in the selected scenario, establish a usable recovery path before advertising it as resolved. |
+| Outstanding next-release check | Inspect real notifications and click routing | Testing was [deferred until the next release](agent-attention.md#local-bundle-attempt-and-user-deferral). Use an explicitly isolated registered bundle to inspect space/agent titles, reply preview/fallback, one-notice behavior and exact-terminal navigation, including an origin that has closed. Task names in notifications remain deferred. |
+| Release gate | Validate one final candidate across supported platforms | Commit the intended source, new naming module and records when release preparation is authorized. Run the existing [acceptance](../verification/acceptance.md) and [packaging](../development/releasing.md) gates on that candidate, including explicitly invoked real-sidecar tests and exact sidecar checks in the packages. Earlier committed-main CI excludes local changes; the November 3 full suite predates the mouse patch. Prior release-specific desktop exceptions do not automatically apply. |
+| Focused polish | Inspect the frame, headings and long labels together | The [frame run](../verification/runs/2026-10-30-tabs-frame-inset.md) establishes selected macOS geometry. Check narrow windows, light/dark themes, enlarged UI text, grouped panes, close controls, tooltips and native/web plugin surfaces for clipping, contrast and focus. This is a proposed inspection, not a claim that these defects exist. |
+| Documentation cleanup | Correct current descriptions and release claims | The [November 3 assessment](../state/2026-11-03.md) identifies stale default-font and Close All Sessions wording. The terminal feature page also retains an identity-only backend-patch description in its dated attention section. Clarify its historical scope now that mouse recovery extends the patch; preserve old evidence. Document best-effort title/reset coverage and bounded recovery accurately. |
+
+Two limitations deserve explicit release wording: consecutive conversations with
+the same title can fall back indefinitely under the current stale-title policy,
+and reset-on-new-conversation depends on reported identity. Exercise the real
+provider path before deciding whether either needs a code change; keep manual
+names and the Keep default as accepted.
+
+The original termination/memory-pressure cause remains undiagnosed in the mouse
+incident. A representative multi-session memory/CPU soak would be useful follow-up,
+but this assessment does not establish a Chartr memory regression or claim that
+mouse recovery fixes resource exhaustion.
+
+The next useful step is an isolated candidate run centered on upgrade, naming and
+native input, with notification checks included in release preparation. Any
+remaining acceptance exception needs a decision for this release; none is granted
+by this assessment.
+
+## Rex adoption proposals
+
+The October 29 [installed-beta investigation](rex-beta-adoption.md) recommends
+task names, workspace search and activity triage first, followed by a local
+control interface and reusable workspace recipes. Its
+[technical evidence](rex-beta-internals.md) distinguishes recovered binary
+information, advertised contracts, native observations and isolated experiments.
+The research itself adopted no feature. The later interview selected terminal
+task names for exploration, then explicitly authorized implementation in
+[DEC-REX-004](../decisions/index.md#dec-rex-004-implement-terminal-task-names).
+
+The [first interview response](../journal/2026-10-29-grill-8f14b5c8-c08d-4baf-84bc-599282c28304.md)
+requests all 15 proposals as individual choices rather than grouped directions.
+The [second response](../journal/2026-10-30-rex-prioritization-feedback.md)
+requests multiple selections. The [later submitted answer](../journal/2026-10-30-rex-prioritization-feedback.md#accepted-scope-and-next-stage)
+accepts one focused feature for the first deliverable and design/feasibility
+exploration followed by a concrete plan. Its proposal question contains no
+submitted selection state. A [subsequent shortlist](../journal/2026-10-30-rex-prioritization-feedback.md#selected-target)
+selects **#1, terminal task names**, resolving the target. The
+[design answers](../journal/2026-10-30-rex-prioritization-feedback.md#accepted-naming-policy)
+settle automatic conversation titles with process/shell fallback, provider icon
+plus task name, a setting for manual-name lifetime, and notification naming
+deferred. The [implementation plan](terminal-task-names.md) uses Keep as the
+setting default and existing native identity for optional reset. No further
+preference question is needed for this plan. Runtime title freshness and
+conversation-identity coverage remain verification limits, not settled test
+results. The later direct instruction authorized implementation; the
+[run record](../verification/runs/2026-10-30-terminal-task-names.md) tracks executed
+checks and the unavailable native automation driver.
+
+If selected, later slices need decisions about set-aside/muting semantics,
+control-API authority and closed-GUI behavior, recipe scope/command review,
+exact job-result provenance, and remote-work scope. Explicit program-status
+support should be investigated in Herdr/upstream before changing the accepted
+best-effort attention contract. Existing unread retention, private-backend,
+disabled Chats and Settings-only view-mode decisions remain in force.
+
+## Harp adoption proposals
+
+The October 21 [source comparison](harp-adoption.md) proposes task names,
+space attention summaries, set-aside state, usage status and diagnostic traces.
+No adoption or implementation decision has been accepted. The recommended first
+slice is task names plus space unread counts and exact-terminal navigation.
+Set-aside notification/resume semantics and the source of live usage data need
+resolution if those later proposals are selected. Existing attention detection,
+unread retention and private-backend decisions remain in force.
 
 ## Release 0.3.2 acceptance scope
 

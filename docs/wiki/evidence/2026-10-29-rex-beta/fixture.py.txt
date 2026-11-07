@@ -1,0 +1,8 @@
+import sys,json,termios
+attrs=termios.tcgetattr(sys.stdin);attrs[3]&=~(termios.ECHO|termios.ICANON);attrs[6][termios.VMIN]=1;attrs[6][termios.VTIME]=0;termios.tcsetattr(sys.stdin,termios.TCSANOW,attrs)
+print('FIXTURE_READY',flush=True)
+for line in sys.stdin:
+ c=json.loads(line)
+ if 'exit' in c:sys.exit(c['exit'])
+ if 'text' in c:sys.stdout.write(c['text'])
+ print('\r\nACK_'+str(c.get('seq','')),flush=True)

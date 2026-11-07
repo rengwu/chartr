@@ -1,0 +1,13 @@
+{
+  "checked": "2026-11-03T01:45:58.816779+08:00",
+  "argv": [
+    "git",
+    "ls-remote",
+    "origin",
+    "refs/heads/main",
+    "refs/tags/v0.3.2",
+    "refs/tags/v0.3.2^{}"
+  ],
+  "exit_code": 0,
+  "data": "369298062bfd5ba00ad0c273d580ce408797b19c\trefs/heads/main\n02eed3744f5f70da1758a5962ade6d88cb914416\trefs/tags/v0.3.2\n204e9a7985ac2944c1478b21602e6ca541226ae3\trefs/tags/v0.3.2^{}\n"
+}

@@ -1,0 +1,616 @@
+{
+  "FEAT-terminals-task-names": {
+    "sources": [
+      "crates/chartr/src/terminal_names.rs",
+      "crates/chartr/src/app/rename.rs",
+      "crates/chartr/src/chrome/tabs.rs",
+      "docs/wiki/features/terminals.md"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [
+      "test app::command_palette::tests::rename_terminal_is_available_from_the_palette ... ok",
+      "test chrome::tabs::tests::terminal_context_menu_renames_and_resets_the_exact_item ... ok",
+      "test terminal_names::tests::automatic_titles_omit_the_project_suffix_without_changing_task_text_or_manual_names ... ok",
+      "test terminal_names::tests::carried_over_titles_stay_hidden_until_a_different_title_arrives ... ok",
+      "test terminal_names::tests::keep_mode_updates_identity_and_switching_policy_is_not_retroactive ... ok",
+      "test terminal_names::tests::names_accept_numbers_and_unicode_but_reject_multiline_or_control_input_atomically ... ok",
+      "test terminal_names::tests::normalized_identity_ignores_source_and_log_path_changes ... ok",
+      "test terminal_names::tests::only_known_to_known_identity_changes_reset_a_manual_name ... ok",
+      "test terminal_names::tests::precedence_reset_and_agent_exit_keep_backend_metadata_independent ... ok",
+      "test terminal_names::tests::provider_mismatch_is_missing_identity_and_provider_changes_are_new_conversations ... ok",
+      "test terminal_names::tests::relaunch_and_pane_remap_keep_names_and_identity_but_new_terminals_do_not_inherit ... ok",
+      "test terminal_names::tests::startup_blank_and_invalid_automatic_titles_fall_back ... ok",
+      "test terminal_names::tests::unsupported_saved_versions_and_invalid_names_are_rejected ... ok"
+    ],
+    "verification_note": "11 naming tests; palette and context-menu tests"
+  },
+  "FEAT-settings-name-lifetime": {
+    "sources": [
+      "crates/chartr/src/settings.rs",
+      "crates/chartr/src/settings_window/pages.rs",
+      "crates/chartr/src/keymap.rs"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [
+      "test keymap::tests::conflicts_in_the_chartr_context_are_refused ... ok",
+      "test keymap::tests::defaults_are_valid_unique_chords_with_four_unbound_commands ... ok",
+      "test keymap::tests::unreadable_keymaps_keep_defaults_and_are_never_overwritten ... ok",
+      "test keymap::tests::sparse_overrides_round_trip_and_defaults_remain ... ok",
+      "test keymap::tests::failed_writes_preserve_overrides_and_do_not_reserve_rejected_keys ... ok",
+      "test keymap::tests::retired_view_shortcuts_are_preserved_without_reserving_the_key ... ok",
+      "test keymap::tests::unbound_commands_can_be_assigned_cleared_and_restored ... ok",
+      "test settings::tests::manual_name_lifetime_defaults_to_keep_and_persists_both_choices ... ok"
+    ],
+    "verification_note": "settings round-trip and keymap tests"
+  },
+  "FEAT-session-lifecycle-name-identity": {
+    "sources": [
+      "crates/chartr/src/persistence.rs",
+      "crates/chartr/src/space.rs",
+      "crates/chartr/src/app/backend.rs"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [
+      "test app::backend::tests::terminal_ownership_wins_when_handoff_swaps_panes_between_spaces ... ok",
+      "test app::persistence::tests::malformed_or_future_terminal_names_disable_saving_without_data_loss ... ok",
+      "test persistence::tests::delayed_background_requests_cannot_overwrite_a_final_flush ... ok",
+      "test persistence::tests::names_survive_incomplete_layouts_and_preserve_independent_attention ... ok",
+      "test persistence::tests::failed_transactions_roll_back_and_the_same_snapshot_can_be_retried ... ok",
+      "test space::tests::handoff_can_swap_pane_numbers_without_replacing_items_or_names ... ok",
+      "test terminal_names::tests::relaunch_and_pane_remap_keep_names_and_identity_but_new_terminals_do_not_inherit ... ok"
+    ],
+    "verification_note": "SQLite, identity-swap and reader-exit fixtures"
+  },
+  "FEAT-panes-tabs-inset": {
+    "sources": [
+      "crates/chartr/src/app/view.rs",
+      "docs/wiki/verification/runs/2026-10-30-tabs-frame-inset.md",
+      "docs/wiki/evidence/2026-11-03-project-status-checks/historical-source-comparison.json"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [
+      "test mode::tests::inbox_contents_stay_in_the_sidebar_through_its_exit_to_tabs ... ok",
+      "test mode::tests::interrupted_sidebar_exits_use_the_explicitly_selected_sidebar_content ... ok",
+      "test mode::tests::quick_reversals_keep_the_current_position ... ok",
+      "test mode::tests::reduced_motion_finishes_an_in_flight_transition ... ok",
+      "test mode::tests::reduced_motion_finishes_sidebar_page_switches ... ok",
+      "test mode::tests::restores_without_motion_and_slides_both_surfaces_together ... ok",
+      "test mode::tests::sidebar_and_inbox_keep_the_same_pane_visible ... ok",
+      "test mode::tests::sidebar_page_reversals_preserve_the_current_position ... ok",
+      "test mode::tests::sidebar_pages_do_not_animate_when_switching_to_or_from_tabs ... ok",
+      "test mode::tests::sidebar_pages_slide_in_both_directions_without_resizing_the_pane ... ok"
+    ],
+    "verification_note": "2026-10-30 isolated macOS check; current view.rs hash matches"
+  },
+  "FEAT-panes-rounded-frame": {
+    "sources": [
+      "crates/chartr/src/app/view.rs",
+      "docs/wiki/verification/runs/2026-10-30-tabs-frame-inset.md"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [],
+    "verification_note": "2026-10-30 macOS frame inspection includes the later left inset"
+  },
+  "FEAT-spaces-title-style": {
+    "sources": [
+      "crates/chartr/src/chrome/sidebar.rs",
+      "369298062bfd5ba00ad0c273d580ce408797b19c"
+    ],
+    "delivery_basis": "release-delta.json",
+    "tests": [],
+    "verification_note": ""
+  },
+  "FEAT-spaces": {
+    "sources": [
+      "crates/chartr/src/spaces.rs",
+      "crates/chartr/src/space.rs",
+      "docs/wiki/features/spaces.md"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::backend::tests::explicit_ownership_wins_even_when_a_backend_workspace_spans_spaces ... ok",
+      "test app::backend::tests::terminal_ownership_wins_when_handoff_swaps_panes_between_spaces ... ok",
+      "test app::backend::tests::live_and_restored_sessions_stay_in_their_space_after_cd ... ok",
+      "test chrome::sidebar_tests::sidebar_scrollbar_has_contrast_in_every_theme ... ok",
+      "test chrome::sidebar_tests::sidebar_scrollbar_drags_past_the_container_and_releases ... ok",
+      "test chrome::sidebar_tests::sidebar_tree_collapses_adds_and_sorts_free_sessions ... ok",
+      "test chrome::sidebar_tests::dragged_tabs_paint_a_solid_rounded_surface_without_changing_size ... ok",
+      "test chrome::sidebar_tests::spaces_scroll_under_the_fixed_header_and_fade_from_the_first_pixel ... ok",
+      "test space::tests::a_snapshot_cannot_resurrect_a_retired_backend_pane ... ok",
+      "test space::tests::an_ended_session_needs_two_missing_snapshots_before_removal ... ok",
+      "test space::tests::activating_a_session_preserves_its_group_and_split ... ok",
+      "test space::tests::dropped_creation_places_the_picker_and_rejected_terminal_preserves_layout ... ok",
+      "test space::tests::plugin_launcher_opens_in_the_requested_existing_pane ... ok",
+      "test space::tests::restored_ownership_and_layout_survive_snapshots_during_attachment ... ok",
+      "test spaces::tests::config_root_uses_the_chartr_namespace ... ok",
+      "test space::tests::handoff_can_swap_pane_numbers_without_replacing_items_or_names ... ok",
+      "test space::tests::selecting_a_plugin_replaces_the_launcher_and_close_tears_it_down_immediately ... ok",
+      "test spaces::tests::legacy_order_is_honoured_once ... ok",
+      "test spaces::tests::keys_owned_by_other_chartr_versions_survive_a_write ... ok",
+      "test spaces::tests::invalid_reorders_are_rejected_without_mutating_the_registry ... ok",
+      "test spaces::tests::registration_round_trips_and_deduplicates ... ok",
+      "test spaces::tests::no_op_avoids_io_and_a_failed_write_rolls_back_memory ... ok",
+      "test spaces::tests::removing_a_space_only_changes_the_registry ... ok",
+      "test spaces::tests::reordered_spaces_survive_relaunch_in_file_order ... ok",
+      "test workspace::tests::an_empty_active_pane_does_not_hide_its_outer_group ... ok",
+      "test workspace::tests::center_drop_of_a_last_tab_collapses_only_its_empty_source ... ok",
+      "test workspace::tests::closing_an_empty_active_pane_focuses_its_neighbor ... ok",
+      "test workspace::tests::a_long_edit_sequence_preserves_tree_and_item_ownership ... ok",
+      "test workspace::tests::closing_the_last_item_removes_a_split_but_retains_the_root ... ok",
+      "test workspace::tests::closing_uses_activation_history_before_position ... ok",
+      "test workspace::tests::direction_at_an_outer_edge_has_no_neighbor ... ok",
+      "test workspace::tests::directional_focus_uses_the_center_of_nested_panes_like_zed ... ok",
+      "test workspace::tests::divider_resizing_changes_only_the_adjacent_pair ... ok",
+      "test workspace::tests::edge_drop_split_inserts_beside_the_target_and_preserves_other_panes ... ok",
+      "test workspace::tests::joining_moves_items_and_collapses_the_axis ... ok",
+      "test workspace::tests::moving_the_last_item_removes_its_empty_source_pane_like_zed ... ok",
+      "test workspace::tests::legacy_single_workspace_state_becomes_one_outer_workspace_tab ... ok",
+      "test workspace::tests::persisted_layout_round_trips_with_ownership_intact ... ok",
+      "test workspace::tests::restored_empty_splits_are_pruned_to_the_only_useful_pane ... ok",
+      "test workspace::tests::same_axis_splits_extend_the_axis_and_cross_axis_splits_nest ... ok",
+      "test workspace::tests::tab_drop_indices_match_zeds_before_and_after_target_semantics ... ok",
+      "test workspace::tests::standalone_outer_tabs_drop_into_a_group_center_or_any_edge ... ok",
+      "test workspace::tests::the_root_pane_cannot_be_removed ... ok",
+      "test workspace::tests::ungrouping_a_single_item_with_an_empty_split_makes_it_standalone ... ok",
+      "test workspace::tests::ungrouping_an_inactive_group_preserves_the_active_outer_tab ... ok",
+      "test workspace::tests::ungrouping_restores_items_as_outer_tabs_in_pane_and_tab_order ... ok",
+      "test workspace::tests::workspace_tab_names_round_trip_and_empty_names_restore_the_default ... ok",
+      "test workspace::tests::workspace_tabs_mix_standalone_items_with_one_pane_group ... ok",
+      "test workspace::tests::workspace_tabs_round_trip_and_continue_allocating_unique_ids ... ok",
+      "test namespace::tests::inherited_herdr_context_is_cleared_not_merely_overridden ... ok",
+      "test namespace::tests::terminal_children_do_not_inherit_the_launchers_no_color ... ok",
+      "test namespace::tests::migration_does_not_rewrite_a_custom_shell ... ok",
+      "test namespace::tests::prepare_creates_what_herdr_will_write_into ... ok",
+      "test namespace::tests::attach_mouse_preferences_do_not_change_the_daemon_configuration ... ok",
+      "test namespace::tests::legacy_shell_keeps_the_new_panes_routing_and_the_users_shell_environment ... ok"
+    ],
+    "verification_note": "space, sidebar and ownership fixtures"
+  },
+  "FEAT-panes": {
+    "sources": [
+      "crates/chartr/src/workspace.rs",
+      "crates/chartr/src/app/panes.rs",
+      "docs/wiki/features/panes.md"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::pane_drop_preview::tests::reduced_motion_snaps_and_leaving_the_targets_clears_the_preview ... ok",
+      "test app::pane_drop_preview::tests::retargets_across_panes_without_jumping_or_restarting_on_pointer_motion ... ok",
+      "test app::panes::creation_drag_tests::both_buttons_preview_edge_splits_without_creating_on_drag_start ... ok",
+      "test app::panes::creation_drag_tests::clicks_still_work_and_cancelled_drags_do_not_turn_into_clicks ... ok",
+      "test chrome::tab_sorter::tests::a_tab_can_leave_its_preview_and_drop_into_another_pane ... ok",
+      "test chrome::tab_sorter::tests::every_tab_variant_sorts_before_release_and_commits_once ... ok",
+      "test chrome::tab_sorter::tests::leaving_the_strip_or_cancelling_restores_order_without_committing ... ok",
+      "test chrome::tab_sorter::tests::leaving_and_reentering_the_full_strip_resumes_sorting ... ok",
+      "test chrome::tab_sorter::tests::overflowing_titles_fade_and_hover_widens_the_fade ... ok",
+      "test chrome::tab_sorter::tests::buttons_and_empty_strip_space_keep_sorting_until_release ... ok",
+      "test chrome::tab_sorter::tests::tab_widths_are_equal_capped_and_shrink_to_the_existing_minimum ... ok",
+      "test workspace::tests::an_empty_active_pane_does_not_hide_its_outer_group ... ok",
+      "test workspace::tests::center_drop_of_a_last_tab_collapses_only_its_empty_source ... ok",
+      "test workspace::tests::closing_an_empty_active_pane_focuses_its_neighbor ... ok",
+      "test workspace::tests::a_long_edit_sequence_preserves_tree_and_item_ownership ... ok",
+      "test workspace::tests::closing_the_last_item_removes_a_split_but_retains_the_root ... ok",
+      "test workspace::tests::closing_uses_activation_history_before_position ... ok",
+      "test workspace::tests::direction_at_an_outer_edge_has_no_neighbor ... ok",
+      "test workspace::tests::directional_focus_uses_the_center_of_nested_panes_like_zed ... ok",
+      "test workspace::tests::divider_resizing_changes_only_the_adjacent_pair ... ok",
+      "test workspace::tests::edge_drop_split_inserts_beside_the_target_and_preserves_other_panes ... ok",
+      "test workspace::tests::joining_moves_items_and_collapses_the_axis ... ok",
+      "test workspace::tests::moving_the_last_item_removes_its_empty_source_pane_like_zed ... ok",
+      "test workspace::tests::legacy_single_workspace_state_becomes_one_outer_workspace_tab ... ok",
+      "test workspace::tests::persisted_layout_round_trips_with_ownership_intact ... ok",
+      "test workspace::tests::restored_empty_splits_are_pruned_to_the_only_useful_pane ... ok",
+      "test workspace::tests::same_axis_splits_extend_the_axis_and_cross_axis_splits_nest ... ok",
+      "test workspace::tests::tab_drop_indices_match_zeds_before_and_after_target_semantics ... ok",
+      "test workspace::tests::standalone_outer_tabs_drop_into_a_group_center_or_any_edge ... ok",
+      "test workspace::tests::the_root_pane_cannot_be_removed ... ok",
+      "test workspace::tests::ungrouping_a_single_item_with_an_empty_split_makes_it_standalone ... ok",
+      "test workspace::tests::ungrouping_an_inactive_group_preserves_the_active_outer_tab ... ok",
+      "test workspace::tests::ungrouping_restores_items_as_outer_tabs_in_pane_and_tab_order ... ok",
+      "test workspace::tests::workspace_tab_names_round_trip_and_empty_names_restore_the_default ... ok",
+      "test workspace::tests::workspace_tabs_mix_standalone_items_with_one_pane_group ... ok",
+      "test workspace::tests::workspace_tabs_round_trip_and_continue_allocating_unique_ids ... ok"
+    ],
+    "verification_note": "workspace, drag/drop and pane fixtures"
+  },
+  "FEAT-workspace-views": {
+    "sources": [
+      "crates/chartr/src/mode.rs",
+      "crates/chartr/src/app/view.rs",
+      "docs/wiki/features/workspace-views.md"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::command_palette::tests::palette_is_a_separate_modal_with_visible_bounds_at_small_sizes ... ok",
+      "test app::command_palette::tests::typing_and_enter_invoke_the_filtered_command_once ... ok",
+      "test app::command_palette::tests::rename_terminal_is_available_from_the_palette ... ok",
+      "test app::command_palette::tests::close_all_sessions_is_available_from_the_palette ... ok",
+      "test app::command_palette::tests::arrow_keys_select_commands_and_outside_click_dismisses ... ok",
+      "test app::command_palette::tests::escape_and_toggle_dismiss_without_invoking_a_command ... ok",
+      "test app::persistence::tests::disabled_chats_restore_as_spaces_without_losing_workspace_or_history_selection ... ok",
+      "test mode::tests::inbox_contents_stay_in_the_sidebar_through_its_exit_to_tabs ... ok",
+      "test mode::tests::interrupted_sidebar_exits_use_the_explicitly_selected_sidebar_content ... ok",
+      "test mode::tests::quick_reversals_keep_the_current_position ... ok",
+      "test mode::tests::reduced_motion_finishes_an_in_flight_transition ... ok",
+      "test mode::tests::reduced_motion_finishes_sidebar_page_switches ... ok",
+      "test mode::tests::restores_without_motion_and_slides_both_surfaces_together ... ok",
+      "test mode::tests::sidebar_and_inbox_keep_the_same_pane_visible ... ok",
+      "test mode::tests::sidebar_page_reversals_preserve_the_current_position ... ok",
+      "test mode::tests::sidebar_pages_do_not_animate_when_switching_to_or_from_tabs ... ok",
+      "test mode::tests::sidebar_pages_slide_in_both_directions_without_resizing_the_pane ... ok"
+    ],
+    "verification_note": "mode, restoration and palette fixtures"
+  },
+  "FEAT-terminals": {
+    "sources": [
+      "crates/chartr/src/session.rs",
+      "crates/chartr/src/app/terminal_search.rs",
+      "crates/chartr/tests/live_session.rs",
+      "crates/chartr/tests/support/mouse.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::tests::terminal_search_treats_user_text_as_a_literal ... ok",
+      "test session::launch::tests::typed_input_is_separate_and_abandoned_launches_clean_up ... ok",
+      "test session::launch::tests::launch_preserves_literal_arguments_and_unlinks_its_script ... ok",
+      "test session::launch::tests::a_slow_starting_agent_receives_queued_text_literally ... ok",
+      "test session::launch::tests::failed_and_finished_agents_never_execute_queued_prompt_as_shell_commands ... ok"
+    ],
+    "verification_note": "literal-search tests; 3 real-backend/PTY checks"
+  },
+  "FEAT-session-lifecycle": {
+    "sources": [
+      "crates/chartr/src/app/backend.rs",
+      "crates/chartr/src/app.rs",
+      "crates/chartr/src/persistence.rs",
+      "crates/chartr/tests/live_session.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::command_palette::tests::close_all_sessions_is_available_from_the_palette ... ok",
+      "test app::persistence::tests::malformed_space_preserves_healthy_layouts_and_plugin_state ... ok",
+      "test app::persistence::tests::malformed_window_state_disables_saving_too ... ok",
+      "test app::persistence::tests::new_and_healthy_workspaces_remain_writable ... ok",
+      "test app::persistence::tests::disabled_chats_restore_as_spaces_without_losing_workspace_or_history_selection ... ok",
+      "test app::persistence::tests::malformed_or_future_terminal_names_disable_saving_without_data_loss ... ok",
+      "test markdown_prompt_plugin::persistence::tests::invalid_saves_preserve_configuration_receipts_and_output ... ok",
+      "test markdown_prompt_plugin::persistence::tests::legacy_state_loads_and_migrates_latest_whole_file_receipts ... ok",
+      "test persistence::tests::a_new_window_uses_the_shipped_chrome_defaults ... ok",
+      "test persistence::tests::a_new_database_runs_the_versioned_schema ... ok",
+      "test persistence::tests::complete_snapshots_round_trip_in_space_order ... ok",
+      "test persistence::tests::delayed_background_requests_cannot_overwrite_a_final_flush ... ok",
+      "test persistence::tests::older_window_state_ignores_removed_space_preferences ... ok",
+      "test persistence::tests::names_survive_incomplete_layouts_and_preserve_independent_attention ... ok",
+      "test persistence::tests::state_paths_use_the_chartr_namespace ... ok",
+      "test persistence::tests::one_time_migrations_have_an_explicit_completion_marker ... ok",
+      "test persistence::tests::failed_transactions_roll_back_and_the_same_snapshot_can_be_retried ... ok",
+      "test persistence::tests::saving_is_a_transaction_that_replaces_removed_spaces ... ok",
+      "test persistence::tests::saves_touch_only_changed_rows ... ok",
+      "test markdown_prompt_plugin::persistence::tests::saves_track_cleanup_across_restarts_and_reject_stale_panes ... ok",
+      "test namespace::tests::inherited_herdr_context_is_cleared_not_merely_overridden ... ok",
+      "test namespace::tests::terminal_children_do_not_inherit_the_launchers_no_color ... ok",
+      "test namespace::tests::migration_does_not_rewrite_a_custom_shell ... ok",
+      "test namespace::tests::prepare_creates_what_herdr_will_write_into ... ok",
+      "test namespace::tests::attach_mouse_preferences_do_not_change_the_daemon_configuration ... ok",
+      "test namespace::tests::legacy_shell_keeps_the_new_panes_routing_and_the_users_shell_environment ... ok"
+    ],
+    "verification_note": "persistence and lifecycle fixtures; real backend crash/recovery"
+  },
+  "FEAT-settings": {
+    "sources": [
+      "crates/chartr/src/settings.rs",
+      "crates/chartr/src/keymap.rs",
+      "crates/chartr/src/settings_window.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test keymap::tests::conflicts_in_the_chartr_context_are_refused ... ok",
+      "test keymap::tests::defaults_are_valid_unique_chords_with_four_unbound_commands ... ok",
+      "test keymap::tests::unreadable_keymaps_keep_defaults_and_are_never_overwritten ... ok",
+      "test keymap::tests::sparse_overrides_round_trip_and_defaults_remain ... ok",
+      "test keymap::tests::failed_writes_preserve_overrides_and_do_not_reserve_rejected_keys ... ok",
+      "test keymap::tests::retired_view_shortcuts_are_preserved_without_reserving_the_key ... ok",
+      "test keymap::tests::unbound_commands_can_be_assigned_cleared_and_restored ... ok",
+      "test plugin_settings::tests::clock_settings_preserve_existing_values_and_pane_owned_keys ... ok",
+      "test plugin_settings::tests::native_settings_cannot_follow_a_link_outside_plugin_data ... ok",
+      "test plugin_settings::tests::malformed_or_unsupported_saved_values_are_never_overwritten ... ok",
+      "test plugin_settings::tests::clock_settings_render_and_save_through_a_native_picker ... ok",
+      "test settings::tests::a_missing_file_resolves_to_shipped_defaults ... ok",
+      "test settings::tests::active_control_foregrounds_are_neutral_across_the_theme_catalog ... ok",
+      "test settings::tests::chartr_dark_keeps_structural_borders_clear_of_its_surfaces ... ok",
+      "test settings::tests::invalid_font_sizes_fall_back_without_destroying_user_content ... ok",
+      "test settings::tests::malformed_operator_settings_are_never_overwritten ... ok",
+      "test settings::tests::an_update_is_atomic_and_survives_relaunch ... ok",
+      "test settings::tests::sparse_settings_merge_with_complete_defaults ... ok",
+      "test settings::tests::the_chartr_rs_theme_catalog_is_registered_as_zed_themes ... ok",
+      "test settings::tests::plugin_grants_are_per_plugin_and_survive_relaunch ... ok",
+      "test settings::tests::manual_name_lifetime_defaults_to_keep_and_persists_both_choices ... ok",
+      "test settings::tests::unknown_keys_survive_known_updates ... ok",
+      "test settings::tests::portable_settings_require_contained_paths_and_unambiguous_fields ... ok"
+    ],
+    "verification_note": "settings, keymap and responsive-control fixtures"
+  },
+  "FEAT-panes-attention": {
+    "sources": [
+      "crates/chartr/src/attention.rs",
+      "crates/chartr/src/attention/content.rs",
+      "crates/chartr/src/attention/service.rs",
+      "docs/wiki/features/panes.md"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test attention::content::tests::closed_window_context_uses_persisted_terminal_ownership ... ok",
+      "test attention::content::tests::title_prefers_the_owning_space_over_the_current_directory ... ok",
+      "test attention::content::tests::preview_is_one_line_and_does_not_split_unicode_graphemes ... ok",
+      "test attention::service::tests::delayed_notification_cannot_outlive_acknowledgment_replacement_or_disconnect ... ok",
+      "test attention::tests::closed_and_replaced_terminals_cannot_receive_old_clicks ... ok",
+      "test attention::tests::exact_foreground_focus_suppresses_and_acknowledges ... ok",
+      "test attention::tests::no_startup_shell_unknown_or_presentation_alerts ... ok",
+      "test attention::tests::notify_once_until_visited_then_rearm ... ok",
+      "test attention::tests::restore_and_reconnect_keep_dots_without_catchup ... ok",
+      "test attention::content::tests::preview_reads_only_the_identified_session_and_falls_back_on_missing_history ... ok",
+      "test attention::service::tests::failed_attention_write_can_retry_and_old_tasks_cannot_overwrite_flush ... ok",
+      "test session_logs::tests::installed_opencode_exports_a_real_session ... ignored, Requires installed OpenCode and an existing local session; reads and exports only",
+      "test session_logs::tests::export_passes_exact_id_and_keeps_complete_private_json ... ok",
+      "test session_logs::tests::stalled_exports_are_terminated ... ok",
+      "test session_logs::tests::exports_reject_wrong_sessions_invalid_output_failed_commands_and_missing_executables ... ok"
+    ],
+    "verification_note": "state, focus, stale-event and log-reader fixtures"
+  },
+  "FEAT-plugin-packages": {
+    "sources": [
+      "crates/chartr/src/plugin_installer.rs",
+      "crates/chartr/src/plugin_installer/prebuilt.rs",
+      "crates/chartr-plugin-host/src/lib.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test plugin_installer::prebuilt::tests::checksum_rejects_tampered_content_and_wrong_artifacts ... ok",
+      "test plugin_installer::prebuilt::tests::archive_rejects_links_and_strips_privileged_permissions ... ok",
+      "test plugin_installer::tests::a_local_source_cannot_contain_the_managed_staging_directory ... ok",
+      "test plugin_installer::tests::a_manifest_selected_hugeicon_must_be_packaged ... ok",
+      "test plugin_installer::tests::a_separately_compiled_native_gpui_plugin_is_rejected ... ok",
+      "test plugin_installer::tests::cancelled_preparation_never_creates_an_install ... ok",
+      "test plugin_installer::tests::an_unknown_hosted_surface_is_rejected_before_confirmation ... ok",
+      "test plugin_installer::tests::a_local_web_plugin_is_staged_validated_and_installed ... ok",
+      "test plugin_installer::tests::failed_pending_removal_keeps_the_installed_package_and_invalid_ids_are_refused ... ok",
+      "test plugin_installer::tests::confirmation_applies_to_the_staged_bytes_not_later_source_changes ... ok",
+      "test plugin_installer::tests::released_native_package_installs_without_build_tools ... ignored, downloads a real release; set CHARTR_PLUGIN_TEST_REPOSITORY",
+      "test plugin_installer::tests::missing_prebuilt_platform_library_never_falls_back_to_source_compilation ... ok",
+      "test plugin_installer::tests::failed_exchange_and_invalid_pending_packages_preserve_the_installed_copy ... ok",
+      "test plugin_installer::tests::embedded_installation_copies_prebuilt_files_without_executing_them_or_hooks ... ok",
+      "test plugin_installer::tests::interrupted_activation_can_be_retried_without_reverting_the_upgrade ... ok",
+      "test plugin_installer::tests::web_entries_cannot_escape_the_plugin ... ok",
+      "test plugin_installer::tests::package_scripts_are_copied_but_never_executed ... ok",
+      "test plugin_installer::tests::recorded_source_survives_activation_and_enable_cycles ... ok",
+      "test plugin_installer::tests::replacement_is_atomic_and_does_not_touch_plugin_data ... ok",
+      "test plugin_installer::tests::upgrades_and_reenable_keep_live_code_until_the_next_startup ... ok",
+      "test plugin_installer::tests::uninstall_removes_installed_and_pending_packages_but_keeps_data_and_sources ... ok",
+      "test plugin_installer::tests::a_default_branch_git_repository_installs ... ok"
+    ],
+    "verification_note": "22 installer tests executed; host discovery fixtures"
+  },
+  "FEAT-plugin-runtime": {
+    "sources": [
+      "crates/chartr/src/app/plugins.rs",
+      "crates/chartr/src/native_plugin.rs",
+      "crates/chartr/src/native_webview.rs",
+      "crates/chartr/src/web_plugin/host.rs",
+      "crates/chartr-plugin/src/services.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::bundled_plugins::settings_surface_tests::settings_mount_routes_actions_and_repaints_on_contributor_notifications ... ok",
+      "test app::bundled_plugins::settings_surface_tests::plugin_settings_inherit_the_host_surface_after_theme_changes ... ok",
+      "test web_plugin::host::tests::continuous_process_output_is_bounded ... ok",
+      "test web_plugin::host::tests::file_reads_are_bounded ... ok",
+      "test web_plugin::host::tests::process_results_preserve_exit_status_and_both_streams ... ok",
+      "test web_plugin::host::tests::redirects_cannot_leave_the_network_allowlist ... ok",
+      "test web_plugin::host::tests::relative_redirects_to_allowed_destinations_still_work ... ok",
+      "test web_plugin::host::tests::stalled_http_responses_time_out ... ok",
+      "test web_plugin::host::tests::redirect_loops_are_bounded_and_non_http_redirects_are_denied ... ok",
+      "test web_plugin::host::tests::processes_and_inherited_output_pipes_have_a_deadline ... ok"
+    ],
+    "verification_note": "Rust host/permission tests; JavaScript bridge uses mocks"
+  },
+  "FEAT-agents-inbox": {
+    "sources": [
+      "plugins/agent/src/lib.rs",
+      "crates/chartr/src/session/launch.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test agent_plugin::tests::agent_icons_are_inferred_from_names_then_adapters ... ok",
+      "test agent_plugin::tests::a_named_prompt_flag_precedes_registered_arguments ... ok",
+      "test agent_plugin::tests::arguments_are_optional ... ok",
+      "test agent_plugin::tests::argv_launches_quote_every_shell_word ... ok",
+      "test agent_plugin::tests::argument_fields_round_trip_without_shell_interpretation ... ok",
+      "test agent_plugin::tests::inbox_launch_preserves_registered_commands_without_chat_transport_options ... ok",
+      "test agent_plugin::tests::invalid_environment_names_are_rejected ... ok",
+      "test agent_plugin::tests::carriage_returns_and_editing_characters_do_not_delimit_launch_commands ... ok",
+      "test agent_plugin::tests::every_provider_alias_selects_its_integration_without_rewriting_the_command ... ok",
+      "test agent_plugin::tests::typed_delivery_keeps_the_prompt_separate_from_the_command ... ok",
+      "test agent_plugin::tests::unknown_agents_get_the_generic_programming_icon ... ok",
+      "test agent_plugin::tests::branch_detection_does_not_need_to_invoke_git ... ok",
+      "test agent_plugin::tests::provider_registries_are_shared_across_window_catalogs ... ok",
+      "test agent_plugin::tests::setup_shortcuts_open_host_settings_and_keep_the_launcher ... ok"
+    ],
+    "verification_note": "launch argument, registry and UI-dispatch fixtures"
+  },
+  "FEAT-agents-inbox-history": {
+    "sources": [
+      "crates/chartr-conversations/src/lib.rs",
+      "crates/chartr/src/app/conversations.rs",
+      "crates/chartr/src/mode.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test app::conversations::tests::inbox_binds_added_provider_identities_and_rejects_a_changed_session ... ok",
+      "test app::conversations::tests::inbox_binds_pi_path_identities_without_following_another_session ... ok",
+      "test app::conversations::tests::inbox_terminal_binding_rejects_reused_panes_and_changed_native_sessions ... ok",
+      "test app::persistence::tests::disabled_chats_restore_as_spaces_without_losing_workspace_or_history_selection ... ok",
+      "test session_logs::tests::installed_opencode_exports_a_real_session ... ignored, Requires installed OpenCode and an existing local session; reads and exports only",
+      "test transcripts::tests::claude_deduplicates_and_ignores_incomplete_tail_and_subagents ... ok",
+      "test transcripts::tests::claude_native_names_prefer_custom_over_ai_and_ignore_blank_names ... ok",
+      "test transcripts::tests::codex_user_events_exclude_injected_context_but_preserve_user_quoted_xml ... ok",
+      "test transcripts::tests::codex_uses_response_items_not_duplicate_event_messages ... ok",
+      "test transcripts::tests::installed_grok_log_matches_its_directory_identity ... ignored, Requires existing local Grok sessions; locates files without reading their contents",
+      "test transcripts::tests::omp_current_header_title_wins_over_historical_title_entries ... ok",
+      "test transcripts::tests::lookup_requires_exact_unique_id ... ok",
+      "test transcripts::tests::antigravity_checks_both_roots_and_rejects_ambiguous_sessions ... ok",
+      "test transcripts::tests::pi_uses_first_prompt_or_latest_session_name_and_verifies_identity ... ok",
+      "test transcripts::tests::cursor_legacy_logs_are_supported_but_subagents_and_duplicates_are_not_selected ... ok",
+      "test transcripts::tests::unfinished_or_blank_reply_does_not_expose_the_previous_reply ... ok",
+      "test transcripts::tests::pi_reads_only_the_reported_session_and_rechecks_identity_before_cache_hits ... ok",
+      "test transcripts::tests::reply_preview_uses_the_latest_reply_in_the_current_codex_turn ... ok",
+      "test transcripts::tests::session_log_finds_archived_codex_logs_and_rejects_ambiguous_matches ... ok",
+      "test transcripts::tests::additional_provider_logs_match_exact_sessions_and_survive_large_files ... ok",
+      "test transcripts::tests::opencode_placeholder_titles_do_not_replace_observed_titles ... ok",
+      "test session_logs::tests::export_passes_exact_id_and_keeps_complete_private_json ... ok",
+      "test session_logs::tests::stalled_exports_are_terminated ... ok",
+      "test session_logs::tests::exports_reject_wrong_sessions_invalid_output_failed_commands_and_missing_executables ... ok"
+    ],
+    "verification_note": "history binding, log fixtures and legacy-mode restoration"
+  },
+  "FEAT-skill-sources": {
+    "sources": [
+      "plugins/skills/src/sources.rs",
+      "plugins/skills/src/lib.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test skills_plugin::sources::tests::invalid_and_duplicate_names_and_relative_paths_leave_registry_unchanged ... ok",
+      "test skills_plugin::sources::tests::malformed_registry_is_reported_without_overwriting_it ... ok",
+      "test skills_plugin::sources::tests::discovery_matches_depth_and_duplicate_rules_and_rescans_local_changes ... ok",
+      "test skills_plugin::sources::tests::persistence_failure_and_cancellation_preserve_memory_and_disk ... ok",
+      "test skills_plugin::tests::provider_registries_are_shared_across_window_catalogs ... ok",
+      "test skills_plugin::sources::tests::templates_keep_the_combined_id_and_scope_each_enabled_source ... ok",
+      "test skills_plugin::tests::registry_serializes_mutations_across_views_and_preserves_corrupt_storage ... ok",
+      "test skills_plugin::sources::tests::local_sources_round_trip_edit_reorder_toggle_and_remove_without_touching_folders ... ok",
+      "test skills_plugin::tests::source_drag_reorders_live_and_only_persists_on_release ... ok",
+      "test skills_plugin::tests::settings_editor_and_delete_are_explicit ... ok",
+      "test skills_plugin::tests::source_drag_cancellation_and_failed_save_restore_the_original_order ... ok",
+      "test skills_plugin::sources::tests::changing_remote_ref_or_kind_is_transactional_and_failed_registration_leaves_no_checkout ... ok",
+      "test skills_plugin::sources::tests::remote_refs_are_independent_and_refresh_is_explicit_and_failure_preserves_current_checkout ... ok"
+    ],
+    "verification_note": "registry, discovery, conflict and precedence fixtures"
+  },
+  "FEAT-saved-prompts": {
+    "sources": [
+      "plugins/prompts/src/lib.rs",
+      "plugins/prompts/src/store.rs",
+      "plugins/prompts/src/dialog.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test prompts_plugin::dialog::tests::confirm_binding_preserves_newlines_outside_prompt_dialog ... ok",
+      "test prompts_plugin::store::tests::unreadable_or_newer_data_is_not_overwritten ... ok",
+      "test prompts_plugin::dialog::tests::delete_modal_requires_confirmation_and_keeps_conflicts_open ... ok",
+      "test prompts_plugin::store::tests::round_trip_preserves_body_and_identity_after_rename_and_delete ... ok",
+      "test prompts_plugin::store::tests::stale_edits_and_deletes_fail_without_losing_other_prompts ... ok",
+      "test prompts_plugin::dialog::tests::multiline_modal_keeps_actions_visible_and_publishes_saved_edits ... ok"
+    ],
+    "verification_note": "storage and GPUI modal fixtures"
+  },
+  "FEAT-markdown-prompt": {
+    "sources": [
+      "plugins/markdown-prompt/src/lib.rs",
+      "plugins/markdown-prompt/src/document.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test markdown_prompt_plugin::document::tests::malformed_previous_markers_block_cleanup_and_missing_previous_folder_is_ok ... ok",
+      "test markdown_prompt_plugin::document::tests::references_are_exact_and_bodies_are_literal ... ok",
+      "test markdown_prompt_plugin::document::tests::cleanup_deletes_empty_files_and_empty_prompts_stop_before_destination ... ok",
+      "test markdown_prompt_plugin::document::tests::legacy_owned_files_migrate_only_when_receipts_match ... ok",
+      "test markdown_prompt_plugin::document::tests::invalid_filenames_and_content_leave_last_applied_file_untouched ... ok",
+      "test markdown_prompt_plugin::document::tests::creates_appends_and_updates_in_place_without_rewriting_unchanged_output ... ok",
+      "test markdown_prompt_plugin::rich_input::tests::structured_compositions_round_trip_and_invalid_tokens_stay_text ... ok",
+      "test markdown_prompt_plugin::document::tests::rejects_symlinks_in_both_destination_and_cleanup ... ok",
+      "test markdown_prompt_plugin::document::tests::changing_filename_cleans_previous_and_preserves_surrounding_text ... ok",
+      "test markdown_prompt_plugin::persistence::tests::invalid_saves_preserve_configuration_receipts_and_output ... ok",
+      "test markdown_prompt_plugin::persistence::tests::legacy_state_loads_and_migrates_latest_whole_file_receipts ... ok",
+      "test markdown_prompt_plugin::tests::long_preview_has_a_draggable_scrollbar_and_reopens_at_the_top ... ok",
+      "test markdown_prompt_plugin::rich_input::editing_tests::inline_objects_delete_atomically_and_undo_restores_identity ... ok",
+      "test markdown_prompt_plugin::persistence::tests::saves_track_cleanup_across_restarts_and_reject_stale_panes ... ok",
+      "test markdown_prompt_plugin::tests::template_changes_wait_for_save_and_save_resolves_fresh_bodies ... ok",
+      "test markdown_prompt_plugin::tests::edits_only_apply_on_save_and_dialog_errors_and_cancellation_preserve_files ... ok"
+    ],
+    "verification_note": "real temporary-file saves, conflict and document fixtures"
+  },
+  "FEAT-wayfinder": {
+    "sources": [
+      "plugins/wayfinder/src/lib.rs",
+      "plugins/wayfinder/src/model.rs",
+      "plugins/wayfinder/app.js",
+      "plugins/wayfinder/tests/layout.test.mjs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test wayfinder_plugin::model::tests::closure_precedes_a_leftover_claim_and_lists_accept_legacy_numbers ... ok",
+      "test wayfinder_plugin::model::tests::quoted_and_empty_answers_do_not_close_tickets ... ok",
+      "test wayfinder_plugin::model::tests::launch_lock_releases_even_while_an_inherited_descriptor_remains_open ... ok",
+      "test wayfinder_plugin::prompt::tests::a_single_general_method_can_dispatch_without_four_role_bindings ... ok",
+      "test wayfinder_plugin::prompt::tests::disabling_a_pinned_source_never_substitutes_another_source ... ok",
+      "test wayfinder_plugin::tests::links_can_open_only_http_or_files_inside_this_space ... ok",
+      "test wayfinder_plugin::tests::changed_sources_or_files_reject_stale_web_previews ... ok",
+      "test wayfinder_plugin::model::tests::frontier_claims_and_stale_previews_share_the_same_file_truth ... ok",
+      "test wayfinder_plugin::tests::preview_requires_an_existing_map_and_ticket_selection ... ok",
+      "test wayfinder_plugin::tests::markdown_never_executes_project_content_or_fetches_images ... ok",
+      "test wayfinder_plugin::tests::preview_tokens_are_document_bound_one_shot_and_blocked_tickets_cannot_preview ... ok",
+      "test wayfinder_plugin::tests::missing_and_ruled_out_blockers_cycles_and_duplicate_ids_never_become_frontier ... ok",
+      "test wayfinder_plugin::tests::failed_delivery_releases_only_its_own_claim ... ok",
+      "test wayfinder_plugin::tests::the_web_bridge_requires_an_explicit_grant_and_an_owning_pane ... ok",
+      "test wayfinder_plugin::tests::web_launcher_claims_before_input_and_missing_providers_keep_maps ... ok",
+      "test wayfinder_plugin::tests::release_recovers_a_dead_session_and_rejects_a_changed_claim ... ok",
+      "test wayfinder_plugin::tests::source_revocation_or_closing_during_prepare_never_delivers ... ok"
+    ],
+    "verification_note": "file/model/bridge fixtures and JavaScript geometry tests"
+  },
+  "FEAT-status-bar": {
+    "sources": [
+      "crates/chartr/src/app/status_bar.rs",
+      "crates/chartr/src/settings.rs"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [
+      "test plugin_settings::tests::clock_settings_preserve_existing_values_and_pane_owned_keys ... ok",
+      "test plugin_settings::tests::native_settings_cannot_follow_a_link_outside_plugin_data ... ok",
+      "test plugin_settings::tests::malformed_or_unsupported_saved_values_are_never_overwritten ... ok",
+      "test plugin_settings::tests::clock_settings_render_and_save_through_a_native_picker ... ok",
+      "test settings::tests::a_missing_file_resolves_to_shipped_defaults ... ok",
+      "test settings::tests::active_control_foregrounds_are_neutral_across_the_theme_catalog ... ok",
+      "test settings::tests::chartr_dark_keeps_structural_borders_clear_of_its_surfaces ... ok",
+      "test settings::tests::invalid_font_sizes_fall_back_without_destroying_user_content ... ok",
+      "test settings::tests::malformed_operator_settings_are_never_overwritten ... ok",
+      "test settings::tests::an_update_is_atomic_and_survives_relaunch ... ok",
+      "test settings::tests::sparse_settings_merge_with_complete_defaults ... ok",
+      "test settings::tests::the_chartr_rs_theme_catalog_is_registered_as_zed_themes ... ok",
+      "test settings::tests::plugin_grants_are_per_plugin_and_survive_relaunch ... ok",
+      "test settings::tests::manual_name_lifetime_defaults_to_keep_and_persists_both_choices ... ok",
+      "test settings::tests::unknown_keys_survive_known_updates ... ok",
+      "test settings::tests::portable_settings_require_contained_paths_and_unambiguous_fields ... ok"
+    ],
+    "verification_note": "settings persistence fixtures"
+  },
+  "FEAT-status-bar-contributions": {
+    "sources": [
+      "crates/chartr/src/app/status_bar.rs",
+      "docs/wiki/features/status-bar.md"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [],
+    "verification_note": ""
+  },
+  "FEAT-distribution": {
+    "sources": [
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml",
+      "docs/wiki/verification/runs/2026-10-21-release-publication.md",
+      "docs/wiki/evidence/2026-11-03-project-status-checks/latest-release.json"
+    ],
+    "delivery_basis": "v0.3.2 source plus current diff",
+    "tests": [],
+    "verification_note": "local script checks; published assets and main CI confirmed"
+  }
+}

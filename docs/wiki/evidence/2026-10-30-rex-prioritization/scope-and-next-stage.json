@@ -1,0 +1,57 @@
+{
+  "protocol": 1,
+  "kind": "result",
+  "session": "c7ade4c949fff1d45786afdc4d47d041",
+  "outcome": "submitted",
+  "data": {
+    "schema": "grill-form/v1",
+    "title": "Rex ideas — select multiple proposals",
+    "answers": [
+      {
+        "questionId": "individual_target",
+        "number": 1,
+        "question": "Which proposals should we explore next? Select as many as you want.",
+        "choiceId": null,
+        "choice": null,
+        "notes": "",
+        "status": "untouched",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "first_scope",
+        "number": 2,
+        "question": "How broad should the first deliverable be?",
+        "choiceId": "single",
+        "choice": "One focused feature, finished end to end",
+        "notes": "",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "next_stage",
+        "number": 3,
+        "question": "Once the target and essential choices are clear, what should I do next?",
+        "choiceId": "explore",
+        "choice": "Explore design and feasibility, then bring back a concrete plan",
+        "notes": "",
+        "status": "feedback",
+        "states": {},
+        "comments": []
+      },
+      {
+        "questionId": "real_workflow",
+        "number": 4,
+        "question": "What recent Chartr moment would you most like this work to improve?",
+        "choiceId": null,
+        "choice": null,
+        "notes": "",
+        "status": "untouched",
+        "states": {},
+        "comments": []
+      }
+    ]
+  },
+  "artifacts": []
+}

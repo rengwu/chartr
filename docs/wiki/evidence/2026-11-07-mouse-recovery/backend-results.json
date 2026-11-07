@@ -1,0 +1,222 @@
+[
+  {
+    "test": "app::tests::handoff_preserves_all_terminal_identities_and_invariants",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "cli::server::tests::live_handoff_params_parse_remote_update_fields",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::osc::tests::handoff_seed_does_not_restore_agent_detection_evidence",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_mouse_button_encoding_uses_live_terminal_state",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_mouse_drag_encoding_uses_motion_reporting_state",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_mouse_drag_without_motion_reporting_is_not_forwarded",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_mouse_moved_encoding_uses_any_motion_state",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_mouse_sgr_pixels_preserves_exact_and_downgrades_cell_input",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::ghostty_seed_handoff_input_state_restores_input_modes",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::terminal::tests::shell_regaining_foreground_releases_mouse_without_clearing_screen",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::follow_cwd_falls_back_to_reported_pane_cwd_without_foreground_group",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::handoff_history_ansi_captures_primary_screen",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::handoff_history_ansi_skips_alternate_screen",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::handoff_runtime_state_captures_terminal_input_and_title_state",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::identified_agent_probes_when_foreground_group_disappears",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::lifecycle_authority_preserves_initial_and_foreground_group_change_probes",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::pending_release_probes_when_foreground_group_changes",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::pending_release_skips_repeated_probe_when_foreground_group_is_stable",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::stable_missing_foreground_group_uses_safety_process_probe",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::stable_unidentified_foreground_group_has_no_safety_process_probe",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::truncate_handoff_history_drops_partial_long_line",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::truncate_handoff_history_keeps_recent_utf8_boundary",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::unchanged_unidentified_foreground_group_skips_full_process_probe",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::unidentified_foreground_group_change_runs_full_process_probe",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::unidentified_pane_probes_when_foreground_group_disappears",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pane::tests::unidentified_pane_without_foreground_group_uses_safety_process_probe",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pty::actor::unix::tests::actor_wakes_idle_poll_for_handoff_control",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pty::actor::unix::tests::begin_handoff_drains_user_writes_already_in_command_queue",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pty::actor::unix::tests::begin_handoff_stops_reads_and_rejects_user_writes_until_rollback",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pty::actor::unix::tests::duplicate_for_handoff_requires_quiesced_actor",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "pty::actor::unix::tests::handoff_control_is_not_blocked_by_full_data_queue",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "remote::attach::tests::extract_remote_args_accepts_explicit_handoff",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "remote::attach::tests::extract_remote_args_preserves_handoff_without_remote",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "remote::attach::tests::remote_install_plan_uses_live_handoff_for_pre_floor_server",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "remote::attach::tests::remote_live_handoff_uses_prepared_binary_identity",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "server::handoff::tests::a_handoff_carries_an_api_set_window_title",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "server::handoff::tests::a_manifest_written_before_the_title_field_still_loads",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "server::headless::tests::completed_handoff_disables_only_old_server_session_persistence",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::failed_handoff_classification_detects_missing_server",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::failed_handoff_classification_detects_old_server",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::failed_handoff_classification_detects_updated_server",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::live_handoff_server_via_api_sends_handoff_request",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::self_update_args_gate_live_handoff",
+    "exit_code": 0,
+    "output": null
+  },
+  {
+    "test": "update::tests::update_live_handoff_request_names_import_binary_and_expected_release",
+    "exit_code": 0,
+    "output": null
+  }
+]

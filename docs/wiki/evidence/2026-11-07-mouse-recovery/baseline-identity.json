@@ -1,0 +1,12 @@
+{
+  "revision": "369298062bfd5ba00ad0c273d580ce408797b19c",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5368g\n",
+  "architecture": "arm64",
+  "binaries": {
+    "/Applications/chartr.app/Contents/MacOS/chartr": "7df7a493a68e24b073880de06eb7a8b574dc69235dd03a7311a3f388d12837ec",
+    "/Applications/chartr.app/Contents/MacOS/herdr": "75e0af7bad3dbe668c8f0c7cbf3b0a631c48dd2e7b7f17291d4bbae075887f40",
+    "target/debug/herdr": "93ee0fc1f06fbe27e9150e9eeb6afcb7f2bbfdc2ba3efcde28471e5b78e742c3"
+  },
+  "installed_herdr_version": "herdr 0.8.2-chartr.5a2dee700eee.identity.9ed02822c877",
+  "note": "Pre-fix binaries; existing unrelated task-name/layout work present."
+}

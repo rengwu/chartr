@@ -1,0 +1,15 @@
+{
+  "name": "workspace",
+  "argv": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--locked",
+    "--no-fail-fast"
+  ],
+  "command": "cargo test --workspace --locked --no-fail-fast",
+  "exit_code": 0,
+  "seconds": 7.83,
+  "log": "workspace.log",
+  "finished": "2026-11-03T01:43:07.758481+08:00"
+}

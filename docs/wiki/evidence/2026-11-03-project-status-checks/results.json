@@ -1,0 +1,107 @@
+[
+  {
+    "name": "format",
+    "argv": [
+      "cargo",
+      "fmt",
+      "--all",
+      "--check"
+    ],
+    "command": "cargo fmt --all --check",
+    "exit_code": 0,
+    "seconds": 1.05,
+    "log": "format.log",
+    "finished": "2026-11-03T01:43:00.980692+08:00"
+  },
+  {
+    "name": "python",
+    "argv": [
+      "python3",
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "scripts/tests",
+      "-v"
+    ],
+    "command": "python3 -B -m unittest discover -s scripts/tests -v",
+    "exit_code": 0,
+    "seconds": 1.21,
+    "log": "python.log",
+    "finished": "2026-11-03T01:43:01.143689+08:00"
+  },
+  {
+    "name": "javascript",
+    "argv": [
+      "node",
+      "--test",
+      "crates/chartr/tests/plugin_bridge.cjs",
+      "plugins/wayfinder/tests/layout.test.mjs"
+    ],
+    "command": "node --test crates/chartr/tests/plugin_bridge.cjs plugins/wayfinder/tests/layout.test.mjs",
+    "exit_code": 0,
+    "seconds": 0.14,
+    "log": "javascript.log",
+    "finished": "2026-11-03T01:43:00.068693+08:00"
+  },
+  {
+    "name": "workspace",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--locked",
+      "--no-fail-fast"
+    ],
+    "command": "cargo test --workspace --locked --no-fail-fast",
+    "exit_code": 0,
+    "seconds": 7.83,
+    "log": "workspace.log",
+    "finished": "2026-11-03T01:43:07.758481+08:00"
+  },
+  {
+    "name": "live-session",
+    "argv": [
+      "/Users/rengwu/Desktop/Projects/chartr/target/debug/deps/live_session-3e4e2f6b3cfb3ed6",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "command": "/Users/rengwu/Desktop/Projects/chartr/target/debug/deps/live_session-3e4e2f6b3cfb3ed6 --ignored --nocapture --test-threads=1",
+    "exit_code": 0,
+    "seconds": 1.34,
+    "log": "live-session.log",
+    "finished": "2026-11-03T01:43:09.098487+08:00"
+  },
+  {
+    "name": "native-plugin",
+    "argv": [
+      "cargo",
+      "check",
+      "--manifest-path",
+      "examples/plugins/hello/Cargo.toml",
+      "--locked"
+    ],
+    "command": "cargo check --manifest-path examples/plugins/hello/Cargo.toml --locked",
+    "exit_code": 0,
+    "seconds": 0.45,
+    "log": "native-plugin.log",
+    "finished": "2026-11-03T01:43:09.550328+08:00"
+  },
+  {
+    "name": "normal-build",
+    "argv": [
+      "cargo",
+      "build",
+      "-p",
+      "chartr",
+      "--locked"
+    ],
+    "command": "cargo build -p chartr --locked",
+    "exit_code": 0,
+    "seconds": 0.78,
+    "log": "normal-build.log",
+    "finished": "2026-11-03T01:43:10.331823+08:00"
+  }
+]

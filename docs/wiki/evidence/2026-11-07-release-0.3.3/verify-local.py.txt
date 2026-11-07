@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Bounded release checks; no desktop app is launched."""
+import datetime
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import time
+
+ROOT = Path(__file__).resolve().parents[4]
+OUT = Path(__file__).resolve().parent
+ENV = dict(os.environ, CARGO_BUILD_JOBS="2", RUST_TEST_THREADS="2")
+results = []
+
+def check(name, argv):
+    started = time.monotonic()
+    print(f"Starting {name}", flush=True)
+    with (OUT / f"{name}.log").open("w") as log:
+        process = subprocess.run(argv, cwd=ROOT, env=ENV, stdout=log, stderr=subprocess.STDOUT)
+    results.append({"name": name, "argv": argv, "exit_code": process.returncode,
+                    "seconds": round(time.monotonic() - started, 2),
+                    "finished": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+    (OUT / "local-results.json").write_text(json.dumps(results, indent=2) + "\n")
+    print(f"{name}: exit {process.returncode}, {results[-1]['seconds']}s", flush=True)
+    if process.returncode:
+        print((OUT / f"{name}.log").read_text()[-5000:], flush=True)
+        raise SystemExit(process.returncode)
+
+check("format", ["cargo", "fmt", "--all", "--check"])
+check("scripts", ["python3", "-B", "-m", "unittest", "discover", "-s", "scripts/tests", "-v"])
+check("javascript", ["node", "--test", "crates/chartr/tests/plugin_bridge.cjs", "plugins/wayfinder/tests/layout.test.mjs"])
+check("workspace", ["cargo", "test", "--workspace", "--locked", "--no-fail-fast"])
+workspace_log = (OUT / "workspace.log").read_text()
+live_binary = re.search(r"Running tests/live_session\.rs \(([^)]+)\)", workspace_log)
+if not live_binary:
+    raise SystemExit("Cannot identify the real-session executable from the workspace run")
+check("live-session", [str(ROOT / live_binary.group(1)), "--ignored", "--nocapture", "--test-threads=1"])
+check("native-plugin", ["cargo", "check", "--manifest-path", "examples/plugins/hello/Cargo.toml", "--locked"])
+check("build", ["cargo", "build", "-p", "chartr", "--locked"])

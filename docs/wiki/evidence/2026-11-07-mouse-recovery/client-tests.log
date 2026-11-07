@@ -1,0 +1,69 @@
+   Compiling libc v0.2.189
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling rustix v1.1.4
+   Compiling syn v3.0.4
+   Compiling errno v0.3.14
+   Compiling serde v1.0.229
+   Compiling bitflags v2.13.1
+   Compiling getrandom v0.4.3
+   Compiling serde_json v1.0.151
+   Compiling fastrand v2.5.0
+   Compiling once_cell v1.21.4
+   Compiling tempfile v3.27.0
+   Compiling memchr v2.8.3
+   Compiling serde_derive v1.0.229
+   Compiling chartr-storage v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-storage)
+   Compiling socket2 v0.6.5
+   Compiling chartr-agent v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-agent)
+   Compiling chartr-herdr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.43s
+     Running unittests src/lib.rs (target/debug/deps/chartr_herdr-85132808aad8a130)
+
+running 36 tests
+test control::tests::a_blank_title_is_not_a_title ... ok
+test control::tests::an_ordinary_foreground_process_is_distinct_from_an_agent ... ok
+test control::tests::a_tab_prefers_an_agent_then_falls_back_to_title_or_terminal ... ok
+test control::tests::an_unknown_future_agent_status_degrades_to_unknown ... ok
+test control::tests::default_tab_numbers_are_never_display_labels ... ok
+test control::tests::agent_identity_ignores_helpers_and_handles_version_named_claude_binaries ... ok
+test control::tests::herdr_agent_status_is_translated_without_inference ... ok
+test control::tests::idle_shell_names_do_not_mark_sessions_as_running_processes ... ok
+test control::tests::inbox_title_fallbacks_preserve_explicit_names_and_ignore_startup_labels ... ok
+test control::tests::inbox_titles_use_live_terminal_metadata_without_a_native_session ... ok
+test control::tests::direct_attach_uses_the_terminal_id_and_private_namespace ... ok
+test control::tests::pi_directory_labels_are_not_conversation_titles ... ok
+test control::tests::process_info_excludes_the_waiting_shell ... ok
+test control::tests::a_missing_socket_names_the_socket_it_looked_for ... ok
+test integration::tests::installs_in_the_loaded_directory_without_overwriting_other_plugins ... ok
+test integration::tests::pi_compatibility_is_idempotent_and_rejects_unknown_or_unmanaged_hooks ... ok
+test control::tests::installation_requires_verified_state_and_surfaces_installer_errors ... ok
+test namespace::tests::inherited_herdr_context_is_cleared_not_merely_overridden ... ok
+test control::tests::a_clean_restart_removes_only_the_saved_shape ... ok
+test control::tests::closing_an_already_absent_pane_is_successful ... ok
+test control::tests::closing_preserves_other_backend_failures ... ok
+test control::tests::connect_live_handoffs_an_incompatible_private_daemon ... ok
+test protocol::tests::a_response_carrying_an_error_parses_as_one ... ok
+test control::tests::oversized_replies_are_rejected ... ok
+test protocol::tests::unknown_response_fields_do_not_fail_the_parse ... ok
+test protocol::tests::provider_aliases_and_argv0_win_over_transient_helpers ... ok
+test sidecar::tests::a_missing_sidecar_says_how_to_get_one ... ok
+test sidecar::tests::a_directory_is_not_a_sidecar ... ok
+test namespace::tests::terminal_children_do_not_inherit_the_launchers_no_color ... ok
+test namespace::tests::attach_mouse_preferences_do_not_change_the_daemon_configuration ... ok
+test namespace::tests::migration_does_not_rewrite_a_custom_shell ... ok
+test namespace::tests::prepare_creates_what_herdr_will_write_into ... ok
+test control::tests::partial_replies_do_not_extend_the_absolute_deadline ... ok
+test namespace::tests::legacy_shell_keeps_the_new_panes_routing_and_the_users_shell_environment ... ok
+test control::tests::stalled_daemons_cannot_exceed_connect_or_reconnect_deadlines ... ok
+test control::tests::stalled_request_writes_are_bounded_too ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+   Doc-tests chartr_herdr
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

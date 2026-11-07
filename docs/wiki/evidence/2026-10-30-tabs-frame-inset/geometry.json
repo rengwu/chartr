@@ -1,0 +1,37 @@
+{
+  "tabs": {
+    "screenshot_size": [
+      1634,
+      1162
+    ],
+    "sample_row": 581,
+    "border_pixel_runs_inclusive": [
+      [
+        8,
+        9
+      ],
+      [
+        1624,
+        1625
+      ]
+    ]
+  },
+  "spaces": {
+    "screenshot_size": [
+      1634,
+      1162
+    ],
+    "sample_row": 581,
+    "border_pixel_runs_inclusive": [
+      [
+        560,
+        561
+      ],
+      [
+        1624,
+        1625
+      ]
+    ]
+  },
+  "interpretation": "2x capture: Tabs has 8 physical px (4 logical px) outer gaps at both sides. Spaces frame starts at the 280 logical px sidebar boundary."
+}

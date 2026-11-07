@@ -1,0 +1,4 @@
+package main
+import("encoding/binary";"debug/macho";"debug/gosym";"encoding/json";"os";"fmt")
+type Fn struct {Name string `json:"name"`; Entry uint64 `json:"entry"`; End uint64 `json:"end"`; File string `json:"file"`; Line int `json:"line"`}
+func main(){f,e:=macho.Open(os.Args[1]);if e!=nil{panic(e)};p,e:=f.Section("__gopclntab").Data();if e!=nil{panic(e)};md,_:=f.Section("__go_module").Data();textStart:=binary.LittleEndian.Uint64(md[22*8:]);lt:=gosym.NewLineTable(p,textStart);t,e:=gosym.NewTable(nil,lt);if e!=nil{panic(e)}; a:=[]Fn{};for _,fn:=range t.Funcs{file,line,_:=t.PCToLine(fn.Entry);a=append(a,Fn{fn.Name,fn.Entry,fn.End,file,line})};b,_:=json.MarshalIndent(a,"","  ");os.WriteFile(os.Args[2],b,0600);fmt.Println(len(a),"recovered functions")}

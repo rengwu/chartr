@@ -1,0 +1,10 @@
+{
+  "revision": "369298062bfd5ba00ad0c273d580ce408797b19c",
+  "captured_at": "2026-10-30T03:54:58Z",
+  "change": "Automatic terminal titles omit an exact trailing project-directory suffix; manual names remain literal.",
+  "terminal_names_rs_sha256": "3bcaa397e32c164f6b2b4b1c586f24d8fed09911df733fbdb3f9b89cd9c78281",
+  "tracked_source_patch_sha256": "41d465e1d596441cad2c930bcc185a7fc53f2d0f11b7303ecf0ee47f0260f421",
+  "normal_binary_sha256": "018b55bd569d2285147e7ce6128528c829d864acd176a1872b253c32f6a395f0",
+  "prior_build": "build-identity.json",
+  "scope": "11 naming tests and normal desktop build; no new native UI interaction check."
+}

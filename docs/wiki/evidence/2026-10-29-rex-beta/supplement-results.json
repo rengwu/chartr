@@ -1,0 +1,255 @@
+[
+  {
+    "name": "chunked_capture_reassembled_exactly",
+    "passed": true,
+    "observed": {
+      "chunks": 19,
+      "bytes": 6855,
+      "total": 6855,
+      "schema_correction": "blob_read returns data, not content"
+    }
+  },
+  {
+    "name": "valid_layout_failed_creator_rolls_back",
+    "passed": true,
+    "observed": {
+      "error": "Error: stream response \"control-3\" failed: block flavor not found: \"missing.creator.kind\" (status=404 code=not_found)\n",
+      "before_blocks": {
+        "blocks": [
+          {
+            "block_id": "block:01a18804-932b-796e-99f4-d123b9bc137f",
+            "label": "Stable audit task",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "placed",
+            "window_id": "window:01a18804-932d-7979-900d-5675bb267e8d",
+            "owner": "client:01a18804-932a-7a25-b442-f4f52b68b840"
+          },
+          {
+            "block_id": "block:01a18804-9888-7318-ba4c-6bb51ea94c00",
+            "label": "shell",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "detached"
+          }
+        ]
+      },
+      "after_blocks": {
+        "blocks": [
+          {
+            "block_id": "block:01a18804-932b-796e-99f4-d123b9bc137f",
+            "label": "Stable audit task",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "placed",
+            "window_id": "window:01a18804-932d-7979-900d-5675bb267e8d",
+            "owner": "client:01a18804-932a-7a25-b442-f4f52b68b840"
+          },
+          {
+            "block_id": "block:01a18804-9888-7318-ba4c-6bb51ea94c00",
+            "label": "shell",
+            "creator_name": "com.superlogical.terminal",
+            "flavor": "com.superlogical.terminal.shell",
+            "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+            "placement": "detached"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "floating_layer_created",
+    "passed": true,
+    "observed": {
+      "result": {
+        "layer_id": "layer:01a18806-7f9c-76ed-9f45-985285b2476d",
+        "block_ids": [
+          "block:01a18806-7f9a-73b5-9da2-b80244d427db"
+        ],
+        "revision": 8
+      },
+      "view": {
+        "revision": 9,
+        "session_id": "session:01a18804-932b-78ba-83fd-b1726e5cdcf2",
+        "label": "chartr-rex-audit",
+        "active_window_id": "window:01a18804-932d-7979-900d-5675bb267e8d",
+        "windows": [
+          {
+            "window_id": "window:01a18804-932d-7979-900d-5675bb267e8d",
+            "label": "Window bb267e8d",
+            "focused_block_id": "block:01a18804-932b-796e-99f4-d123b9bc137f",
+            "layers": [
+              {
+                "layer_id": "layer:01a18804-932d-7985-bf75-ac3173808618",
+                "kind": "tiled",
+                "bounds": [
+                  0,
+                  0,
+                  1,
+                  1
+                ],
+                "layout": {
+                  "rect": [
+                    0,
+                    0,
+                    1,
+                    1
+                  ],
+                  "block_id": "block:01a18804-932b-796e-99f4-d123b9bc137f"
+                },
+                "blocks": [
+                  {
+                    "block_id": "block:01a18804-932b-796e-99f4-d123b9bc137f",
+                    "label": "Stable audit task",
+                    "creator_name": "com.superlogical.terminal",
+                    "flavor": "com.superlogical.terminal.shell",
+                    "host_id": "58c595a3-83bb-4c86-a120-59de76a21072",
+                    "owner": "client:01a18804-932a-7a25-b442-f4f52b68b840"
+                  }
+                ]
+              },
+              {
+                "layer_id": "layer:01a18806-7f9c-76ed-9f45-985285b2476d",
+                "kind": "floating",
+                "bounds": [
+                  0.1,
+                  0.1,
+                  0.5,
+                  0.5
+                ],
+                "layout": {
+                  "rect": [
+                    0.1,
+                    0.1,
+                    0.5,
+                    0.5
+                  ],
+                  "block_id": "block:01a18806-7f9a-73b5-9da2-b80244d427db"
+                },
+                "blocks": [
+                  {
+                    "block_id": "block:01a18806-7f9a-73b5-9da2-b80244d427db",
+                    "label": "shell",
+                    "creator_name": "com.superlogical.terminal",
+                    "flavor": "com.superlogical.terminal.shell",
+                    "host_id": "58c595a3-83bb-4c86-a120-59de76a21072"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "path_browser_explicit_missing_and_files",
+    "passed": true,
+    "observed": {
+      "listing": {
+        "path": "/tmp/chartr-rex-analysis-20261029/dirfixture",
+        "home": "/Users/rengwu",
+        "status": "ok",
+        "entries": [
+          {
+            "name": "space name.txt",
+            "file": true
+          }
+        ],
+        "truncated": false
+      },
+      "missing": {
+        "path": "/tmp/chartr-rex-analysis-20261029/nonexistent",
+        "home": "/Users/rengwu",
+        "status": "missing",
+        "entries": [],
+        "truncated": false
+      }
+    }
+  },
+  {
+    "name": "status_store_cap_is_64",
+    "passed": true,
+    "observed": {
+      "count": 64,
+      "ids": [
+        "task1",
+        "task10",
+        "task11",
+        "task12",
+        "task13",
+        "task14",
+        "task15",
+        "task16",
+        "task17",
+        "task18",
+        "task19",
+        "task2",
+        "task20",
+        "task21",
+        "task22",
+        "task23",
+        "task24",
+        "task25",
+        "task26",
+        "task27",
+        "task28",
+        "task29",
+        "task3",
+        "task30",
+        "task31",
+        "task32",
+        "task33",
+        "task34",
+        "task35",
+        "task36",
+        "task37",
+        "task38",
+        "task39",
+        "task4",
+        "task40",
+        "task41",
+        "task42",
+        "task43",
+        "task44",
+        "task45",
+        "task46",
+        "task47",
+        "task48",
+        "task49",
+        "task5",
+        "task50",
+        "task51",
+        "task52",
+        "task53",
+        "task54",
+        "task55",
+        "task56",
+        "task57",
+        "task58",
+        "task59",
+        "task6",
+        "task60",
+        "task61",
+        "task62",
+        "task63",
+        "task64",
+        "task7",
+        "task8",
+        "task9"
+      ]
+    }
+  },
+  {
+    "name": "run_wait_returns_child_exit_code",
+    "passed": true,
+    "observed": {
+      "exit_code": 7,
+      "stdout": "{\n  \"window_id\": \"window:01a18806-87dd-7622-9c62-9cfd07901b0f\",\n  \"block_ids\": [\n    \"block:01a18806-87db-7ad5-b711-d066c2c7a533\"\n  ],\n  \"revision\": 2\n}\n",
+      "stderr": "Error: exit status 7\n"
+    }
+  }
+]

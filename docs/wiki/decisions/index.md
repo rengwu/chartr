@@ -1,8 +1,70 @@
 ---
 title: Decisions
-updated: 2026-10-19
+updated: 2026-11-07
 ---
 # Decisions
+
+## DEC-RELEASE-033-001 — Prepare 0.3.3 with simple verification
+
+Accepted November 7: the user said “skip #1. verify others in a simple manner
+(i don't want my desktop to be hijacked), then prepare the release,” followed by
+“bump it to 0.3.3.” Item #1 was the proposed v0.3.2-to-candidate upgrade test.
+
+Prepare 0.3.3, omit that upgrade test, and use bounded checks that preserve the
+user's desktop. Existing headless UI/model tests, private real-backend sessions,
+historical visual evidence and candidate CI/package checks are the chosen method.
+This does not establish native banner/click or physical-input behavior as passed,
+nor authorize publication. No new naming-policy choice is needed. See
+[preparation](../development/release-0.3.3.md) and the
+[run](../verification/runs/2026-11-07-release-0.3.3.md).
+
+## DEC-REX-001 — Explore one focused feature before implementation
+
+Accepted October 30 through the
+[prioritization answers](../journal/2026-10-30-rex-prioritization-feedback.md#accepted-scope-and-next-stage):
+target one focused feature, finished end to end, for the first deliverable.
+The immediate next stage is design and feasibility exploration followed by a
+concrete plan. The proposal shortlist was unresolved in this answer and is
+subsequently settled by DEC-REX-002. These choices authorize
+exploration and planning; they do not select a feature or authorize product
+implementation.
+
+## DEC-REX-002 — Select terminal task names for exploration
+
+Accepted October 30 in the [submitted shortlist](../journal/2026-10-30-rex-prioritization-feedback.md#selected-target):
+explore proposal **#1, stable task names for individual terminals**. It was the
+only selected item. The accepted immediate scope remains design and feasibility
+exploration for one focused feature, followed by a concrete plan. DEC-REX-003
+subsequently settles the naming policy; implementation is described in
+[the task-name discussion](../discussions/terminal-task-names.md).
+
+## DEC-REX-003 — Automatic task names with configurable manual-name lifetime
+
+Accepted October 30 through [design questions 5–8](../journal/2026-10-30-rex-prioritization-feedback.md#accepted-naming-policy).
+Use available conversation titles automatically with process/shell fallback,
+while manual names override automatic names. Show the provider icon beside the
+task name. The user selected keeping a manual name until renamed/reset and added
+“this could go both ways. make it a setting.” Therefore provide a setting for
+keeping the manual name versus resetting it when a new agent conversation is
+identified. The plan uses Keep as the default, following the selected choice.
+
+The October 30 [screenshot follow-up](../journal/2026-10-30-rex-prioritization-feedback.md#project-suffix-follow-up)
+requests removing the project-name suffix from automatic terminal labels.
+
+Task names in desktop notifications are deferred. The
+[implementation plan](../discussions/terminal-task-names.md) supplies the settings
+placement, metadata handling, persistence and verification details. This accepts
+feature behavior for planning; it does not authorize implementation or claim
+that any provider's automatic naming/reset behavior has been tested.
+
+## DEC-REX-004 — Implement terminal task names
+
+Accepted October 30 in the user's direct instruction: “proceed with implementation,
+use work-until-grill.” This advances the completed exploration into implementation
+of DEC-REX-003, with verification and records. The earlier interview's planning-only
+scope is historical; notification naming/testing and the other Rex proposals remain
+deferred. See the [implementation run](../verification/runs/2026-10-30-terminal-task-names.md).
+No commit, release or installed-app replacement is requested.
 
 ## DEC-RELEASE-032-001 — Focused verification is sufficient for 0.3.2
 

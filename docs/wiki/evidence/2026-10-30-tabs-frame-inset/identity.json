@@ -1,0 +1,38 @@
+{
+  "root": "/tmp/chartr-verify.1sh4fhoz",
+  "stage": "/Users/rengwu/Desktop/Projects/chartr/target/tabs-inset-verify.ww94br9n",
+  "bundle": "/Users/rengwu/Desktop/Projects/chartr/target/tabs-inset-verify.ww94br9n/Chartr Inset Check.app",
+  "bundle_id": "dev.chartr.verify.inset.1sh4fhoz",
+  "pid": 82586,
+  "binary_sha256": "f0c4d4c84af7dbd484a1e2eb0d7f22fee3666e3ff36da2bf1091444145972f35",
+  "herdr_sha256": "5035aef14b4c44943685ade11d7a6cda3fc0a255f52c76a1729990959393e8a0",
+  "head": "369298062bfd5ba00ad0c273d580ce408797b19c",
+  "git_diff_sha256": "f9d9997954f0c0e6fea278a4c22d095e4883295fa4892b4d6724b83363584007",
+  "product_diff_sha256": "a96e9704512b26509fc45a9443f316e0b0603f3b96c5613c5073151eac1f1d06",
+  "source_sha256": {
+    "crates/chartr/src/app/view.rs": "5e75471c42249a0d126d4621725621230cf6c03cd03f5d9fe5c6b4578cacccd5",
+    "crates/chartr/src/terminal_names.rs": "3bcaa397e32c164f6b2b4b1c586f24d8fed09911df733fbdb3f9b89cd9c78281"
+  },
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A5368g",
+  "architecture": "arm64",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "herdr_version": "herdr 0.8.2-chartr.5a2dee700eee.identity.9ed02822c877",
+  "xdg": {
+    "XDG_CONFIG_HOME": "/tmp/chartr-verify.1sh4fhoz/config",
+    "XDG_STATE_HOME": "/tmp/chartr-verify.1sh4fhoz/state",
+    "XDG_DATA_HOME": "/tmp/chartr-verify.1sh4fhoz/data"
+  },
+  "saved_window": {
+    "chrome": "tabs",
+    "terminal_mode": "tabs",
+    "selected_conversation": null,
+    "sidebar_width": 280.0,
+    "active_space": "folder:/tmp/chartr-verify.1sh4fhoz/project",
+    "bounds": {
+      "x": 556.0,
+      "y": 329.0,
+      "width": 817.0,
+      "height": 581.0
+    }
+  }
+}

@@ -1,0 +1,93 @@
+[
+  {
+    "name": "format",
+    "argv": [
+      "cargo",
+      "fmt",
+      "--all",
+      "--check"
+    ],
+    "exit_code": 0,
+    "seconds": 1.08,
+    "finished": "2026-11-07T13:41:02.343355+00:00"
+  },
+  {
+    "name": "scripts",
+    "argv": [
+      "python3",
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "scripts/tests",
+      "-v"
+    ],
+    "exit_code": 0,
+    "seconds": 1.08,
+    "finished": "2026-11-07T13:41:03.420020+00:00"
+  },
+  {
+    "name": "javascript",
+    "argv": [
+      "node",
+      "--test",
+      "crates/chartr/tests/plugin_bridge.cjs",
+      "plugins/wayfinder/tests/layout.test.mjs"
+    ],
+    "exit_code": 0,
+    "seconds": 0.13,
+    "finished": "2026-11-07T13:41:03.548046+00:00"
+  },
+  {
+    "name": "workspace",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--locked",
+      "--no-fail-fast"
+    ],
+    "exit_code": 0,
+    "seconds": 48.56,
+    "finished": "2026-11-07T13:41:52.112666+00:00"
+  },
+  {
+    "name": "live-session",
+    "argv": [
+      "/Users/rengwu/Desktop/Projects/chartr/target/debug/deps/live_session-84ac0f43097fc35b",
+      "--ignored",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit_code": 0,
+    "seconds": 5.49,
+    "finished": "2026-11-07T13:41:57.606450+00:00"
+  },
+  {
+    "name": "native-plugin",
+    "argv": [
+      "cargo",
+      "check",
+      "--manifest-path",
+      "examples/plugins/hello/Cargo.toml",
+      "--locked"
+    ],
+    "exit_code": 0,
+    "seconds": 1.7,
+    "finished": "2026-11-07T13:41:59.308174+00:00"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cargo",
+      "build",
+      "-p",
+      "chartr",
+      "--locked"
+    ],
+    "exit_code": 0,
+    "seconds": 22.88,
+    "finished": "2026-11-07T13:42:22.193427+00:00"
+  }
+]

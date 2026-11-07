@@ -1,7 +1,7 @@
 ---
 title: Settings, themes and keybindings
 section: Features
-updated: 2026-10-19
+updated: 2026-11-07
 basis: Source-reviewed migration baseline
 ---
 # Settings, themes and keybindings
@@ -34,7 +34,9 @@ stateful recipes. Related areas are linked from the [feature index](index.md).
 - General → View mode is the only control for switching Tabs/Spaces (accepted 2026-10-18). The title-header picker and its hide/show setting are removed. Existing `show_view_mode_picker` values are preserved as unknown settings and have no effect.
 - Inactive pane tabs use a subtle background across all 15 built-in themes: 25% of the former inactive/card tint blended over the active pane surface. This reduces their visual emphasis while retaining theme hue and a slight distinction from the active tab (accepted 2026-10-19).
 - VSCode Dark Modern uses neutral `#464646` structural borders, raised from `#2b2b2b` so pane dividers and tab outlines remain visible against its dark surfaces (accepted 2026-10-19).
-- Defaults are chartr Dark, IBM Plex Sans and IBM Plex Mono; theme mode/pairs, fonts, UI/terminal scale and reduced motion are configurable.
+- Defaults are chartr Dark, Geist for the interface and IBM Plex Mono for terminals; theme mode/pairs, fonts, UI/terminal scale and reduced motion are configurable.
+- Terminal → Manual task names offers Keep until renamed or reset (default), or Reset for a new conversation. It persists as `terminal.manual_name_lifetime` (`keep` / `conversation`) and applies to subsequent observations without immediately clearing names. See [terminal naming behavior](terminals.md#terminal-task-names).
+- Rename active terminal is assignable in Hotkeys and unbound by default.
 - Hotkeys stores sparse overrides and rejects conflicts in the shared context. Unset actions retain platform defaults.
 - Plugins contribute settings lazily. Skill sources and Saved Prompts are settings-only; restart-bound changes disclose their requirement.
 - Middle-click tab closing and its dependent sidebar option follow their settings rather than acting unconditionally.
@@ -63,6 +65,14 @@ platform, theme, pointer and accessibility coverage. Choose a bounded subset for
 ordinary changes; release requirements remain separate from this advisory workflow.
 
 ## Verification history
+
+[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3.md) records
+bounded automated checks, isolated real-terminal checks and candidate package
+verification under the user's request to preserve the desktop. Native coverage
+limits remain explicit.
+
+[October 30 task names](../verification/runs/2026-10-30-terminal-task-names.md) covers
+the lifetime preference and rename command alongside naming behavior.
 
 The [October 19 0.3.2 preparation](../verification/runs/2026-10-19-release-0.3.2.md)
 records passing local tests, the macOS/Ubuntu/Arch CI matrix and all shipping

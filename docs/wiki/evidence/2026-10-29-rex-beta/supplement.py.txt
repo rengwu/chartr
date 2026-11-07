@@ -1,0 +1,29 @@
+import subprocess,json,sys,time
+from pathlib import Path
+p=Path('/tmp/chartr-rex-analysis-20261029');cli=['/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex','-S','unix://'+str(p/'server.sock'),'--autostart=false'];n=json.loads((p/'fixture-session.json').read_text());s=n['session_id'];b=n['initial_windows'][0]['block_ids'][0];res=[]
+def run(a,ok=True):
+ r=subprocess.run(cli+a,text=True,capture_output=True,timeout=15)
+ if ok and r.returncode:raise RuntimeError(r.stderr)
+ return r
+def j(a):return json.loads(run(a).stdout)
+def api(m,a={}):return j(['api','call','-s',s,m,json.dumps(a)])
+def block(m,a={}):return j(['block','call','-s',s,'-b',b,m,json.dumps(a)])
+def record(name,passed,observed):
+ res.append(dict(name=name,passed=bool(passed),observed=observed));(p/'supplement-results.json').write_text(json.dumps(res,indent=2));print(name,passed,flush=True)
+f=block('format',{'trim':True,'max_bytes':200});out=f['content'];chunks=1
+while 'id' in f:
+ r=block('blob_read',{'id':f['id'],'offset':len(out.encode()),'max_bytes':400});out+=r['data'];chunks+=1
+ if r['eof']:break
+full=block('format',{'trim':True})['content'];record('chunked_capture_reassembled_exactly',out==full,{'chunks':chunks,'bytes':len(out.encode()),'total':f['total'],'schema_correction':'blob_read returns data, not content'})
+before=api('session.view');bb=j(['block','ls','-s',s,'--json']);layout={'split':{'direction':'horizontal','ratio':.5,'before':{'block':{'flavor':'com.superlogical.terminal.shell','options':{'shell':'none','command':['/bin/sleep','30']}}},'after':{'block':{'flavor':'missing.creator.kind'}}}};r=run(['api','call','-s',s,'session.new_window',json.dumps({'label':'rollback-probe','layout':layout})],False);after=api('session.view');ab=j(['block','ls','-s',s,'--json']);record('valid_layout_failed_creator_rolls_back',r.returncode!=0 and len(before['windows'])==len(after['windows']) and len(json.dumps(bb))==len(json.dumps(ab)),{'error':r.stderr,'before_blocks':bb,'after_blocks':ab})
+layer=api('session.new_layer',{'bounds':[.1,.1,.5,.5],'focus':False,'layout':{'block':{'flavor':'com.superlogical.terminal.shell','options':{'shell':'none','command':['/bin/sleep','300']}}}});v=api('session.view');record('floating_layer_created',any(x['kind']=='floating' for x in v['windows'][0]['layers']),{'result':layer,'view':v})
+(p/'dirfixture').mkdir(exist_ok=True);(p/'dirfixture'/'space name.txt').write_text('audit\n');listing=block('list_dir',{'path':str(p/'dirfixture'),'files':True});missing=block('list_dir',{'path':str(p/'nonexistent')});record('path_browser_explicit_missing_and_files',listing['status']=='ok' and listing['entries'][0]['name']=='space name.txt' and missing['status']=='missing',{'listing':listing,'missing':missing})
+# Fresh synthetic fixture: no user profile or agent is involved.
+x=j(['new','status-cap-audit','--shell','none','--keep-open','--json','--',sys.executable,'-u',str(p/'fixture.py')]);ss=x['session_id'];bb=x['initial_windows'][0]['block_ids'][0]
+def bm(m,a={}):return j(['block','call','-s',ss,'-b',bb,m,json.dumps(a)])
+for i in range(65):
+ data='\x1b]7501;id=task'+str(i)+':state=working\x1b\\';bm('write',{'data':json.dumps({'text':data,'seq':i})+'\n'})
+r=bm('program_status')['records'];record('status_store_cap_is_64',len(r)==64 and not any(t.get('id')=='task0' for t in r),{'count':len(r),'ids':[x.get('id') for x in r]})
+# Exact wait exit forwarding, without a GUI or user process.
+x=run(['run','-s',ss,'--keep-open','--shell','none','--wait','--json','--','/bin/sh','-c','printf "exit-seven\\n"; exit 7'],False);record('run_wait_returns_child_exit_code',x.returncode==7,{'exit_code':x.returncode,'stdout':x.stdout,'stderr':x.stderr})
+print('Supplement complete')

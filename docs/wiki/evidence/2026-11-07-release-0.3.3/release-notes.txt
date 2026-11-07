@@ -1,0 +1,29 @@
+## Changes
+
+- Terminal tabs now show available conversation titles. Rename individual
+  terminals from their context menus or the command palette, and reset them to
+  automatic naming at any time. An optional rename shortcut is available in Hotkeys.
+- Manual task names persist across reconnection and relaunch. Settings → Terminal
+  lets you keep them until reset or clear them when a different known agent
+  conversation starts. Automatic titles omit matching project-directory suffixes.
+- Refined workspace styling with a rounded frame, balanced Tabs-mode insets and
+  smaller, muted space headings.
+- Improved terminal ownership across backend pane remapping.
+- Fixed stale mouse capture after a foreground TUI returns control to its shell,
+  including sessions that were detached or handed off to a replacement backend.
+
+## Downloads and known limits
+
+- macOS: Apple silicon. The app is ad-hoc signed and not notarized.
+- Linux: x86_64 and ARM64 tarballs and Debian packages, built on Ubuntu 24.04.
+  X11/XWayland, Vulkan, GTK 3 and WebKitGTK 4.1 are required. Arch binary packages
+  target x86_64; AUR publication remains deferred.
+- Automatic titles and conversation-based name reset depend on agent metadata.
+  Repeated identical titles after a conversation change may use the process fallback.
+- Mouse recovery requires the backend to observe the return to the shell. It does
+  not restore terminated processes, extended keyboard modes or shell terminal settings.
+- Agent notifications remain best effort. Task names are not included in notifications.
+- Verification used automated UI/model tests, isolated real terminal sessions and
+  package checks. Native desktop/banner interaction and v0.3.2 upgrade testing were
+  not performed for this release candidate.
+- External native plugin payloads are distributed separately.

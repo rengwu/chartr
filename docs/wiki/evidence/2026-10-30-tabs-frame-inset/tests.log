@@ -1,0 +1,80 @@
+   Compiling chartr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.95s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/main.rs (target/debug/deps/chartr-86f34180ac427e32)
+
+running 10 tests
+test mode::tests::reduced_motion_finishes_an_in_flight_transition ... ok
+test mode::tests::interrupted_sidebar_exits_use_the_explicitly_selected_sidebar_content ... ok
+test mode::tests::quick_reversals_keep_the_current_position ... ok
+test mode::tests::sidebar_page_reversals_preserve_the_current_position ... ok
+test mode::tests::sidebar_pages_do_not_animate_when_switching_to_or_from_tabs ... ok
+test mode::tests::reduced_motion_finishes_sidebar_page_switches ... ok
+test mode::tests::restores_without_motion_and_slides_both_surfaces_together ... ok
+test mode::tests::sidebar_and_inbox_keep_the_same_pane_visible ... ok
+test mode::tests::sidebar_pages_slide_in_both_directions_without_resizing_the_pane ... ok
+test mode::tests::inbox_contents_stay_in_the_sidebar_through_its_exit_to_tabs ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 325 filtered out; finished in 0.00s
+
+     Running tests/live_session.rs (target/debug/deps/live_session-3e4e2f6b3cfb3ed6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_agent-31fba9cbc2f0457d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_companion-e156a27619321b06)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_conversations-15ab8a210836779c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_herdr-9049b2e107d418a6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 36 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_native_plugin-155a8c1262a7c635)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_plugin-aea373f78f15ff5f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/plugin_ui_contract.rs (target/debug/deps/plugin_ui_contract-b99e2be401852e61)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_plugin_host-552c3e2d191b96e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chartr_storage-7b377f84bd3feaf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

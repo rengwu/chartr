@@ -1,7 +1,7 @@
 ---
 title: Installation, packages and release boundaries
 section: Features
-updated: 2026-10-21
+updated: 2026-11-07
 basis: Source-reviewed migration baseline
 ---
 # Installation, packages and release boundaries
@@ -63,6 +63,11 @@ platform, theme, pointer and accessibility coverage. Choose a bounded subset for
 ordinary changes; release requirements remain separate from this advisory workflow.
 
 ## Verification history
+
+[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3.md) records
+bounded automated checks, isolated real-terminal checks and candidate package
+verification under the user's request to preserve the desktop. Native coverage
+limits remain explicit.
 
 The [October 21 publication](../verification/runs/2026-10-21-release-publication.md)
 records passing tag builds, all ten downloaded asset digests, Linux/macOS package

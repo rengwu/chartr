@@ -1,0 +1,18 @@
+{
+  "checked": "2026-11-03T01:45:56.558999+08:00",
+  "argv": [
+    "gh",
+    "pr",
+    "list",
+    "--repo",
+    "rengwu/chartr",
+    "--state",
+    "open",
+    "--limit",
+    "100",
+    "--json",
+    "number,title,url,headRefName,baseRefName,isDraft"
+  ],
+  "exit_code": 0,
+  "data": []
+}

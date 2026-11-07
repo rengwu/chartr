@@ -1,0 +1,205 @@
+    Blocking waiting for file lock on build directory
+   Compiling collections v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling path v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling gpui v0.2.2 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling image v0.25.10
+   Compiling zlog v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling perf v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling cranelift-codegen-meta v0.123.14
+   Compiling pulley-interpreter v36.0.14
+   Compiling wasmparser v0.236.1
+   Compiling prost-build v0.9.0
+   Compiling tokio v1.53.1
+   Compiling prost v0.9.0
+   Compiling util v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling util_macros v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling ztracing v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling sum_tree v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling clock v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling serde_spanned v0.6.9
+   Compiling http_client v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling paths v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling rope v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling proto v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_model_core v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wasmprinter v0.236.1
+   Compiling toml_datetime v0.6.11
+   Compiling text v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling telemetry_events v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wasmtime-environ v36.0.14
+   Compiling telemetry v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.8
+   Compiling tokio-rustls v0.26.4
+   Compiling icu_collections v2.3.0
+   Compiling tungstenite v0.27.0
+   Compiling cranelift-codegen v0.123.14
+   Compiling futures-util v0.3.34
+   Compiling num-bigint-dig v0.8.6
+   Compiling futures-executor v0.3.34
+   Compiling async-tungstenite v0.31.0
+   Compiling icu_normalizer v2.3.0
+   Compiling rsa v0.9.10
+   Compiling icu_properties v2.3.0
+   Compiling release_channel v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling askpass v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling syntax_theme v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling git v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling theme v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zed_actions v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling toml_edit v0.22.27
+   Compiling nucleo v0.5.0
+   Compiling fuzzy v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling idna_adapter v1.2.2
+   Compiling futures v0.3.34
+   Compiling toml v0.8.23
+   Compiling fs v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling cranelift-native v0.123.14
+   Compiling cranelift-frontend v0.123.14
+   Compiling wasmtime-internal-cranelift v36.0.14
+   Compiling wasmtime-internal-unwinder v36.0.14
+   Compiling task v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling rpc v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling lsp-types v0.95.1 (https://github.com/zed-industries/lsp-types?rev=f4dfa89a21ca35cd929b70354b1583fabae325f8#f4dfa89a)
+   Compiling wasmtime v36.0.14
+   Compiling watch v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling idna v1.1.0
+   Compiling lsp v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling fuzzy_nucleo v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wasmtime-c-api-impl v36.0.14
+   Compiling tree-sitter v0.27.0 (https://github.com/tree-sitter/tree-sitter?rev=dff1fd868c750dbbae179fcd5c43ce987e4e0528#dff1fd86)
+   Compiling settings_json v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling settings_content v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_core v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling url v2.5.8
+   Compiling phf_macros v0.13.1
+   Compiling schemars v1.2.2
+   Compiling ciborium-ll v0.2.2
+   Compiling hyper v1.11.1
+   Compiling hyper-util v0.1.20
+   Compiling phf_macros v0.12.1
+   Compiling phf v0.13.1
+   Compiling cssparser v0.36.0
+   Compiling ciborium v0.2.2
+   Compiling string_cache_codegen v0.5.4
+   Compiling credentials_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zeta_prompt v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling tokio-util v0.7.19
+   Compiling icons v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling yawc v0.3.3 (https://github.com/zed-industries/yawc?rev=71a452f551cac178367eaac5d7418a09afa1f3a2#71a452f5)
+   Compiling documented-macros v0.9.2
+   Compiling phf v0.12.1
+   Compiling selectors v0.37.0
+   Compiling cloud_api_types v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling markup5ever v0.12.1
+   Compiling gpui_tokio v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling htmlize v1.1.0
+   Compiling json5 v1.3.1
+   Compiling granit-parser v1.0.0
+   Compiling cloud_api_client v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling icu_locale_fallback v2.3.0
+   Compiling migrator v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling tokio-native-tls v0.3.1
+   Compiling lol_html v3.0.1
+   Compiling settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling zed_credentials_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling documented v0.9.2
+   Compiling string_cache v0.8.9
+   Compiling component v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling menu v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling proxy_handshake v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling dugong-graphlib v0.8.0-alpha.5
+   Compiling merman-core v0.8.0-alpha.5
+   Compiling ui v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/ui)
+   Compiling language v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling feature_flags v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling dugong v0.8.0-alpha.5
+   Compiling worktree v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling client v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling icu_collator v2.3.1
+   Compiling node_runtime v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling roughr-merman v0.12.3
+   Compiling manatee v0.8.0-alpha.5
+   Compiling command-fds v0.3.3
+   Compiling merman-render v0.8.0-alpha.5
+   Compiling env_var v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling serde_json_lenient v0.2.4
+   Compiling dap-types v0.0.1 (https://github.com/zed-industries/dap-types?rev=1b461b310481d01e02b2603c16d7144b926339f8#1b461b31)
+   Compiling rust-embed v8.12.0
+   Compiling vte v0.15.0
+   Compiling html5ever v0.27.0
+   Compiling dap v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling xml5ever v0.18.1
+   Compiling theme_settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wasmparser v0.252.0
+   Compiling tracing v0.1.44
+   Compiling bit-vec v0.8.0
+   Compiling bit-set v0.8.0
+   Compiling alacritty_terminal v0.26.1-dev (https://github.com/zed-industries/alacritty?rev=4c129667ce56611becdc82de6e28218c80e2e88f#4c129667)
+   Compiling metal v0.33.0
+   Compiling extension v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling markup5ever_rcdom v0.3.0
+   Compiling sqlez v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling buffer_diff v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling merman v0.8.0-alpha.5
+   Compiling oauth_callback_server v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling mermaid_render v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling exr v1.74.2
+   Compiling snippet v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling markdown v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling snippet_provider v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wax v0.7.0
+   Compiling context_server v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling core-video v0.5.2
+   Compiling sqlez_macros v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling scheduler v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling terminal v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling fancy-regex v0.18.0
+   Compiling zed_env_vars v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling prettier v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling git_hosting_providers v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling remote v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling gpui_shared_string v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling postage v0.5.0
+   Compiling futures-concurrency v7.7.1
+   Compiling core-graphics v0.24.0
+   Compiling cbindgen v0.28.0
+   Compiling project v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling db v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling language_model v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling session v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling ahash v0.8.12
+   Compiling ui_input v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling media v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling accesskit_consumer v0.38.0
+   Compiling cocoa v0.26.0
+   Compiling hashbrown v0.14.5
+   Compiling core-text v21.0.0
+   Compiling zed-font-kit v0.14.1-zed (https://github.com/zed-industries/font-kit?rev=94b0f28166665e8fd2f53ff6d268a14955c82269#94b0f281)
+   Compiling accesskit_macos v0.26.3
+   Compiling agent_settings v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling hashlink v0.9.1
+   Compiling multi_buffer v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling workspace v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling edit_prediction_types v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling vim_mode_setting v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling file_icons v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling assets v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling chartr-agent v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-agent)
+   Compiling rusqlite v0.32.1
+   Compiling chartr-plugin v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin)
+   Compiling breadcrumbs v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling editor v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling wry v0.56.1
+   Compiling chartr-herdr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-herdr)
+   Compiling chartr-plugin-host v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin-host)
+   Compiling chartr-conversations v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-conversations)
+   Compiling chartr-native-plugin v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-native-plugin)
+   Compiling terminal_view v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-terminal-view)
+   Compiling gpui_apple v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/gpui_apple)
+   Compiling gpui_macos v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/vendor/zed-platform/gpui_macos)
+   Compiling gpui_platform v0.1.0 (https://github.com/zed-industries/zed.git?rev=1ea16c1ab9dd6d36649e002dc60995634da04daf#1ea16c1a)
+   Compiling chartr v0.3.2 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10m 05s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

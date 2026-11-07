@@ -1,0 +1,14 @@
+test_changed_patch_cannot_reuse_old_binary (test_herdr_fetch.FetchTests.test_changed_patch_cannot_reuse_old_binary) ... ok
+test_cold_build_then_reuse_and_forced_rebuild (test_herdr_fetch.FetchTests.test_cold_build_then_reuse_and_forced_rebuild) ... ok
+test_failed_build_preserves_previous_binary (test_herdr_fetch.FetchTests.test_failed_build_preserves_previous_binary) ... ok
+test_invalid_target_fails_before_network (test_herdr_fetch.FetchTests.test_invalid_target_fails_before_network) ... ok
+test_matching_binary_needs_no_zig_or_network (test_herdr_fetch.FetchTests.test_matching_binary_needs_no_zig_or_network) ... ok
+test_patch_failure_preserves_previous_binary_and_does_not_cache_source (test_herdr_fetch.FetchTests.test_patch_failure_preserves_previous_binary_and_does_not_cache_source) ... ok
+test_stale_sidecar_is_replaced (test_herdr_fetch.FetchTests.test_stale_sidecar_is_replaced) ... ok
+test_wrong_built_version_is_not_published (test_herdr_fetch.FetchTests.test_wrong_built_version_is_not_published) ... ok
+test_wrong_zig_fails_before_network (test_herdr_fetch.FetchTests.test_wrong_zig_fails_before_network) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 2.158s
+
+OK

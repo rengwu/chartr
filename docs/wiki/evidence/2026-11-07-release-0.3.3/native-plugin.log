@@ -1,0 +1,5 @@
+    Checking chartr-plugin v0.3.3 (/Users/rengwu/Desktop/Projects/chartr/crates/chartr-plugin)
+    Checking hello v0.1.0 (/Users/rengwu/Desktop/Projects/chartr/examples/plugins/hello)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.61s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

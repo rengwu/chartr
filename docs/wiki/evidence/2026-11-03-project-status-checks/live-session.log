@@ -1,0 +1,8 @@
+
+running 3 tests
+test a_broken_backend_recovers_without_resurrecting_dead_sessions ... ok
+test a_created_session_has_a_native_direct_attach_target ... ok
+test mouse::shell_selection_does_not_capture_mouse_but_tui_gestures_still_arrive ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.33s
+
