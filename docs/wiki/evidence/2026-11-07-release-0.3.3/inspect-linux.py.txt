@@ -1,0 +1,69 @@
+from pathlib import Path
+import hashlib, io, json, re, struct, subprocess, tarfile
+
+root = Path(__file__).resolve().parents[4]
+packages = root / "target/release-033-packages"
+evidence = root / "docs/wiki/evidence/2026-11-07-release-0.3.3"
+checks = []
+for sums in sorted([*packages.rglob("*.sha256"), *packages.rglob("SHA256SUMS-*")]):
+    for line in sums.read_text().splitlines():
+        digest, name = line.split(maxsplit=1)
+        file = sums.parent / name.lstrip(" *")
+        actual = hashlib.sha256(file.read_bytes()).hexdigest()
+        assert actual == digest, file
+        checks.append({"file": file.name, "sha256": actual, "verified": True})
+assert len(checks) == 7, f"Expected seven payloads, found {len(checks)}"
+
+records = []
+for arch, machine, deb_arch in (("x86_64", 62, "amd64"), ("aarch64", 183, "arm64")):
+    archive = next(packages.rglob(f"chartr-0.3.3-linux-{arch}.tar.gz"))
+    binaries = {}
+    with tarfile.open(archive, "r:gz") as tar:
+        names = tar.getnames()
+        for executable in ("chartr", "herdr"):
+            entry = next(n for n in names if n.endswith(f"/usr/lib/chartr/{executable}"))
+            data = tar.extractfile(entry).read()
+            assert data[:4] == b"\x7fELF"
+            assert struct.unpack("<H", data[18:20])[0] == machine
+            binaries[executable] = {"sha256": hashlib.sha256(data).hexdigest(), "elf_machine": machine}
+        symlink = tar.getmember(next(n for n in names if n.endswith("/usr/bin/chartr")))
+        assert symlink.issym() and symlink.linkname == "../lib/chartr/chartr"
+        build_info = tar.extractfile(next(n for n in names if n.endswith("/BUILD-INFO.txt"))).read().decode()
+        assert "0.3.3" in build_info and "1b16fee02cac5ab5e7f135707d473f1f0730666e" in build_info, build_info
+        assert "Herdr: 0.8.2-chartr.5a2dee700eee.identity.914a955dff8a" in build_info
+    deb = next(packages.rglob(f"*0.3.3*{deb_arch}.deb"))
+    raw = deb.read_bytes()
+    assert raw[:8] == b"!<arch>\n"
+    offset = 8
+    members = {}
+    while offset < len(raw):
+        header = raw[offset:offset+60]
+        length = int(header[48:58])
+        name = header[:16].decode().strip().rstrip("/")
+        members[name] = raw[offset+60:offset+60+length]
+        offset += 60 + length + length % 2
+    control_archive = next(data for name,data in members.items() if name.startswith("control.tar"))
+    control = subprocess.check_output(["tar", "-xOf", "-", "./control"], input=control_archive).decode()
+    assert "Version: 0.3.3" in control and f"Architecture: {deb_arch}" in control
+    data_archive = next(data for name,data in members.items() if name.startswith("data.tar"))
+    for executable, identity in binaries.items():
+        data = subprocess.check_output(["tar", "-xOf", "-", f"./usr/lib/chartr/{executable}"], input=data_archive)
+        assert hashlib.sha256(data).hexdigest() == identity["sha256"]
+    records.append({"architecture":arch,"binaries":binaries,"tar_deb_binaries_identical":True,"symlink_valid":True,"build_info":build_info,"debian_control":control})
+
+arch_pkg = next(packages.rglob("chartr-bin-0.3.3-*.pkg.tar.zst"))
+for executable, identity in records[0]["binaries"].items():
+    data = subprocess.check_output(["tar", "-xOf", str(arch_pkg), f"usr/lib/chartr/{executable}"])
+    assert hashlib.sha256(data).hexdigest() == identity["sha256"]
+aur = next(packages.rglob("chartr-0.3.3-aur.tar.gz"))
+recipe = {}
+with tarfile.open(aur,"r:gz") as tar:
+    for base in ("PKGBUILD", ".SRCINFO"):
+        member = next(m for m in tar.getmembers() if m.name.split("/")[-1] == base)
+        recipe[base] = tar.extractfile(member).read().decode()
+tar_digest = next(c["sha256"] for c in checks if c["file"] == "chartr-0.3.3-linux-x86_64.tar.gz")
+assert all(tar_digest in text for text in recipe.values())
+assert all("0.3.3" in text for text in recipe.values())
+(evidence/"checksums.json").write_text(json.dumps(checks,indent=2)+"\n")
+(evidence/"linux-inspection.json").write_text(json.dumps({"packages":records,"arch_tar_binaries_identical":True,"aur_matches_release_tarball":True,"aur_recipe":recipe,"executables_launched":False},indent=2)+"\n")
+print(f"Verified {len(checks)} payload checksums, both Linux architectures, tar/deb/Arch binary equivalence and AUR recipe metadata")

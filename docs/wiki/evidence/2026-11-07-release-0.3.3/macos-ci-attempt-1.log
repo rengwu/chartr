@@ -1,0 +1,35 @@
+macos-15	Test real terminal sessions	﻿2026-11-07T14:25:27.8642700Z ##[group]Run cargo test -p chartr --test live_session --locked -- --ignored --nocapture --test-threads=1
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8643560Z ^[[36;1mcargo test -p chartr --test live_session --locked -- --ignored --nocapture --test-threads=1^[[0m
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8693590Z shell: /bin/bash -e {0}
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8693810Z env:
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8694030Z   CARGO_PROFILE_DEV_DEBUG: 0
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8694260Z   CARGO_PROFILE_TEST_DEBUG: 0
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8694530Z   CACHE_ON_FAILURE: true
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8694730Z   CARGO_INCREMENTAL: 0
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8695050Z   ZIG_GLOBAL_CACHE_DIR: /Users/runner/work/chartr/chartr/.zig-cache
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8695430Z   ZIG_LOCAL_CACHE_DIR: /Users/runner/work/chartr/chartr/.zig-cache
+macos-15	Test real terminal sessions	2026-11-07T14:25:27.8695760Z ##[endgroup]
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.4677040Z     Finished `test` profile [unoptimized] target(s) in 3.43s
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.4695150Z warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.4697450Z note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.5126280Z      Running tests/live_session.rs (target/debug/deps/live_session-32b7d9bfc75debca)
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.5189380Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:31.5190010Z running 4 tests
+macos-15	Test real terminal sessions	2026-11-07T14:25:32.5135750Z test a_broken_backend_recovers_without_resurrecting_dead_sessions ... ok
+macos-15	Test real terminal sessions	2026-11-07T14:25:33.0565240Z test a_created_session_has_a_native_direct_attach_target ... ok
+macos-15	Test real terminal sessions	2026-11-07T14:25:43.9172060Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:43.9174270Z thread 'mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach' (180489) panicked at crates/chartr/tests/support/mouse.rs:73:13:
+macos-15	Test real terminal sessions	2026-11-07T14:25:43.9266590Z attach timed out: ^[[?2026h^[[?25l^[]8;;^[\^[[1;1H^[[0;39;49m'/^[[1;4Hmp/cr-0iOetR/mous^[[1;22H-tui.py' '/tm^[[1;36H/cr-0iOetR/tu^[[1;50H.pid'; stty sane; printf '\103H^[[2;1HARTR_SHELL_^[[2;13HEADY\n'        ^[[3;1HCHARTR_TUI_READYKilled: 9                                      ^[[3;65H       ^[[3;73H       ^[[4;1HCHARTR_SHELL_READY           ^[[4;31H                         ^[[4;57H    ^[[4;62H     ^[[4;68H      ^[[4;75H      ^[[5;1Hsjc20-bb661-0c188c61-a3e0-4ac8-a721-be321954d620-6E42E796A902:~^[[5;65Hrunner$^[[5;73Hprintf^[[5;80H'^[[6;1H\103HAR^[[6;9HR_INPUT_OK\n'  ^[[6;25H ^[[7;8HINPUT^[[7;14HOK   ^[[8;74Hython3 ^[[9;1H'/tmp/cr-0iOetR/mouse-tui.py'^[[9;31H'/tmp/cr-0iOetR/tui.pid';^[[9;57Hstty^[[9;62Hsane;^[[9;68Hprintf^[[9;75H'\103H^[[10;1HART^[[10;5H_SHELL_READY\n'^[[11;1HCHARTR_TUI_READYKilled: 9                                      ^[[11;65H       ^[[11;73H       ^[[12;1HCHARTR_SHELL_READY           ^[[12;31H                         ^[[12;57H    ^[[12;62H     ^[[12;68H      ^[[12;75H      ^[[13;1Hsjc20-bb661-0c188c61-a3e0-4ac8-a721-be321954d620-6E42E796A902:~^[[13;65Hrunner$^[[13;73Hprintf^[[13;80H'^[[14;1H\103HAR^[[14;9HR_INPUT_OK\n'  ^[[14;25H ^[[15;8HINPUT^[[15;14HOK   ^[[16;74Hython3 ^[[17;1H'/tmp/cr-0iOetR/mouse-tui.py'^[[17;31H'/tmp/cr-0iOetR/tui.pid';^[[17;57Hstty^[[17;62Hsane;^[[17;68Hprintf^[[17;75H'\103H^[[18;1HART^[[18;5H_SHELL_READY\n'^[[19;1HCHARTR_TUI_READYKilled: 9                                      ^[[19;65H       ^[[19;73H       ^[[20;1HCHARTR_SHELL_READY           ^[[20;31H                         ^[[20;57H    ^[[20;62H     ^[[20;68H      ^[[20;75H      ^[[21;1Hsjc20-bb661-0c188c61-a3e0-4ac8-a721-be321954d620-6E42E796A902:~^[[21;65Hrunner$^[[21;73Hprintf^[[21;80H'^[[22;1H\103HAR^[[22;9HR_INPUT_OK\n'  ^[[22;25H ^[[23;8HINPUT^[[23;14HOK   ^[[0m^[[24;73H^[[?25h^[[?2026l^[[24;73H^[[?25h
+macos-15	Test real terminal sessions	2026-11-07T14:25:43.9277070Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+macos-15	Test real terminal sessions	2026-11-07T14:25:44.4406260Z test mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach ... FAILED
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1485040Z test mouse::shell_selection_does_not_capture_mouse_but_tui_gestures_still_arrive ... ok
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1586210Z error: test failed, to rerun pass `-p chartr --test live_session`
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1589240Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1687800Z failures:
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1790280Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1891040Z failures:
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.1993310Z     mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.2094170Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.2198270Z test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.63s
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.2295390Z 
+macos-15	Test real terminal sessions	2026-11-07T14:25:46.2412340Z ##[error]Process completed with exit code 101.

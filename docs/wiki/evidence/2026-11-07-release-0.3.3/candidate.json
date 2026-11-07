@@ -1,0 +1,9 @@
+{
+  "candidate": "1b16fee02cac5ab5e7f135707d473f1f0730666e",
+  "source_files_matching_local_tests": 506,
+  "all_match": true,
+  "symlink_targets": {
+    "vendor/zed-terminal-view/LICENSE-GPL": "LICENSE-GPL"
+  },
+  "branch": "release/0.3.3"
+}

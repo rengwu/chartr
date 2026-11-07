@@ -1,0 +1,38 @@
+[
+  {
+    "attempt": 1,
+    "argv": [
+      "target/debug/deps/live_session-774ac6918f1d25de",
+      "--ignored",
+      "--exact",
+      "mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit_code": 0
+  },
+  {
+    "attempt": 2,
+    "argv": [
+      "target/debug/deps/live_session-774ac6918f1d25de",
+      "--ignored",
+      "--exact",
+      "mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit_code": 0
+  },
+  {
+    "attempt": 3,
+    "argv": [
+      "target/debug/deps/live_session-774ac6918f1d25de",
+      "--ignored",
+      "--exact",
+      "mouse::killed_tui_releases_mouse_reporting_before_and_after_reattach",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit_code": 0
+  }
+]

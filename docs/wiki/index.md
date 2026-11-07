@@ -28,10 +28,12 @@ locally generated reader.
 
 ## Verification and releases
 
-[0.3.3 preparation](development/release-0.3.3.md) uses the user's requested
-simple checks without desktop takeover and explicitly skips old-to-new upgrade
-testing. Its [candidate run](verification/runs/2026-11-07-release-0.3.3.md)
-records passing local checks and the remaining native coverage limits.
+[0.3.3 preparation](development/release-0.3.3.md) is complete under the user's
+requested simple checks without desktop takeover; old-to-new upgrade testing is
+explicitly skipped. The [fixture recheck](verification/runs/2026-11-07-release-0.3.3-recheck.md)
+preserves the initial CI assertion failure and records the correction, passing
+platform CI, package checks and remaining native coverage limits. Publication is
+pending.
 
 [Next-release assessment, November 7](discussions/open-questions.md#next-release-assessment-november-7)
 proposes priorities for upgrade preservation, native naming/input checks,

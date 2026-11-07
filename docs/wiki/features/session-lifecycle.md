@@ -70,7 +70,7 @@ ordinary changes; release requirements remain separate from this advisory workfl
 
 ## Verification history
 
-[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3.md) records
+[0.3.3 preparation](../verification/runs/2026-11-07-release-0.3.3-recheck.md) records
 bounded automated checks, isolated real-terminal checks and candidate package
 verification under the user's request to preserve the desktop. Native coverage
 limits remain explicit.

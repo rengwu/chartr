@@ -1,0 +1,16 @@
+{
+  "package_candidate": "1b16fee02cac5ab5e7f135707d473f1f0730666e",
+  "fixture_candidate": "56ce59cfe7a3f1d2286ebf04c8a6ca652839d1f2",
+  "changed_source_files": [
+    "crates/chartr/tests/support/mouse.rs"
+  ],
+  "shipping_source_unchanged": true,
+  "fixture_sha256": "76046859675444a6285ac646bde512052d41776631cf1703b904672a91902dec",
+  "artifacts": {
+    "target/debug/chartr": "bd1eedde0be0d123b00545f5339e09eb04f1a7a65100ee9b33347bfccfe3983f",
+    "target/debug/herdr": "3a071098e06c38e050b7e0459bfcadd3e7e199e5f0810be50e5d82f025fd8f15",
+    "target/debug/deps/live_session-774ac6918f1d25de": "06cf95ca0c2cfba6ee4575bd535f92fffa385b682d79dcf800be957b8032eec0"
+  },
+  "normal_app_matches_original_local_build": true,
+  "sidecar_matches_original_local_build": true
+}

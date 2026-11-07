@@ -1,0 +1,23 @@
+[
+  {
+    "name": "release-packages-linux-aarch64",
+    "artifact_id": 13577063186,
+    "archive_size": 139748416,
+    "archive_sha256": "f6bbbbc8d0a7dc5c6310caa49358d73d51289212e4fc923daf4be173bbec6ac7",
+    "github_digest_verified": true
+  },
+  {
+    "name": "release-packages-linux-x86_64",
+    "artifact_id": 13577471449,
+    "archive_size": 213755416,
+    "archive_sha256": "88fcc309d22f8bd7c972957f8e3d22254c272f5e1d5130fa1356c6ce378e76ff",
+    "github_digest_verified": true
+  },
+  {
+    "name": "release-packages-macos-arm64",
+    "artifact_id": 13577871868,
+    "archive_size": 72778765,
+    "archive_sha256": "fb01cbfe216e199913be724d003d3356917fffe0809391e518472f4b867a80fd",
+    "github_digest_verified": true
+  }
+]
